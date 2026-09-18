@@ -80,6 +80,15 @@ fn lint_js(rule: &str, text: &str) -> Vec<Diagnostic> {
     lint_one(rule, "app/index.js", text)
 }
 
+/// Diagnostics produced by `rule` across a project-shaped source batch.
+fn lint_many(rule: &str, files: &[(&str, &str)]) -> Vec<Diagnostic> {
+    let files = files
+        .iter()
+        .map(|(path, text)| at(path, text))
+        .collect::<Vec<_>>();
+    lint_sources(&files, &only(rule)).expect("lint").diagnostics
+}
+
 fn fired(diagnostics: &[Diagnostic], rule: &str) -> bool {
     diagnostics.iter().any(|diagnostic| diagnostic.rule == rule)
 }

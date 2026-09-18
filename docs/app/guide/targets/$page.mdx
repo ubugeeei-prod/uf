@@ -24,9 +24,9 @@ and the terminal each say on their own page what else they need.
 ## The web, deployed
 
 `uf build` writes the client bundle, the prerendered documents and a server
-bundle. Four ways to serve them are in the binary, and they differ in what the
-machine that answers a request has to have — not in the answer, which is the
-same from all four:
+bundle. [Deploy a web build](/guide/deploy) is the guide for choosing what to
+run next. The options differ in what the machine that answers a request has to
+have — not in the answer, which is the same from all four:
 
 | Command | What you get | The host needs |
 | --- | --- | --- |
@@ -43,11 +43,10 @@ each need a server, and a static host has none:
 the table, and `uf build --adapter static` refuses a project that has any of
 them, by name.
 
-What is established is written down beside the commands. The command reference
-says that no server adapter's output has been deployed to a real platform yet,
-and what the tests prove instead. There is no guide to deploying yet: the
-reference is where the detail is, and
-[#955](https://github.com/ubugeeei-prod/uf/issues/955) is the guide.
+What is established is written down beside the commands. The deployment guide
+keeps the decision in one place, and the command reference keeps the complete
+adapter detail, including the current limit: no server adapter's output has
+been deployed to a real platform by uf's own pipeline yet.
 
 ## A phone, and a terminal
 

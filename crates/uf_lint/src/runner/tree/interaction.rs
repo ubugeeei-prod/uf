@@ -174,6 +174,17 @@ pub(super) fn focusable(tree: &Tree<'_>, name: &str, opening: &jsx::Opening<Loc,
     }
 }
 
+/// Whether this element writes a `tabIndex` React will keep.
+///
+/// `tabIndex={-1}` is not a tab stop, so [`focusable`] stays false for it. It
+/// still makes the element focusable by script, which is the shape roving
+/// tabindex composites use: one item is `0`, the rest are `-1`, and arrow keys
+/// move focus.
+fn has_tab_index(tree: &Tree<'_>, opening: &jsx::Opening<Loc, Loc>) -> bool {
+    attribute(opening, "tabIndex")
+        .is_some_and(|written| tree.scope.value(written) != Value::Nullish)
+}
+
 /// The role written on this element, when one is.
 fn written_role_name(tree: &Tree<'_>, opening: &jsx::Opening<Loc, Loc>) -> Option<&'static str> {
     match aria::written_role(tree.scope, opening) {
@@ -312,7 +323,10 @@ fn click_events_have_key_events(tree: &mut Tree<'_>, name: &str, opening: &jsx::
     };
     // The element HTML already works with a keyboard: a `<button>` answers
     // Enter and Space without being told, and its `onClick` fires for both.
-    if is_interactive(tree.scope, name, opening) || has_key_handler(tree.scope, opening) {
+    if is_interactive(tree.scope, name, opening)
+        || has_key_handler(tree.scope, opening)
+        || super::hidden_from_accessibility(tree, name, opening)
+    {
         return;
     }
     let Some(role) = written_role_name(tree, opening) else {
@@ -343,7 +357,7 @@ fn interactive_supports_focus(tree: &mut Tree<'_>, name: &str, opening: &jsx::Op
     let Some((written, aria::Written::Role(role))) = aria::written_role(tree.scope, opening) else {
         return;
     };
-    if !role.is_widget() || focusable(tree, name, opening) {
+    if !role.is_widget() || focusable(tree, name, opening) || has_tab_index(tree, opening) {
         return;
     }
     tree.report(

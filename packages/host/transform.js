@@ -14,7 +14,7 @@
 // all produce the same module from the same source.
 
 import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
@@ -104,6 +104,31 @@ export const FLOW_MODULE_PATTERN = new RegExp(
     String.raw`[^?#]*\.(?:${FLOW_EXTENSIONS.map((extension) => extension.slice(1)).join("|")})` +
     String.raw`(?:[?#].*)?$`,
 );
+
+/**
+ * Every `@uniflowed/*` package the project can resolve.
+ *
+ * Vite's dependency optimizer takes package names, not predicates. A Vite app
+ * that owns its config can use this list as `optimizeDeps.exclude`, matching
+ * the same `@uniflowed/*` exception `isFlowModule` makes for Flow source in
+ * `node_modules`.
+ */
+export function uniflowedPackages(root) {
+  const names = new Set();
+  let directory = root;
+  for (;;) {
+    const scope = path.join(directory, "node_modules", "@uniflowed");
+    try {
+      for (const entry of readdirSync(scope)) names.add(`@uniflowed/${entry}`);
+    } catch {
+      // no packages at this level
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return [...names].sort();
+}
 
 /**
  * The `uf` binary to talk to.

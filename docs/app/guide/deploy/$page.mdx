@@ -1,0 +1,216 @@
+---
+title: "Deploy a web build · uf"
+description: "Choose how to serve a uf web build: preview, start, adapters, static files, or one executable."
+---
+
+<p className="eyebrow">Targets</p>
+
+# Deploy a web build
+
+<div className="lede">
+The build is the thing you deploy. What changes is what the machine answering
+requests already has: this checkout, a JavaScript runtime, a platform runtime,
+a static file host, or nothing but one executable.
+</div>
+
+**What you will be able to do:** choose between the local servers, adapter
+outputs, a static host and a compiled binary, know what a static deployment
+refuses, and know which environment variables are read when the server starts.
+
+**What you need first:** a web project with dependencies installed — [Your first
+project](/guide/project), then [Dependencies](/guide/dependencies).
+
+## Choose the shape
+
+Every path starts with [`uf build`](/reference/cli#uf-build). After that, choose
+the smallest thing the host can honestly run:
+
+| The host has | Use | What travels |
+| --- | --- | --- |
+| this checkout, dependencies and Vite | [`uf preview`](/reference/cli#uf-preview) | nothing; it checks the build in place |
+| this checkout, dependencies and a JavaScript runtime | [`uf start`](/reference/cli#uf-start) | `dist/`, `.uf/build/server`, and `node_modules` |
+| a platform runtime | [`uf build --adapter TARGET`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/TARGET/` |
+| only a static file host | [`uf build --adapter static`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/static/` |
+| nothing but a file it can execute | [`uf build --compile`](/reference/cli#uf-build---compile) | `dist/NAME` |
+
+The commands on this page were run in a fresh project outside this repository,
+using a `uf` binary built from `main`. Timings and byte counts will move; the
+shape of the output is the contract.
+
+## Build once
+
+[`uf build`](/reference/cli#uf-build) writes the browser assets, prerendered
+documents and server bundle. In a fresh `web-deploy` app, its summary ended
+with:
+
+<figure className="terminal">
+
+```
+  output
+    web-deploy
+    |- .uf
+    |  `- build
+    |     `- meta
+    |        |- openapi.json
+    |        |- uf-build-manifest.json
+    |        |- uf-bundle-report.json
+    |        `- uf-rsc-manifest.json
+    |- dist
+    |  |- 404.html
+    |  `- index.html
+    `- router.js
+
++ build succeeded in 14.66s
+```
+
+</figure>
+
+`dist/` is what a browser can fetch. `.uf/build/meta/` is for you and tooling.
+The server bundle is what `uf preview`, `uf start`, the server adapters and a
+compiled binary run when a request needs more than a file.
+
+## Check it before it leaves
+
+Use [`uf preview`](/reference/cli#uf-preview) when you still have the project
+and want Vite's preview server around the production build:
+
+<figure className="terminal">
+
+```
+uf preview  web-deploy
+----------------------
+
+  serving  the production build, through Vite's preview server
+  host     node
+  mode     production
+
+  local  http://127.0.0.1:4173/
+  routes    1 route
+  handlers  0 route handlers
+
++ serving the production build
+```
+
+</figure>
+
+Use [`uf start`](/reference/cli#uf-start) when the checkout is the deployment
+shape: no Vite process, just uf's server over the built output.
+
+<figure className="terminal">
+
+```
+uf start  web-deploy
+--------------------
+
+  serving  the production build, with no bundler in the process
+  host     node
+  mode     production
+
+  local  http://127.0.0.1:3000/
+  routes    1 route
+  handlers  0 route handlers
+
++ serving the production build
+```
+
+</figure>
+
+Both answered `/` with the same 1,643-byte HTML document in the checked project.
+That is the promise: assets first, then route handlers, then a render, whichever
+front door you used.
+
+## Package it for the host
+
+[`uf build --adapter TARGET`](/reference/cli#uf-build---adapter-target) writes a
+directory that can leave the checkout. The server targets share the same
+`@uniflowed/server/fetch` handler; the target-specific file is only the host
+half.
+
+| Target | Checked command | Output summary |
+| --- | --- | --- |
+| Node | [`uf build --adapter node`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/node`, 17 files, `cd .uf/deploy/node && node server.js` |
+| Bun | [`uf build --adapter bun`](/reference/cli#uf-build---adapter-target) | refused here: `bun: 1.3.13 is older than 1.3.14` |
+| Deno | [`uf build --adapter deno`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/deno`, 17 files, `deno run --allow-net --allow-read --allow-env server.js` |
+| Container | [`uf build --adapter container`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/container`, 19 files, `docker build -t web-deploy .uf/deploy/container && docker run -p 3000:3000 web-deploy` |
+| Edge | [`uf build --adapter edge`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/edge`, 18 files, `cd .uf/deploy/edge && npx wrangler deploy` |
+| Serverless | [`uf build --adapter serverless`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/serverless`, 17 files, `cd .uf/deploy/serverless && zip -r ../function.zip .` |
+| Static | [`uf build --adapter static`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/static`, 14 files, `upload the contents of .uf/deploy/static to a static host` |
+
+The successful adapter commands built the directories. They did not deploy them
+to Cloudflare, AWS, a container registry, a Deno host or a Bun host. The command
+reference says the same thing at the adapter level: no server adapter's output
+has been proven on a real platform by uf's own pipeline yet, and
+[#956](https://github.com/ubugeeei-prod/uf/issues/956) is where that evidence
+belongs.
+
+## Static is only files
+
+A static host cannot run a route handler, middleware, a callable server action,
+an `app.router` redirect, rewrite or header, or a parameterized route that has
+no `generateStaticParams`. [`uf build --adapter static`](/reference/cli#uf-build---adapter-target)
+refuses those instead of writing a directory that only answers part of the app.
+
+After adding `app/api/health/$route.js` to the checked project, the command
+printed:
+
+<figure className="terminal">
+
+```
+error: this project cannot be served by a static host, so `uf build --adapter static` would have written a directory that answers most of it and silently dropped the rest
+  /api/health (app/api/health/$route.js) — a route handler answers a request, and a static host has only files
+  Serve it with `uf build --adapter node`, `--adapter container`, `--adapter edge` or `--adapter serverless` — the application is the same file in all four — or remove what needs a server and build again.
+  https://github.com/ubugeeei-prod/uf/issues/335
+```
+
+</figure>
+
+The fix is a deployment choice, not a flag: remove the server-only feature,
+give a dynamic route every path through `generateStaticParams`, or choose a
+server target.
+
+## Compile one file
+
+[`uf build --compile`](/reference/cli#uf-build---compile) writes one executable
+that carries the runtime and the assets. In the same fresh project it added:
+
+<figure className="terminal">
+
+```
+  standalone
+    binary           dist/web-deploy
+    runtime          bun 1.3.13
+    bytes            66.80 MB
+    embedded assets  14
+    embedded bytes   1.76 MB
+
++ build succeeded in 23.75s
+```
+
+</figure>
+
+That file can be copied by itself. The trade is the obvious one: the runtime and
+assets are fixed inside it, so changing either means building again.
+
+## Environment at start-up
+
+Values used to choose the socket — `HOST`, `PORT`, and their command-line
+overrides — are read when [`uf start`](/reference/cli#uf-start), the
+`node`/`bun`/`deno`/`container` adapter server, or a compiled binary starts.
+Server-only values read through `process.env` are start-up values too, as long
+as the code that reads them runs on the server.
+
+Values shipped to the browser are different: they are part of the client bundle
+and need a rebuild. [Environments](/guide/env) is the longer contract, including
+which `.env` files each command loads and why an already-set process variable
+wins over a file.
+
+## What is established
+
+`uf preview`, `uf start`, server-adapter directories and `--compile` use the
+same request handler. The `static` adapter deploys generated files only. The
+checked project confirmed the local servers answered the same document. The
+tests go further by driving adapter outputs in process.
+
+What is not established is a successful real deployment of the server adapters.
+When that happens, write down the platform, the generated directory and the
+runtime version beside [#956](https://github.com/ubugeeei-prod/uf/issues/956).

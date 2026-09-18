@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 134] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 139] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -208,6 +208,16 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 134] = [
     ("import/no-absolute-path", RuleLevel::Error),
     // One module evaluation and one binding table per dependency per file.
     ("import/no-duplicates", RuleLevel::Error),
+    // Cycles make module initialization order part of the API.
+    ("import/no-cycle", RuleLevel::Error),
+    // A bare package import belongs in the nearest manifest.
+    ("import/no-extraneous-dependencies", RuleLevel::Error),
+    // A module that imports itself creates an unusable cycle with no boundary.
+    ("import/no-self-import", RuleLevel::Error),
+    // A workspace package boundary is a package import boundary too.
+    ("import/no-relative-packages", RuleLevel::Error),
+    // Collapsed relative paths make the module graph easier to audit.
+    ("import/no-useless-path-segments", RuleLevel::Error),
     ("uniflowed/no-tabs", RuleLevel::Error),
     ("uniflowed/no-trailing-whitespace", RuleLevel::Error),
     // Tasks belong in uf.config.js, never in a shelled-out package manager.

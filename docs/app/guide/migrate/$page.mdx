@@ -12,7 +12,8 @@ From `create-react-app`, from Vite and React, or from Next.js: what carries over
 unchanged, the moves in the order to make them, and what is still different once
 you have made them. There is no `uf migrate` command yet
 ([#970](https://github.com/ubugeeei-prod/uf/issues/970)), so every step below is
-one you make by hand, and there is no measured migration to quote.
+one you make by hand. The paths that have been checked end to end are called out
+where they apply.
 </div>
 
 **What you will be able to do:** decide whether your application can move today,
@@ -231,11 +232,15 @@ from `@uniflowed/react-testing`.
    and `useParams()` and `useLocation()` are `useRoute()`'s `params`, `pathname`
    and `searchParams`. There is no supported way to keep React Router:
    `app.router.enabled: false` makes the project a library, and nothing in uf
-   runs `<BrowserRouter>` inside its own router.
+   runs `<BrowserRouter>` inside its own router. Even as a client component, a
+   nested `<BrowserRouter>` is prerendered during `uf build` and fails on
+   `document is not defined`, so move those routes rather than nesting routers.
 7. **Rename what reaches the browser.** uf defines no `process.env` for browser
    code: `process.env.REACT_APP_API` becomes `import.meta.env.REACT_APP_API`,
    with `vite: { envPrefix: "REACT_APP_" }` in `uf.config.js` — or rename the
-   variables to `VITE_API`, the prefix uf uses when you set none.
+   variables to `VITE_API`, the prefix uf uses when you set none. A direct unit
+   test that imports a component is not running under Vite's app entry, so pass
+   the env-derived value into a testable child component, or guard the read.
 8. **Keep SVGs as components** by adding `vite-plugin-svgr` to `plugins`, or move
    icons to [`uf:icon/…`](/guide/assets#an-icon). A plain `import url from
    "./logo.svg"` is still a URL.
@@ -266,6 +271,15 @@ export component Page(params: {| readonly id: string |}) {
 }
 ```
 
+This path was checked end to end with `uf 0.0.0-alpha.40` from a CRA 5.1.0 app
+using React Router 6.30.2, a `REACT_APP_` environment variable and React Testing
+Library tests. The CRA side passed `npm run build` and `npm test`;
+`react-router-dom@7.18.4` did not run under CRA's Jest resolver because it
+looked for `react-router/dom`, so the fixture stayed on v6.30.2. The uf target
+passed `uf install`, `uf fmt --check`, `uf check`, `uf test` and `uf build`.
+`create-react-app` printed its deprecation warning and npm audit findings, but
+neither changed the uf migration steps.
+
 ### Moving the tests
 
 | Jest or Vitest | `uf test` |
@@ -281,6 +295,11 @@ export component Page(params: {| readonly id: string |}) {
 | `import.meta.vitest` | [`import.meta.uf.test`](/guide/testing#a-test-beside-the-code-it-tests) |
 | a coverage provider and its thresholds | `uf test --coverage`, and `test.coverage` in `uf.config.js` — [Coverage](/guide/testing#coverage) |
 | `testMatch`, `include` | nothing: a file that declares a test is a test file |
+
+If a route component imports `Link` or a router hook, render it with router
+context, or move the plain UI into a child component and test that child.
+Rendering the route component by itself fails because `@uniflowed/router` hooks
+only run inside the app router.
 
 ### Deploying it
 
@@ -327,9 +346,10 @@ Vite itself, and every plugin. Vite's options, under the `vite` key.
    `dev.host`, `dev.strictPort`, `dev.allowedHosts` and `dev.fs`; `build.outDir`
    and `build.sourcemap` keep their names under `build`; `plugins` stays
    `plugins`. Everything else — `resolve.alias`, `build.target`, `define` — goes
-   under `vite` unchanged, where objects merge key by key and arrays replace.
-   `root` and `configFile` stay uf's, and so do uf's own plugins, which come
-   first. See [`vite`](/reference/config#vite).
+   under `vite` unchanged, where objects merge key by key and arrays replace. A
+   dev-server proxy stays there too, as `vite: { server: { proxy } }`, rather
+   than under `dev`. `root` and `configFile` stay uf's, and so do uf's own
+   plugins, which come first. See [`vite`](/reference/config#vite).
 2. **Turn `index.html` into `app/$layout.js`.** Vite runs with
    `appType: "custom"` under uf: there is no HTML entry to fall back to, and the
    document is the layout.
@@ -394,8 +414,9 @@ deployment record does not have yet.
 
 1. **Make the project and move `app/`.** `uf new ../my-app-uf`, then rename
    `page.tsx` to `$page.js`, `layout.tsx` to `$layout.js` and the rest by the
-   table, converting the types as you go. Put `"use client"` at the top of each
-   `$error.js`.
+   table, converting the types as you go. Export route components by name:
+   `export component Page` and `export component Layout`, matching what
+   `uf new` writes. Put `"use client"` at the top of each `$error.js`.
 2. **Replace `next.config.js`.** `output` is the last two rows above, and
    `images` is `app.builtins.images`. `redirects()`, `rewrites()` and
    `headers()` become `app.router.redirects`, `rewrites` and `headers`: the same
@@ -411,6 +432,8 @@ deployment record does not have yet.
 3. **Change the imports** by the table: `next/navigation` to
    `@uniflowed/router`, `next/headers` and `next/server` to `@uniflowed/server`,
    `next/cache` to `@uniflowed/server/cache`, `next/dynamic` to React's `lazy`.
+   In a `$route.js`, return JSON as a `Response` with a JSON body and
+   `content-type`; Flow's DOM library does not expose `Response.json()` yet.
 4. **Move data fetching into a `loader`.** A page or layout exports `loader`,
    which runs before it renders and hands it the data; a promise left in what it
    returns streams behind a `<Suspense>`
@@ -421,8 +444,9 @@ deployment record does not have yet.
    its data rather than streaming.
 5. **Split `middleware.ts` by directory.** There is no `matcher`: a
    `$middleware.js` guards the directory it sits in, and middleware composes down
-   the tree the way layouts do. Return a `Response` to answer, or nothing to
-   continue — `NextResponse.next()` is returning nothing
+   the tree the way layouts do. Export `function middleware(request: Request)`,
+   return a `Response` to answer, or return nothing to continue —
+   `NextResponse.next()` is returning nothing
    ([Middleware](/guide/routing/requests#middleware)).
 6. **Restate caching.** Turn on `app.rendering.cache.route`, then call
    `cacheLife({ revalidate: 60 })` and `cacheTag("posts")` inside the render,
@@ -444,6 +468,12 @@ deployment record does not have yet.
     `answered by a server`. `uf build --adapter container` writes a
     `Dockerfile`, `edge` a Cloudflare Worker and `serverless` a Lambda function;
     [Serving a build](/reference/cli#serving-a-build) is what each needs.
+
+This path was checked end to end with `uf 0.0.0-alpha.40` on a migrated App
+Router-shaped fixture: a page with a `loader`, a `$route.js` handler and a
+directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
+`uf test` and `uf build` all completed. The build named `/api/status` and
+`/admin/*` under `answered by a server`, and reported the `/admin` guard.
 
 ### What is still different
 

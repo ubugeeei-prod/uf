@@ -134,6 +134,10 @@ fn interactive_supports_focus_accepts_the_documented_pass() {
             r#"<div role="button">Open</div>"#,
             // The element is already the control, and HTML focuses it.
             r#"<button onClick={open}>Open</button>"#,
+            // Roving tabindex: one widget item is `0`, the rest are `-1`, and
+            // arrow keys move focus between them.
+            r#"<div role="treeitem" tabIndex={selected ? 0 : -1} onClick={open} onKeyDown={open}>Node</div>"#,
+            r#"<div role="treeitem" tabIndex={-1} onClick={open} onKeyDown={open}>Node</div>"#,
         ],
     );
 }
@@ -172,7 +176,11 @@ fn no_noninteractive_tabindex_accepts_the_documented_pass() {
 fn click_events_have_key_events_reports_the_documented_failure() {
     reports(
         "a11y/click-events-have-key-events",
-        &[r#"<div role="button" tabIndex={0} onClick={open}>Open</div>"#],
+        &[
+            r#"<div role="button" tabIndex={0} onClick={open}>Open</div>"#,
+            r#"<div role="presentation" tabIndex={0} onClick={open}>Open</div>"#,
+            r#"<div role="button" aria-hidden="true" tabIndex={0} onClick={open}>Open</div>"#,
+        ],
     );
 }
 
@@ -189,6 +197,10 @@ fn click_events_have_key_events_accepts_the_documented_pass() {
             // A spread may be carrying a key handler in.
             r#"<div role="button" onClick={open} {...rest}>Open</div>"#,
             r#"<div role="button" tabIndex={0}>Open</div>"#,
+            // Pointer-only dismissal layers are not interactive content.
+            r#"<div role="presentation" onClick={open} />"#,
+            r#"<div role="none" onClick={open} />"#,
+            r#"<div role="button" aria-hidden="true" onClick={open} />"#,
         ],
     );
 }

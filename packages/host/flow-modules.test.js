@@ -27,9 +27,11 @@
 // export. Neither failure names this file when it happens, which is why the
 // table below is as long as it is.
 
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "@uniflowed/test";
+import { afterAll, describe, expect, it } from "@uniflowed/test";
 
 /** The module under test, reached as a path so no resolution is involved. */
 const TRANSFORM: string = path.resolve(
@@ -38,6 +40,13 @@ const TRANSFORM: string = path.resolve(
 );
 
 const host = await import(TRANSFORM);
+const roots: Array<string> = [];
+
+afterAll(() => {
+  for (const root of roots) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 /**
  * Every path either expression could get wrong on its own, and the answer.
@@ -104,5 +113,55 @@ describe("which modules uf is responsible for", () => {
     // filesystem about, so the pattern is never asked — but `isFlowModule`
     // still is, by the Vite plugin, and it still has to be right about it.
     expect(host.isFlowModule("\0uf:virtual.js")).toBe(false);
+  });
+
+  it("names the packages a Vite optimizer must leave to uf", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-flow-modules-"));
+    roots.push(root);
+    const app = path.join(root, "workspace", "apps", "site");
+    for (const directory of [
+      path.join(app, "node_modules", "@uniflowed", "cell"),
+      path.join(root, "workspace", "node_modules", "@uniflowed", "state"),
+      path.join(root, "node_modules", "@uniflowed", "hooks"),
+      path.join(root, "node_modules", "@uniflowed", "cell"),
+      path.join(root, "node_modules", "ordinary"),
+    ]) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+
+    expect(host.uniflowedPackages(app)).toEqual([
+      "@uniflowed/cell",
+      "@uniflowed/hooks",
+      "@uniflowed/state",
+    ]);
+  });
+
+  it("walks every ancestor when listing uniflowed packages", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-flow-modules-"));
+    roots.push(root);
+    const app = path.join(
+      root,
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
+      "i",
+      "j",
+      "k",
+      "l",
+      "m",
+      "n",
+      "o",
+      "p",
+      "q",
+      "app",
+    );
+    fs.mkdirSync(path.join(root, "node_modules", "@uniflowed", "far"), { recursive: true });
+
+    expect(host.uniflowedPackages(app)).toEqual(["@uniflowed/far"]);
   });
 });

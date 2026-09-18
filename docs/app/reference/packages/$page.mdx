@@ -41,6 +41,12 @@ use; and a `// @flow` pragma on every file.
 | `@uniflowed/markdown` | Markdown and MDX |
 | `@uniflowed/web` | Web platform bindings, and [web vitals](/guide/vitals) |
 
+A React app that keeps its own Vite config and only borrows uf's Flow
+transform should import `uniflowedPackages` from `@uniflowed/host/transform`
+and pass it to `optimizeDeps.exclude`. `@uniflowed/*` packages ship Flow
+source, so Vite's optimizer must leave them to the same transform hook that
+handles application files.
+
 ## Data
 
 | Package | What it is |

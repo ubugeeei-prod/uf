@@ -236,7 +236,67 @@ fi
 [ -e "${work}/missing/bin/uf" ] && fail "missing: uf was linked anyway"
 pass "a nonexistent version fails and installs nothing"
 
-# 8. ORIGIN. The attack the sha256 beside the archive cannot see: a release
+# 8. A GNU/Linux archive that names a newer glibc than the host has must stop
+#    before it links anything. This is the readable version of a dynamic-loader
+#    failure like `GLIBC_2.39 not found`, and it also covers older archives
+#    because the installer can read the versioned symbols from the binary.
+glibc_newer="${site}/glibc-newer"
+glibc_tree="${work}/glibc-tree"
+mkdir -p "$glibc_newer" "$glibc_tree"
+tar -xzf "${release_dir}/${archive}" -C "$glibc_tree"
+printf '2.39\n' >"${glibc_tree}/GLIBC"
+tar -czf "${glibc_newer}/${archive}" -C "$glibc_tree" .
+if command -v sha256sum >/dev/null 2>&1; then
+  glibc_sha="$(sha256sum "${glibc_newer}/${archive}" | awk '{print $1}')"
+else
+  glibc_sha="$(shasum -a 256 "${glibc_newer}/${archive}" | awk '{print $1}')"
+fi
+printf '%s  %s\n' "$glibc_sha" "$archive" > "${glibc_newer}/${archive}.sha256"
+printf 'glibc-newer\n' > "${glibc_newer}/VERSION"
+if run_installer glibc_old UF_VERSION=glibc-newer UF_TEST_GLIBC_VERSION=2.34 \
+  >"${work}/glibc-old.log" 2>&1; then
+  fail "an archive that needs a newer glibc was installed"
+fi
+grep -q "needs glibc 2.39, but this system has 2.34" "${work}/glibc-old.log" \
+  || fail "the glibc refusal did not name both versions:
+$(cat "${work}/glibc-old.log")"
+[ -e "${work}/glibc_old/bin/uf" ] && fail "glibc_old: uf was linked anyway"
+run_installer glibc_ok UF_VERSION=glibc-newer UF_TEST_GLIBC_VERSION=2.39 \
+  >"${work}/glibc-ok.log" 2>&1 \
+  || fail "an archive whose glibc floor is met should install:
+$(cat "${work}/glibc-ok.log")"
+[ -x "${work}/glibc_ok/bin/uf" ] || fail "glibc_ok: uf was not linked"
+pass "an archive whose glibc floor is too new is refused before linking"
+
+#    Older archives have no GLIBC metadata file, so the installer also scans
+#    the unpacked binaries for versioned symbols before it links them.
+glibc_symbols="${site}/glibc-symbols"
+glibc_symbols_tree="${work}/glibc-symbols-tree"
+mkdir -p "${glibc_symbols_tree}/bin" "$glibc_symbols"
+for name in uf ufr ufx; do
+  printf '#!/bin/sh\n# GLIBC_2.39\n' >"${glibc_symbols_tree}/bin/${name}"
+  chmod +x "${glibc_symbols_tree}/bin/${name}"
+done
+tar -czf "${glibc_symbols}/${archive}" -C "$glibc_symbols_tree" .
+if command -v sha256sum >/dev/null 2>&1; then
+  glibc_symbols_sha="$(sha256sum "${glibc_symbols}/${archive}" | awk '{print $1}')"
+else
+  glibc_symbols_sha="$(shasum -a 256 "${glibc_symbols}/${archive}" | awk '{print $1}')"
+fi
+printf '%s  %s\n' "$glibc_symbols_sha" "$archive" > "${glibc_symbols}/${archive}.sha256"
+printf 'glibc-symbols\n' > "${glibc_symbols}/VERSION"
+if run_installer glibc_symbols_old UF_VERSION=glibc-symbols UF_TEST_GLIBC_VERSION=2.34 \
+  >"${work}/glibc-symbols-old.log" 2>&1; then
+  fail "an older archive whose binary names a newer glibc was installed"
+fi
+grep -q "needs glibc 2.39, but this system has 2.34" \
+  "${work}/glibc-symbols-old.log" \
+  || fail "the symbol-derived glibc refusal did not name both versions:
+$(cat "${work}/glibc-symbols-old.log")"
+[ -e "${work}/glibc_symbols_old/bin/uf" ] && fail "glibc_symbols_old: uf was linked anyway"
+pass "an older archive's glibc floor is read from its binaries"
+
+# 9. ORIGIN. The attack the sha256 beside the archive cannot see: a release
 #    host that serves a tampered archive *and* a checksum that matches it. The
 #    local check passes — the bytes are the bytes that host advertised — and the
 #    binary is the attacker's. This is ubugeeei-prod/uf#551, and the second
@@ -336,7 +396,7 @@ $(cat "${work}/forged.log")"
 [ -e "${work}/forged/bin/uf" ] && fail "forged: uf was linked anyway"
 pass "an archive two hosts disagree about is refused, naming both"
 
-# 9. `require` refuses an install whose origin nothing established, rather than
+# 10. `require` refuses an install whose origin nothing established, rather than
 #    reporting it. This is what the release smoke job runs with.
 if run_installer required UF_VERSION="$version" UF_VERIFY_ORIGIN=require \
   >"${work}/required.log" 2>&1; then
@@ -347,7 +407,7 @@ grep -q "origin of .* could not be established" "${work}/required.log" \
 $(cat "${work}/required.log")"
 pass "UF_VERIFY_ORIGIN=require refuses an install nothing vouched for"
 
-# 10. A second opinion from the host that served the archive is the first
+# 11. A second opinion from the host that served the archive is the first
 #     opinion again. Counting it would be the exact mistake #551 is about, so
 #     it is named as not independent — and `require` still refuses.
 if run_installer same_host UF_VERSION="$version" UF_VERIFY_ORIGIN=require \
@@ -359,7 +419,7 @@ grep -q "same host as the archive" "${work}/same-host.log" \
 $(cat "${work}/same-host.log")"
 pass "a checksum from the archive's own host is not counted as a second opinion"
 
-# 11. A typo in the switch itself must stop, not quietly install under `auto`.
+# 12. A typo in the switch itself must stop, not quietly install under `auto`.
 if run_installer typo UF_VERSION="$version" UF_VERIFY_ORIGIN=requires \
   >"${work}/typo.log" 2>&1; then
   fail "a misspelled UF_VERIFY_ORIGIN installed anyway"
@@ -370,7 +430,7 @@ $(cat "${work}/typo.log")"
 pass "a misspelled UF_VERIFY_ORIGIN stops rather than falling back to auto"
 
 
-# 12. THE SIGNATURE. Everything above proves origin by making an attacker hold
+# 13. THE SIGNATURE. Everything above proves origin by making an attacker hold
 #     two hosts; this proves it by making them hold a signing identity they
 #     cannot have. `cosign` is stubbed — the point is not that Sigstore's
 #     cryptography works, it is that the installer asks the right question and
@@ -435,7 +495,7 @@ grep -qF "${UF_REPO:-ubugeeei-prod/uf}" "${work}/cosign-args" \
 $(cat "${work}/cosign-args")"
 pass "a signature that verifies establishes origin, and the identity is pinned"
 
-# 13. The attack the signature is for: a release host that serves an archive, a
+# 14. The attack the signature is for: a release host that serves an archive, a
 #     matching checksum, and a signature that is not uf's. Every local check
 #     agrees with itself. Only the identity disagrees, and that is enough.
 stub_bad="${work}/stub-bad"
