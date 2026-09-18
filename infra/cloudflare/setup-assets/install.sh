@@ -816,6 +816,120 @@ uf_host_of() {
   printf '%s' "$1" | sed -n 's|^\([a-zA-Z][a-zA-Z0-9+.-]*://[^/]*\).*|\1|p'
 }
 
+# A GNU/Linux binary can install cleanly and then fail before `main`, when the
+# dynamic loader finds a versioned glibc symbol the host does not provide. Check
+# the floor after unpacking into staging and before linking it into PATH.
+uf_archive_glibc_floor() {
+  if [ -f "${staging_dir}/GLIBC" ]; then
+    sed -n '1 {
+      s/^[[:space:]]*//
+      s/[[:space:]]*$//
+      p
+      q
+    }' "${staging_dir}/GLIBC"
+    return 0
+  fi
+
+  symbols="${tmp_dir}/glibc-symbols"
+  : >"$symbols"
+  for name in uf ufr ufx; do
+    [ -f "${staging_dir}/bin/${name}" ] || continue
+    LC_ALL=C grep -aEo 'GLIBC_[0-9][0-9]*[.][0-9][0-9]*' \
+      "${staging_dir}/bin/${name}" 2>/dev/null |
+      sed 's/^GLIBC_//' >>"$symbols" || true
+  done
+  awk -F. '
+    /^[0-9]+[.][0-9]+$/ {
+      major = $1 + 0
+      minor = $2 + 0
+      if (!seen || major > best_major || (major == best_major && minor > best_minor)) {
+        seen = 1
+        best_major = major
+        best_minor = minor
+      }
+    }
+    END {
+      if (seen) {
+        printf "%d.%d\n", best_major, best_minor
+      }
+    }
+  ' "$symbols"
+}
+
+uf_host_glibc_version() {
+  if [ -n "${UF_TEST_GLIBC_VERSION:-}" ]; then
+    printf '%s\n' "$UF_TEST_GLIBC_VERSION"
+    return 0
+  fi
+
+  [ "$(uname -s)" = "Linux" ] || return 1
+
+  if command -v getconf >/dev/null 2>&1; then
+    set -- $(getconf GNU_LIBC_VERSION 2>/dev/null || true)
+    case "${1:-}:${2:-}" in
+      glibc:[0-9]*.[0-9]*)
+        printf '%s\n' "$2"
+        return 0
+        ;;
+    esac
+  fi
+
+  if command -v ldd >/dev/null 2>&1; then
+    ldd_line="$(ldd --version 2>&1 | sed -n '1p')"
+    case "$ldd_line" in
+      *GLIBC* | *glibc* | *"GNU libc"*) ;;
+      *) return 1 ;;
+    esac
+    printf '%s\n' "$ldd_line" |
+      sed -n '{
+        s/.*[^0-9]\([0-9][0-9]*[.][0-9][0-9]*\).*/\1/
+        /^[0-9][0-9]*[.][0-9][0-9]*$/ p
+        q
+      }'
+    return 0
+  fi
+
+  return 1
+}
+
+uf_glibc_at_least() {
+  have_major="${1%%.*}"
+  have_minor="${1#*.}"
+  have_minor="${have_minor%%.*}"
+  need_major="${2%%.*}"
+  need_minor="${2#*.}"
+  need_minor="${need_minor%%.*}"
+
+  case "$have_major:$have_minor:$need_major:$need_minor" in
+    *[!0-9:]* | *::* | :* | *:) return 1 ;;
+  esac
+
+  [ "$have_major" -gt "$need_major" ] ||
+    { [ "$have_major" -eq "$need_major" ] && [ "$have_minor" -ge "$need_minor" ]; }
+}
+
+uf_check_glibc_floor() {
+  required="$(uf_archive_glibc_floor)"
+  [ -n "$required" ] || return 0
+  case "$required" in
+    [0-9]*.[0-9]*) ;;
+    *) return 0 ;;
+  esac
+
+  host="$(uf_host_glibc_version || true)"
+  if [ -z "$host" ]; then
+    uf_fail "${archive} needs glibc ${required}, but this system did not report glibc" \
+      "uf ships a GNU/Linux binary for this target; use a glibc Linux image new enough to run it"
+  fi
+
+  if ! uf_glibc_at_least "$host" "$required"; then
+    uf_fail "${archive} needs glibc ${required}, but this system has ${host}" \
+      "use a newer base image, or install a release built with an older glibc floor"
+  fi
+
+  uf_step "checked" "glibc ${host} can run GLIBC_${required}"
+}
+
 uf_verify_origin
 
 # Refuse an archive that would write outside the runtime directory. Neither
@@ -886,6 +1000,7 @@ for name in uf ufr ufx; do
       "this build is incomplete — please report it"
   fi
 done
+uf_check_glibc_floor
 
 if [ -d "$runtime_dir" ]; then
   # Listed into a file rather than piped: a loop reading a pipe runs in a
