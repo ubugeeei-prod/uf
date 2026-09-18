@@ -40,6 +40,7 @@ pub(crate) use flow_type::{
 };
 pub(crate) use imports::{
     run_import_no_absolute_path, run_import_no_duplicates, run_import_no_self_import,
+    run_import_no_useless_path_segments,
 };
 pub(crate) use module_tree::run_module_tree_rules;
 pub(crate) use package::run_package_no_npm_scripts;

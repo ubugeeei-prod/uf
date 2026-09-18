@@ -83,6 +83,30 @@ pub(crate) fn run_import_no_self_import(
     }
 }
 
+pub(crate) fn run_import_no_useless_path_segments(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-useless-path-segments";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+
+    for import in static_imports(&scan.file.source) {
+        if let Some(shorter) = shorter_import_path(import.source) {
+            push_import(
+                diagnostics,
+                scan,
+                rule,
+                severity,
+                import.source_at,
+                format!("`{}` can be written as `{shorter}`", import.source),
+            );
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct StaticImport<'a> {
     source: &'a str,
@@ -239,6 +263,70 @@ fn is_self_import(file: &str, source: &str) -> bool {
 
 fn is_relative_import(source: &str) -> bool {
     source == "." || source == ".." || source.starts_with("./") || source.starts_with("../")
+}
+
+fn shorter_import_path(source: &str) -> Option<String> {
+    let (path, suffix) = split_import_suffix(source);
+    if !is_relative_import(path) {
+        return None;
+    }
+
+    let normalized = normalize_relative_specifier(path);
+    let mut shorter = normalized.as_str();
+    if suffix.is_empty()
+        && let Some(index_shorter) = strip_useless_index(&normalized)
+    {
+        shorter = index_shorter;
+    }
+
+    (shorter != path).then(|| format!("{shorter}{suffix}"))
+}
+
+fn split_import_suffix(source: &str) -> (&str, &str) {
+    let query = source.find('?').unwrap_or(source.len());
+    let fragment = source.find('#').unwrap_or(source.len());
+    let at = query.min(fragment);
+    source.split_at(at)
+}
+
+fn normalize_relative_specifier(source: &str) -> String {
+    let mut segments = Vec::new();
+    for segment in source.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." if segments.last().is_some_and(|last| *last != "..") => {
+                segments.pop();
+            }
+            ".." => segments.push(".."),
+            segment => segments.push(segment),
+        }
+    }
+    format_relative_segments(&segments)
+}
+
+fn strip_useless_index(source: &str) -> Option<&str> {
+    let (parent, filename) = source.rsplit_once('/').unwrap_or(("", source));
+    if !is_js_index(filename) {
+        return None;
+    }
+    Some(if parent.is_empty() { "." } else { parent })
+}
+
+fn is_js_index(filename: &str) -> bool {
+    matches!(
+        filename,
+        "index" | "index.js" | "index.jsx" | "index.mjs" | "index.cjs"
+    )
+}
+
+fn format_relative_segments(segments: &[&str]) -> String {
+    if segments.is_empty() {
+        return ".".to_owned();
+    }
+    if segments[0] == ".." {
+        return segments.join("/");
+    }
+    format!("./{}", segments.join("/"))
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
