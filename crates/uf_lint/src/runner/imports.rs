@@ -1,10 +1,10 @@
 //! Static import rules that do not need the project module graph.
 
-use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
 use uf_config::UniflowedConfig;
 use uf_flow::scan::{Token, TokenKind, starts_statement, tokenize};
+use uf_infra::FxHashMap;
 
 use crate::scan::FileScan;
 use crate::{Diagnostic, LintContext, Severity, SourceFile, push, severity};
@@ -387,7 +387,7 @@ struct Cycle {
 pub(crate) struct ImportGraph {
     paths: Vec<String>,
     edges: Vec<Vec<ImportEdge>>,
-    by_path: HashMap<String, usize>,
+    by_path: FxHashMap<String, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -412,7 +412,7 @@ impl ImportGraph {
         files.extend(candidates);
 
         let mut paths = Vec::new();
-        let mut by_path = HashMap::new();
+        let mut by_path = FxHashMap::default();
         for file in &files {
             let path = normalize_graph_path(&file.path);
             if by_path.contains_key(&path) {
