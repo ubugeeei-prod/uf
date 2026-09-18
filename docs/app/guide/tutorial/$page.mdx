@@ -853,15 +853,11 @@ This project sets no `site.url`, so the build wrote no `sitemap.xml` and no
 deciding it has nothing to do. [`uf.config.js`](/reference/config#site) has the
 one field that changes it.
 
-There is no guide to deploying yet
-([#955](https://github.com/ubugeeei-prod/uf/issues/955)). What exists is in
-[Targets](/guide/targets) and the
-[command reference](/reference/cli#serving-a-build): `uf build --adapter`
-writes a directory for one of seven targets — `node`, `bun`, `deno`,
-`container`, `edge` for Cloudflare Workers, `serverless` for AWS Lambda, and
-`static` — and `uf build --compile` writes a single executable. No server
-target's output has been deployed to its real platform by uf's own pipeline
-yet ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
+[Deploy a web build](/guide/deploy) is the guide for what happens after this:
+`uf preview`, `uf start`, `uf build --adapter` for one of seven targets, or
+`uf build --compile` for a single executable. No server target's output has
+been deployed to its real platform by uf's own pipeline yet
+([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
 
 `uf dev` runs the same application with hot reload. It is the one command on
 this page with no transcript: the sandbox this was written in cannot bind a
