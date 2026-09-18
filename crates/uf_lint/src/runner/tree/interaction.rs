@@ -323,7 +323,10 @@ fn click_events_have_key_events(tree: &mut Tree<'_>, name: &str, opening: &jsx::
     };
     // The element HTML already works with a keyboard: a `<button>` answers
     // Enter and Space without being told, and its `onClick` fires for both.
-    if is_interactive(tree.scope, name, opening) || has_key_handler(tree.scope, opening) {
+    if is_interactive(tree.scope, name, opening)
+        || has_key_handler(tree.scope, opening)
+        || super::hidden_from_accessibility(tree, opening)
+    {
         return;
     }
     let Some(role) = written_role_name(tree, opening) else {

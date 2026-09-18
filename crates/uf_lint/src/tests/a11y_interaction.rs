@@ -193,6 +193,10 @@ fn click_events_have_key_events_accepts_the_documented_pass() {
             // A spread may be carrying a key handler in.
             r#"<div role="button" onClick={open} {...rest}>Open</div>"#,
             r#"<div role="button" tabIndex={0}>Open</div>"#,
+            // Pointer-only dismissal layers are not interactive content.
+            r#"<div role="presentation" onClick={open} />"#,
+            r#"<div role="none" onClick={open} />"#,
+            r#"<div role="button" aria-hidden="true" onClick={open} />"#,
         ],
     );
 }
