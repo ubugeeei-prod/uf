@@ -140,6 +140,7 @@ struct Merges<'s, 'a> {
     namespaces: FxHashMap<&'a str, SmallVec<[&'s TSNamespaceDeclaration<'a>; 2]>>,
     enums: FxHashMap<&'a str, SmallVec<[&'s TSEnumDeclaration<'a>; 2]>>,
     classes: FxHashSet<&'a str>,
+    class_declarations: FxHashMap<&'a str, &'s Class<'a>>,
     functions: FxHashSet<&'a str>,
     printed: FxHashSet<&'a str>,
     /// Namespaces already reported as merged into something Flow cannot
@@ -165,6 +166,7 @@ impl<'s, 'a> Merges<'s, 'a> {
                         ExportDefaultDeclarationKind::ClassDeclaration(class) => {
                             if let Some(id) = &class.id {
                                 merges.classes.insert(id.name.as_str());
+                                merges.class_declarations.insert(id.name.as_str(), class);
                             }
                         }
                         _ => {}
@@ -198,6 +200,7 @@ impl<'s, 'a> Merges<'s, 'a> {
                 Declaration::ClassDeclaration(class) => {
                     if let Some(id) = &class.id {
                         merges.classes.insert(id.name.as_str());
+                        merges.class_declarations.insert(id.name.as_str(), class);
                     }
                 }
                 Declaration::FunctionDeclaration(function) => {
@@ -239,6 +242,65 @@ fn method_properties<'s, 'a>(
         .filter_map(class_method_key)
         .filter(|key| interface_properties.contains(key))
         .collect()
+}
+
+fn inherited_optional_parameters<'s, 'a>(
+    class: &'s Class<'a>,
+    merges: &Merges<'s, 'a>,
+) -> FxHashMap<CompactString, SmallVec<[usize; 4]>> {
+    let mut optional = FxHashMap::default();
+    let mut seen = FxHashSet::default();
+    collect_inherited_optional_parameters(class, merges, &mut seen, &mut optional);
+    optional
+}
+
+fn collect_inherited_optional_parameters<'s, 'a>(
+    class: &'s Class<'a>,
+    merges: &Merges<'s, 'a>,
+    seen: &mut FxHashSet<&'a str>,
+    optional: &mut FxHashMap<CompactString, SmallVec<[usize; 4]>>,
+) {
+    let Some(base) = local_base_class(class, merges) else {
+        return;
+    };
+    let Some(id) = &base.id else {
+        return;
+    };
+    if !seen.insert(id.name.as_str()) {
+        return;
+    }
+    for element in &base.body.body {
+        let ClassElement::MethodDefinition(method) = element else {
+            continue;
+        };
+        if method.r#static || method.kind != MethodDefinitionKind::Method {
+            continue;
+        }
+        let Some(key) = key_text(&method.key, method.computed) else {
+            continue;
+        };
+        let indices = optional.entry(key).or_default();
+        for (index, param) in method.value.params.items.iter().enumerate() {
+            if (param.optional || param.initializer.is_some()) && !indices.contains(&index) {
+                indices.push(index);
+            }
+        }
+    }
+    collect_inherited_optional_parameters(base, merges, seen, optional);
+}
+
+fn local_base_class<'s, 'a>(
+    class: &'s Class<'a>,
+    merges: &Merges<'s, 'a>,
+) -> Option<&'s Class<'a>> {
+    let heritage = class.heritage.as_ref()?;
+    let Expression::Identifier(identifier) = &heritage.expression else {
+        return None;
+    };
+    merges
+        .class_declarations
+        .get(identifier.name.as_str())
+        .copied()
 }
 
 fn collect_function_properties<'s, 'a>(
@@ -1172,8 +1234,9 @@ impl<'e> Emitter<'e> {
             indexers.extend(interface_indexers(&interface.body.body));
         }
         let outer_indexer = self.enter_indexers(&indexers);
+        let inherited_optional = inherited_optional_parameters(class, merges);
         for element in &class.body.body {
-            self.class_member(element, &method_properties);
+            self.class_member(element, &method_properties, &inherited_optional);
         }
         for interface in &interfaces {
             for member in &interface.body.body {
@@ -1228,6 +1291,7 @@ impl<'e> Emitter<'e> {
         &mut self,
         element: &ClassElement<'_>,
         method_properties: &FxHashSet<CompactString>,
+        inherited_optional: &FxHashMap<CompactString, SmallVec<[usize; 4]>>,
     ) {
         match element {
             ClassElement::MethodDefinition(method) => {
@@ -1272,6 +1336,9 @@ impl<'e> Emitter<'e> {
                         self.signature(None, None, &function.params, Return::Void, false);
                     }
                     MethodDefinitionKind::Method | MethodDefinitionKind::Constructor => {
+                        let optional_params = inherited_optional
+                            .get(&key)
+                            .map_or(&[][..], SmallVec::as_slice);
                         if method.r#type == MethodDefinitionType::TSAbstractMethodDefinition {
                             self.printer.text("abstract ");
                         }
@@ -1298,12 +1365,13 @@ impl<'e> Emitter<'e> {
                                 true,
                             );
                         } else {
-                            self.signature(
+                            self.signature_with_optional_params(
                                 function.type_parameters.as_deref(),
                                 function.this_param.as_deref(),
                                 &function.params,
                                 Return::Annotation(function.return_type.as_deref()),
                                 false,
+                                optional_params,
                             );
                         }
                     }
@@ -2017,6 +2085,29 @@ impl<'e> Emitter<'e> {
             return;
         }
         self.printer.anchor(all.span.start);
+        if all.export_kind.is_type()
+            && all.exported.is_none()
+            && let Some(Target::Module(module)) = self.summary.targets.get(written)
+        {
+            let types: SmallVec<[(CompactString, CompactString); 8]> = self
+                .oracle
+                .exports_of(module)
+                .into_iter()
+                .filter_map(|(name, kinds)| {
+                    if self.summary.exports.contains_key(&name) {
+                        return None;
+                    }
+                    match kinds {
+                        Some(kinds) if kinds.type_ => Some((name.clone(), name)),
+                        _ => None,
+                    }
+                })
+                .collect();
+            if !types.is_empty() {
+                self.export_group("export type", &types, Some(&source));
+                return;
+            }
+        }
         self.printer.text(if all.export_kind.is_type() {
             "export type * "
         } else {
@@ -2236,6 +2327,25 @@ impl<'e> Emitter<'e> {
         returns: Return<'_, '_>,
         arrow: bool,
     ) {
+        self.signature_with_optional_params(
+            type_parameters,
+            this_param,
+            params,
+            returns,
+            arrow,
+            &[],
+        );
+    }
+
+    fn signature_with_optional_params(
+        &mut self,
+        type_parameters: Option<&TSTypeParameterDeclaration<'_>>,
+        this_param: Option<&TSThisParameter<'_>>,
+        params: &FormalParameters<'_>,
+        returns: Return<'_, '_>,
+        arrow: bool,
+        optional_params: &[usize],
+    ) {
         let scope_len = self.type_scope.len();
         self.type_parameters(type_parameters);
         self.printer.char('(');
@@ -2252,7 +2362,7 @@ impl<'e> Emitter<'e> {
             first = false;
             let name = binding_name(&param.pattern, index);
             self.printer.text(&name);
-            if param.optional || param.initializer.is_some() {
+            if param.optional || param.initializer.is_some() || optional_params.contains(&index) {
                 self.printer.char('?');
             }
             self.printer.text(": ");
