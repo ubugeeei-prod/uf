@@ -44,7 +44,6 @@
 // `uniflowed(options)` returns the array; a project that wants to add a plugin
 // declares it in `uf.config.js` and the driver appends it after these.
 
-import { readdirSync } from "node:fs";
 import path from "node:path";
 
 import mdx from "@mdx-js/rollup";
@@ -93,7 +92,7 @@ import {
   scanRoutes,
   serverModuleSource,
 } from "./internal/routes.js";
-import { TransformService, isFlowModule } from "@uniflowed/host/transform";
+import { TransformService, isFlowModule, uniflowedPackages } from "@uniflowed/host/transform";
 import {
   DEV_RSC_HOOK,
   FLIGHT_BROWSER_DEPENDENCIES,
@@ -1433,25 +1432,4 @@ function isSsr(context, options) {
 function cleanId(id) {
   const at = id.indexOf("?");
   return at === -1 ? id : id.slice(0, at);
-}
-
-/**
- * Every `@uniflowed/*` package the project can resolve, for
- * `optimizeDeps.exclude`, which takes names rather than patterns.
- */
-function uniflowedPackages(root) {
-  const names = new Set();
-  let directory = root;
-  for (let depth = 0; depth < 16; depth += 1) {
-    const scope = path.join(directory, "node_modules", "@uniflowed");
-    try {
-      for (const entry of readdirSync(scope)) names.add(`@uniflowed/${entry}`);
-    } catch {
-      // no packages at this level
-    }
-    const parent = path.dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
-  }
-  return [...names].sort();
 }
