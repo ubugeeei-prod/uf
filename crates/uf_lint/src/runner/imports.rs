@@ -338,14 +338,7 @@ fn shorter_import_path(source: &str) -> Option<String> {
     }
 
     let normalized = normalize_relative_specifier(path);
-    let mut shorter = normalized.as_str();
-    if suffix.is_empty()
-        && let Some(index_shorter) = strip_useless_index(&normalized)
-    {
-        shorter = index_shorter;
-    }
-
-    (shorter != path).then(|| format!("{shorter}{suffix}"))
+    (normalized != path).then(|| format!("{normalized}{suffix}"))
 }
 
 fn split_import_suffix(source: &str) -> (&str, &str) {
@@ -368,21 +361,6 @@ fn normalize_relative_specifier(source: &str) -> String {
         }
     }
     format_relative_segments(&segments)
-}
-
-fn strip_useless_index(source: &str) -> Option<&str> {
-    let (parent, filename) = source.rsplit_once('/').unwrap_or(("", source));
-    if !is_js_index(filename) {
-        return None;
-    }
-    Some(if parent.is_empty() { "." } else { parent })
-}
-
-fn is_js_index(filename: &str) -> bool {
-    matches!(
-        filename,
-        "index" | "index.js" | "index.jsx" | "index.mjs" | "index.cjs"
-    )
 }
 
 fn format_relative_segments(segments: &[&str]) -> String {

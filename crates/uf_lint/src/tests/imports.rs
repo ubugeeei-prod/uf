@@ -189,16 +189,14 @@ fn no_useless_path_segments_rejects_dotdot_segments_that_cancel_out() {
 }
 
 #[test]
-fn no_useless_path_segments_rejects_js_index_modules() {
+fn no_useless_path_segments_keeps_js_index_modules() {
     let diagnostics = lint_one(
         "import/no-useless-path-segments",
         "app/page.js",
         "// @flow\nimport route from \"./routes/index.js\";\nimport local from \"./index\";\n",
     );
 
-    assert_eq!(diagnostics.len(), 2);
-    assert!(diagnostics[0].message.contains("`./routes`"));
-    assert!(diagnostics[1].message.contains("`.`"));
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
 }
 
 #[test]
