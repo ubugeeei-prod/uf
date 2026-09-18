@@ -270,6 +270,18 @@ generic(1, 2);
 }
 
 #[test]
+fn a_tuple_default_satisfies_a_rest_argument_constraint() {
+    let consumer = "// @flow
+import type { Apply } from './input.d.ts.flow';
+declare const apply: Apply<[string, number]>;
+apply('value', 1);
+apply('value');
+apply('value', 'wrong');
+";
+    assert_eq!(consumer_errors("generics", consumer), [5, 6]);
+}
+
+#[test]
 fn a_re_exported_class_and_a_split_name_resolve_through_the_chain() {
     let consumer = "// @flow
 import { Model, MergedAgain, value } from './input.d.ts.flow';
