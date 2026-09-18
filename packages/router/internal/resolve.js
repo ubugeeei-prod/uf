@@ -1043,15 +1043,13 @@ export function interceptingRoutes(
  * something to show for one URL, the way two slots each match one URL by their
  * own routes.
  *
- * # Never on a server
+ * # Never for a document
  *
- * Nothing on the server calls this. A document request for an intercepted URL
- * resolves the ordinary page, because a request carries where it is going and
- * not what was on screen when it was made — which is what a reload, a shared
- * link and a crawler all are. That includes the Flight renderer, so a browser
- * holding a payload rather than a resolved route navigates to the page the URL
- * names: interception is a feature of the router that resolves routes from
- * their modules.
+ * A document request for an intercepted URL resolves the ordinary page,
+ * because a request carries where it is going and not what was on screen when
+ * it was made — which is what a reload, a shared link and a crawler all are.
+ * A Flight payload request may carry the page the browser is navigating from,
+ * and the React Server Components renderer calls this for that request only.
  *
  * # When the interception cannot render
  *

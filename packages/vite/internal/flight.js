@@ -120,6 +120,9 @@ export const DEV_RSC_HOOK = "uf.dev.rsc";
  */
 export const FLIGHT_SEGMENT = "__uf.flight";
 
+/** The header a browser sends when a Flight payload should render an interception. */
+export const INTERCEPTED_FROM_HEADER = "uf-intercepted-from";
+
 /** The document a payload path is for, or `null` for any other path. */
 export function flightDocumentPath(pathname) {
   const suffix = `/${FLIGHT_SEGMENT}`;

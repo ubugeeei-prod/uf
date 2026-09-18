@@ -163,7 +163,7 @@ component Screen() {
 }
 
 /** The payload root a server would have rendered for `url`. */
-function rootFor(url: string, status: number = 200): FlightRoot {
+function rootFor(url: string, status: number = 200, interceptedFrom?: ?string): FlightRoot {
   const question = url.indexOf("?");
   const pathname = question === -1 ? url : url.slice(0, question);
   const route: $FlowFixMe = {
@@ -178,6 +178,14 @@ function rootFor(url: string, status: number = 200): FlightRoot {
     viewTransition: null,
     status,
     error: null,
+    interception:
+      interceptedFrom == null
+        ? null
+        : {
+            pathname,
+            search: question === -1 ? "" : url.slice(question),
+            from: interceptedFrom,
+          },
   };
   return { route, tree: <Screen /> };
 }
@@ -359,6 +367,57 @@ describe("an application React Server Components render, with no stale time", ()
     await press("to slow");
 
     await waitFor(() => expect(asked).toEqual(["/slow", "/", "/slow"]));
+  });
+});
+
+describe("an application React Server Components render, with an intercepted payload", () => {
+  function interceptedFetches(): Array<{| readonly url: string, readonly from: mixed |}> {
+    const asked: Array<{| readonly url: string, readonly from: mixed |}> = [];
+    installFlightFetch((url, options) => {
+      const from = options?.interceptedFrom ?? null;
+      asked.push({ url, from });
+      return Promise.resolve({
+        kind: "flight",
+        url,
+        root: Promise.resolve(rootFor(url, 200, from === "/" ? from : null)),
+      });
+    });
+    return asked;
+  }
+
+  it("asks the server to render over the current page, and remembers that page", async () => {
+    const asked = interceptedFetches();
+    await mountFlight("/");
+
+    await press("to slow");
+    await waitFor(() => expect(heading()).toBe("page /slow"));
+
+    expect(asked).toEqual([{ url: "/slow", from: "/" }]);
+    expect(globals.window.history.state).toEqual({ "uf:intercepted-from": "/" });
+  });
+
+  it("uses the remembered page when back or forward enters an intercepted entry", async () => {
+    const asked = interceptedFetches();
+    await mountFlight("/");
+
+    await act(async () => {
+      globals.window.history.replaceState({ "uf:intercepted-from": "/" }, "", "/slow");
+      globals.window.dispatchEvent(new globals.window.Event("popstate"));
+    });
+
+    await waitFor(() => expect(heading()).toBe("page /slow"));
+    expect(asked).toEqual([{ url: "/slow", from: "/" }]);
+  });
+
+  it("forgets an intercepted marker kept across a document reload", async () => {
+    installDom();
+    globals.window.history.replaceState({ "uf:intercepted-from": "/" }, "", "/slow");
+    const App = routerView("./app");
+    await act(async () => {
+      render(<App url="/slow" flight={Promise.resolve(rootFor("/slow"))} />);
+    });
+
+    await waitFor(() => expect(globals.window.history.state).toBe(null));
   });
 });
 

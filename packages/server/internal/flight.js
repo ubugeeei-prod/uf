@@ -20,6 +20,9 @@ import type { Application } from "./application.js";
 /** The last segment of a payload URL. */
 export const FLIGHT_SEGMENT = "__uf.flight";
 
+/** The request header carrying the page an intercepted payload renders over. */
+export const INTERCEPTED_FROM_HEADER = "uf-intercepted-from";
+
 /**
  * The document a payload URL is for, or `null` for any other path.
  *
@@ -82,7 +85,11 @@ export async function flightResponse(
   const document = flightDocumentPath(url.pathname);
   if (document == null) return null;
 
-  const body = () => render(document + url.search, { onError: options.onError });
+  const body = () =>
+    render(document + url.search, {
+      onError: options.onError,
+      interceptedFrom: interceptedFrom(request),
+    });
   const answered = await (options.within == null ? body() : options.within(body));
   // The exception the route resolved to its error boundary for, which never
   // reached `onError`: a loader that throws is caught while the route resolves,
@@ -100,6 +107,15 @@ export async function flightResponse(
     return new Response(null, { status: answered.status, headers });
   }
   return new Response(stream, { status: answered.status, headers });
+}
+
+function interceptedFrom(request: Request): string | void {
+  const header = request.headers.get(INTERCEPTED_FROM_HEADER);
+  if (header == null || !header.startsWith("/") || header.startsWith("//")) {
+    return undefined;
+  }
+  const hash = header.indexOf("#");
+  return hash === -1 ? header : header.slice(0, hash);
 }
 
 /** What `Application.flight` resolves with. */
