@@ -250,6 +250,11 @@ export const sections: $ReadOnlyArray<Section> = [
     },
     pages: [
       {
+        href: "/guide/deploy",
+        title: "Deploy a web build",
+        blurb: "Preview, start, adapters, static files and one executable.",
+      },
+      {
         href: "/guide/react-native",
         title: "React Native target",
         blurb: "Native route files, Metro, navigator events and the test-tree surface.",
