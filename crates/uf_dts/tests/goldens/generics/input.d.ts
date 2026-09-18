@@ -29,4 +29,6 @@ export type Utility = Partial<Settings> & Required<Settings> & Readonly<Settings
 export type Returned = ReturnType<() => string>;
 export type Settled = Awaited<Promise<string>>;
 export type NonNull = NonNullable<string | null>;
+export type NestedValue<T> = T extends { meta: { value: any } } ? T["meta"]["value"] : unknown;
+export type NestedKeys<T> = keyof T["meta"]["value"];
 export type Apply<TArgs extends unknown[] = []> = (...args: TArgs) => void;

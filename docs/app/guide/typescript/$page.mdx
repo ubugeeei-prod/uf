@@ -168,7 +168,7 @@ of misuses of them used to check clean, and now has one error per misuse:
 
 | Package | Declaration files | Holes | Flow errors inside the translation |
 | --- | ---: | ---: | ---: |
-| `zod@4.6.5` | 95 | 17 | 266 |
+| `zod@4.6.5` | 95 | 17 | 226 |
 | `date-fns@4.4.0` | 258 | 1 | 0 |
 | `@tanstack/query-core@5.102.8` | 12 | 5 | 0 |
 
@@ -180,7 +180,7 @@ start of zod's list, cut at the ellipses:
 <figure className="terminal">
 
 ```
-  › zod: 17 holes typed as any, 267 Flow errors inside its translation
+  › zod: 17 holes typed as any, 226 Flow errors inside its translation
     - node_modules/zod/v4/classic/compat.d.cts:29 BRAND [computed-key] a computed key other than `Symbol.iterator` or `Symbol.asyncIterator` has no Flow spelling, so the member is left out
     - node_modules/zod/v4/classic/schemas.d.cts:554 discriminatedUnion [array-rest-in-tuple] Flow spreads only a tuple into a tuple, so a tuple type with an array rest is `any`
     …

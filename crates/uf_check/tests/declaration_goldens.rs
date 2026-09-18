@@ -272,13 +272,19 @@ generic(1, 2);
 #[test]
 fn a_tuple_default_satisfies_a_rest_argument_constraint() {
     let consumer = "// @flow
-import type { Apply } from './input.d.ts.flow';
+import type { Apply, NestedKeys, NestedValue } from './input.d.ts.flow';
 declare const apply: Apply<[string, number]>;
 apply('value', 1);
 apply('value');
 apply('value', 'wrong');
+type Nested = NestedValue<{ meta: { value: string } }>;
+const nestedOk: Nested = 'ok';
+const nestedWrong: Nested = 1;
+type NestedKey = NestedKeys<{ meta: { value: { ok: string } } }>;
+const nestedKeyOk: NestedKey = 'ok';
+const nestedKeyWrong: NestedKey = 'missing';
 ";
-    assert_eq!(consumer_errors("generics", consumer), [5, 6]);
+    assert_eq!(consumer_errors("generics", consumer), [5, 6, 9, 12]);
 }
 
 #[test]

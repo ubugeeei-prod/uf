@@ -428,6 +428,88 @@ fn is_type_reference_identifier(ty: &TSType<'_>, name: &str) -> bool {
     identifier.name == name
 }
 
+fn type_reference_identifier<'a>(ty: &'a TSType<'a>) -> Option<&'a str> {
+    let TSType::TSTypeReference(reference) = unparenthesized(ty) else {
+        return None;
+    };
+    if reference.type_arguments.is_some() {
+        return None;
+    }
+    let TSTypeName::IdentifierReference(identifier) = &reference.type_name else {
+        return None;
+    };
+    Some(identifier.name.as_str())
+}
+
+fn string_index_key(ty: &TSType<'_>) -> Option<CompactString> {
+    match unparenthesized(ty) {
+        TSType::TSLiteralType(literal) => match &literal.literal {
+            TSLiteral::StringLiteral(string) => Some(string.value.to_compact_string()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn nested_string_indexed_access<'a>(
+    ty: &'a TSType<'a>,
+) -> Option<(&'a TSType<'a>, CompactString, CompactString)> {
+    let TSType::TSIndexedAccessType(outer) = unparenthesized(ty) else {
+        return None;
+    };
+    let inner_key = string_index_key(&outer.index_type)?;
+    let TSType::TSIndexedAccessType(inner) = unparenthesized(&outer.object_type) else {
+        return None;
+    };
+    let outer_key = string_index_key(&inner.index_type)?;
+    Some((&inner.object_type, outer_key, inner_key))
+}
+
+fn property_key_string(key: &PropertyKey<'_>) -> Option<CompactString> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_compact_string()),
+        PropertyKey::StringLiteral(literal) => Some(literal.value.to_compact_string()),
+        PropertyKey::TemplateLiteral(template) if template.expressions.is_empty() => {
+            let cooked = template
+                .quasis
+                .first()
+                .and_then(|quasi| quasi.value.cooked.as_ref())
+                .map_or("", |cooked| cooked.as_str());
+            Some(cooked.to_compact_string())
+        }
+        _ => None,
+    }
+}
+
+fn type_literal_property<'a>(literal: &'a TSTypeLiteral<'a>, key: &str) -> Option<&'a TSType<'a>> {
+    for member in &literal.members {
+        let TSSignature::TSPropertySignature(property) = member else {
+            continue;
+        };
+        if property.computed || property_key_string(&property.key).as_deref() != Some(key) {
+            continue;
+        }
+        return property
+            .type_annotation
+            .as_ref()
+            .map(|annotation| &annotation.type_annotation);
+    }
+    None
+}
+
+fn type_literal_has_nested_property(ty: &TSType<'_>, outer: &str, inner: &str) -> bool {
+    let TSType::TSTypeLiteral(literal) = unparenthesized(ty) else {
+        return false;
+    };
+    let Some(outer_ty) = type_literal_property(literal, outer) else {
+        return false;
+    };
+    let TSType::TSTypeLiteral(outer_literal) = unparenthesized(outer_ty) else {
+        return false;
+    };
+    type_literal_property(outer_literal, inner).is_some()
+}
+
 fn collect_function_properties_from_type_inner<'s, 'a>(
     ty: &TSType<'a>,
     merges: &Merges<'s, 'a>,
@@ -2763,6 +2845,9 @@ impl<'e> Emitter<'e> {
             }
             TSType::TSTypeOperatorType(operator) => match operator.operator {
                 TSTypeOperatorOperator::Keyof => {
+                    if self.keyof_nested_indexed_access(&operator.type_annotation, context) {
+                        return;
+                    }
                     let wrap = context > Prec::Prefix;
                     self.open(wrap);
                     self.printer.text("keyof ");
@@ -2905,6 +2990,9 @@ impl<'e> Emitter<'e> {
     }
 
     fn conditional(&mut self, conditional: &TSConditionalType<'_>, context: Prec) {
+        if self.nested_indexed_conditional(conditional, context) {
+            return;
+        }
         let wrap = context > Prec::Any;
         self.open(wrap);
         self.ty(&conditional.check_type, Prec::Union);
@@ -2920,6 +3008,69 @@ impl<'e> Emitter<'e> {
         self.printer.text(" : ");
         self.ty(&conditional.false_type, Prec::Any);
         self.close(wrap);
+    }
+
+    fn nested_indexed_conditional(
+        &mut self,
+        conditional: &TSConditionalType<'_>,
+        context: Prec,
+    ) -> bool {
+        let Some((base, outer, inner)) = nested_string_indexed_access(&conditional.true_type)
+        else {
+            return false;
+        };
+        let Some(check_name) = type_reference_identifier(&conditional.check_type) else {
+            return false;
+        };
+        if type_reference_identifier(base) != Some(check_name) {
+            return false;
+        }
+        if !type_literal_has_nested_property(&conditional.extends_type, &outer, &inner) {
+            return false;
+        }
+
+        let wrap = context > Prec::Any;
+        self.open(wrap);
+        self.ty(&conditional.check_type, Prec::Union);
+        self.printer.text(" extends interface { readonly ");
+        self.property_name(&outer);
+        self.printer
+            .text(": infer Z } ? Z extends interface { readonly ");
+        self.property_name(&inner);
+        self.printer.text(": infer I } ? I : ");
+        self.ty(&conditional.false_type, Prec::Any);
+        self.printer.text(" : ");
+        self.ty(&conditional.false_type, Prec::Any);
+        self.close(wrap);
+        true
+    }
+
+    fn keyof_nested_indexed_access(&mut self, ty: &TSType<'_>, context: Prec) -> bool {
+        let Some((base, outer, inner)) = nested_string_indexed_access(ty) else {
+            return false;
+        };
+        if type_reference_identifier(base).is_none() {
+            return false;
+        }
+        let wrap = context > Prec::Any;
+        self.open(wrap);
+        self.ty(base, Prec::Union);
+        self.printer.text(" extends interface { readonly ");
+        self.property_name(&outer);
+        self.printer
+            .text(": infer Z } ? Z extends interface { readonly ");
+        self.property_name(&inner);
+        self.printer.text(": infer I } ? keyof I : empty : empty");
+        self.close(wrap);
+        true
+    }
+
+    fn property_name(&mut self, key: &str) {
+        if is_identifier(key) {
+            self.printer.text(key);
+        } else {
+            self.string(key);
+        }
     }
 
     fn tuple(&mut self, tuple: &TSTupleType<'_>) {
