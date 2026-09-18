@@ -39,6 +39,14 @@ const badResolvedDate: Intl.ResolvedDateTimeFormatOptions = { locale: 1, calenda
 const badResolvedRelative: Intl.ResolvedRelativeTimeFormatOptions = { locale: "en", numberingSystem: "latn", numeric: "always", style: "tiny" };
 "#;
 
+const INTL_OPTIONS_INHERITANCE: &str = r#"// @flow
+interface DistanceOptions extends Intl.RelativeTimeFormatOptions {
+  unit?: "day" | "hour";
+}
+const options: DistanceOptions = { numeric: "auto", unit: "day" };
+const bad: DistanceOptions = { numeric: "sometimes" };
+"#;
+
 /// Tests must not race the wall clock; a loaded CI box is not a type error.
 fn limits() -> CheckLimits {
     CheckLimits::default().without_timeout()
@@ -98,5 +106,20 @@ fn intl_option_members_are_typed() {
     assert!(
         missing.is_empty(),
         "these Intl option misuses were accepted: {missing:?}; the checker reported {found:?}"
+    );
+}
+
+#[test]
+fn relative_time_format_options_are_inheritable() {
+    let diagnostics = check("intl_options_inheritance.js", INTL_OPTIONS_INHERITANCE);
+    let found = lines_and_codes(&diagnostics);
+
+    assert!(
+        found.iter().any(|(line, _)| *line == 6),
+        "`DistanceOptions.numeric` should keep RelativeTimeFormatOptions' closed set; got {found:?}"
+    );
+    assert!(
+        found.iter().all(|(line, _)| *line == 6),
+        "expected only the bad numeric value to fail; got {found:?}"
     );
 }

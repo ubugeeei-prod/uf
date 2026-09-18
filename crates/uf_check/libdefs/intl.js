@@ -43,12 +43,11 @@ declare namespace Intl {
     ...
   };
 
-  declare type RelativeTimeFormatOptions = {
-    localeMatcher?: LocaleMatcher,
-    numeric?: "always" | "auto",
-    style?: "long" | "short" | "narrow",
-    ...
-  };
+  declare interface RelativeTimeFormatOptions {
+    localeMatcher?: LocaleMatcher;
+    numeric?: "always" | "auto";
+    style?: "long" | "short" | "narrow";
+  }
 
   declare type ResolvedRelativeTimeFormatOptions = {
     locale: string,
