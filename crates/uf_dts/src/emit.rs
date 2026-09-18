@@ -43,8 +43,8 @@ use oxc_ast::ast::{
     TSImportTypeQualifier, TSIndexSignature, TSInterfaceDeclaration, TSIntersectionType, TSLiteral,
     TSMappedType, TSMappedTypeModifierOperator, TSMethodSignatureKind, TSModuleReference,
     TSNamespaceDeclaration, TSNamespaceDeclarationBody, TSSignature, TSThisParameter,
-    TSTupleElement, TSTupleType, TSType, TSTypeAnnotation, TSTypeLiteral, TSTypeName,
-    TSTypeOperatorOperator, TSTypeParameterDeclaration, TSTypeParameterInstantiation,
+    TSTupleElement, TSTupleType, TSType, TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeLiteral,
+    TSTypeName, TSTypeOperatorOperator, TSTypeParameterDeclaration, TSTypeParameterInstantiation,
     TSTypePredicateName, TSTypeQuery, TSTypeQueryExprName, TSTypeReference, UnaryOperator,
     VariableDeclaration, VariableDeclarationKind,
 };
@@ -136,6 +136,7 @@ enum Return<'r, 'a> {
 #[derive(Default)]
 struct Merges<'s, 'a> {
     interfaces: FxHashMap<&'a str, SmallVec<[&'s TSInterfaceDeclaration<'a>; 2]>>,
+    aliases: FxHashMap<&'a str, &'s TSTypeAliasDeclaration<'a>>,
     namespaces: FxHashMap<&'a str, SmallVec<[&'s TSNamespaceDeclaration<'a>; 2]>>,
     enums: FxHashMap<&'a str, SmallVec<[&'s TSEnumDeclaration<'a>; 2]>>,
     classes: FxHashSet<&'a str>,
@@ -181,6 +182,9 @@ impl<'s, 'a> Merges<'s, 'a> {
                     .entry(interface.id.name.as_str())
                     .or_default()
                     .push(interface),
+                Declaration::TSTypeAliasDeclaration(alias) => {
+                    merges.aliases.insert(alias.id.name.as_str(), alias);
+                }
                 Declaration::TSNamespaceDeclaration(namespace) => merges
                     .namespaces
                     .entry(namespace.id.name.as_str())
@@ -205,6 +209,301 @@ impl<'s, 'a> Merges<'s, 'a> {
             }
         }
         merges
+    }
+}
+
+fn method_properties<'s, 'a>(
+    class: &'s Class<'a>,
+    merges: &Merges<'s, 'a>,
+    merged: &[&'s TSInterfaceDeclaration<'a>],
+) -> FxHashSet<CompactString> {
+    let mut interface_properties = FxHashSet::default();
+    for interface in merged {
+        collect_function_properties(interface, merges, &mut interface_properties);
+    }
+    for implemented in &class.implements {
+        collect_function_properties_from_name(
+            &implemented.expression,
+            implemented.type_arguments.as_deref(),
+            merges,
+            &mut interface_properties,
+        );
+    }
+    if interface_properties.is_empty() {
+        return FxHashSet::default();
+    }
+    class
+        .body
+        .body
+        .iter()
+        .filter_map(class_method_key)
+        .filter(|key| interface_properties.contains(key))
+        .collect()
+}
+
+fn collect_function_properties<'s, 'a>(
+    interface: &'s TSInterfaceDeclaration<'a>,
+    merges: &Merges<'s, 'a>,
+    out: &mut FxHashSet<CompactString>,
+) {
+    out.extend(
+        interface
+            .body
+            .body
+            .iter()
+            .filter_map(|member| function_property_key(member, merges)),
+    );
+}
+
+fn collect_function_properties_from_name<'s, 'a>(
+    name: &TSTypeName<'a>,
+    arguments: Option<&TSTypeParameterInstantiation<'a>>,
+    merges: &Merges<'s, 'a>,
+    out: &mut FxHashSet<CompactString>,
+) {
+    let mut seen_aliases = FxHashSet::default();
+    collect_function_properties_from_name_inner(name, arguments, merges, out, &mut seen_aliases);
+}
+
+fn collect_function_properties_from_name_inner<'s, 'a>(
+    name: &TSTypeName<'a>,
+    arguments: Option<&TSTypeParameterInstantiation<'a>>,
+    merges: &Merges<'s, 'a>,
+    out: &mut FxHashSet<CompactString>,
+    seen_aliases: &mut FxHashSet<&'a str>,
+) {
+    let TSTypeName::IdentifierReference(identifier) = name else {
+        return;
+    };
+    let written = identifier.name.as_str();
+    if let Some(interfaces) = merges.interfaces.get(written) {
+        for interface in interfaces {
+            collect_function_properties(interface, merges, out);
+        }
+        return;
+    }
+    if let Some(alias) = merges.aliases.get(written) {
+        if seen_aliases.insert(written) {
+            collect_function_properties_from_type_inner(
+                &alias.type_annotation,
+                merges,
+                out,
+                seen_aliases,
+            );
+            seen_aliases.remove(written);
+        }
+        return;
+    }
+    let Some(arguments) = arguments else {
+        return;
+    };
+    match written {
+        "Partial" | "Required" | "Readonly" => {
+            if let Some(target) = arguments.params.first() {
+                collect_function_properties_from_type_inner(target, merges, out, seen_aliases);
+            }
+        }
+        "Omit" => {
+            let (Some(target), Some(omitted)) = (arguments.params.first(), arguments.params.get(1))
+            else {
+                return;
+            };
+            let Some(omitted) = literal_keys(omitted) else {
+                return;
+            };
+            let mut properties = FxHashSet::default();
+            collect_function_properties_from_type_inner(
+                target,
+                merges,
+                &mut properties,
+                seen_aliases,
+            );
+            properties.retain(|key| !omitted.contains(key));
+            out.extend(properties);
+        }
+        "Pick" => {
+            let (Some(target), Some(picked)) = (arguments.params.first(), arguments.params.get(1))
+            else {
+                return;
+            };
+            let Some(picked) = literal_keys(picked) else {
+                return;
+            };
+            let mut properties = FxHashSet::default();
+            collect_function_properties_from_type_inner(
+                target,
+                merges,
+                &mut properties,
+                seen_aliases,
+            );
+            properties.retain(|key| picked.contains(key));
+            out.extend(properties);
+        }
+        _ => {}
+    }
+}
+
+fn collect_function_properties_from_type_inner<'s, 'a>(
+    ty: &TSType<'a>,
+    merges: &Merges<'s, 'a>,
+    out: &mut FxHashSet<CompactString>,
+    seen_aliases: &mut FxHashSet<&'a str>,
+) {
+    match ty {
+        TSType::TSParenthesizedType(parenthesized) => {
+            collect_function_properties_from_type_inner(
+                &parenthesized.type_annotation,
+                merges,
+                out,
+                seen_aliases,
+            );
+        }
+        TSType::TSTypeReference(reference) => collect_function_properties_from_name_inner(
+            &reference.type_name,
+            reference.type_arguments.as_deref(),
+            merges,
+            out,
+            seen_aliases,
+        ),
+        TSType::TSIntersectionType(intersection) => {
+            for member in &intersection.types {
+                collect_function_properties_from_type_inner(member, merges, out, seen_aliases);
+            }
+        }
+        TSType::TSTypeLiteral(literal) => {
+            out.extend(
+                literal
+                    .members
+                    .iter()
+                    .filter_map(|member| function_property_key(member, merges)),
+            );
+        }
+        _ => {}
+    }
+}
+
+fn literal_keys(ty: &TSType<'_>) -> Option<FxHashSet<CompactString>> {
+    let mut keys = FxHashSet::default();
+    collect_literal_keys(ty, &mut keys)?;
+    Some(keys)
+}
+
+fn collect_literal_keys(ty: &TSType<'_>, out: &mut FxHashSet<CompactString>) -> Option<()> {
+    match ty {
+        TSType::TSParenthesizedType(parenthesized) => {
+            collect_literal_keys(&parenthesized.type_annotation, out)
+        }
+        TSType::TSNeverKeyword(_) => Some(()),
+        TSType::TSUnionType(union) => {
+            for member in &union.types {
+                collect_literal_keys(member, out)?;
+            }
+            Some(())
+        }
+        TSType::TSLiteralType(literal) => match &literal.literal {
+            TSLiteral::StringLiteral(string) => {
+                out.insert(string.value.to_compact_string());
+                Some(())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn class_method_key(element: &ClassElement<'_>) -> Option<CompactString> {
+    let ClassElement::MethodDefinition(method) = element else {
+        return None;
+    };
+    if method.r#static
+        || method.optional
+        || method.kind != MethodDefinitionKind::Method
+        || method.r#type == MethodDefinitionType::TSAbstractMethodDefinition
+    {
+        return None;
+    }
+    key_text(&method.key, method.computed)
+}
+
+fn function_property_key<'s, 'a>(
+    member: &TSSignature<'a>,
+    merges: &Merges<'s, 'a>,
+) -> Option<CompactString> {
+    let TSSignature::TSPropertySignature(property) = member else {
+        return None;
+    };
+    let annotation = property.type_annotation.as_deref()?;
+    if !function_like_type(
+        &annotation.type_annotation,
+        merges,
+        &mut FxHashSet::default(),
+    ) {
+        return None;
+    }
+    key_text(&property.key, property.computed)
+}
+
+fn function_like_type<'s, 'a>(
+    ty: &TSType<'a>,
+    merges: &Merges<'s, 'a>,
+    seen_aliases: &mut FxHashSet<&'a str>,
+) -> bool {
+    match ty {
+        TSType::TSFunctionType(_) => true,
+        TSType::TSParenthesizedType(parenthesized) => {
+            function_like_type(&parenthesized.type_annotation, merges, seen_aliases)
+        }
+        TSType::TSTypeReference(reference) => {
+            let TSTypeName::IdentifierReference(identifier) = &reference.type_name else {
+                return false;
+            };
+            let written = identifier.name.as_str();
+            let Some(alias) = merges.aliases.get(written) else {
+                return false;
+            };
+            if !seen_aliases.insert(written) {
+                return false;
+            }
+            let function_like = function_like_type(&alias.type_annotation, merges, seen_aliases);
+            seen_aliases.remove(written);
+            function_like
+        }
+        TSType::TSConditionalType(conditional) => {
+            function_like_type(&conditional.true_type, merges, seen_aliases)
+                || function_like_type(&conditional.false_type, merges, seen_aliases)
+        }
+        _ => false,
+    }
+}
+
+fn key_text(key: &PropertyKey<'_>, _computed: bool) -> Option<CompactString> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_compact_string()),
+        PropertyKey::PrivateIdentifier(_) => None,
+        PropertyKey::StringLiteral(literal) => Some(quoted(literal.value.as_str()).into()),
+        PropertyKey::NumericLiteral(literal) => Some(
+            literal
+                .raw
+                .as_ref()
+                .filter(|raw| !raw.contains('_'))
+                .map_or_else(|| number_text(literal.value), |raw| raw.to_compact_string()),
+        ),
+        PropertyKey::TemplateLiteral(template) if template.expressions.is_empty() => {
+            let cooked = template
+                .quasis
+                .first()
+                .and_then(|quasi| quasi.value.cooked.as_ref())
+                .map_or("", |cooked| cooked.as_str());
+            Some(quoted(cooked).into())
+        }
+        PropertyKey::StaticMemberExpression(member) if matches!(&member.object, Expression::Identifier(object) if object.name == "Symbol") => {
+            match member.property.name.as_str() {
+                "iterator" => Some(CompactString::const_new("@@iterator")),
+                "asyncIterator" => Some(CompactString::const_new("@@asyncIterator")),
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }
 
@@ -814,6 +1113,7 @@ impl<'e> Emitter<'e> {
         self.printer.text(" {");
         self.printer.indent();
         let interfaces = merges.interfaces.get(name).cloned().unwrap_or_default();
+        let method_properties = method_properties(class, merges, &interfaces);
         let mut indexers: SmallVec<[&TSIndexSignature<'_>; 2]> = class
             .body
             .body
@@ -828,10 +1128,15 @@ impl<'e> Emitter<'e> {
         }
         let outer_indexer = self.enter_indexers(&indexers);
         for element in &class.body.body {
-            self.class_member(element);
+            self.class_member(element, &method_properties);
         }
         for interface in &interfaces {
             for member in &interface.body.body {
+                if function_property_key(member, merges)
+                    .is_some_and(|key| method_properties.contains(&key))
+                {
+                    continue;
+                }
                 self.signature_member(member, ';');
             }
         }
@@ -874,7 +1179,11 @@ impl<'e> Emitter<'e> {
         }
     }
 
-    fn class_member(&mut self, element: &ClassElement<'_>) {
+    fn class_member(
+        &mut self,
+        element: &ClassElement<'_>,
+        method_properties: &FxHashSet<CompactString>,
+    ) {
         match element {
             ClassElement::MethodDefinition(method) => {
                 // A private member is not part of what a consumer can touch.
@@ -922,7 +1231,19 @@ impl<'e> Emitter<'e> {
                             self.printer.text("abstract ");
                         }
                         self.printer.text(&key);
-                        if method.optional {
+                        if !method.r#static
+                            && method.r#type != MethodDefinitionType::TSAbstractMethodDefinition
+                            && method_properties.contains(&key)
+                        {
+                            self.printer.text(": ");
+                            self.signature(
+                                function.type_parameters.as_deref(),
+                                function.this_param.as_deref(),
+                                &function.params,
+                                Return::Annotation(function.return_type.as_deref()),
+                                true,
+                            );
+                        } else if method.optional {
                             self.printer.text("?: ");
                             self.signature(
                                 function.type_parameters.as_deref(),
@@ -2026,39 +2347,12 @@ impl<'e> Emitter<'e> {
     /// A member key as Flow spells it, or [`None`] — with a hole — when Flow
     /// has no spelling for it.
     fn key(&mut self, key: &PropertyKey<'_>, computed: bool, offset: u32) -> Option<CompactString> {
-        match key {
-            PropertyKey::StaticIdentifier(identifier) if !computed => {
-                Some(identifier.name.to_compact_string())
-            }
-            PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_compact_string()),
-            PropertyKey::PrivateIdentifier(_) => None,
-            PropertyKey::StringLiteral(literal) => Some(quoted(literal.value.as_str()).into()),
-            PropertyKey::NumericLiteral(literal) => Some(
-                literal
-                    .raw
-                    .as_ref()
-                    .filter(|raw| !raw.contains('_'))
-                    .map_or_else(|| number_text(literal.value), |raw| raw.to_compact_string()),
-            ),
-            PropertyKey::TemplateLiteral(template) if template.expressions.is_empty() => {
-                let cooked = template
-                    .quasis
-                    .first()
-                    .and_then(|quasi| quasi.value.cooked.as_ref())
-                    .map_or("", |cooked| cooked.as_str());
-                Some(quoted(cooked).into())
-            }
-            PropertyKey::StaticMemberExpression(member) if matches!(&member.object, Expression::Identifier(object) if object.name == "Symbol") => {
-                match member.property.name.as_str() {
-                    "iterator" => Some(CompactString::const_new("@@iterator")),
-                    "asyncIterator" => Some(CompactString::const_new("@@asyncIterator")),
-                    _ => {
-                        self.computed_key_hole(offset);
-                        None
-                    }
-                }
-            }
-            _ => {
+        if matches!(key, PropertyKey::PrivateIdentifier(_)) {
+            return None;
+        }
+        match key_text(key, computed) {
+            Some(key) => Some(key),
+            None => {
                 self.computed_key_hole(offset);
                 None
             }

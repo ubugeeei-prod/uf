@@ -209,6 +209,31 @@ const string: Color = 'RED';
 }
 
 #[test]
+fn a_class_method_implementing_a_function_property_is_typed() {
+    let consumer = "// @flow
+import { AliasScheduler, OmittedScheduler, PickedScheduler, Scheduler, TransformScheduler } from './input.d.ts.flow';
+const scheduler = new Scheduler();
+const ok: Promise<string> = scheduler.execute('job');
+scheduler.execute(1);
+const wrong: Promise<number> = scheduler.execute('job');
+const omitted = new OmittedScheduler();
+omitted.execute(1);
+const picked = new PickedScheduler();
+picked.execute(1);
+const alias = new AliasScheduler();
+alias.execute(1);
+const transform = new TransformScheduler();
+const transformed: Promise<number> = transform.transform('job');
+transform.transform(1);
+const transformedWrong: Promise<string> = transform.transform('job');
+";
+    assert_eq!(
+        consumer_errors("classes", consumer),
+        [5, 6, 8, 10, 12, 15, 16]
+    );
+}
+
+#[test]
 fn an_overload_a_guard_and_a_generic_bound_are_checked() {
     let consumer = "// @flow
 import { parse, isString, generic } from './input.d.ts.flow';
