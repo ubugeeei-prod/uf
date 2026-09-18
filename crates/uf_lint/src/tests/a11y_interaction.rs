@@ -134,6 +134,10 @@ fn interactive_supports_focus_accepts_the_documented_pass() {
             r#"<div role="button">Open</div>"#,
             // The element is already the control, and HTML focuses it.
             r#"<button onClick={open}>Open</button>"#,
+            // Roving tabindex: one widget item is `0`, the rest are `-1`, and
+            // arrow keys move focus between them.
+            r#"<div role="treeitem" tabIndex={selected ? 0 : -1} onClick={open} onKeyDown={open}>Node</div>"#,
+            r#"<div role="treeitem" tabIndex={-1} onClick={open} onKeyDown={open}>Node</div>"#,
         ],
     );
 }
