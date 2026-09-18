@@ -74,7 +74,6 @@ import {
 } from "./internal/refresh.js";
 import {
   RSC_MANIFEST_ENV,
-  INTERCEPTED_FROM_HEADER,
   actionReferenceSource,
   actionsModuleSource,
   clientRouteFilter,
@@ -98,6 +97,7 @@ import {
   DEV_RSC_HOOK,
   FLIGHT_BROWSER_DEPENDENCIES,
   FLIGHT_VIRTUAL,
+  INTERCEPTED_FROM_HEADER,
   RSC_ENVIRONMENT,
   builtBridgeSource,
   builtReferencesSource,
