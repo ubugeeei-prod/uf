@@ -96,6 +96,39 @@ fn no_duplicates_rejects_two_namespace_imports_from_the_same_module() {
 }
 
 #[test]
+fn no_cycle_rejects_a_relative_import_cycle() {
+    let diagnostics = lint_many(
+        "import/no-cycle",
+        &[
+            ("src/a.js", "// @flow\nimport \"./b\";\n"),
+            ("src/b.js", "// @flow\nimport \"./folder\";\n"),
+            ("src/folder/index.js", "// @flow\nimport \"../a.js\";\n"),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 3);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("src/a.js"));
+    assert!(diagnostics[0].message.contains("src/b.js"));
+}
+
+#[test]
+fn no_cycle_accepts_acyclic_relative_imports_and_packages() {
+    let diagnostics = lint_many(
+        "import/no-cycle",
+        &[
+            (
+                "src/a.js",
+                "// @flow\nimport \"./b.js\";\nimport React from \"react\";\n",
+            ),
+            ("src/b.js", "// @flow\nimport \"./c.js\";\n"),
+            ("src/c.js", "// @flow\nexport const value: number = 1;\n"),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn no_extraneous_dependencies_rejects_packages_missing_from_the_nearest_manifest() {
     let diagnostics = lint_many(
         "import/no-extraneous-dependencies",

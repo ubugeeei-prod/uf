@@ -39,10 +39,11 @@ pub use crate::rules::{
 
 use crate::rules::deprecated_aliases_for;
 use crate::runner::{
-    run_fetch_no_global_override, run_flow_ambiguous_object_type, run_flow_deprecated_type,
-    run_flow_export_renamed_default, run_flow_internal_type, run_flow_mixed_import_and_require,
-    run_flow_non_const_var_export, run_flow_unclear_type, run_flow_unnecessary_optional_chain,
-    run_flow_unsafe_getters_setters, run_flow_unsafe_object_assign, run_import_no_absolute_path,
+    ImportGraph, run_fetch_no_global_override, run_flow_ambiguous_object_type,
+    run_flow_deprecated_type, run_flow_export_renamed_default, run_flow_internal_type,
+    run_flow_mixed_import_and_require, run_flow_non_const_var_export, run_flow_unclear_type,
+    run_flow_unnecessary_optional_chain, run_flow_unsafe_getters_setters,
+    run_flow_unsafe_object_assign, run_import_no_absolute_path, run_import_no_cycle,
     run_import_no_duplicates, run_import_no_extraneous_dependencies,
     run_import_no_relative_packages, run_import_no_self_import,
     run_import_no_useless_path_segments, run_module_tree_rules, run_no_npm_script_invocation,
@@ -142,6 +143,8 @@ impl LintReport {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LintContext {
     packages: Vec<PackageManifest>,
+    /// Relative import graph for every file the caller made available.
+    import_graph: ImportGraph,
 }
 
 /// One `package.json` that belongs to the linted source batch.
@@ -164,7 +167,10 @@ impl LintContext {
             .filter_map(PackageManifest::from_source)
             .collect::<Vec<_>>();
         packages.sort_by(|a, b| a.dir.cmp(&b.dir));
-        Self { packages }
+        Self {
+            packages,
+            import_graph: ImportGraph::new(files),
+        }
     }
 
     pub(crate) fn nearest_package(&self, file: &str) -> Option<&PackageManifest> {
@@ -172,6 +178,10 @@ impl LintContext {
             .iter()
             .filter(|package| package.contains(file))
             .max_by_key(|package| package.dir.len())
+    }
+
+    pub(crate) fn import_graph(&self) -> &ImportGraph {
+        &self.import_graph
     }
 }
 
@@ -341,6 +351,7 @@ fn lint_file(
     run_flow_export_renamed_default(&scan, config, &mut diagnostics);
     run_import_no_absolute_path(&scan, config, &mut diagnostics);
     run_import_no_duplicates(&scan, config, &mut diagnostics);
+    run_import_no_cycle(&scan, config, context, &mut diagnostics);
     run_import_no_extraneous_dependencies(&scan, config, context, &mut diagnostics);
     run_import_no_self_import(&scan, config, &mut diagnostics);
     run_import_no_relative_packages(&scan, config, &mut diagnostics);
