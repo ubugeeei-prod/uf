@@ -10,7 +10,7 @@ export interface MethodProperty {
   readonly bound: (this: MethodProperty, input: string) => Promise<string>;
 }
 export type MethodPropertyAlias = MethodProperty;
-export type OmitKeyof<out TObject, out TKey extends keyof any> = Omit<TObject, TKey>;
+export type OmitKeyof<out TObject, out TKey> = Omit<TObject, TKey>;
 export type ReplaceReturnType<T, out R> = T extends (input: infer I) => any ? (input: I) => R : empty;
 export interface ReplacedMethodProperty {
   readonly transform: ReplaceReturnType<(input: string) => string, Promise<number>>;
