@@ -42,7 +42,7 @@ pub(crate) use imports::{
     ImportGraph, run_import_no_absolute_path, run_import_no_cycle, run_import_no_deprecated,
     run_import_no_duplicates, run_import_no_extraneous_dependencies,
     run_import_no_named_as_default, run_import_no_relative_packages, run_import_no_self_import,
-    run_import_no_useless_path_segments,
+    run_import_no_unused_modules, run_import_no_useless_path_segments,
 };
 pub(crate) use module_tree::run_module_tree_rules;
 pub(crate) use package::run_package_no_npm_scripts;

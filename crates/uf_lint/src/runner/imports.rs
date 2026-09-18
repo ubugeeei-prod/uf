@@ -137,22 +137,25 @@ pub(crate) fn run_import_no_deprecated(
     }
 
     for import in static_value_imported_bindings(&scan.file.source) {
-        let target = match import.member {
-            ImportedMember::Default => context
-                .import_graph()
-                .deprecated_default_export_from(&scan.file.path, import.source),
-            ImportedMember::Named(name) => context.import_graph().deprecated_named_export_from(
-                &scan.file.path,
-                import.source,
+        let (target, name) = match import.member {
+            ImportedMember::Default => (
+                context
+                    .import_graph()
+                    .deprecated_default_export_from(&scan.file.path, import.source),
+                "default",
+            ),
+            ImportedMember::Named(name) => (
+                context.import_graph().deprecated_named_export_from(
+                    &scan.file.path,
+                    import.source,
+                    name,
+                ),
                 name,
             ),
+            ImportedMember::Namespace | ImportedMember::AllNamed => continue,
         };
         let Some(target) = target else {
             continue;
-        };
-        let name = match import.member {
-            ImportedMember::Default => "default",
-            ImportedMember::Named(name) => name,
         };
         push_import(
             diagnostics,
@@ -161,6 +164,42 @@ pub(crate) fn run_import_no_deprecated(
             severity,
             import.member_at,
             format!("`{name}` is deprecated by `{target}`; use a supported export instead"),
+        );
+    }
+}
+
+pub(crate) fn run_import_no_unused_modules(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    context: &LintContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-unused-modules";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+    let Some(unused) = context.import_graph().unused_from(&scan.file.path) else {
+        return;
+    };
+
+    if unused.unimported_module {
+        push_import(
+            diagnostics,
+            scan,
+            rule,
+            severity,
+            0,
+            "no relative import reaches this module",
+        );
+    }
+    if unused.default_export || !unused.named_exports.is_empty() {
+        push_import(
+            diagnostics,
+            scan,
+            rule,
+            severity,
+            first_export_at(&scan.file.source).unwrap_or(0),
+            unused_export_message(&unused),
         );
     }
 }
@@ -297,6 +336,7 @@ struct DefaultImport<'a> {
 #[derive(Debug, Clone, Copy)]
 struct ImportedBinding<'a> {
     source: &'a str,
+    source_at: usize,
     member: ImportedMember<'a>,
     member_at: usize,
 }
@@ -305,6 +345,8 @@ struct ImportedBinding<'a> {
 enum ImportedMember<'a> {
     Default,
     Named(&'a str),
+    Namespace,
+    AllNamed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -389,6 +431,24 @@ fn static_value_imported_bindings(source: &str) -> Vec<ImportedBinding<'_>> {
     imports
 }
 
+fn static_value_reexported_bindings(source: &str) -> Vec<ImportedBinding<'_>> {
+    let tokens = tokenize(source);
+    let mut imports = Vec::new();
+    let mut at = 0usize;
+
+    while let Some(token) = tokens.get(at) {
+        if !token.is_ident(source, "export") || !starts_statement(&tokens, at) {
+            at += 1;
+            continue;
+        }
+
+        collect_static_value_reexported_bindings(source, &tokens, at, &mut imports);
+        at += 1;
+    }
+
+    imports
+}
+
 fn collect_static_value_imported_bindings<'a>(
     source: &'a str,
     tokens: &[Token],
@@ -415,11 +475,23 @@ fn collect_static_value_imported_bindings<'a>(
     };
     let mut members = Vec::new();
     let clause = import_at + 1;
+    let from_at = tokens[clause..]
+        .iter()
+        .position(|token| token.is_ident(source, "from"))
+        .map(|offset| clause + offset);
     if tokens
         .get(clause)
         .is_some_and(|token| token.kind == TokenKind::Ident)
     {
         members.push((ImportedMember::Default, tokens[clause].start));
+    }
+    if from_at.is_some_and(|from_at| {
+        tokens[clause..from_at]
+            .iter()
+            .any(|token| token.is_punct(b'*'))
+    }) || tokens.get(clause).is_some_and(|token| token.is_punct(b'*'))
+    {
+        members.push((ImportedMember::Namespace, tokens[clause].start));
     }
 
     if let Some(open) = tokens[clause..]
@@ -438,10 +510,87 @@ fn collect_static_value_imported_bindings<'a>(
             .into_iter()
             .map(|(member, member_at)| ImportedBinding {
                 source: import_source,
+                source_at: source_token.start,
                 member,
                 member_at,
             }),
     );
+}
+
+fn collect_static_value_reexported_bindings<'a>(
+    source: &'a str,
+    tokens: &[Token],
+    export_at: usize,
+    imports: &mut Vec<ImportedBinding<'a>>,
+) {
+    let mut declaration = export_at + 1;
+    if tokens
+        .get(declaration)
+        .is_some_and(|token| token.is_ident(source, "type") || token.is_ident(source, "typeof"))
+    {
+        return;
+    }
+    if tokens
+        .get(declaration)
+        .is_some_and(|token| token.is_ident(source, "declare"))
+    {
+        declaration += 1;
+    }
+
+    if tokens
+        .get(declaration)
+        .is_some_and(|token| token.is_punct(b'{'))
+    {
+        let Some(close) = matching_close(tokens, declaration, b'{', b'}') else {
+            return;
+        };
+        let Some(source_token) = static_source_token_after_from(source, tokens, close) else {
+            return;
+        };
+        let Some(import_source) = import_source_text(source, source_token) else {
+            return;
+        };
+        let mut members = Vec::new();
+        collect_import_list_members(source, tokens, declaration, &mut members);
+        imports.extend(
+            members
+                .into_iter()
+                .map(|(member, member_at)| ImportedBinding {
+                    source: import_source,
+                    source_at: source_token.start,
+                    member,
+                    member_at,
+                }),
+        );
+        return;
+    }
+
+    if !tokens
+        .get(declaration)
+        .is_some_and(|token| token.is_punct(b'*'))
+    {
+        return;
+    }
+    let Some(source_token) = static_source_token_after_from(source, tokens, declaration) else {
+        return;
+    };
+    let Some(import_source) = import_source_text(source, source_token) else {
+        return;
+    };
+    let member = if tokens
+        .get(declaration + 1)
+        .is_some_and(|token| token.is_ident(source, "as"))
+    {
+        ImportedMember::Namespace
+    } else {
+        ImportedMember::AllNamed
+    };
+    imports.push(ImportedBinding {
+        source: import_source,
+        source_at: source_token.start,
+        member,
+        member_at: tokens[declaration].start,
+    });
 }
 
 fn static_import_source_token<'a>(
@@ -449,7 +598,15 @@ fn static_import_source_token<'a>(
     tokens: &'a [Token],
     import_at: usize,
 ) -> Option<&'a Token> {
-    for pair in tokens[import_at + 1..].windows(2) {
+    static_source_token_after_from(source, tokens, import_at + 1)
+}
+
+fn static_source_token_after_from<'a>(
+    source: &str,
+    tokens: &'a [Token],
+    start: usize,
+) -> Option<&'a Token> {
+    for pair in tokens[start..].windows(2) {
         let [first, second] = pair else {
             unreachable!();
         };
@@ -680,6 +837,7 @@ fn is_router_manifest_file(file: &str, manifest: &str) -> bool {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ExportFacts {
     named: FxHashSet<String>,
+    has_default: bool,
     deprecated_named: FxHashSet<String>,
     deprecated_default: bool,
 }
@@ -709,6 +867,7 @@ fn value_export_facts(source: &str) -> ExportFacts {
             .get(declaration)
             .is_some_and(|token| token.is_ident(source, "default"))
         {
+            facts.has_default = true;
             if declaration_deprecated {
                 facts.deprecated_default = true;
             }
@@ -727,11 +886,32 @@ fn value_export_facts(source: &str) -> ExportFacts {
             .is_some_and(|token| token.is_punct(b'{'))
         {
             let mut names = FxHashSet::default();
-            collect_export_list_names(source, &tokens, declaration, &mut names);
+            let has_default = collect_export_list_names(source, &tokens, declaration, &mut names);
+            facts.has_default |= has_default;
             if declaration_deprecated {
                 facts.deprecated_named.extend(names.iter().cloned());
+                if has_default {
+                    facts.deprecated_default = true;
+                }
             }
             facts.named.extend(names);
+            at += 1;
+            continue;
+        }
+        if tokens
+            .get(declaration)
+            .is_some_and(|token| token.is_punct(b'*'))
+            && tokens
+                .get(declaration + 1)
+                .is_some_and(|token| token.is_ident(source, "as"))
+            && let Some(alias) = tokens.get(declaration + 2)
+            && alias.kind == TokenKind::Ident
+        {
+            let name = alias.text(source).to_owned();
+            if declaration_deprecated {
+                facts.deprecated_named.insert(name.clone());
+            }
+            facts.named.insert(name);
             at += 1;
             continue;
         }
@@ -986,12 +1166,13 @@ fn collect_export_list_names(
     tokens: &[Token],
     open: usize,
     exports: &mut FxHashSet<String>,
-) {
+) -> bool {
     let mut at = open + 1;
     let mut type_only = false;
+    let mut has_default = false;
     while let Some(token) = tokens.get(at) {
         if token.is_punct(b'}') {
-            return;
+            return has_default;
         }
         if token.is_punct(b',') {
             type_only = false;
@@ -1016,8 +1197,12 @@ fn collect_export_list_names(
         {
             exported = alias.text(source);
         }
-        if !type_only && exported != "default" {
-            exports.insert(exported.to_owned());
+        if !type_only {
+            if exported == "default" {
+                has_default = true;
+            } else {
+                exports.insert(exported.to_owned());
+            }
         }
 
         while let Some(token) = tokens.get(at) {
@@ -1027,11 +1212,18 @@ fn collect_export_list_names(
             at += 1;
         }
     }
+    has_default
 }
 
 struct Cycle {
     source_at: usize,
     target_path: String,
+}
+
+struct UnusedModule {
+    unimported_module: bool,
+    named_exports: Vec<String>,
+    default_export: bool,
 }
 
 /// Relative import graph over the source batch available to lint rules.
@@ -1041,8 +1233,13 @@ pub(crate) struct ImportGraph {
     edges: Vec<Vec<ImportEdge>>,
     by_path: FxHashMap<String, usize>,
     named_exports: Vec<FxHashSet<String>>,
+    default_exports: Vec<bool>,
     deprecated_named_exports: Vec<FxHashSet<String>>,
     deprecated_default_exports: Vec<bool>,
+    used_named_exports: Vec<FxHashSet<String>>,
+    used_default_exports: Vec<bool>,
+    used_namespace_exports: Vec<bool>,
+    used_all_named_exports: Vec<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1053,17 +1250,19 @@ struct ImportEdge {
 
 impl ImportGraph {
     /// Build the graph from the files the caller made available.
-    pub(crate) fn new(files: &[SourceFile]) -> Self {
+    pub(crate) fn new(files: &[SourceFile], collect_usage: bool) -> Self {
         let mut candidates = files.iter().filter(|file| is_graph_module_path(&file.path));
         let Some(first) = candidates.next() else {
             return Self::default();
         };
-        let Some(second) = candidates.next() else {
-            return Self::default();
-        };
-        let mut files = Vec::with_capacity(2);
+        let mut files = Vec::new();
         files.push(first);
-        files.push(second);
+        if !collect_usage {
+            let Some(second) = candidates.next() else {
+                return Self::default();
+            };
+            files.push(second);
+        }
         files.extend(candidates);
 
         let mut paths = Vec::new();
@@ -1081,19 +1280,24 @@ impl ImportGraph {
         let mut graph = Self {
             edges: (0..paths.len()).map(|_| Vec::new()).collect(),
             named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
+            default_exports: vec![false; paths.len()],
             deprecated_named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
             deprecated_default_exports: vec![false; paths.len()],
+            used_named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
+            used_default_exports: vec![false; paths.len()],
+            used_namespace_exports: vec![false; paths.len()],
+            used_all_named_exports: vec![false; paths.len()],
             paths,
             by_path,
         };
         for file in files {
-            graph.add_edges(file);
+            graph.add_edges(file, collect_usage);
             graph.add_exports(file);
         }
         graph
     }
 
-    fn add_edges(&mut self, file: &SourceFile) {
+    fn add_edges(&mut self, file: &SourceFile, collect_usage: bool) {
         let importer = normalize_graph_path(&file.path);
         let Some(from) = self.by_path.get(&importer).copied() else {
             return;
@@ -1113,6 +1317,47 @@ impl ImportGraph {
             })
             .collect::<Vec<_>>();
         self.edges[from].extend(imports);
+        let reexports = static_value_reexported_bindings(&file.source)
+            .into_iter()
+            .filter_map(|import| {
+                let (source, suffix) = split_import_suffix(import.source);
+                if suffix.is_empty() {
+                    self.resolve(source, &importer).map(|to| ImportEdge {
+                        to,
+                        source_at: import.source_at,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        self.edges[from].extend(reexports);
+        if collect_usage {
+            self.add_import_usage(file, &importer);
+        }
+    }
+
+    fn add_import_usage(&mut self, file: &SourceFile, importer: &str) {
+        for import in static_value_imported_bindings(&file.source)
+            .into_iter()
+            .chain(static_value_reexported_bindings(&file.source))
+        {
+            let (specifier, suffix) = split_import_suffix(import.source);
+            if !suffix.is_empty() {
+                continue;
+            }
+            let Some(target) = self.resolve(specifier, importer) else {
+                continue;
+            };
+            match import.member {
+                ImportedMember::Default => self.used_default_exports[target] = true,
+                ImportedMember::Named(name) => {
+                    self.used_named_exports[target].insert(name.to_owned());
+                }
+                ImportedMember::Namespace => self.used_namespace_exports[target] = true,
+                ImportedMember::AllNamed => self.used_all_named_exports[target] = true,
+            }
+        }
     }
 
     fn add_exports(&mut self, file: &SourceFile) {
@@ -1122,6 +1367,7 @@ impl ImportGraph {
         };
         let facts = value_export_facts(&file.source);
         self.named_exports[module].extend(facts.named);
+        self.default_exports[module] |= facts.has_default;
         self.deprecated_named_exports[module].extend(facts.deprecated_named);
         self.deprecated_default_exports[module] |= facts.deprecated_default;
     }
@@ -1236,6 +1482,96 @@ impl ImportGraph {
             .unwrap_or_default()
             .then(|| self.paths[target].as_str())
     }
+
+    fn unused_from(&self, file: &str) -> Option<UnusedModule> {
+        if self.paths.is_empty() {
+            return None;
+        }
+        let module = *self.by_path.get(&normalize_graph_path(file))?;
+        let unimported_module =
+            !is_likely_entry_module(&self.paths[module]) && !self.has_importer(module);
+        if unimported_module {
+            return Some(UnusedModule {
+                unimported_module,
+                named_exports: Vec::new(),
+                default_export: false,
+            });
+        }
+
+        let namespace_used = self
+            .used_namespace_exports
+            .get(module)
+            .copied()
+            .unwrap_or_default();
+        let all_named_used = self
+            .used_all_named_exports
+            .get(module)
+            .copied()
+            .unwrap_or_default();
+        let mut named_exports = if namespace_used || all_named_used {
+            Vec::new()
+        } else {
+            self.named_exports[module]
+                .iter()
+                .filter(|name| !self.used_named_exports[module].contains(*name))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        named_exports.sort();
+        let default_export = self
+            .default_exports
+            .get(module)
+            .copied()
+            .unwrap_or_default()
+            && !namespace_used
+            && !self
+                .used_default_exports
+                .get(module)
+                .copied()
+                .unwrap_or_default();
+
+        (default_export || !named_exports.is_empty()).then_some(UnusedModule {
+            unimported_module,
+            named_exports,
+            default_export,
+        })
+    }
+
+    fn has_importer(&self, module: usize) -> bool {
+        self.edges
+            .iter()
+            .flat_map(|edges| edges.iter())
+            .any(|edge| edge.to == module)
+    }
+}
+
+fn first_export_at(source: &str) -> Option<usize> {
+    let tokens = tokenize(source);
+    tokens
+        .iter()
+        .enumerate()
+        .find(|(at, token)| token.is_ident(source, "export") && starts_statement(&tokens, *at))
+        .map(|(_, token)| token.start)
+}
+
+fn unused_export_message(unused: &UnusedModule) -> String {
+    let mut names = Vec::new();
+    if unused.default_export {
+        names.push(String::from("`default`"));
+    }
+    names.extend(unused.named_exports.iter().map(|name| format!("`{name}`")));
+    let plural = if names.len() == 1 { "" } else { "s" };
+    format!("unused export{plural}: {}", names.join(", "))
+}
+
+fn is_likely_entry_module(path: &str) -> bool {
+    path == "app.js"
+        || path.ends_with("/app.js")
+        || path == "uf.config.js"
+        || path.ends_with("/uf.config.js")
+        || path.ends_with("/$page.js")
+        || path.ends_with("/$layout.js")
+        || path.ends_with("/$middleware.js")
 }
 
 fn is_graph_module_path(path: &str) -> bool {
