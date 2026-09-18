@@ -58,6 +58,37 @@ for name in uf ufr ufx; do
   cp "$bin_root/$name" "$stage_dir/bin/$name"
 done
 
+case "$target" in
+  *-unknown-linux-gnu)
+    if command -v readelf >/dev/null 2>&1; then
+      symbols="${stage_dir}/.glibc-symbols"
+      : >"$symbols"
+      for name in uf ufr ufx; do
+        readelf --dyn-syms --wide "$stage_dir/bin/$name" 2>/dev/null |
+          sed -n 's/.*GLIBC_\([0-9][0-9]*[.][0-9][0-9]*\).*/\1/p' >>"$symbols"
+      done
+      glibc_floor="$(awk -F. '
+        /^[0-9]+[.][0-9]+$/ {
+          major = $1 + 0
+          minor = $2 + 0
+          if (!seen || major > best_major || (major == best_major && minor > best_minor)) {
+            seen = 1
+            best_major = major
+            best_minor = minor
+          }
+        }
+        END {
+          if (seen) {
+            printf "%d.%d\n", best_major, best_minor
+          }
+        }
+      ' "$symbols")"
+      rm -f "$symbols"
+      [ -z "$glibc_floor" ] || printf '%s\n' "$glibc_floor" >"$stage_dir/GLIBC"
+    fi
+    ;;
+esac
+
 cp README.md LICENSE "$stage_dir/"
 printf '%s\n' "$version" > "$stage_dir/VERSION"
 printf '%s\n' "$target" > "$stage_dir/TARGET"
