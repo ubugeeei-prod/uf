@@ -276,6 +276,10 @@ fn collect_function_properties_from_name_inner<'s, 'a>(
         return;
     };
     let written = identifier.name.as_str();
+    if written == "OmitKeyof" {
+        collect_omitted_function_properties(arguments, merges, out, seen_aliases);
+        return;
+    }
     if let Some(interfaces) = merges.interfaces.get(written) {
         for interface in interfaces {
             collect_function_properties(interface, merges, out);
@@ -304,22 +308,7 @@ fn collect_function_properties_from_name_inner<'s, 'a>(
             }
         }
         "Omit" => {
-            let (Some(target), Some(omitted)) = (arguments.params.first(), arguments.params.get(1))
-            else {
-                return;
-            };
-            let Some(omitted) = literal_keys(omitted) else {
-                return;
-            };
-            let mut properties = FxHashSet::default();
-            collect_function_properties_from_type_inner(
-                target,
-                merges,
-                &mut properties,
-                seen_aliases,
-            );
-            properties.retain(|key| !omitted.contains(key));
-            out.extend(properties);
+            collect_omitted_function_properties(Some(arguments), merges, out, seen_aliases);
         }
         "Pick" => {
             let (Some(target), Some(picked)) = (arguments.params.first(), arguments.params.get(1))
@@ -341,6 +330,27 @@ fn collect_function_properties_from_name_inner<'s, 'a>(
         }
         _ => {}
     }
+}
+
+fn collect_omitted_function_properties<'s, 'a>(
+    arguments: Option<&TSTypeParameterInstantiation<'a>>,
+    merges: &Merges<'s, 'a>,
+    out: &mut FxHashSet<CompactString>,
+    seen_aliases: &mut FxHashSet<&'a str>,
+) {
+    let (Some(target), Some(omitted)) = (
+        arguments.and_then(|arguments| arguments.params.first()),
+        arguments.and_then(|arguments| arguments.params.get(1)),
+    ) else {
+        return;
+    };
+    let Some(omitted) = literal_keys(omitted) else {
+        return;
+    };
+    let mut properties = FxHashSet::default();
+    collect_function_properties_from_type_inner(target, merges, &mut properties, seen_aliases);
+    properties.retain(|key| !omitted.contains(key));
+    out.extend(properties);
 }
 
 fn collect_function_properties_from_type_inner<'s, 'a>(

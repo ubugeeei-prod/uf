@@ -10,6 +10,7 @@ export interface MethodProperty {
     readonly bound: (this: MethodProperty, input: string) => Promise<string>;
 }
 export type MethodPropertyAlias = MethodProperty;
+export type OmitKeyof<TObject, TKey extends keyof any> = Omit<TObject, TKey>;
 export type ReplaceReturnType<T, R> = T extends (input: infer I) => any ? (input: I) => R : never;
 export interface ReplacedMethodProperty {
     readonly transform: ReplaceReturnType<(input: string) => string, Promise<number>>;
@@ -45,6 +46,9 @@ export declare class Scheduler implements MethodProperty {
     bound(this: MethodProperty, input: string): Promise<string>;
 }
 export declare class OmittedScheduler implements Omit<MethodProperty, "bound"> {
+    execute(input: string): Promise<string>;
+}
+export declare class KeyofOmittedScheduler implements OmitKeyof<MethodProperty, "bound"> {
     execute(input: string): Promise<string>;
 }
 export declare class PickedScheduler implements Pick<MethodProperty, "execute"> {
