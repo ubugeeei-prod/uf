@@ -176,7 +176,11 @@ fn no_noninteractive_tabindex_accepts_the_documented_pass() {
 fn click_events_have_key_events_reports_the_documented_failure() {
     reports(
         "a11y/click-events-have-key-events",
-        &[r#"<div role="button" tabIndex={0} onClick={open}>Open</div>"#],
+        &[
+            r#"<div role="button" tabIndex={0} onClick={open}>Open</div>"#,
+            r#"<div role="presentation" tabIndex={0} onClick={open}>Open</div>"#,
+            r#"<div role="button" aria-hidden="true" tabIndex={0} onClick={open}>Open</div>"#,
+        ],
     );
 }
 

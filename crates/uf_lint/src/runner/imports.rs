@@ -589,6 +589,7 @@ fn is_node_builtin_package(package: &str) -> bool {
             | "repl"
             | "stream"
             | "string_decoder"
+            | "sys"
             | "timers"
             | "tls"
             | "trace_events"
