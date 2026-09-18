@@ -151,6 +151,9 @@ fn static_interactions_leaves_alone_anything_that_considered_the_keyboard() {
         "    <div role=\"button\" tabIndex={0} onClick={open}>Open</div>",
         "    <div onClick={open} onKeyDown={open}>Open</div>",
         "    <div onClick={open} onKeyUp={open}>Open</div>",
+        // A pointer-only layer hidden from assistive technology has no
+        // keyboard equivalent on the layer itself.
+        "    <div aria-hidden=\"true\" onClick={open}>Open</div>",
         // A spread may be carrying either one in.
         "    <div onClick={open} {...rest}>Open</div>",
         // No handler at all.

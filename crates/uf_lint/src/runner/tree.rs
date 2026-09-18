@@ -696,6 +696,7 @@ impl<'ast> Tree<'ast> {
     fn check_static_interactions(&mut self, name: &str, opening: &'ast jsx::Opening<Loc, Loc>) {
         if is_interactive(self.scope, name, opening)
             || has_spread(opening)
+            || hidden_from_accessibility(self, opening)
             || handler(self.scope, opening, "onClick").is_none()
             || attribute(opening, "role").is_some()
             || has_key_handler(self.scope, opening)
@@ -1076,6 +1077,17 @@ fn is_interactive(scope: value::Scope, name: &str, opening: &jsx::Opening<Loc, L
         },
         _ => true,
     }
+}
+
+/// Whether this element is explicitly absent from the accessibility tree.
+fn hidden_from_accessibility(tree: &Tree<'_>, opening: &jsx::Opening<Loc, Loc>) -> bool {
+    if tree.scope.aria_hidden(opening) == Some(true) {
+        return true;
+    }
+    matches!(
+        aria::written_role(tree.scope, opening),
+        Some((_, aria::Written::Role(role))) if matches!(role.name, "none" | "presentation")
+    )
 }
 
 /// The level of `<h1>` … `<h6>`.
