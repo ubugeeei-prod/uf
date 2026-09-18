@@ -77,7 +77,10 @@ pub(crate) fn run_import_no_extraneous_dependencies(
         let Some(package) = imported_package_name(import.source) else {
             continue;
         };
-        if manifest.name.as_deref() == Some(package) || manifest.declared.contains(package) {
+        if manifest.name.as_deref() == Some(package)
+            || manifest.declared.contains(package)
+            || is_generated_router_dependency(&scan.file.path, package, config)
+        {
             continue;
         }
         push_import(
@@ -320,6 +323,30 @@ fn imported_package_name(source: &str) -> Option<&str> {
     };
 
     (!is_node_builtin_package(package)).then_some(package)
+}
+
+fn is_generated_router_dependency(file: &str, package: &str, config: &UniflowedConfig) -> bool {
+    package == "@uniflowed/router"
+        && is_router_manifest_file(file, config.app.router.manifest.as_str())
+}
+
+fn is_router_manifest_file(file: &str, manifest: &str) -> bool {
+    if file == manifest {
+        return true;
+    }
+
+    let (directory, name) = manifest
+        .rsplit_once('/')
+        .map_or(("", manifest), |(directory, name)| (directory, name));
+    let (stem, extension) = name.rsplit_once('.').unwrap_or((name, "js"));
+    ["native", "ios", "android"].iter().any(|platform| {
+        let native = if directory.is_empty() {
+            format!("{stem}.{platform}.{extension}")
+        } else {
+            format!("{directory}/{stem}.{platform}.{extension}")
+        };
+        file == native
+    })
 }
 
 fn is_node_builtin_package(package: &str) -> bool {

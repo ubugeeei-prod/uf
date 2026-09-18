@@ -161,6 +161,40 @@ fn no_extraneous_dependencies_accepts_declared_dependencies_and_self_imports() {
 }
 
 #[test]
+fn no_extraneous_dependencies_accepts_generated_router_manifests() {
+    let diagnostics = lint_many(
+        "import/no-extraneous-dependencies",
+        &[
+            ("package.json", r#"{ "name": "app" }"#),
+            (
+                "router.js",
+                "// @flow\nimport { buildRoute } from \"@uniflowed/router/routing\";\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport { buildRoute } from \"@uniflowed/router/routing\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("app/page.js"));
+
+    let mut config = only("import/no-extraneous-dependencies");
+    config.app.router.manifest = CompactString::from("src/routes.js");
+    let files = [
+        at("package.json", r#"{ "name": "app" }"#),
+        at(
+            "src/routes.ios.js",
+            "// @flow\nimport type { RouteTable } from \"@uniflowed/router/routing\";\n",
+        ),
+    ];
+    let diagnostics = lint_sources(&files, &config).expect("lint").diagnostics;
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn no_extraneous_dependencies_uses_the_nearest_package_manifest() {
     let diagnostics = lint_many(
         "import/no-extraneous-dependencies",
