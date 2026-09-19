@@ -132,7 +132,7 @@ pub(crate) fn explain(
         }
         Some(requested) => bail!(
             "`uf explain {command} --target {requested}`: only `uf dev` and `uf build` are described per \
-             application target, because it is the one command whose providers change with it"
+             application target, because these commands use different providers for each target"
         ),
     };
     let Some(stages) = stages else {

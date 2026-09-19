@@ -319,7 +319,7 @@ uf's Vite plugin resolves `react-native` to that dependency, using the app's
 version. Keep DOM wrappers such as `<html>` in `$layout.web.js`, and select
 `app.rsc: false` for a React Native Web application.
 
-The native-safe front doors are `cell`, `core`, `effect`, `fetch`, `form`,
+The native-safe front doors are `brand`, `cell`, `core`, `effect`, `fetch`, `form`,
 `graphql`, `hooks`, `i18n`, `immer`, `query`, `react`, `react-native`, `relay`,
 `state`, `temporal` and `validator` under `@uniflowed/`, plus
 `@uniflowed/router/native` and `@uniflowed/router/routing`. Platform-specific
@@ -374,10 +374,10 @@ server spells binding its own way: Expo CLI takes `--lan`, `--localhost` or
 `uf explain dev --target native` names the server, its version and the Metro
 config without starting anything.
 
-In an Expo project a hot update carries React Refresh registrations for the
-edited components, so Fast Refresh keeps their state. In a React Native CLI
-0.87.1 project the update arrives without them, for the upstream reason under
-[Metro](#metro), with or without uf.
+Both the Expo and React Native CLI fixtures deliver React Refresh registrations
+for edited components. uf restores the development hot flag when React Native
+CLI omits it; see [Metro](#metro). Mounted state preservation still needs a
+simulator or device check.
 
 Installing the app on a phone stays where it is: Expo Go, a development build
 from `expo run:ios` or EAS Build, or `react-native run-ios`.
