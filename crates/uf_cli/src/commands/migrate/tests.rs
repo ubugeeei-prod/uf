@@ -145,6 +145,34 @@ fn adoption_changes_only_jest_import_sources() {
 }
 
 #[test]
+fn adoption_rejects_malformed_manifest_fields_without_writing() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(temp.path()).unwrap();
+    for field in ["scripts", "dependencies", "devDependencies"] {
+        for value in [
+            json!(null),
+            json!(false),
+            json!(42),
+            json!("invalid"),
+            json!([]),
+        ] {
+            let before = serde_json::to_string(&json!({ "name": "app", field: value })).unwrap();
+            fs::write(root.join("package.json"), &before).unwrap();
+            let error = adopt::plan(root)
+                .err()
+                .expect("invalid field must be rejected");
+            assert!(error.to_string().contains(&format!("package.json#{field}")));
+            assert_eq!(
+                fs::read_to_string(root.join("package.json")).unwrap(),
+                before
+            );
+            assert!(!root.join("uf.config.js").exists());
+            assert!(!root.join(".uf").exists());
+        }
+    }
+}
+
+#[test]
 fn stale_plan_writes_nothing_and_symlinks_are_not_followed() {
     let temp = tempfile::tempdir().unwrap();
     let root = Utf8Path::from_path(temp.path()).unwrap();

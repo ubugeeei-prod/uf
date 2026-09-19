@@ -9,6 +9,12 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
     let manifest_text = fs::read_to_string(root.join("package.json"))?;
     let mut manifest: Value = serde_json::from_str(&manifest_text)?;
     ensure!(manifest.is_object(), "package.json must contain an object");
+    for field in ["scripts", "dependencies", "devDependencies"] {
+        ensure!(
+            manifest.get(field).is_none_or(Value::is_object),
+            "package.json#{field} must contain an object"
+        );
+    }
     let before_config = fs::read_to_string(root.join("uf.config.js")).ok();
     let mut config = before_config
         .clone()
