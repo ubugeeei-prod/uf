@@ -54,6 +54,14 @@ const COVERAGE: &[(&str, &str)] = &[
         "add",
         "dependencies.rs: runs npm; managers.rs: runs every other package manager",
     ),
+    (
+        "migrate",
+        "tools/ci/migration-smoke.sh: three packed consumer fixtures",
+    ),
+    (
+        "codemod",
+        "commands/migrate/tests.rs: the previous release fixture and idempotence",
+    ),
     ("build", "vite.rs and cli.rs: needs @uniflowed/vite"),
     ("check", "here, and typecheck.rs for the diagnostics"),
     ("completion", "here, and cli.rs for the script's shape"),
