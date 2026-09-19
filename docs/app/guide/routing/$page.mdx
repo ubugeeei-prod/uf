@@ -859,6 +859,19 @@ nothing on hover, and a click on it still reads what an earlier navigation kept.
 is shown that the server did not just answer until a project says how old an
 answer it can show.
 
+### Link progress and cache inspection
+
+`useLinkStatus()` reads the containing `Link`'s `{ pending }` state. Render a
+small client component inside the link to show a spinner or change its label.
+Only the link that started the navigation becomes pending; the anchor also gets
+`aria-busy="true"` and `data-pending` until the navigation settles.
+
+During `uf dev`, call `window.__UF_NAVIGATION_CACHE__()` in the browser console.
+It returns the configured stale time and the Flight and module caches, with each
+entry's key, `cachedAt`, `staleAt` and `fresh` status. It never exposes payloads
+or loader values, and inspecting an expired entry does not remove it. The console
+function is absent from production builds.
+
 ### View transitions
 
 Every client navigation goes through `document.startViewTransition` where the

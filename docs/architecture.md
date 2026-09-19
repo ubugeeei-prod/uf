@@ -1569,3 +1569,21 @@ and closer to the merge gate.
 
 Benchmark coverage should exist for every hot path: config loading, router
 discovery, parser diagnostics, lint scanning, formatting, and test discovery.
+
+## Native build ownership
+
+`uf build --target ios|android` prepares typed routes and native route tables,
+checks the composed Metro configuration, then invokes the project's installed
+Expo CLI (`export:embed`) or React Native CLI (`bundle`) with the current uf
+binary. Metro owns module resolution, density assets and the native bundle;
+uf records the bundle, source map and every asset in its build manifest.
+`--target native` builds iOS and Android, and no native target enters Vite.
+Expo/EAS and the platform toolchains own prebuild, config plugins, native
+compilation, signing, submission and updates. The same shared Flow page can
+render on the web through the application's `react-native-web` dependency.
+
+The `Native bundles` CI job installs both provider fixtures outside the workspace
+from packed uf packages, builds iOS and Android with images and a font, checks
+Flow-component Refresh registration in a development bundle and prerenders the
+same page with React Native Web. It does not claim to boot a simulator or sign
+a store binary.

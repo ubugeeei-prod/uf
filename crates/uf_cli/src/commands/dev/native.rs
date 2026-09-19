@@ -487,13 +487,13 @@ struct LoadedMetroConfig {
 
 /// What `uf dev` keeps from a config that composes uf's transformer.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct ComposedMetro {
+pub(crate) struct ComposedMetro {
     config_file: Option<String>,
     upstream: Option<String>,
     port: Option<u16>,
 }
 
-fn check_metro(server: &NativeServer, root: &Utf8Path) -> Result<ComposedMetro> {
+pub(crate) fn check_metro(server: &NativeServer, root: &Utf8Path) -> Result<ComposedMetro> {
     match probe_metro(root)? {
         MetroProbe::NoMetro { message } => bail!(
             "`{}` needs Metro, and Metro's config loader does not resolve from {root} \

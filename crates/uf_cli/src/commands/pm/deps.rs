@@ -1647,6 +1647,16 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         renderer.blank(out);
         render_summary(renderer, out, &report);
     });
+    if matches!(
+        request.operation,
+        Operation::Add { .. } | Operation::Update | Operation::Install
+    ) {
+        for target in &targets.each {
+            for warning in uf_pm::native::compatibility_warnings(&target.dir) {
+                ui.render_err(|renderer, out| renderer.status(out, Status::Warn, &warning));
+            }
+        }
+    }
     Ok(())
 }
 

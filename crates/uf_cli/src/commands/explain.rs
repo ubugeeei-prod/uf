@@ -109,20 +109,30 @@ pub(crate) fn explain(
             &resolved,
             default_application_target(&resolved.config),
         )),
+        None if command == "build"
+            && default_application_target(&resolved.config) != RouteTarget::Web =>
+        {
+            Some(native_build_stages(
+                &resolved,
+                default_application_target(&resolved.config),
+            ))
+        }
         None => stages_for(command, &resolved),
-        // Only `uf dev` is described per target, because it is the one command
-        // whose providers change with it: a native target's server is the
-        // project's own React Native CLI rather than the builder. `uf build
-        // --target` still hands every target to the builder (#983), and a plan
-        // that varied by target there would describe a build that does not
-        // happen.
         Some(requested) if command == "dev" => {
             let target = application_target(&resolved.config, Some(requested), false, "uf dev")?;
             Some(dev_stages_for(&resolved, target))
         }
+        Some(requested) if command == "build" => {
+            let target = application_target(&resolved.config, Some(requested), false, "uf build")?;
+            Some(if target == RouteTarget::Web {
+                build_stages(&resolved)
+            } else {
+                native_build_stages(&resolved, target)
+            })
+        }
         Some(requested) => bail!(
-            "`uf explain {command} --target {requested}`: only `uf dev` is described per \
-             application target, because it is the one command whose providers change with it"
+            "`uf explain {command} --target {requested}`: only `uf dev` and `uf build` are described per \
+             application target, because these commands use different providers for each target"
         ),
     };
     let Some(stages) = stages else {
@@ -1220,6 +1230,21 @@ fn builder_provider(resolved: &ResolvedConfig) -> String {
             resolved.config.builder_tool().spec.module()
         ),
     }
+}
+
+fn native_build_stages(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
+    let provider = NativeServer::detect(&resolved.root).map_or_else(
+        || "install expo or @react-native-community/cli".to_owned(),
+        |server| server.label(),
+    );
+    vec![
+        Stage { name: "configuration", provider: "uf".into(), detail: "uf.config.js and the project's composed metro.config.js".into() },
+        Stage { name: "routes", provider: "uf".into(), detail: "typed routes and router.ios.js, router.android.js, router.native.js".into() },
+        Stage { name: "transform", provider: "uf transform".into(), detail: "Flow and React Compiler, then the project's Metro Babel transformer".into() },
+        Stage { name: "bundle", provider, detail: format!("{}: expo export:embed or react-native bundle; bundle, source map and density assets in dist/native", target.as_str()) },
+        Stage { name: "manifest", provider: "uf".into(), detail: "uf-build-manifest.json names every emitted bundle and asset".into() },
+        Stage { name: "native application", provider: "Expo/EAS, Xcode or Gradle".into(), detail: "prebuild, config plugins, native compilation, signing, submission and updates remain with the project's platform tools".into() },
+    ]
 }
 
 fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {

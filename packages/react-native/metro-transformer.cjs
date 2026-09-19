@@ -85,7 +85,13 @@ async function transform(args) {
   // Metro's `functionMapBabelPlugin` and `importLocationsPlugin`, and
   // forwarding `{ src, filename, options }` alone dropped both for every Flow
   // module in the bundle — function names in stack traces among them.
-  return loadUpstream(projectRoot).transformer.transform({ ...args, src: next });
+  return loadUpstream(projectRoot).transformer.transform({
+    ...args,
+    src: next,
+    // RN's Babel transformer still gates React Refresh on `hot`, although
+    // recent Metro versions omit it. Preserve an explicit caller decision.
+    options: { ...options, hot: options?.hot ?? options?.dev === true },
+  });
 }
 
 /**

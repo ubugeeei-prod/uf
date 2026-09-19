@@ -48,6 +48,55 @@ const metroTransformPipeline = Object.freeze([
 /** The Babel transformer Metro runs, as the absolute path Metro wants. */
 const metroTransformerPath = path.join(__dirname, "metro-transformer.cjs");
 
+const nativePackages = Object.freeze([
+  "brand",
+  "cell",
+  "core",
+  "effect",
+  "fetch",
+  "form",
+  "graphql",
+  "hooks",
+  "i18n",
+  "immer",
+  "query",
+  "react",
+  "react-native",
+  "relay",
+  "state",
+  "temporal",
+  "validator",
+]);
+const domPackages = new Set([
+  "ui",
+  "web",
+  "browser",
+  "react-testing",
+  "story",
+  "vrt",
+  "pwa",
+  "motion",
+]);
+
+function nativeResolution(previous) {
+  return (context, moduleName, platform) => {
+    const name = moduleName.startsWith("@uniflowed/") ? moduleName.split("/")[1] : null;
+    if (
+      domPackages.has(name) ||
+      (name === "router" &&
+        moduleName !== "@uniflowed/router/native" &&
+        moduleName !== "@uniflowed/router/routing")
+    ) {
+      throw new Error(
+        `${moduleName} needs a browser DOM and cannot be bundled for ${platform}. ` +
+          `Native packages: ${nativePackages.map((item) => `@uniflowed/${item}`).join(", ")}, ` +
+          "@uniflowed/router/native and @uniflowed/router/routing. Keep DOM components in $page.web.js.",
+      );
+    }
+    return (previous ?? context.resolveRequest)(context, moduleName, platform);
+  };
+}
+
 /**
  * Add uf's source extensions, resolver fields and transformer to a Metro config.
  *
@@ -98,6 +147,7 @@ function withUniflowedMetro(config = {}) {
       ...resolver,
       sourceExts: mergeUnique(resolver.sourceExts, metroSourceExts),
       resolverMainFields: mergeUnique(resolver.resolverMainFields, metroResolverMainFields),
+      resolveRequest: nativeResolution(resolver.resolveRequest),
     },
     transformer: {
       ...transformer,
@@ -150,5 +200,6 @@ module.exports = {
   metroSourceExts,
   metroTransformPipeline,
   metroTransformerPath,
+  nativePackages,
   withUniflowedMetro,
 };

@@ -31,6 +31,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  useTransition,
 } from "react";
 // The one thing in this module that only a browser can do, and the reason it
 // is imported here rather than from `../client.js`: a view transition needs
@@ -1719,6 +1720,13 @@ export hook useSeo(seo: Metadata): React.Node {
 /** When a `Link` loads the route it points at. */
 export type LinkPrefetch = "off" | "intent" | "render";
 
+const LinkStatusContext: React.Context<boolean> = createContext(false);
+
+/** Whether the containing Link is waiting for the navigation it started. */
+export hook useLinkStatus(): {| readonly pending: boolean |} {
+  return { pending: useContext(LinkStatusContext) };
+}
+
 /**
  * A client-side navigation.
  *
@@ -1755,6 +1763,7 @@ export component Link(
   ...rest: { readonly [string]: mixed }
 ) {
   const { router, navigation } = useRouterState();
+  const [linkPending, startLinkTransition] = useTransition();
   const prefetched = useRef(false);
   const drives = navigation === "client";
 
@@ -1783,15 +1792,21 @@ export component Link(
       event.ctrlKey ||
       event.shiftKey ||
       event.altKey ||
+      (rest.target != null && rest.target !== "_self") ||
+      rest.download != null ||
       isExternal(to)
     ) {
       return;
     }
     event.preventDefault();
-    router.push(to, { replace, transition }).catch((error) => {
-      // A failed navigation falls back to the browser doing it.
-      console.error(error);
-      window.location.assign(addressOf(to));
+    startLinkTransition(async () => {
+      try {
+        await router.push(to, { replace, transition });
+      } catch (error) {
+        // A failed navigation falls back to the browser doing it.
+        console.error(error);
+        window.location.assign(addressOf(to));
+      }
     });
   };
 
@@ -1807,11 +1822,13 @@ export component Link(
       // works before hydration and for a right click goes where this one does.
       href={addressOf(to)}
       className={className}
+      aria-busy={linkPending || undefined}
+      data-pending={linkPending ? "" : undefined}
       onClick={drives ? handleClick : onClick}
       onMouseEnter={drives && prefetch === "intent" ? doPrefetch : undefined}
       onFocus={drives && prefetch === "intent" ? doPrefetch : undefined}
     >
-      {children}
+      <LinkStatusContext value={linkPending}>{children}</LinkStatusContext>
     </a>
   );
 }
