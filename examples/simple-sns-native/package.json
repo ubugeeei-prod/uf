@@ -29,7 +29,10 @@
     "@uniflowed/stylex": "file:../../packages/stylex",
     "@uniflowed/test": "file:../../packages/test",
     "@uniflowed/react-native-testing": "file:../../packages/react-native-testing",
-    "@uniflowed/host": "file:../../packages/host"
+    "@uniflowed/host": "file:../../packages/host",
+    "@uniflowed/hooks": "file:../../packages/hooks",
+    "@uniflowed/server": "file:../../packages/server",
+    "@uniflowed/react": "file:../../packages/react"
   },
   "main": "index.js",
   "description": "Commonplace on Expo with Flow, StyleX and native file routing."

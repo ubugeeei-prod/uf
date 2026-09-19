@@ -2,6 +2,10 @@
 set -eu
 repo=$(pwd)
 binary=${UF_BINARY:-"$repo/target/release/uf"}
+export UF_BINARY="$binary"
+# Exercise the checkout instructions as well as the packed consumer below.
+(cd examples/simple-sns-native && npm ci --ignore-scripts --no-audit --no-fund)
+"$binary" --cwd examples/simple-sns-native build --target ios
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/uf-native-example.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 mkdir -p "$scratch/packs"
@@ -12,7 +16,7 @@ const path = require('node:path');
 const root = process.argv[2];
 fs.cpSync('examples/simple-sns-native', path.join(root, 'app'), {
   recursive: true,
-  filter: source => !['node_modules', '.uf', '.expo', 'dist', 'router.js', 'router.native.js'].includes(path.basename(source)),
+  filter: source => !['node_modules', '.uf', '.expo', 'dist', 'router.js', 'router.native.js', 'router.ios.js', 'router.android.js'].includes(path.basename(source)),
 });
 const file = path.join(root, 'app/package.json');
 const manifest = JSON.parse(fs.readFileSync(file));
