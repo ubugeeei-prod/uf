@@ -212,9 +212,13 @@ export async function checkBrowser(origin, label, output) {
     );
     const shot = await page("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(path.join(output, `${label}-mobile.png`), Buffer.from(shot.data, "base64"));
-    await evaluate(
-      "Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Sign out').click()",
-    );
+    await page("Emulation.setDeviceMetricsOverride", {
+      width: 1440,
+      height: 1000,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await click('button[aria-label="Sign out"]');
     await waitFor(
       "document.querySelector('a[href=\"/signup\"]') != null && document.querySelector('#compose') == null",
     );
