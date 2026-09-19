@@ -1,6 +1,6 @@
 ---
 title: "Caching · uf"
-description: "A route cache and a fetch cache, opt-in, in memory by default, durable when you say so."
+description: "Route, function, and fetch caches with explicit lifetimes and pluggable storage."
 ---
 
 <p className="eyebrow">Build an app</p>
@@ -8,8 +8,7 @@ description: "A route cache and a fetch cache, opt-in, in memory by default, dur
 # Caching
 
 <div className="lede">
-A route cache and a fetch cache, both off by default and both opt-in per route
-and per request. Time-based revalidation with an optional stale-while-revalidate
+Route, function, and fetch caches, off by default and opt-in at each call site. Time-based revalidation with an optional stale-while-revalidate
 window, and on-demand invalidation by tag or by path. In the memory of one
 process unless you name somewhere else to keep it. A prerendered page that states
 a lifetime is served from the build and regenerated through the same cache, which
@@ -17,12 +16,11 @@ is incremental static regeneration. What uf does not have is named here too,
 because a cache you cannot describe is a cache you cannot trust.
 </div>
 
-**What you will be able to do:** turn on the route and fetch caches per route
-and per request, set revalidation windows, invalidate by tag or by path, and
+**What you will be able to do:** cache rendered routes, public function results and fetch responses, set revalidation windows, invalidate by tag or by path, and
 choose where the cache lives.
 
 **What you need first:** routes that render on a server — [Rendering
-modes](/guide/rendering) — and [Routing](/guide/routing) for loaders.
+modes](/guide/rendering). Fetch directly inside Server Components; loaders are optional.
 
 ## Turning it on
 
@@ -36,15 +34,14 @@ export default {
       cache: {
         route: true,
         fetch: true,
+        data: true,
       },
     },
   },
 };
 ```
 
-Both default to `false`. The other two keys — `data` and `actions` — are **not
-implemented**, and setting either to `true` fails the config load by name rather
-than reaching a build manifest and changing nothing.
+All three default to `false`. `actions` remains unimplemented and is refused by name.
 
 Turning `route` on does not start caching anything. It makes a *stated* lifetime
 take effect, and a page states one from inside its own render:
@@ -64,6 +61,56 @@ export default async function Posts() {
 A page that says nothing is rendered for every request, exactly as it is with
 the cache off. There is no default lifetime and there will not be one: an entry
 with no stated end is an answer served until somebody notices.
+
+## Cache one function across routes
+
+Use `cacheFunction` for an expensive, public upstream read shared by several
+Server Components. Flow remains the BFF; the upstream service owns its database
+and migrations.
+
+```js
+import { cacheFunction } from "@uniflowed/server/cache";
+
+export const product = cacheFunction(
+  "catalog.product.v1",
+  async (id: string) => {
+    const response = await fetch(`https://catalog.example/products/${encodeURIComponent(id)}`);
+    if (!response.ok) throw new Error("Catalog request failed");
+    return response.json();
+  },
+  { lifetime: { revalidate: 60 }, tags: ["catalog"] },
+);
+
+export default async function ProductPage({ params }) {
+  const item = await product(params.id);
+  return <h1>{item.name}</h1>;
+}
+```
+
+Choose an application-unique name and change it when the function's contract
+changes. Arguments are part of the key: plain data objects have sorted keys,
+array order is preserved, and unsupported values, accessors, cycles and oversized
+arguments are refused. Inputs must describe the whole public result; do not capture
+request-specific values in the callback. Cached results should be treated as immutable.
+
+The wrapper uses the request's configured store, including custom providers and
+build-scoped durable keys. An explicit `store` option selects a different store
+or allows use outside an HTTP request. When `data` is disabled, it executes the
+function without storing its result. `cacheLife`, `cacheTag`, and `noStore` inside
+the callback apply to its own cache entry.
+
+`revalidateTag("catalog")` expires matching entries. After a mutation, use
+`await updateTag("catalog")` to also finish durable invalidation before reading
+again. Fills that started before invalidation cannot repopulate the store, and a
+new reader does not join them. A separately cached parent route still needs its
+own tags or `revalidatePath`; invalidation does not infer application dependencies.
+
+A cached function cannot read `cookies()`, `headers()`, `draftMode()`, `nonce()`
+or `requestId()`. The build names direct reads, aliases, namespace calls and local
+helpers in the callback. Imported helpers and dynamic accesses are covered by the
+runtime scope, which throws before returning request data. This is a bounded
+static check, not a general purity proof. Read and authorize private data outside
+the shared cache.
 
 ## What the two numbers mean
 
@@ -210,7 +257,7 @@ the same store is [regeneration](#regenerating-prerendered-pages).
 
 Persistence is a second opt-in on top of the first, and nothing about the first
 changes. A route still has to state a lifetime; a render that read the request
-is still never stored; `data` and `actions` are still refused.
+is still never stored; `actions` is still refused.
 
 ### Entries are keyed by the build
 

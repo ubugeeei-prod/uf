@@ -23,6 +23,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { CacheOptions } from "./cache-store.js";
 import type { ServerCapabilities } from "./capabilities.js";
+import type { NativeActionAuthorization } from "./native-actions.js";
 import type { DraftChange } from "./draft.js";
 import { DRAFT_COOKIE, draftKeyIsPerProcess, draftSetCookie, verifyDraftCookie } from "./draft.js";
 import { processWide } from "./process-state.js";
@@ -55,6 +56,8 @@ export type DraftMode = {
  * thing that called it, and could hold it past the response.
  */
 export type RequestContext = {
+  /** An application verified bearer credential, scoped to the exact Request. */
+  nativeAction: NativeActionAuthorization | null,
   readonly headers: HeaderStore,
   readonly cookies: CookieStore,
   /**
@@ -343,6 +346,7 @@ export function contextFor(request: Request): RequestContext {
     capabilities: null,
     buildFile: null,
     bindings: null,
+    nativeAction: null,
   };
 }
 

@@ -56,6 +56,14 @@ pub(crate) fn report_module_diagnostics(
     // module without a directive that is reached solely from the client graph is
     // bundled for the browser, where the hooks it calls are legal.
     if module.environment.runs_on_server() && reachability.is_server_reachable() {
+        for read in &module.cached_function_reads {
+            diagnostics.push(RscDiagnostic::RequestStateInCachedFunction {
+                module: module.path.clone(),
+                function: read.function.clone(),
+                api: read.api.clone(),
+                line: read.line,
+            });
+        }
         for use_site in &module.client_api_uses {
             diagnostics.push(RscDiagnostic::ClientOnlyApiInServerModule {
                 module: module.path.clone(),

@@ -926,3 +926,85 @@ warm HTTPS links use the same matcher and preserve stack history. Declare
 The low-level `createNativeRouter` adapter remains available when an app wants
 to own the navigator integration itself. For native component and navigation
 tests, use [the native test environment](/guide/testing#native-components).
+
+## Calling the BFF from native
+
+Prefer `$route.js` for native HTTP operations. `uf build`, `uf dev`, and
+`uf prepare` generate `createClient` in `router.js` when the app has route
+handlers. Its `RequestPath` and `RequestArgs` describe the handler table, including
+required parameters and catch-all arrays. The table imports no server code.
+Share this generated module with the native app (or generate it in a shared
+web/native project); it need not import the handler implementation.
+
+```js
+// app/api/profile/[id]/$route.js — the BFF delegates to the existing backend.
+export async function GET(request, { params }) {
+  return fetch(`https://backend.example/profiles/${encodeURIComponent(params.id)}`, {
+    headers: { authorization: request.headers.get("authorization") ?? "" },
+  });
+}
+```
+
+```js
+// app/profile/$page.native.js
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { View, Text, Pressable } from "react-native";
+import { createClient } from "../../router.js";
+import { accessToken } from "../identity.js"; // Your existing identity provider/secure storage.
+
+const api = createClient({ origin: "https://app.example", getToken: accessToken });
+
+export component Profile() {
+  const [name, setName] = useState("");
+  return <View>
+    <Pressable onPress={async () => {
+      const response = await api.request("/api/profile/:id", { method: "GET" }, { id: "me" });
+      if (!response.ok) throw new Error("Profile request failed");
+      const profile = await response.json();
+      setName(profile.name);
+    }}><Text>Load profile</Text></Pressable>
+    <Text>{name}</Text>
+  </View>;
+}
+```
+
+Paths and parameters are generated and checked; request bodies and response
+schemas remain the upstream API's contract. The client uses standard Fetch,
+omits ambient cookies, obtains the current token for each call and refuses
+redirects. HTTPS is required except loopback URLs; connecting a device to an
+HTTP development server requires `allowInsecureDevelopment: true` explicitly.
+
+### Opting a server action into bearer authentication
+
+Browser actions continue to require their Origin guard. A native app can call
+an action only when middleware explicitly authorizes its bearer token. Use an
+established verifier owned by the backend/identity provider:
+
+```js
+// app/$middleware.js
+import { authorizeNativeAction } from "@uniflowed/server";
+import { verifyActionPermission } from "./identity.server.js";
+
+export async function middleware(request) {
+  if (request.headers.has("uf-native-action")) {
+    const allowed = await authorizeNativeAction(request, verifyActionPermission);
+    if (!allowed) return new Response(null, { status: 403 });
+  }
+}
+```
+
+`verifyActionPermission(token, actionId)` returns `true` only after checking the
+issuer, signature, audience, expiry and permission for that specific action.
+The action still checks ownership of its resource. This uses your authentication
+system; uf supplies no token issuer, ORM, or migrations.
+
+On native, use `createNativeActionClient` from `@uniflowed/router/http-client`
+with the same `origin` and `getToken`. `call(actionId, args, path)` uses the existing
+bounded action wire format. Obtain the action ID from the current BFF build's
+manifest through your application distribution; it changes between builds and
+is not an authorization credential. Native bundles do not implicitly import
+`"use server"` modules. Prefer the typed route client for a stable public API.
+
+The native channel refuses Origin, Cookie and browser Fetch Metadata headers;
+missing Origin alone is never enough. See [the security contract](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md) for the contract.

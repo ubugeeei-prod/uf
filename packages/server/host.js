@@ -65,6 +65,7 @@ export type {
   RequestContext,
   RequestLifecycle,
 } from "./internal/context.js";
+export { nativeActionAllowed } from "./internal/native-actions.js";
 
 export {
   asResponder,

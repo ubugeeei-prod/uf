@@ -2,13 +2,9 @@
 //
 // `@uniflowed/server/cache`: the cache, and the two ways to invalidate it.
 //
-// `uf.config.js` has had `rendering.cache` in it for a long time, and until now
-// the four switches under it were read once, copied into
-// `dist/uf-build-manifest.json` and read by nothing. Two of them mean something
-// from here on — `route` and `fetch` — and two of them do not, which is stated
-// rather than implied: `data` and `actions` are refused by the configuration
-// loader, by name, because a key that accepts `true` and changes nothing is
-// worse than a key that is not there. See ubugeeei-prod/uf#277.
+// Under `rendering.cache`, `route`, `fetch`, and `data` enable explicit
+// cache declarations. The
+// `actions` switch remains refused: writes are not cached implicitly.
 //
 // # What is here
 //
@@ -35,10 +31,9 @@
 // and `draftMode()` are how a document comes to be about one person, and a
 // document about one person in a cache shared by every person is the worst bug
 // a framework can have. `./fetch.js` counts those reads across the whole render
-// and refuses to store when the count moved. It is a runtime refusal today;
-// `crates/uf_rsc` already answers "is this call reachable from here" for
-// server-only imports, and turning the same question on a cached scope is what
-// would make it a build error instead. #277 argues that, and it is not done.
+// and refuses to store when the count moved. Explicit `cacheFunction` scopes
+// additionally reject request reads before returning a private value, with
+// a build diagnostic for statically reachable calls.
 //
 // # Where it lives
 //
@@ -84,6 +79,8 @@ import type {
 import { CacheStore, currentScope, newScope, runInScope } from "./internal/cache-store.js";
 import type { CacheKey } from "./internal/cache-key.js";
 import { currentContext } from "./internal/context.js";
+import { dataKey } from "./internal/data-key.js";
+import { inDataScope } from "./internal/data-scope.js";
 
 export type { CacheKey } from "./internal/cache-key.js";
 export type {
@@ -163,6 +160,45 @@ export class OutsideCachedRequestError extends Error {
  */
 export function createCacheStore(options?: CacheStoreOptions): CacheStore {
   return new CacheStore(options);
+}
+
+export type CachedFunctionOptions = {|
+  readonly lifetime: CacheLifetime,
+  readonly tags?: $ReadOnlyArray<string>,
+  /** Overrides the request's configured store, e.g. in a background worker. */
+  readonly store?: CacheStore,
+|};
+
+/** Cache public function results across routes, with an explicit stable identity. */
+export function cacheFunction<Args extends $ReadOnlyArray<mixed>, Result>(
+  name: string,
+  produce: (...args: Args) => Promise<Result>,
+  options: CachedFunctionOptions,
+): (...args: Args) => Promise<Result> {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new TypeError("cacheFunction needs a non-empty, application-unique name");
+  }
+  return async (...args: Args): Promise<Result> => {
+    const cache = requestCache();
+    const store = options.store ?? cache?.store;
+    const fill = () => inDataScope(name, () => produce(...args));
+    if (store == null || (options.store == null && cache?.data !== true)) {
+      return (await collectCacheDeclarations(fill)).value;
+    }
+    const result = await store.resolve(
+      { key: ["data", name, dataKey(args)], lifetime: options.lifetime, tags: options.tags },
+      fill,
+    );
+    carryDurableWork(store);
+    return result.value;
+  };
+}
+
+/** Expire a tag and finish its durable invalidation before a read-after-write. */
+export async function updateTag(tag: string): Promise<void> {
+  const store = require$Cache("updateTag").store;
+  store.revalidateTag(tag);
+  await store.settled();
 }
 
 /**
@@ -437,7 +473,7 @@ export function createCachedFetch(options: CachedFetchOptions): CachedFetchClien
         tags: caching.tags,
       };
       return store
-        .resolve(request, () => client.request(path, requestOptions))
+        .resolve(request, () => client.request<T>(path, requestOptions))
         .then((result) => result.value);
     },
   };

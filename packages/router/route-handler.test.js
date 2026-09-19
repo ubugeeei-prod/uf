@@ -43,6 +43,23 @@ const hosted = (dispatch) => async (request) => {
 };
 
 describe("matching", () => {
+  it("decodes parameters like page routes without splitting encoded slashes", async () => {
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/users/:id", { GET: (_, { params }) => Response.json(params) }),
+          record("/api/files/:rest*", { GET: (_, { params }) => Response.json(params) }),
+        ],
+      }),
+    );
+    expect(await (await dispatch(get("/api/users/a%20b")))?.json()).toEqual({ id: "a b" });
+    expect(await (await dispatch(get("/api/files/%E6%97%A5%E6%9C%AC/a%2Fb/%25")))?.json()).toEqual({
+      rest: ["日本", "a/b", "%"],
+    });
+    expect(await (await dispatch(get("/api/files")))?.json()).toEqual({ rest: [] });
+    expect(await (await dispatch(get("/api/users/%invalid")))?.json()).toEqual({ id: "%invalid" });
+  });
+
   it("answers a literal path", async () => {
     const dispatch = hosted(
       createDispatcher({
