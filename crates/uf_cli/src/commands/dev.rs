@@ -27,7 +27,7 @@ pub(crate) mod native;
 mod rsc;
 
 use std::cell::OnceCell;
-use std::io::{BufRead, IsTerminal, Write};
+use std::io::{BufRead, IsTerminal, Read, Write};
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -56,6 +56,8 @@ use rsc::RscReport;
 /// What `uf dev` was asked to do.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct DevArgs {
+    /// Exit if the owning test process closes its pipe, including on timeout.
+    pub(crate) parent_pipe: bool,
     /// Bind a routable address instead of loopback.
     pub(crate) host: Option<String>,
     /// Listen on this port instead of `dev.port`.
@@ -70,6 +72,15 @@ pub(crate) struct DevArgs {
 
 /// Start the dev server and render its events until it exits.
 pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
+    if args.parent_pipe {
+        std::thread::spawn(|| {
+            let mut input = std::io::stdin().lock();
+            let mut bytes = [0; 1024];
+            while input.read(&mut bytes).is_ok_and(|count| count > 0) {}
+            // Closing our driver stdin also terminates its Vite process.
+            std::process::exit(0);
+        });
+    }
     let resolved = load_project_config(cwd, args.mode.as_deref(), DEVELOPMENT)?;
     let root = resolved.root.clone();
 
@@ -80,6 +91,9 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     // of being one.
     let target = application_target(&resolved.config, args.target.as_deref(), false, "uf dev")?;
     if target != RouteTarget::Web {
+        if ui.is_json() {
+            bail!("uf dev --json supports the web dev server; remove --json for a native target");
+        }
         return native::dev(ui, &resolved, &args, target);
     }
     if !args.passthrough.is_empty() {
@@ -217,6 +231,9 @@ fn serve(
     server_components: &mut RscReport,
 ) -> Result<Option<String>> {
     while let Some(event) = driver.next_event()? {
+        if ui.is_json() {
+            ui.plain(&format!("{}\n", serde_json::to_string(&event)?));
+        }
         match event {
             Event::Listening {
                 local,

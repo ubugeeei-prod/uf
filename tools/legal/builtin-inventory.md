@@ -26,6 +26,8 @@ code.
 | Markdown | ox-content wasm | Planned builtin dependency or port | Review license before embedding |
 | Flow parser | official Flow Rust port | Planned parser integration | Review license before linking |
 | Hermes | Hermes runtime | Planned runtime integration | Review license before linking |
+| PNG decoding | [pngjs 7.0.0](https://github.com/pngjs/pngjs) | npm dependency of the test driver; no vendored source | MIT; upstream `LICENSE`, distributed by npm; compatible with MIT |
+| Screenshot differences | [pixelmatch 7.1.0](https://github.com/mapbox/pixelmatch) | npm dependency of the test driver; no vendored source | ISC; upstream `LICENSE`, distributed by npm; compatible with MIT |
 | Why3 / Z3 | formal verification tools | Tooling only | Keep under `tools/formal` |
 
 ## Required Checklist Before Adding A Builtin
