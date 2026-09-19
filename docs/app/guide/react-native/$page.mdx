@@ -176,6 +176,7 @@ Compose the config the project already has. In an Expo project:
 
 ```js
 // metro.config.js
+// @noflow
 const { getDefaultConfig } = require("expo/metro-config");
 const { withUniflowedMetro } = require("@uniflowed/react-native/metro");
 
@@ -186,6 +187,7 @@ In a React Native CLI project:
 
 ```js
 // metro.config.js
+// @noflow
 const { getDefaultConfig, mergeConfig } = require("@react-native/metro-config");
 const { withUniflowedMetro } = require("@uniflowed/react-native/metro");
 
@@ -683,7 +685,7 @@ Expo rather than replacing it.
 | File routes | Expo Router: `app/` files and `_layout` files | the uf scanner chooses `$page.ios.js`, then `$page.native.js`, then `$page.js`, identically in Rust and JavaScript |
 | Stacks, tabs and layouts | Expo Router's `_layout` navigators | not yet: the React Navigation binding ([#991](https://github.com/ubugeeei-prod/uf/issues/991)); the table it will read, layouts included, is `router.ios.js` and its siblings |
 | Typed routes | generated `href` types | `route()` and `RoutePath` for every target: `router.js` on the web, `router.ios.js`, `router.android.js` and `router.native.js` on native |
-| Deep links | automatic | [#986](https://github.com/ubugeeei-prod/uf/issues/986) |
+| Deep links | automatic | explicit `app.router.nativeLinks` claims, generated association files, and `createNativeLinking` |
 | Platform files | `.ios.js` / `.android.js` resolution | the same, plus `react-native/platform-split`, which prefers them to `Platform.OS` branches |
 
 ### Native projects, builds and updates
@@ -692,9 +694,81 @@ Expo rather than replacing it.
 | --- | --- | --- |
 | Native projects | config plugins and `expo prebuild` | Expo's — uf generates no native project |
 | Builds on a device | `expo run:ios`, `expo run:android`, development builds | Expo's |
-| Cloud builds and submission | EAS Build and EAS Submit | Expo's; a build machine needs `uf` installed to compile Flow ([#992](https://github.com/ubugeeei-prod/uf/issues/992)) |
+| Cloud builds and submission | EAS Build and EAS Submit | Expo's; install the pinned uf toolchain in the build hook below |
 | Over-the-air updates | EAS Update | Expo's |
-| Native modules | the Expo SDK, `npx expo install` | Expo's; a warning for native dependencies outside the SDK's ranges is [#987](https://github.com/ubugeeei-prod/uf/issues/987) |
+| Native modules | the Expo SDK, `npx expo install` | Expo's; uf reports installed dependencies outside the SDK and React Native peer ranges |
+
+## HTTPS links into the app
+
+Declare the domains and the exact route patterns the app may open. A web route
+is not an app link until it appears in `routes`:
+
+```js
+export default {
+  app: {
+    targets: ["web", "react-native"],
+    router: {
+      nativeLinks: {
+        origins: ["https://example.com"],
+        routes: ["/about", "/users/:id"],
+        iosAppIds: ["ABCDE12345.com.example.app"],
+        androidPackage: "com.example.app",
+        // Replace with the production app-signing certificate fingerprint.
+        androidSha256: ["AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA"],
+      },
+    },
+  },
+};
+```
+
+`uf build --target web` writes `.well-known/apple-app-site-association` and
+`.well-known/assetlinks.json` under the output directory and lists both in the
+build manifest and terminal summary. A claim with no web, iOS or Android page
+fails the build. Missing app identities or fingerprints fail configuration
+loading. Catch-all routes are refused; APIs and admin pages are not implicitly
+claimed. A conflicting file in `public/.well-known` is also refused.
+
+The generated native tables carry the same origins and route patterns.
+`router.push("https://example.com/users/42")` resolves the same screen and params
+as `router.push("/users/42")`. Origins are compared after URL canonicalization;
+suffix domains, credentials, non-default ports, fragments, invalid percent
+encoding, and URLs outside the claimed routes are rejected.
+
+Connect the native runtime's cold and warm deliveries once at application
+startup, and remove the subscription when its owner unmounts:
+
+```js
+import { Linking } from "@uniflowed/react-native";
+import { createNativeLinking } from "@uniflowed/router/native";
+import { routeTable } from "./router";
+
+const links = createNativeLinking(routeTable, Linking);
+const initial = await links.getInitialURL();
+if (initial != null) await router.push(initial);
+const unsubscribe = links.subscribe((href) => { void router.push(href); });
+// Later: unsubscribe();
+```
+
+`router` above is the app-owned navigator adapter from [native navigator adapter](#native-navigation).
+Both deliveries use the same parser. Duplicate delivery of the same URL within
+one second produces one navigation; invalid or unclaimed links produce none.
+
+The OS configuration still belongs to the native project. For Expo, add
+`ios.associatedDomains: ["applinks:example.com"]` and Android `intentFilters`
+with `action: "VIEW"`, `autoVerify: true`, categories `BROWSABLE` and `DEFAULT`,
+and HTTPS data entries for `example.com` restricted to the claimed paths
+(for this example, `path: "/about"` and `pathPrefix: "/users/"`). Use the Play
+App Signing certificate's SHA-256 fingerprint, not the upload certificate.
+Development certificates belong to a separate development configuration.
+
+Deploy both files at the root of every declared origin, with HTTPS, HTTP 200,
+JSON content type and no redirects. `uf start` and `uf preview` serve that
+content type, including the extensionless Apple file. A CDN or static host must
+preserve it. `basePath` is refused with `nativeLinks`, since associations are
+always fetched from the origin root. Android 15+ also reads the generated
+path restrictions; older Android versions rely on the manifest's intent
+filters. See [Apple's associated domains](https://developer.apple.com/documentation/xcode/supporting-associated-domains)
+and [Android's association rules](https://developer.android.com/training/app-links/configure-assetlinks).
 
 ### Using both together
 
@@ -712,14 +786,63 @@ In an app `create-expo-app` made:
    install-time hooks such as `postinstall` (see
    [Scope](/guide/scope#it-will-not-run-npm-lifecycle-scripts)).
 
+The Metro and Babel configuration files are plain Node modules. Use `// @noflow`
+for these host configuration files; application source remains type-checked.
+This also avoids relying on Expo's TypeScript config re-exports being inferred
+as Flow. CI loads the configs with Metro itself.
+
+### Installing uf where Expo bundles
+
+Pin the same uf release on developer machines and build workers. For example,
+commit `scripts/install-uf.sh` and invoke it from the Expo
+`eas-build-post-install` script:
+
+```sh
+#!/bin/sh
+set -eu
+curl -fsSL https://setup.uniflowed.dev/install.sh -o /tmp/install-uf.sh
+UF_VERSION=0.0.0-alpha.41 sh /tmp/install-uf.sh
+"$HOME/.local/bin/uf" --version
+```
+
+The transformer also searches `~/.local/bin`, so the installation works when
+EAS starts a new shell for bundling. A custom installation should pass the
+absolute executable through `UF_BINARY`. On local native builds, for example:
+
+```sh
+UF_BINARY="$(command -v uf)" npx expo run:android
+```
+
+For Xcode, put `export UF_BINARY=/absolute/path/to/uf` in
+`ios/.xcode.env.local` after `expo prebuild`, alongside its `NODE_BINARY` setting.
+Do not commit a developer-specific absolute path. Gradle inherits `UF_BINARY`
+from the environment that starts it. Expo's generated Android project invokes
+`export:embed`; uf's transformer is still composed in the Metro configuration
+that command reads.
+
+Choose one owner for file routes. With uf, keep uf's `$page` files in `app/`
+and register the app's entry yourself. With Expo Router, keep its entry and
+`_layout` conventions, set `app.router.enabled: false`, and use uf for Flow,
+lint and tests. Pointing both routers at the same directory is not supported.
+
+CI installs two consumers outside this repository. The Expo consumer starts
+from `create-expo-app`'s SDK 57 blank template and retains its npm scripts.
+The checks cover installation, checking, linting and testing, Expo export and
+the bundle command used by prebuild, plus real Metro `/status`, development
+bundles, `/hot` updates and live native route additions/removals for both CLIs.
+The HMR probe checks the compiled module and its Refresh boundary; it does not
+simulate a mounted device. Simulator/emulator rendering remains separate.
+
+EAS Build/Submit is not run by this Linux job: it has no Expo account token,
+signing credentials or provisioned native build service. Nor does it assemble
+an APK or run Xcode. Those remain the project's release jobs, using the same
+pinned uf installation and Metro configuration.
+
 ## What is still missing
 
 - **Routes as navigators.** Each platform's route table is written for Metro,
   but nothing turns it into React Navigation stacks and tabs yet
   ([#991](https://github.com/ubugeeei-prod/uf/issues/991)).
-- **An Expo project without workarounds.** `uf` has to be installed wherever
-  EAS Build or Xcode bundles
-  ([#992](https://github.com/ubugeeei-prod/uf/issues/992)).
 - **A native host renderer.** `render()` can use React Test Renderer as an
   optional JSON adapter, but uf cannot render React Native's own components or
   press them ([#989](https://github.com/ubugeeei-prod/uf/issues/989)).
@@ -727,8 +850,8 @@ In an app `create-expo-app` made:
   ships 19.2.3.
 - **Source maps through the transformer.** A stack frame in a Flow module
   points into uf's output ([#988](https://github.com/ubugeeei-prod/uf/issues/988)).
-- **StyleX on native** ([#984](https://github.com/ubugeeei-prod/uf/issues/984)),
-  and **server actions from native** ([#982](https://github.com/ubugeeei-prod/uf/issues/982)).
+- **StyleX on native** ([#984](https://github.com/ubugeeei-prod/uf/issues/984)) and
+  **server actions from native** ([#982](https://github.com/ubugeeei-prod/uf/issues/982)).
 
 [#501](https://github.com/ubugeeei-prod/uf/issues/501) tracks this target.
 [Testing](/guide/testing#react-native-test-trees) covers the query surface, and
@@ -737,3 +860,5 @@ In an app `create-expo-app` made:
 ## Where to go next
 
 [Terminal UI](/guide/tui) is next: React with a terminal for a host.
+
+Mounted state preservation and real OS link delivery are tracked in [#1288](https://github.com/ubugeeei-prod/uf/issues/1288). The Metro protocol checks above do not substitute for simulator or emulator execution.

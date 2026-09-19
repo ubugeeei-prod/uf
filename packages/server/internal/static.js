@@ -204,7 +204,9 @@ export async function locateStatic(
       path: candidate,
       headers: {
         "content-type":
-          CONTENT_TYPES[path.extname(candidate).toLowerCase()] ?? "application/octet-stream",
+          name === "apple-app-site-association"
+            ? "application/json; charset=utf-8"
+            : (CONTENT_TYPES[path.extname(candidate).toLowerCase()] ?? "application/octet-stream"),
         "content-length": String(info.size),
       },
       headOnly: method === "HEAD",

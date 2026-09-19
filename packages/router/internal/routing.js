@@ -139,6 +139,10 @@ export type RouteTable<
   TError = mixed,
 > = {|
   readonly routes: $ReadOnlyArray<RouteRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
+  readonly nativeLinks?: {|
+    readonly origins: $ReadOnlyArray<string>,
+    readonly routes: $ReadOnlyArray<string>,
+  |},
   readonly notFound: $ReadOnlyArray<NotFoundBoundary<TPage, TLayout>>,
   readonly errors: $ReadOnlyArray<ErrorBoundary<TError, TLayout>>,
 |};

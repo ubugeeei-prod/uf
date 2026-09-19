@@ -13,6 +13,9 @@ mod app;
 pub mod env_files;
 mod library;
 mod lint;
+mod native_links;
+mod package_scripts;
+pub use package_scripts::INSTALL_LIFECYCLE_SCRIPTS;
 pub mod plugins;
 mod rendering;
 mod router_rules;
@@ -24,11 +27,11 @@ pub use app::{
     AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,
     EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, HeaderRule, HighlightConfig,
     HighlightThemes, LinkPrefetchMode, LoaderConfig, MarkdownConfig, MarkdownEngineConfig,
-    MdxConfig, MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, Navigation, OrmConfig,
-    PwaConfig, ReactCompilerConfig, ReactCompilerImplementation, ReactCompilerMode, ReactConfig,
-    RedirectRule, RenderingConfig, RenderingMode, RewriteRule, RouterConfig, RouterConvention,
-    RuntimeTarget, StyleEngine, TemporalConfig, TrailingSlash, TuiConfig, TuiStandardConfig,
-    WebConfig,
+    MdxConfig, MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, NativeLinksConfig,
+    Navigation, OrmConfig, PwaConfig, ReactCompilerConfig, ReactCompilerImplementation,
+    ReactCompilerMode, ReactConfig, RedirectRule, RenderingConfig, RenderingMode, RewriteRule,
+    RouterConfig, RouterConvention, RuntimeTarget, StyleEngine, TemporalConfig, TrailingSlash,
+    TuiConfig, TuiStandardConfig, WebConfig,
 };
 pub use library::{LibraryConfig, LibraryFormat, LibraryPlan};
 pub use lint::{
@@ -2212,6 +2215,7 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
     // And `app.router`'s redirects, rewrites and headers, in the grammar every
     // host matches them with. See ubugeeei-prod/uf#959.
     router_rules::check(path, config)?;
+    native_links::check(path, &config.app.router)?;
     Ok(())
 }
 

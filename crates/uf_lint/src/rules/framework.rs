@@ -754,7 +754,7 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         category: RuleCategory::Package,
         default_level: RuleLevel::Error,
         requirement: SourceText,
-        description: "declare tasks in `uf.config.js`, not `package.json` scripts",
+        description: "refuse install-time lifecycle scripts unless explicitly allowed",
     },
     RuleDescriptor {
         id: "fetch/no-global-override",

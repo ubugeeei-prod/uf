@@ -4,6 +4,7 @@
 
 import {
   NativeNavigationError,
+  createNativeLinking,
   createNativeScreenManifest,
   createNativeRouter,
   createNativeScreenRouter,
@@ -51,6 +52,62 @@ function table() {
 }
 
 describe("@uniflowed/router/native", () => {
+  it("accepts only explicit HTTPS origins and claimed routes", () => {
+    const routes = {
+      ...table(),
+      nativeLinks: { origins: ["https://example.com"], routes: ["/users/:id"] },
+    };
+    const direct = resolveNativeNavigation(routes, "/users/42?tab=posts");
+    expect(resolveNativeNavigation(routes, "https://EXAMPLE.com:443/users/42?tab=posts")).toEqual(
+      direct,
+    );
+    for (const url of [
+      "https://example.com/",
+      "https://example.com.evil.test/users/42",
+      "http://example.com/users/42",
+      "https://user@example.com/users/42",
+      "https://example.com:8443/users/42",
+      "https://example.com/users/%zz",
+      "https://example.com/users/42?x=%zz",
+      "https://example.com/users/%2Fadmin",
+      "https://example.com/users/42#fragment",
+      "//example.com/users/42",
+      "https://example.com/unknown",
+    ]) {
+      expect(() => resolveNativeNavigation(routes, url)).toThrow(NativeNavigationError);
+    }
+  });
+
+  it("shares the parser between cold and warm links and coalesces duplicate delivery", async () => {
+    const routes = {
+      ...table(),
+      nativeLinks: { origins: ["https://example.com"], routes: ["/users/:id"] },
+    };
+    let receive = (_event: {| url: string |}): void => {};
+    let removed = false;
+    const linking = createNativeLinking(routes, {
+      getInitialURL: async () => "https://example.com/users/42",
+      addEventListener: (_event, listener) => {
+        receive = listener;
+        return {
+          remove: () => {
+            removed = true;
+          },
+        };
+      },
+    });
+    expect(await linking.getInitialURL()).toBe("/users/42");
+    const arrived = [];
+    const unsubscribe = linking.subscribe((href) => arrived.push(href));
+    receive({ url: "https://example.com/users/42" });
+    receive({ url: "https://example.com/users/43" });
+    receive({ url: "https://example.com/users/43" });
+    receive({ url: "https://other.test/users/44" });
+    expect(arrived).toEqual(["/users/43"]);
+    unsubscribe();
+    expect(removed).toBe(true);
+  });
+
   it("resolves a route table entry into a native navigation event", () => {
     expect(resolveNativeNavigation(table(), "/users/42?tab=posts", "replace")).toEqual({
       kind: "replace",
