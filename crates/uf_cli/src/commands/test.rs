@@ -1078,6 +1078,7 @@ pub(crate) const WORKER_ENVIRONMENT: [&str; 8] = [
     "UF_IN_SOURCE_TESTS",
     "UF_PROJECT_ROOT",
     "UF_TEST_BENCH",
+    "UF_TEST_TARGET",
     "UF_UPDATE_SNAPSHOTS",
 ];
 
