@@ -322,3 +322,22 @@ createServer(options).listen();
 ";
     assert_eq!(consumer_errors("export-equals", consumer), [5]);
 }
+
+#[test]
+fn an_inferred_tuple_rest_preserves_elements_and_readonly() {
+    let consumer = "// @flow
+import type {MakeReadonly, TailOf} from './input.d.ts.flow';
+const frozen: MakeReadonly<[string, number]> = ['value', 42];
+const head: string = frozen[0];
+const wrongHead: number = frozen[0];
+frozen[1] = 7;
+const tail: TailOf<[string, number, boolean]> = [42, true];
+const wrongTail: TailOf<[string, number, boolean]> = ['wrong', true];
+const scalar: MakeReadonly<string> = 'unchanged';
+const wrongScalar: MakeReadonly<string> = 42;
+";
+    assert_eq!(
+        consumer_errors("inferred-tuple-rest", consumer),
+        [5, 6, 8, 10]
+    );
+}

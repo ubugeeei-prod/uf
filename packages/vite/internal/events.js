@@ -11,6 +11,7 @@
 // logger, which is redirected here as well so nothing bypasses the channel.
 
 import { createLogger } from "vite";
+import { recordDevEvent } from "./dev-state.js";
 
 /**
  * Emit one event.
@@ -19,6 +20,7 @@ import { createLogger } from "vite";
  * `done` is on the pipe before the process exits.
  */
 export function emit(event, fields = {}) {
+  recordDevEvent({ event, ...fields });
   process.stdout.write(`${JSON.stringify({ event, ...fields })}\n`);
 }
 
@@ -67,6 +69,7 @@ export function reportRenderError(server, url, error) {
   if (error instanceof Error) {
     server.ssrFixStacktrace(error);
   }
+  emit("diagnostic", { severity: "error", kind: "runtime", origin: url, ...errorEvent(error) });
   const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
   server.config.logger.error(`${url} rendered its error boundary\n${stripAnsi(detail)}`);
 }

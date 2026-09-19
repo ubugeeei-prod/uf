@@ -138,6 +138,10 @@ fn tools_list_names_the_commands_and_says_which_ones_write() {
     assert_eq!(
         listed,
         [
+            "uf_dev_errors",
+            "uf_dev_logs",
+            "uf_dev_routes",
+            "uf_dev_action",
             "uf_check",
             "uf_lint",
             "uf_info",
@@ -226,6 +230,8 @@ fn every_advertised_tool_is_one_the_server_dispatches() {
         // front of the dispatch instead of stopping at it.
         let arguments = if name == "uf_explain" {
             json!({ "command": "build" })
+        } else if name == "uf_dev_action" {
+            json!({ "id": "a".repeat(64) })
         } else {
             json!({})
         };

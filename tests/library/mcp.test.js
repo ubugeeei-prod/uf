@@ -177,6 +177,10 @@ describe("uf mcp", () => {
     const tools = answered(out, 2).tools ?? [];
 
     expect(tools.map((tool) => tool.name)).toEqual([
+      "uf_dev_errors",
+      "uf_dev_logs",
+      "uf_dev_routes",
+      "uf_dev_action",
       "uf_check",
       "uf_lint",
       "uf_info",
