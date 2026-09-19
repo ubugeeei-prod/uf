@@ -29,6 +29,7 @@ export async function checkBrowser(origin, label, output) {
   let evaluate;
   let send;
   const errors = [];
+  const events = [];
   try {
     const wsUrl = await new Promise((resolve, reject) => {
       const timer = setTimeout(
@@ -57,10 +58,24 @@ export async function checkBrowser(origin, label, output) {
     const pending = new Map();
     let nextId = 1;
     let graphqlPosts = 0;
+    const documents = new Map();
+    const bodies = [];
+    let readBody;
     const requests = new Map();
     let lastNetwork = Date.now();
     socket.addEventListener("message", ({ data }) => {
       const message = JSON.parse(String(data));
+      if (
+        [
+          "Runtime.executionContextCreated",
+          "Runtime.executionContextDestroyed",
+          "Runtime.executionContextsCleared",
+          "Runtime.exceptionThrown",
+        ].includes(message.method)
+      )
+        events.push({ at: Date.now(), method: message.method, params: message.params });
+      if (message.method === "Network.requestWillBeSent" && message.params.type === "Document")
+        events.push({ at: Date.now(), method: "document", url: message.params.request.url });
       if (message.id) {
         const task = pending.get(message.id);
         if (task) {
@@ -74,6 +89,8 @@ export async function checkBrowser(origin, label, output) {
       } else if (message.method === "Runtime.consoleAPICalled" && message.params.type === "error") {
         errors.push(message.params.args);
       } else if (message.method === "Network.requestWillBeSent") {
+        if (message.params.type === "Document")
+          documents.set(message.params.requestId, message.params.request.url);
         if (["Document", "Script", "Stylesheet"].includes(message.params.type)) {
           requests.set(message.params.requestId, message.params.request.url);
           lastNetwork = Date.now();
@@ -88,6 +105,12 @@ export async function checkBrowser(origin, label, output) {
         message.method === "Network.loadingFailed"
       ) {
         requests.delete(message.params.requestId);
+        if (
+          message.method === "Network.loadingFinished" &&
+          documents.has(message.params.requestId) &&
+          readBody
+        )
+          bodies.push(readBody(message.params.requestId, documents.get(message.params.requestId)));
         lastNetwork = Date.now();
       }
     });
@@ -104,6 +127,18 @@ export async function checkBrowser(origin, label, output) {
     const { targetId } = await send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
     const page = (method, params) => send(method, params, sessionId);
+    readBody = async (requestId, url) => {
+      try {
+        const response = await page("Network.getResponseBody", { requestId });
+        const name = new URL(url).pathname.replaceAll("/", "_");
+        fs.writeFileSync(
+          path.join(output, `${label}-document${name}.html`),
+          response.base64Encoded ? Buffer.from(response.body, "base64") : response.body,
+        );
+      } catch {
+        /* A document can be discarded by a later navigation. */
+      }
+    };
     await page("Page.enable");
     await page("Runtime.enable");
     await page("Network.enable");
@@ -247,6 +282,7 @@ export async function checkBrowser(origin, label, output) {
     socket?.close();
     chrome.kill("SIGTERM");
     fs.writeFileSync(path.join(output, `${label}-chrome.log`), transcript);
+    fs.writeFileSync(path.join(output, `${label}-events.json`), JSON.stringify(events, null, 2));
     if (chrome.exitCode == null && chrome.signalCode == null) {
       await Promise.race([
         new Promise((resolve) => chrome.once("exit", resolve)),
