@@ -158,9 +158,7 @@ fn adoption_rejects_malformed_manifest_fields_without_writing() {
         ] {
             let before = serde_json::to_string(&json!({ "name": "app", field: value })).unwrap();
             fs::write(root.join("package.json"), &before).unwrap();
-            let error = adopt::plan(root)
-                .err()
-                .expect("invalid field must be rejected");
+            let error = adopt::plan(root).expect_err("invalid field must be rejected");
             assert!(error.to_string().contains(&format!("package.json#{field}")));
             assert_eq!(
                 fs::read_to_string(root.join("package.json")).unwrap(),
