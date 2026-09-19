@@ -28,6 +28,9 @@
 
 import type { RouteParams, RouteRecord, RouteTable } from "./internal/routing.js";
 import { hasClientPage, matchRoute, splitUrl } from "./internal/routing.js";
+import { nativeLinkHref } from "./internal/native-links.js";
+export { createNativeLinking } from "./internal/native-links.js";
+export type { NativeLinkSource } from "./internal/native-links.js";
 
 export type NativeNavigationKind = "push" | "replace" | "prefetch";
 
@@ -221,7 +224,7 @@ export function resolveNativeNavigation(
   to: string,
   kind?: NativeNavigationKind = "push",
 ): NativeNavigationEvent {
-  const href = normalizeNativeHref(to);
+  const href = normalizeNativeHref(to, table);
   const { pathname, search } = splitUrl(href);
   const matched = matchRoute(table.routes, pathname);
   if (matched == null) {
@@ -285,8 +288,13 @@ export function nativeScreenNavigationState(
   };
 }
 
-function normalizeNativeHref(to: string): string {
+function normalizeNativeHref(
+  to: string,
+  table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
+): string {
   if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(to) || to.startsWith("//")) {
+    const claimed = nativeLinkHref(table, to);
+    if (claimed != null) return claimed;
     throw new NativeNavigationError(
       "external-url",
       `@uniflowed/router/native: ${to} is an external URL, and a native navigator needs an app route`,

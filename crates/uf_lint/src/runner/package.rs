@@ -1,7 +1,6 @@
-//! `package/no-npm-scripts`: a uf project declares its tasks in `uf.config.js`,
-//! so a `scripts` block in `package.json` is a task nothing will run.
+//! `package/no-npm-scripts`: the same install-hook policy `uf install` uses.
 
-use uf_config::UniflowedConfig;
+use uf_config::{INSTALL_LIFECYCLE_SCRIPTS, UniflowedConfig};
 
 use crate::scan::FileScan;
 use crate::{Diagnostic, push_at, severity};
@@ -14,7 +13,24 @@ pub(crate) fn run_package_no_npm_scripts(
     let Some(severity) = severity(config, "package/no-npm-scripts") else {
         return;
     };
-    if !scan.file.path.ends_with("package.json") {
+    if !scan.file.path.ends_with("package.json") || config.pm.allow_lifecycle_scripts {
+        return;
+    }
+    let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&scan.file.source) else {
+        return;
+    };
+    let Some(scripts) = manifest
+        .get("scripts")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return;
+    };
+    let forbidden: Vec<_> = scripts
+        .keys()
+        .filter(|name| INSTALL_LIFECYCLE_SCRIPTS.contains(&name.as_str()))
+        .cloned()
+        .collect();
+    if forbidden.is_empty() {
         return;
     }
 
@@ -27,7 +43,10 @@ pub(crate) fn run_package_no_npm_scripts(
                 severity,
                 position,
                 at,
-                "declare tasks in uf.config.js; npm scripts are not part of the uf toolchain",
+                &format!(
+                    "install-time lifecycle scripts ({}) are disabled; move the automation to uf tasks or explicitly allow lifecycle scripts",
+                    forbidden.join(", ")
+                ),
             );
         }
     }

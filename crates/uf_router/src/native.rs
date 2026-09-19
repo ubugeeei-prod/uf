@@ -391,7 +391,23 @@ pub fn generate_native_router_flow(
             layout_ids(&boundary.layouts),
         );
     }
-    output.push_str("  ],\n};\n\n");
+    output.push_str("  ],\n");
+    if let Some(links) = &config.app.router.native_links {
+        let list = |values: &[CompactString]| {
+            values
+                .iter()
+                .map(|value| js_string(value))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let _ = writeln!(
+            output,
+            "  nativeLinks: {{ origins: [{}], routes: [{}] }},",
+            list(&links.origins),
+            list(&links.routes)
+        );
+    }
+    output.push_str("};\n\n");
 
     output.push_str(
         "export const layouts: $ReadOnlyArray<{\n  readonly segment: string,\n  readonly file: string,\n  readonly module: () => Promise<mixed>,\n}> = [\n",

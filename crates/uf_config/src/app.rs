@@ -70,6 +70,20 @@ pub struct RouterConfig {
     pub base_path: CompactString,
     /// `app.router.trailingSlash`: which spelling of a path is the page.
     pub trailing_slash: TrailingSlash,
+    /// Explicit HTTPS origins, app identities and routes claimed by native apps.
+    pub native_links: Option<NativeLinksConfig>,
+}
+
+/// Association files and the matching native URL allow-list, from one declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct NativeLinksConfig {
+    pub origins: Vec<CompactString>,
+    pub routes: Vec<CompactString>,
+    pub ios_app_ids: Vec<CompactString>,
+    pub android_package: CompactString,
+    /// Production app-signing certificates, never an upload key's fingerprint.
+    pub android_sha256: Vec<CompactString>,
 }
 
 /// Which spelling of a path is the page.
@@ -142,6 +156,7 @@ impl Default for RouterConfig {
             headers: Vec::new(),
             base_path: CompactString::const_new(""),
             trailing_slash: TrailingSlash::Ignore,
+            native_links: None,
         }
     }
 }

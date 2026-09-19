@@ -7910,6 +7910,93 @@ fn config_with(body: &str) -> String {
 
 /// `uf build` in `root`, as `(succeeded, stdout + stderr)`.
 #[test]
+fn native_associations_claim_only_explicit_routes_and_serve_json() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    let links = serde_json::json!({
+        "origins": ["https://example.com"], "routes": ["/users/:id", "/about"],
+        "iosAppIds": ["ABCDE12345.com.example.app"], "androidPackage": "com.example.app",
+        "androidSha256": ["AA:".repeat(31) + "AA"]
+    });
+    project.write(
+        "uf.config.js",
+        &format!(
+            "export default {{ app: {{ rsc: false, router: {{ nativeLinks: {links} }} }} }};\n"
+        ),
+    );
+    for route in ["users/[id]", "about", "admin"] {
+        project.write(
+            &format!("app/{route}/$page.js"),
+            "export default component Page() { return <p>shared page</p>; }\n",
+        );
+    }
+    let (built, said) = build_output(project.path());
+    assert!(built, "{said}");
+    for file in ["apple-app-site-association", "assetlinks.json"] {
+        let body =
+            fs::read_to_string(project.path().join(format!("dist/.well-known/{file}"))).unwrap();
+        assert!(
+            body.contains("/users/*") && body.contains("/about"),
+            "{body}"
+        );
+        assert!(!body.contains("/admin"), "{body}");
+        assert!(said.contains(file), "{said}");
+    }
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(project.path().join(".uf/build/meta/uf-build-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["associationFiles"].as_array().unwrap().len(), 2);
+    for command in ["preview", "start"] {
+        let said = Mutex::new(String::new());
+        let port = free_port();
+        std::thread::scope(|scope| {
+            let mut server = Server::start(
+                project.path(),
+                &[command, "--port", &port.to_string()],
+                scope,
+                &said,
+            );
+            assert!(
+                wait_for_http(port, "/", Duration::from_secs(90)).is_some(),
+                "{}",
+                server.evidence(&said)
+            );
+            for file in ["apple-app-site-association", "assetlinks.json"] {
+                let response = get(&mut server, port, &format!("/.well-known/{file}"), &said);
+                assert!(
+                    response.starts_with("HTTP/1.1 200"),
+                    "{command}: {response}"
+                );
+                assert!(
+                    response
+                        .to_ascii_lowercase()
+                        .contains("content-type: application/json"),
+                    "{command}: {response}"
+                );
+                assert!(
+                    !response.to_ascii_lowercase().contains("location:"),
+                    "{command}: {response}"
+                );
+            }
+        });
+    }
+    let mut missing = links;
+    missing["routes"] = serde_json::json!(["/missing"]);
+    project.write(
+        "uf.config.js",
+        &format!("export default {{ app: {{ router: {{ nativeLinks: {missing} }} }} }};\n"),
+    );
+    let (built, said) = build_output(project.path());
+    assert!(
+        !built && said.contains("nativeLinks.routes claims /missing"),
+        "{said}"
+    );
+}
+
+#[test]
 fn locale_routes_prerender_both_languages_with_alternates_and_a_sitemap() {
     if !fixture_ready() {
         return;
