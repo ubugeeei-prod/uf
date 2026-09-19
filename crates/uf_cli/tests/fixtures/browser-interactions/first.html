@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>first</title><style>body{margin:0;background:#fff}#swatch{width:100px;height:100px;background:#245b8b}</style>
+<div id="swatch"></div><input aria-label="Name" id="name"><button id="button">click</button><button id="tap">tap</button><output id="events"></output>
+<script>
+const events=[];const record=e=>{events.push(e.type+":"+e.isTrusted);document.querySelector("#events").textContent=events.join(",")};
+for(const name of ["click","input","keydown","touchstart"])document.addEventListener(name,record);
+</script></html>

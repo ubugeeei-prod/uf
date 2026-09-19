@@ -378,14 +378,6 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // `internal/browser/node.js`'s refusal, because `-u` is a request to
     // *change files on disk* and answering it with a per-test failure would
     // leave a reader wondering which snapshots did get rewritten. None did.
-    if args.browser && args.update_snapshots {
-        bail!(
-            "`uf test --browser -u` cannot rewrite snapshots: a snapshot is a file beside the \
-             test that took it, and the tests are running in a page that has no filesystem. Run \
-             `uf test -u` to record them on Node, then `uf test --browser` to check them where \
-             the component lives."
-        );
-    }
     // Before the browser is looked for, deliberately. Installing a browser
     // would not make this combination work, so "there is no browser on this
     // machine" would be a true sentence that sent a reader somewhere useless.
@@ -424,6 +416,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         .with_snapshot_updates(args.update_snapshots)
         .with_benchmarks(args.bench)
         .with_axe(resolved.config.accessibility.axe.as_json());
+    host.env.push((
+        "UF_VRT_CONFIG".to_owned(),
+        serde_json::to_string(&resolved.config.vrt)?,
+    ));
 
     // Every JavaScript file the project has, before discovery narrows it to the
     // ones that declare tests: a file no test imports never becomes a script,

@@ -6,6 +6,8 @@ _2026-09-19_
 
 ### Added
 
+- **test**: support RSC integration tests and Chromium visual assertions (#1291)
+- **server**: cache public functions and authenticate native clients (#1290)
 - integrate Relay RSC and add a GraphQL SNS example (#1289)
 - complete native app links and Expo development workflows (#1287)
 - complete native builds and routing workflows (#1286)

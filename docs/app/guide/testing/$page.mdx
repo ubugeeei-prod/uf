@@ -997,37 +997,120 @@ There is no Playwright here and no Puppeteer. The browser is started with a URL
 and left alone; everything uf learns comes back over HTTP from the page's own
 code.
 
-One switch is worth naming because it looks like an exception and is not.
-`--remote-debugging-pipe` is passed, and uf never writes a byte to it: Chrome
-treats that pipe as its lifeline and shuts down when it closes. That is what
-makes the browser die with the process that started it — `uf` kills a worker
-that misses its deadline, a killed process runs no exit handler, and without the
-pipe a timed-out file would leave a browser running with nobody to stop it. A
-pipe rather than `--remote-debugging-port` because a port is something anything
-on the machine can speak to.
+The browser driver uses Chrome DevTools Protocol over a private pipe. Closing
+that pipe terminates Chromium even when a worker times out. It opens no debugging
+port. The harness stays in its own page while the pages a test creates navigate.
 
-### What it cannot do yet
+### Testing Server Components
 
-That last paragraph is a ceiling as well as a floor. **uf cannot drive this
-browser.** No clicking a real cursor, no navigation, no screenshots, no network
-throttling, no second tab. Those are the other half of
-[Playwright-compatible browser automation](https://github.com/ubugeeei-prod/uf/issues/517)
-and they want the protocol this mode deliberately does not speak. `fireEvent`
-and `userEvent` work exactly as they do on Node, because they dispatch DOM
-events — which is a different thing from driving a browser, and enough for a
-component test.
+An async Server Component can fetch data during rendering; it needs no loader.
+To test its React Flight stream and its client boundaries, start the real
+application with `createTestApp`. This uses the same configuration, RSC analysis,
+Vite environments and request scope as `uf dev`.
+
+```js
+// @flow
+import { it, expect } from "@uniflowed/test";
+import { createTestApp } from "@uniflowed/test/app";
+import { createBrowser } from "@uniflowed/test/browser";
+
+it("renders server data and hydrates the counter", async () => {
+  const app = await createTestApp({ root: new URL("./", import.meta.url) });
+  let page;
+  try {
+    const html = await (await app.render("/products")).text();
+    expect(html).toContain("Products");
+    const flight = await app.flight("/products");
+    expect(flight.headers.get("content-type")).toContain("text/x-component");
+    await flight.text();
+    page = await createBrowser();
+    await page.visit(app.origin() + "/products");
+    await page.waitFor('[data-hydrated="yes"]');
+    await page.click("#counter");
+    expect(await page.text("#counter")).toBe("1");
+  } finally {
+    await page?.close();
+    await app.close();
+  }
+}, { timeout: 60000 });
+```
+
+Run this integration test with `uf test`. For `createBrowser` in a Node worker,
+set `UF_BROWSER` to a Chromium executable. The application needs its normal RSC
+peers, including `react-server-dom-parcel`. `root` names the directory containing
+`uf.config.js`; put the test there or pass the appropriate path. `app.render`
+requests HTML, `app.flight` returns the real streaming Response, and `app.fetch`
+is a plain request for a BFF handler. Each accepts request headers, including
+cookies, so concurrent request isolation can be tested. `app.events()` returns
+the most recent dev events. Startup and request-header waits default to 30
+seconds; `timeoutMs` changes that budget. The test's own timeout bounds streaming
+and browser work. `close` is idempotent; loss of the owning worker also closes
+the dev process through its parent pipe.
+
+This covers nested async components, Suspense and `"use client"` references in
+the framework's actual renderer. DOM component tests continue to use
+`@uniflowed/react-testing`. Calling an async component as a JavaScript function
+alone does not exercise those RSC boundaries. The helper currently targets the
+web development pipeline; it does not claim production-build or native coverage.
+
+### Trusted input and visual comparisons
+
+`createBrowser` also works inside `uf test --browser`. It creates a separate
+page, so navigating the application does not unload the test. `click`, `fill`,
+`press` and `tap` use Chromium's input commands and produce trusted events.
+`waitFor` waits for a selector; select a hydration or application-readiness marker
+when the next action depends on client code. `viewport` sets dimensions and an
+optional device scale. `text`, `value`, `url` and `events` inspect the page.
+
+```js
+const page = await createBrowser();
+try {
+  await page.viewport({ width: 1440, height: 1000 });
+  await page.visit("http://127.0.0.1:5173/");
+  await page.waitFor("#ready");
+  await page.fill("input[name=search]", "Flow");
+  await page.press("Enter");
+  await page.screenshot("home-desktop");
+} finally {
+  await page.close();
+}
+```
+
+A screenshot assertion waits for fonts and two animation frames, captures the
+viewport, and compares it with `<vrt.baselines>/<name>.png` using `pixelmatch`.
+Names must be unique within that directory. `vrt.threshold` is the allowed
+number of different pixels, zero by default; a dimension change always fails.
+`page.screenshot(name, { threshold, baselines })` can override those two settings.
+Baselines and failure artifacts stay inside the test project.
+
+Missing baselines fail. Record or deliberately replace them with
+`uf test --browser -u`; normal runs never update them. A mismatch writes
+`<name>.actual.png` and `<name>.diff.png` and fails with their location. Keep
+viewport, device scale, fonts and browser version fixed for reproducible CI.
+uf's integration gate pins Chrome for Testing 153.0.8010.52 and exercises missing,
+matching, changed and explicitly updated baselines.
+
+The existing workspace `@uniflowed/browser` and `@uniflowed/vrt` front doors
+share this implementation; the published entry is `@uniflowed/test/browser`.
+VRT plans accept a callback that resolves each story and viewport to a ready
+page, compare each snapshot and close the page. No story renderer is inferred.
+Network interception, throttling and general Playwright API compatibility are
+not provided by this interface.
+
+### Browser-mode boundaries
 
 Four more, each refused by name rather than half-done:
 
 - **Snapshots.** `toMatchSnapshot` writes a file beside the test that took it,
-  and a page has no filesystem. `uf test --browser -u` is refused; record
-  snapshots on Node and check them in the browser.
+  and that text-snapshot API has no filesystem in a page. Record text snapshots
+  on Node and check them in the browser; `--browser -u` updates visual baselines.
   `toMatchInlineSnapshot` needs no file and works.
 - **Module mocking.** `uft.mock` intercepts module resolution, which is
   `node:module`'s synchronous hooks on Node and nothing at all in a page.
 - **Coverage.** V8 is counting in the renderer exactly as it counts in Node, but
   `NODE_V8_COVERAGE` is Node's own switch and the only way to ask a page for its
-  profile is the protocol above. `--browser --coverage` is refused before the
+  profile requires a coverage implementation that this driver does not yet have.
+  `--browser --coverage` is refused before the
   browser is even looked for, because installing one would not fix it.
 - **`permissions`.** A declared set describes what a *process* may reach, and
   the process the tests run in is a browser uf started rather than a host uf

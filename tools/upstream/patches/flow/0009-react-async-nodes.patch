@@ -1,0 +1,30 @@
+From: uf maintainers
+Subject: [PATCH] Admit React 19 async component results in the bundled Flow library
+
+Issue: https://github.com/ubugeeei-prod/uf/pull/1291
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+React 19 renders promises, but the pinned React$Node union rejects the return
+value of an async function component, including RSC functions that await fetch.
+Add Promise of the resolved node union without relaxing its props or allowing
+arbitrary objects. Async client functions remain unsupported by React; this is
+its shared node type, not a promise that a renderer permits async components.
+Reference: https://react.dev/reference/rsc/server-components
+Regression: crates/uf_check/tests/upstream_patches.rs
+
+--- a/lib/react.js
++++ b/lib/react.js
+@@ -12,7 +12,11 @@
+  * addition to elements and arrays of nodes.
+  */
+ 
+-declare type React$Node =
++declare type React$Node = React$AwaitedNode | Promise<React$AwaitedNode>;
++
++// Promise resolution is renderable in React 19, including async Server Components.
++// Keep the resolved union separate: Promise<React$Node> recursively awaits itself.
++declare type React$AwaitedNode =
+   | void
+   | null
+   | boolean

@@ -51,6 +51,7 @@
 // worth not having at all.
 
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
@@ -122,6 +123,11 @@ export type PageRequest = {|
 
 /** How `create` is configured. */
 export type ServerOptions = {|
+  readonly browserCommand?: (
+    id: mixed,
+    method: string,
+    args: $ReadOnlyArray<mixed>,
+  ) => Promise<mixed>,
   /** The project root; every served file must be under this or a package. */
   readonly root: string,
   /** Transforms a Flow module, or answers `null` when it is not uf's. */
@@ -139,6 +145,7 @@ export type ServerOptions = {|
  */
 export async function create(options: ServerOptions): Promise<ModuleServer> {
   const root = realpathSync(options.root);
+  const browserToken = randomUUID();
   const packages = crawlPackages(root);
   const map = importMap(packages);
   const roots = [root, ...packages.map((entry) => entry.directory)];
@@ -180,7 +187,7 @@ export async function create(options: ServerOptions): Promise<ModuleServer> {
     const at = url.indexOf("?");
     const route = at === -1 ? url : url.slice(0, at);
     if (route === "/" || route === PAGE_PATH) {
-      reply(outgoing, 200, "text/html; charset=utf-8", harnessHtml(map));
+      reply(outgoing, 200, "text/html; charset=utf-8", harnessHtml(map, browserToken));
       return;
     }
     if (route === "/uf-test/next") {
@@ -195,6 +202,46 @@ export async function create(options: ServerOptions): Promise<ModuleServer> {
       waiting = (answer: string) => reply(outgoing, 200, "application/json", answer);
       outgoing.on("close", () => {
         waiting = null;
+      });
+      return;
+    }
+    if (route === "/uf-test/browser") {
+      const origin = `http://127.0.0.1:${String(port)}`;
+      if (
+        incoming.method !== "POST" ||
+        incoming.headers.origin !== origin ||
+        incoming.headers.host !== `127.0.0.1:${String(port)}` ||
+        incoming.headers["uf-test-browser"] !== browserToken
+      ) {
+        reply(
+          outgoing,
+          403,
+          "application/json",
+          JSON.stringify({ error: "invalid test browser request" }),
+        );
+        return;
+      }
+      readBody(incoming, (body) => {
+        void (async () => {
+          try {
+            const { id, method, args } = JSON.parse(body);
+            if (
+              typeof method !== "string" ||
+              !Array.isArray(args) ||
+              options.browserCommand == null
+            )
+              throw new Error("invalid browser command");
+            const value = await options.browserCommand(id, method, args);
+            reply(outgoing, 200, "application/json", JSON.stringify({ value }));
+          } catch (error) {
+            reply(
+              outgoing,
+              400,
+              "application/json",
+              JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+            );
+          }
+        })();
       });
       return;
     }
@@ -324,6 +371,8 @@ async function serveFile(
       `${absolute} is outside this project and the packages it depends on, so the browser is not being handed it`,
     );
   }
+  if (/\.html$/.test(real))
+    return { body: readFileSync(real, "utf8"), type: "text/html; charset=utf-8" };
   if (!/\.(?:js|jsx|mjs|cjs)$/.test(real)) {
     // A JSON import, a stylesheet, an asset. Not this change: a page can have
     // them and `uf test --browser` has no opinion about what they should mean
@@ -582,13 +631,14 @@ export function moduleUrl(file: string): string {
  * differently — a layout answer from a quirks-mode page would be a wrong
  * answer wearing a real browser's authority.
  */
-function harnessHtml(map: string): string {
+function harnessHtml(map: string, browserToken: string): string {
   const page = moduleUrl(fileURLToPath(new URL("./page.js", import.meta.url).href));
   return [
     "<!doctype html>",
     '<html lang="en">',
     '<meta charset="utf-8">',
     "<title>uf test</title>",
+    `<script>globalThis[Symbol.for("uf.test.browser.token")]=${JSON.stringify(browserToken)}</script>`,
     `<script type="importmap">${map}</script>`,
     `<script type="module" src="${page}"></script>`,
     "",
@@ -835,7 +885,9 @@ function browserField(entry: Package): { [string]: string } {
     // an empty module is a silence, and silence is what the whole `browser`
     // shim in this package exists not to be. Nothing uf ships uses it.
     if (typeof target !== "string") continue;
-    substitutions[key] = target.startsWith(".") ? join(entry, target) : target;
+    substitutions[key.startsWith(".") ? join(entry, key) : key] = target.startsWith(".")
+      ? join(entry, target)
+      : target;
   }
   return substitutions;
 }
