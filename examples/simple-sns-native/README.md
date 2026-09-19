@@ -1,6 +1,6 @@
 # Commonplace Native
 
-A separate Expo example using Flow components, StyleX's native transform,
+A separate Expo example using Flow components, the typed @uniflowed/stylex/native entry,
 file routes, React Navigation stacks and tabs, and the real native test renderer.
 The warm palette and quiet card layout follow the web Commonplace examples.
 
@@ -10,6 +10,7 @@ From this directory, with uf alpha.41 or later:
 uf install
 uf dev --target ios
 # Or: uf dev --target android
+uf check
 uf test
 uf build --target ios
 uf build --target android
@@ -20,6 +21,11 @@ Metro is configured through the public withUniflowedMetro adapter; the applicati
 supplies its own React Navigation navigator factories. Node 24 or later is needed.
 The example copies its local uf dependencies during installation so their native
 peers resolve from this app. Run npm ci again after editing those uf packages.
+
+The flow-typed declarations describe the two no-config React Navigation factories
+used here. React Navigation's TypeScript state-bag constraints assume mutable-array
+covariance; the app uses this narrow Flow boundary and uf's generated route types.
+Other React Navigation exports need their own declarations when added to the app.
 
 The feed, composer and its test live in app/(tabs); profile and note detail each
 own their route. Shared note state and visual styles live in app/_shared. The

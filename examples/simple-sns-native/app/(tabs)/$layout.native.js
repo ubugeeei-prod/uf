@@ -3,7 +3,7 @@ import { Tabs } from "@uniflowed/router/native-navigation";
 export component Layout() {
   return (
     <Tabs
-      screenOptions={({ route }) => ({
+      screenOptions={({ route }: { route: { name: string, ... }, ... }) => ({
         headerShown: false,
         title: route.name === "/" ? "Feed" : "You",
         tabBarIcon: () => null,

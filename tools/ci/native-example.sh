@@ -8,6 +8,7 @@ export UF_BINARY="$binary"
 "$binary" --cwd examples/simple-sns-native fmt --check
 "$binary" --cwd examples/simple-sns-native lint
 "$binary" --cwd examples/simple-sns-native build --target ios
+"$binary" --cwd examples/simple-sns-native check
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/uf-native-example.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 mkdir -p "$scratch/packs"
@@ -27,6 +28,8 @@ fs.writeFileSync(file, JSON.stringify(manifest));
 JS
 (cd "$scratch/app" && npm install --ignore-scripts --no-audit --no-fund)
 export UF_BINARY="$binary"
+"$binary" --cwd "$scratch/app" check
+node tools/ci/native-stylex-types.mjs "$scratch/app"
 "$binary" --cwd "$scratch/app" test --threads 1
 "$binary" --cwd "$scratch/app" build --target ios
 "$binary" --cwd "$scratch/app" build --target android

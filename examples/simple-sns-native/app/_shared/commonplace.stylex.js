@@ -1,5 +1,5 @@
 // @flow
-import { stylex } from "@uniflowed/stylex";
+import { stylex } from "@uniflowed/stylex/native";
 export const styles = stylex.create({
   page: { flex: 1, backgroundColor: "#f6f5ed" },
   content: { padding: 24, gap: 20 },

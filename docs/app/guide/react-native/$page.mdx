@@ -247,6 +247,8 @@ project root while the config loads, so one that is not installed is an error
 there rather than halfway through the first bundle, and
 `UF_METRO_UPSTREAM_TRANSFORMER` overrides the choice when a person needs to.
 
+For native Flow components, import `stylex` from `@uniflowed/stylex/native`.
+Its props preserve the authored React Native style types and have no `className`.
 On native, `stylex.create` compiles to marked React Native style objects and
 `stylex.props` returns `{ style: ... }`. Numeric dimensions, colors, flexbox,
 spacing, borders and text styles share the same source with the web build.
@@ -916,7 +918,7 @@ navigator uses `<Navigator navigator={yourNavigator} />` with the same tree.
 ```js
 // app/(tabs)/$page.native.js
 import { View, Text } from "react-native";
-import { stylex } from "@uniflowed/stylex";
+import { stylex } from "@uniflowed/stylex/native";
 import { Link } from "@uniflowed/router/native-navigation";
 import { route } from "../../router";
 

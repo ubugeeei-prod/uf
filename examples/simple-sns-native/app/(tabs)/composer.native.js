@@ -1,7 +1,7 @@
 // @flow
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { stylex } from "@uniflowed/stylex";
+import { stylex } from "@uniflowed/stylex/native";
 import { useNotes } from "../_shared/notes.js";
 import { styles } from "../_shared/commonplace.stylex.js";
 const local = stylex.create({

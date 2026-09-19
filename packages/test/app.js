@@ -59,7 +59,9 @@ export async function createTestApp(options: AppTestOptions): Promise<TestApp> {
   let origin = "";
   let ended = false;
   const exited = new Promise<void>((resolve) =>
-    child.once("exit", () => {
+    // The CLI exits before its Vite driver's inherited streams close. Wait for
+    // those streams too, so close() includes server and diagnostic cleanup.
+    child.once("close", () => {
       ended = true;
       resolve();
     }),

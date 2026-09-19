@@ -246,6 +246,19 @@ mod tests {
     }
 
     #[test]
+    fn compiles_the_typed_native_entry() {
+        for import in [
+            "import {stylex as s} from '@uniflowed/stylex/native';",
+            "import * as s from '@uniflowed/stylex/native';",
+        ] {
+            let source = format!("{import} const styles = s.create({{root: {{padding: 12}}}});");
+            let native = compile_native_module(&source).unwrap();
+            assert!(native.contains("\"$$native\":true,\"padding\":12"));
+            assert_eq!(compile_native_module(&native).unwrap(), native);
+        }
+    }
+
+    #[test]
     fn refuses_each_unsupported_feature_by_name() {
         for (property, name) in [
             ("color: {':hover': 'red'}", ":hover"),
