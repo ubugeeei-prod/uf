@@ -12,7 +12,7 @@ export function dataKey(args: $ReadOnlyArray<mixed>): string {
     if (typeof value === "number" && Number.isFinite(value)) {
       return Object.is(value, -0) ? "-0" : String(value);
     }
-    if (typeof value !== "object" || value == null) {
+    if (typeof value !== "object") {
       throw new TypeError(`cacheFunction cannot key an argument of type ${typeof value}`);
     }
     const prototype = Object.getPrototypeOf(value);
