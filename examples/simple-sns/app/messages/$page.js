@@ -3,10 +3,15 @@
 import * as React from "@uniflowed/react";
 import { InboxRegions } from "./inbox.client.js";
 import type { LoaderArgs } from "@uniflowed/router";
-import { SocialFrame } from "../social-frame.js";
-import { sessionData, threadsData, messagesData } from "../social-queries.js";
-import { SignInPrompt } from "../ui.js";
-import type { Session, InboxData, ConversationData, MessageThread } from "../social-model.js";
+import { SocialFrame } from "../_shared/social-frame.js";
+import { sessionData, threadsData, messagesData } from "../_server/social-queries.js";
+import { SignInPrompt } from "../_shared/ui.js";
+import type {
+  Session,
+  InboxData,
+  ConversationData,
+  MessageThread,
+} from "../_shared/social-model.js";
 
 /** Resolved shell identity with independently deferred inbox and conversation reads. */
 export type Data = {|

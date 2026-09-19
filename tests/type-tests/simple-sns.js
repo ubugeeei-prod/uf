@@ -1,9 +1,9 @@
 // @flow
 import * as React from "@uniflowed/react";
-import type { ActionResult, Session } from "../../examples/simple-sns/app/social-model.js";
-import { PostList } from "../../examples/simple-sns/app/timeline-client.js";
-import { FormField } from "../../examples/simple-sns/app/form-ui.client.js";
-import { EmptyState, ActionLink } from "../../examples/simple-sns/app/ui.js";
+import type { ActionResult, Session } from "../../examples/simple-sns/app/_shared/social-model.js";
+import { PostList } from "../../examples/simple-sns/app/(feed)/timeline.client.js";
+import { FormField } from "../../examples/simple-sns/app/_shared/form-ui.client.js";
+import { EmptyState, ActionLink } from "../../examples/simple-sns/app/_shared/ui.js";
 // expect: value
 export const missingValue: ActionResult<string> = { status: "success", message: "Saved" };
 // expect: value

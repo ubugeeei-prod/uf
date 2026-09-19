@@ -2,11 +2,11 @@
 
 import * as React from "@uniflowed/react";
 
-import { sessionData, settingsData } from "../social-queries.js";
-import { SocialFrame } from "../social-frame.js";
+import { sessionData, settingsData } from "../_server/social-queries.js";
+import { SocialFrame } from "../_shared/social-frame.js";
 
 import { SettingsRegion } from "./settings-region.client.js";
-import type { Settings, Session, Protected } from "../social-model.js";
+import type { Settings, Session, Protected } from "../_shared/social-model.js";
 
 /** Resolved shell identity and a deferred, authorized private profile. */
 export type Data = {| readonly session: Session, readonly profile: Promise<Protected<Settings>> |};

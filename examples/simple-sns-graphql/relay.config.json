@@ -2,9 +2,11 @@
   "src": "./app",
   "schema": "./backend/schema.graphql",
   "language": "flow",
-  "artifactDirectory": "./app/__generated__",
   "eagerEsModules": true,
-  "excludes": ["**/node_modules/**", "**/__generated__/**"],
+  "excludes": [
+    "**/node_modules/**",
+    "**/__generated__/**"
+  ],
   "featureFlags": {
     "flow_modern_syntax": {
       "kind": "enabled"

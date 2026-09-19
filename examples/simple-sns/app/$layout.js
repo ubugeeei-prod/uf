@@ -3,7 +3,7 @@
 import * as React from "@uniflowed/react";
 import type { Metadata, LayoutProps } from "@uniflowed/router";
 import { props, stylex } from "@uniflowed/stylex";
-import "./base.css";
+import "./_shared/base.css";
 
 export const metadata: Metadata = {
   title: "Commonplace",

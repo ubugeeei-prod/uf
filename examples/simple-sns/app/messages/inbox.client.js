@@ -3,11 +3,11 @@
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
-import { AsyncRegion, useRetryableResource } from "../async-region.client.js";
-import { threadsData, messagesData } from "../social-queries.js";
-import { Avatar, EmptyState, LoadingState, SignInPrompt } from "../ui.js";
-import { DirectMessagesClient } from "./direct-messages-client.js";
-import type { InboxData, ConversationData, MessageThread } from "../social-model.js";
+import { AsyncRegion, useRetryableResource } from "../_shared/async-region.client.js";
+import { threadsData, messagesData } from "../_server/social-queries.js";
+import { Avatar, EmptyState, LoadingState, SignInPrompt } from "../_shared/ui.js";
+import { DirectMessagesClient } from "./direct-messages.client.js";
+import type { InboxData, ConversationData, MessageThread } from "../_shared/social-model.js";
 
 /** Navigate to one authorized conversation and expose the selected state accessibly. */
 export component ThreadLink(thread: MessageThread, selected: boolean) {
