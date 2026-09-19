@@ -1,5 +1,6 @@
 // @flow
 
+import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import type { LoaderArgs } from "@uniflowed/router";
@@ -49,7 +50,7 @@ export component Page(data: Data) {
           <p>Notes from the people in your community.</p>
         </div>
       </header>
-      <div className="feed-toolbar">
+      <div {...styled("feed-toolbar", sharedStyles.feedToolbar)}>
         <nav className="feed-tabs" aria-label="Feed channels">
           <Link
             to={feedHref("all", feed.query)}
@@ -69,7 +70,9 @@ export component Page(data: Data) {
         </nav>
       </div>
       <SearchNotes key={feed.query} filter={feed} />
-      {feed.query ? <p className="result-label">Results for “{feed.query}”</p> : null}
+      {feed.query ? (
+        <p {...styled("result-label", sharedStyles.resultLabel)}>Results for “{feed.query}”</p>
+      ) : null}
       <div className="feed-content">
         <TimelineClient
           key={`${feed.topic}:${feed.query}:${feed.page}`}

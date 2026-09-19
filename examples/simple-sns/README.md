@@ -2,6 +2,8 @@
 
 A community application built with uf, Flow, React, and `@uniflowed/ui`. Public notes and short videos sit alongside account profiles and private conversations. The responsive interface uses neutral surfaces, real photography, translucent navigation, and fine separators, with no decorative shadows or gradients.
 
+The separate [GraphQL and Relay version](../simple-sns-graphql) demonstrates the preferred backend boundary: an independent backend service with a small Flow BFF. This older example keeps its local SQLite store to exercise existing server actions. Shared component styles now live in `app/commonplace.stylex.js`; the original desktop and mobile design is preserved.
+
 ## Run
 
 From the repository root, using the workspace uf binary:
@@ -27,7 +29,7 @@ Use the same database path between restarts. Without the environment variable, s
 
 Route loaders start independent reads before awaiting the session needed by the shell. `social-queries.js` and `social-actions.js` are `"use server"` modules: the browser receives server references, never the SQLite repository, password hashing, or session implementation. Every private read and every mutation resolves identity from the current request; neither a member ID supplied by a client nor an action's previous state is trusted.
 
-uf currently splits route loaders and server references and streams deferred loader values. It does **not** transport an arbitrary React Flight component tree. The route's renderable module and its interactive dependencies are hydrated on the client. HTTP `$route` handlers are excluded from the client route table, with a Vite regression guarding that boundary.
+uf renders React Server Components through Flight and hydrates explicit client references. HTTP `$route` handlers remain outside the client route table, with a Vite regression guarding that boundary. The separate GraphQL example uses the same transport for Relay's experimental server query preloads.
 
 The server layers are deliberately small:
 

@@ -1,6 +1,7 @@
 "use client";
 // @flow
 
+import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { useActionState, useState } from "@uniflowed/react";
@@ -49,7 +50,7 @@ export component AuthClient(mode: "login" | "signup") {
           }
         }
       </h1>
-      <p className="auth-intro">
+      <p {...styled("auth-intro", sharedStyles.authIntro)}>
         {
           match (mode) {
             "signup" => "Create a profile to publish notes and send messages.",
@@ -159,7 +160,9 @@ export component AuthClient(mode: "login" | "signup") {
           }
         }
       </p>
-      <p className="auth-note">Local example. Use sample details; email is not verified or sent.</p>
+      <p {...styled("auth-note", sharedStyles.authNote)}>
+        Local example. Use sample details; email is not verified or sent.
+      </p>
     </form>
   );
 }

@@ -185,8 +185,14 @@ in `uf`.
   for Node.js, Deno, and Bun hosts.
 - WinterTC-aligned Flow runtime execution on Hermes after the Vite/host-runtime
   path is stable.
-- ORM, Valibot-class validator, Jotai-class state atoms, and cell runtime
-  primitives.
+- A sqlc generator for typed SQL access; migration tooling remains the
+  application's choice. ORM implementation is out of scope. See
+  [the BFF boundary](red-lines.md#what-is-not-on-the-table).
+- First-class GraphQL/Relay integration, including upstream Relay's
+  experimental RSC APIs with explicit version and integration coverage.
+- Platform-neutral BFF capabilities with adapters for Cloudflare Workers,
+  Vercel, AWS, GCP, and Azure; platform support requires deployed evidence.
+- Valibot-class validator, Jotai-class state atoms, and cell runtime primitives.
 - Lite Temporal, PWA primitives, and opt-in-only cache controls. **Lite
   Temporal is done**: `@uniflowed/core/temporal` uses `globalThis.Temporal`
   where the host has it and implements `Instant`, `ZonedDateTime`, `PlainDate`,

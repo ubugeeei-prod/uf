@@ -1,6 +1,7 @@
 "use client";
 // @flow
 
+import { styled, styles as sharedStyles } from "../commonplace.stylex.js";
 import * as React from "@uniflowed/react";
 import { callAction } from "../action-result.client.js";
 import { useActionState, useOptimistic, useState, useEffect, useRef } from "@uniflowed/react";
@@ -96,7 +97,10 @@ export component DirectMessagesClient(
           <h2>{thread.name}</h2>
           <p>@{thread.handle}</p>
         </div>
-        <span className="conversation-private" title="Private conversation">
+        <span
+          {...styled("conversation-private", sharedStyles.conversationPrivate)}
+          title="Private conversation"
+        >
           <Icon name="lock" size={16} />
         </span>
       </header>

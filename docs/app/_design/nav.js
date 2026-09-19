@@ -226,6 +226,11 @@ export const sections: $ReadOnlyArray<Section> = [
           "A contract rather than a provider: PKCE, a single-use state, and a session store you can replace.",
       },
       {
+        href: "/guide/graphql-relay",
+        title: "GraphQL and Relay",
+        blurb: "Typed Relay artifacts, streamed RSC preloads, and an independent backend.",
+      },
+      {
         href: "/guide/logging",
         title: "Logging",
         blurb: "A structured logger, and a request id readable from inside a render.",

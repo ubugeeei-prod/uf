@@ -508,14 +508,7 @@ fn the_registry_names_exactly_what_each_package_exports() {
     // Named rather than counted: each one is a package whose entry this test
     // cannot check, and adding one should be a decision somebody makes.
     exempt.sort();
-    assert_eq!(
-        exempt,
-        [
-            "@uniflowed/react",
-            "@uniflowed/react-native",
-            "@uniflowed/relay"
-        ]
-    );
+    assert_eq!(exempt, ["@uniflowed/react", "@uniflowed/react-native"]);
 }
 
 /// The std registry's shipping entries are exactly `packages/std`'s subpaths,

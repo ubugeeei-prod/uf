@@ -1,26 +1,47 @@
 // @flow
-//
-// `@uniflowed/relay`: Relay, re-exported.
-//
-// This is the real `react-relay`, not a declaration of it. uf owns
-// orchestration, not implementation: Relay is a store, a normaliser, a compiler
-// and a decade of work on cache consistency, and a uf-shaped reimplementation
-// would be a worse Relay that uf then had to keep up with.
-//
-// What uf adds is the toolchain around it. `uf check` type checks `graphql`
-// tagged templates against the artifacts Relay's compiler generates, and
-// `uf transform` rewrites those tags to the artifact they name. The library is
-// Meta's; the integration is uf's.
-//
-// `export *` rather than a list of names: the list was a second copy of
-// Relay's export surface, and Relay adds hooks faster than uf releases.
-//
-// Relay is a peer dependency, so its version is the project's. An application
-// can pin or override one with its package manager's `resolutions` without
-// waiting for a uf release.
-
-export * from "react-relay";
-
+// Relay owns the runtime, normalized cache, compiler, and public types.
+// Named value re-exports preserve Vite's CommonJS interop in the browser;
+// export-star alone does not expose a prebundled CommonJS module's members.
+// The namespace keeps access to the complete upstream runtime as it evolves.
+// uf dev/build use Relay's Babel plugin; uf run relay runs the app's compiler.
+export {
+  ConnectionHandler,
+  EntryPointContainer,
+  LocalQueryRenderer,
+  MutationTypes,
+  ProfilerContext,
+  QueryRenderer,
+  RangeOperations,
+  ReactRelayContext,
+  RelayEnvironmentProvider,
+  applyOptimisticMutation,
+  commitLocalUpdate,
+  commitMutation,
+  createFragmentContainer,
+  createPaginationContainer,
+  createRefetchContainer,
+  fetchQuery,
+  fetchQuery_DEPRECATED,
+  graphql,
+  loadEntryPoint,
+  loadQuery,
+  readInlineData,
+  requestSubscription,
+  useClientQuery,
+  useEntryPointLoader,
+  useFragment,
+  useLazyLoadQuery,
+  useMutation,
+  useMutationAction_EXPERIMENTAL,
+  usePaginationFragment,
+  usePrefetchableForwardPaginationFragment,
+  usePreloadedQuery,
+  useQueryLoader,
+  useRefetchableFragment,
+  useRelayEnvironment,
+  useSubscribeToInvalidationState,
+  useSubscription,
+} from "react-relay";
+export type * from "react-relay";
 import * as ReactRelay from "react-relay";
-
 export { ReactRelay };
