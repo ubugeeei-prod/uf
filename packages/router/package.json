@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/router",
-  "version": "0.0.0-alpha.40",
+  "version": "0.0.0-alpha.41",
   "description": "The file-system router for Flow React applications: matching, layouts, loaders, navigation, server rendering and hydration.",
   "type": "module",
   "license": "MIT",
@@ -25,7 +25,8 @@
     "./routing": "./routing.js",
     "./package.json": "./package.json",
     "./handler": "./handler.js",
-    "./middleware": "./middleware.js"
+    "./middleware": "./middleware.js",
+    "./http-client": "./http-client.js"
   },
   "files": [
     "action.js",
@@ -41,6 +42,7 @@
     "rsc.js",
     "server-components.js",
     "server.js",
+    "http-client.js",
     "!*.test.js"
   ],
   "peerDependencies": {
@@ -57,7 +59,7 @@
     }
   },
   "dependencies": {
-    "@uniflowed/hooks": "0.0.0-alpha.40",
-    "@uniflowed/server": "0.0.0-alpha.40"
+    "@uniflowed/hooks": "0.0.0-alpha.41",
+    "@uniflowed/server": "0.0.0-alpha.41"
   }
 }

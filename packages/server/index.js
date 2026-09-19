@@ -15,6 +15,7 @@
 
 import type { CookieStore, DraftMode, HeaderStore, RequestContext } from "./internal/context.js";
 import { currentContext, nonceFor } from "./internal/context.js";
+import { refuseRequestInDataScope } from "./internal/data-scope.js";
 import { DraftModeError } from "./internal/draft.js";
 import type { LogFields, Logger } from "./internal/log.js";
 import { processLogger } from "./log.js";
@@ -22,6 +23,7 @@ import { processLogger } from "./log.js";
 export type { CookieStore, DraftMode, HeaderStore } from "./internal/context.js";
 export type { LogFields, LogLevel, Logger } from "./internal/log.js";
 export { DraftModeError } from "./internal/draft.js";
+export { authorizeNativeAction } from "./internal/native-actions.js";
 
 /**
  * Raised when a server function is called with no request to answer about.
@@ -72,6 +74,7 @@ function require$Context(binding: string) {
  * answer that is safe in both directions.
  */
 function require$VaryingContext(binding: string) {
+  refuseRequestInDataScope(binding);
   const context = require$Context(binding);
   context.requestStateReads += 1;
   return context;

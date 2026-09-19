@@ -87,6 +87,34 @@ decisions are:
 | The `application/json` and `application/ld+json` blocks uf renders through React carry no nonce, so a strict policy might refuse them and take hydration with them | It does not, and this is settled by observation rather than by reading a specification. HTML classifies a `<script>` whose type is neither a JavaScript MIME type nor `module` as a *data block* and never executes it, so `script-src` does not gate it. Checked in a real browser against a real deployment: a page served under `script-src 'nonce-…' 'strict-dynamic'` carrying three parser-inserted un-nonced scripts — one executable, one `application/json`, one `application/ld+json` — reported exactly one violation, the executable one, and both data blocks stayed in the DOM with their text readable. The reason they are left un-nonced is hydration rather than CSP: React compares a `nonce` during hydration through the DOM node's `nonce` IDL property, so a nonce the server wrote and the client did not repeat is a mismatch, and the client cannot learn the value without a carrier that would hand it to an HTML injection too — which is the mitigation browsers blank the attribute for | `packages/router/csp-nonce.test.js` |
 | A nonce policy on a route the build prerendered: the header names a fresh per-request nonce and the document on disk was written without one, so the page's own client entry is refused and nothing hydrates | `uf build` joins the documents it prerendered against `app.router.headers` and **reports every one covered by a rule whose value names `{uf.nonce}`** — naming the document, the file it was written to, the header, the rule's `source`, and the config file it is written in, with both ways out: scope the rule's `source` to the routes a server renders, or serve the prerendered ones under a hash policy. The build already held both halves, so this is a join rather than new plumbing. The join is the server's own, not the router's: `matchSegments` lets a rule's `:name*` take the rest of the path *including none of it*, so `/:path*` covers `/` — a route's catch-all needs a segment and would have missed the exact document this was reported against. It reports rather than refuses, and `crates/uf_cli/src/commands/build/nonce.rs` argues why in one constant: a project may serve `dist/` from a host that never applies these rules. What is no longer true is that the combination is silent. The claim it makes is categorical rather than probabilistic — a prerendered document carries no nonce at all, not a stale one, so a per-request nonce can never admit its client entry and no deployment honouring both halves has a working page | `crates/uf_cli/src/commands/build/nonce/tests.rs` |
 
+### Native action channel
+
+Native clients should normally call typed `$route.js` endpoints. An application
+can additionally authorize server actions with a short-lived bearer credential
+issued by its existing backend or identity provider. Flow does not issue tokens
+or own the application's authentication database.
+
+The channel is opt-in for each request: middleware calls
+`authorizeNativeAction(request, verify)` and the verifier must validate the
+credential's signature, issuer, audience, expiry and permission for the specific
+build-scoped action ID. Only an explicit `true` authorizes it. The client sends
+`uf-native-action: bearer-v1` and `Authorization: Bearer …` over HTTPS, with
+credentials omitted. Tokens belong in the native platform's secure storage.
+
+A native-channel request with `Origin`, `Cookie`, or any `Sec-Fetch-*` header is
+refused, even with a valid token. Absence of Origin alone never authorizes an
+action. Authorization is attached to that exact Request, action ID and credential
+inside its request context, and is checked again by the dispatcher; it cannot
+carry over to another request or a changed header. The ordinary browser action
+channel still requires same-origin requests. Both channels retain the same JSON,
+size, action lookup and argument bounds, with no CORS grant or cookie fallback.
+
+The client refuses redirects so a credential cannot follow an endpoint to another
+origin. HTTP is allowed only for loopback development unless the application
+explicitly enables an insecure development connection. Action code must still
+authorize the operation and its resource; a route pathname is not an action's
+identity. Verifier integration tests belong to the application that owns tokens.
+
 ### The argument boundary
 
 A `"use server"` export is a public HTTP endpoint the moment it exists, and the

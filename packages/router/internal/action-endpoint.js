@@ -88,7 +88,7 @@
 // it. Written here because this is the file somebody reads before deciding
 // otherwise.
 
-import { asResponder } from "@uniflowed/server/host";
+import { asResponder, nativeActionAllowed } from "@uniflowed/server/host";
 
 import {
   ACTION_CONTENT_TYPE,
@@ -163,7 +163,8 @@ export function createActionDispatcher(options: {|
     if (request.method.toUpperCase() !== "POST") {
       return new Response(null, { status: 405, headers: { ...ANSWER_HEADERS, allow: "POST" } });
     }
-    if (!sameOrigin(request)) {
+    const native = request.headers.has("uf-native-action");
+    if (native ? !nativeActionAllowed(request) : !sameOrigin(request)) {
       return refusal(403);
     }
     if (!isJson(request.headers.get("content-type"))) {

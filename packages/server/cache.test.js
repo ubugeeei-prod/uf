@@ -21,12 +21,8 @@
 // that have nothing to do with the code. So the store takes `now`, every test
 // here owns one, and "sixty seconds later" is an assignment.
 //
-// # What is deliberately not here
-//
-// `rendering.cache.data` and `rendering.cache.actions`. Neither is implemented,
-// and `crates/uf_config` refuses them by name rather than letting them reach a
-// manifest — `refuses_a_cache_switch_uf_does_not_implement` is that assertion,
-// and it belongs there because it is a fact about loading a config file.
+// Function-cache coverage is in data-cache.test.js; action result caching
+// remains refused by the configuration loader.
 
 import fs from "node:fs";
 import os from "node:os";

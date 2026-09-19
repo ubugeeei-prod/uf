@@ -1,3 +1,4 @@
+mod http_client;
 pub mod native;
 pub mod reserved;
 pub mod scaffold;
@@ -1440,7 +1441,10 @@ pub fn write_router_manifest_for_target(
     // file rather than in the project, so the unformatted source is written
     // instead of failing the build: an unformatted `router.js` still type
     // checks and still runs.
-    let generated = generate_router_flow(&routes);
+    let mut generated = generate_router_flow(&routes);
+    // Native clients call the web handler table; no server module is imported.
+    let handlers = discover_server_modules(root, config)?;
+    generated.push_str(&http_client::generate_http_client(&handlers));
     let source = uf_fmt::format_source(&generated, &config.fmt)
         .map_or(generated, |formatted| formatted.output);
     fs::write(&manifest, source).map_err(|source| RouterError::Write {
