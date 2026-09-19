@@ -11,7 +11,7 @@ mkdir -p "$scratch/packs"
 cd "$repo"
 node tools/ci/pack-native-dependencies.cjs "$scratch/packs"
 for provider in expo react-native; do
-  app="$scratch/$provider"
+  app="$scratch/uf-smoke-$provider"
   if [ "$provider" = expo ]; then
     npm exec --yes --package=create-expo-app@4.0.0 -- create-expo-app "$app" --template expo-template-blank@57.0.26 --no-install
   fi
@@ -36,7 +36,7 @@ fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ ...template, n
 const from = provider === 'expo' ? 'expo/metro-config' : '@react-native/metro-config';
 fs.writeFileSync(path.join(app, 'metro.config.cjs'), `// @noflow\nconst {getDefaultConfig} = require('${from}');\nconst {withUniflowedMetro} = require('@uniflowed/react-native/metro');\nmodule.exports = withUniflowedMetro({...getDefaultConfig(__dirname), maxWorkers: 2});\n`);
 fs.writeFileSync(path.join(app, 'babel.config.cjs'), `// @noflow\nmodule.exports = { presets: ['${provider === 'expo' ? 'babel-preset-expo' : 'module:@react-native/babel-preset'}'] };\n`);
-fs.writeFileSync(path.join(app, 'app.json'), JSON.stringify(provider === 'expo' ? { expo: { name: 'UfNativeSmoke', slug: 'uf-native-smoke' } } : { name: 'UfNativeSmoke' }));
+fs.writeFileSync(path.join(app, 'app.json'), JSON.stringify(provider === 'expo' ? { expo: { name: 'UfNativeSmoke', slug: 'uf-native-smoke', android: { package: 'dev.uniflowed.smoke' } } } : { name: 'UfNativeSmoke' }));
 fs.writeFileSync(path.join(app, 'uf.config.js'), `export default { app: { targets: ['web', 'react-native'], rsc: false }, build: { outDir: 'dist' } };\n`);
 if (provider === 'expo') {
   fs.writeFileSync(path.join(app, 'adoption.test.js'), `import { it, expect } from '@uniflowed/test';\nit('runs Flow in the adopted Expo app', () => { const answer: number = 42; expect(answer).toBe(42); });\n`);
@@ -66,7 +66,7 @@ NODE
   if [ "$provider" = expo ]; then
     cp node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf assets/font.ttf
   else
-    cp "$scratch/expo/assets/font.ttf" assets/font.ttf
+    cp "$scratch/uf-smoke-expo/assets/font.ttf" assets/font.ttf
   fi
   "$binary" build --target ios
   "$binary" build --target android
@@ -83,6 +83,10 @@ NODE
   if [ "$provider" = expo ]; then
     CI=1 node_modules/.bin/expo prebuild --platform android --no-install
     node --input-type=commonjs -e 'const fs=require("node:fs"),assert=require("node:assert/strict"); assert(fs.readFileSync("android/app/build.gradle","utf8").includes("export:embed"));'
+    # Execute the generated native project's real JS bundle phase, including
+    # Hermes compilation and asset copying, with uf inherited by Gradle.
+    (cd android && ./gradlew :app:createBundleReleaseJsAndAssets --no-daemon --console=plain)
+    test -s android/app/build/generated/assets/react/release/index.android.bundle
     node_modules/.bin/expo export --platform ios --output-dir expo-export
     node_modules/.bin/expo export:embed --platform ios --entry-file index.js --dev true --minify false --bundle-output dev.bundle --assets-dest dev-assets
   else
