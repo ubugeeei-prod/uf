@@ -140,6 +140,43 @@ fn react_view_transition_has_typed_named_and_namespace_exports() {
     assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
 }
 
+/// 0009 — React 19 accepts promises as nodes. Async Server Components keep
+/// their props and resolved return values checked when instantiated as JSX.
+#[test]
+fn react_async_function_components_preserve_props_and_result_checks() {
+    assert_clean(
+        "async_server.js",
+        r#"// @flow
+import * as React from 'react';
+async function Data({name}: {name: string}): Promise<React.MixedElement> {
+  const value = await Promise.resolve(name);
+  return <p>{value}</p>;
+}
+export async function Page(): Promise<React.MixedElement> {
+  await Promise.resolve();
+  return <React.Suspense fallback="loading"><Data name="Ada" /></React.Suspense>;
+}
+export const result: React.Node = Promise.resolve(<Page />);
+"#,
+    );
+    for source in [
+        "async function Data({name}: {name: string}) { return <p>{name}</p>; } export const node = <Data name={42} />;",
+        "async function Invalid() { return {notANode: true}; } export const node = <Invalid />;",
+        "export const node: React.Node = Promise.resolve({notANode: true});",
+    ] {
+        let diagnostics = check(
+            "invalid_async_server.js",
+            &format!("// @flow\nimport * as React from 'react';\n{source}"),
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == Some("incompatible-type")),
+            "invalid async component must fail: {diagnostics:?}"
+        );
+    }
+}
+
 /// 0001 — the reproduction ubugeeei-prod/uf#205 was filed with.
 #[test]
 fn match_over_a_generic_union_binds_the_payload_as_the_type_variable() {

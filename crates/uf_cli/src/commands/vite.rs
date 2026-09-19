@@ -138,7 +138,12 @@ fn is_executable(path: &std::path::Path) -> bool {
 }
 
 /// What the driver reported, one line at a time.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(
+    tag = "event",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum Event {
     /// `uf.config.js` was loaded from `file`, or the defaults were used.
     ConfigLoaded { file: Option<String> },
@@ -236,7 +241,8 @@ pub(crate) enum Event {
 }
 
 /// How loud a log line is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum LogLevel {
     Info,
     Warn,
@@ -244,7 +250,7 @@ pub(crate) enum LogLevel {
 }
 
 /// A failure the driver reported, with a position when it had one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct DriverError {
     pub(crate) message: String,
     pub(crate) file: Option<String>,
@@ -261,7 +267,7 @@ pub(crate) struct DriverError {
 /// not. A browser usually has the second kind — a hydration mismatch is a fact
 /// about a DOM node rather than about a line of a file — and the point of the
 /// channel is that it still reads like every other uf diagnostic.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct BrowserDiagnostic {
     /// How loudly it reads. `Info` is a report rather than a problem.
     pub(crate) severity: LogLevel,
@@ -806,6 +812,24 @@ pub(crate) fn render_log(ui: &mut Ui, level: LogLevel, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serialized_events_keep_the_driver_wire_field_names() {
+        for event in [
+            Event::Done {
+                out_dir: "dist".into(),
+                pages: 2,
+            },
+            Event::Rendering {
+                prerender: "possible".into(),
+                prerendered: 1,
+                per_request: vec!["/private".into()],
+            },
+        ] {
+            let wire = serde_json::to_string(&event).unwrap();
+            assert_eq!(Event::parse(&wire), event);
+        }
+    }
 
     #[test]
     fn events_parse_by_their_tag() {

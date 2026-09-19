@@ -807,6 +807,33 @@ jobs:
           path: output/relay-sns
           retention-days: 3
 
+  browser-testing:
+    name: RSC and browser testing
+    needs: toolchain
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: sh tools/ci/pinned-browser.sh
+      - run: sh tools/ci/test-browser.sh
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-testing
+          path: output/browser-tests
+          retention-days: 3
+
   native-bundle:
     name: Native bundles
     needs: toolchain
@@ -883,6 +910,7 @@ jobs:
       - bun-adapter
       - relay-sns
       - native-bundle
+      - browser-testing
     runs-on: ubuntu-latest
     steps:
       - name: Every job it depends on succeeded

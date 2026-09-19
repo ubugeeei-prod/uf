@@ -341,6 +341,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         ),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
         Commands::Dev {
+            json: _,
+            parent_pipe,
             host,
             port,
             mode,
@@ -350,6 +352,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             &cwd,
             ui,
             commands::dev::DevArgs {
+                parent_pipe,
                 host,
                 port,
                 mode,

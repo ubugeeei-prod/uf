@@ -359,6 +359,12 @@ pub(crate) enum Commands {
     /// Expo is installed, `react-native start` otherwise, with Metro routing
     /// every module through `uf transform`.
     Dev {
+        /// Emit one JSON event per line for test harnesses and integrations (web only).
+        #[arg(long)]
+        json: bool,
+        /// Stop when the harness closes stdin.
+        #[arg(long, hide = true)]
+        parent_pipe: bool,
         /// Bind a routable address instead of loopback. Requires a non-empty
         /// `dev.allowedHosts` in `uf.config.js`; see `docs/security.md`.
         #[arg(long, value_name = "HOST")]
@@ -1112,6 +1118,7 @@ impl Commands {
             self,
             Self::Migrate { json: true, .. }
                 | Self::Codemod { json: true, .. }
+                | Self::Dev { json: true, .. }
                 | Self::Check { json: true, .. }
                 | Self::Doc { json: true, .. }
                 | Self::Explain { json: true, .. }
