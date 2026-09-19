@@ -38,7 +38,7 @@ pub(crate) fn watch(
         bail!("`uf build --analyze` needs application routes; use `--size-report` for a library");
     }
     let root = resolved.root;
-    let output = root.join(&resolved.config.build.out_dir);
+    let output = root.join(resolved.config.build.out_dir.as_str());
     let mut previous = snapshot(&root, &output)?;
     loop {
         if let Err(error) = super::build(cwd, ui, reports, mode, false, target, adapter) {
