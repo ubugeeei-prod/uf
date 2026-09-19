@@ -1,6 +1,6 @@
 ---
 title: "Routing · uf"
-description: "Files become routes; layouts nest; loaders run before the page."
+description: "Files become routes, layouts nest, and Server Components fetch their own data."
 ---
 
 <p className="eyebrow">Build an app</p>
@@ -545,6 +545,28 @@ itself, and a handler that throws is still a bug for the host's error reporting
 to see — [Route handlers](/guide/routing/requests#route-handlers) says why.
 
 ## Loading data
+
+With RSC enabled (the default), fetch data inside the Server Component that
+uses it. A loader is optional. The router passes `params` and `searchParams`
+directly to the page, so neither needs forwarding through a loader:
+
+```js
+export default async function Post({ params }) {
+  const post = await readPost(params.slug);
+  return <h1>{post.title}</h1>;
+}
+```
+
+React suspends while the component awaits data; `$loading.js` or a nearby
+`<Suspense>` boundary supplies its loading UI. With Relay, colocate each
+component's fragment and start the server preload during the RSC render. See
+[the Relay guide](/guide/relay) and the separate GraphQL SNS example.
+
+### Optional route loaders
+
+A loader is useful for route-level work before rendering, or for an application
+that disables RSC and uses the client router's data flow. It is not a prerequisite
+for fetching data in a Server Component.
 
 A page or layout may export a `loader`, which runs before the component and
 before the response is sent:
