@@ -61,11 +61,15 @@ describe("the router's peer ranges", () => {
 
     // `react` stays required: every entry matches or renders with it.
     expect(Object.keys(router.peerDependencies).sort()).toEqual([
+      "@react-navigation/native",
       "react",
       "react-dom",
+      "react-native",
       "react-server-dom-parcel",
     ]);
     expect(router.peerDependenciesMeta).toEqual({
+      "@react-navigation/native": { optional: true },
+      "react-native": { optional: true },
       "react-dom": { optional: true },
       "react-server-dom-parcel": { optional: true },
     });

@@ -1305,7 +1305,7 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
                 "kind": "metro",
                 "platform": target.as_str(),
                 "sourceExtensions": ["js", "jsx", "mjs", "cjs"],
-                "pipeline": ["flow", "react-compiler", "stylex-css-refusal", "metro-babel"],
+                "pipeline": ["flow", "react-compiler", "stylex-native-objects", "metro-babel"],
                 "config": {
                     "package": "@uniflowed/react-native/metro",
                     "helper": "withUniflowedMetro",
@@ -1740,7 +1740,7 @@ mod tests {
                 serde_json::json!([
                     "flow",
                     "react-compiler",
-                    "stylex-css-refusal",
+                    "stylex-native-objects",
                     "metro-babel"
                 ])
             );

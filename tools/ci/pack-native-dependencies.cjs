@@ -27,5 +27,6 @@ function pack(name) {
     if (dependency.startsWith("@uniflowed/")) pack(dependency);
   }
 }
-for (const name of ["react-native", "vite", "router", "test"]) pack(`@uniflowed/${name}`);
+for (const name of ["react-native", "vite", "router", "test", "stylex", "react-native-testing"])
+  pack(`@uniflowed/${name}`);
 fs.writeFileSync(path.join(destination, "dependencies.json"), JSON.stringify(packed));

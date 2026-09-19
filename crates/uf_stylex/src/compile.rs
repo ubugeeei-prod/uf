@@ -335,7 +335,7 @@ fn push_classes(out: &mut String, property: &CompiledProperty) {
 /// so this escapes defensively rather than because anything is expected to get
 /// here: generated code that can be broken by its own input is how a build step
 /// turns into an injection point.
-fn push_string(out: &mut String, text: &str) {
+pub(crate) fn push_string(out: &mut String, text: &str) {
     out.push('"');
     for character in text.chars() {
         match character {
