@@ -27,6 +27,13 @@ function pack(name) {
     if (dependency.startsWith("@uniflowed/")) pack(dependency);
   }
 }
-for (const name of ["react-native", "vite", "router", "test", "stylex", "react-native-testing"])
-  pack(`@uniflowed/${name}`);
+let roots = ["react-native", "vite", "router", "test", "stylex", "react-native-testing"].map(
+  (name) => `@uniflowed/${name}`,
+);
+// An example must install its own dependency closure, without unrelated web peers.
+if (process.argv[3]) {
+  const consumer = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+  roots = Object.keys({ ...consumer.dependencies, ...consumer.devDependencies });
+}
+for (const name of roots) if (name.startsWith("@uniflowed/")) pack(name);
 fs.writeFileSync(path.join(destination, "dependencies.json"), JSON.stringify(packed));

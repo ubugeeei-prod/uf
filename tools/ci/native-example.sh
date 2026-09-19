@@ -5,6 +5,8 @@ binary=${UF_BINARY:-"$repo/target/release/uf"}
 export UF_BINARY="$binary"
 # Exercise the checkout instructions as well as the packed consumer below.
 (cd examples/simple-sns-native && npm ci --ignore-scripts --no-audit --no-fund)
+# Metro can bundle incompatible native peers; validate the installed Expo SDK too.
+(cd examples/simple-sns-native && CI=1 EXPO_OFFLINE=1 npx --no-install expo install --check)
 "$binary" --cwd examples/simple-sns-native fmt --check
 "$binary" --cwd examples/simple-sns-native lint
 "$binary" --cwd examples/simple-sns-native build --target ios
@@ -12,7 +14,7 @@ export UF_BINARY="$binary"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/uf-native-example.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 mkdir -p "$scratch/packs"
-node tools/ci/pack-native-dependencies.cjs "$scratch/packs"
+node tools/ci/pack-native-dependencies.cjs "$scratch/packs" examples/simple-sns-native/package.json
 node --input-type=commonjs - "$scratch" <<'JS'
 const fs = require('node:fs');
 const path = require('node:path');
