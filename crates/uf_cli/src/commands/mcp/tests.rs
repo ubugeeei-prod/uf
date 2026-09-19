@@ -230,6 +230,8 @@ fn every_advertised_tool_is_one_the_server_dispatches() {
         // front of the dispatch instead of stopping at it.
         let arguments = if name == "uf_explain" {
             json!({ "command": "build" })
+        } else if name == "uf_dev_action" {
+            json!({ "id": "a".repeat(64) })
         } else {
             json!({})
         };

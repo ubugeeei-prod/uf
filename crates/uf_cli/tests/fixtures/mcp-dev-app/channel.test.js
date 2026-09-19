@@ -22,11 +22,11 @@ it("the official MCP client reads real SSR and browser hydration errors", async 
     await client.connect(new StdioClientTransport({command:process.env.UF_BINARY, args:["--cwd", root, "mcp"]}));
     const tools = await client.listTools();
     expect(tools.tools.some((tool) => tool.name === "uf_dev_errors")).toBe(true);
-    const response = await app.fetch("/boom?private=not-in-logs");
+    const response = await app.render("/boom?private=not-in-logs");
     await response.text();
     let errors = await call("uf_dev_errors");
     const runtime = errors.errors.find((entry) => entry.kind === "runtime" && entry.message.includes("mcp-runtime-fixture"));
-    expect(runtime).toBeDefined();
+    if (!runtime) throw new Error("Missing runtime diagnostic: " + JSON.stringify({status:response.status, errors, events:app.events()}));
     expect(runtime.requestId).toBe(response.headers.get("x-uf-request-id"));
     expect(runtime.stack).toContain("app/boom/$page.js");
     const logs = await call("uf_dev_logs");
@@ -38,7 +38,7 @@ it("the official MCP client reads real SSR and browser hydration errors", async 
     let hydration;
     while (Date.now() < until) {
       errors = await call("uf_dev_errors");
-      hydration = errors.errors.find((entry) => entry.kind === "hydration");
+      hydration = errors.errors.find((entry) => entry.kind === "hydration" && entry.event === "diagnostic");
       if (hydration) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
