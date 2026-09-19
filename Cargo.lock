@@ -3886,6 +3886,7 @@ dependencies = [
  "camino",
  "compact_str",
  "criterion",
+ "serde_json",
  "similar-asserts",
  "tempfile",
  "thiserror",

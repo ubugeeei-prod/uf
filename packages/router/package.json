@@ -25,7 +25,8 @@
     "./routing": "./routing.js",
     "./package.json": "./package.json",
     "./handler": "./handler.js",
-    "./middleware": "./middleware.js"
+    "./middleware": "./middleware.js",
+    "./http-client": "./http-client.js"
   },
   "files": [
     "action.js",
@@ -41,6 +42,7 @@
     "rsc.js",
     "server-components.js",
     "server.js",
+    "http-client.js",
     "!*.test.js"
   ],
   "peerDependencies": {

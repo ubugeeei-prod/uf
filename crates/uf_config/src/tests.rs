@@ -518,7 +518,7 @@ fn evaluated_config_projection_uses_the_same_validation() {
         serde_json::json!({
             "app": {
                 "rendering": {
-                    "cache": { "data": true }
+                    "cache": { "actions": true }
                 }
             }
         }),
@@ -527,7 +527,7 @@ fn evaluated_config_projection_uses_the_same_validation() {
 
     assert!(matches!(
         error,
-        ConfigError::UnimplementedCache { key: "data", .. }
+        ConfigError::UnimplementedCache { key: "actions", .. }
     ));
 }
 
@@ -630,39 +630,34 @@ fn carries_a_cache_provider_uf_does_not_ship() {
     );
 }
 
-/// A cache uf does not have is refused where it is asked for.
-///
-/// Not ignored and not warned about. `rendering.cache.data: true` used to load
-/// cleanly, reach the build manifest and change nothing anywhere — the exact
-/// shape ubugeeei-prod/uf#277 objects to. A project that asks for a data cache
-/// has to be told there is not one, and the config file is the only place where
-/// telling them costs nothing.
+/// Action result caching remains refused while data caching is implemented.
 #[test]
 fn refuses_a_cache_switch_uf_does_not_implement() {
-    for key in ["data", "actions"] {
-        let dir = tempfile::tempdir().unwrap();
-        let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
-        fs::write(
-            &path,
-            format!(
-                "export default defineConfig({{ app: {{ rendering: {{ cache: {{ {key}: true }} }} }} }});"
-            ),
-        )
-        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        "export default { app: { rendering: { cache: { actions: true } } } };",
+    )
+    .unwrap();
+    let error = load_config_file(&path).expect_err("action caching is not implemented");
+    assert!(matches!(
+        &error,
+        ConfigError::UnimplementedCache { key: "actions", .. }
+    ));
+    assert!(error.to_string().contains("rendering.cache.actions"));
+}
 
-        let error = load_config_file(&path).expect_err("a cache uf does not have is refused");
-
-        assert!(
-            matches!(&error, ConfigError::UnimplementedCache { key: named, .. } if *named == key),
-            "{key}: {error:?}"
-        );
-        let message = error.to_string();
-        assert!(
-            message.contains(&format!("rendering.cache.{key}")),
-            "{message}"
-        );
-        assert!(message.contains("277"), "{message}");
-    }
+#[test]
+fn accepts_explicit_function_data_caching() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        "export default { app: { rendering: { cache: { data: true } } } };",
+    )
+    .unwrap();
+    assert!(load_config_file(&path).unwrap().app.rendering.cache.data);
 }
 
 /// The runtimes a project may name are the ones that have a host.

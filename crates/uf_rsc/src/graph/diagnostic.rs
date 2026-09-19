@@ -289,6 +289,20 @@ pub enum RscDiagnostic {
         /// included.
         chain: Vec<Utf8PathBuf>,
     },
+    /// Shared function data must not depend on ambient request state.
+    #[error(
+        "cached function `{function}` reads `{api}()` in `{module}` at line {line}; read request data outside the cached function and pass its public inputs explicitly"
+    )]
+    RequestStateInCachedFunction {
+        /// Application-supplied cache identity.
+        function: CompactString,
+        /// Request API being called.
+        api: CompactString,
+        /// Module containing the callback and read.
+        module: Utf8PathBuf,
+        /// 1-based source line.
+        line: u32,
+    },
     /// A rejected directive, lifted from the directive pass.
     #[error("in `{module}`: {issue}")]
     Directive {
@@ -312,6 +326,7 @@ impl RscDiagnostic {
             Self::UnclassifiedHookInServerModule { .. } => "rsc/unclassified-hook-in-server",
             Self::ClientOnlyHookInServerModule { .. } => "rsc/client-only-hook-in-server",
             Self::RequestStateInStaticRoute { .. } => "rsc/request-state-in-static-route",
+            Self::RequestStateInCachedFunction { .. } => "rsc/request-state-in-cached-function",
             Self::Directive { issue, .. } => issue.rule(),
         }
     }
@@ -342,6 +357,7 @@ impl RscDiagnostic {
             | Self::UnclassifiedHookInServerModule { module, .. }
             | Self::ClientOnlyHookInServerModule { module, .. }
             | Self::RequestStateInStaticRoute { module, .. }
+            | Self::RequestStateInCachedFunction { module, .. }
             | Self::ModulePathOutsideProject { module }
             | Self::Directive { module, .. } => module,
         }
@@ -356,6 +372,7 @@ impl RscDiagnostic {
             | Self::ServerActionNotFunction { line, .. }
             | Self::ImportEscapesProjectRoot { line, .. }
             | Self::RequestStateInStaticRoute { line, .. }
+            | Self::RequestStateInCachedFunction { line, .. }
             | Self::UnclassifiedHookInServerModule { line, .. } => *line,
             Self::ClientOnlyHookInServerModule { line, .. } => *line,
             Self::ModulePathOutsideProject { .. } => 0,

@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use uf_infra::{InlineVec, LineIndex};
 
 mod client_api;
+pub(crate) mod data_cache;
+pub use data_cache::CachedFunctionRead;
 mod exports;
 mod imports;
 pub mod lexer;

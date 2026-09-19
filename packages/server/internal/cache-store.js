@@ -254,6 +254,8 @@ export type CacheOptions = {|
   readonly route?: boolean,
   /** `rendering.cache.fetch`: whether a cached fetch client may use the store. */
   readonly fetch?: boolean,
+  /** `rendering.cache.data`: cache explicitly wrapped public functions. */
+  readonly data?: boolean,
 |};
 
 /** How a store behaves. */
@@ -448,6 +450,7 @@ function millis(seconds: number, name: string): number {
  * request.
  */
 export class CacheStore {
+  generation: number = 0;
   readonly entries: Map<string, CacheEntry<mixed>> = new Map();
   readonly filling: Map<string, Promise<mixed>> = new Map();
   /**
@@ -657,6 +660,7 @@ export class CacheStore {
 
   /** Forget everything. Fills already in flight still finish, and are dropped. */
   clear(): void {
+    this.generation += 1;
     this.entries.clear();
     this.filling.clear();
     // Seeds too: a store that has been cleared holds nothing newer than the
@@ -964,10 +968,11 @@ export class CacheStore {
     scope: CacheScope,
     produce: () => Promise<T>,
   ): Promise<T> {
+    const generation = this.generation;
     this.fills += 1;
     const value = await runInScope(scope, produce);
     const lifetime = scope.lifetime;
-    if (scope.denied != null || lifetime == null) {
+    if (scope.denied != null || lifetime == null || generation !== this.generation) {
       return value;
     }
     const storedAt = this.now();
@@ -1191,6 +1196,10 @@ export class CacheStore {
    * is left with this process's other mark, that it seeded the key already.
    */
   recordInvalidation(kind: "tag" | "path", name: string): void {
+    // A fill started before the mutation must not repopulate the cache, and
+    // callers after it must not join that fill. Conservatively detach all fills.
+    this.generation += 1;
+    this.filling.clear();
     const key = invalidationKey(kind, name);
     const at = this.now();
     this.invalidated.delete(key);

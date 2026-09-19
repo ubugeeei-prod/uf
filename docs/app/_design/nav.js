@@ -216,8 +216,7 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/cache",
         title: "Caching",
-        blurb:
-          "A route cache and a fetch cache, opt-in, in memory by default, durable when you say so.",
+        blurb: "Route, function, and fetch caches with explicit lifetimes and pluggable storage.",
       },
       {
         href: "/guide/auth",

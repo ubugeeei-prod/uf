@@ -71,6 +71,7 @@
 
 import { asResponder, noteRoute } from "@uniflowed/server/host";
 
+import { matchRoute } from "./internal/routing.js";
 import { requireRequest } from "./internal/request.js";
 import type { RouteParams } from "./internal/runtime.js";
 
@@ -135,61 +136,55 @@ export const HANDLER_METHODS: $ReadOnlyArray<string> = Object.freeze([
 export function createDispatcher(options: {|
   readonly handlers: $ReadOnlyArray<HandlerRecord>,
 |}): (request: Request) => Promise<Response | null> {
-  // Longest path first, so `/api/users/new` wins over `/api/users/[id]` and a
-  // catch-all is the last thing tried.
-  const table = [...options.handlers].sort((a, b) => specificity(b.path) - specificity(a.path));
+  const table = [...options.handlers];
 
   return async function dispatch(request: Request): Promise<Response | null> {
     // The host's half of the contract, checked rather than assumed; see
     // `./internal/request.js`.
     requireRequest("dispatch");
     const url = new URL(request.url);
-    for (const record of table) {
-      const params = matchPath(record.path, url.pathname);
-      if (params == null) {
-        continue;
-      }
+    const match = matchRoute(table, url.pathname);
+    if (match == null) return null;
+    const { route: record, params } = match;
 
-      // Before the module is loaded and before the method is checked, because
-      // this is the answer to "what was this request" and a `405` is as much
-      // this route's answer as a `200` is. A log of `/api/users/:id 405` is
-      // actionable; the same line with the path in it is a million lines.
-      noteRoute(record.path);
+    // Before the module is loaded and before the method is checked, because
+    // this is the answer to "what was this request" and a `405` is as much
+    // this route's answer as a `200` is. A log of `/api/users/:id 405` is
+    // actionable; the same line with the path in it is a million lines.
+    noteRoute(record.path);
 
-      const module = await record.load();
-      const method = request.method.toUpperCase();
-      const handler = pick(module, method);
-      if (handler == null) {
-        return methodNotAllowed(module);
-      }
-
-      // In the host's request, so a handler that calls `headers()`,
-      // `cookies()` or `after()` answers about the same one its guard did, and
-      // what it defers is drained once, by the host, after the bytes are out.
-      //
-      // And inside `asResponder`, which is the other half: a route handler is
-      // one of the two things that owns a response, so it is one of the two
-      // places `draftMode().enable()` is allowed — and the `Set-Cookie` it
-      // decided on is written onto the response below rather than left on an
-      // object the host is about to discard. See ubugeeei-prod/uf#282.
-      const response = await asResponder("a route handler", async () =>
-        handler(request, { params, searchParams: url.searchParams }),
-      );
-
-      // A `HEAD` answered by `GET` must not carry the body. The test is
-      // against the module's own `HEAD`, not `pick`'s — `pick` falls back to
-      // `GET`, so asking it whether a `HEAD` exists always said yes and the
-      // body went out anyway.
-      if (method === "HEAD" && typeof module.HEAD !== "function") {
-        return new Response(null, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers,
-        });
-      }
-      return response;
+    const module = await record.load();
+    const method = request.method.toUpperCase();
+    const handler = pick(module, method);
+    if (handler == null) {
+      return methodNotAllowed(module);
     }
-    return null;
+
+    // In the host's request, so a handler that calls `headers()`,
+    // `cookies()` or `after()` answers about the same one its guard did, and
+    // what it defers is drained once, by the host, after the bytes are out.
+    //
+    // And inside `asResponder`, which is the other half: a route handler is
+    // one of the two things that owns a response, so it is one of the two
+    // places `draftMode().enable()` is allowed — and the `Set-Cookie` it
+    // decided on is written onto the response below rather than left on an
+    // object the host is about to discard. See ubugeeei-prod/uf#282.
+    const response = await asResponder("a route handler", async () =>
+      handler(request, { params, searchParams: url.searchParams }),
+    );
+
+    // A `HEAD` answered by `GET` must not carry the body. The test is
+    // against the module's own `HEAD`, not `pick`'s — `pick` falls back to
+    // `GET`, so asking it whether a `HEAD` exists always said yes and the
+    // body went out anyway.
+    if (method === "HEAD" && typeof module.HEAD !== "function") {
+      return new Response(null, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    }
+    return response;
   };
 }
 
@@ -233,62 +228,4 @@ function methodNotAllowed(module: HandlerModule): Response {
     status: 405,
     headers: { allow: HANDLER_METHODS.filter((method) => own.has(method)).join(", ") },
   });
-}
-
-/**
- * Match one route path against a pathname, returning its parameters.
- *
- * `null` rather than an empty object when it does not match, so a route with
- * no parameters is still distinguishable from a miss.
- */
-function matchPath(routePath: string, pathname: string): RouteParams | null {
-  const wanted = segmentsOf(routePath);
-  const given = segmentsOf(pathname);
-  const params: { [string]: string | Array<string> } = {};
-
-  for (let index = 0; index < wanted.length; index += 1) {
-    const segment = wanted[index];
-    if (segment.startsWith(":") && segment.endsWith("*")) {
-      // A catch-all takes the rest, and matches zero segments as well as many.
-      params[segment.slice(1, -1)] = given.slice(index);
-      return params as $FlowFixMe;
-    }
-    if (index >= given.length) {
-      return null;
-    }
-    if (segment.startsWith(":")) {
-      params[segment.slice(1)] = given[index];
-      continue;
-    }
-    if (segment !== given[index]) {
-      return null;
-    }
-  }
-
-  return wanted.length === given.length ? (params as $FlowFixMe) : null;
-}
-
-function segmentsOf(value: string): Array<string> {
-  return value.split("/").filter((segment) => segment !== "");
-}
-
-/**
- * How specific a path is, so the table can be tried in the right order.
- *
- * A literal segment is worth more than a parameter and a parameter more than a
- * catch-all, and a longer path outranks a shorter one — which is what makes
- * `/api/users/new` win over `/api/users/[id]`.
- */
-function specificity(routePath: string): number {
-  let score = 0;
-  for (const segment of segmentsOf(routePath)) {
-    if (segment.startsWith(":") && segment.endsWith("*")) {
-      score += 1;
-    } else if (segment.startsWith(":")) {
-      score += 10;
-    } else {
-      score += 100;
-    }
-  }
-  return score;
 }

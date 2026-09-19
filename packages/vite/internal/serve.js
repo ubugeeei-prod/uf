@@ -112,18 +112,19 @@ function deployment() {
  * a setting nobody can set would be the shape of configurability with none of
  * the substance.
  *
- * @param {{route?: boolean, fetch?: boolean, store?: string, storeDir?: string} | undefined} declared
+ * @param {{route?: boolean, fetch?: boolean, data?: boolean, store?: string, storeDir?: string} | undefined} declared
  * @param {(options?: object) => object} createCacheStore
  * @param {{root: string, build: string | null}} where
  */
 async function cacheFor(declared, createCacheStore, where) {
   const route = declared?.route === true;
   const fetchCache = declared?.fetch === true;
-  if (!route && !fetchCache) return undefined;
+  const data = declared?.data === true;
+  if (!route && !fetchCache && !data) return undefined;
   const provider = await providerFor(declared, where);
   const store =
     provider == null ? createCacheStore() : createCacheStore({ provider, build: where.build });
-  return { store, route, fetch: fetchCache };
+  return { store, route, fetch: fetchCache, data };
 }
 
 /**
