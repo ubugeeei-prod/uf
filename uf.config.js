@@ -723,6 +723,12 @@ export default defineConfig({
     // run that compares nothing is now a failure.
     "release:changelog": "tools/ci/changelog-covers-the-release.sh",
     "release:changelog:test": "tools/ci/test-changelog-covers.sh",
+    "release:codemods": "node tools/ci/breaking-codemods.cjs",
+    "release:codemods:test": "node tools/ci/test-breaking-codemods.cjs",
+    "migration:smoke": {
+      command: "tools/ci/migration-smoke.sh",
+      dependsOn: ["build"],
+    },
     // `npm trust` binds a name the registry already has and cannot create
     // one, so a name that has never been published is published once by a
     // person and is the workflow's from then on.
@@ -1044,6 +1050,9 @@ export default defineConfig({
         "release:bump:test",
         "release:changelog",
         "release:changelog:test",
+        "release:codemods",
+        "release:codemods:test",
+        "migration:smoke",
         "ci:gate",
         "ci:gate:test",
         "ci:runtimes",

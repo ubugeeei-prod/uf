@@ -1,0 +1,20 @@
+{
+  "name": "uf-migrate-flow-babel",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "scripts": {
+    "check": "flow check",
+    "lint": "eslint .",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.0.0",
+    "@babel/preset-flow": "^7.0.0",
+    "jest": "^30.2.0",
+    "eslint": "^9.0.0"
+  }
+}

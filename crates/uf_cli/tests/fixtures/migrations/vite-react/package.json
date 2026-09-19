@@ -1,0 +1,20 @@
+{
+  "name": "uf-migrate-vite-react",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "scripts": {
+    "check": "flow check",
+    "lint": "eslint .",
+    "test": "jest",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0",
+    "@vitejs/plugin-react": "^6.0.0"
+  }
+}

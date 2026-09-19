@@ -3595,6 +3595,7 @@ dependencies = [
  "compact_str",
  "globset",
  "image",
+ "json5",
  "mimalloc",
  "serde",
  "serde_json",
