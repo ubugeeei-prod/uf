@@ -646,19 +646,7 @@ fn read_dependency_map(value: &Value, field: &str) -> BTreeMap<CompactString, Co
 ///
 /// A `pre` or `post` twin of a named script is a named script too: `prestart`
 /// runs with `npm start`, not with an install.
-pub const INSTALL_LIFECYCLE_SCRIPTS: &[&str] = &[
-    "preinstall",
-    "install",
-    "postinstall",
-    "prepublish",
-    "preprepare",
-    "prepare",
-    "postprepare",
-    "prepack",
-    "postpack",
-    "dependencies",
-    "pnpm:devPreinstall",
-];
+pub use uf_config::INSTALL_LIFECYCLE_SCRIPTS;
 
 /// Every script a manifest declares, in manifest order.
 fn script_names(value: &Value) -> impl Iterator<Item = &str> {

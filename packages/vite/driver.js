@@ -524,6 +524,9 @@ async function preview() {
         if ((request.url ?? "").split("?")[0].endsWith("/__uf.flight")) {
           response.setHeader("content-type", "text/x-component");
         }
+        if ((request.url ?? "").split("?")[0] === "/.well-known/apple-app-site-association") {
+          response.setHeader("content-type", "application/json; charset=utf-8");
+        }
         next();
       });
       if (handle == null) return;

@@ -61,6 +61,7 @@ use crate::ui::Ui;
 mod guards;
 mod library;
 mod native;
+mod native_links;
 mod nonce;
 mod request_state;
 mod site;
@@ -539,6 +540,8 @@ pub(crate) fn build(
     fs::create_dir_all(&meta_dir).with_context(|| format!("failed to create {meta_dir}"))?;
     let build_manifest = meta_dir.join("uf-build-manifest.json");
     let openapi_document = meta_dir.join("openapi.json");
+    let association_files =
+        native_links::write(&resolved.root, &out_dir, &resolved.config, &routes)?;
     let payload = json!({
         "version": 2,
         "engine": "vite",
@@ -547,6 +550,8 @@ pub(crate) fn build(
         "target": app_target.as_str(),
         "targetContract": target_contract(app_target),
         "entries": resolved.config.build.entries,
+        "nativeLinks": resolved.config.app.router.native_links,
+        "associationFiles": association_files.iter().map(|file| relative_to(&resolved.root, file)).collect::<Vec<_>>(),
         "routes": routes.iter().map(|route| json!({
             "path": route.path,
             "page": relative_to(&resolved.root, &route.page),
@@ -778,6 +783,9 @@ pub(crate) fn build(
         outputs.push(page.file.clone());
     }
     for file in &metadata_files.files {
+        outputs.push(relative_to(&resolved.root, file));
+    }
+    for file in &association_files {
         outputs.push(relative_to(&resolved.root, file));
     }
     if let Some(compiled) = &compiled {

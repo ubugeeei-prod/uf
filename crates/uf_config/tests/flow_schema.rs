@@ -80,6 +80,13 @@ fn every_section() -> UniflowedConfig {
     // Populating it is what makes the comparison about *names* rather than
     // about which sections happen to be on.
     config.build.lib = Some(LibraryConfig::default());
+    config.app.router.native_links = Some(uf_config::NativeLinksConfig {
+        origins: Vec::new(),
+        routes: Vec::new(),
+        ios_app_ids: Vec::new(),
+        android_package: "com.example.app".into(),
+        android_sha256: Vec::new(),
+    });
     config.lint.rules.clear();
     config
 }

@@ -241,6 +241,21 @@ describe("the application handler", () => {
 });
 
 describe("the static handler", () => {
+  it("serves both native association files as JSON without redirects", async () => {
+    const serve = createStaticHandler({
+      root: directoryWith({
+        ".well-known/apple-app-site-association": '{"applinks":{}}',
+        ".well-known/assetlinks.json": "[]",
+      }),
+    });
+    for (const name of ["apple-app-site-association", "assetlinks.json"]) {
+      const response = await serve(request(`/.well-known/${name}`));
+      expect(response?.status).toBe(200);
+      expect(response?.headers.get("content-type")).toBe("application/json; charset=utf-8");
+      expect(response?.headers.get("location")).toBe(null);
+    }
+  });
+
   it("serves a prerendered document for a directory path", async () => {
     const root = directoryWith({ "guide/index.html": "<p>guide</p>" });
     const serveStatic = createStaticHandler({ root });

@@ -544,6 +544,14 @@ export type UniflowedConfig = {
        * `"ignore"` when absent.
        */
       readonly trailingSlash?: RouterTrailingSlash,
+      /** HTTPS links explicitly claimed by the iOS and Android applications. */
+      readonly nativeLinks?: {|
+        readonly origins: $ReadOnlyArray<string>,
+        readonly routes: $ReadOnlyArray<string>,
+        readonly iosAppIds: $ReadOnlyArray<string>,
+        readonly androidPackage: string,
+        readonly androidSha256: $ReadOnlyArray<string>,
+      |},
     },
     readonly rendering?: {
       // `"csr"` is the one value that cannot share the list: it renders every
