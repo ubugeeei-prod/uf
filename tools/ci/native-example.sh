@@ -14,7 +14,7 @@ export UF_BINARY="$binary"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/uf-native-example.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 mkdir -p "$scratch/packs"
-node tools/ci/pack-native-dependencies.cjs "$scratch/packs"
+node tools/ci/pack-native-dependencies.cjs "$scratch/packs" examples/simple-sns-native/package.json
 node --input-type=commonjs - "$scratch" <<'JS'
 const fs = require('node:fs');
 const path = require('node:path');
