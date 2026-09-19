@@ -401,6 +401,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Clean { deps, dry_run } => commands::clean::clean(&cwd, ui, deps, dry_run),
         Commands::Lsp => commands::dev::lsp(&cwd),
         Commands::Mcp => commands::mcp::mcp(&cwd),
+        Commands::Migrate { dry_run, .. } => commands::migrate::migrate(&cwd, ui, dry_run),
+        Commands::Codemod {
+            from, to, dry_run, ..
+        } => commands::migrate::codemod(&cwd, ui, from.as_deref(), &to, dry_run),
         Commands::Preview { host, port, mode } => {
             commands::serve::preview(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
         }

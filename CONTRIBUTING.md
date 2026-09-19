@@ -219,3 +219,25 @@ it from the queue; the branch is untouched. Read the failed `merge_group` run
 to see what the combination broke, push the fix, and re-arm the merge. Nothing
 has to be reset by hand, and a pull request that was kicked out for somebody
 else's failure can simply be queued again.
+
+
+## Breaking changes and migrations
+
+Every breaking conventional commit (a ! subject or BREAKING CHANGE: footer)
+must ship a tested uf codemod, or explain why an automatic migration cannot
+preserve behavior. Register the executable migration and a previous-release
+fixture in tools/codemods/catalog.json, then map the exact commit subject to
+its ID in tools/codemods/breaking-changes.json.
+
+When migration requires application-specific decisions, add a changelog line:
+No codemod (<exact commit subject>): <specific reason>
+
+A generic promise to write one later is not a reason. The release:codemods task
+enforces the rule over the pull request, merge queue or push range beside the
+changelog gate. Use UF_BREAKING_BASE=<commit> to check a particular local range.
+
+Run uf codemod --from <previous-version> --to <target-version> --dry-run on the
+previous-release fixture before applying it. Comments and unrelated config
+must survive, a second run must be unchanged, and ambiguous settings must stay
+in the report. Adoption fixtures run install, check, lint and test after
+uf migrate in the Library CI lane.

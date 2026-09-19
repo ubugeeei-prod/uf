@@ -21,7 +21,7 @@
 //! - [`config_file`] — completion and hover in `uf.config.js`, answered from
 //!   `@uniflowed/config`'s own Flow type rather than from a list kept here.
 
-mod config_file;
+pub(crate) mod config_file;
 mod hover;
 pub(crate) mod native;
 mod rsc;

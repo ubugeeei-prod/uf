@@ -148,6 +148,30 @@ pub(crate) enum Commands {
         #[arg(value_name = "SPEC", required = true)]
         specs: Vec<String>,
     },
+    /// Adopt existing tools and package scripts into uf.config.js.
+    Migrate {
+        /// Emit the reviewable plan as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Print proposed files and unmapped settings without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Apply versioned source migrations when upgrading an existing uf project.
+    Codemod {
+        /// Emit the reviewable plan as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Previous version; defaults to the installed @uniflowed/core package.
+        #[arg(long)]
+        from: Option<String>,
+        /// Target version, without a uf@ prefix.
+        #[arg(long, default_value = env!("CARGO_PKG_VERSION"))]
+        to: String,
+        /// Print proposed edits without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Build the project for production.
     ///
     /// Runs Vite through `@uniflowed/vite`, with every module transformed by
@@ -1086,7 +1110,9 @@ impl Commands {
     pub(crate) fn wants_json(&self) -> bool {
         matches!(
             self,
-            Self::Check { json: true, .. }
+            Self::Migrate { json: true, .. }
+                | Self::Codemod { json: true, .. }
+                | Self::Check { json: true, .. }
                 | Self::Doc { json: true, .. }
                 | Self::Explain { json: true, .. }
                 | Self::I18n {

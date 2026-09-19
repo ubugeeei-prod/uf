@@ -47,7 +47,7 @@
 //!   file name can say so.
 
 mod cursor;
-mod outline;
+pub(crate) mod outline;
 mod releases;
 mod tools;
 

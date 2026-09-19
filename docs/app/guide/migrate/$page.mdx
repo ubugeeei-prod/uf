@@ -8,13 +8,58 @@ description: "From CRA, Vite or Next.js: what carries over, the moves in order, 
 # Migrating to uf
 
 <div className="lede">
-From `create-react-app`, from Vite and React, or from Next.js: what carries over
-unchanged, the moves in the order to make them, and what is still different once
-you have made them. There is no `uf migrate` command yet
-([#970](https://github.com/ubugeeei-prod/uf/issues/970)), so every step below is
-one you make by hand. The paths that have been checked end to end are called out
-where they apply.
+Start with `uf migrate --dry-run` in the existing application. It shows the
+configuration and scripts it can move, and names settings that need a decision.
+Review that plan, then apply it with `uf migrate`.
 </div>
+
+~~~sh
+uf migrate --dry-run
+uf migrate
+uf install
+uf check
+uf lint
+uf test
+~~~
+
+The command reads Babel, Flow, Prettier, ESLint, Jest and Vite configuration
+without executing their modules. Named package scripts become tasks; common
+test, lint, format and build commands become uf commands. Other task bodies
+stay verbatim. Basic Jest globals gain explicit imports from
+`@uniflowed/test`, preserving application imports and comments. Jest mocks,
+timers, custom matchers and non-default settings stay in the report for review.
+
+`.uf/migration-report.json` contains the proposed edits, original contents
+and every setting that could not be mapped. Only a fully replaced static
+configuration file is removed. JavaScript configuration modules remain until
+you review their imports and side effects. Existing uf settings win: conflicting
+values are reported and retained. Install lifecycle scripts require an explicit
+decision before `uf install` accepts them.
+
+The three CI consumers cover Flow/Babel/Jest/ESLint, Vite React and
+create-react-app through install, check, lint and test. Framework-specific entry
+points, HTML placeholders, environment variables, deployment and Next.js routes
+still need the steps below.
+
+### Upgrading an existing uf project
+
+~~~sh
+uf codemod --to 0.0.0-alpha.41 --dry-run
+uf codemod --to 0.0.0-alpha.41
+~~~
+
+The previous version comes from the installed `node_modules/@uniflowed/core`
+package. Use `--from 0.0.0-alpha.32` when that installation is unavailable.
+This catalog covers alpha releases through the installed binary's version and
+refuses downgrades or a newer target.
+
+The first codemod moves `env.toolchain` to role-specific runtime and package
+manager declarations, `builder.module` to `build.builder`,
+`pm.packageManager` to the top-level key, and the object form of
+`test.runner` to `runner: "uf"` plus its explicit target override. Multiple
+runtimes, conflicting values and non-default legacy runner options require a
+decision and stay unchanged. Flow-parser source ranges preserve comments and
+unrelated formatting; applying the same migration twice is unchanged.
 
 **What you will be able to do:** decide whether your application can move today,
 write the `uf.config.js` it needs, move a `create-react-app`, Vite or Next.js

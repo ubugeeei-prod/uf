@@ -351,6 +351,7 @@ jobs:
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run test:lib
       - run: ./target/release/uf run edge:smoke
+      - run: ./target/release/uf run migration:smoke
 
   # The same suite on Node 26, which ships a native `Temporal`.
   # `@uniflowed/core/temporal` defers to a host's Temporal and supplies Lite
@@ -566,6 +567,8 @@ jobs:
       # the section is written before the branch stops waiting for CI.
       - run: ./target/release/uf run release:changelog
       - run: ./target/release/uf run release:changelog:test
+      - run: ./target/release/uf run release:codemods
+      - run: ./target/release/uf run release:codemods:test
       # And that the gate at the bottom of this file still covers this file.
       # It is red unless every job it names came back `success`, which is what
       # stands between a `Toolchain` that does not compile and an armed

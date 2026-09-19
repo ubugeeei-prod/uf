@@ -1,0 +1,1 @@
+{"tool-declarations-940":{"version":"0.0.0-alpha.41","implementation":"crates/uf_cli/src/commands/migrate/codemod.rs","fixture":"crates/uf_cli/tests/fixtures/migrations/alpha32/uf.config.js"}}
