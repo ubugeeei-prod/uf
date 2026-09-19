@@ -6,6 +6,10 @@ _2026-09-19_
 
 ### Added
 
+- **examples**: add a native SNS app and colocate route modules (#1297)
+- **mcp**: expose live development errors and request logs (#1295)
+- **cli**: migrate projects and versioned configuration changes (#1294)
+- **native**: integrate StyleX, navigation and component testing (#1293)
 - **test**: support RSC integration tests and Chromium visual assertions (#1291)
 - **server**: cache public functions and authenticate native clients (#1290)
 - integrate Relay RSC and add a GraphQL SNS example (#1289)
@@ -21,6 +25,7 @@ _2026-09-19_
 
 ### Fixed
 
+- **dts**: preserve tuple conditional false branches for scalar inputs (#1296)
 - **dts**: infer nested indexed conditionals (#1284)
 - **router**: intercept RSC flight navigations (#1282)
 - **dts**: avoid date-fns declaration findings (#1279)
