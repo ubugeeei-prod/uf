@@ -1,4 +1,4 @@
-// @flow
+// @noflow
 
 import { createRequire } from "node:module";
 import path from "node:path";
