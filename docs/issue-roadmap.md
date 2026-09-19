@@ -189,7 +189,7 @@
 - [x] Start `@uniflowed/tui` as an OpenTUI-aligned TUI framework.
 - [x] Start `@uniflowed/temporal` as a lite Temporal contract.
 - [x] Start `@uniflowed/pwa` with opt-in cache defaults.
-- [ ] Implement `@uniflowed/orm`.
+- [ ] Provide a high-quality sqlc generator for Flow; do not implement an ORM.
 - [x] Implement `@uniflowed/stylex` with preset StyleX defaults: a compiled
       token set, a base layer of recipes over it, and `createTheme` so any of
       it can be replaced. `keyframes`, `firstThatWorks` and `positionTry` are
@@ -344,8 +344,8 @@
 
 - [x] Start `@uniflowed/std` registry for vfs, fs, types, pipeline, effect, env, format, stdio, hash, debug, defs, lock, colors, qs, equality, http, buffer, ws, sql, json, yaml, toml, collections, crypto, dotenv, math, os, net, dns, path, stream, url, wasm, glob, motion, tui, cron, s3, sigv4, functions, uuid, zip, import-meta, and defer.
 - [ ] Bind `@uniflowed/std` modules to Rust-native implementations.
-- [x] Start type-safe native ORM contracts.
-- [ ] Implement ORM drivers and generated Flow row/query types.
+- [ ] Replace legacy ORM placeholders with sqlc-generated Flow row/query types.
+- [ ] Keep migration tooling application-owned and BFF capabilities platform-neutral.
 - [x] Add license inventory and builtin intake checklist under `tools/legal`.
 - [ ] Add automated license checks for builtin dependencies.
 - [x] Add Why3/Z3 formal verification scaffold under `tools/formal`.

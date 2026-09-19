@@ -1,5 +1,6 @@
 // @flow
 
+import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { props, stylex } from "@uniflowed/stylex";
@@ -63,13 +64,15 @@ export component Avatar(user: User, small: boolean = false) renders AvatarRoot {
       {photo != null ? (
         <AvatarImage
           src={photo}
-          className="avatar-photo"
+          {...styled("avatar-photo", sharedStyles.avatarPhoto)}
           width={small ? 34 : 42}
           height={small ? 34 : 42}
           alt=""
         />
       ) : null}
-      <AvatarFallback className="avatar-fallback">{user.avatar}</AvatarFallback>
+      <AvatarFallback {...styled("avatar-fallback", sharedStyles.avatarFallback)}>
+        {user.avatar}
+      </AvatarFallback>
     </AvatarRoot>
   );
 }
@@ -82,7 +85,7 @@ export component EmptyState(
 ) {
   return (
     <div className="empty-state">
-      <span className="empty-icon">
+      <span {...styled("empty-icon", sharedStyles.emptyIcon)}>
         <Icon name="search" size={24} />
       </span>
       <h2>{title}</h2>
@@ -123,7 +126,13 @@ export component SignInPrompt(title: string = "Sign in to continue") renders Emp
 component SkeletonField(multiline: boolean = false) {
   return (
     <div className="field" aria-hidden="true">
-      <SkeletonBox className="skeleton-ink skeleton-field-label" />
+      <SkeletonBox
+        {...styled(
+          "skeleton-ink skeleton-field-label",
+          sharedStyles.skeletonInk,
+          sharedStyles.skeletonFieldLabel,
+        )}
+      />
       <SkeletonBox className={`skeleton-control ${multiline ? "multiline" : ""}`} />
     </div>
   );
@@ -154,20 +163,56 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
             [0, 1, 2].map((id) => (
               <div className="post skeleton-post" key={id} aria-hidden="true">
                 <SkeletonBox className="skeleton-avatar" />
-                <div className="post-content">
+                <div {...styled("post-content", sharedStyles.postContent)}>
                   <div className="post-header">
-                    <SkeletonBox className="skeleton-ink skeleton-author" />
-                    <SkeletonBox className="skeleton-ink skeleton-handle" />
-                    <SkeletonBox className="skeleton-ink skeleton-time" />
+                    <SkeletonBox
+                      {...styled(
+                        "skeleton-ink skeleton-author",
+                        sharedStyles.skeletonInk,
+                        sharedStyles.skeletonAuthor,
+                      )}
+                    />
+                    <SkeletonBox
+                      {...styled(
+                        "skeleton-ink skeleton-handle",
+                        sharedStyles.skeletonInk,
+                        sharedStyles.skeletonHandle,
+                      )}
+                    />
+                    <SkeletonBox
+                      {...styled(
+                        "skeleton-ink skeleton-time",
+                        sharedStyles.skeletonInk,
+                        sharedStyles.skeletonTime,
+                      )}
+                    />
                   </div>
                   <div className="post-body">
-                    <SkeletonBox className="skeleton-ink skeleton-copy" />
-                    <SkeletonBox className="skeleton-ink skeleton-copy" />
-                    <SkeletonBox className="skeleton-ink skeleton-copy" />
+                    <SkeletonBox
+                      {...styled("skeleton-ink skeleton-copy", sharedStyles.skeletonInk)}
+                    />
+                    <SkeletonBox
+                      {...styled("skeleton-ink skeleton-copy", sharedStyles.skeletonInk)}
+                    />
+                    <SkeletonBox
+                      {...styled("skeleton-ink skeleton-copy", sharedStyles.skeletonInk)}
+                    />
                   </div>
-                  <div className="post-footer">
-                    <SkeletonBox className="skeleton-ink skeleton-tag" />
-                    <SkeletonBox className="skeleton-ink skeleton-reaction" />
+                  <div {...styled("post-footer", sharedStyles.postFooter)}>
+                    <SkeletonBox
+                      {...styled(
+                        "skeleton-ink skeleton-tag",
+                        sharedStyles.skeletonInk,
+                        sharedStyles.skeletonTag,
+                      )}
+                    />
+                    <SkeletonBox
+                      {...styled(
+                        "skeleton-ink skeleton-reaction",
+                        sharedStyles.skeletonInk,
+                        sharedStyles.skeletonReaction,
+                      )}
+                    />
                   </div>
                 </div>
               </div>
@@ -179,8 +224,16 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
                 <div className="thread-link" key={id}>
                   <SkeletonBox className="skeleton-avatar small" />
                   <div className="skeleton-thread-copy">
-                    <SkeletonBox className="skeleton-ink skeleton-author" />
-                    <SkeletonBox className="skeleton-ink skeleton-copy" />
+                    <SkeletonBox
+                      {...styled(
+                        "skeleton-ink skeleton-author",
+                        sharedStyles.skeletonInk,
+                        sharedStyles.skeletonAuthor,
+                      )}
+                    />
+                    <SkeletonBox
+                      {...styled("skeleton-ink skeleton-copy", sharedStyles.skeletonInk)}
+                    />
                   </div>
                 </div>
               ))}
@@ -190,25 +243,53 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
               <div className="conversation-header" aria-hidden="true">
                 <SkeletonBox className="skeleton-avatar small" />
                 <div>
-                  <SkeletonBox className="skeleton-ink skeleton-author" />
-                  <SkeletonBox className="skeleton-ink skeleton-handle" />
+                  <SkeletonBox
+                    {...styled(
+                      "skeleton-ink skeleton-author",
+                      sharedStyles.skeletonInk,
+                      sharedStyles.skeletonAuthor,
+                    )}
+                  />
+                  <SkeletonBox
+                    {...styled(
+                      "skeleton-ink skeleton-handle",
+                      sharedStyles.skeletonInk,
+                      sharedStyles.skeletonHandle,
+                    )}
+                  />
                 </div>
               </div>
               <div className="message-list" aria-hidden="true">
                 {[0, 1, 2].map((id) => (
                   <div className={`message-bubble ${id === 1 ? "mine" : ""}`} key={id}>
                     <div className="skeleton-message-content">
-                      <SkeletonBox className="skeleton-ink skeleton-message" />
-                      <SkeletonBox className="skeleton-ink skeleton-message" />
+                      <SkeletonBox
+                        {...styled("skeleton-ink skeleton-message", sharedStyles.skeletonInk)}
+                      />
+                      <SkeletonBox
+                        {...styled("skeleton-ink skeleton-message", sharedStyles.skeletonInk)}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
               <div className="message-composer" aria-hidden="true">
-                <SkeletonBox className="skeleton-ink skeleton-copy" />
+                <SkeletonBox {...styled("skeleton-ink skeleton-copy", sharedStyles.skeletonInk)} />
                 <div className="message-composer-footer">
-                  <SkeletonBox className="skeleton-ink skeleton-tag" />
-                  <SkeletonBox className="skeleton-ink skeleton-button" />
+                  <SkeletonBox
+                    {...styled(
+                      "skeleton-ink skeleton-tag",
+                      sharedStyles.skeletonInk,
+                      sharedStyles.skeletonTag,
+                    )}
+                  />
+                  <SkeletonBox
+                    {...styled(
+                      "skeleton-ink skeleton-button",
+                      sharedStyles.skeletonInk,
+                      sharedStyles.skeletonButton,
+                    )}
+                  />
                 </div>
               </div>
             </>,
@@ -217,13 +298,37 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
               <div className="settings-profile">
                 <SkeletonBox className="skeleton-avatar" />
                 <div>
-                  <SkeletonBox className="skeleton-ink skeleton-author" />
-                  <SkeletonBox className="skeleton-ink skeleton-handle" />
+                  <SkeletonBox
+                    {...styled(
+                      "skeleton-ink skeleton-author",
+                      sharedStyles.skeletonInk,
+                      sharedStyles.skeletonAuthor,
+                    )}
+                  />
+                  <SkeletonBox
+                    {...styled(
+                      "skeleton-ink skeleton-handle",
+                      sharedStyles.skeletonInk,
+                      sharedStyles.skeletonHandle,
+                    )}
+                  />
                 </div>
               </div>
               <div className="form-section">
-                <SkeletonBox className="skeleton-ink skeleton-section-title" />
-                <SkeletonBox className="skeleton-ink skeleton-section-copy" />
+                <SkeletonBox
+                  {...styled(
+                    "skeleton-ink skeleton-section-title",
+                    sharedStyles.skeletonInk,
+                    sharedStyles.skeletonSectionTitle,
+                  )}
+                />
+                <SkeletonBox
+                  {...styled(
+                    "skeleton-ink skeleton-section-copy",
+                    sharedStyles.skeletonInk,
+                    sharedStyles.skeletonSectionCopy,
+                  )}
+                />
                 <div className="form-grid">
                   <SkeletonField />
                   <SkeletonField />
@@ -231,17 +336,35 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
                 <SkeletonField multiline />
               </div>
               <div className="form-section">
-                <SkeletonBox className="skeleton-ink skeleton-section-title" />
-                <SkeletonBox className="skeleton-ink skeleton-section-copy" />
+                <SkeletonBox
+                  {...styled(
+                    "skeleton-ink skeleton-section-title",
+                    sharedStyles.skeletonInk,
+                    sharedStyles.skeletonSectionTitle,
+                  )}
+                />
+                <SkeletonBox
+                  {...styled(
+                    "skeleton-ink skeleton-section-copy",
+                    sharedStyles.skeletonInk,
+                    sharedStyles.skeletonSectionCopy,
+                  )}
+                />
                 <SkeletonField />
               </div>
               <div className="settings-footer">
-                <SkeletonBox className="skeleton-ink skeleton-button" />
+                <SkeletonBox
+                  {...styled(
+                    "skeleton-ink skeleton-button",
+                    sharedStyles.skeletonInk,
+                    sharedStyles.skeletonButton,
+                  )}
+                />
               </div>
             </div>,
         }
       }
-      <span className="sr-only">{label}</span>
+      <span {...styled("sr-only", sharedStyles.srOnly)}>{label}</span>
     </section>
   );
 }

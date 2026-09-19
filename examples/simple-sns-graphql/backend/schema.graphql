@@ -1,0 +1,32 @@
+schema { query: Query, mutation: Mutation }
+
+type Query {
+  viewer: User
+  feed(topic: String!, search: String!, page: Int!): Feed!
+  threads: [Thread!]!
+  conversation(id: ID!): Conversation
+  settings: Settings
+}
+
+type User { id: ID!, name: String!, handle: String!, avatar: String!, photo: String, bio: String! }
+type Post { id: ID!, author: User!, body: String!, topic: String!, likes: Int!, liked: Boolean!, createdAt: String! }
+type Feed { posts: [Post!]!, hasNext: Boolean! }
+type Thread { id: ID!, participant: User!, name: String!, handle: String!, avatar: String!, photo: String, lastMessage: String! }
+type Message { id: ID!, threadId: ID!, author: String!, body: String!, sentAt: String! }
+type Conversation { thread: Thread!, messages: [Message!]! }
+type Settings { id: ID!, displayName: String!, handle: String!, bio: String!, email: String! }
+
+input RegisterInput { name: String!, handle: String!, email: String!, password: String! }
+input PostInput { body: String!, topic: String!, requestId: String! }
+input MessageInput { threadId: ID!, body: String!, requestId: String! }
+input SettingsInput { displayName: String!, bio: String!, email: String! }
+
+type Mutation {
+  register(input: RegisterInput!): User!
+  login(handle: String!, password: String!): User!
+  logout: Boolean!
+  createPost(input: PostInput!): Post!
+  setAppreciation(id: ID!, liked: Boolean!): Post!
+  sendMessage(input: MessageInput!): Message!
+  updateSettings(input: SettingsInput!): Settings!
+}

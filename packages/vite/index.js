@@ -49,6 +49,7 @@ import { nativeWebPlugin } from "./internal/native-web.js";
 
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
+import { relayConfig, relayDependencies, transformRelay } from "./internal/relay.js";
 
 import {
   AUDIT_PUBLIC_PATH,
@@ -249,6 +250,7 @@ export default function uniflowed(options = {}) {
       routing,
       command: options.command,
       accessibility,
+      relayEnabled: builtins.relay !== false,
     }),
     ...(flightState == null ? [] : [clientReferencePlugin(flightState), clientModuleUrlPlugin()]),
     // After the references, so a client module the rsc graph has already
@@ -278,6 +280,7 @@ function flowPlugin({
   routing,
   command,
   accessibility,
+  relayEnabled,
 }) {
   let root = process.cwd();
   let isProduction = false;
@@ -297,6 +300,7 @@ function flowPlugin({
   let server = null;
   /** @type {TransformService | null} */
   let service = null;
+  let relayOptions = null;
   /**
    * Each module's compiled stylesheet, keyed by the virtual id serving it.
    *
@@ -434,11 +438,12 @@ function flowPlugin({
         // uf serves HTML itself; there is no index.html to fall back to.
         appType: "custom",
         resolve: {
-          dedupe: ["react", "react-dom"],
+          dedupe: ["react", "react-dom", "react-relay", "relay-runtime"],
         },
         optimizeDeps: {
           include: [
             ...CLIENT_COMMONJS_DEPENDENCIES,
+            ...relayDependencies(projectRoot),
             // React's Flight client, for an application whose routes render as
             // Server Components; `FLIGHT_BROWSER_DEPENDENCIES` says why.
             ...(flightState == null ? [] : FLIGHT_BROWSER_DEPENDENCIES),
@@ -471,6 +476,7 @@ function flowPlugin({
           : {
               environments: {
                 [RSC_ENVIRONMENT]: rscEnvironment({
+                  root: projectRoot,
                   production: env.command === "build",
                   exclude: uniflowedPackages(projectRoot),
                 }),
@@ -673,7 +679,16 @@ function flowPlugin({
         reported,
         suppressed,
       });
-      const map = out.map == null ? null : JSON.parse(out.map);
+      let map = out.map == null ? null : JSON.parse(out.map);
+      let output = out.code;
+      if (relayEnabled && output.includes("graphql")) {
+        relayOptions ??= relayConfig(root);
+        const transformed = await transformRelay(output, cleanId(id), map, await relayOptions);
+        if (transformed != null) {
+          output = transformed.code;
+          map = transformed.map;
+        }
+      }
       // StyleX. `uf transform` compiled the module's `stylex.create` calls into
       // class names and handed back the rules they declared; the rules become a
       // module of their own that this one imports.
@@ -691,7 +706,6 @@ function flowPlugin({
       // and an absolute name would publish where the machine that built it
       // keeps its files. A module outside the root climbs out with `../`.
       const styled = out.css != null && out.css !== "";
-      let output = out.code;
       if (styled) {
         const styleId = `${STYLE_PREFIX}${moduleId(root, cleanId(id))}.css`;
         styles.set(styleId, out.css);

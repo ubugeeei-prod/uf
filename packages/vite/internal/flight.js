@@ -50,6 +50,7 @@
 // route's modules have been imported.
 
 import path from "node:path";
+import { relayDependencies } from "./relay.js";
 
 import {
   createRunnableDevEnvironment,
@@ -169,7 +170,7 @@ export function rendersFlight(app, { mount, routeTarget }) {
  *
  * @param {{ production: boolean, exclude: Array<string> }} options
  */
-export function rscEnvironment({ production, exclude }) {
+export function rscEnvironment({ production, exclude, root = process.cwd() }) {
   return {
     consumer: "server",
     resolve: {
@@ -183,6 +184,7 @@ export function rscEnvironment({ production, exclude }) {
         "react/jsx-runtime",
         "react/jsx-dev-runtime",
         "react-server-dom-parcel/server",
+        ...relayDependencies(root, true),
       ],
       exclude,
     },
@@ -734,7 +736,7 @@ export function devStylesheets(server) {
     // package's, which Vite serves under `/@fs/` — and the same rule a client
     // reference's URL follows. A stylesheet with no file is a virtual one.
     urls.push(
-      typeof module.file === "string" && module.file !== ""
+      typeof module.file === "string" && path.isAbsolute(module.file)
         ? devUrlOf(root, base, module.file)
         : `${base.replace(/\/$/, "")}/@id/${id.replace(/\0/g, "__x00__")}`,
     );

@@ -1,6 +1,7 @@
 "use client";
 // @flow
 
+import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
 import * as React from "@uniflowed/react";
 import { callAction } from "./action-result.client.js";
 import { Link } from "@uniflowed/router";
@@ -80,7 +81,7 @@ component Appreciation(post: Post, signedIn: boolean) {
       {
         match (state) {
           {status: "error", message: const message, ...} =>
-            <p role="alert" className="post-error">
+            <p role="alert" {...styled("post-error", sharedStyles.postError)}>
               {message}
             </p>,
           {status: "idle"} | {status: "success", ...} => null,
@@ -98,7 +99,7 @@ export component PostCard(post: Post, signedIn: boolean) {
     <ViewTransition name={`note-${post.id}`} enter="feed-item" exit="feed-item">
       <article className={`post ${pending ? "optimistic" : ""}`} aria-busy={pending}>
         <Avatar user={post.author} />
-        <div className="post-content">
+        <div {...styled("post-content", sharedStyles.postContent)}>
           <header className="post-header">
             <strong>{post.author.name}</strong>
             <span className="handle">@{post.author.handle}</span>
@@ -107,7 +108,7 @@ export component PostCard(post: Post, signedIn: boolean) {
             </time>
           </header>
           <p className="post-body">{post.body}</p>
-          <footer className="post-footer">
+          <footer {...styled("post-footer", sharedStyles.postFooter)}>
             <Link className="channel-badge" to={`/?topic=${post.topic}`}>
               <span className={`channel-dot ${post.topic}`} />
               {topicLabel(post.topic)}
@@ -262,7 +263,7 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
       {showComposer
         ? match (session) {
             {kind: "authenticated", user: const user} =>
-              <div id="compose" className="compose-region">
+              <div id="compose" {...styled("compose-region", sharedStyles.composeRegion)}>
                 <CollapsibleRoot
                   open={composerOpen}
                   onOpenChange={(open) => startTransition(() => setComposerOpen(open))}

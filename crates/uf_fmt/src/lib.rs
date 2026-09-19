@@ -115,6 +115,8 @@ pub enum FormatError {
 /// A leading byte order mark is preserved, CRLF and lone CR line endings are
 /// normalized to LF, and the output always ends with exactly one newline unless
 /// the input contained nothing to print.
+/// A leading SignedSource generator header preserves the entire file verbatim:
+/// formatting would invalidate its signature. Run the owning generator instead.
 ///
 /// # Errors
 ///
@@ -131,6 +133,12 @@ pub fn format_source(source: &str, config: &FmtConfig) -> Result<FormatResult, F
     }
 
     let (bom, body) = split_bom(source);
+    if has_signed_source_header(body) {
+        return Ok(FormatResult {
+            output: source.to_owned(),
+            changed: false,
+        });
+    }
     let normalized = normalize_line_endings(body);
 
     let printed = format_on_worker(normalized.into_owned(), config.clone())?;
@@ -142,6 +150,25 @@ pub fn format_source(source: &str, config: &FmtConfig) -> Result<FormatResult, F
     Ok(FormatResult {
         changed: output != source,
         output,
+    })
+}
+
+fn has_signed_source_header(source: &str) -> bool {
+    let Some(comment) = source.trim_start().strip_prefix("/**") else {
+        return false;
+    };
+    let Some((header, _)) = comment.split_once("*/") else {
+        return false;
+    };
+    header.lines().any(|line| {
+        line.trim()
+            .trim_start_matches('*')
+            .trim()
+            .strip_prefix("@generated SignedSource<<")
+            .and_then(|value| value.strip_suffix(">>"))
+            .is_some_and(|signature| {
+                signature.len() == 32 && signature.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
     })
 }
 

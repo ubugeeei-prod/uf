@@ -199,7 +199,7 @@ describe("the two conditions that are not this file's", () => {
     // is one line away from being deleted by somebody tidying a config.
     const config = forCommand(plugin(), "serve");
 
-    expect(config.resolve.dedupe).toEqual(["react", "react-dom"]);
+    expect(config.resolve.dedupe).toEqual(["react", "react-dom", "react-relay", "relay-runtime"]);
   });
 
   it("pre-bundles the development JSX runtime", () => {

@@ -1,0 +1,108 @@
+---
+title: "GraphQL and Relay · uf"
+description: "Relay artifacts, typed components, request-scoped RSC preloads, and an independent backend."
+---
+
+<p className="eyebrow">Data</p>
+
+# GraphQL and Relay
+
+Relay is a first-class frontend integration. Its compiler, normalized cache,
+fragments and mutation semantics remain upstream's. uf supplies Flow lowering,
+artifact imports, package resolution, and the RSC transport around them.
+
+The main backend stays in a separate service. A uf route handler may forward a
+bounded request, authenticate the frontend session, or aggregate upstream reads
+as a BFF. It is not an ORM, migration runner, or general backend framework.
+
+## A working example
+
+[`examples/simple-sns-graphql`](https://github.com/ubugeeei-prod/uf/tree/main/examples/simple-sns-graphql)
+is a separate Commonplace application with Relay 21.0.1, StyleX, streamed RSC,
+and an independent Go GraphQL module. It includes account creation, a searchable
+feed, optimistic reactions, private conversations and settings. Its in-memory
+backend is for demonstration; applications choose durable storage and migrations.
+
+## Compile operations with Relay
+
+Install `@uniflowed/relay`, `@uniflowed/graphql`, `react-relay`, `relay-runtime`
+and the application's `relay-compiler`. Keep Relay's compiler and runtime on the
+same version. Give the compiler a schema and a single-project config:
+
+```json
+{
+  "src": "./app",
+  "schema": "./schema.graphql",
+  "language": "flow",
+  "artifactDirectory": "./app/__generated__",
+  "eagerEsModules": true,
+  "featureFlags": { "flow_modern_syntax": { "kind": "enabled" } }
+}
+```
+
+Define a `relay` task that runs the installed compiler. Run it when the schema
+or a `graphql` tag changes, and use its `--validate` mode in CI. The example
+includes a portable Node launcher. `uf fmt` leaves signed generated artifacts
+unchanged; `uf check` follows their types. Do not put artifacts in `ignore`,
+because that would also hide their types from the checker.
+
+`uf dev` and `uf build` invoke the official
+[Relay Babel plugin](https://relay.dev/docs/getting-started/babel-plugin/)
+after Flow components and hooks have been lowered. The integration reads
+`relay.config.json`, `relay.config.js`, `relay.config.mjs`, or `package.json`'s
+`relay` entry from the application root. It emits ES module artifact imports.
+Multi-project configs require separate application builds today.
+
+Use generated operation types for variables and responses. In Relay 21,
+`useMutation<Variables, Response>` takes two type parameters. Relay validates
+the schema and fragment composition; Flow checks the generated types at their
+component and hook call sites.
+
+## Colocate fragments with components
+
+Each component declares the fields it renders in its own `graphql` fragment and
+accepts the generated `$key` type. It reads the reference with `useFragment`.
+A parent selects only its own fields and spreads its children's fragments;
+it passes the references through without accessing the children's masked data.
+
+The example follows this ownership from `SnsScreenQuery` through the screen,
+frame, timeline, composer, post and avatar, and through the inbox, thread,
+conversation and individual message. The entry query contains only a fragment
+spread. Explicit fragment arguments carry feed filters and the selected thread;
+Relay's conditional aliases identify which route fragments were fetched.
+Settings owns its private fields. Each mutation lives with the component that
+commits it, and spreads the affected leaf fragments where appropriate.
+
+## Stream an RSC preload
+
+The explicit entry points mirror the experimental APIs in
+[Relay 21](https://relay.dev/blog/2026/05/18/relay-21/):
+
+| Entry | API | Responsibility |
+| --- | --- | --- |
+| `@uniflowed/relay/rsc_EXPERIMENTAL` | `createServerEnvironment` | A request-scoped environment with `serverFetchQuery`, `serverPreloadQuery` and `serverReadFragment` |
+| `@uniflowed/relay/rsc-client_EXPERIMENTAL` | `useQueryFromServer` | Consume a streamed preload inside the client's Relay provider |
+
+Create the server factory once and let Relay's `React.cache` scope each
+environment to the RSC request. Read request cookies inside that factory.
+Preload in a server component and pass its reference to a client component,
+which owns a fresh Relay environment and a `RelayEnvironmentProvider`.
+Do not share a server `Environment` singleton between visitors.
+
+The Commonplace example verifies the initial query reaches the browser through
+Flight without a second GraphQL request. Client route transitions consume new
+preload references in the mounted provider. Signing in or out resets the
+document and its normalized cache.
+
+The RSC protocol is experimental and does not support `@defer`. The example
+uses ordinary paginated fields and masked fragments; connection and incremental
+delivery combinations are not claimed as verified by this example. Pin the
+upstream version and exercise the operations your application uses.
+
+## Keep hosts at the boundary
+
+The BFF contract is Web `Request`/`Response` plus explicitly supplied request
+capabilities. Cloudflare bindings belong in an adapter, alongside adapters for
+Vercel, AWS, GCP and Azure. A provider's binding object must not become the
+portable core API. Each deployment target still needs its own runtime evidence;
+this example verifies Node development and production serving.
