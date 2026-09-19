@@ -26,7 +26,7 @@ export function createLocaleRouting<L extends string>(options: {|
   const locales = [...options.locales];
   if (
     locales.length === 0 ||
-    new Set(locales).size !== locales.length ||
+    new Set(locales.map((locale) => locale.toLowerCase())).size !== locales.length ||
     !locales.includes(options.defaultLocale) ||
     locales.some((locale) => !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(locale))
   ) {

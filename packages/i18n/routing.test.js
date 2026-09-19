@@ -56,3 +56,9 @@ describe("locale routes", () => {
     expect(() => routing.metadata("//evil.example")).toThrow("application path");
   });
 });
+
+it("rejects language tags differing only in case", () => {
+  expect(() =>
+    createLocaleRouting({ locales: ["en-US", "en-us"], defaultLocale: "en-US" }),
+  ).toThrow("distinct language tags");
+});
