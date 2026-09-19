@@ -20,9 +20,8 @@ const [app, packs, provider] = process.argv.slice(2);
 const dependencies = {
   react: '19.2.3', 'react-dom': '19.2.3', 'react-native-web': '0.21.2',
   'react-native': provider === 'expo' ? '0.86.3' : '0.87.1',
-  '@expo/vector-icons': '15.0.3',
 };
-if (provider === 'expo') dependencies.expo = '57.0.22';
+if (provider === 'expo') Object.assign(dependencies, { expo: '57.0.22', '@expo/vector-icons': '15.0.3' });
 else Object.assign(dependencies, {
   '@react-native-community/cli': '20.2.0',
   '@react-native/metro-config': '0.87.1', '@react-native/babel-preset': '0.87.1',
@@ -32,7 +31,7 @@ fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: `uf-smok
 const from = provider === 'expo' ? 'expo/metro-config' : '@react-native/metro-config';
 fs.writeFileSync(path.join(app, 'metro.config.cjs'), `const {getDefaultConfig} = require('${from}');\nconst {withUniflowedMetro} = require('@uniflowed/react-native/metro');\nmodule.exports = withUniflowedMetro({...getDefaultConfig(__dirname), maxWorkers: 2});\n`);
 fs.writeFileSync(path.join(app, 'babel.config.cjs'), `module.exports = { presets: ['${provider === 'expo' ? 'babel-preset-expo' : 'module:@react-native/babel-preset'}'] };\n`);
-fs.writeFileSync(path.join(app, 'app.json'), JSON.stringify({ name: 'UfNativeSmoke', expo: { name: 'UfNativeSmoke', slug: 'uf-native-smoke' } }));
+fs.writeFileSync(path.join(app, 'app.json'), JSON.stringify(provider === 'expo' ? { expo: { name: 'UfNativeSmoke', slug: 'uf-native-smoke' } } : { name: 'UfNativeSmoke' }));
 fs.writeFileSync(path.join(app, 'uf.config.js'), `export default { app: { targets: ['web', 'react-native'], rsc: false }, build: { outDir: 'dist' } };\n`);
 fs.writeFileSync(path.join(app, 'index.js'), `import { AppRegistry } from '@uniflowed/react-native';\nimport Page from './app/$page.js';\nAppRegistry.registerComponent('UfNativeSmoke', () => Page);\n`);
 fs.writeFileSync(path.join(app, 'app/$page.js'), `import { Text, View, Image } from '@uniflowed/react-native';\nimport font from '../assets/font.ttf';\nimport icon from '../assets/icon.png';\nexport default component Page() { return <View><Text nativeID={String(font)}>native-shared-page</Text><Image source={typeof icon === 'number' ? icon : { uri: icon.src }} /></View>; }\n`);
@@ -43,7 +42,11 @@ for (const suffix of ['', '@2x', '@3x']) fs.writeFileSync(path.join(app, `assets
 NODE
   cd "$app"
   npm install --ignore-scripts --no-audit --no-fund
-  cp node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf assets/font.ttf
+  if [ "$provider" = expo ]; then
+    cp node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf assets/font.ttf
+  else
+    cp "$scratch/expo/assets/font.ttf" assets/font.ttf
+  fi
   "$binary" build --target ios
   "$binary" build --target android
   node --input-type=commonjs <<'NODE'
