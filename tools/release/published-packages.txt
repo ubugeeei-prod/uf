@@ -34,8 +34,10 @@ fetch
 graphql
 hooks
 host
+i18n
 query
 react
+react-native
 react-testing
 relay
 router
