@@ -217,8 +217,30 @@ plausible-sounding step toward the thing this document is about.
 - **An application backend.** uf's server half is a **BFF**: the backend *for
   this frontend*. Route handlers, server actions, and rendering — the server a
   UI needs in order to be a UI, and no more. What it is not is the place a
-  team's domain lives: no ORM as a first-class concern, no migrations, no job
-  queue, no service framework. Those belong to services uf talks to.
+  team's domain lives: no ORM implementation, migration runner, job queue, or
+  service framework. The main backend belongs to an independent service, not
+  to a Flow application hosted by the frontend toolchain.
+
+  Database integration is a **sqlc generator**: high-quality Flow types and
+  query functions generated from SQL, with explicit driver capabilities.
+  Applications choose and operate their own migration tool. Existing ORM
+  declaration placeholders are not a direction to implement or publish.
+
+  **GraphQL and Relay are first-class frontend integrations.** uf owns compiler
+  orchestration, generated Flow artifacts, build boundaries, diagnostics, and
+  tested RSC integration with upstream Relay. Relay owns its normalized store,
+  fragments, pagination, and mutations; the application backend owns its
+  GraphQL schema and business rules. Experimental upstream RSC APIs keep that
+  status and are versioned and tested explicitly.
+
+  The BFF remains **platform agnostic**. Its common contract uses Web
+  Request/Response, explicit request-scoped capabilities, and dependency
+  injection. Cloudflare Workers bindings are useful adapter inputs, not the
+  common application API. Vercel, AWS, GCP, and Azure adapters must satisfy the
+  same request, streaming, cancellation, and isolation contracts. Provider
+  SDKs and binding types stay at the adapter boundary; an unavailable
+  capability fails explicitly. An adapter is only supported once its runtime
+  and deployment tests pass, not because a platform name appears here.
 
   This is a red line and not a roadmap gap, because the pull is constant and
   each step is individually reasonable. A framework that can render on the

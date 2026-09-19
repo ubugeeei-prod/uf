@@ -906,6 +906,11 @@ function withPayload(
  * from chunk to chunk, and otherwise waits for the HTML that finishes what is
  * open.
  *
+ * **Outside replaceable boundaries.** Even between tags, a payload inside a
+ * Suspense fallback disappears when React reveals its content. A browser that
+ * loads the Flight reader afterwards then sees an incomplete stream. React's
+ * boundary comments keep those ranges closed to injection until their end.
+ *
  * **`</body></html>` waits for the end of the payload.** The HTML can finish
  * first — the last boundary's markup is rendered from rows that are already
  * written — and a payload element after `</html>` is one the parser moves
@@ -1020,11 +1025,13 @@ type Boundary = {|
   readonly safe: boolean,
   /** The `script` or `style` element the HTML is inside, if it is inside one. */
   readonly rawText: string | null,
+  /** Suspense/Activity ranges React can replace before hydration starts. */
+  readonly replaceable: number,
   /** A tag, or a comment, the HTML has started and not yet finished. */
   readonly open: string,
 |};
 
-const NOTHING_WRITTEN: Boundary = { safe: false, rawText: null, open: "" };
+const NOTHING_WRITTEN: Boundary = { safe: false, rawText: null, replaceable: 0, open: "" };
 
 /**
  * `boundary`, once `html` has been written after it.
@@ -1041,23 +1048,31 @@ const NOTHING_WRITTEN: Boundary = { safe: false, rawText: null, open: "" };
 function advanced(boundary: Boundary, html: string): Boundary {
   const text = boundary.open + html;
   let rawText = boundary.rawText;
-  const tags = /<(\/?)(script|style)(?=[\s/>])[^>]*>/gi;
+  let replaceable = boundary.replaceable;
+  const tags = /<!--([\s\S]*?)-->|<(\/?)(script|style)(?=[\s/>])[^>]*>/gi;
   let tag = tags.exec(text);
   while (tag != null) {
-    const name = tag[2].toLowerCase();
-    if (tag[1] === "/") {
-      if (rawText === name) {
-        rawText = null;
+    const comment = tag[1];
+    if (comment != null) {
+      if (rawText == null) {
+        if (/^[\$&][?!~]?$/.test(comment)) replaceable += 1;
+        else if (comment === "/$" || comment === "/&") replaceable = Math.max(0, replaceable - 1);
       }
-    } else if (rawText == null) {
-      rawText = name;
+    } else {
+      const name = tag[3].toLowerCase();
+      if (tag[2] === "/") {
+        if (rawText === name) rawText = null;
+      } else if (rawText == null) {
+        rawText = name;
+      }
     }
     tag = tags.exec(text);
   }
   const start = text.lastIndexOf("<");
   return {
-    safe: rawText == null && text.endsWith(">"),
+    safe: rawText == null && replaceable === 0 && text.endsWith(">"),
     rawText,
+    replaceable,
     open: start > text.lastIndexOf(">") ? text.slice(start) : "",
   };
 }

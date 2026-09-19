@@ -150,7 +150,7 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/routing",
         title: "Routing",
-        blurb: "Files become routes; layouts nest; loaders run before the page.",
+        blurb: "Files become routes, layouts nest, and Server Components fetch their own data.",
       },
       {
         href: "/guide/routing/requests",
@@ -224,6 +224,12 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Signing in",
         blurb:
           "A contract rather than a provider: PKCE, a single-use state, and a session store you can replace.",
+      },
+      {
+        href: "/guide/graphql-relay",
+        title: "GraphQL and Relay",
+        blurb:
+          "Relay artifacts, typed components, request-scoped RSC preloads, and an independent backend.",
       },
       {
         href: "/guide/logging",

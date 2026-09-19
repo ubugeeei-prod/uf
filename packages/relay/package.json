@@ -11,14 +11,18 @@
     "directory": "packages/relay"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./rsc_EXPERIMENTAL": "./rsc_EXPERIMENTAL.js",
+    "./rsc-client_EXPERIMENTAL": "./rsc-client_EXPERIMENTAL.js"
   },
   "files": [
     "index.js",
+    "rsc_EXPERIMENTAL.js",
+    "rsc-client_EXPERIMENTAL.js",
     "!*.test.js"
   ],
   "peerDependencies": {
     "react": ">=19",
-    "react-relay": ">=20"
+    "react-relay": ">=21"
   }
 }

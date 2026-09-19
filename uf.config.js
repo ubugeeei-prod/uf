@@ -213,6 +213,9 @@ export default defineConfig({
     // green check that cannot go red teaches people to ignore checks. So it is
     // one command rather than a gate, and what is left to do is choose the
     // number; #280 carries that argument.
+    "example:sns:graphql": {
+      command: "node tools/ci/relay-sns-smoke.mjs",
+    },
     "test:lib:coverage": {
       command: "./target/release/uf test --coverage",
       dependsOn: ["build"],

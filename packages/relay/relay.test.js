@@ -12,6 +12,10 @@
 import { describe, expect, it } from "@uniflowed/testing";
 import * as uf from "@uniflowed/relay";
 import * as ReactRelay from "react-relay";
+import { createServerEnvironment } from "@uniflowed/relay/rsc_EXPERIMENTAL";
+import { createServerEnvironment as upstreamServerEnvironment } from "react-relay/rsc_EXPERIMENTAL.js";
+import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+import { useQueryFromServer as upstreamQueryFromServer } from "react-relay/rsc-client_EXPERIMENTAL.js";
 
 /** Every binding uf's registry promises for this specifier. */
 const DOCUMENTED = [
@@ -26,6 +30,16 @@ const DOCUMENTED = [
 ];
 
 describe("@uniflowed/relay", () => {
+  it("preserves the upstream experimental RSC protocol", () => {
+    expect(createServerEnvironment).toBe(upstreamServerEnvironment);
+    expect(useQueryFromServer).toBe(upstreamQueryFromServer);
+  });
+
+  it("exposes every upstream runtime binding through the browser-safe barrel", () => {
+    for (const name of Object.keys(ReactRelay)) {
+      if (name !== "default" && name !== "module.exports") expect(uf[name]).toBe(ReactRelay[name]);
+    }
+  });
   it("re-exports the real Relay, not a declaration of it", () => {
     // Identity, not shape: `uf.useFragment` has to be the function Relay
     // exports, or an application is holding two Relays.

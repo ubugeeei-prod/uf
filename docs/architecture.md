@@ -1063,10 +1063,12 @@ Native engines being deepened:
   `@uniflowed/cell`
 - DOM and React Native testing utilities compatible with Testing Library habits
 - self-hosted `@uniflowed/test` runner targeting faster-than-Bun execution
-- ORM schema/runtime with Flow opaque types at module boundaries
+- sqlc-generated Flow query functions and row types, without an ORM or a
+  migration runner; applications own their database drivers and migrations
 - StyleX compiler/runtime integration
 - React Compiler syntax-mode integration
-- Relay integration
+- first-class upstream Relay integration, including versioned experimental
+  RSC support; GraphQL services and domain logic remain outside the BFF
 - headless UI components with preset styles, validator-backed form contracts,
   RSC split metadata, and `renders` type utilities, aimed at replacing shadcn's
   copy-and-edit workflow with typed imports

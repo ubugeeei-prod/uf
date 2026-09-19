@@ -303,10 +303,14 @@ describe("the stylesheets a development document links from the rsc graph", () =
           "/repo/packages/brand/tokens.css",
           { file: "/repo/packages/brand/tokens.css", url: "/brand/tokens.css" },
         ],
-        // A module's StyleX sheet, which has no file.
+        // Vite can put a virtual StyleX identifier in `file`; it is not a
+        // filesystem path and must still be fetched through `/@id/`.
         [
           "uf-style:/repo/docs/app/$page.js.css",
-          { file: null, url: "/@id/uf-style:/repo/docs/app/$page.js.css" },
+          {
+            file: "uf-style:/repo/docs/app/$page.js.css",
+            url: "/@id/uf-style:/repo/docs/app/$page.js.css",
+          },
         ],
       ]),
     );

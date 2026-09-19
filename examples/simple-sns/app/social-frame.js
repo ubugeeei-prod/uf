@@ -1,5 +1,6 @@
 // @flow
 
+import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { Avatar, Icon } from "./ui.js";
@@ -38,7 +39,7 @@ export component SocialFrame(
   ];
 
   return (
-    <div className="app-shell">
+    <div {...styled("app-shell", sharedStyles.appShell)}>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
@@ -46,8 +47,8 @@ export component SocialFrame(
         <Link className="brand" to="/" aria-label="Commonplace home">
           Commonplace
         </Link>
-        <div className="workspace-label">
-          <span className="online-dot" />
+        <div {...styled("workspace-label", sharedStyles.workspaceLabel)}>
+          <span {...styled("online-dot", sharedStyles.onlineDot)} />
           Community workspace
         </div>
         <nav className="main-nav" aria-label="Primary navigation">
@@ -185,7 +186,7 @@ export component SocialFrame(
                 </Link>
               ))}
             </section>
-            <footer className="discovery-footer">
+            <footer {...styled("discovery-footer", sharedStyles.discoveryFooter)}>
               <span>Commonplace</span>
               <span>Local workspace</span>
             </footer>
