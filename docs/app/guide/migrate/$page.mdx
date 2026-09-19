@@ -447,14 +447,14 @@ deployment record does not have yet.
    `next/cache` to `@uniflowed/server/cache`, `next/dynamic` to React's `lazy`.
    In a `$route.js`, return JSON as a `Response` with a JSON body and
    `content-type`; Flow's DOM library does not expose `Response.json()` yet.
-4. **Move data fetching into a `loader`.** A page or layout exports `loader`,
-   which runs before it renders and hands it the data; a promise left in what it
-   returns streams behind a `<Suspense>`
-   ([Loading data](/guide/routing#loading-data)). Do not make the page component
-   itself `async`: `uf check` rejects async component syntax, so data that needs
-   `await` belongs in the loader and the page takes the loader's returned data.
-   `generateMetadata` is read from a page, and a route that uses it waits for
-   its data rather than streaming.
+4. **Keep data fetching in Server Components.** A page can be an
+   `export async function Page(props: Props)` that calls `await fetch(...)` and
+   returns JSX. Nested async functions stream behind `<Suspense>`; no `loader`
+   is required. A route `loader` remains an option when several route consumers
+   need the same prepared data ([Loading data](/guide/routing#loading-data)).
+   Keep async data fetching on the server: React does not support async Client
+   Components. `generateMetadata` is read from a page, and a route that uses it
+   waits for its data rather than streaming.
 5. **Split `middleware.ts` by directory.** There is no `matcher`: a
    `$middleware.js` guards the directory it sits in, and middleware composes down
    the tree the way layouts do. Export `function middleware(request: Request)`,

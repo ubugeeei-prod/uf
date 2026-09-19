@@ -10,6 +10,7 @@ cp -R crates/uf_cli/tests/fixtures/rsc-test-app "$scratch/rsc"
 cp -R crates/uf_cli/tests/fixtures/browser-interactions "$scratch/browser"
 rm -rf "$scratch/rsc/.uf" "$scratch/rsc/node_modules" "$scratch/browser/.uf" "$scratch/browser/__screenshots__"
 
+"$uf" --cwd "$scratch/rsc" check
 "$uf" --cwd "$scratch/rsc" test
 "$uf" --cwd "$scratch/browser" test --browser interaction.test.js
 log="$root/output/browser-tests/visual.log"

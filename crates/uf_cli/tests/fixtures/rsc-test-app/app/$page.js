@@ -1,12 +1,12 @@
 // @flow
 import * as React from "@uniflowed/react";
 import { cookies } from "@uniflowed/server";
-import Counter from "./_components/Counter.js";
+import { Counter } from "./_components/Counter.js";
 async function Delayed() {
   await new Promise((resolve) => setTimeout(resolve, 80));
   return <p id="resolved">nested async data</p>;
 }
-export default async function Page({ searchParams }) {
+export async function Page({ searchParams }: { searchParams: { [string]: string, ... } }) {
   const response = await fetch("data:application/json," + encodeURIComponent(JSON.stringify({ name: searchParams.name ?? "Ada" })));
   const person = await response.json();
   const visitor = cookies().get("visitor") ?? "guest";
