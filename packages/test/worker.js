@@ -218,8 +218,14 @@ async function runImportedFile(
   url: string,
   started: number,
 ): Promise<void> {
+  let closeNative: (() => Promise<void>) | null = null;
   try {
-    await import(`${url}?uf-run=${generation}`);
+    if (process.env.UF_TEST_TARGET === "react-native") {
+      const { loadNativeFile } = await import("./internal/native-host.js");
+      closeNative = await loadNativeFile(request.file);
+    } else {
+      await import(`${url}?uf-run=${generation}`);
+    }
   } catch (thrown) {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     write({
@@ -256,12 +262,18 @@ async function runImportedFile(
     // with forty snapshots would otherwise rewrite its snapshot file forty
     // times, and a crash halfway through would leave a partial one.
     writeChangedSnapshots();
+    await closeNative?.();
     write({
       event: "file",
       status: "completed",
       durationMicros: Math.round((performance.now() - started) * 1000),
     });
   } catch (thrown) {
+    try {
+      await closeNative?.();
+    } catch {
+      // Preserve the original run or teardown failure.
+    }
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     write({
       event: "file",

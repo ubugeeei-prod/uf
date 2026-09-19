@@ -212,8 +212,9 @@ heading levels the component *actually* emitted skip a step.
 
 ## React Native test trees
 
-`@uniflowed/react-native-testing` is for the half of React Native testing uf can
-state honestly today: querying a native renderer's JSON tree. It can also mount
+`@uniflowed/react-native-testing` retains its renderer-independent JSON tree
+queries. For actual React Native components, use [Native components](#native-components)
+and the `/native` entry point below. It can also mount
 through React Test Renderer when the suite installs the optional
 `react-test-renderer` peer from the same React 19.3 release line declared by
 the package. That adapter is
@@ -336,8 +337,8 @@ it("queries a rendered native component", () => {
 `render()` deliberately refuses to hide the optional peer boundary. Without
 `react-test-renderer`, it raises `NativeTestingUnsupportedError` and asks the
 suite to install that peer or pass an already-produced tree to
-`createNativeScreen()`. Even with the peer installed, tests that need real
-native behaviour should be reported as an explicit host gap:
+`createNativeScreen()`. Device-only behavior, such as native layout or
+platform permissions, still needs a device test:
 
 ```js
 // @flow
@@ -345,7 +346,7 @@ import { it } from "@uniflowed/test";
 
 it.skipBecause(
   "renders the settings screen on the native host",
-  "uf can query React Test Renderer JSON, but this suite needs a native host config.",
+  "This test needs platform permissions on an actual native device.",
 );
 ```
 
@@ -1358,3 +1359,75 @@ begins, or one whose imports are already bundled; neither exists yet.
 
 [Dependencies](/guide/dependencies) is next: `uf install` and the rest, and the
 lockfile CI holds a project to.
+
+## Native components
+
+Set `test.target` to `"react-native"` and `test.runtime` to `"node"`. uf uses
+React Native's own `@react-native/jest-preset` setup and module mocks. Rust
+still discovers and schedules the files, applies timeouts and reports results;
+Jest's module environment supplies the upstream native setup, not a second test
+runner or a copied set of NativeModules mocks. Each file gets a fresh native
+module environment, including when a worker runs several files.
+
+Add `jest`, `jest-runtime`, `jest-config`, `@jest/transform`, `@jest/expect`
+and `babel-jest` from the 30.x release line to the app's `devDependencies`,
+along with `@babel/plugin-transform-dynamic-import` 7.x,
+`@react-native/jest-preset`, `@react-native/babel-preset`,
+`@testing-library/react-native` 14.x and `test-renderer` 1.x. Then run `uf install`.
+
+Use preset versions matching the app's React Native release. The published
+`@uniflowed/react-native` package provides the native test transformer; install
+it along with `@uniflowed/test`. No Jest or Babel config file is needed. App
+Flow syntax and StyleX go through the same uf transform as Metro; the upstream
+React Native preset handles native dependencies and mock hoisting.
+
+```js
+// uf.config.js
+export default { test: { target: "react-native", runtime: "node" } };
+```
+
+```js
+import { test, expect } from "@uniflowed/test";
+import { Text, Pressable } from "react-native";
+import { render, screen, press } from "@uniflowed/react-native-testing/native";
+
+component Save(onSave: () => void) {
+  return <Pressable accessibilityRole="button" onPress={onSave}><Text>Save</Text></Pressable>;
+}
+
+test("saves from a native press", async () => {
+  let saved = false;
+  await render(<Save onSave={() => { saved = true; }} />);
+  await press(screen.getByRole("button"));
+  expect(saved).toBe(true);
+});
+```
+
+The `/native` entry point re-exports React Native Testing Library 14, which uses
+Test Renderer rather than the deprecated `react-test-renderer`. It adds `press`,
+`changeText` and `scroll` aliases for the asynchronous `fireEvent` operations.
+Importing `@testing-library/react-native` directly works too; an existing RNTL
+suite can retain that import and its Jest globals. This is separate from the
+legacy synchronous JSON adapter at the package root.
+
+Differences from running a Jest suite:
+
+- Test discovery, filters, retries, worker scheduling and reports belong to uf.
+  Project `jest.config.*` files and Jest CLI options are not read.
+- In this target, imported `expect` uses Jest's matcher implementation, including
+  RNTL's matchers. Use `jest` from `@jest/globals` for module mocks and fake
+  timers; uf's module-mock namespace does not control the isolated native graph.
+- Await RNTL 14's `render`, interactions, rerender and cleanup. Native module
+  setup stays in the application's test imports; follow each library's own
+  setup guidance for additional device modules.
+- Node is required. Native coverage, snapshot updates, benchmarks and browser
+  mode are explicitly refused. Device layout, OS gestures and platform
+  permissions still require device tests.
+- As with Metro, the uf and Babel source maps are not yet composed; native
+  stack locations can refer to lowered Flow output.
+
+CI installs packed uf packages in a separate consumer directory, generates the
+route modules and mounts a real `NavigationContainer` with native-stack and
+bottom-tabs. It verifies press/text/scroll events, shared StyleX objects,
+params, push/replace/back and claimed cold/warm links in one-worker and
+multiple-worker runs.

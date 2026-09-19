@@ -57,7 +57,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const app = process.argv[2];
 fs.writeFileSync(path.join(app, 'index.js'), `import { AppRegistry } from '@uniflowed/react-native';\nimport Page from './app/$page.js';\nAppRegistry.registerComponent('UfNativeSmoke', () => Page);\n`);
-fs.writeFileSync(path.join(app, 'app/$page.js'), `import { Text, View, Image } from '@uniflowed/react-native';\nimport font from '../assets/font.ttf';\nimport icon from '../assets/icon.png';\nexport default component Page() { return <View><Text nativeID={String(font)}>native-shared-page</Text><Image source={typeof icon === 'number' ? icon : { uri: icon.src }} /></View>; }\n`);
+fs.writeFileSync(path.join(app, 'app/$page.js'), `import { Text, View, Image } from '@uniflowed/react-native';\nimport { stylex } from '@uniflowed/stylex';\nconst styles = stylex.create({root: {padding: 12, backgroundColor: '#f3f7fb'}});\nimport font from '../assets/font.ttf';\nimport icon from '../assets/icon.png';\nexport default component Page() { return <View {...stylex.props(styles.root)}><Text nativeID={String(font)}>native-shared-page</Text><Image source={typeof icon === 'number' ? icon : { uri: icon.src }} /></View>; }\n`);
 fs.writeFileSync(path.join(app, 'app.js'), `import { routerView } from '@uniflowed/router'; export default routerView('./app');\n`);
 fs.writeFileSync(path.join(app, 'app/$layout.web.js'), `export default component Layout(children: React.Node) { return <html><body>{children}</body></html>; }\n`);
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');

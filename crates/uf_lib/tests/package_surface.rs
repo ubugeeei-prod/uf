@@ -165,7 +165,7 @@ fn runs_at_import(module: &Utf8Path) -> bool {
 /// an export surface uf does not control. Everything else lists its names: uf's
 /// own domains collide, and a star between them cannot say which `graphql` or
 /// which `Text` was meant.
-const RE_EXPORT_PACKAGES: &[&str] = &["react", "react-native", "relay"];
+const RE_EXPORT_PACKAGES: &[&str] = &["react", "react-native", "react-native-testing", "relay"];
 
 /// Keywords a top-level statement in a shipped module may begin with. Anything
 /// else runs when the module is imported.

@@ -41,7 +41,7 @@ const metroResolverMainFields = Object.freeze(["react-native", "browser", "main"
 const metroTransformPipeline = Object.freeze([
   "flow",
   "react-compiler",
-  "stylex-css-refusal",
+  "stylex-native-objects",
   "metro-babel",
 ]);
 

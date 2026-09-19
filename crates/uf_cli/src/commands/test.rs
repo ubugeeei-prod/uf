@@ -228,6 +228,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
 
     let resolved = load_config(cwd)?;
     let root = resolved.root.clone();
+    if test_application_target(&resolved.config) == TestApplicationTarget::ReactNative {
+        let tables = uf_router::native::discover_native_route_tables(&root, &resolved.config)?;
+        uf_router::native::write_native_route_tables(&root, &resolved.config, &tables)?;
+    }
     // Named paths override `.gitignore`, as they do for `uf lint` and
     // `uf fmt`: a suite that writes its fixture into an ignored directory —
     // `packages/test/module-mock.test.js` does, so a killed run leaves nothing
@@ -356,7 +360,17 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         return render_list(ui, &root, &tests, &args.filter(), args.bench);
     }
     let application_target = test_application_target(&resolved.config);
-    refuse_unsupported_test_target(application_target)?;
+    if application_target == TestApplicationTarget::ReactNative
+        && (args.browser
+            || args.bench
+            || args.coverage
+            || resolved.config.test.coverage.enabled
+            || args.update_snapshots)
+    {
+        bail!(
+            "`uf test` native component tests support Node execution and interaction assertions; browser mode, benchmarks, coverage and snapshot updates are not supported in the native module environment"
+        );
+    }
     // `test` rather than `development`, so `.env.test` is a file that means
     // something — the mode Vitest runs in, for the same reason: a suite that
     // talks to the development database is a suite that can destroy it.
@@ -630,6 +644,12 @@ pub(crate) fn test_host(
         })?;
 
     let kind = test_host_kind(host.kind, browser);
+    let native = test_application_target(config) == TestApplicationTarget::ReactNative;
+    if native && kind != HostKind::Node {
+        bail!(
+            "`uf test` native component tests require Node and React Native's official Jest module environment; select test.runtime = 'node'"
+        );
+    }
     // The driver of a browser run is Node whatever the project's Capability JS
     // Host is, because the runtime under test is the browser and the driver
     // only shuttles JSON between a pipe and a socket. Found here rather than
@@ -650,7 +670,11 @@ pub(crate) fn test_host(
     // Read once: it is the values the workers get *and* the names the
     // permission set has to grant, and the two must be the same list or a test
     // would be handed a variable it may not read.
-    let exported = env.exported();
+    let mut exported = env.exported();
+    if native {
+        exported.push((String::from("UF_TEST_TARGET"), String::from("react-native")));
+        exported.push((String::from("NODE_ENV"), String::from("test")));
+    }
     // Deno's hook is `node:module`'s `registerHooks`, and a Deno older than
     // the release that implemented it would start every worker only for the
     // preload to refuse inside each one. Asked once, here, so the refusal is
@@ -1237,18 +1261,6 @@ pub(crate) fn test_application_target(config: &UniflowedConfig) -> TestApplicati
     }
 }
 
-fn refuse_unsupported_test_target(target: TestApplicationTarget) -> Result<()> {
-    match target {
-        TestApplicationTarget::Web => Ok(()),
-        TestApplicationTarget::ReactNative => bail!(
-            "`uf test` resolved `test.target` to `react-native`, but the \
-             runner has no React Native renderer or host config yet. It refuses here instead \
-             of running the suite on the web document shim. Set `test.target` to `web` only for \
-             tests that intentionally target a document."
-        ),
-    }
-}
-
 /// Turn a report into the command's exit status.
 ///
 /// A coverage threshold fails the run exactly as a failing test does, and it is
@@ -1420,19 +1432,6 @@ mod tests {
         assert_eq!(
             test_application_target(&config),
             TestApplicationTarget::ReactNative
-        );
-    }
-
-    #[test]
-    fn unsupported_react_native_target_names_test_target() {
-        let message = refuse_unsupported_test_target(TestApplicationTarget::ReactNative)
-            .unwrap_err()
-            .to_string();
-
-        assert!(message.contains("test.target"), "{message}");
-        assert!(
-            !message.contains("test.runner.applicationTarget"),
-            "{message}"
         );
     }
 
