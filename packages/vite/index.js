@@ -60,7 +60,7 @@ import {
 } from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
 import { barrelImportsPlugin, namespaceViewOf } from "./internal/barrel-imports.js";
-import { emit, reportRenderError } from "./internal/events.js";
+import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import { moduleId } from "./internal/module-graph.js";
@@ -120,6 +120,7 @@ import {
   rscEnvironment,
 } from "./internal/flight.js";
 import { createChannelMiddleware } from "./internal/diagnostics.js";
+import { startDevState } from "./internal/dev-state.js";
 import { devtoolsPreamble } from "./internal/devtools.js";
 import { send, toAddressRequest, toRequest } from "./internal/http.js";
 import {
@@ -793,6 +794,16 @@ function flowPlugin({
 
     configureServer(devServer) {
       server = devServer;
+      const diagnostics = startDevState(root, () => ({
+        routes: scanRoutes(appRoot, { target: routeTarget }).routes.map((route) => ({
+          path: route.path,
+          page: route.page,
+          layouts: route.layouts,
+        })),
+        actions: actionTables().table,
+      }));
+      devServer.middlewares.use(diagnostics.middleware);
+      devServer.httpServer?.once("close", diagnostics.close);
       // The ssr graph's way into the rsc graph; see `devBridgeSource`.
       if (flightState != null) {
         globalThis[Symbol.for(DEV_RSC_HOOK)] = () =>
@@ -1180,6 +1191,12 @@ function flowPlugin({
             // Map the stack back onto the Flow source before it reaches the
             // overlay.
             if (error instanceof Error) devServer.ssrFixStacktrace(error);
+            emit("diagnostic", {
+              severity: "error",
+              kind: "runtime",
+              origin: url,
+              ...errorEvent(error),
+            });
             next(error);
           }
         });

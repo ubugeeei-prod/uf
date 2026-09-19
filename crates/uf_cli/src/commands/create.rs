@@ -184,7 +184,9 @@ fn render_created(
     force: bool,
 ) -> Result<()> {
     let label = name.clone();
-    let report = create_project(&target, &CreateOptions { name, kind, force })?;
+    let mut report = create_project(&target, &CreateOptions { name, kind, force })?;
+    super::agents::update(&report.root)?;
+    report.files.push(report.root.join("AGENTS.md"));
     render(
         cwd,
         ui,
@@ -227,7 +229,14 @@ fn render_remote(
     let fetched = remote::fetch(template, staging.path());
     progress.finish();
     drop(progress);
-    let files = remote::copy_into(&fetched?, &target, force)?;
+    let mut files = remote::copy_into(&fetched?, &target, force)?;
+    super::agents::update(&target)?;
+    if !files
+        .iter()
+        .any(|file| file.file_name() == Some("AGENTS.md"))
+    {
+        files.push(target.join("AGENTS.md"));
+    }
 
     let source = template.label();
     let mut notes = vec![(Status::Info, format!("copied from {source}"))];

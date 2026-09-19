@@ -554,7 +554,9 @@ pub(crate) enum Commands {
     Lsp,
     /// Serve the Model Context Protocol over stdin/stdout, for an agent.
     ///
-    /// Each tool runs the command it is named for. `uf_check`, `uf_lint`,
+    /// The live dev tools, `uf_dev_errors`, `uf_dev_logs`, `uf_dev_routes` and
+    /// `uf_dev_action`, read a separately running dev server.
+    /// Each other tool runs the command it is named for. `uf_check`, `uf_lint`,
     /// `uf_info`, `uf_routes` and `uf_explain` change none of your files,
     /// `uf_test` runs the project's own code, and the two that write say so:
     /// `uf_fmt_write`, `uf_lint_fix`.
