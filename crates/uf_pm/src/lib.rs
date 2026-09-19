@@ -17,6 +17,7 @@ pub mod delta;
 pub mod detect;
 pub mod links;
 pub mod manifests;
+pub mod native;
 pub mod progress;
 pub mod provenance;
 pub mod ranges;

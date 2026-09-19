@@ -15,6 +15,7 @@
     "./catalogue": "./catalogue.js",
     "./format": "./format.js",
     "./negotiate": "./negotiate.js",
+    "./routing": "./routing.js",
     "./syntax": "./syntax.js"
   },
   "files": [
@@ -22,6 +23,7 @@
     "format.js",
     "index.js",
     "negotiate.js",
+    "routing.js",
     "syntax.js",
     "!*.test.js"
   ]

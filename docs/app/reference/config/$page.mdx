@@ -473,6 +473,12 @@ Set `declarations: false` to publish none. It is for a library that would rather
 ship nothing than ship declarations with gaps in them; it is not a way to stop
 hearing about the gaps, which is what a project reaching for it usually wants.
 
+`uf build --watch` rebuilds a library's JavaScript, declarations and manifest
+when its source changes, including added and deleted files. A failed rebuild
+prints its error and keeps watching so the next edit can repair it. Output,
+`node_modules` and tool caches do not trigger another build. Application projects
+use `uf dev` instead.
+
 ### build.staticBuild
 
 The same declaration as `rendering.modes: ["ssg"]`, made about the *artefact*

@@ -60,10 +60,12 @@ use crate::ui::Ui;
 
 mod guards;
 mod library;
+mod native;
 mod nonce;
 mod request_state;
 mod site;
 mod spa;
+pub(crate) mod watch;
 
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
@@ -201,6 +203,21 @@ pub(crate) fn build(
     let root = resolved.root.clone();
     let app_target =
         application_target(&resolved.config, requested_target, standalone, "uf build")?;
+    if app_target != RouteTarget::Web {
+        progress.finish();
+        drop(progress);
+        if standalone
+            || requested_adapter
+                .or(resolved.config.app.runtime.deploy.adapter)
+                .is_some()
+            || analyze
+        {
+            bail!(
+                "native Metro builds do not support --compile, --adapter or --analyze; native compilation and signing belong to Expo/EAS, Xcode or Gradle"
+            );
+        }
+        return native::build(ui, &resolved, app_target, requested_mode);
+    }
     // What this project said a build may produce, resolved once. Two settings
     // decide it — `app.rendering.modes` and `build.staticBuild` — and reading
     // them apart at the four places below is how they would come to disagree;

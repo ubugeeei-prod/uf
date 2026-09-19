@@ -154,6 +154,9 @@ pub(crate) enum Commands {
     /// `uf transform`, then writes the build manifest and enforces
     /// `build.budgets`.
     Build {
+        /// Rebuild a library's JavaScript and declarations when source files change.
+        #[arg(long)]
+        watch: bool,
         /// Print the emitted bundle's size, by chunk.
         #[arg(long)]
         size_report: bool,
@@ -1443,6 +1446,7 @@ mod tests {
         );
         assert!(
             !Commands::Build {
+                watch: false,
                 size_report: false,
                 analyze: false,
                 mode: None,
@@ -1486,6 +1490,7 @@ mod tests {
         );
         assert!(
             !Commands::Build {
+                watch: false,
                 size_report: false,
                 analyze: false,
                 mode: None,

@@ -89,6 +89,7 @@ export {
   splitUrl,
   unauthorized,
   useIsServer,
+  useLinkStatus,
   useLoaderData,
   useRoute,
   useRouter,

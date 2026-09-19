@@ -104,7 +104,9 @@ describe("@uniflowed/react-native/metro", () => {
       minifierPath: "metro-minify-terser",
       babelTransformerPath: metroTransformerPath,
     });
-    expect(config.resolver).toEqual({
+    const { resolveRequest, ...resolverFields } = config.resolver;
+    expect(typeof resolveRequest).toBe("function");
+    expect(resolverFields).toEqual({
       sourceExts: ["tsx", "js", "jsx", "mjs", "cjs"],
       resolverMainFields: ["expo", "react-native", "browser", "main"],
       unstable_conditionNames: ["react-native"],
@@ -148,6 +150,51 @@ describe("@uniflowed/react-native/metro", () => {
           transform: "function",
         });
       }
+    });
+  });
+
+  it("refuses DOM packages at resolution and preserves a project's custom resolver", () => {
+    const calls = [];
+    const config = withUniflowedMetro({
+      resolver: {
+        resolveRequest(context, name, platform) {
+          calls.push([name, platform]);
+          return { type: "sourceFile", filePath: `/app/${name}.js` };
+        },
+      },
+    });
+    for (const name of ["@uniflowed/ui", "@uniflowed/web", "@uniflowed/router"]) {
+      expect(() => config.resolver.resolveRequest({}, name, "ios")).toThrow("needs a browser DOM");
+    }
+    expect(config.resolver.resolveRequest({}, "@uniflowed/router/native", "ios").filePath).toBe(
+      "/app/@uniflowed/router/native.js",
+    );
+    expect(calls).toEqual([["@uniflowed/router/native", "ios"]]);
+  });
+
+  it("restores Metro's omitted hot flag for React Refresh and honours an explicit false", async () => {
+    await withMetroProject({ overrideUpstream: true }, async ({ root }) => {
+      for (const hot of [undefined, false]) {
+        const result = await loadMetroTransformer().transform({
+          src: FLOW_COMPONENT,
+          filename: "app/NativeCounter.js",
+          options: { dev: true, hot, projectRoot: root },
+        });
+        expect(result.metadata.hot).toBe(hot !== false);
+      }
+    });
+  });
+
+  it("records the uncomposed source-map gap: upstream locations refer to lowered Flow output", async () => {
+    await withMetroProject({ overrideUpstream: true }, async ({ root }) => {
+      const result = await loadMetroTransformer().transform({
+        src: FLOW_COMPONENT,
+        filename: "app/NativeCounter.js",
+        options: { dev: true, projectRoot: root },
+      });
+      expect(result.metadata.uniflowedSource).toContain("function NativeCounter(");
+      expect(result.metadata.uniflowedSource).not.toContain("component NativeCounter(");
+      expect(result.metadata.inputSourceMap).toBe(null);
     });
   });
 
@@ -475,6 +522,8 @@ function fakeTransformer(name: string): string {
     "    uniflowedSource: src,\n" +
     "    filename,\n" +
     "    dev: options.dev === true,\n" +
+    "    hot: options.hot,\n" +
+    "    inputSourceMap: options.inputSourceMap ?? null,\n" +
     "    plugins: (plugins ?? []).map((plugin) => plugin.name),\n" +
     "  },\n" +
     "});\n" +

@@ -287,6 +287,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "useLoaderData",
                 "useRoute",
                 "useRouter",
+                "useLinkStatus",
                 "useSeo",
             ],
         ),

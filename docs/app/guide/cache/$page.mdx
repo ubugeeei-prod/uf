@@ -399,6 +399,10 @@ every server action clear it.
 [Keeping what a navigation fetched](/guide/routing#keeping-what-a-navigation-fetched)
 has what is kept and when.
 
+In development, `window.__UF_NAVIGATION_CACHE__()` shows keys and expiration
+times without exposing loader values. A component inside a `Link` can use
+`useLinkStatus()` to display that link's pending navigation.
+
 ## What is not here
 
 - **The data cache and the action cache.** `rendering.cache.data` and

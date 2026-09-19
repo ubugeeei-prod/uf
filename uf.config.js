@@ -982,6 +982,8 @@ export default defineConfig({
       inputs: ["tools/ci/no-conflict-markers.sh", "tools/ci/test-no-conflict-markers.sh"],
     },
 
+    "native:smoke": "tools/ci/native-bundle-smoke.sh",
+
     manifests: {
       command:
         "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
@@ -1013,6 +1015,7 @@ export default defineConfig({
         "check:lib",
         "test:lib",
         "edge:smoke",
+        "native:smoke",
         "docs:build",
         "rust:metadata",
         "rust:lints",
