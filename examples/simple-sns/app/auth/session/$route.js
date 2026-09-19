@@ -7,8 +7,8 @@ import {
   issueSession,
   revokeSession,
   SESSION_COOKIE,
-} from "../../server/session.server.js";
-import { inputEffect } from "../../server/input-effect.server.js";
+} from "../../_server/session.server.js";
+import { inputEffect } from "../../_server/input-effect.server.js";
 
 function json(data: mixed, init?: ResponseOptions): Response {
   return new Response(JSON.stringify(data), {

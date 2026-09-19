@@ -1,5 +1,5 @@
 // @flow
-import { endpoint, sessionCookie } from "../upstream.js";
+import { endpoint, sessionCookie } from "../_server/upstream.js";
 
 // Flow's DOM libdef predates these standard server Web APIs. Keep the
 // compatibility casts at this boundary and expose only their actual signatures.

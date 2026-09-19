@@ -15,7 +15,8 @@
     "./props": "./props.js",
     "./preset": "./preset.js",
     "./theme": "./theme.js",
-    "./tokens.stylex.js": "./tokens.stylex.js"
+    "./tokens.stylex.js": "./tokens.stylex.js",
+    "./native": "./native.js"
   },
   "files": [
     "*.js",
@@ -23,5 +24,13 @@
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.41"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.86.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
   }
 }

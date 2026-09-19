@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Commonplace",
+    "slug": "commonplace-native",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "dev.uniflowed.commonplace"
+    },
+    "android": {
+      "package": "dev.uniflowed.commonplace"
+    }
+  }
+}

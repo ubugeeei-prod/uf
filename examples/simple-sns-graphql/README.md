@@ -32,9 +32,9 @@ This is a demonstration service with in-memory data. Restarting it clears accoun
 
 - `backend/` is its own Go module. `graph-gophers/graphql-go` executes the schema; the application owns authorization and data. No database abstraction is implemented in Flow.
 - `app/graphql/$route.js` is a bounded BFF: same-origin JSON POST, a 64 KiB request limit, an upstream timeout, and forwarding only the application's HttpOnly session cookie. Its upstream URL is server configuration.
-- `app/relay.server.js` uses upstream `createServerEnvironment`. React's request cache creates a separate Relay environment for each RSC request. No visitor shares a module-level store.
-- `app/screen.server.js` preloads a compiled query and streams its promise. `useQueryFromServer` consumes that reference inside the browser's Relay provider without a duplicate initial GraphQL fetch.
-- `app/screen-query.js` only spreads the screen fragment. Every data-reading component owns a colocated fragment: the frame, timeline, composer, post, avatar, inbox, thread, conversation, message, and settings. Parents compose fragment spreads and pass generated `$key` references; each child calls `useFragment` to read its own fields. Route-specific fragments use explicit arguments and conditional aliases. Mutations live beside the component that commits them.
+- `app/_server/relay.server.js` uses upstream `createServerEnvironment`. React's request cache creates a separate Relay environment for each RSC request. No visitor shares a module-level store.
+- Each route's `$page.js` preloads its own compiled query directly during RSC rendering. Its colocated `screen.client.js` consumes that reference with `useQueryFromServer`, without a duplicate initial fetch. Only the request-scoped Relay provider is shared.
+- Every data-reading component owns a fragment beside its implementation, with generated `$key` types in the nearest `__generated__/` directory. Feed, messages, settings, clips and account routes compose only their own fragment spreads. Mutations live beside the component that commits them.
 - Relay owns optimistic reaction rollback and normalized records. Successful publishing refreshes the selected feed; private messages use a store updater. Request IDs make write retries idempotent in the backend.
 - Signing in or out starts a fresh document and Relay environment. Settings and conversations stay scoped to the authenticated backend session.
 
@@ -48,7 +48,7 @@ RSC entry points retain upstream's `EXPERIMENTAL` suffix. This example pins 21.0
 
 ## Styles and verification
 
-Shared component styles live in `app/commonplace.stylex.js`. Global resets, descendant selectors, responsive rules and video state remain in `base.css`. The existing SNS's desktop and mobile appearance was preserved during the shared StyleX migration.
+Shared component styles live in `app/_shared/commonplace.stylex.js`. Global resets, descendant selectors, responsive rules and video state remain in `base.css`. The existing SNS's desktop and mobile appearance was preserved during the shared StyleX migration.
 
 The CI task runs compiler validation, Flow checking, lint, a production build, Go tests with the race detector, and Chromium against both `uf dev` and `uf start`:
 

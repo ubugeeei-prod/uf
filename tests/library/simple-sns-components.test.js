@@ -11,8 +11,8 @@ import {
   waitFor,
   within,
 } from "@uniflowed/react-testing";
-import typeof * as SocialActions from "../../examples/simple-sns/app/social-actions.js";
-import typeof * as SocialQueries from "../../examples/simple-sns/app/social-queries.js";
+import typeof * as SocialActions from "../../examples/simple-sns/app/_server/social-actions.js";
+import typeof * as SocialQueries from "../../examples/simple-sns/app/_server/social-queries.js";
 import {
   failed,
   succeeded,
@@ -23,9 +23,9 @@ import {
   type Message,
   type InboxData,
   type ConversationData,
-} from "../../examples/simple-sns/app/social-model.js";
-const ACTIONS = "../../examples/simple-sns/app/social-actions.js";
-const QUERIES = "../../examples/simple-sns/app/social-queries.js";
+} from "../../examples/simple-sns/app/_shared/social-model.js";
+const ACTIONS = "../../examples/simple-sns/app/_server/social-actions.js";
+const QUERIES = "../../examples/simple-sns/app/_server/social-queries.js";
 const ROUTER = "@uniflowed/router";
 afterEach(() => {
   cleanup();
@@ -61,11 +61,11 @@ async function components(
   }));
   await uft.mock(ROUTER, () => ({ Link: TestLink }));
   const [auth, timeline, inbox, settings, messages] = await Promise.all([
-    import("../../examples/simple-sns/app/auth-client.js"),
-    import("../../examples/simple-sns/app/timeline-client.js"),
+    import("../../examples/simple-sns/app/(account)/auth.client.js"),
+    import("../../examples/simple-sns/app/(feed)/timeline.client.js"),
     import("../../examples/simple-sns/app/messages/inbox.client.js"),
-    import("../../examples/simple-sns/app/settings/settings-client.js"),
-    import("../../examples/simple-sns/app/messages/direct-messages-client.js"),
+    import("../../examples/simple-sns/app/settings/settings.client.js"),
+    import("../../examples/simple-sns/app/messages/direct-messages.client.js"),
   ]);
   return { ...auth, ...timeline, ...inbox, ...settings, ...messages };
 }
@@ -109,8 +109,7 @@ function html(value: Element): HTMLElement {
 
 describe("Commonplace React interactions", () => {
   it("shows a ready paused clip without leaving its loading notice and releases inactive media", async () => {
-    await components();
-    const { ClipPlayer } = await import("../../examples/simple-sns/app/clips/clips-client.js");
+    const { ClipPlayer } = await import("../../examples/simple-sns/app/clips/clips.client.js");
     const clip = {
       id: "test",
       title: "Test clip",

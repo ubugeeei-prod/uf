@@ -62,6 +62,7 @@ export async function checkBrowser(origin, label, output) {
     const bodies = [];
     let readBody;
     const requests = new Map();
+    const loadedDocuments = new Set();
     let lastNetwork = Date.now();
     socket.addEventListener("message", ({ data }) => {
       const message = JSON.parse(String(data));
@@ -76,6 +77,10 @@ export async function checkBrowser(origin, label, output) {
         events.push({ at: Date.now(), method: message.method, params: message.params });
       if (message.method === "Network.requestWillBeSent" && message.params.type === "Document")
         events.push({ at: Date.now(), method: "document", url: message.params.request.url });
+      if (message.method === "Page.lifecycleEvent" && message.params.name === "load")
+        loadedDocuments.add(message.params.loaderId);
+      if (message.method === "Network.loadingFailed")
+        events.push({ at: Date.now(), method: message.method, params: message.params });
       if (message.id) {
         const task = pending.get(message.id);
         if (task) {
@@ -140,6 +145,7 @@ export async function checkBrowser(origin, label, output) {
       }
     };
     await page("Page.enable");
+    await page("Page.setLifecycleEventsEnabled", { enabled: true });
     await page("Runtime.enable");
     await page("Network.enable");
     await page("Emulation.setDeviceMetricsOverride", {
@@ -180,7 +186,19 @@ export async function checkBrowser(origin, label, output) {
       }
     };
     const navigate = async (route, condition) => {
-      await page("Page.navigate", { url: `${origin}${route}` });
+      // Finish the previous Flight transition before discarding its document.
+      // Page.navigate returns before the replacement document has loaded; a
+      // matching selector in the old document must not satisfy the next step.
+      await settle();
+      const navigation = await page("Page.navigate", { url: `${origin}${route}` });
+      assert.equal(navigation.errorText, undefined);
+      assert.ok(navigation.loaderId, "expected a new document loader");
+      const deadline = Date.now() + 60000;
+      while (!loadedDocuments.has(navigation.loaderId)) {
+        if (errors.length) throw new Error(`browser errors: ${JSON.stringify(errors)}`);
+        if (Date.now() > deadline) throw new Error(`document load timed out: ${route}`);
+        await sleep(50);
+      }
       await waitFor(condition);
       await waitFor("document.readyState === 'complete'");
       await settle();
