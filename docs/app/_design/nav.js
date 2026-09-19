@@ -150,7 +150,7 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/routing",
         title: "Routing",
-        blurb: "Files become routes; layouts nest; loaders run before the page.",
+        blurb: "Files become routes, layouts nest, and Server Components fetch their own data.",
       },
       {
         href: "/guide/routing/requests",
