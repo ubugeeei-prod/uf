@@ -61,6 +61,12 @@ let staleTimeMs: number = 0;
  */
 export function installStaleTime(seconds: number): void {
   staleTimeMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+  if (import.meta.hot != null) {
+    Object.defineProperty((globalThis: $FlowFixMe), "__UF_NAVIGATION_CACHE__", {
+      configurable: true,
+      value: inspectNavigationCache,
+    });
+  }
   if (staleTimeMs === 0) {
     clearNavigationCache();
   }
@@ -87,6 +93,15 @@ export type NavigationCache<T> = {|
   readonly clear: () => void,
   /** How many routes are kept, fresh or not. */
   readonly size: () => number,
+  readonly inspect: () => $ReadOnlyArray<NavigationCacheEntry>,
+|};
+
+/** Metadata only: inspecting the cache never exposes loader or Flight data. */
+export type NavigationCacheEntry = {|
+  readonly key: string,
+  readonly cachedAt: number,
+  readonly staleAt: number,
+  readonly fresh: boolean,
 |};
 
 function createNavigationCache<T>(): NavigationCache<T> {
@@ -128,6 +143,15 @@ function createNavigationCache<T>(): NavigationCache<T> {
     size() {
       return entries.size;
     },
+    inspect() {
+      const now = Date.now();
+      return Array.from(entries, ([key, entry]) => ({
+        key,
+        cachedAt: entry.at,
+        staleAt: entry.at + staleTimeMs,
+        fresh: now - entry.at < staleTimeMs,
+      }));
+    },
   };
 }
 
@@ -136,6 +160,19 @@ export const flightNavigations: NavigationCache<Promise<FetchedFlight>> = create
 
 /** Resolved routes, for an application rendered from its modules. */
 export const routeNavigations: NavigationCache<Promise<ResolvedRoute>> = createNavigationCache();
+
+/** A fresh snapshot for the development console, without reading an entry. */
+export function inspectNavigationCache(): {|
+  readonly staleTime: number,
+  readonly flight: $ReadOnlyArray<NavigationCacheEntry>,
+  readonly routes: $ReadOnlyArray<NavigationCacheEntry>,
+|} {
+  return {
+    staleTime: staleTimeMs / 1000,
+    flight: flightNavigations.inspect(),
+    routes: routeNavigations.inspect(),
+  };
+}
 
 /** Forget every kept route. `router.refresh()` and each server action call this. */
 export function clearNavigationCache(): void {

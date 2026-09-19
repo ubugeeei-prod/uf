@@ -225,13 +225,10 @@ registrations Fast Refresh needs. All of that stays exactly as it was. A module
 uf does not own — anything under `node_modules` except `@uniflowed/*` — goes
 straight to it.
 
-That includes one gap which is upstream's rather than uf's. React Native
-0.87.1's transformer registers components for React Refresh only when Metro
-passes it `hot`, and Metro 0.87.1 no longer passes it, so a development bundle
-served by `react-native start` registers none — for a TypeScript component with
-no uf in the Metro config exactly as for a Flow one with it. Expo's transformer
-is not affected. [#990](https://github.com/ubugeeei-prod/uf/issues/990) tracks
-what `uf dev` does about it. A transformer the config names by package is resolved from the
+Recent Metro versions omit the `hot` flag React Native's Babel transformer still
+reads to enable React Refresh. uf restores it for a development bundle, while
+honouring an explicit `hot: false`, so both Expo and React Native CLI register
+Flow components for Fast Refresh. A transformer the config names by package is resolved from the
 project root while the config loads, so one that is not installed is an error
 there rather than halfway through the first bundle, and
 `UF_METRO_UPSTREAM_TRANSFORMER` overrides the choice when a person needs to.
@@ -250,8 +247,9 @@ them. Metro's cache key includes that binary, so upgrading `uf` does not leave
 Metro serving what the previous build compiled.
 
 Source maps are not composed yet: a stack frame in a Flow module points into
-uf's output rather than at the Flow source. [#988](https://github.com/ubugeeei-prod/uf/issues/988)
-tracks it.
+uf's output rather than at the Flow source. The `uncomposed source-map gap`
+test in `packages/react-native/react-native.test.js` records that boundary
+explicitly; a successful bundle does not imply original-source stack locations.
 
 The build manifest records the same answer so a downstream tool can check it:
 
@@ -290,6 +288,43 @@ The build manifest records the same answer so a downstream tool can check it:
 That manifest shape is there because a route-suffixed build is not the same
 thing as a complete native runtime. The renderer row stays `pending` until uf
 can mount the tree on a native host.
+
+## Build a native bundle
+
+`uf build --target ios` and `uf build --target android` run the project's own
+`expo export:embed` or `react-native bundle`. `--target native` builds both.
+The entry is `package.json#main`, or `index.js`; the Metro config must compose
+`withUniflowedMetro`. No native target reaches Vite.
+
+The output is `dist/native/<platform>/main.jsbundle`, its source map and `assets/`.
+Metro chooses image density variants and resolves imported fonts. Every emitted
+file is listed with its platform and byte size in
+`.uf/build/meta/uf-build-manifest.json`. `uf explain build --target ios` names the
+transform, bundler and owner of each subsequent step. Native compilation, config
+plugins, prebuild, signing, submission and updates remain with Expo/EAS, Xcode
+and Gradle; this command produces JavaScript and assets, not an IPA or APK.
+
+After `uf add` and `uf update`, uf compares installed native dependencies with
+`expo/bundledNativeModules.json` and their React Native peer ranges. A mismatch
+names the installed version and the required range; ranges uf cannot compare
+are reported explicitly. Expo's `expo install --check` remains available.
+
+## Share a page with the web
+
+A plain `$page.js` can import `Text`, `View` and the other primitives from
+`@uniflowed/react-native` on both targets. Install `react-native-web` in the app;
+uf's Vite plugin resolves `react-native` to that dependency, using the app's
+version. Keep DOM wrappers such as `<html>` in `$layout.web.js`, and select
+`app.rsc: false` for a React Native Web application.
+
+The native-safe front doors are `cell`, `core`, `effect`, `fetch`, `form`,
+`graphql`, `hooks`, `i18n`, `immer`, `query`, `react`, `react-native`, `relay`,
+`state`, `temporal` and `validator` under `@uniflowed/`, plus
+`@uniflowed/router/native` and `@uniflowed/router/routing`. Platform-specific
+APIs still need the capability their own documentation names. `ui`, `web`,
+`browser`, `react-testing`, `story`, `vrt`, `pwa` and `motion` need a browser DOM;
+Metro refuses their imports with the supported list before producing a bundle.
+Use `$page.web.js` for those components.
 
 ## Develop on a device
 

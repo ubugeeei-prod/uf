@@ -7,6 +7,53 @@ description: "MessageFormat 2 with typed arguments, the subset uf implements, an
 
 # @uniflowed/i18n
 
+## Locale routes
+
+Put translated pages beneath `app/[locale]/`. One shared module supplies the
+supported locale union to middleware, the prerender and components:
+
+```js
+// locales.js
+import { createLocaleRouting } from "@uniflowed/i18n/routing";
+
+export const locales = createLocaleRouting({
+  locales: ["en", "ja"],
+  defaultLocale: "en",
+});
+```
+
+```js
+// app/$middleware.js
+import { locales } from "../locales.js";
+export default locales.middleware;
+```
+
+The middleware redirects GET and HEAD requests for `/`, preferring a supported
+`uf.locale` cookie and then `Accept-Language`. It preserves the query, varies on
+both headers and uses `private, no-store`; unsupported cookie values cannot
+become redirect destinations. Requests already beneath a locale pass through.
+
+```js
+// app/[locale]/$page.js
+import { useRoute } from "@uniflowed/router";
+import { locales } from "../../locales.js";
+
+export const generateStaticParams = locales.staticParams;
+export const metadata = locales.metadata();
+
+export default component Page() {
+  const locale = locales.locale(useRoute().params);
+  return <main>{locale === "ja" ? "こんにちは" : "Hello"}</main>;
+}
+```
+
+The same typed accessor works in server and client components. For a nested
+page, `locales.metadata("/guide")` emits reciprocal `hreflang` URLs, including
+`x-default`. Set `site.url` in `uf.config.js`; the regular prerender writes both
+locale documents and includes each in `sitemap.xml`. Enumerate the locales for
+each dynamic page through `generateStaticParams`. An unsupported locale is an
+error; call the router's `notFound()` if it should render a 404.
+
 <div className="lede">
 Messages in MessageFormat 2, with their arguments checked at the call site. A
 message that takes a `count` cannot be formatted without one — not at run time,

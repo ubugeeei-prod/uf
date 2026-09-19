@@ -359,126 +359,6 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// A React Native target is a target contract, not only a route suffix.
-///
-/// `--target native` already narrows the route table to `$page.native.js`.
-/// The manifest also names the native pieces a downstream tool has to wire:
-/// the navigator helpers and Metro transform contract exist, while the
-/// renderer remains separately reported so a route-suffixed build is not
-/// mistaken for a complete React Native artefact.
-#[test]
-fn a_native_target_manifest_names_the_native_contract() {
-    if !fixture_ready() {
-        return;
-    }
-    let mut files = minimal_app();
-    files.push((
-        "app/$page.native.js",
-        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>native home</main>;\n}\n",
-    ));
-    let project = Project::new(&files);
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(project.path())
-        .args(["build", "--target", "native"])
-        .output()
-        .unwrap();
-    let said = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(output.status.success(), "{said}");
-
-    let manifest: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(project.path().join(".uf/build/meta/uf-build-manifest.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(manifest["target"], serde_json::json!("native"));
-    assert_eq!(
-        manifest["targetContract"]["runtime"],
-        serde_json::json!("react-native")
-    );
-    assert_eq!(
-        manifest["targetContract"]["renderer"]["status"],
-        serde_json::json!("pending")
-    );
-    assert_eq!(
-        manifest["targetContract"]["router"]["kind"],
-        serde_json::json!("navigator")
-    );
-    assert_eq!(
-        manifest["targetContract"]["router"]["status"],
-        serde_json::json!("implemented")
-    );
-    assert_eq!(
-        manifest["targetContract"]["router"]["package"],
-        serde_json::json!("@uniflowed/router/native")
-    );
-    assert_eq!(
-        manifest["targetContract"]["router"]["helper"],
-        serde_json::json!("createNativeScreenRouter")
-    );
-    assert_eq!(
-        manifest["targetContract"]["router"]["screenManifestHelper"],
-        serde_json::json!("createNativeScreenManifest")
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["kind"],
-        serde_json::json!("metro")
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["status"],
-        serde_json::json!("implemented")
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["platform"],
-        serde_json::json!("native")
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["sourceExtensions"],
-        serde_json::json!(["js", "jsx", "mjs", "cjs"])
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["pipeline"],
-        serde_json::json!([
-            "flow",
-            "react-compiler",
-            "stylex-css-refusal",
-            "metro-babel"
-        ])
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["config"]["package"],
-        serde_json::json!("@uniflowed/react-native/metro")
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["config"]["helper"],
-        serde_json::json!("withUniflowedMetro")
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["config"]["transformer"],
-        serde_json::json!("@uniflowed/react-native/metro-transformer.cjs")
-    );
-    assert_eq!(
-        manifest["targetContract"]["transform"]["stylex"]["css"],
-        serde_json::json!("refused")
-    );
-    assert_eq!(
-        manifest["routes"][0]["page"],
-        serde_json::json!("app/$page.native.js"),
-        "the build did not consume the native route target:\n{manifest:#}"
-    );
-    // The table Metro bundles, one module per platform beside the web
-    // router's `router.js`. See ubugeeei-prod/uf#981.
-    let ios = fs::read_to_string(project.path().join("router.ios.js")).unwrap();
-    assert!(ios.contains("\"./app/$page.native.js\""), "{ios}");
-    assert!(ios.contains("export const routeTable"), "{ios}");
-    assert!(project.path().join("router.android.js").is_file());
-    assert!(project.path().join("router.native.js").is_file());
-}
-
 /// A middleware must run before the path it guards answers.
 ///
 /// `$middleware.js` was a reserved name in the Rust router, a reserved name
@@ -8029,6 +7909,79 @@ fn config_with(body: &str) -> String {
 }
 
 /// `uf build` in `root`, as `(succeeded, stdout + stderr)`.
+#[test]
+fn locale_routes_prerender_both_languages_with_alternates_and_a_sitemap() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        "export default { site: { url: 'https://example.com' } };\n",
+    );
+    project.write("locales.js", "import { createLocaleRouting } from '@uniflowed/i18n/routing';\nexport const locales = createLocaleRouting({ locales: ['en', 'ja'], defaultLocale: 'en' });\n");
+    project.write("app/[locale]/$page.js", "import { locales } from '../../locales.js';\nexport const generateStaticParams = locales.staticParams;\nexport const metadata = locales.metadata();\nexport default component Page(params: { locale: string }) { return <main>{locales.locale(params) === 'ja' ? 'こんにちは' : 'Hello'}</main>; }\n");
+    let (built, said) = build_output(project.path());
+    assert!(built, "{said}");
+    for (locale, greeting) in [("en", "Hello"), ("ja", "こんにちは")] {
+        let html =
+            fs::read_to_string(project.path().join(format!("dist/{locale}/index.html"))).unwrap();
+        assert!(html.contains(greeting), "{html}");
+        for language in ["en", "ja", "x-default"] {
+            assert!(
+                html.contains(&format!("hrefLang=\"{language}\""))
+                    || html.contains(&format!("hreflang=\"{language}\"")),
+                "{html}"
+            );
+        }
+    }
+    let sitemap = fs::read_to_string(project.path().join("dist/sitemap.xml")).unwrap();
+    assert!(sitemap.contains("https://example.com/en"), "{sitemap}");
+    assert!(sitemap.contains("https://example.com/ja"), "{sitemap}");
+}
+
+#[test]
+fn library_watch_rebuilds_javascript_and_declarations_after_an_edit() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "watched-lib");
+    project.write(
+        "index.js",
+        "export function value(): string { return 'before-watch'; }\n",
+    );
+    let said = Mutex::new(String::new());
+    std::thread::scope(|scope| {
+        let _watcher = Server::start(project.path(), &["build", "--watch"], scope, &said);
+        for expected in ["string", "number"] {
+            let deadline = Instant::now() + Duration::from_secs(60);
+            loop {
+                let declaration =
+                    fs::read_to_string(project.path().join("dist/index.d.ts")).unwrap_or_default();
+                if declaration.contains(&format!("value(): {expected}")) {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "watch did not emit {expected}: {}",
+                    said.lock().unwrap()
+                );
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            if expected == "string" {
+                project.write(
+                    "index.js",
+                    "export function value(): number { return 42; }\n",
+                );
+            }
+        }
+        let js = fs::read_to_string(project.path().join("dist/index.js")).unwrap();
+        assert!(js.contains("42"), "{js}");
+        assert!(!js.contains("before-watch"), "{js}");
+    });
+}
+
 fn build_output(root: &Path) -> (bool, String) {
     let output = uf().arg("--cwd").arg(root).arg("build").output().unwrap();
     let said = format!(

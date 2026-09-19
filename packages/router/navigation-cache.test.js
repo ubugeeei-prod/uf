@@ -30,6 +30,7 @@ import type { FetchedFlight, FlightRoot } from "./internal/flight.js";
 import {
   NAVIGATION_CACHE_LIMIT,
   flightNavigations,
+  inspectNavigationCache,
   installStaleTime,
   keepsNavigations,
   navigationKey,
@@ -37,12 +38,14 @@ import {
 } from "./internal/navigation-cache.js";
 import {
   type RouteTable,
+  Link,
   installFlightFetch,
   installNavigation,
   installRoutes,
   resolveMatch,
   routerView,
   useRoute,
+  useLinkStatus,
   useRouter,
 } from "./internal/runtime.js";
 
@@ -77,6 +80,20 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("the cache a navigation reads first", () => {
+  it("inspects expiration without exposing payloads or removing stale entries", () => {
+    installStaleTime(30);
+    flightNavigations.store("/guide", answer("/guide"));
+    expect(inspectNavigationCache()).toEqual({
+      staleTime: 30,
+      flight: [{ key: "/guide", cachedAt: now, staleAt: now + 30_000, fresh: true }],
+      routes: [],
+    });
+    now += 30_000;
+    expect(inspectNavigationCache().flight[0].fresh).toBe(false);
+    expect(flightNavigations.size()).toBe(1);
+    installStaleTime(0);
+    expect(inspectNavigationCache()).toEqual({ staleTime: 0, flight: [], routes: [] });
+  });
   const answer = (url: string): Promise<FetchedFlight> =>
     Promise.resolve({ kind: "document", url });
 
@@ -137,12 +154,23 @@ describe("the cache a navigation reads first", () => {
 // An application React Server Components render
 // ---------------------------------------------------------------------------
 
+component LinkProgress() {
+  const { pending } = useLinkStatus();
+  return <span>{pending ? "opening" : "open slow"}</span>;
+}
+
 component Screen() {
   const router = useRouter();
   const route = useRoute();
   return (
     <main>
       <h1>{`page ${route.pathname}`}</h1>
+      <Link to="/slow" prefetch="off">
+        <LinkProgress />
+      </Link>
+      <Link to="/other" prefetch="off">
+        other link
+      </Link>
       <button type="button" onClick={() => void router.push("/slow")}>
         to slow
       </button>
@@ -239,6 +267,29 @@ async function visitSlowAndReturn(): Promise<void> {
 }
 
 describe("an application React Server Components render, with a stale time", () => {
+  it("marks only the clicked link pending until its response arrives", async () => {
+    let finish: (value: FetchedFlight) => void = () => {};
+    installFlightFetch(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await mountFlight("/");
+    const clicked = globals.document.querySelector('a[href="/slow"]');
+    const other = globals.document.querySelector('a[href="/other"]');
+    await act(async () => {
+      clicked.click();
+    });
+    await waitFor(() => expect(clicked.textContent).toBe("opening"));
+    expect(clicked.getAttribute("aria-busy")).toBe("true");
+    expect(other.hasAttribute("aria-busy")).toBe(false);
+    await act(async () => {
+      finish({ kind: "flight", url: "/slow", root: Promise.resolve(rootFor("/slow")) });
+    });
+    await waitFor(() => expect(heading()).toBe("page /slow"));
+    expect(globals.document.querySelector('a[href="/slow"]').textContent).toBe("open slow");
+  });
   it("follows a link to a route it prefetched without a request", async () => {
     installStaleTime(30);
     const asked = countedFetches();

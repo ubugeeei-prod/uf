@@ -260,13 +260,18 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             &commands::pm::Scope::from_flags(workspace.filter, workspace.workspace_root),
         ),
         Commands::Build {
+            watch,
             size_report,
             analyze,
             mode,
             compile,
             target,
             adapter,
-        } => commands::build::build(
+        } => (if watch {
+            commands::build::watch::watch
+        } else {
+            commands::build::build
+        })(
             &cwd,
             ui,
             commands::build::BuildReports {

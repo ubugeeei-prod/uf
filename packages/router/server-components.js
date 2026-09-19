@@ -71,7 +71,7 @@ export type {
   TwitterCard,
 } from "./internal/runtime.js";
 
-export { Link, RouteView, RouterProvider, routerView } from "./internal/runtime.js";
+export { Link, RouteView, RouterProvider, routerView, useLinkStatus } from "./internal/runtime.js";
 // `app.router.basePath`, for a Server Component that builds an address itself.
 // The rsc entry installs it; `./internal/base-path.js` has no directive, so this
 // graph gets the function rather than a reference to it.

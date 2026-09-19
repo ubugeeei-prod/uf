@@ -69,6 +69,90 @@ module.exports = {
 /// A server that writes down its arguments and the `uf` it was handed.
 const SERVER_STANDIN: &str = "#!/bin/sh\nroot=\"$(dirname \"$0\")/../..\"\nprintf '%s\\n' \"$@\" > \"$root/started.txt\"\nprintf '%s' \"$UF_BINARY\" > \"$root/uf-binary.txt\"\n";
 
+#[test]
+fn native_build_uses_the_project_cli_and_records_every_asset_without_vite() {
+    if !node_ready() {
+        return;
+    }
+    for target in ["ios", "android", "native"] {
+        let project = native_project(REACT_NATIVE_CONFIG);
+        let root = project.path();
+        with_react_native_cli(root);
+        write(root, "metro.config.js", COMPOSED_METRO_CONFIG);
+        write(
+            root,
+            "app/$page.native.js",
+            "export default component Page() { return null; }\n",
+        );
+        executable(
+            root,
+            "node_modules/.bin/react-native",
+            r#"#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+if (args[0] !== 'bundle' || !process.env.UF_BINARY) process.exit(9);
+const argument = (name) => args[args.indexOf(name) + 1];
+fs.writeFileSync(argument('--bundle-output'), 'native bundle');
+fs.writeFileSync(argument('--sourcemap-output'), '{}');
+const assets = argument('--assets-dest');
+for (const name of ['icon.png', 'icon@2x.png', 'icon@3x.png', 'font.ttf']) {
+  fs.writeFileSync(path.join(assets, name), 'asset');
+}
+"#,
+        );
+        let output = uf()
+            .arg("--cwd")
+            .arg(root)
+            .args(["build", "--target", target])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let manifest: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.join(".uf/build/meta/uf-build-manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["target"], target);
+        assert_eq!(manifest["command"], "bundle");
+        assert_eq!(manifest["targetContract"]["transform"]["platform"], target);
+        assert_eq!(
+            manifest["outputs"].as_array().unwrap().len(),
+            if target == "native" { 12 } else { 6 }
+        );
+        assert!(root.join("router.ios.js").is_file());
+        assert!(manifest.to_string().contains("icon@3x.png"));
+        let explanation = uf()
+            .arg("--cwd")
+            .arg(root)
+            .args(["explain", "build", "--target", target, "--json"])
+            .output()
+            .unwrap();
+        assert!(explanation.status.success());
+        let explained = String::from_utf8_lossy(&explanation.stdout);
+        assert!(explained.contains("Metro"), "{explained}");
+        assert!(!explained.contains("Vite"), "{explained}");
+    }
+}
+
+#[test]
+fn a_native_build_without_a_cli_refuses_before_running_the_web_builder() {
+    let project = native_project(REACT_NATIVE_CONFIG);
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--target", "ios"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(error.contains("Expo or React Native CLI"), "{error}");
+    assert!(!project.path().join("dist").exists());
+}
+
 /// Whether `node` can run here, which the Metro config check needs.
 ///
 /// The policy of `support::bun_ready`, for the same reason: a check that skips

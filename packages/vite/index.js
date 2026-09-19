@@ -45,6 +45,7 @@
 // declares it in `uf.config.js` and the driver appends it after these.
 
 import path from "node:path";
+import { nativeWebPlugin } from "./internal/native-web.js";
 
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
@@ -236,6 +237,7 @@ export default function uniflowed(options = {}) {
   const routing = routingRulesOf(app.router);
 
   return [
+    nativeWebPlugin(routeTarget),
     flowPlugin({
       routerRoot,
       appEntry,
