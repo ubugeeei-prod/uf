@@ -15,7 +15,12 @@ import * as React from "react";
 import { describe, expect, it } from "@uniflowed/test";
 
 import { createChunkEncoder, flightChunkBytes } from "./internal/flight-chunks.js";
-import { type DocumentShell, prerenderDocument, renderDocument } from "./internal/stream.js";
+import {
+  type DocumentShell,
+  prerenderDocument,
+  renderDocument,
+  renderWithReadableStream,
+} from "./internal/stream.js";
 
 const shell: DocumentShell = {
   head: "",
@@ -150,6 +155,38 @@ describe("where a streamed document puts its payload", () => {
     expect(html.indexOf(END_MARKER)).toBeGreaterThan(html.indexOf("hello"));
     expect(tail(html)).toMatch(ENDING);
     expect(decode(payloadOf(html))).toBe('0:{"tree":"early"}\n1:{"tree":"late"}\n');
+  });
+
+  it("keeps Flight rows when React removes a streamed Suspense fallback", async () => {
+    const payload = handPayload();
+    const row = '0:{"tree":"keep this after the fallback is removed"}\n';
+    payload.write(row);
+    payload.end();
+    // These are Fizz's boundaries, split where a large fallback ends one of
+    // React's output buffers. A chunk between tags is still inside a fallback.
+    const chunks = [
+      '<html><head></head><body><main><!--$?--><template id="B:0"></template><section>',
+      "<p>discard this fallback</p></section><!--/$",
+      '--></main><div hidden id="S:0"><p>ready</p></div></body></html>',
+    ];
+    let chunkIndex = 0;
+    const body = await renderWithReadableStream(
+      async () => ({
+        getReader: () => ({
+          read: async () => {
+            const chunk = chunks[chunkIndex++];
+            return chunk == null ? { done: true } : { done: false, value: encode(chunk) };
+          },
+          releaseLock: () => {},
+        }),
+      }),
+      <p />,
+      { shell, onError: () => {}, payload: payload.stream },
+    );
+    const html = await body.text();
+    const revealed = html.replace(/<!--\$\?-->[\s\S]*?<!--\/\$-->/, "");
+    expect(revealed).not.toContain("discard this fallback");
+    expect(decode(payloadOf(revealed))).toBe(row);
   });
 
   it("holds `</html>` until the payload has ended, however long that is", async () => {

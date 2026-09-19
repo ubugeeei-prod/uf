@@ -185,12 +185,41 @@ export async function checkBrowser(origin, label, output) {
       await waitFor("document.readyState === 'complete'");
       await settle();
     };
-    const fill = (selector, value) =>
-      evaluate(
-        `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw Error('missing input'); const prototype = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input', { bubbles: true })); })()`,
+    const click = async (selector) => {
+      await waitFor(
+        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); return e != null && e.getClientRects().length > 0 && e.getBoundingClientRect().height > 0; })()`,
       );
-    const click = (selector) =>
-      evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+      await evaluate(
+        `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block: 'center', behavior: 'instant'})`,
+      );
+      // A view transition can expose the destination DOM while its snapshot
+      // still intercepts pointer input. Wait until the real control is hit.
+      await waitFor(
+        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); const r = e.getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return !e.disabled && (e === hit || e.contains(hit)); })()`,
+      );
+      const point = await evaluate(
+        `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()`,
+      );
+      await page("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        ...point,
+        button: "left",
+        clickCount: 1,
+      });
+      await page("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        ...point,
+        button: "left",
+        clickCount: 1,
+      });
+    };
+    const fill = async (selector, value) => {
+      // Trusted input follows a real focus/click and triggers selective hydration.
+      // Dispatching a synthetic input on hidden SSR markup can lose the edit.
+      await click(selector);
+      await evaluate(`document.querySelector(${JSON.stringify(selector)}).select()`);
+      await page("Input.insertText", { text: value });
+    };
     await navigate("/", "document.querySelectorAll('article').length >= 4");
     assert.equal(
       graphqlPosts,
