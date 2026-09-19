@@ -9,10 +9,19 @@ function pack(name) {
   if (packed[name]) return;
   const directory = `packages/${name.slice("@uniflowed/".length)}`;
   const manifest = JSON.parse(fs.readFileSync(`${directory}/package.json`, "utf8"));
-  const archive = execFileSync("npm", [
-    "pack", "--workspace", directory, "--ignore-scripts", "--silent",
-    "--pack-destination", destination,
-  ], { encoding: "utf8" }).trim();
+  const archive = execFileSync(
+    "npm",
+    [
+      "pack",
+      "--workspace",
+      directory,
+      "--ignore-scripts",
+      "--silent",
+      "--pack-destination",
+      destination,
+    ],
+    { encoding: "utf8" },
+  ).trim();
   packed[name] = `file:${path.join(destination, archive)}`;
   for (const dependency of Object.keys(manifest.dependencies ?? {})) {
     if (dependency.startsWith("@uniflowed/")) pack(dependency);

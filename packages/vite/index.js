@@ -237,7 +237,6 @@ export default function uniflowed(options = {}) {
   const routing = routingRulesOf(app.router);
 
   return [
-    nativeWebPlugin(routeTarget),
     flowPlugin({
       routerRoot,
       appEntry,
@@ -263,6 +262,7 @@ export default function uniflowed(options = {}) {
       og: builtins.og ?? {},
       command: options.command,
     }),
+    nativeWebPlugin(routeTarget),
   ];
 }
 
