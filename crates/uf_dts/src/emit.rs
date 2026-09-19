@@ -2995,6 +2995,13 @@ impl<'e> Emitter<'e> {
         }
         let wrap = context > Prec::Any;
         self.open(wrap);
+        let tuple = tuple_like_type(&conditional.extends_type);
+        if tuple {
+            // Flow attempts tuple destructuring even for non-array inputs. Keep
+            // TypeScript's false branch for those inputs before destructuring.
+            self.ty(&conditional.check_type, Prec::Union);
+            self.printer.text(" extends $ReadOnlyArray<mixed> ? ");
+        }
         self.ty(&conditional.check_type, Prec::Union);
         self.printer.text(" extends ");
         let scope_len = self.type_scope.len();
@@ -3007,6 +3014,10 @@ impl<'e> Emitter<'e> {
         self.type_scope.truncate(scope_len);
         self.printer.text(" : ");
         self.ty(&conditional.false_type, Prec::Any);
+        if tuple {
+            self.printer.text(" : ");
+            self.ty(&conditional.false_type, Prec::Any);
+        }
         self.close(wrap);
     }
 
@@ -3126,6 +3137,15 @@ impl<'e> Emitter<'e> {
                 self.printer.char('?');
             }
             TSTupleElement::TSRestType(rest) => match unparenthesized(&rest.type_annotation) {
+                TSType::TSInferType(inferred) if inferred.type_parameter.constraint.is_none() => {
+                    // A rest inferred from a tuple is necessarily an array. Flow does
+                    // not carry this fact into the conditional's true branch unless
+                    // the inference spells its bound, and otherwise rejects ...Tail.
+                    self.printer.text("...infer ");
+                    self.printer
+                        .text(inferred.type_parameter.name.name.as_str());
+                    self.printer.text(" extends $ReadOnlyArray<mixed>");
+                }
                 // `...tail: T` is parsed as a rest of a labelled member.
                 TSType::TSNamedTupleMember(named) => self.named_tuple_member(named, true),
                 inner => {

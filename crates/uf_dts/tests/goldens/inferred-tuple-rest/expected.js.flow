@@ -1,0 +1,3 @@
+export type MakeReadonly<T> = T extends $ReadOnlyArray<mixed> ? T extends [infer Head, ...infer Tail extends $ReadOnlyArray<mixed>] ? $ReadOnly<[Head, ...Tail]> : T : T;
+export type TailOf<T> = T extends $ReadOnlyArray<mixed> ? T extends [mixed, ...infer Tail extends $ReadOnlyArray<mixed>] ? Tail : empty : empty;
+export type ExplicitTail<T> = T extends $ReadOnlyArray<mixed> ? T extends [mixed, ...infer Tail extends Array<string>] ? Tail : empty : empty;
