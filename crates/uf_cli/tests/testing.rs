@@ -1931,7 +1931,7 @@ test("a case uf lists but does not run", () => {
 }
 
 #[test]
-fn a_react_native_project_refuses_the_web_document_test_runner() {
+fn a_native_project_names_missing_native_modules_instead_of_running_with_a_web_shim() {
     let project = Project::new(&[(
         "src/native.test.js",
         "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"runs\", () => { expect(1).toBe(1); });\n",
@@ -1944,7 +1944,7 @@ fn a_react_native_project_refuses_the_web_document_test_runner() {
     let output = uf()
         .arg("--cwd")
         .arg(project.path())
-        .args(["test", "native.test.js"])
+        .args(["test", "--json", "native.test.js"])
         .output()
         .unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -1954,9 +1954,14 @@ fn a_react_native_project_refuses_the_web_document_test_runner() {
         !output.status.success(),
         "React Native tests must not fall through to the web runner:\n{stdout}\n{stderr}"
     );
-    assert!(stderr.contains("test.target"), "{stderr}");
-    assert!(stderr.contains("react-native"), "{stderr}");
-    assert!(stderr.contains("document shim"), "{stderr}");
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(report["fileReports"][0]["status"], "load-failed");
+    let reason = report["fileReports"][0]["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("uf test (react-native): install"),
+        "{reason}"
+    );
+    assert_eq!(report["passed"], 0);
 }
 
 /// A project whose `uf.config.js` names `runner`.

@@ -1,4 +1,6 @@
 // @flow
+
+import { nativeProps } from "./native-props.js";
 //
 // `@uniflowed/stylex/props`: the merge, and the only part of StyleX that runs.
 //
@@ -56,7 +58,10 @@ export type CompiledStyle = {
 export type StyleArgument = mixed;
 
 /** What `props` hands to an element. */
-export type StyleProps = { readonly className?: string };
+export type StyleProps = {
+  readonly className?: string,
+  readonly style?: { readonly [string]: string | number },
+};
 
 /** What one property contributed, once the merge has picked a winner. */
 type Winner = string | null | CompiledClasses;
@@ -73,6 +78,8 @@ type Winner = string | null | CompiledClasses;
  * survived.
  */
 export function props(...styles: $ReadOnlyArray<StyleArgument>): StyleProps {
+  const native = nativeProps(styles);
+  if (native != null) return native;
   const winners: { [string]: Winner } = {};
   collect(styles, winners);
 

@@ -68,13 +68,14 @@ async function transform(args) {
       // remounts instead of preserving state.
       refresh: false,
       sourceMap: true,
+      nativeStyles: true,
     });
     if (out != null) {
       if (out.css != null && out.css !== "") {
         throw new Error(
           `@uniflowed/react-native/metro: ${filename} produced StyleX CSS, but the ` +
-            "native Metro contract cannot attach CSS to a React Native bundle yet. " +
-            "Use native style props or keep that StyleX module out of the native route.",
+            "native Metro contract cannot attach CSS to a React Native bundle. " +
+            "Use the supported native StyleX subset or native style props.",
         );
       }
       next = out.code;

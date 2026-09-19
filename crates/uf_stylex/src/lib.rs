@@ -81,6 +81,7 @@ pub mod class;
 pub mod compile;
 pub mod condition;
 pub mod error;
+pub mod native;
 pub mod parse;
 pub mod plugin;
 pub mod property;

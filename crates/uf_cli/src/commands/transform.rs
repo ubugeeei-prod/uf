@@ -74,6 +74,7 @@ struct RequestOptions {
     /// build's modules cannot pick it up from a service a test run left
     /// behind: the flag travels per request rather than per process.
     in_source_tests: bool,
+    native_styles: bool,
 }
 
 impl Default for RequestOptions {
@@ -85,6 +86,7 @@ impl Default for RequestOptions {
             refresh: false,
             source_map: true,
             in_source_tests: false,
+            native_styles: false,
         }
     }
 }
@@ -194,6 +196,7 @@ impl TransformCache {
             u8::from(request.options.refresh),
             u8::from(request.options.source_map),
             u8::from(request.options.in_source_tests),
+            u8::from(request.options.native_styles),
         ]);
         CacheKey(hasher.finalize().into())
     }
@@ -355,7 +358,20 @@ fn handle(request: &Request, project: &ProjectTransform, cache: &mut TransformCa
             // names its stylesheet declares, so it wants the code in the shape
             // the browser will see it — after the types are gone and after the
             // React Compiler has had its pass.
-            let styled = compile_styles(&transformed.code);
+            let styled = if request.options.native_styles {
+                match uf_stylex::native::compile_native_module(&transformed.code) {
+                    Ok(code) => Styled { code, css: None },
+                    Err(error) => {
+                        return Reply {
+                            id: request.id.clone(),
+                            error: Some(error.to_string()),
+                            ..Reply::default()
+                        };
+                    }
+                }
+            } else {
+                compile_styles(&transformed.code)
+            };
             Reply {
                 id: request.id.clone(),
                 code: Some(styled.code),
@@ -448,6 +464,34 @@ mod tests {
         assert!(dev.contains("jsxDEV"), "{dev}");
         assert_eq!(cache.misses, 2);
         assert_eq!(cache.hits, 0);
+    }
+
+    #[test]
+    fn web_and_native_stylex_requests_do_not_share_cached_output() {
+        let source = "import { stylex } from '@uniflowed/stylex'; const styles = stylex.create({root: {padding: 12}}); export const props = stylex.props(styles.root);";
+        let web = request("/app/Shared.js", source);
+        let native = Request {
+            options: RequestOptions {
+                native_styles: true,
+                ..RequestOptions::default()
+            },
+            ..request("/app/Shared.js", source)
+        };
+        let mut cache = TransformCache::default();
+        let css = handle(&web, &project(), &mut cache);
+        let object = handle(&native, &project(), &mut cache);
+        assert!(css.css.as_deref().unwrap_or_default().contains("padding:"));
+        assert!(object.css.is_none());
+        assert!(
+            object
+                .code
+                .as_deref()
+                .unwrap_or_default()
+                .contains("$$native")
+        );
+        assert_eq!(handle(&web, &project(), &mut cache).code, css.code);
+        assert_eq!(cache.misses, 2);
+        assert_eq!(cache.hits, 1);
     }
 
     /// StyleX is uf's style engine, and a module that uses it has to come back
