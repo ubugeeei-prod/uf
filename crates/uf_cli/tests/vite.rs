@@ -8007,7 +8007,7 @@ fn locale_routes_prerender_both_languages_with_alternates_and_a_sitemap() {
         "export default { site: { url: 'https://example.com' } };\n",
     );
     project.write("locales.js", "import { createLocaleRouting } from '@uniflowed/i18n/routing';\nexport const locales = createLocaleRouting({ locales: ['en', 'ja'], defaultLocale: 'en' });\n");
-    project.write("app/[locale]/$page.js", "import { locales } from '../../locales.js';\nexport const generateStaticParams = locales.staticParams;\nexport const metadata = locales.metadata();\nexport default component Page(params: { locale: string }) { return <main>{locales.locale(params) === 'ja' ? 'こんにちは' : 'Hello'}</main>; }\n");
+    project.write("app/[locale]/$page.js", "import { locales } from '../../locales.js';\nimport { notFound } from '@uniflowed/router/routing';\nexport const generateStaticParams = locales.staticParams;\nexport const metadata = locales.metadata();\nexport function loader({ params }) { if (!locales.locales.includes(params.locale)) notFound(); return null; }\nexport default component Page(params: { locale: string }) { return <main>{locales.locale(params) === 'ja' ? 'こんにちは' : 'Hello'}</main>; }\n");
     let (built, said) = build_output(project.path());
     assert!(built, "{said}");
     for (locale, greeting) in [("en", "Hello"), ("ja", "こんにちは")] {

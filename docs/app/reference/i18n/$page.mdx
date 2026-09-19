@@ -35,14 +35,19 @@ become redirect destinations. Requests already beneath a locale pass through.
 
 ```js
 // app/[locale]/$page.js
-import { useRoute } from "@uniflowed/router";
+import { notFound } from "@uniflowed/router/routing";
 import { locales } from "../../locales.js";
 
 export const generateStaticParams = locales.staticParams;
 export const metadata = locales.metadata();
 
-export default component Page() {
-  const locale = locales.locale(useRoute().params);
+export function loader({ params }) {
+  if (!locales.locales.includes(params.locale)) notFound();
+  return null;
+}
+
+export default component Page(params: { locale: string }) {
+  const locale = locales.locale(params);
   return <main>{locale === "ja" ? "こんにちは" : "Hello"}</main>;
 }
 ```
@@ -51,8 +56,10 @@ The same typed accessor works in server and client components. For a nested
 page, `locales.metadata("/guide")` emits reciprocal `hreflang` URLs, including
 `x-default`. Set `site.url` in `uf.config.js`; the regular prerender writes both
 locale documents and includes each in `sitemap.xml`. Enumerate the locales for
-each dynamic page through `generateStaticParams`. An unsupported locale is an
-error; call the router's `notFound()` if it should render a 404.
+each dynamic page through `generateStaticParams`. The loader rejects unsupported
+locale paths with a 404 before the typed accessor is called. This also lets the
+build render the root not-found page when a dynamic locale segment matches its
+probe URL. Client components can pass `useRoute().params` to the same accessor.
 
 <div className="lede">
 Messages in MessageFormat 2, with their arguments checked at the call site. A
