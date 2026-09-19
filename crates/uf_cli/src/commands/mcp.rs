@@ -333,11 +333,47 @@ fn test_schema() -> Value {
     })
 }
 
+fn action_schema() -> Value {
+    json!({"type":"object", "properties":{"id":{"type":"string","description":"The current server action reference ID."}}, "required":["id"], "additionalProperties":false})
+}
+
+pub(crate) fn agent_tools() -> Vec<&'static str> {
+    SPECS.iter().map(|tool| tool.name).collect()
+}
+
 /// Every tool this server exposes.
 ///
 /// Named for the command each one runs, so that a caller who knows uf knows
 /// this list, and the two that write say so in the name.
 const SPECS: &[Spec] = &[
+    Spec {
+        name: "uf_dev_errors",
+        effect: Effect::Reads,
+        speaks: Speaks::Json,
+        description: "Current source-mapped build, runtime and hydration errors from the running uf dev channel.",
+        schema: no_arguments,
+    },
+    Spec {
+        name: "uf_dev_logs",
+        effect: Effect::Reads,
+        speaks: Speaks::Json,
+        description: "Recent dev diagnostics and logs with request IDs; bounded to the latest 150 entries.",
+        schema: no_arguments,
+    },
+    Spec {
+        name: "uf_dev_routes",
+        effect: Effect::Reads,
+        speaks: Speaks::Json,
+        description: "The running dev server route table and its source modules.",
+        schema: no_arguments,
+    },
+    Spec {
+        name: "uf_dev_action",
+        effect: Effect::Reads,
+        speaks: Speaks::Json,
+        description: "Resolve a current server action ID to its source module and export.",
+        schema: action_schema,
+    },
     Spec {
         name: "uf_check",
         effect: Effect::Reads,
@@ -458,6 +494,14 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
 
     let mut ui = Ui::capturing(spec.speaks.mode());
     let outcome = match spec.name {
+        "uf_dev_errors" | "uf_dev_logs" | "uf_dev_routes" | "uf_dev_action" => {
+            commands::dev_state::read(
+                cwd,
+                &mut ui,
+                spec.name,
+                arguments.get("id").and_then(Value::as_str),
+            )
+        }
         "uf_check" => commands::check::check(cwd, &mut ui, json, FixMode::Report, &paths, None),
         "uf_lint" => commands::lint::lint_command(
             cwd,

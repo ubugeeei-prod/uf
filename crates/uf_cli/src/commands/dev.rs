@@ -72,6 +72,7 @@ pub(crate) struct DevArgs {
 pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let resolved = load_project_config(cwd, args.mode.as_deref(), DEVELOPMENT)?;
     let root = resolved.root.clone();
+    super::agents::update(&root)?;
 
     // The target first, because it decides which server this is. A native
     // target's server is the project's own React Native CLI rather than the

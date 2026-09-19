@@ -1018,7 +1018,7 @@ fn ufx_alias_runs_uniflowed_create_package() {
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("ufx \u{b7} @uniflowed/create"), "{stdout}");
-    assert!(stdout.contains("created 9 files"));
+    assert!(stdout.contains("created 10 files"));
     assert!(dir.path().join("app.js").exists());
     // `.uf/exec-cache/` used to be written here, and by every other `ufx`
     // invocation. Nothing ever read one back: the directory was named a cache
@@ -1275,7 +1275,7 @@ fn creates_react_app_from_cli() {
     assert!(stdout.contains("3. uf dev"));
     // Eight source files and the `.gitignore` that keeps uf's output
     // out of the first commit.
-    assert!(stdout.contains("✓ created 9 files"));
+    assert!(stdout.contains("✓ created 10 files"));
 }
 
 /// The one-word form, which is what the site tells a reader to type.

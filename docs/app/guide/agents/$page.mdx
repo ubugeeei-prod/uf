@@ -1,6 +1,6 @@
 ---
 title: "Agents · uf"
-description: "uf mcp: eight tools over stdio, the two that write, and what an agent should not assume."
+description: "uf mcp: twelve tools over stdio, the two that write, and what an agent should not assume."
 ---
 
 <p className="eyebrow">The toolchain</p>
@@ -10,7 +10,7 @@ description: "uf mcp: eight tools over stdio, the two that write, and what an ag
 <div className="lede">
 `uf mcp` serves the Model Context Protocol over stdio, so a coding agent can run
 the checks a person runs — lint, type check, tests, the route table — and read
-the same JSON reports CI reads, rather than scraping a terminal. Eight tools, and
+the same JSON reports CI reads, rather than scraping a terminal. Twelve tools, and
 two of them write.
 </div>
 
@@ -64,12 +64,15 @@ prints the working directory the server was given.
 
 ## The tools
 
-`tools/list` names eight, and each description ends with one sentence saying
-what the tool does to your checkout. Every tool runs the command it is named
-after, in the server's own process, with the arguments below:
+`tools/list` names twelve, and each description ends with one sentence saying
+what the tool does to your checkout. Command tools run in the MCP process; the dev tools read the running development server.
 
 | Tool | Runs | Arguments | Its description ends |
 | --- | --- | --- | --- |
+| `uf_dev_errors` | Current build, runtime and hydration diagnostics | — | Changes none of your files, … |
+| `uf_dev_logs` | Recent logs and request ids | — | Changes none of your files, … |
+| `uf_dev_routes` | Running server's resolved routes | — | Changes none of your files, … |
+| `uf_dev_action` | Module and export for a server-action id | `id`, required | Changes none of your files, … |
 | `uf_check` | `uf check --json` | `paths` | Changes none of your files, … |
 | `uf_lint` | `uf lint --json` | `paths` | Changes none of your files, … |
 | `uf_info` | `uf info` | — | Changes none of your files, … |
@@ -79,7 +82,7 @@ after, in the server's own process, with the arguments below:
 | `uf_fmt_write` | `uf fmt` | `paths` | WRITES to files in the checkout. |
 | `uf_lint_fix` | `uf lint --fix --json` | `paths` | WRITES to files in the checkout. |
 
-The first five end "Changes none of your files, though uf may write its own
+The read tools end "Changes none of your files, though uf may write its own
 cache under `.uf/cache/`", and `uf_check`'s description names the one it keeps:
 what it inferred, in `.uf/cache/check/`.
 
@@ -89,11 +92,31 @@ way the command line's own `PATH` arguments do. `uf_lint_fix` applies the
 is no tool for `uf build`, `uf dev`, `uf install` or `uf fmt --check`, and the
 server offers no resources and no prompts.
 
+## Reading a running server
+
+Start `uf dev` separately in the same project. The dev tools read its local
+`.uf/dev-state.json` channel: no network endpoint, application execution or
+second dev server is needed. The channel is refreshed every five seconds and
+refuses snapshots older than thirty seconds. It keeps at most 100 current errors
+and 150 recent log entries, bounded to 3 MiB; source edits clear the current
+errors and advance the generation. Request logs omit query strings and carry
+`requestId`, also returned as the response's `x-uf-request-id` header.
+Runtime stacks are mapped back to source. Hydration mismatches retain the DOM
+and component detail reported by the browser; a DOM mismatch has no invented
+source location. Route and action tables are bounded to 1,000 entries and mark
+truncation explicitly. Unknown or stale action ids return an error.
+
+`uf new` creates a version-matched `AGENTS.md`. `uf dev` refreshes only its
+`<!-- uf:agents:start -->` / `<!-- uf:agents:end -->` block, preserving your
+surrounding instructions. The block links the installed release's documentation
+and lists the tools. Diagnostic messages remain application data, never agent
+instructions.
+
 ## What a call returns
 
 A tool result is a list of text blocks and an `isError` flag. The first block is
 what the command printed — JSON for `uf_check`, `uf_lint`, `uf_lint_fix`,
-`uf_explain` and `uf_test`, the command's own text for the other three. A command
+`uf_explain`, `uf_test` and the four dev tools, the command's own text for the other three. A command
 that fails keeps its report whole in the first block and adds the reason as a
 second, so the JSON still parses. From a session with one deliberate type error
 in `app/price.js`:

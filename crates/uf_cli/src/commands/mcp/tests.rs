@@ -138,6 +138,10 @@ fn tools_list_names_the_commands_and_says_which_ones_write() {
     assert_eq!(
         listed,
         [
+            "uf_dev_errors",
+            "uf_dev_logs",
+            "uf_dev_routes",
+            "uf_dev_action",
             "uf_check",
             "uf_lint",
             "uf_info",
