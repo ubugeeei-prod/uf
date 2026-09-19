@@ -19,7 +19,7 @@ export async function compareScreenshot(
   if (
     typeof name !== "string" ||
     !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/.test(name) ||
-    name.includes("..")
+    name.includes("..") ||\n    /\\.(actual|diff)$/.test(name)
   )
     throw new Error("screenshot name must be a simple file name without traversal");
   const config = JSON.parse(process.env.UF_VRT_CONFIG ?? "{}");

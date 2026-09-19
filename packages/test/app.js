@@ -139,7 +139,10 @@ export async function createTestApp(options: AppTestOptions): Promise<TestApp> {
       return await fetch(url.href, {
         ...init,
         headers: { ...init?.headers },
-        signal: init?.signal ?? controller.signal,
+        signal:
+          init?.signal == null
+            ? controller.signal
+            : AbortSignal.any([init.signal, controller.signal]),
       });
     } finally {
       clearTimeout(timer);

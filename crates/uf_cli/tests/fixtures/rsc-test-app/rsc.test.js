@@ -20,7 +20,7 @@ it("renders nested async RSC, preserves request scopes, and hydrates a client bo
     ]);
     const a = await first.text(), b = await second.text();
     expect(a).toContain("One"); expect(a).not.toContain("Two");
-    expect(b).toContain("Two"); expect(b).not.toContain("One");
+    expect(b).toContain("Two"); expect(b).not.toContain("One");\n    expect(a).toContain("one"); expect(a).not.toContain("two");\n    expect(b).toContain("two"); expect(b).not.toContain("one");
     expect(a).toContain("nested async data");
     expect(a).toContain("Counter.js");
     page = await createBrowser();
