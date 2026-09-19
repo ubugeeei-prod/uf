@@ -5,6 +5,8 @@ binary=${UF_BINARY:-"$repo/target/release/uf"}
 export UF_BINARY="$binary"
 # Exercise the checkout instructions as well as the packed consumer below.
 (cd examples/simple-sns-native && npm ci --ignore-scripts --no-audit --no-fund)
+# Metro can bundle incompatible native peers; validate the installed Expo SDK too.
+(cd examples/simple-sns-native && CI=1 EXPO_OFFLINE=1 npx --no-install expo install --check)
 "$binary" --cwd examples/simple-sns-native fmt --check
 "$binary" --cwd examples/simple-sns-native lint
 "$binary" --cwd examples/simple-sns-native build --target ios

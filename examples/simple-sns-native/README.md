@@ -18,7 +18,9 @@ uf build --target android
 
 Open the Expo project in a simulator or a device with a compatible Expo client.
 Metro is configured through the public withUniflowedMetro adapter; the application
-supplies its own React Navigation navigator factories. Node 24 or later is needed.
+supplies its own React Navigation navigator factories. React, screens and safe-area
+context follow the pinned Expo SDK's compatibility matrix; CI runs Expo's offline
+dependency check before the native tests and bundles. Node 24 or later is needed.
 The example copies its local uf dependencies during installation so their native
 peers resolve from this app. Run npm ci again after editing those uf packages.
 
