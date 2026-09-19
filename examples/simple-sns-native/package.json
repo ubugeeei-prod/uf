@@ -35,5 +35,8 @@
     "@uniflowed/react": "file:../../packages/react"
   },
   "main": "index.js",
-  "description": "Commonplace on Expo with Flow, StyleX and native file routing."
+  "description": "Commonplace on Expo with Flow, StyleX and native file routing.",
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.12"
+  }
 }

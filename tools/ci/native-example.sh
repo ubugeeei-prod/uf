@@ -5,6 +5,8 @@ binary=${UF_BINARY:-"$repo/target/release/uf"}
 export UF_BINARY="$binary"
 # Exercise the checkout instructions as well as the packed consumer below.
 (cd examples/simple-sns-native && npm ci --ignore-scripts --no-audit --no-fund)
+"$binary" --cwd examples/simple-sns-native fmt --check
+"$binary" --cwd examples/simple-sns-native lint
 "$binary" --cwd examples/simple-sns-native build --target ios
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/uf-native-example.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
