@@ -15,14 +15,14 @@ it("renders nested async RSC, preserves request scopes, and hydrates a client bo
     expect(html).toContain("pending data");
     expect(html).toContain("nested async data");
     const [first, second] = await Promise.all([
-      app.flight("/?name=One", { headers: { cookie: "visitor=one" } }),
-      app.flight("/?name=Two", { headers: { cookie: "visitor=two" } }),
+      app.flight("/?name=One", { headers: { cookie: "visitor=uf-visitor-alpha-4f52d1" } }),
+      app.flight("/?name=Two", { headers: { cookie: "visitor=uf-visitor-beta-94b237" } }),
     ]);
     const a = await first.text(), b = await second.text();
     expect(a).toContain("One"); expect(a).not.toContain("Two");
     expect(b).toContain("Two"); expect(b).not.toContain("One");
-    expect(a).toContain("one"); expect(a).not.toContain("two");
-    expect(b).toContain("two"); expect(b).not.toContain("one");
+    expect(a).toContain("uf-visitor-alpha-4f52d1"); expect(a).not.toContain("uf-visitor-beta-94b237");
+    expect(b).toContain("uf-visitor-beta-94b237"); expect(b).not.toContain("uf-visitor-alpha-4f52d1");
     expect(a).toContain("nested async data");
     expect(a).toContain("Counter.js");
     page = await createBrowser();
