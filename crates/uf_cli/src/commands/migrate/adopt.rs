@@ -356,11 +356,23 @@ fn tests(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
         // Read actual import bindings. A source import unrelated to testing
         // is preserved, and an API name already bound is never shadowed.
         let mut bound = std::collections::BTreeSet::new();
+        let mut jest_sources = Vec::new();
         let parsed = uf_flow::parse(&before)?;
         for statement in parsed.program.statements.iter() {
             if let uf_flow::ast::statement::StatementInner::ImportDeclaration { inner, .. } =
                 &**statement
             {
+                if inner.source.1.value.as_str() == "@jest/globals" {
+                    let offset = |position: uf_flow::Position| {
+                        before
+                            .split_inclusive('\n')
+                            .take(position.line.saturating_sub(1) as usize)
+                            .map(str::len)
+                            .sum::<usize>()
+                            + position.column as usize
+                    };
+                    jest_sources.push(offset(inner.source.0.start)..offset(inner.source.0.end));
+                }
                 if let Some(default) = &inner.default {
                     bound.insert(default.identifier.name.to_string());
                 }
@@ -392,16 +404,13 @@ fn tests(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
             }
         }
         let mut after = before.clone();
-        if before.contains("@jest/globals") {
+        if !jest_sources.is_empty() {
             if tokens.iter().any(|t| t.is_ident(&before, "jest")) {
                 continue;
             }
             // Replace only the source literal, never comments or string data.
-            for token in tokens.iter().rev().filter(|t| {
-                t.kind == uf_flow::scan::TokenKind::String
-                    && matches!(t.text(&before), "\"@jest/globals\"" | "'@jest/globals'")
-            }) {
-                after.replace_range(token.start..token.end, "\"@uniflowed/test\"");
+            for range in jest_sources.into_iter().rev() {
+                after.replace_range(range, "\"@uniflowed/test\"");
             }
         } else {
             used.retain(|name| !bound.contains(*name));

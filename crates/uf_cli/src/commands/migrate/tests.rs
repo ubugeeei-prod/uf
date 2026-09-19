@@ -132,6 +132,19 @@ fn adoption_preserves_unknown_settings_and_source_imports() {
 }
 
 #[test]
+fn adoption_changes_only_jest_import_sources() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(temp.path()).unwrap();
+    fs::write(root.join("package.json"), r#"{"name":"app"}"#).unwrap();
+    fs::write(root.join("import.test.js"), "// 日本語 @jest/globals\nimport { test, expect } from '@jest/globals';\ntest('data', () => expect('@jest/globals').toBe('@jest/globals'));\n").unwrap();
+    adopt::plan(root).unwrap().apply(root).unwrap();
+    let after = fs::read_to_string(root.join("import.test.js")).unwrap();
+    assert!(after.contains("from \"@uniflowed/test\""));
+    assert!(after.contains("// 日本語 @jest/globals"));
+    assert!(after.contains("expect('@jest/globals').toBe('@jest/globals')"));
+}
+
+#[test]
 fn stale_plan_writes_nothing_and_symlinks_are_not_followed() {
     let temp = tempfile::tempdir().unwrap();
     let root = Utf8Path::from_path(temp.path()).unwrap();
