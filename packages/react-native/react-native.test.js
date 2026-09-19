@@ -80,7 +80,7 @@ describe("@uniflowed/react-native/metro", () => {
     expect(metroTransformPipeline).toEqual([
       "flow",
       "react-compiler",
-      "stylex-css-refusal",
+      "stylex-native-objects",
       "metro-babel",
     ]);
     expect(metroTransformerPath.endsWith("metro-transformer.cjs")).toBe(true);
@@ -363,19 +363,27 @@ describe("@uniflowed/react-native/metro", () => {
     });
   });
 
-  it("refuses StyleX CSS instead of dropping it from a native Metro bundle", async () => {
+  it("compiles shared StyleX into native objects before Metro runs", async () => {
+    await withMetroProject({ overrideUpstream: true }, async ({ root }) => {
+      const result = await loadMetroTransformer().transform({
+        src: 'import { stylex } from "@uniflowed/stylex"; const styles = stylex.create({ root: { color: "red", padding: 12 } }); export const root = styles.root;',
+        filename: "app/styles.js",
+        options: { dev: false, projectRoot: root },
+      });
+      expect(result.metadata.uniflowedSource).toContain('"$$native":true');
+      expect(result.metadata.uniflowedSource).toContain('"padding":12');
+    });
+  });
+
+  it("names CSS-only declarations refused by the native StyleX compiler", async () => {
     await withMetroProject({ overrideUpstream: true }, async ({ root }) => {
       await expect(
         loadMetroTransformer().transform({
-          src:
-            "// @flow\n" +
-            'import { stylex } from "@uniflowed/stylex";\n' +
-            'const styles = stylex.create({ root: { color: "red" } });\n' +
-            "export const root = styles.root;\n",
+          src: 'import { stylex } from "@uniflowed/stylex"; export const styles = stylex.create({ root: { color: { default: "red", ":hover": "blue" } } });',
           filename: "app/styles.js",
           options: { dev: false, projectRoot: root },
         }),
-      ).rejects.toThrow("produced StyleX CSS");
+      ).rejects.toThrow("selector :hover");
     });
   });
 

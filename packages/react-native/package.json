@@ -13,12 +13,14 @@
   "exports": {
     ".": "./index.js",
     "./metro": "./metro.cjs",
-    "./metro-transformer.cjs": "./metro-transformer.cjs"
+    "./metro-transformer.cjs": "./metro-transformer.cjs",
+    "./test-transformer.cjs": "./test-transformer.cjs"
   },
   "files": [
     "index.js",
     "metro.cjs",
     "metro-transformer.cjs",
+    "test-transformer.cjs",
     "!*.test.js"
   ],
   "dependencies": {

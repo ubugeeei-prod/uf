@@ -26,6 +26,7 @@
     "./package.json": "./package.json",
     "./handler": "./handler.js",
     "./middleware": "./middleware.js",
+    "./native-navigation": "./native-navigation.js",
     "./http-client": "./http-client.js"
   },
   "files": [
@@ -42,19 +43,28 @@
     "rsc.js",
     "server-components.js",
     "server.js",
+    "native-navigation.js",
     "http-client.js",
     "!*.test.js"
   ],
   "peerDependencies": {
     "react": ">=19.2.3",
     "react-dom": ">=19.2.3",
-    "react-server-dom-parcel": ">=19.3.0"
+    "react-server-dom-parcel": ">=19.3.0",
+    "react-native": ">=0.86",
+    "@react-navigation/native": "^7.0.0"
   },
   "peerDependenciesMeta": {
     "react-dom": {
       "optional": true
     },
     "react-server-dom-parcel": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    },
+    "@react-navigation/native": {
       "optional": true
     }
   },
