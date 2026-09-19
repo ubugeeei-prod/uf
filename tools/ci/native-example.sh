@@ -19,9 +19,10 @@ node --input-type=commonjs - "$scratch" <<'JS'
 const fs = require('node:fs');
 const path = require('node:path');
 const root = process.argv[2];
+// The checkout lockfile can accidentally hoist an undeclared Babel preset.
 fs.cpSync('examples/simple-sns-native', path.join(root, 'app'), {
   recursive: true,
-  filter: source => !['node_modules', '.uf', '.expo', 'dist', 'router.js', 'router.native.js', 'router.ios.js', 'router.android.js'].includes(path.basename(source)),
+  filter: source => !['node_modules', '.uf', '.expo', 'dist', 'package-lock.json', 'router.js', 'router.native.js', 'router.ios.js', 'router.android.js'].includes(path.basename(source)),
 });
 const file = path.join(root, 'app/package.json');
 const manifest = JSON.parse(fs.readFileSync(file));

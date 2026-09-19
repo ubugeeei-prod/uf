@@ -7,6 +7,7 @@
     "react-native": "0.86.3",
     "@react-native/jest-preset": "0.86.3",
     "@react-native/babel-preset": "0.86.3",
+    "babel-preset-expo": "57.0.12",
     "@testing-library/react-native": "14.0.1",
     "test-renderer": "1.2.0",
     "jest-runtime": "30.2.0",
