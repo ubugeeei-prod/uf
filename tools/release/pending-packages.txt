@@ -44,10 +44,8 @@
 brand
 effect
 form
-i18n
 immer
 mock
-react-native
 react-native-testing
 std
 story

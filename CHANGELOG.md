@@ -1,5 +1,72 @@
 # Changelog
 
+## uf@0.0.0-alpha.41
+
+_2026-09-19_
+
+### Added
+
+- integrate Relay RSC and add a GraphQL SNS example (#1289)
+- complete native app links and Expo development workflows (#1287)
+- complete native builds and routing workflows (#1286)
+- **lint**: add import/no-unused-modules (#1274)
+- **lint**: add import/no-deprecated (#1273)
+- **lint**: add import/no-named-as-default (#1272)
+- **lint**: add local import rules (#1242)
+- **config**: add test target key (#1233)
+- **lint**: report `this` in a component and a prop nothing reads (#1223)
+- **lint**: a stray character in JSX text, and two controls missing a prop (#1214)
+
+### Fixed
+
+- **dts**: infer nested indexed conditionals (#1284)
+- **router**: intercept RSC flight navigations (#1282)
+- **dts**: avoid date-fns declaration findings (#1279)
+- **check**: make Intl relative time options inheritable (#1278)
+- **dts**: avoid method access in ReplaceReturnType (#1277)
+- **dts**: loosen OmitKeyof key constraints (#1276)
+- **dts**: preserve OmitKeyof method properties (#1275)
+- **dts**: print implemented function properties as fields (#1244)
+- **build**: compile with the declared runtime (#1243)
+- **fmt**: reuse the formatting worker stack (#1237)
+- **examples**: set explicit button types (#1232)
+- **transform**: apply React Compiler binding renames (#1209)
+- **lint**: resolve React JSX APIs by binding (#1212)
+
+### Documentation
+
+- **test**: clarify workerd is not a test host (#1283)
+- **migrate**: record vite migration check (#1281)
+- **migrate**: confirm vite proxy placement (#1249)
+- **migrate**: confirm async pages use loaders (#1248)
+- **test**: explain non-node coverage limits (#1245)
+
+### Internal
+
+- **lint**: restore React Compiler rule levels (#1241)
+- **docs**: fail on hydration errors (#1240)
+- **deps**: pin fuzz dependabot to fuzz deps (#1239)
+- **vite**: guard installed package prebundles (#1236)
+- **ui**: document sidebar forwarded refs (#1230)
+- **deps**: migrate oxc crates to 0.149 (#1235)
+- **deps**: scope fuzz dependabot updates (#1234)
+- **ui**: document remaining small ref effects (#1231)
+- **ui**: name hover intent refs (#1229)
+- **ui**: document date picker refs (#1228)
+- **ui**: document select refs (#1227)
+- **ui**: document combobox refs (#1226)
+- **ui**: document popover refs (#1225)
+- **ui**: document menu tree refs (#1224)
+- **ui**: document effect state timing (#1222)
+- **ui**: document calendar and toast refs (#1221)
+- **ui**: document drawer gesture refs (#1220)
+- **ui**: document slider gesture refs (#1219)
+- **ui**: document resizable and scroll refs (#1218)
+- **ui**: document overlay callback refs (#1217)
+- **ui**: document more commit-phase refs (#1215)
+- **ui**: document commit-phase ref callbacks (#1213)
+- **pm**: cover dedupe check duplicate rows (#1211)
+
 ## uf@0.0.0-alpha.40
 
 _2026-09-17_
