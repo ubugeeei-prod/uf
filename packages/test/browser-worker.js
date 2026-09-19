@@ -22,22 +22,13 @@
 // browser is the host under test, and the split is named in `docs/hosts.md`
 // rather than left for a reader to infer from a stack trace.
 //
-// # What this depends on, exactly
+// # Browser control
 //
-// One browser binary, already installed, found or named by
-// `crates/uf_test/src/browser.rs` and handed over in `UF_BROWSER`. Not
-// downloaded, not vendored, not version-pinned, and not a driver library:
-// there is no Playwright, no Puppeteer and no DevTools protocol here. The
-// browser is started with a URL and a scratch profile and is otherwise left
-// alone; everything uf needs to know comes back over HTTP from the page's own
-// code.
-//
-// That is a deliberate ceiling as much as a deliberate floor. **uf cannot
-// drive this browser** — it cannot click, navigate, screenshot, throttle a
-// network or read a console it was not handed. Those are the other half of
-// `docs/roadmap.md`'s "Playwright-compatible browser automation" and they want
-// a protocol; this half only wants a page, and buying the protocol to get the
-// page would have made a test runner own a browser automation library.
+// Chromium is selected by `UF_BROWSER` or the CLI's browser discovery. Tests
+// use `@uniflowed/test/browser` to create isolated pages, send trusted input,
+// navigate and compare screenshots. The controller speaks CDP over a private
+// pipe; the harness page relays bounded commands through its authenticated
+// loopback endpoint. Closing the worker's pipe also terminates Chromium.
 //
 // # How this fails
 //
@@ -57,6 +48,7 @@ import path from "node:path";
 import { inSourceTests, sharedService } from "@uniflowed/host/transform";
 
 import { create } from "./internal/browser/server.js";
+import { connectPipe } from "./internal/browser/cdp.js";
 
 /** What `uf` sends for one file. */
 type Request = {|
@@ -104,11 +96,8 @@ function browserArguments(profile: string, url: string): Array<string> {
     // timeout eventually cannot run. Chrome treats the pipe as its lifeline:
     // when the file descriptors close, for any reason, it shuts itself down.
     //
-    // Not a protocol. uf opens the two descriptors and never writes a byte to
-    // them; the page reports over HTTP, as everything else here does. The pipe
-    // is also why this is not `--remote-debugging-port`, which would open a
-    // port on the machine that anything could speak to — a pipe is held by this
-    // process alone.
+    // The same private pipe carries CDP commands for pages created by tests.
+    // It exposes no debugging port to other local browser origins.
     //
     // The tab closing is not enough on its own, which is what this replaces: a
     // page that calls `window.close()` frees the renderers and leaves the
@@ -173,8 +162,13 @@ async function main(): Promise<void> {
   const browser = process.env.UF_BROWSER;
   const service = sharedService(root);
 
+  let controller = null;
   const server = await create({
     root,
+    browserCommand: async (id, method, args) => {
+      if (controller == null) throw new Error("browser driver is not ready");
+      return controller.command(id, method, args);
+    },
     transform: async (id, code) => {
       // The same three the Node loader passes (`packages/host/internal/
       // node-hooks.js`), so a module means the same thing on both hosts.
@@ -207,7 +201,12 @@ async function main(): Promise<void> {
   });
 
   server.onEvent((event) => {
-    write(event);
+    if (event.event === "file" && controller != null) {
+      void controller.closePages().then(
+        () => write(event),
+        (error) => refuse(String(error), Number(event.generation ?? 0)),
+      );
+    } else write(event);
   });
 
   if (browser == null || browser === "") {
@@ -223,15 +222,11 @@ async function main(): Promise<void> {
 
   const profile = mkdtempSync(path.join(tmpdir(), "uf-browser-"));
   // Five descriptors, because `--remote-debugging-pipe` reads 3 and writes 4.
-  // They are opened and never used; see the flag's note for what that buys.
+  // The controller below exchanges null-delimited CDP messages on them.
   const child = spawn(browser, browserArguments(profile, server.url), {
     stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
   });
-  // The DevTools pipe is a lifeline, not a protocol this driver speaks. Chrome
-  // can still write target bookkeeping to fd 4 before the page asks for work;
-  // drain it so a full pipe cannot block startup before the first HTTP request.
-  const devtoolsOutput = child.stdio[4];
-  devtoolsOutput?.on("data", () => {});
+  controller = connectPipe(child, { root });
   // Kept, not printed. A Chromium writes a dozen lines about GPU probing and
   // Vulkan on a healthy start, and forwarding those to a passing run's report
   // would be noise; they are the whole of the evidence when it does not start,

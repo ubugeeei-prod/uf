@@ -192,7 +192,7 @@ fn coverage_in_a_browser_says_which_host_can_collect_it() {
 }
 
 #[test]
-fn rewriting_snapshots_in_a_browser_is_refused_before_anything_runs() {
+fn visual_snapshot_updates_reach_the_browser_driver() {
     let project = Project::new(&[(
         "a.test.js",
         "// @flow\nimport { it } from \"@uniflowed/test\";\nit(\"runs\", () => {});\n",
@@ -207,10 +207,8 @@ fn rewriting_snapshots_in_a_browser_is_refused_before_anything_runs() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("has no filesystem"), "{stderr}");
-    // And it says what to do instead, because "record on Node, check in the
-    // browser" is the workflow rather than a consolation.
-    assert!(stderr.contains("uf test -u"), "{stderr}");
+    assert!(stderr.contains("/no/such/browser"), "{stderr}");
+    assert!(!stderr.contains("has no filesystem"), "{stderr}");
 }
 
 #[test]

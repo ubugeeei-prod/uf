@@ -42,6 +42,7 @@
 # and `uf inspect` reports it.
 
 brand
+browser
 effect
 form
 i18n
@@ -53,4 +54,5 @@ std
 story
 testing
 tui
+vrt
 web

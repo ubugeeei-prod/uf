@@ -2,7 +2,7 @@
   "name": "@uniflowed/browser",
   "version": "0.0.0-alpha.40",
   "private": true,
-  "description": "Flow declarations for @uniflowed/browser, part of the Unified Toolchain for Flow.",
+  "description": "Chromium test pages and visual comparisons for Flow applications.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -19,6 +19,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.40"
+    "@uniflowed/core": "0.0.0-alpha.40",
+    "@uniflowed/test": "0.0.0-alpha.40"
   }
 }

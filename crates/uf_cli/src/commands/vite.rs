@@ -138,7 +138,8 @@ fn is_executable(path: &std::path::Path) -> bool {
 }
 
 /// What the driver reported, one line at a time.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "event", rename_all = "kebab-case")]
 pub(crate) enum Event {
     /// `uf.config.js` was loaded from `file`, or the defaults were used.
     ConfigLoaded { file: Option<String> },
@@ -236,7 +237,8 @@ pub(crate) enum Event {
 }
 
 /// How loud a log line is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum LogLevel {
     Info,
     Warn,
@@ -244,7 +246,7 @@ pub(crate) enum LogLevel {
 }
 
 /// A failure the driver reported, with a position when it had one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct DriverError {
     pub(crate) message: String,
     pub(crate) file: Option<String>,
@@ -261,7 +263,7 @@ pub(crate) struct DriverError {
 /// not. A browser usually has the second kind — a hydration mismatch is a fact
 /// about a DOM node rather than about a line of a file — and the point of the
 /// channel is that it still reads like every other uf diagnostic.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct BrowserDiagnostic {
     /// How loudly it reads. `Info` is a report rather than a problem.
     pub(crate) severity: LogLevel,
