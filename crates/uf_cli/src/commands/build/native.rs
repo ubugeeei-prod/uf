@@ -89,7 +89,7 @@ pub(super) fn build(
             .status()
             .context("failed to start the project's Metro bundler")?;
         if !status.success() {
-            return adopt_exit_status(ui, status, command_name);
+            adopt_exit_status(ui, status, command_name);
         }
         if !bundle.is_file() {
             bail!("{command_name} exited successfully but wrote no Metro bundle for {platform}");
