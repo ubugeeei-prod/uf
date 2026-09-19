@@ -43,7 +43,7 @@ pub(crate) fn run_package_no_npm_scripts(
                 severity,
                 position,
                 at,
-                &format!(
+                format!(
                     "install-time lifecycle scripts ({}) are disabled; move the automation to uf tasks or explicitly allow lifecycle scripts",
                     forbidden.join(", ")
                 ),
