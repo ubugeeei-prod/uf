@@ -64,6 +64,7 @@ const nativePackages = Object.freeze([
   "react-native",
   "relay",
   "state",
+  "stylex",
   "temporal",
   "validator",
 ]);
@@ -85,12 +86,15 @@ function nativeResolution(previous) {
       domPackages.has(name) ||
       (name === "router" &&
         moduleName !== "@uniflowed/router/native" &&
+        moduleName !== "@uniflowed/router/native-navigation" &&
+        moduleName !== "@uniflowed/router/http-client" &&
         moduleName !== "@uniflowed/router/routing")
     ) {
       throw new Error(
         `${moduleName} needs a browser DOM and cannot be bundled for ${platform}. ` +
           `Native packages: ${nativePackages.map((item) => `@uniflowed/${item}`).join(", ")}, ` +
-          "@uniflowed/router/native and @uniflowed/router/routing. Keep DOM components in $page.web.js.",
+          "@uniflowed/router/native, @uniflowed/router/native-navigation, " +
+          "@uniflowed/router/http-client and @uniflowed/router/routing. Keep DOM components in $page.web.js.",
       );
     }
     return (previous ?? context.resolveRequest)(context, moduleName, platform);

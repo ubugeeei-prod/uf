@@ -32,9 +32,9 @@ This is the honest status.
 | Metro config | Implemented | `withUniflowedMetro` composes with Expo's and React Native's default Metro configs, and loads in the plain Node Metro runs |
 | Dev loop | Implemented through the project's own CLI | `uf dev --target native` runs `expo start` or `react-native start` once the Metro config composes uf's transformer, and prints the address a device connects to |
 | Native route table | Implemented | `router.ios.js`, `router.android.js` and `router.native.js`, written by `uf dev` and `uf build` for Metro to bundle, and rewritten while `uf dev` runs |
-| Native router | Implemented as a contract | `@uniflowed/router/native` resolves a uf route into a navigator event or screen call |
-| Test queries | Implemented for trees and renderer JSON | `@uniflowed/react-native-testing` queries native JSON trees, and `render()` can mount through optional `react-test-renderer` |
-| Native host renderer | Pending | `render()` is a JSON test adapter, not a React Native host config, layout engine or app shell |
+| Native router | Implemented | `@uniflowed/router/native-navigation` renders file routes through app-owned React Navigation stacks, tabs and custom navigator factories; `native` remains the lower-level contract |
+| Component tests | Implemented | `uf test --target react-native` uses React Native's official preset; `@uniflowed/react-native-testing/native` renders real components through React Native Testing Library and drives press, text and scroll handlers |
+| Native host and layout | App-owned | Tests mock native modules; device layout, views and the app shell remain React Native's and Expo's |
 | App runtime, native builds, updates | Expo's, by design | Expo Go or a development build, the SDK's native modules, prebuild, EAS Build and EAS Update; uf composes with them rather than rebuilding them |
 
 The important distinction is the one between **contract** and **runtime**. uf
@@ -46,6 +46,18 @@ Expo, or with the React Native CLI project.
 
 That makes this useful for a Flow-first toolchain, routes and tests around
 React Native inside an app platform, and not a replacement for that platform.
+
+## Commonplace example
+
+[`examples/simple-sns-native`](https://github.com/ubugeeei-prod/uf/tree/main/examples/simple-sns-native)
+is a separate Expo app with a feed, composer, note detail and profile. It uses
+StyleX native objects and app-owned React Navigation factories. Screen components
+and their tests live beside their routes. Notes stay in memory for this example;
+the separate GraphQL example demonstrates the BFF and backend.
+
+Run `uf install`, `uf dev --target ios` (or `android`) and `uf test` from that
+example's directory. CI exercises the real input and navigation components and
+builds both platform bundles. Device and simulator testing remain separate.
 
 ## The usable slice
 

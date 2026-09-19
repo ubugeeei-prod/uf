@@ -19,7 +19,9 @@ export component Page() {
         {note ? (
           <>
             <Text {...stylex.props(styles.eyebrow)}>{note.topic}</Text>
-            <Text {...stylex.props(styles.title)}>{note.author}'s note</Text>
+            <Text {...stylex.props(styles.title)}>
+              {note.handle === "you" ? "Your note" : `${note.author}'s note`}
+            </Text>
             <Text {...stylex.props(styles.body)}>{note.body}</Text>
           </>
         ) : (

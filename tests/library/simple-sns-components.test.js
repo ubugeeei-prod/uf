@@ -109,7 +109,6 @@ function html(value: Element): HTMLElement {
 
 describe("Commonplace React interactions", () => {
   it("shows a ready paused clip without leaving its loading notice and releases inactive media", async () => {
-    await components();
     const { ClipPlayer } = await import("../../examples/simple-sns/app/clips/clips.client.js");
     const clip = {
       id: "test",

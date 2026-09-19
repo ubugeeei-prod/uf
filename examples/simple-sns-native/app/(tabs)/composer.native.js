@@ -8,8 +8,10 @@ const local = stylex.create({
   input: { fontSize: 16, lineHeight: 24, minHeight: 68, color: "#3e473e" },
   button: {
     alignSelf: "flex-end",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingLeft: 18,
+    paddingRight: 18,
+    paddingTop: 10,
+    paddingBottom: 10,
     borderRadius: 20,
     backgroundColor: "#315744",
   },

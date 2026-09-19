@@ -166,10 +166,12 @@ describe("@uniflowed/react-native/metro", () => {
     for (const name of ["@uniflowed/ui", "@uniflowed/web", "@uniflowed/router"]) {
       expect(() => config.resolver.resolveRequest({}, name, "ios")).toThrow("needs a browser DOM");
     }
-    expect(config.resolver.resolveRequest({}, "@uniflowed/router/native", "ios").filePath).toBe(
-      "/app/@uniflowed/router/native.js",
-    );
-    expect(calls).toEqual([["@uniflowed/router/native", "ios"]]);
+    const subpaths = ["native", "native-navigation", "http-client", "routing"];
+    for (const subpath of subpaths) {
+      const name = `@uniflowed/router/${subpath}`;
+      expect(config.resolver.resolveRequest({}, name, "ios").filePath).toBe(`/app/${name}.js`);
+    }
+    expect(calls).toEqual(subpaths.map((subpath) => [`@uniflowed/router/${subpath}`, "ios"]));
   });
 
   it("restores Metro's omitted hot flag for React Refresh and honours an explicit false", async () => {
