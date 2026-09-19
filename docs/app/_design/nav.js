@@ -331,7 +331,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/agents",
         title: "Agents",
         blurb:
-          "uf mcp: eight tools over stdio, the two that write, and what an agent should not assume.",
+          "uf mcp: twelve tools over stdio, the two that write, and what an agent should not assume.",
       },
     ],
     then: "/reference",

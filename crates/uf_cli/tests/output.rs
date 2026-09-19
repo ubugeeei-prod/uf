@@ -316,9 +316,8 @@ fn no_color_takes_the_colour_and_leaves_the_glyphs() {
         stdout.contains("├─ app") || stdout.contains("└─ uf.config.js"),
         "NO_COLOR asks for no colour, not for ASCII:\n{stdout}"
     );
-    // Nine: the eight source files and the `.gitignore` that keeps uf's
-    // own output out of a new project's first commit.
-    assert!(stdout.contains("created 9 files"), "{stdout}");
+    // Ten: source files, .gitignore, and version-matched AGENTS.md guidance.
+    assert!(stdout.contains("created 10 files"), "{stdout}");
 }
 
 #[test]
