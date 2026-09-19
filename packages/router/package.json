@@ -44,8 +44,8 @@
     "server-components.js",
     "server.js",
     "native-navigation.js",
-    "!*.test.js",
-    "http-client.js"
+    "http-client.js",
+    "!*.test.js"
   ],
   "peerDependencies": {
     "react": ">=19.2.3",
