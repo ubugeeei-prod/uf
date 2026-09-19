@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<90f7c221b2497adce5aef2bb8d3666b7>>
+ * @generated SignedSource<<9ce93d2c3baa439c1bd0ea184eeb3383>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -10,16 +10,14 @@
 
 /*::
 import type { Fragment, ReaderFragment } from 'relay-runtime';
+import type { SnsAvatar_user$fragmentType } from "./SnsAvatar_user.graphql";
 import type { FragmentType } from "relay-runtime";
 declare export opaque type SnsPost_post$fragmentType: FragmentType;
 export type SnsPost_post$data = {
   readonly author: {
-    readonly avatar: string,
-    readonly bio: string,
     readonly handle: string,
-    readonly id: string,
     readonly name: string,
-    readonly photo: ?string,
+    readonly $fragmentSpreads: SnsAvatar_user$fragmentType,
   },
   readonly body: string,
   readonly createdAt: string,
@@ -36,21 +34,19 @@ export type SnsPost_post$key = {
 };
 */
 
-var node/*: ReaderFragment*/ = (function(){
-var v0 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "id",
-  "storageKey": null
-};
-return {
+var node/*: ReaderFragment*/ = {
   "argumentDefinitions": [],
   "kind": "Fragment",
   "metadata": null,
   "name": "SnsPost_post",
   "selections": [
-    (v0/*:: as any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "id",
+      "storageKey": null
+    },
     {
       "alias": null,
       "args": null,
@@ -94,7 +90,6 @@ return {
       "name": "author",
       "plural": false,
       "selections": [
-        (v0/*:: as any*/),
         {
           "alias": null,
           "args": null,
@@ -110,25 +105,9 @@ return {
           "storageKey": null
         },
         {
-          "alias": null,
           "args": null,
-          "kind": "ScalarField",
-          "name": "avatar",
-          "storageKey": null
-        },
-        {
-          "alias": null,
-          "args": null,
-          "kind": "ScalarField",
-          "name": "photo",
-          "storageKey": null
-        },
-        {
-          "alias": null,
-          "args": null,
-          "kind": "ScalarField",
-          "name": "bio",
-          "storageKey": null
+          "kind": "FragmentSpread",
+          "name": "SnsAvatar_user"
         }
       ],
       "storageKey": null
@@ -137,9 +116,8 @@ return {
   "type": "Post",
   "abstractKey": null
 };
-})();
 
-(node/*:: as any*/).hash = "8e8f79041fe2516cb9d54d8f0de38555";
+(node/*:: as any*/).hash = "aede9485aadf5865d0ab234145569867";
 
 export default ((node/*:: as any*/)/*:: as Fragment<
   SnsPost_post$fragmentType,

@@ -1,10 +1,15 @@
 "use client";
 // @flow
 import * as React from "@uniflowed/react";
-import { useMutation } from "@uniflowed/relay";
+import { graphql, useMutation } from "@uniflowed/relay";
 import { useState } from "@uniflowed/react";
-import { logout } from "./operations.js";
 import { Icon } from "./ui.js";
+
+const logout = graphql`
+  mutation SnsLogoutMutation {
+    logout
+  }
+`;
 
 /** Reset the entire browser store when identity changes. */
 export component SignOut() {
@@ -13,6 +18,7 @@ export component SignOut() {
   return (
     <div>
       <button
+        type="button"
         className="icon-button"
         aria-label="Sign out"
         disabled={pending}

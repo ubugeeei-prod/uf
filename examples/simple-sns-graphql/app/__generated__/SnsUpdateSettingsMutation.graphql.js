@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<030d1f0ebf3e82c54c26f2ca9982c41c>>
+ * @generated SignedSource<<4d395aa5baebcc5d0542b85ed5b8fec9>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -23,7 +23,6 @@ export type SnsUpdateSettingsMutation$data = {
     readonly bio: string,
     readonly displayName: string,
     readonly email: string,
-    readonly handle: string,
     readonly id: string,
   },
 };
@@ -74,13 +73,6 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "handle",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
         "name": "bio",
         "storageKey": null
       },
@@ -113,17 +105,17 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "730ab9899b76cf3f9c51b0f9eed859da",
+    "cacheID": "8831307a65817d868bd47b694d5401cc",
     "id": null,
     "metadata": {},
     "name": "SnsUpdateSettingsMutation",
     "operationKind": "mutation",
-    "text": "mutation SnsUpdateSettingsMutation(\n  $input: SettingsInput!\n) {\n  updateSettings(input: $input) {\n    id\n    displayName\n    handle\n    bio\n    email\n  }\n}\n"
+    "text": "mutation SnsUpdateSettingsMutation(\n  $input: SettingsInput!\n) {\n  updateSettings(input: $input) {\n    id\n    displayName\n    bio\n    email\n  }\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "8ee5ef691e00b7f8ee84b6e34610a113";
+(node/*:: as any*/).hash = "2f2c8eee2b73ac47c170603c2613fb6f";
 
 export default ((node/*:: as any*/)/*:: as Mutation<
   SnsUpdateSettingsMutation$variables,

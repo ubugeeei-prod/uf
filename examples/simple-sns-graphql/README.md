@@ -34,7 +34,8 @@ This is a demonstration service with in-memory data. Restarting it clears accoun
 - `app/graphql/$route.js` is a bounded BFF: same-origin JSON POST, a 64 KiB request limit, an upstream timeout, and forwarding only the application's HttpOnly session cookie. Its upstream URL is server configuration.
 - `app/relay.server.js` uses upstream `createServerEnvironment`. React's request cache creates a separate Relay environment for each RSC request. No visitor shares a module-level store.
 - `app/screen.server.js` preloads a compiled query and streams its promise. `useQueryFromServer` consumes that reference inside the browser's Relay provider without a duplicate initial GraphQL fetch.
-- `app/timeline.client.js` colocates a masked fragment with its post component. Relay owns optimistic reaction rollback and normalized records. Successful publishing refreshes the selected feed; private messages use a store updater. Request IDs make write retries idempotent in the backend.
+- `app/screen-query.js` only spreads the screen fragment. Every data-reading component owns a colocated fragment: the frame, timeline, composer, post, avatar, inbox, thread, conversation, message, and settings. Parents compose fragment spreads and pass generated `$key` references; each child calls `useFragment` to read its own fields. Route-specific fragments use explicit arguments and conditional aliases. Mutations live beside the component that commits them.
+- Relay owns optimistic reaction rollback and normalized records. Successful publishing refreshes the selected feed; private messages use a store updater. Request IDs make write retries idempotent in the backend.
 - Signing in or out starts a fresh document and Relay environment. Settings and conversations stay scoped to the authenticated backend session.
 
 ## Relay compiler and RSC

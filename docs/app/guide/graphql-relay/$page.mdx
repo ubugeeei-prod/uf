@@ -58,6 +58,21 @@ Use generated operation types for variables and responses. In Relay 21,
 the schema and fragment composition; Flow checks the generated types at their
 component and hook call sites.
 
+## Colocate fragments with components
+
+Each component declares the fields it renders in its own `graphql` fragment and
+accepts the generated `$key` type. It reads the reference with `useFragment`.
+A parent selects only its own fields and spreads its children's fragments;
+it passes the references through without accessing the children's masked data.
+
+The example follows this ownership from `SnsScreenQuery` through the screen,
+frame, timeline, composer, post and avatar, and through the inbox, thread,
+conversation and individual message. The entry query contains only a fragment
+spread. Explicit fragment arguments carry feed filters and the selected thread;
+Relay's conditional aliases identify which route fragments were fetched.
+Settings owns its private fields. Each mutation lives with the component that
+commits it, and spreads the affected leaf fragments where appropriate.
+
 ## Stream an RSC preload
 
 The explicit entry points mirror the experimental APIs in

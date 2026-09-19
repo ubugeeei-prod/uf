@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<cbdeafc196769746838a9a1517701898>>
+ * @generated SignedSource<<e6807635b2f6edff0185a7aa3377ec25>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -16,12 +16,7 @@ export type SnsLoginMutation$variables = {
 };
 export type SnsLoginMutation$data = {
   readonly login: {
-    readonly avatar: string,
-    readonly bio: string,
-    readonly handle: string,
     readonly id: string,
-    readonly name: string,
-    readonly photo: ?string,
   },
 };
 export type SnsLoginMutation = {
@@ -69,41 +64,6 @@ v1 = [
         "kind": "ScalarField",
         "name": "id",
         "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "handle",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "avatar",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "photo",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "bio",
-        "storageKey": null
       }
     ],
     "storageKey": null
@@ -127,17 +87,17 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "4421863fee37796eed91a47d579f8b13",
+    "cacheID": "55c5c4039d288ce854dc183b39a47975",
     "id": null,
     "metadata": {},
     "name": "SnsLoginMutation",
     "operationKind": "mutation",
-    "text": "mutation SnsLoginMutation(\n  $handle: String!\n  $password: String!\n) {\n  login(handle: $handle, password: $password) {\n    id\n    name\n    handle\n    avatar\n    photo\n    bio\n  }\n}\n"
+    "text": "mutation SnsLoginMutation(\n  $handle: String!\n  $password: String!\n) {\n  login(handle: $handle, password: $password) {\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "7fe8679f6afbb7bcce9ffa126ca8bb55";
+(node/*:: as any*/).hash = "513307a3899e1052fb49994a2bd33262";
 
 export default ((node/*:: as any*/)/*:: as Mutation<
   SnsLoginMutation$variables,

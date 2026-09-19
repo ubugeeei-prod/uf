@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<24b3f51664f47318e0a3b93f19d820b3>>
+ * @generated SignedSource<<8ae6a6e52a6284753e3169505928cf78>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -10,6 +10,7 @@
 
 /*::
 import type { ConcreteRequest, Mutation } from 'relay-runtime';
+import type { SnsMessage_message$fragmentType } from "./SnsMessage_message.graphql";
 export type MessageInput = {
   body: string,
   requestId: string,
@@ -20,11 +21,8 @@ export type SnsSendMessageMutation$variables = {
 };
 export type SnsSendMessageMutation$data = {
   readonly sendMessage: {
-    readonly author: string,
-    readonly body: string,
     readonly id: string,
-    readonly sentAt: string,
-    readonly threadId: string,
+    readonly $fragmentSpreads: SnsMessage_message$fragmentType,
   },
 };
 export type SnsSendMessageMutation = {
@@ -43,65 +41,43 @@ var v0 = [
 ],
 v1 = [
   {
-    "alias": null,
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "input",
-        "variableName": "input"
-      }
-    ],
-    "concreteType": "Message",
-    "kind": "LinkedField",
-    "name": "sendMessage",
-    "plural": false,
-    "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "threadId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "author",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "body",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "sentAt",
-        "storageKey": null
-      }
-    ],
-    "storageKey": null
+    "kind": "Variable",
+    "name": "input",
+    "variableName": "input"
   }
-];
+],
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+};
 return {
   "fragment": {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "SnsSendMessageMutation",
-    "selections": (v1/*:: as any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": "Message",
+        "kind": "LinkedField",
+        "name": "sendMessage",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "args": null,
+            "kind": "FragmentSpread",
+            "name": "SnsMessage_message"
+          }
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "Mutation",
     "abstractKey": null
   },
@@ -110,20 +86,54 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "SnsSendMessageMutation",
-    "selections": (v1/*:: as any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": "Message",
+        "kind": "LinkedField",
+        "name": "sendMessage",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "author",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "body",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "sentAt",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "65ca016896675fb4fe29568aaaba9dc6",
+    "cacheID": "82309c23309db006856bdd2f74da5b98",
     "id": null,
     "metadata": {},
     "name": "SnsSendMessageMutation",
     "operationKind": "mutation",
-    "text": "mutation SnsSendMessageMutation(\n  $input: MessageInput!\n) {\n  sendMessage(input: $input) {\n    id\n    threadId\n    author\n    body\n    sentAt\n  }\n}\n"
+    "text": "mutation SnsSendMessageMutation(\n  $input: MessageInput!\n) {\n  sendMessage(input: $input) {\n    id\n    ...SnsMessage_message\n  }\n}\n\nfragment SnsMessage_message on Message {\n  author\n  body\n  sentAt\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "f7d059ff6edd60f267bafd1e4b3dc683";
+(node/*:: as any*/).hash = "22375e3020935de55fd62941e530c474";
 
 export default ((node/*:: as any*/)/*:: as Mutation<
   SnsSendMessageMutation$variables,

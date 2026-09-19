@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3576209464087df268314a3e600125f2>>
+ * @generated SignedSource<<b978aad866737e8ed1b99cf61f365ee9>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -21,12 +21,7 @@ export type SnsRegisterMutation$variables = {
 };
 export type SnsRegisterMutation$data = {
   readonly register: {
-    readonly avatar: string,
-    readonly bio: string,
-    readonly handle: string,
     readonly id: string,
-    readonly name: string,
-    readonly photo: ?string,
   },
 };
 export type SnsRegisterMutation = {
@@ -64,41 +59,6 @@ v1 = [
         "kind": "ScalarField",
         "name": "id",
         "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "handle",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "avatar",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "photo",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "bio",
-        "storageKey": null
       }
     ],
     "storageKey": null
@@ -122,17 +82,17 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "cedc46ae5e0360112fb8379154c65317",
+    "cacheID": "ec21c76443ba88758a7d92ad8b2a8633",
     "id": null,
     "metadata": {},
     "name": "SnsRegisterMutation",
     "operationKind": "mutation",
-    "text": "mutation SnsRegisterMutation(\n  $input: RegisterInput!\n) {\n  register(input: $input) {\n    id\n    name\n    handle\n    avatar\n    photo\n    bio\n  }\n}\n"
+    "text": "mutation SnsRegisterMutation(\n  $input: RegisterInput!\n) {\n  register(input: $input) {\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "520069a20c7ad1810065932d60772e82";
+(node/*:: as any*/).hash = "c7078c71de970de480a325ce125a9d29";
 
 export default ((node/*:: as any*/)/*:: as Mutation<
   SnsRegisterMutation$variables,

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<891dab4d7f856d89b123652fa1f3851f>>
+ * @generated SignedSource<<952b6de88d8f35217a0b6c4b784b2a0e>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -139,7 +139,6 @@ return {
             "name": "author",
             "plural": false,
             "selections": [
-              (v2/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -154,13 +153,7 @@ return {
                 "name": "handle",
                 "storageKey": null
               },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "avatar",
-                "storageKey": null
-              },
+              (v2/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -172,7 +165,7 @@ return {
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "bio",
+                "name": "avatar",
                 "storageKey": null
               }
             ],
@@ -184,12 +177,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "a2e211400ec417f19d27023507bd1a77",
+    "cacheID": "e008febab2d1d87723d3ec372ef05aa4",
     "id": null,
     "metadata": {},
     "name": "SnsCreatePostMutation",
     "operationKind": "mutation",
-    "text": "mutation SnsCreatePostMutation(\n  $input: PostInput!\n) {\n  createPost(input: $input) {\n    id\n    ...SnsPost_post\n  }\n}\n\nfragment SnsPost_post on Post {\n  id\n  body\n  topic\n  likes\n  liked\n  createdAt\n  author {\n    id\n    name\n    handle\n    avatar\n    photo\n    bio\n  }\n}\n"
+    "text": "mutation SnsCreatePostMutation(\n  $input: PostInput!\n) {\n  createPost(input: $input) {\n    id\n    ...SnsPost_post\n  }\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsPost_post on Post {\n  id\n  body\n  topic\n  likes\n  liked\n  createdAt\n  author {\n    name\n    handle\n    ...SnsAvatar_user\n    id\n  }\n}\n"
   }
 };
 })();

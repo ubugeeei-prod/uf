@@ -228,7 +228,8 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/graphql-relay",
         title: "GraphQL and Relay",
-        blurb: "Typed Relay artifacts, streamed RSC preloads, and an independent backend.",
+        blurb:
+          "Relay artifacts, typed components, request-scoped RSC preloads, and an independent backend.",
       },
       {
         href: "/guide/logging",

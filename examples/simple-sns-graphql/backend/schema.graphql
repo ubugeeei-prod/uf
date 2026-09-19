@@ -11,7 +11,7 @@ type Query {
 type User { id: ID!, name: String!, handle: String!, avatar: String!, photo: String, bio: String! }
 type Post { id: ID!, author: User!, body: String!, topic: String!, likes: Int!, liked: Boolean!, createdAt: String! }
 type Feed { posts: [Post!]!, hasNext: Boolean! }
-type Thread { id: ID!, name: String!, handle: String!, avatar: String!, photo: String, lastMessage: String! }
+type Thread { id: ID!, participant: User!, name: String!, handle: String!, avatar: String!, photo: String, lastMessage: String! }
 type Message { id: ID!, threadId: ID!, author: String!, body: String!, sentAt: String! }
 type Conversation { thread: Thread!, messages: [Message!]! }
 type Settings { id: ID!, displayName: String!, handle: String!, bio: String!, email: String! }

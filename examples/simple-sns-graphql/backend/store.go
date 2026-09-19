@@ -39,6 +39,7 @@ type Feed struct {
 	HasNext bool
 }
 type Thread struct {
+	Participant                       *User
 	ID                                graphql.ID
 	Name, Handle, Avatar, LastMessage string
 	Photo                             *string
@@ -176,7 +177,7 @@ func (s *Store) thread(viewer *account, id graphql.ID) *Thread {
 	if len(messages) > 0 {
 		last = messages[len(messages)-1].Body
 	}
-	return &Thread{id, user.Name, user.Handle, user.Avatar, last, user.Photo}
+	return &Thread{Participant: &user, ID: id, Name: user.Name, Handle: user.Handle, Avatar: user.Avatar, LastMessage: last, Photo: user.Photo}
 }
 func (s *Store) Threads(ctx context.Context) []*Thread {
 	s.mu.Lock()

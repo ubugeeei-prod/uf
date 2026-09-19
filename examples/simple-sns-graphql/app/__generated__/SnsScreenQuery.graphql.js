@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a3f6f98bc4b59f31422e7318f3ed5e62>>
+ * @generated SignedSource<<87dd0d001ee64e8114eee7633c388312>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -10,7 +10,7 @@
 
 /*::
 import type { ConcreteRequest, Query } from 'relay-runtime';
-import type { SnsPost_post$fragmentType } from "./SnsPost_post.graphql";
+import type { SnsScreen_query$fragmentType } from "./SnsScreen_query.graphql";
 export type SnsScreenQuery$variables = {
   feed: boolean,
   messages: boolean,
@@ -21,53 +21,7 @@ export type SnsScreenQuery$variables = {
   topic: string,
 };
 export type SnsScreenQuery$data = {
-  readonly conversation?: ?{
-    readonly messages: ReadonlyArray<{
-      readonly author: string,
-      readonly body: string,
-      readonly id: string,
-      readonly sentAt: string,
-      readonly threadId: string,
-    }>,
-    readonly thread: {
-      readonly avatar: string,
-      readonly handle: string,
-      readonly id: string,
-      readonly lastMessage: string,
-      readonly name: string,
-      readonly photo: ?string,
-    },
-  },
-  readonly feed?: {
-    readonly hasNext: boolean,
-    readonly posts: ReadonlyArray<{
-      readonly id: string,
-      readonly $fragmentSpreads: SnsPost_post$fragmentType,
-    }>,
-  },
-  readonly settings?: ?{
-    readonly bio: string,
-    readonly displayName: string,
-    readonly email: string,
-    readonly handle: string,
-    readonly id: string,
-  },
-  readonly threads?: ReadonlyArray<{
-    readonly avatar: string,
-    readonly handle: string,
-    readonly id: string,
-    readonly lastMessage: string,
-    readonly name: string,
-    readonly photo: ?string,
-  }>,
-  readonly viewer: ?{
-    readonly avatar: string,
-    readonly bio: string,
-    readonly handle: string,
-    readonly id: string,
-    readonly name: string,
-    readonly photo: ?string,
-  },
+  readonly $fragmentSpreads: SnsScreen_query$fragmentType,
 };
 export type SnsScreenQuery = {
   response: SnsScreenQuery$data,
@@ -112,222 +66,67 @@ v6 = {
   "name": "topic"
 },
 v7 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "id",
-  "storageKey": null
+  "kind": "Variable",
+  "name": "page",
+  "variableName": "page"
 },
 v8 = {
+  "kind": "Variable",
+  "name": "search",
+  "variableName": "search"
+},
+v9 = {
+  "kind": "Variable",
+  "name": "topic",
+  "variableName": "topic"
+},
+v10 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "name",
   "storageKey": null
 },
-v9 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "handle",
-  "storageKey": null
-},
-v10 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "avatar",
-  "storageKey": null
-},
 v11 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "photo",
+  "name": "id",
   "storageKey": null
 },
 v12 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "bio",
+  "name": "photo",
   "storageKey": null
 },
-v13 = [
-  (v7/*:: as any*/),
-  (v8/*:: as any*/),
-  (v9/*:: as any*/),
-  (v10/*:: as any*/),
-  (v11/*:: as any*/),
-  (v12/*:: as any*/)
-],
-v14 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "User",
-  "kind": "LinkedField",
-  "name": "viewer",
-  "plural": false,
-  "selections": (v13/*:: as any*/),
-  "storageKey": null
-},
-v15 = [
-  {
-    "kind": "Variable",
-    "name": "page",
-    "variableName": "page"
-  },
-  {
-    "kind": "Variable",
-    "name": "search",
-    "variableName": "search"
-  },
-  {
-    "kind": "Variable",
-    "name": "topic",
-    "variableName": "topic"
-  }
-],
-v16 = {
+v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "hasNext",
+  "name": "avatar",
   "storageKey": null
 },
-v17 = [
-  (v7/*:: as any*/),
-  (v8/*:: as any*/),
-  (v9/*:: as any*/),
+v14 = [
   (v10/*:: as any*/),
-  (v11/*:: as any*/),
   {
     "alias": null,
     "args": null,
     "kind": "ScalarField",
-    "name": "lastMessage",
+    "name": "handle",
     "storageKey": null
-  }
+  },
+  (v11/*:: as any*/),
+  (v12/*:: as any*/),
+  (v13/*:: as any*/)
 ],
-v18 = {
+v15 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "body",
   "storageKey": null
-},
-v19 = {
-  "condition": "messages",
-  "kind": "Condition",
-  "passingValue": true,
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "concreteType": "Thread",
-      "kind": "LinkedField",
-      "name": "threads",
-      "plural": true,
-      "selections": (v17/*:: as any*/),
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": [
-        {
-          "kind": "Variable",
-          "name": "id",
-          "variableName": "thread"
-        }
-      ],
-      "concreteType": "Conversation",
-      "kind": "LinkedField",
-      "name": "conversation",
-      "plural": false,
-      "selections": [
-        {
-          "alias": null,
-          "args": null,
-          "concreteType": "Thread",
-          "kind": "LinkedField",
-          "name": "thread",
-          "plural": false,
-          "selections": (v17/*:: as any*/),
-          "storageKey": null
-        },
-        {
-          "alias": null,
-          "args": null,
-          "concreteType": "Message",
-          "kind": "LinkedField",
-          "name": "messages",
-          "plural": true,
-          "selections": [
-            (v7/*:: as any*/),
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "threadId",
-              "storageKey": null
-            },
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "author",
-              "storageKey": null
-            },
-            (v18/*:: as any*/),
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "sentAt",
-              "storageKey": null
-            }
-          ],
-          "storageKey": null
-        }
-      ],
-      "storageKey": null
-    }
-  ]
-},
-v20 = {
-  "condition": "settings",
-  "kind": "Condition",
-  "passingValue": true,
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "concreteType": "Settings",
-      "kind": "LinkedField",
-      "name": "settings",
-      "plural": false,
-      "selections": [
-        (v7/*:: as any*/),
-        {
-          "alias": null,
-          "args": null,
-          "kind": "ScalarField",
-          "name": "displayName",
-          "storageKey": null
-        },
-        (v9/*:: as any*/),
-        (v12/*:: as any*/),
-        {
-          "alias": null,
-          "args": null,
-          "kind": "ScalarField",
-          "name": "email",
-          "storageKey": null
-        }
-      ],
-      "storageKey": null
-    }
-  ]
 };
 return {
   "fragment": {
@@ -344,45 +143,35 @@ return {
     "metadata": null,
     "name": "SnsScreenQuery",
     "selections": [
-      (v14/*:: as any*/),
       {
-        "condition": "feed",
-        "kind": "Condition",
-        "passingValue": true,
-        "selections": [
+        "args": [
           {
-            "alias": null,
-            "args": (v15/*:: as any*/),
-            "concreteType": "Feed",
-            "kind": "LinkedField",
+            "kind": "Variable",
             "name": "feed",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "Post",
-                "kind": "LinkedField",
-                "name": "posts",
-                "plural": true,
-                "selections": [
-                  (v7/*:: as any*/),
-                  {
-                    "args": null,
-                    "kind": "FragmentSpread",
-                    "name": "SnsPost_post"
-                  }
-                ],
-                "storageKey": null
-              },
-              (v16/*:: as any*/)
-            ],
-            "storageKey": null
-          }
-        ]
-      },
-      (v19/*:: as any*/),
-      (v20/*:: as any*/)
+            "variableName": "feed"
+          },
+          {
+            "kind": "Variable",
+            "name": "messages",
+            "variableName": "messages"
+          },
+          (v7/*:: as any*/),
+          (v8/*:: as any*/),
+          {
+            "kind": "Variable",
+            "name": "settings",
+            "variableName": "settings"
+          },
+          {
+            "kind": "Variable",
+            "name": "thread",
+            "variableName": "thread"
+          },
+          (v9/*:: as any*/)
+        ],
+        "kind": "FragmentSpread",
+        "name": "SnsScreen_query"
+      }
     ],
     "type": "Query",
     "abstractKey": null
@@ -401,7 +190,16 @@ return {
     "kind": "Operation",
     "name": "SnsScreenQuery",
     "selections": [
-      (v14/*:: as any*/),
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "User",
+        "kind": "LinkedField",
+        "name": "viewer",
+        "plural": false,
+        "selections": (v14/*:: as any*/),
+        "storageKey": null
+      },
       {
         "condition": "feed",
         "kind": "Condition",
@@ -409,7 +207,11 @@ return {
         "selections": [
           {
             "alias": null,
-            "args": (v15/*:: as any*/),
+            "args": [
+              (v7/*:: as any*/),
+              (v8/*:: as any*/),
+              (v9/*:: as any*/)
+            ],
             "concreteType": "Feed",
             "kind": "LinkedField",
             "name": "feed",
@@ -423,8 +225,8 @@ return {
                 "name": "posts",
                 "plural": true,
                 "selections": [
-                  (v7/*:: as any*/),
-                  (v18/*:: as any*/),
+                  (v11/*:: as any*/),
+                  (v15/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -460,34 +262,188 @@ return {
                     "kind": "LinkedField",
                     "name": "author",
                     "plural": false,
-                    "selections": (v13/*:: as any*/),
+                    "selections": (v14/*:: as any*/),
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v16/*:: as any*/)
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "hasNext",
+                "storageKey": null
+              }
             ],
             "storageKey": null
           }
         ]
       },
-      (v19/*:: as any*/),
-      (v20/*:: as any*/)
+      {
+        "condition": "messages",
+        "kind": "Condition",
+        "passingValue": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Thread",
+            "kind": "LinkedField",
+            "name": "threads",
+            "plural": true,
+            "selections": [
+              (v11/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "lastMessage",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "User",
+                "kind": "LinkedField",
+                "name": "participant",
+                "plural": false,
+                "selections": [
+                  (v10/*:: as any*/),
+                  (v11/*:: as any*/),
+                  (v12/*:: as any*/),
+                  (v13/*:: as any*/)
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": [
+              {
+                "kind": "Variable",
+                "name": "id",
+                "variableName": "thread"
+              }
+            ],
+            "concreteType": "Conversation",
+            "kind": "LinkedField",
+            "name": "conversation",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Thread",
+                "kind": "LinkedField",
+                "name": "thread",
+                "plural": false,
+                "selections": [
+                  (v11/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "User",
+                    "kind": "LinkedField",
+                    "name": "participant",
+                    "plural": false,
+                    "selections": [
+                      (v10/*:: as any*/),
+                      (v11/*:: as any*/)
+                    ],
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Message",
+                "kind": "LinkedField",
+                "name": "messages",
+                "plural": true,
+                "selections": [
+                  (v11/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "author",
+                    "storageKey": null
+                  },
+                  (v15/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "sentAt",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ]
+      },
+      {
+        "condition": "settings",
+        "kind": "Condition",
+        "passingValue": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Settings",
+            "kind": "LinkedField",
+            "name": "settings",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "displayName",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "bio",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "email",
+                "storageKey": null
+              },
+              (v11/*:: as any*/)
+            ],
+            "storageKey": null
+          }
+        ]
+      }
     ]
   },
   "params": {
-    "cacheID": "4ae2c5bcd5e9f763c25380b778420f7a",
+    "cacheID": "2c2a7da4b13f72ead29afeba1fea0be0",
     "id": null,
     "metadata": {},
     "name": "SnsScreenQuery",
     "operationKind": "query",
-    "text": "query SnsScreenQuery(\n  $topic: String!\n  $search: String!\n  $page: Int!\n  $thread: ID!\n  $feed: Boolean!\n  $messages: Boolean!\n  $settings: Boolean!\n) {\n  viewer {\n    id\n    name\n    handle\n    avatar\n    photo\n    bio\n  }\n  feed(topic: $topic, search: $search, page: $page) @include(if: $feed) {\n    posts {\n      id\n      ...SnsPost_post\n    }\n    hasNext\n  }\n  threads @include(if: $messages) {\n    id\n    name\n    handle\n    avatar\n    photo\n    lastMessage\n  }\n  conversation(id: $thread) @include(if: $messages) {\n    thread {\n      id\n      name\n      handle\n      avatar\n      photo\n      lastMessage\n    }\n    messages {\n      id\n      threadId\n      author\n      body\n      sentAt\n    }\n  }\n  settings @include(if: $settings) {\n    id\n    displayName\n    handle\n    bio\n    email\n  }\n}\n\nfragment SnsPost_post on Post {\n  id\n  body\n  topic\n  likes\n  liked\n  createdAt\n  author {\n    id\n    name\n    handle\n    avatar\n    photo\n    bio\n  }\n}\n"
+    "text": "query SnsScreenQuery(\n  $topic: String!\n  $search: String!\n  $page: Int!\n  $thread: ID!\n  $feed: Boolean!\n  $messages: Boolean!\n  $settings: Boolean!\n) {\n  ...SnsScreen_query_3nq1oD\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsComposer_viewer on User {\n  name\n  ...SnsAvatar_user\n}\n\nfragment SnsConversation_conversation on Conversation {\n  thread {\n    id\n    participant {\n      name\n      id\n    }\n  }\n  messages {\n    id\n    ...SnsMessage_message\n  }\n}\n\nfragment SnsInbox_query_2omOIA on Query {\n  viewer {\n    id\n  }\n  threads {\n    id\n    ...SnsThread_thread\n  }\n  conversation(id: $thread) {\n    thread {\n      id\n    }\n    ...SnsConversation_conversation\n  }\n}\n\nfragment SnsMessage_message on Message {\n  author\n  body\n  sentAt\n}\n\nfragment SnsPost_post on Post {\n  id\n  body\n  topic\n  likes\n  liked\n  createdAt\n  author {\n    name\n    handle\n    ...SnsAvatar_user\n    id\n  }\n}\n\nfragment SnsScreen_query_3nq1oD on Query {\n  ...SnsSocialFrame_query\n  ...SnsTimeline_query_41NAMG @include(if: $feed)\n  ...SnsInbox_query_2omOIA @include(if: $messages)\n  ...SnsSettings_query @include(if: $settings)\n}\n\nfragment SnsSettings_query on Query {\n  settings {\n    displayName\n    bio\n    email\n    id\n  }\n}\n\nfragment SnsSocialFrame_query on Query {\n  viewer {\n    name\n    handle\n    ...SnsAvatar_user\n    id\n  }\n}\n\nfragment SnsThread_thread on Thread {\n  id\n  lastMessage\n  participant {\n    name\n    ...SnsAvatar_user\n    id\n  }\n}\n\nfragment SnsTimeline_query_41NAMG on Query {\n  viewer {\n    ...SnsComposer_viewer\n    id\n  }\n  feed(topic: $topic, search: $search, page: $page) {\n    posts {\n      id\n      ...SnsPost_post\n    }\n    hasNext\n  }\n}\n"
   }
 };
 })();
 
-(node/*:: as any*/).hash = "ad193c55becfeeb66e66285949289b83";
+(node/*:: as any*/).hash = "8f26ad60acc48095e5f1b4ae0dfe5d6c";
 
 export default ((node/*:: as any*/)/*:: as Query<
   SnsScreenQuery$variables,

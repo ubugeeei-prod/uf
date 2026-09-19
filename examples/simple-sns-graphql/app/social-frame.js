@@ -1,19 +1,35 @@
+"use client";
 // @flow
 
 import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { Avatar, Icon } from "./ui.js";
+import { graphql, useFragment } from "@uniflowed/relay";
+import { UserAvatar } from "./avatar.client.js";
+import type {
+  SnsSocialFrame_query$key,
+  SnsSocialFrame_query$data,
+} from "./__generated__/SnsSocialFrame_query.graphql.js";
 import { SignOut } from "./session-client.js";
-import {
-  TOPICS,
-  topicLabel,
-  feedHref,
-  GUEST,
-  type Session,
-  type User,
-  type View,
-} from "./social-model.js";
+import { TOPICS, topicLabel, feedHref, type User, type View } from "./social-model.js";
+
+const frameFragment = graphql`
+  fragment SnsSocialFrame_query on Query {
+    viewer {
+      name
+      handle
+      ...SnsAvatar_user
+    }
+  }
+`;
+
+type FrameSession =
+  | { kind: "guest" }
+  | {
+      kind: "authenticated",
+      user: NonNullable<SnsSocialFrame_query$data["viewer"]>,
+    };
 
 const PEOPLE: $ReadOnlyArray<User> = [
   { id: "seed-mika", name: "Mika Tan", handle: "mika", avatar: "MT", bio: "Product engineering" },
@@ -27,10 +43,13 @@ const PEOPLE: $ReadOnlyArray<User> = [
  */
 export component SocialFrame(
   active: View,
-  session: Session = GUEST,
+  queryRef: SnsSocialFrame_query$key,
   aside: boolean = true,
   ...{ children }: React.ElementConfig<"main">
 ) {
+  const { viewer } = useFragment(frameFragment, queryRef);
+  const session: FrameSession =
+    viewer == null ? { kind: "guest" } : { kind: "authenticated", user: viewer };
   const links = [
     { view: "timeline", href: "/", icon: "home", label: "Feed" },
     { view: "clips", href: "/clips", icon: "video", label: "Clips" },
@@ -90,7 +109,7 @@ export component SocialFrame(
               {kind: "authenticated", user: const user} =>
                 <>
                   <Link to="/settings" className="account-person">
-                    <Avatar user={user} small />
+                    <UserAvatar userRef={user} small />
                     <span>
                       <strong>{user.name}</strong>
                       <small>@{user.handle}</small>

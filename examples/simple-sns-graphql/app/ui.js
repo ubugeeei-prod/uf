@@ -5,7 +5,7 @@ import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { props, stylex } from "@uniflowed/stylex";
 import { AvatarFallback, AvatarImage, AvatarRoot, SkeletonBox } from "@uniflowed/ui";
-import { avatarPhoto, type User } from "./social-model.js";
+import { avatarPhoto } from "./social-model.js";
 
 /**
  * Render decorative line icons on a shared grid; the owning control supplies its accessible name.
@@ -56,7 +56,10 @@ export component Icon(name: string, size: number = 20) {
 }
 
 /** Compose the UI avatar primitive with a licensed portrait or a stable initials fallback. */
-export component Avatar(user: User, small: boolean = false) renders AvatarRoot {
+export component Avatar(
+  user: { readonly id: string, readonly photo?: ?string, readonly avatar: string, ... },
+  small: boolean = false,
+) renders AvatarRoot {
   const photo = user.photo ?? avatarPhoto(user.id);
 
   return (

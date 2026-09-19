@@ -302,7 +302,7 @@ struct Exports {
 /// [`a_barrel_re_export_names_something_its_source_has`] has to know both
 /// namespaces because a barrel re-exports from both.
 fn exported_values(source: &str) -> Result<Option<Vec<String>>, String> {
-    Ok(exported_names(source)?.map(|exports| exports.values))
+    Ok(read_exported_names(source, false)?.map(|exports| exports.values))
 }
 
 /// Both namespaces of one module, or [`None`] when it cannot be read.
@@ -312,6 +312,10 @@ fn exported_values(source: &str) -> Result<Option<Vec<String>>, String> {
 /// it" nor "does not", and every caller has to decide for itself what to do
 /// about it rather than being handed an empty list that reads like a fact.
 fn exported_names(source: &str) -> Result<Option<Exports>, String> {
+    read_exported_names(source, true)
+}
+
+fn read_exported_names(source: &str, include_types: bool) -> Result<Option<Exports>, String> {
     use uf_flow::ast::statement::{self, ExportKind};
 
     let parsed = uf_flow::parse(source).map_err(|error| format!("{error:?}"))?;
@@ -346,7 +350,11 @@ fn exported_names(source: &str) -> Result<Option<Exports>, String> {
         if let Some(statement::export_named_declaration::Specifier::ExportBatchSpecifier(_)) =
             &inner.specifiers
         {
-            return Ok(None);
+            // A type-only wildcard leaves the value namespace fully known.
+            // Readers of both namespaces must still report the unknown types.
+            if include_types || inner.export_kind != ExportKind::ExportType {
+                return Ok(None);
+            }
         }
         if let Some(statement::export_named_declaration::Specifier::ExportSpecifiers(specifiers)) =
             &inner.specifiers
@@ -1279,6 +1287,13 @@ fn the_export_reader_sees_every_shape_a_package_uses() {
         exported_values("const a = 1;\nexport type { A };\nexport { a };\n").unwrap(),
         Some(vec!["a".to_owned()])
     );
+
+    let type_wildcard = "export type * from \"react-relay\";\nexport const value = 1;\n";
+    assert_eq!(
+        exported_values(type_wildcard).unwrap(),
+        Some(vec!["value".to_owned()])
+    );
+    assert!(exported_names(type_wildcard).unwrap().is_none());
 
     // And the one that decides whether a module can be checked at all. Both
     // spellings are the same statement, and a reader that matched a line of

@@ -104,6 +104,7 @@ export async function checkBrowser(origin, label, output) {
     const { targetId } = await send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
     const page = (method, params) => send(method, params, sessionId);
+    await page("Page.enable");
     await page("Runtime.enable");
     await page("Network.enable");
     await page("Emulation.setDeviceMetricsOverride", {
@@ -146,6 +147,7 @@ export async function checkBrowser(origin, label, output) {
     const navigate = async (route, condition) => {
       await page("Page.navigate", { url: `${origin}${route}` });
       await waitFor(condition);
+      await waitFor("document.readyState === 'complete'");
       await settle();
     };
     const fill = (selector, value) =>
@@ -232,6 +234,13 @@ export async function checkBrowser(origin, label, output) {
       fs.writeFileSync(
         path.join(output, `${label}-failure.txt`),
         String(await evaluate("document.body.innerText").catch(() => "page unavailable")),
+      );
+    if (evaluate)
+      fs.writeFileSync(
+        path.join(output, `${label}-failure.html`),
+        String(
+          await evaluate("document.documentElement.outerHTML").catch(() => "page unavailable"),
+        ),
       );
     throw error;
   } finally {
