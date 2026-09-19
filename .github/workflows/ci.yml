@@ -860,6 +860,7 @@ jobs:
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run native:smoke
       - run: sh tools/ci/native-renderer-smoke.sh
+      - run: sh tools/ci/native-example.sh
 
   # One check that is true only when every other one is.
   #

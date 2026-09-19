@@ -3,7 +3,10 @@
 export type NativeStyleProps = { readonly style: { readonly [string]: string | number } };
 
 /** Return null for web namespaces; mixing renderer outputs is an error. */
-export function nativeProps(styles: $ReadOnlyArray<mixed>): NativeStyleProps | null {
+export function nativeProps(
+  styles: $ReadOnlyArray<mixed>,
+  nativeOnly: boolean = false,
+): NativeStyleProps | null {
   let native = false;
   let web = false;
   const merged: { [string]: string | number } = {};
@@ -18,7 +21,10 @@ export function nativeProps(styles: $ReadOnlyArray<mixed>): NativeStyleProps | n
     // Static objects written by the compiler; validate their scalar fields.
     const namespace: { [string]: mixed } = value as $FlowFixMe;
     if (namespace.$$css === true) web = true;
-    if (namespace.$$native !== true) continue;
+    if (namespace.$$native !== true) {
+      if (nativeOnly) throw new Error("StyleX native: expected a compiled native namespace");
+      continue;
+    }
     native = true;
     for (const property of Object.keys(namespace)) {
       if (property === "$$native") continue;

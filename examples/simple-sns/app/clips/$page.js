@@ -1,10 +1,10 @@
 // @flow
 
 import * as React from "@uniflowed/react";
-import { SocialFrame } from "../social-frame.js";
-import { sessionData } from "../social-queries.js";
-import type { Session } from "../social-model.js";
-import { Clips } from "./clips-client.js";
+import { SocialFrame } from "../_shared/social-frame.js";
+import { sessionData } from "../_server/social-queries.js";
+import type { Session } from "../_shared/social-model.js";
+import { Clips } from "./clips.client.js";
 import { CLIPS } from "./clip-model.js";
 
 /** Resolve only the shared shell identity; curated clip metadata is already local. */

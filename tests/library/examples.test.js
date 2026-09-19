@@ -8,34 +8,34 @@ import {
   database,
   closeDatabase,
   transaction,
-} from "../../examples/simple-sns/app/server/database.server.js";
+} from "../../examples/simple-sns/app/_server/database.server.js";
 import {
   authenticate,
   issueSession,
   revokeSession,
   viewerFor,
   SESSION_COOKIE,
-} from "../../examples/simple-sns/app/server/session.server.js";
+} from "../../examples/simple-sns/app/_server/session.server.js";
 import {
   listThreads,
   listMessages,
   insertMessage,
   insertPost,
   settingsFor,
-} from "../../examples/simple-sns/app/server/repository.server.js";
+} from "../../examples/simple-sns/app/_server/repository.server.js";
 import {
   createPost,
   likePost,
   sendMessage,
   updateSettings,
-} from "../../examples/simple-sns/app/social-actions.js";
+} from "../../examples/simple-sns/app/_server/social-actions.js";
 import {
   sessionData,
   timelineData,
   messagesData,
   settingsData,
-} from "../../examples/simple-sns/app/social-queries.js";
-import { InputError } from "../../examples/simple-sns/app/server/validation.server.js";
+} from "../../examples/simple-sns/app/_server/social-queries.js";
+import { InputError } from "../../examples/simple-sns/app/_server/validation.server.js";
 import { POST } from "../../examples/simple-sns/app/auth/session/$route.js";
 import {
   IDLE,
@@ -43,7 +43,7 @@ import {
   type User,
   type Post,
   type FormState,
-} from "../../examples/simple-sns/app/social-model.js";
+} from "../../examples/simple-sns/app/_shared/social-model.js";
 import {
   layerMerge,
   layerSucceed,
@@ -59,7 +59,7 @@ import {
   type MutationProblem,
   type Identity,
   type Store,
-} from "../../examples/simple-sns/app/server/programs.server.js";
+} from "../../examples/simple-sns/app/_server/programs.server.js";
 
 const originalDb = process.env.UF_SIMPLE_SNS_DB;
 let directory = "";

@@ -64,7 +64,9 @@ export default defineConfig({
   // report every fixture's deliberate defect as this project's defect: 1868
   // of the 3782 type errors `uf check` used to report here came from
   // `crates/uf_fmt/tests/fixtures` alone.
-  ignore: ["upstream", "crates", "dist", "target", "node_modules"],
+  // This example has a different test host and its own installed native peers.
+  // native:example checks its source and runs it under that host separately.
+  ignore: ["upstream", "crates", "dist", "target", "node_modules", "examples/simple-sns-native"],
 
   test: {
     // `uf run test:lib:coverage` measures the packages this repository ships,
@@ -992,6 +994,10 @@ export default defineConfig({
     },
 
     "native:smoke": "tools/ci/native-bundle-smoke.sh",
+    "native:example": {
+      command: "tools/ci/native-example.sh",
+      dependsOn: ["build"],
+    },
 
     manifests: {
       command:
@@ -1025,6 +1031,7 @@ export default defineConfig({
         "test:lib",
         "edge:smoke",
         "native:smoke",
+        "native:example",
         "docs:build",
         "rust:metadata",
         "rust:lints",

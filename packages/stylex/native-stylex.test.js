@@ -1,6 +1,7 @@
 // @flow
 import { expect, test } from "@uniflowed/testing";
 import { props } from "./props.js";
+import { props as nativeProps } from "./native.js";
 
 test("native namespaces merge as style props, with the last value winning", () => {
   const first = { $$native: true, padding: 12, opacity: 0.5 };
@@ -9,6 +10,15 @@ test("native namespaces merge as style props, with the last value winning", () =
     style: { padding: 12, opacity: 1, color: "red" },
   });
   expect(props({ $$native: true })).toEqual({ style: {} });
+});
+
+test("the native entry preserves merges and refuses web or uncompiled namespaces", () => {
+  expect(
+    nativeProps({ $$native: true, padding: 12 }, false, [{ $$native: true, padding: 24 }]),
+  ).toEqual({ style: { padding: 24 } });
+  expect(nativeProps(null, false, [])).toEqual({ style: {} });
+  expect(() => nativeProps({ $$css: true, padding: "x123" })).toThrow("compiled native namespace");
+  expect(() => nativeProps({ padding: 12 })).toThrow("compiled native namespace");
 });
 
 test("web and native outputs cannot accidentally share one runtime result", () => {

@@ -1,7 +1,16 @@
 // @flow
+import * as React from "@uniflowed/react";
 import type { SearchParams } from "@uniflowed/router";
-import { renderScreen } from "../screen.server.js";
+import { relay } from "../_server/relay.server.js";
+import { RelayRoot } from "../_shared/relay-root.client.js";
+import query from "./__generated__/SnsClipsPageQuery.graphql.js";
+import { Screen } from "./screen.client.js";
+
 export const dynamic = "force-dynamic";
 export component Page(searchParams: SearchParams) {
-  return renderScreen("clips", searchParams);
+  return (
+    <RelayRoot>
+      <Screen queryRef={relay.serverPreloadQuery(query, {})} />
+    </RelayRoot>
+  );
 }

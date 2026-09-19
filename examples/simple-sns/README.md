@@ -75,3 +75,8 @@ All portraits, videos, and posters are local assets. Attribution and the origina
 The tests exercise authorization, session isolation and expiry, persistence after reopening the database, conflicting writes, idempotent retries, Effect dependency injection, optimistic rollback, preserved drafts, independent Suspense reveal/retry, and invalid Flow composition. They use isolated temporary databases.
 
 This is a single-instance SQLite application example. Its account model does not include email verification, password recovery, or MFA. Deployment infrastructure, distributed throttling, backups, and user-media ingestion remain application-specific concerns.
+
+The home feed lives in `app/(feed)`, shared login/signup components in
+`app/(account)`, and other screens in their own route directories. Reused view
+primitives live in `app/_shared`; storage and shared server capabilities live
+in `app/_server`. Browser boundaries use the `.client.js` suffix.

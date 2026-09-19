@@ -20,10 +20,10 @@ import type {
 } from "./internal/native-tree.js";
 import { nativeTree, stateForPath, hrefFromState, paramsForPath } from "./internal/native-tree.js";
 
-export type NavigatorPair = {
-  readonly Navigator: React.ComponentType<{ ... }>,
-  readonly Screen: React.ComponentType<{ ... }>,
-};
+export interface NavigatorPair {
+  readonly Navigator: React.ComponentType<{ ... }>;
+  readonly Screen: React.ComponentType<{ ... }>;
+}
 export type FileRouter = {
   readonly push: (href: string) => void,
   readonly replace: (href: string) => void,

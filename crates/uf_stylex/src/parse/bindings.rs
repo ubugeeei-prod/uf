@@ -147,7 +147,9 @@ fn apply(
     statement: &ImportStatement,
 ) {
     let specifier = statement.specifier.as_str();
-    let is_stylex = specifier == STYLEX_PACKAGE || specifier == STYLEX_CORE_PACKAGE;
+    let is_stylex = specifier == STYLEX_PACKAGE
+        || specifier == "@uniflowed/stylex/native"
+        || specifier == STYLEX_CORE_PACKAGE;
     let is_variables = specifier.ends_with(VARIABLES_SUFFIX);
     if !is_stylex && !is_variables {
         return;
