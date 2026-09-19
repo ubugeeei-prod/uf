@@ -68,41 +68,41 @@ impl Span {
 
 /// An object literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Object {
+pub(crate) struct Object {
     /// The `{`.
-    pub(super) open: usize,
+    pub(crate) open: usize,
     /// The `}`, or [`None`] when the document ends first.
-    pub(super) close: Option<usize>,
+    pub(crate) close: Option<usize>,
     /// Its members, in source order.
-    pub(super) entries: Vec<Entry>,
+    pub(crate) entries: Vec<Entry>,
 }
 
 /// One member of an object literal, however much of it has been written.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Entry {
+pub(crate) struct Entry {
     /// The key, when it is a name, a string or a number. A spread, a computed
     /// key or a method has none.
-    pub(super) key: Option<Word>,
+    pub(crate) key: Option<Word>,
     /// The `:` after the key, once it has been typed.
-    pub(super) colon: Option<usize>,
+    pub(crate) colon: Option<usize>,
     /// The value, once it has been typed.
-    pub(super) value: Option<Value>,
+    pub(crate) value: Option<Value>,
 }
 
 /// A list literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Array {
+pub(crate) struct Array {
     /// The `[`.
-    pub(super) open: usize,
+    pub(crate) open: usize,
     /// The `]`, or [`None`] when the document ends first.
-    pub(super) close: Option<usize>,
+    pub(crate) close: Option<usize>,
     /// Its elements, in source order; holes are skipped.
-    pub(super) elements: Vec<Value>,
+    pub(crate) elements: Vec<Value>,
 }
 
 /// A value, as far as completion can tell values apart.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Value {
+pub(crate) enum Value {
     /// An object literal.
     Object(Object),
     /// A list literal.
@@ -115,19 +115,19 @@ pub(super) enum Value {
 
 /// A key, or a value that is one token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Word {
+pub(crate) struct Word {
     /// The token, quotes included.
-    pub(super) span: Span,
+    pub(crate) span: Span,
     /// The quote a string is written with, or [`None`] for a name or a number.
-    pub(super) quote: Option<u8>,
+    pub(crate) quote: Option<u8>,
     /// Whether a string has its closing quote. Always true for anything else.
-    pub(super) terminated: bool,
+    pub(crate) terminated: bool,
 }
 
 impl Word {
     /// What a completion replaces: the inside of a string's quotes, or the
     /// whole of a name.
-    pub(super) fn contents(&self) -> Span {
+    pub(crate) fn contents(&self) -> Span {
         if self.quote.is_none() {
             return self.span;
         }
@@ -141,7 +141,7 @@ impl Word {
     }
 
     /// The text of [`Word::contents`].
-    pub(super) fn text<'s>(&self, source: &'s str) -> &'s str {
+    pub(crate) fn text<'s>(&self, source: &'s str) -> &'s str {
         let contents = self.contents();
         source.get(contents.start..contents.end).unwrap_or_default()
     }
@@ -152,7 +152,7 @@ impl Word {
     /// that is where the cursor is while the name is being typed — and its
     /// start is not. For a string it is the inside of the quotes, and the end
     /// of one with no closing quote yet.
-    pub(super) fn holds(&self, offset: usize) -> bool {
+    pub(crate) fn holds(&self, offset: usize) -> bool {
         let Span { start, end } = self.span;
         match (self.quote, self.terminated) {
             (Some(_), true) => start < offset && offset < end,
@@ -172,7 +172,7 @@ impl Entry {
     }
 
     /// Where the entry begins.
-    pub(super) fn start(&self) -> usize {
+    pub(crate) fn start(&self) -> usize {
         self.key
             .map(|key| key.span.start)
             .or(self.colon)
@@ -181,7 +181,7 @@ impl Entry {
     }
 
     /// Where the entry ends, however far it got.
-    pub(super) fn end(&self) -> usize {
+    pub(crate) fn end(&self) -> usize {
         match (&self.value, self.colon, self.key) {
             (Some(value), _, _) => value.end(),
             (None, Some(colon), _) => colon + 1,
@@ -193,7 +193,7 @@ impl Entry {
 
 impl Value {
     /// Where the value begins.
-    pub(super) fn start(&self) -> usize {
+    pub(crate) fn start(&self) -> usize {
         match self {
             Self::Object(object) => object.open,
             Self::Array(array) => array.open,
@@ -204,7 +204,7 @@ impl Value {
 
     /// Where the value ends. An object or a list with no closer yet runs to the
     /// end of everything.
-    pub(super) fn end(&self) -> usize {
+    pub(crate) fn end(&self) -> usize {
         match self {
             Self::Object(object) => object.close.map_or(usize::MAX, |close| close + 1),
             Self::Array(array) => array.close.map_or(usize::MAX, |close| close + 1),
@@ -216,7 +216,7 @@ impl Value {
 
 /// The config object `source` exports, read by the parser when the document
 /// parses and by the scanner when it does not.
-pub(super) fn read(source: &str) -> Option<Object> {
+pub(crate) fn read(source: &str) -> Option<Object> {
     match from_tree(source) {
         Parsed::Clean(object) => object,
         Parsed::Broken => from_tokens(source),
@@ -459,7 +459,7 @@ impl Tree<'_> {
 }
 
 /// The scanner's reading.
-pub(super) fn from_tokens(source: &str) -> Option<Object> {
+pub(crate) fn from_tokens(source: &str) -> Option<Object> {
     let tokens = uf_flow::scan::tokenize(source);
     let open = config_open(source, &tokens)?;
     let mut scanner = Scanner {
@@ -725,13 +725,13 @@ impl Scanner<'_> {
 
 /// What lies between two tokens.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(super) struct Gap {
+pub(crate) struct Gap {
     /// A `,` is in it.
-    pub(super) comma: bool,
+    pub(crate) comma: bool,
     /// A line break is in it, comments included.
-    pub(super) newline: bool,
+    pub(crate) newline: bool,
     /// The first `:` in it.
-    pub(super) colon: Option<usize>,
+    pub(crate) colon: Option<usize>,
 }
 
 /// The bytes from `from` to `to`, read as the space between two tokens:
@@ -740,7 +740,7 @@ pub(super) struct Gap {
 /// [`None`] when `to` is inside a comment, which is the one place in a gap
 /// where nothing may be offered, and when `from` is past `to`, which means the
 /// caller's idea of the gap is wrong.
-pub(super) fn gap(source: &str, from: usize, to: usize) -> Option<Gap> {
+pub(crate) fn gap(source: &str, from: usize, to: usize) -> Option<Gap> {
     let bytes = source.as_bytes();
     let to = to.min(bytes.len());
     if from > to {

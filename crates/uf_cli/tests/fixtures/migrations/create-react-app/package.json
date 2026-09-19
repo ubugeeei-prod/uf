@@ -1,0 +1,24 @@
+{
+  "name": "uf-migrate-create-react-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "scripts": {
+    "check": "flow check",
+    "lint": "eslint .",
+    "test": "react-scripts test --watchAll=false",
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "devDependencies": {
+    "react-scripts": "5.0.1"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  }
+}
