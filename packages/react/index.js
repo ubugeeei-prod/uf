@@ -21,6 +21,7 @@
 // `react-scripts` was the package that serialised exactly this.
 
 export * from "react";
+export type * from "react";
 
 import * as React from "react";
 
