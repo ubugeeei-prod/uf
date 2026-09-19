@@ -1070,7 +1070,7 @@ pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
 ///
 /// The project's own `.env` names are added beside these per run; they are not
 /// constant and are not uf's.
-pub(crate) const WORKER_ENVIRONMENT: [&str; 8] = [
+pub(crate) const WORKER_ENVIRONMENT: [&str; 9] = [
     "NODE_V8_COVERAGE",
     "PATH",
     "UF_AXE",
