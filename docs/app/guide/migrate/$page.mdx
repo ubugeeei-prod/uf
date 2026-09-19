@@ -503,10 +503,10 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
   ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot holds
   no `$not-found.js`, `$route.js` or `$middleware.js`
   ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
-- **The rest of ISR.** A `--compile` binary carries no cache, there is no
-  function-level cache or `"use cache"`
-  ([#961](https://github.com/ubugeeei-prod/uf/issues/961)), and the `ppr` mode
-  name selects nothing yet.
+- **The rest of ISR.** A `--compile` binary carries no cache and the `ppr` mode
+  name selects nothing yet. Function caching uses explicit
+  [`cacheFunction`](/guide/cache), with a name, arguments and lifetime;
+  the `"use cache"` directive is not supported.
 - **Middleware and request APIs.** A rewrite changes the path and never the
   request's headers, neither a middleware's nor a config rule's proxies to
   another origin, and `cookies()` reads without writing.

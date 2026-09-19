@@ -639,6 +639,40 @@ fn a_server_only_import_a_client_component_reaches_fails_the_build_naming_its_ch
     );
 }
 
+#[test]
+fn a_cached_function_reading_cookies_fails_the_build_naming_the_function() {
+    let mut files = minimal_app();
+    files[2] = (
+        "app/$page.js",
+        r#"
+        import { cacheFunction } from '@uniflowed/server/cache';
+        import { cookies } from '@uniflowed/server';
+        const account = cacheFunction('account', async () => cookies().get('session'), { lifetime: { revalidate: 60 } });
+        export default async function Page() { return <p>{await account()}</p>; }
+    "#,
+    );
+    let project = Project::new(&files);
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{said}");
+    for expected in [
+        "rsc/request-state-in-cached-function",
+        "`account`",
+        "`cookies()`",
+    ] {
+        assert!(said.contains(expected), "missing {expected} in {said}");
+    }
+}
+
 /// A route whose document is written once, and whose render reads the request,
 /// fails the build naming the route, the function and the chain of imports.
 ///

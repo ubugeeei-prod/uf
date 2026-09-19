@@ -232,6 +232,8 @@ pub struct ClientBoundary {
 /// One module as it is fed into [`RscGraphBuilder`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RscModuleInput {
+    /// Request reads reachable from an explicitly cached function.
+    pub cached_function_reads: Vec<crate::scan::CachedFunctionRead>,
     /// Path relative to the project root, with forward slashes.
     pub path: Utf8PathBuf,
     /// Environment the module executes in.
@@ -254,6 +256,7 @@ impl RscModuleInput {
     /// An empty module at `path` with an explicit environment.
     pub fn new(path: impl Into<Utf8PathBuf>, environment: ModuleEnvironment) -> Self {
         Self {
+            cached_function_reads: Vec::new(),
             path: normalize_module_path(&path.into()),
             environment,
             imports: ImportList::new(),
@@ -273,11 +276,16 @@ impl RscModuleInput {
         // One span table for both use-site collectors, for the same reason
         // there is one token vector for all five passes.
         let owners = owner_spans(source, &tokens);
+        let imports = imports_from_tokens(source, &tokens, &index);
+        let cached_function_reads = crate::scan::data_cache::cached_function_reads(
+            source, &tokens, &index, &imports, &owners,
+        );
 
         Self {
             path: normalize_module_path(&path.into()),
             environment: directives.environment,
-            imports: imports_from_tokens(source, &tokens, &index),
+            imports,
+            cached_function_reads,
             exports: exports_from_tokens(source, &tokens, &index),
             function_actions: directives.function_directives,
             client_api_uses: client_api_uses_from_tokens(source, &tokens, &index, &owners),

@@ -2219,21 +2219,13 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
     Ok(())
 }
 
-/// Refuse a cache switch uf would read and not honour.
-///
-/// Only the two that are unimplemented, and only when a project turned one
-/// *on*: `false` is the default and says the same thing whether or not there is
-/// an implementation behind it. `route` and `fetch` reach
-/// `@uniflowed/server/cache` through the generated server entry and through
-/// `uf preview`/`uf start`, so they are checked by the suite rather than here.
+/// Action result caching is not implemented; the other switches reach a store.
 fn check_cache_switches(path: &Utf8Path, cache: &CacheConfig) -> Result<(), ConfigError> {
-    for (on, key) in [(cache.data, "data"), (cache.actions, "actions")] {
-        if on {
-            return Err(ConfigError::UnimplementedCache {
-                path: path.to_path_buf(),
-                key,
-            });
-        }
+    if cache.actions {
+        return Err(ConfigError::UnimplementedCache {
+            path: path.to_path_buf(),
+            key: "actions",
+        });
     }
     Ok(())
 }

@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 camino.workspace = true
 compact_str.workspace = true
+serde_json.workspace = true
 uf_config = { path = "../uf_config" }
 uf_fmt = { path = "../uf_fmt" }
 thiserror.workspace = true

@@ -1680,11 +1680,12 @@ async function deploy() {
 function handlerEntrySource(document, cache, capabilities, build, regeneration) {
   const route = cache?.route === true;
   const fetchCache = cache?.fetch === true;
+  const dataCache = cache?.data === true;
   // Nothing at all when both switches are off, so a default project's
   // `handler.js` is the file it has always been. A cache that appears in
   // generated output nobody asked for is the second half of the complaint
   // #277 makes about the first half.
-  const store = route || fetchCache;
+  const store = route || fetchCache || dataCache;
   const durable = store ? durableStoreSource(root, cache, build) : null;
   const options = [
     "app",
@@ -1719,7 +1720,7 @@ ${
       } See ubugeeei-prod/uf#277.
 const cache = { store: createCacheStore(${
         durable == null ? "" : `{ provider: ${durable.provider}, build: ${JSON.stringify(build)} }`
-      }), route: ${String(route)}, fetch: ${String(fetchCache)} };
+      }), route: ${String(route)}, fetch: ${String(fetchCache)}, data: ${String(dataCache)} };
 
 `
     : ""

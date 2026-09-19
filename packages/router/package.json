@@ -25,7 +25,8 @@
     "./routing": "./routing.js",
     "./package.json": "./package.json",
     "./handler": "./handler.js",
-    "./middleware": "./middleware.js"
+    "./middleware": "./middleware.js",
+    "./http-client": "./http-client.js"
   },
   "files": [
     "action.js",
@@ -41,7 +42,8 @@
     "rsc.js",
     "server-components.js",
     "server.js",
-    "!*.test.js"
+    "!*.test.js",
+    "http-client.js"
   ],
   "peerDependencies": {
     "react": ">=19.2.3",
