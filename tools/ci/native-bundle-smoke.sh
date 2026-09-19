@@ -9,9 +9,7 @@ trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 export UF_BINARY="$binary"
 mkdir -p "$scratch/packs"
 cd "$repo"
-for package in react-native vite router; do
-  npm pack --workspace "packages/$package" --ignore-scripts --pack-destination "$scratch/packs" >/dev/null
-done
+node tools/ci/pack-native-dependencies.cjs "$scratch/packs"
 for provider in expo react-native; do
   app="$scratch/$provider"
   mkdir -p "$app/app" "$app/assets"
@@ -29,10 +27,7 @@ else Object.assign(dependencies, {
   '@react-native-community/cli': '20.2.0',
   '@react-native/metro-config': '0.87.1', '@react-native/babel-preset': '0.87.1',
 });
-for (const name of ['react-native', 'vite', 'router']) {
-  dependencies[`@uniflowed/${name}`] = 'file:' + path.join(packs,
-    fs.readdirSync(packs).find(file => file.startsWith(`uniflowed-${name}-0.`)));
-}
+Object.assign(dependencies, JSON.parse(fs.readFileSync(path.join(packs, 'dependencies.json'), 'utf8')));
 fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: `uf-smoke-${provider}`, private: true, main: 'index.js', dependencies }));
 const from = provider === 'expo' ? 'expo/metro-config' : '@react-native/metro-config';
 fs.writeFileSync(path.join(app, 'metro.config.cjs'), `const {getDefaultConfig} = require('${from}');\nconst {withUniflowedMetro} = require('@uniflowed/react-native/metro');\nmodule.exports = withUniflowedMetro({...getDefaultConfig(__dirname), maxWorkers: 2});\n`);
@@ -66,7 +61,7 @@ NODE
   else
     node_modules/.bin/react-native bundle --platform ios --entry-file index.js --dev true --minify false --bundle-output dev.bundle --assets-dest dev-assets
   fi
-  node --input-type=commonjs -e 'const fs=require("node:fs"),assert=require("node:assert/strict"); const bundle=fs.readFileSync("dev.bundle","utf8"); assert(bundle.includes("native-shared-page")); assert(bundle.includes("$RefreshReg$(Page"), "the Flow component has no Refresh registration");'
+  node --input-type=commonjs -e 'const fs=require("node:fs"),assert=require("node:assert/strict"); const bundle=fs.readFileSync("dev.bundle","utf8"); assert(bundle.includes("native-shared-page")); assert(/\$RefreshReg\$\([^,\n]+,\s*"Page"\)/.test(bundle), "the Flow component has no Refresh registration");'
   # The same page goes through the app's react-native-web dependency in Vite.
   "$binary" build --target web
   node --input-type=commonjs -e 'const fs=require("node:fs"),assert=require("node:assert/strict"); assert(fs.readFileSync("dist/index.html","utf8").includes("native-shared-page"));'
