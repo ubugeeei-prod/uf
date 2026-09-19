@@ -103,14 +103,16 @@ mod tests {
 
     #[test]
     fn refuses_incomplete_identities_and_ambiguous_origins() {
-        let mut router = RouterConfig::default();
-        router.native_links = Some(NativeLinksConfig {
-            origins: vec!["https://example.com".into()],
-            routes: vec!["/users/:id".into()],
-            ios_app_ids: vec!["ABCDE12345.com.example.app".into()],
-            android_package: "com.example.app".into(),
-            android_sha256: vec![("AA:".repeat(31) + "AA").into()],
-        });
+        let mut router = RouterConfig {
+            native_links: Some(NativeLinksConfig {
+                origins: vec!["https://example.com".into()],
+                routes: vec!["/users/:id".into()],
+                ios_app_ids: vec!["ABCDE12345.com.example.app".into()],
+                android_package: "com.example.app".into(),
+                android_sha256: vec![("AA:".repeat(31) + "AA").into()],
+            }),
+            ..RouterConfig::default()
+        };
         assert!(check(Utf8Path::new("uf.config.js"), &router).is_ok());
         for origin in [
             "http://example.com",
