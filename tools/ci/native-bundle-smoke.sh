@@ -38,7 +38,7 @@ fs.writeFileSync(path.join(app, 'index.js'), `import { AppRegistry } from '@unif
 fs.writeFileSync(path.join(app, 'app/$page.js'), `import { Text, View, Image } from '@uniflowed/react-native';\nimport font from '../assets/font.ttf';\nimport icon from '../assets/icon.png';\nexport default component Page() { return <View><Text nativeID={String(font)}>native-shared-page</Text><Image source={typeof icon === 'number' ? icon : { uri: icon.src }} /></View>; }\n`);
 fs.writeFileSync(path.join(app, 'app.js'), `import { routerView } from '@uniflowed/router'; export default routerView('./app');\n`);
 fs.writeFileSync(path.join(app, 'app/$layout.web.js'), `export default component Layout(children: React.Node) { return <html><body>{children}</body></html>; }\n`);
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS2QAAAAASUVORK5CYII=', 'base64');
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
 for (const suffix of ['', '@2x', '@3x']) fs.writeFileSync(path.join(app, `assets/icon${suffix}.png`), png);
 NODE
   cd "$app"
