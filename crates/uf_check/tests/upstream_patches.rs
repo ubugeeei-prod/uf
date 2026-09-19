@@ -171,7 +171,7 @@ export const result: React.Node = Promise.resolve(<Page />);
         assert!(
             diagnostics
                 .iter()
-                .any(|diagnostic| diagnostic.code == "incompatible-type"),
+                .any(|diagnostic| diagnostic.code == Some("incompatible-type")),
             "invalid async component must fail: {diagnostics:?}"
         );
     }
