@@ -6,6 +6,7 @@ import { promise, runPromiseExit } from "@uniflowed/effect";
 import { failed, type ActionResult } from "./social-model.js";
 
 /** Preserve domain results and normalize rejected transports at the client boundary. */
+
 export async function callAction<T>(
   request: () => Promise<ActionResult<T>>,
   message: string,

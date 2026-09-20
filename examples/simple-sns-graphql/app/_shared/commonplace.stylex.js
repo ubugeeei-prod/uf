@@ -1,8 +1,10 @@
 // @flow
+
 import { props, stylex, type StyleArgument, type StyleProps } from "@uniflowed/stylex";
 
 // Values come directly from Commonplace's original CSS. Resets, descendant
 // selectors, responsive layout and media state remain in base.css.
+
 export const styles = stylex.create({
   srOnly: {
     position: "absolute",
@@ -167,6 +169,7 @@ export const styles = stylex.create({
 });
 
 /** Keep semantic classes used by existing state and responsive selectors. */
+
 export function styled(className: string, ...styles: Array<StyleArgument>): StyleProps {
   const result = props(...styles);
   return { ...result, className: `${className} ${result.className ?? ""}` };

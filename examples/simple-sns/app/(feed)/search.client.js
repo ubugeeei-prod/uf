@@ -5,12 +5,14 @@ import * as React from "@uniflowed/react";
 import { startTransition } from "@uniflowed/react";
 import { Link, useRouter } from "@uniflowed/router";
 import { promise, runPromiseExit } from "@uniflowed/effect";
+
 import { Icon } from "../_shared/ui.js";
 import { feedHref, type FeedFilter } from "../_shared/social-model.js";
 
 /**
  * Enhance a native GET search with router navigation; failed navigation falls back to the same URL.
  */
+
 export component SearchNotes(filter: FeedFilter) {
   const router = useRouter();
 

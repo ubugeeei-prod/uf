@@ -1,9 +1,12 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { graphql, useFragment, useMutation } from "@uniflowed/relay";
+
 import { SignInPrompt } from "../_shared/ui.js";
+
 import type { SnsSettings_query$key } from "./__generated__/SnsSettings_query.graphql.js";
 import type { SnsUpdateSettingsMutation } from "./__generated__/SnsUpdateSettingsMutation.graphql.js";
 
@@ -29,6 +32,7 @@ const updateSettings = graphql`
 `;
 
 /** The service derives the account to update; no account ID enters the input. */
+
 export component SettingsForm(queryRef: SnsSettings_query$key) {
   const { settings } = useFragment(settingsFragment, queryRef);
   const [commit, pending] = useMutation<
@@ -37,6 +41,7 @@ export component SettingsForm(queryRef: SnsSettings_query$key) {
   >(updateSettings);
   const [feedback, setFeedback] = useState("");
   if (settings == null) return <SignInPrompt />;
+
   return (
     <section className="settings-panel">
       <header className="page-heading">

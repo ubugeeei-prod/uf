@@ -16,6 +16,7 @@ import {
 } from "../_shared/social-model.js";
 
 /** Project a database row into the public profile DTO, excluding credentials and email. */
+
 export function publicUser(row: Row): User {
   const user = {
     id: String(row.id),
@@ -29,11 +30,13 @@ export function publicUser(row: Row): User {
 }
 
 /** Find the public profile for a stable account identifier. */
+
 export function member(id: string): User | null {
   const row = database().prepare("SELECT id, name, handle, bio FROM members WHERE id = ?").get(id);
 
   return row == null ? null : publicUser(row);
 }
+
 const POST_SELECT = `SELECT e.id, e.body, e.topic, e.created_at, m.id AS author_id, m.name, m.handle, m.bio,
   (SELECT count(*) FROM reactions r WHERE r.entry_id=e.id) AS likes,
   EXISTS(SELECT 1 FROM reactions r WHERE r.entry_id=e.id AND r.member_id=?) AS liked
@@ -55,6 +58,7 @@ function asPost(row: Row): Post {
  * Read one ordered page plus one sentinel row.
  * Search is literal and parameters are bound; reactions are relative to the supplied viewer.
  */
+
 export function listPosts(
   viewerId: string | null,
   topic: Topic | "all",
@@ -86,6 +90,7 @@ function post(id: string, viewerId: string): Post {
  * Publish once per author and request ID within a transaction.
  * An identical retry returns the original note; reusing the ID for different input is rejected.
  */
+
 export function insertPost(viewer: User, body: string, topic: Topic, requestId: string): Post {
   return transaction((db) => {
     const previous = db
@@ -110,6 +115,7 @@ export function insertPost(viewer: User, body: string, topic: Topic, requestId: 
 }
 
 /** Set the viewer’s intended reaction state atomically; repeated requests are idempotent. */
+
 export function setReaction(viewer: User, id: string, liked: boolean): Post {
   identifier(id);
 
@@ -122,6 +128,7 @@ export function setReaction(viewer: User, id: string, liked: boolean): Post {
 }
 
 /** Return at most 50 previews for conversations the viewer participates in. */
+
 export function listThreads(viewer: User): Array<MessageThread> {
   return database()
     .prepare(
@@ -163,6 +170,7 @@ function asMessage(row: Row, viewer: User): Message {
 }
 
 /** Verify membership before returning the latest 50 messages in chronological order. */
+
 export function listMessages(viewer: User, threadId: string): Array<Message> {
   requireParticipant(viewer, threadId);
 
@@ -178,6 +186,7 @@ export function listMessages(viewer: User, threadId: string): Array<Message> {
  * Verify membership and persist one message per author and request ID.
  * A reused ID cannot redirect a previous submission into a different conversation.
  */
+
 export function insertMessage(
   viewer: User,
   threadId: string,
@@ -209,6 +218,7 @@ export function insertMessage(
 }
 
 /** Read private profile fields for the already authenticated account. */
+
 export function settingsFor(viewer: User): Settings {
   const row = database()
     .prepare("SELECT name, handle, bio, email FROM members WHERE id=?")
@@ -226,6 +236,7 @@ export function settingsFor(viewer: User): Settings {
 }
 
 /** Check handle uniqueness and update the account in one transaction. */
+
 export function saveSettings(viewer: User, next: Settings): Settings {
   return transaction((db) => {
     if (
@@ -245,6 +256,7 @@ export function saveSettings(viewer: User, next: Settings): Settings {
 }
 
 /** Create an account’s private fixture conversation inside the signup transaction. */
+
 export function welcomeConversation(memberId: string): void {
   const db = database();
   const id = crypto.randomUUID();

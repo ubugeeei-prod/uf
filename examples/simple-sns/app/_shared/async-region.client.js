@@ -8,11 +8,13 @@ import { promise, runPromiseExit } from "@uniflowed/effect";
 import { EmptyState, RetryButton, LoadingState } from "./ui.js";
 
 /** A settled read carries data or a retryable failure, never a thrown transport error. */
+
 type ResourceResult<out T> =
   | {| readonly kind: "ready", readonly value: T |}
   | {| readonly kind: "failed" |};
 
 /** Run a read adapter without exposing its transport error to the rendered page. */
+
 async function settle<T>(read: () => Promise<T>): Promise<ResourceResult<T>> {
   const result = await runPromiseExit(promise(read));
 
@@ -51,6 +53,7 @@ export hook useRetryableResource<T>(
 }
 
 /** Read beneath Suspense; a failed request renders data-driven recovery in this region. */
+
 component SettledRegion<T>(
   resource: Promise<ResourceResult<T>>,
   label: string,
@@ -71,6 +74,7 @@ component SettledRegion<T>(
  * settled failures use a functional component and an explicit retry action.
  * Unexpected render defects remain the responsibility of the route's $error.js.
  */
+
 export component AsyncRegion<T>(
   resource: Promise<ResourceResult<T>>,
   label: string,

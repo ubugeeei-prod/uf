@@ -3,13 +3,16 @@
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+
 import { AsyncRegion, useRetryableResource } from "../_shared/async-region.client.js";
 import { threadsData, messagesData } from "../_server/social-queries.js";
 import { Avatar, EmptyState, LoadingState, SignInPrompt } from "../_shared/ui.js";
 import { DirectMessagesClient } from "./direct-messages.client.js";
+
 import type { InboxData, ConversationData, MessageThread } from "../_shared/social-model.js";
 
 /** Navigate to one authorized conversation and expose the selected state accessibly. */
+
 export component ThreadLink(thread: MessageThread, selected: boolean) {
   return (
     <Link
@@ -37,6 +40,7 @@ export component ThreadLink(thread: MessageThread, selected: boolean) {
 }
 
 /** Constrain the inbox navigation slot to rendered ThreadLink entries. */
+
 export component ThreadList(children: renders* ThreadLink) {
   return (
     <nav className="thread-list" aria-label="Conversations">
@@ -77,6 +81,7 @@ component Conversation(data: ConversationData) {
 }
 
 /** Reveal and retry inbox previews independently from the selected conversation. */
+
 export component InboxRegions(
   threads: Promise<InboxData>,
   conversation: Promise<ConversationData>,

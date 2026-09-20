@@ -1,13 +1,16 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useFragment, useMutation } from "@uniflowed/relay";
+
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
 import { UserAvatar } from "../_shared/avatar.client.js";
 import { Icon } from "../_shared/ui.js";
 import { displayDate, topicFrom, topicLabel, feedHref } from "../_shared/social-model.js";
+
 import type { SnsPost_post$key } from "./__generated__/SnsPost_post.graphql.js";
 import type { SnsAppreciateMutation } from "./__generated__/SnsAppreciateMutation.graphql.js";
 
@@ -38,6 +41,7 @@ const appreciate = graphql`
 `;
 
 /** Relay owns the optimistic layer and rolls it back when a request fails. */
+
 export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
   const post = useFragment(postFragment, postRef);
   const [commit, pending] = useMutation<
@@ -46,6 +50,7 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
   >(appreciate);
   const [error, setError] = useState("");
   const topic = topicFrom(post.topic) ?? "community";
+
   return (
     <article className="post" aria-busy={pending}>
       <UserAvatar userRef={post.author} />

@@ -4,6 +4,7 @@
  * An expected input or ownership rejection with user-safe field feedback.
  * The Effect adapter translates this exception into the typed validation channel.
  */
+
 export class InputError extends Error {
   fields: { [string]: string };
   constructor(message: string, fields: { [string]: string } = {}) {
@@ -13,6 +14,7 @@ export class InputError extends Error {
 }
 
 /** Read bounded, trimmed text from a form; reject file values and missing required fields. */
+
 export function field(form: FormData, name: string, max: number, min: number = 0): string {
   if (!(form instanceof FormData)) {
     throw new InputError("Please submit the form again.");
@@ -32,6 +34,7 @@ export function field(form: FormData, name: string, max: number, min: number = 0
 }
 
 /** Accept only bounded opaque record or submission identifiers. */
+
 export function identifier(value: string): string {
   if (typeof value !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(value))
     throw new InputError("That item is not available.");
@@ -40,6 +43,7 @@ export function identifier(value: string): string {
 }
 
 /** Normalize and validate the account handle used for authentication and uniqueness. */
+
 export function handleField(form: FormData): string {
   const value = field(form, "handle", 20, 3).toLowerCase();
   if (!/^[a-z][a-z0-9_]{2,19}$/.test(value))
@@ -51,6 +55,7 @@ export function handleField(form: FormData): string {
 }
 
 /** Validate a bounded contact email without claiming ownership verification. */
+
 export function emailField(form: FormData): string {
   const value = field(form, "email", 254, 1);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))

@@ -1,11 +1,15 @@
 // @flow
 
 import * as React from "@uniflowed/react";
+
 import { InboxRegions } from "./inbox.client.js";
+
 import type { LoaderArgs } from "@uniflowed/router";
+
 import { SocialFrame } from "../_shared/social-frame.js";
 import { sessionData, threadsData, messagesData } from "../_server/social-queries.js";
 import { SignInPrompt } from "../_shared/ui.js";
+
 import type {
   Session,
   InboxData,
@@ -14,6 +18,7 @@ import type {
 } from "../_shared/social-model.js";
 
 /** Resolved shell identity with independently deferred inbox and conversation reads. */
+
 export type Data = {|
   readonly session: Session,
   readonly threadId: string,
@@ -22,6 +27,7 @@ export type Data = {|
 |};
 
 /** Start the inbox and conversation together, awaiting only the identity used by navigation. */
+
 export async function loader({ searchParams }: LoaderArgs): Promise<Data> {
   const threadId = String(searchParams.thread ?? "");
   // Start both reads before awaiting identity; one pane never waits for the other.
@@ -33,6 +39,7 @@ export async function loader({ searchParams }: LoaderArgs): Promise<Data> {
 }
 
 /** Compose the inbox shell without serializing the two independent content reads. */
+
 export component Page(data: Data) {
   return (
     <SocialFrame active="messages" session={data.session} aside={false}>

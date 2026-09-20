@@ -1,11 +1,14 @@
 "use server";
 // @flow
 // Thin transport adapters. Untrusted previous state never selects an identity or a record.
+
 import { publishNote, appreciateNote, deliverMessage, changeProfile } from "./programs.server.js";
 import { runMutation } from "./run-mutation.server.js";
+
 import type { ActionResult, FormState, Post, Message, Settings } from "../_shared/social-model.js";
 
 /** Publish through the authenticated Effect program; previous form state is never trusted. */
+
 export async function createPost(
   _previous: FormState<Post>,
   form: FormData,
@@ -14,6 +17,7 @@ export async function createPost(
 }
 
 /** Apply an intended reaction state, so retries cannot accidentally toggle it twice. */
+
 export async function likePost(id: string, liked: boolean): Promise<ActionResult<Post>> {
   return runMutation(
     appreciateNote(id, liked),
@@ -22,6 +26,7 @@ export async function likePost(id: string, liked: boolean): Promise<ActionResult
 }
 
 /** Deliver through the authenticated Effect program with repository membership checks. */
+
 export async function sendMessage(
   _previous: FormState<Message>,
   form: FormData,
@@ -30,6 +35,7 @@ export async function sendMessage(
 }
 
 /** Update the current account only; submitted previous state cannot select another account. */
+
 export async function updateSettings(
   _previous: FormState<Settings>,
   form: FormData,
