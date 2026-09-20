@@ -112,11 +112,20 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
       let settled: Promise<void> | null = null;
       let bodyPending = false;
       let didSettle = false;
+      let ended = false;
+      function inRequest<Value>(body: () => Value): Value {
+        return runWithContext(lifecycle.context, () =>
+          telemetry.with(state?.traceContext ?? telemetry.active(), body),
+        );
+      }
       const finish = () => {
-        if (bodyPending || !didSettle) return;
-        if (lifecycle.context.route != null)
-          state?.span.setAttribute("http.route", lifecycle.context.route);
-        state?.span.end();
+        if (bodyPending || !didSettle || ended) return;
+        ended = true;
+        inRequest(() => {
+          if (lifecycle.context.route != null)
+            state?.span.setAttribute("http.route", lifecycle.context.route);
+          state?.span.end();
+        });
       };
 
       function observeBody<T>(result: T): T {
@@ -124,10 +133,6 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
         state?.span.setAttribute("http.response.status_code", result.status);
         if (result.body == null) return result;
         const reader = result.body.getReader();
-        const active = state?.traceContext ?? telemetry.active();
-        function inRequest<Value>(body: () => Value): Value {
-          return runWithContext(lifecycle.context, () => telemetry.with(active, body));
-        }
         bodyPending = true;
         let closing = false;
         const complete = () => {
@@ -206,9 +211,10 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
           });
         },
         settle() {
-          settled ??= lifecycle.settle().finally(() => {
+          settled ??= Promise.resolve().then(() => {
             didSettle = true;
             finish();
+            return lifecycle.settle();
           });
           return settled;
         },

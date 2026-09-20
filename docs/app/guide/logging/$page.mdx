@@ -73,6 +73,12 @@ The trace contains `uf.request`, `uf.middleware`, `uf.route`, `uf.loader`,
 Server Component is a child of its render. Loaders remain optional; component
 fetching is traced directly. `uf.render` measures the renderer through its shell;
 `uf.request` remains open while a returned response body is consumed or cancelled.
+Once the response body is finished, the request span ends before deferred
+`after()` callbacks. On a buffered serverless host such as Lambda, an application
+can therefore flush its SDK in `after(() => provider.forceFlush())`. Streaming
+hosts may run deferred callbacks before the body ends; use an exporter that keeps
+its asynchronous delivery alive with that platform's lifecycle API. Span processors
+run with the original request context, including when a stream finishes later.
 
 Attributes include `http.request.method`, `http.route`, and the response status
 when available. Outgoing fetch spans include the upstream hostname and scheme.

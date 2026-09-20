@@ -10,6 +10,7 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { createFetch } from "@uniflowed/fetch";
+import { after } from "./index.js";
 import { noteRoute } from "./host.js";
 import {
   createInstrumentation,
@@ -168,6 +169,22 @@ describe("request instrumentation", () => {
     }
     expect(starts).toBe(1);
     expect(requests).toBe(0);
+  });
+
+  it("ends the response span before deferred work flushes the application's SDK", async () => {
+    exporter.reset();
+    let flushedRequest = false;
+    const lifecycle = createInstrumentation().beginRequest(new Request("https://example.com/"));
+    const response = await lifecycle.run(async () => {
+      after(async () => {
+        await provider.forceFlush();
+        flushedRequest = exporter.getFinishedSpans().some((span) => span.name === "uf.request");
+      });
+      return new Response("ok");
+    });
+    await response.text();
+    await lifecycle.settle();
+    expect(flushedRequest).toBe(true);
   });
 
   it("keeps lazy stream fetching inside the request's context after the handler returns", async () => {
