@@ -1233,7 +1233,8 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
             | ReservedRole::Error
             | ReservedRole::Page
             | ReservedRole::Default
-            | ReservedRole::Story => {}
+            | ReservedRole::Story
+            | ReservedRole::Instrumentation => {}
         }
     }
     Ok(())
