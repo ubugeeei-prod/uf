@@ -1,8 +1,9 @@
 // @flow
 
 import { afterAll, describe, expect, it } from "@uniflowed/test";
-import { context, trace } from "@opentelemetry/api";
+import { context, propagation, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -22,11 +23,13 @@ const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProces
 const manager = new AsyncLocalStorageContextManager().enable();
 trace.setGlobalTracerProvider(provider);
 context.setGlobalContextManager(manager);
+propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 afterAll(async () => {
   await provider.shutdown();
   manager.disable();
   trace.disable();
   context.disable();
+  propagation.disable();
 });
 
 describe("request instrumentation", () => {
@@ -79,6 +82,37 @@ describe("request instrumentation", () => {
       expect(fetch.attributes["server.address"]).toBe("upstream.example");
     }
     expect(JSON.stringify(spans.map((span) => span.attributes)).includes("secret")).toBe(false);
+  });
+
+  it("joins an incoming W3C trace and propagates the fetch span to the upstream", async () => {
+    exporter.reset();
+    const traceId = "11112222333344445555666677778888";
+    const parentId = "1111222233334444";
+    let outgoing = null;
+    const client = createFetch({
+      fetch: async (_url, options) => {
+        outgoing = new Headers(options.headers).get("traceparent");
+        return new Response("ok");
+      },
+    });
+    const lifecycle = createInstrumentation().beginRequest(
+      new Request("https://example.com/", {
+        headers: { traceparent: `00-${traceId}-${parentId}-01` },
+      }),
+    );
+    const response = await lifecycle.run(() => client.raw("https://upstream.example/"));
+    await response.text();
+    await lifecycle.settle();
+
+    const spans = exporter.getFinishedSpans();
+    expect(spans.length).toBe(2);
+    const request = spans.find((span) => span.name === "uf.request");
+    const fetch = spans.find((span) => span.name === "uf.fetch");
+    expect(request.parentSpanContext.spanId).toBe(parentId);
+    expect(request.parentSpanContext.isRemote).toBe(true);
+    expect(request.spanContext().traceId).toBe(traceId);
+    expect(fetch.parentSpanContext.spanId).toBe(request.spanContext().spanId);
+    expect(outgoing).toBe(`00-${traceId}-${fetch.spanContext().spanId}-01`);
   });
 
   it("reports a recovered late render exception once and waits for its async hook", async () => {
