@@ -231,7 +231,6 @@ export default defineConfig({
     "instrumentation:smoke": {
       command: "node tools/ci/instrumentation-smoke.mjs",
     },
-    "instrumentation:worker": "npx --yes wrangler@4.128.0 dev --local",
     "edge:smoke": {
       command: "tools/ci/edge-worker-smoke.sh",
       dependsOn: ["build"],
