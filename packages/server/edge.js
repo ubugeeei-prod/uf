@@ -338,6 +338,7 @@ export function createWorkerFetch(
         // which is how a regenerated page starts from the document the build
         // wrote. See `./internal/context.js`.
         lifecycle.context.bindings = env == null ? null : (env: $FlowFixMe);
+        if (ctx != null) lifecycle.context.waitUntil = (work) => ctx.waitUntil(work);
         if (assets != null) {
           lifecycle.context.buildFile = (pathname) => assetFile(assets, addressed, pathname);
         }

@@ -39,6 +39,23 @@ import {
 
 const roots: Array<string> = [];
 
+describe("application instrumentation files", () => {
+  it("keeps both hook modules out of the route table", () => {
+    const table = scanRoutes(
+      appRoot(["$page.js", "$instrumentation.js", "$instrumentation.client.js"]),
+    );
+    expect(table.routes.length).toBe(1);
+  });
+
+  it("refuses an instrumentation module scoped to a nested route", () => {
+    expect(() => scanRoutes(appRoot(["notes/$instrumentation.js"]))).toThrow("router root");
+  });
+
+  it("refuses an unsupported instrumentation variant", () => {
+    expect(() => scanRoutes(appRoot(["$instrumentation.native.js"]))).toThrow("router root");
+  });
+});
+
 afterAll(() => {
   for (const root of roots) {
     fs.rmSync(root, { recursive: true, force: true });

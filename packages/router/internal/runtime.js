@@ -20,6 +20,8 @@
 
 "use client";
 
+import { observeNavigation } from "../instrumentation.js";
+
 import type * as React from "react";
 import {
   Suspense,
@@ -665,7 +667,9 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     setResolved(next);
   };
 
-  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
+  const navigate = (to: string, options?: NavigateOptions): Promise<void> =>
+    observeNavigation(to, () => navigateTo(to, options));
+  const navigateTo = async (to: string, options?: NavigateOptions): Promise<void> => {
     if (!isBrowser()) {
       return;
     }
@@ -985,7 +989,9 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
   // Read once per render, for the reason `ModuleRouter` reads it once.
   const navigation = navigationMode();
 
-  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
+  const navigate = (to: string, options?: NavigateOptions): Promise<void> =>
+    observeNavigation(to, () => navigateTo(to, options));
+  const navigateTo = async (to: string, options?: NavigateOptions): Promise<void> => {
     if (!isBrowser()) {
       return;
     }

@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/react-native",
-  "version": "0.0.0-alpha.41",
+  "version": "0.0.0-alpha.42",
   "description": "React Native, re-exported for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/host": "0.0.0-alpha.41"
+    "@uniflowed/host": "0.0.0-alpha.42"
   },
   "peerDependencies": {
     "react": ">=19.2.3",

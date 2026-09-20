@@ -19,6 +19,9 @@
 // `TypeError` three call frames later.
 
 /** What went wrong, as a value rather than a string. */
+import { context, propagation, trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import type { Span } from "@opentelemetry/api";
+
 export type FetchFailure =
   | {|
       readonly kind: "http",
@@ -196,7 +199,7 @@ export function createFetch(config?: FetchConfig): FetchClient {
 }
 
 /** Send, with the timeout and the retry policy applied. */
-async function send(
+async function sendUntraced(
   settings: $FlowFixMe,
   path: string,
   options: RequestOptions<mixed>,
@@ -256,6 +259,15 @@ function requestInit(
     ...(settings.headers ?? {}),
     ...(options.headers ?? {}),
   };
+
+  const carrier: { [string]: string } = {};
+  propagation.inject(context.active(), carrier);
+  for (const key of Object.keys(carrier)) {
+    for (const present of Object.keys(headers)) {
+      if (present.toLowerCase() === key.toLowerCase()) delete headers[present];
+    }
+    headers[key] = carrier[key];
+  }
 
   let body = options.body;
   if (body != null && !isBodyInit(body)) {
@@ -372,4 +384,44 @@ function resolveUrl(settings: $FlowFixMe, path: string, options: RequestOptions<
 
 function pause(millis: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, millis));
+}
+
+async function send(
+  settings: $FlowFixMe,
+  path: string,
+  options: RequestOptions<mixed>,
+): Promise<Response> {
+  let url = null;
+  try {
+    url = new URL(resolveUrl(settings, path, options));
+  } catch {
+    // Relative paths belong to the platform fetch or to the supplied fetch.
+  }
+  const method = (options.method ?? "GET").toUpperCase();
+  return trace.getTracer("@uniflowed/fetch").startActiveSpan(
+    "uf.fetch",
+    {
+      kind: SpanKind.CLIENT,
+      attributes: {
+        "http.request.method": method,
+        ...(url == null
+          ? {}
+          : { "server.address": url.hostname, "url.scheme": url.protocol.slice(0, -1) }),
+      },
+    },
+    async (span: Span): Promise<Response> => {
+      try {
+        const response = await sendUntraced(settings, path, options);
+        span.setAttribute("http.response.status_code", response.status);
+        return response;
+      } catch (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        if (error instanceof FetchError && error.failure.kind === "http")
+          span.setAttribute("http.response.status_code", error.failure.status);
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
 }

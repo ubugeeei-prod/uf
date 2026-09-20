@@ -49,6 +49,8 @@
 // In development the rsc environment's module graph is read instead, once the
 // route's modules have been imported.
 
+import { clientInstrumentationSource } from "./instrumentation.js";
+
 import path from "node:path";
 import { relayDependencies } from "./relay.js";
 
@@ -666,7 +668,7 @@ export function flightClientSource(appEntry, options = {}) {
     options.staleTime > 0 ? `, staleTime: ${JSON.stringify(options.staleTime)}` : "";
   return `import { hydrateFlight } from "@uniflowed/router/rsc/client";
 import App from ${JSON.stringify(appEntry)};
-hydrateFlight({ App${strictMode}${navigation}${staleTime}${routing} });
+${clientInstrumentationSource(options.instrumentation)}hydrateFlight({ App${strictMode}${navigation}${staleTime}${routing} });
 `;
 }
 
@@ -687,9 +689,13 @@ export function flightServerSource(
   routesId,
   actionsId,
   routing = { redirects: [], rewrites: [], headers: [], basePath: "", trailingSlash: "ignore" },
+  instrumentation = null,
 ) {
   return `import {
   createActionDispatcher,
+  createInstrumentation,
+  instrumentRender,
+  traceRequestPhase,
   createDispatcher,
   createMiddlewareRunner,
   installRouting,
@@ -703,15 +709,22 @@ import App from ${JSON.stringify(appEntry)};
 export const routing = ${JSON.stringify(routing)};
 installRouting(routing);
 export { routes, handlers, middleware, notFound, errors };
-export { beginRequest } from "@uniflowed/router/server";
+${instrumentation == null ? "" : `import * as hooks from ${JSON.stringify(instrumentation)};`}
+export const { beginRequest } = createInstrumentation(${instrumentation == null ? "" : "hooks"});
 const renderer = createDocumentRenderer({ App, renderFlight, loadClientModule });
-export const render = renderer.render;
+export const render = (url, assets, options = {}) => instrumentRender(
+  (onError) => renderer.render(url, assets, { ...options, onError }), options.onError,
+);
 export const prerender = renderer.prerender;
-export const flight = renderer.flight;
+export const flight = (url, options = {}) => instrumentRender(
+  (onError) => renderer.flight(url, { ...options, onError }), options.onError,
+);
 export { shellDocument } from "@uniflowed/router/server";
-export const dispatch = createDispatcher({ handlers });
+const dispatchRoute = createDispatcher({ handlers });
+export const dispatch = (request) => traceRequestPhase("route", () => dispatchRoute(request));
 export const callAction = createActionDispatcher({ actions });
-export const runMiddleware = createMiddlewareRunner({ middleware });
+const guard = createMiddlewareRunner({ middleware });
+export const runMiddleware = (request) => traceRequestPhase("middleware", () => guard(request));
 `;
 }
 

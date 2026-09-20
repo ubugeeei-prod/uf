@@ -44,6 +44,8 @@
 // `uniflowed(options)` returns the array; a project that wants to add a plugin
 // declares it in `uf.config.js` and the driver appends it after these.
 
+import { instrumentationFile } from "./internal/instrumentation.js";
+
 import path from "node:path";
 import { nativeWebPlugin } from "./internal/native-web.js";
 
@@ -579,6 +581,7 @@ function flowPlugin({
       // looking at. See `clientModuleSource`.
       if (id === resolved(VIRTUAL.client) && flightState != null) {
         return flightClientSource(entryPath, {
+          instrumentation: instrumentationFile(appRoot, true),
           strictMode: strictMode && !isProduction,
           navigation,
           staleTime,
@@ -587,6 +590,7 @@ function flowPlugin({
       }
       if (id === resolved(VIRTUAL.client)) {
         return clientModuleSource(entryPath, {
+          instrumentation: instrumentationFile(appRoot, true),
           strictMode: strictMode && !isProduction,
           navigation,
           staleTime,
@@ -596,8 +600,14 @@ function flowPlugin({
       }
       if (id === resolved(VIRTUAL.server)) {
         return flightState == null
-          ? serverModuleSource(entryPath, routing)
-          : flightServerSource(entryPath, VIRTUAL.routes, VIRTUAL.actions, routing);
+          ? serverModuleSource(entryPath, routing, instrumentationFile(appRoot))
+          : flightServerSource(
+              entryPath,
+              VIRTUAL.routes,
+              VIRTUAL.actions,
+              routing,
+              instrumentationFile(appRoot),
+            );
       }
       if (flightState != null) {
         if (id === resolved(FLIGHT_VIRTUAL.entry)) return rscEntrySource(VIRTUAL.routes, routing);
@@ -864,8 +874,10 @@ function flowPlugin({
       const reserved = new RegExp(`/(${stems})(\\.[a-z]+)?\\.(js|jsx|mdx)$`);
       const onRouteFile = (file) => {
         if (!reserved.test(file) || !file.startsWith(appRoot)) return;
-        const routes = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes));
-        if (routes) devServer.moduleGraph.invalidateModule(routes);
+        for (const id of [VIRTUAL.routes, VIRTUAL.server, VIRTUAL.client]) {
+          const module = devServer.moduleGraph.getModuleById(resolved(id));
+          if (module) devServer.moduleGraph.invalidateModule(module);
+        }
         devServer.ws.send({ type: "full-reload", path: "*" });
       };
       devServer.watcher.on("add", onRouteFile);

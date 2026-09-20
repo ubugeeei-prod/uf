@@ -3,6 +3,36 @@
 use super::*;
 
 #[test]
+fn instrumentation_is_root_only_for_both_server_and_client_modules() {
+    for name in ["$instrumentation.js", "$instrumentation.client.jsx"] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        let app = root.join("app");
+        fs::create_dir_all(&app).unwrap();
+        fs::write(app.join("$page.js"), "// @flow\n").unwrap();
+        fs::write(app.join("$layout.js"), "// @flow\n").unwrap();
+        fs::write(app.join(name), "// @flow\n").unwrap();
+        assert_eq!(
+            discover_routes(&root, &UniflowedConfig::default())
+                .unwrap()
+                .len(),
+            1
+        );
+        for directory in ["nested", "@panel"] {
+            let nested = app.join(directory);
+            fs::create_dir_all(&nested).unwrap();
+            let file = nested.join(name);
+            fs::write(&file, "// @flow\n").unwrap();
+            let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+            assert!(
+                matches!(error, RouterError::InstrumentationOutsideRoot { file: found } if found == file)
+            );
+            fs::remove_file(file).unwrap();
+        }
+    }
+}
+
+#[test]
 fn discovers_root_and_dynamic_routes() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();

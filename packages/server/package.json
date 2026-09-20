@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/server",
-  "version": "0.0.0-alpha.41",
+  "version": "0.0.0-alpha.42",
   "description": "Request-scoped server functions for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
@@ -28,7 +28,8 @@
     "./queue": "./queue.js",
     "./schedule": "./schedule.js",
     "./socket": "./socket.js",
-    "./standalone": "./standalone.js"
+    "./standalone": "./standalone.js",
+    "./instrumentation": "./instrumentation.js"
   },
   "files": [
     "bun.js",
@@ -41,6 +42,7 @@
     "fetch.js",
     "host.js",
     "index.js",
+    "instrumentation.js",
     "lambda.js",
     "log.js",
     "node.js",
@@ -53,6 +55,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.41"
+    "@uniflowed/core": "0.0.0-alpha.42",
+    "@opentelemetry/api": "^1.9.1"
   }
 }

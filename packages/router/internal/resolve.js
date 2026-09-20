@@ -722,6 +722,8 @@ export type ResolveOptions = {|
   readonly defer?: boolean,
   /** The route pattern, the moment the URL matches one; see [`resolveMatch`]. */
   readonly onMatch?: (pattern: string) => void,
+  /** The server supplies tracing without importing server code into the browser. */
+  readonly runLoader?: (body: () => mixed | Promise<mixed>) => Promise<mixed>,
 |};
 
 async function resolveRoute(
@@ -799,7 +801,9 @@ async function resolveRoute(
   let data: mixed = options?.data;
   let deferred: ?Promise<mixed> = null;
   if (options?.skipLoader !== true && typeof page.loader === "function") {
-    const running = page.loader({ params: matched.params, searchParams, pathname });
+    const loader = page.loader;
+    const loadData = () => loader({ params: matched.params, searchParams, pathname });
+    const running = options?.runLoader == null ? loadData() : options.runLoader(loadData);
     const canDefer =
       options?.defer === true &&
       (matched.route.loading ?? []).length > 0 &&

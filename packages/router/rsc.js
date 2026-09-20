@@ -44,6 +44,8 @@
 // in this graph, and a boundary module without the directive is refused here,
 // with its file named, rather than by React with a sentence about functions.
 
+import { traceLoader } from "./internal/server-instrumentation.js";
+
 import * as React from "react";
 import { use } from "react";
 // React's Flight server. Only this graph can load it: it refuses to evaluate
@@ -51,6 +53,7 @@ import { use } from "react";
 import { renderToReadableStream } from "react-server-dom-parcel/server";
 
 import { noteRoute } from "@uniflowed/server/host";
+import { reportRequestError } from "@uniflowed/server/instrumentation";
 
 import { BoundaryReporter } from "./internal/boundaries.js";
 import { routeBoundaries } from "./internal/boundary-data.js";
@@ -175,7 +178,7 @@ export function createFlightRenderer(options: {|
           intercepted ??
           // `onMatch` records the route pattern on the request before the
           // loader runs, so every line the loader logs names its route.
-          (await resolveMatch(table, url, { defer, onMatch: noteRoute }));
+          (await resolveMatch(table, url, { defer, onMatch: noteRoute, runLoader: traceLoader }));
       } else {
         resolved = await resolveFailure(table, url, failure.error);
       }
@@ -199,13 +202,20 @@ export function createFlightRenderer(options: {|
       </>
     );
     const root: FlightRoot = { route: state, tree };
-    const report = settings?.onError;
+    const failure = renderFailure(route);
+    if (failure != null) reportRequestError(failure, "render");
+    const report = (error) => {
+      reportRequestError(error, "render");
+      if (settings?.onError != null) return settings.onError(error);
+      console.error(error);
+      return undefined;
+    };
     // Inside the route's store, so a server component's `useRoute()` finds the
     // route however many `await`s into the render it asks.
     const stream = withServerRoute(state, () =>
       renderToReadableStream(root, {
         // Handed over as it is, so that the digest it returns reaches the row.
-        // Absent, React logs the exception to the console itself.
+        // Our callback preserves React's console fallback when none was given.
         onError: report,
         signal: settings?.signal,
       }),
@@ -225,7 +235,11 @@ async function resolveFlightInterception(
     return null;
   }
   try {
-    const base = await resolveMatch(table, baseUrl, { defer });
+    const base = await resolveMatch(table, baseUrl, {
+      defer,
+      onMatch: noteRoute,
+      runLoader: traceLoader,
+    });
     return await resolveInterception(table, base, url);
   } catch (error) {
     if (error instanceof RedirectError) {

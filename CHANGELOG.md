@@ -1,5 +1,22 @@
 # Changelog
 
+## uf@0.0.0-alpha.42
+
+_2026-09-20_
+
+### Added
+
+- **server**: add `app/$instrumentation.js` startup and request-error hooks, a browser counterpart, and OpenTelemetry spans for requests, middleware, routes, loaders, rendering, server actions and fetches. Streaming work preserves request context and W3C trace propagation; the application chooses its SDK and exporter (#1302).
+
+### Fixed
+
+- **examples**: align native dependencies with Expo SDK and declare its Babel preset (#1299, #1300).
+
+### Internal
+
+- **examples**: improve spacing across REST, GraphQL and native examples without changing their design or behavior (#1301).
+- **release**: include `@uniflowed/react-native-testing` in the 23-package OIDC publishing closure after configuring its GitHub trusted publisher with `npm trust` (#1301).
+
 ## uf@0.0.0-alpha.41
 
 _2026-09-19_

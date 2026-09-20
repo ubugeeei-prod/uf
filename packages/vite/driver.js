@@ -42,6 +42,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { builtinModules, register } from "node:module";
+import { esmExternalRequirePlugin } from "rolldown/plugins";
 import { installFlowHooks } from "@uniflowed/host/internal/sync-hooks.js";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -1579,7 +1580,12 @@ async function deploy() {
     plugins: [
       ...inline.plugins,
       nativeAddonGuard(),
-      ...(shape.workerBuiltins === true ? [workerBuiltinGuard()] : []),
+      ...(shape.workerBuiltins === true
+        ? [
+            workerBuiltinGuard(),
+            esmExternalRequirePlugin({ external: [...builtinModules, /^node:/] }),
+          ]
+        : []),
     ],
     // Fixed, because this bundle inlines every dependency and so both of each
     // React package's builds, and a runtime lookup of `NODE_ENV` in a worker
@@ -1610,6 +1616,10 @@ async function deploy() {
       emptyOutDir: false,
       rollupOptions: {
         input,
+        // Workers provide the selected built-ins, but cannot use Node's
+        // createRequire(import.meta.url) runtime helper. External requires
+        // above become ESM imports; the remaining helpers are platform neutral.
+        ...(shape.workerBuiltins === true ? { platform: "neutral" } : {}),
         output: {
           entryFileNames: "[name].js",
           // Route modules are lazy `import()`s, so the server bundle splits
