@@ -1,2 +1,0 @@
-"use client";import{n as e,r as t,t as n}from"./jsx-runtime-BhAlOjtF.js";var r=e();t();var i=n();function a(){let e=(0,r.c)(1),t;return e[0]===Symbol.for(`react.memo_cache_sentinel`)?(t=(0,i.jsx)(`main`,{children:`fixture error boundary`}),e[0]=t):t=e[0],t}export{a as default};
-//# sourceMappingURL=client-reference-0-C4Vmq8su.js.map

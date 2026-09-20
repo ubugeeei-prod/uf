@@ -1,1 +1,0 @@
-"use client";import{_ as e,g as t,v as n}from"./runtime-Djx-75Bk.js";export{t as ErrorRoutePage,e as ResolvedErrorPage,n as RouteErrorBoundary};
