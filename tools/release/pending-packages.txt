@@ -47,7 +47,6 @@ effect
 form
 immer
 mock
-react-native-testing
 std
 story
 testing

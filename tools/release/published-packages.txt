@@ -38,6 +38,7 @@ i18n
 query
 react
 react-native
+react-native-testing
 react-testing
 relay
 router
