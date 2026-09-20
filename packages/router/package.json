@@ -46,8 +46,8 @@
     "server.js",
     "native-navigation.js",
     "http-client.js",
-    "!*.test.js",
-    "instrumentation.js"
+    "instrumentation.js",
+    "!*.test.js"
   ],
   "peerDependencies": {
     "react": ">=19.2.3",
