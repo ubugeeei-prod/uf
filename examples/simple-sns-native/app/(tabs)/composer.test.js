@@ -1,7 +1,10 @@
 // @flow
+
 import { test, expect } from "@uniflowed/test";
 import { render, screen, press, changeText } from "@uniflowed/react-native-testing/native";
+
 import { App } from "../../app.native.js";
+
 test("shares a note through the real native input and keeps it across navigation", async () => {
   await render(<App />);
   await changeText(screen.getByLabelText("Your note"), "A small good thing.");

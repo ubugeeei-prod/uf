@@ -1,10 +1,13 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useMutation } from "@uniflowed/relay";
+
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
+
 import type { SnsRegisterMutation } from "./__generated__/SnsRegisterMutation.graphql.js";
 import type { SnsLoginMutation } from "./__generated__/SnsLoginMutation.graphql.js";
 
@@ -25,6 +28,7 @@ const login = graphql`
 `;
 
 /** Credentials go to the upstream service; only its HttpOnly cookie returns. */
+
 export component AccountForm(register: boolean) {
   const [signup, signingUp] = useMutation<
     SnsRegisterMutation["variables"],
@@ -36,6 +40,7 @@ export component AccountForm(register: boolean) {
   >(login);
   const [error, setError] = useState("");
   const pending = signingUp || signingIn;
+
   return (
     <section className="auth-panel">
       <header className="page-heading">

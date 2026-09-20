@@ -6,14 +6,17 @@ import { sessionData, settingsData } from "../_server/social-queries.js";
 import { SocialFrame } from "../_shared/social-frame.js";
 
 import { SettingsRegion } from "./settings-region.client.js";
+
 import type { Settings, Session, Protected } from "../_shared/social-model.js";
 
 /** Resolved shell identity and a deferred, authorized private profile. */
+
 export type Data = {| readonly session: Session, readonly profile: Promise<Protected<Settings>> |};
 
 /**
  * Start shell identity and private profile reads together without blocking on the editor data.
  */
+
 export async function loader(): Promise<Data> {
   const session = sessionData();
   const profile = settingsData();
@@ -22,6 +25,7 @@ export async function loader(): Promise<Data> {
 }
 
 /** Render the account shell with its own retryable profile region. */
+
 export component Page(data: Data) {
   return (
     <SocialFrame active="settings" session={data.session} aside={false}>

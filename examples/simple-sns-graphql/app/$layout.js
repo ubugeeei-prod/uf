@@ -1,8 +1,11 @@
 // @flow
 
 import * as React from "@uniflowed/react";
+
 import type { Metadata, LayoutProps } from "@uniflowed/router";
+
 import { props, stylex } from "@uniflowed/stylex";
+
 import "./_shared/base.css";
 
 export const metadata: Metadata = {
@@ -11,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 /** Install shared visual styles and render the router-owned layout slot. */
+
 export component Layout(...{ children }: LayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>

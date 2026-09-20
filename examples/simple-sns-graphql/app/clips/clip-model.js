@@ -1,6 +1,7 @@
 // @flow
 
 /** Local, attributed stock media and its display metadata; no remote user upload is implied. */
+
 export type Clip = {|
   readonly id: string,
   readonly title: string,
@@ -14,6 +15,7 @@ export type Clip = {|
 /**
  * Explicit browser media states, including recoverable autoplay rejection and loading failure.
  */
+
 export type Playback =
   | {| kind: "loading" |}
   | {| kind: "playing" |}
@@ -23,6 +25,7 @@ export type Playback =
 // Curated public media; no user data or server capability is needed to browse it.
 
 /** Curated local fixtures whose sources and licenses are recorded in public/media/CREDITS.md. */
+
 export const CLIPS: $ReadOnlyArray<Clip> = [
   {
     id: "after-dark",

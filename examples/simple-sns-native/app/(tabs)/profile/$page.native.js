@@ -1,12 +1,16 @@
 // @flow
+
 import { Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { stylex } from "@uniflowed/stylex/native";
+
 import { useNotes } from "../../_shared/notes.js";
 import { styles } from "../../_shared/commonplace.stylex.js";
+
 export component Page() {
   const { notes } = useNotes();
   const count = notes.filter((note) => note.handle === "you").length;
+
   return (
     <SafeAreaView edges={["top"]} {...stylex.props(styles.page)}>
       <View {...stylex.props(styles.content)}>

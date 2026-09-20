@@ -1,8 +1,10 @@
 // @flow
 
 import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+
 import { Avatar, Icon } from "./ui.js";
 import { SignOut } from "./session.client.js";
 import {
@@ -25,6 +27,7 @@ const PEOPLE: $ReadOnlyArray<User> = [
 /**
  * Compose the shared navigation and route content, with a compact shell for the immersive Clips view.
  */
+
 export component SocialFrame(
   active: View,
   session: Session = GUEST,

@@ -1,9 +1,12 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useFragment } from "@uniflowed/relay";
+
 import { UserAvatar } from "../_shared/avatar.client.js";
+
 import type { SnsThread_thread$key } from "./__generated__/SnsThread_thread.graphql.js";
 
 const threadFragment = graphql`
@@ -19,6 +22,7 @@ const threadFragment = graphql`
 
 export component Thread(threadRef: SnsThread_thread$key, selected: boolean) {
   const thread = useFragment(threadFragment, threadRef);
+
   return (
     <Link
       className="thread"

@@ -1,8 +1,10 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { graphql, useMutation } from "@uniflowed/relay";
 import { useState } from "@uniflowed/react";
+
 import { Icon } from "./ui.js";
 
 const logout = graphql`
@@ -12,9 +14,11 @@ const logout = graphql`
 `;
 
 /** Reset the entire browser store when identity changes. */
+
 export component SignOut() {
   const [commit, pending] = useMutation(logout);
   const [error, setError] = useState("");
+
   return (
     <div>
       <button

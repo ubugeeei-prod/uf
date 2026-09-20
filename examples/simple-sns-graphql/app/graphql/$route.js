@@ -1,14 +1,17 @@
 // @flow
+
 import { endpoint, sessionCookie } from "../_server/upstream.js";
 
 // Flow's DOM libdef predates these standard server Web APIs. Keep the
 // compatibility casts at this boundary and expose only their actual signatures.
+
 const signals = AbortSignal as $FlowFixMe as {
   any(Array<AbortSignal>): AbortSignal,
   timeout(number): AbortSignal,
 };
 
 /** A bounded same-origin BFF. The GraphQL service owns authorization and data. */
+
 export async function POST(request: Request): Promise<Response> {
   if (request.headers.get("origin") !== new URL(request.url).origin) {
     return new Response("same-origin request required", { status: 403 });

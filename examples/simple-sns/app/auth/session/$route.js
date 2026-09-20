@@ -2,6 +2,7 @@
 
 import { ensuring, promise, runPromiseExit, sync, tryPromise } from "@uniflowed/effect";
 import { cookies } from "@uniflowed/server";
+
 import {
   authenticate,
   issueSession,
@@ -24,6 +25,7 @@ type ResponseOptions = { status?: number, headers?: { [string]: string } };
  * Effect releases the reader lock on success, decoding failure, and cancellation.
  * The bound applies even when the sender omits or lies about Content-Length.
  */
+
 async function readForm(request: Request): Promise<string | null> {
   // Flow's Request declaration does not yet expose the standard body stream.
   const stream: ReadableStream | null = (request as $FlowFixMe).body;
@@ -65,6 +67,7 @@ async function readForm(request: Request): Promise<string | null> {
  * Input failures become safe 400 responses; defects are logged only on the server.
  * Cookie rotation and revocation remain HTTP concerns, outside React Actions.
  */
+
 export async function POST(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const expectedOrigin = process.env.COMMONPLACE_ORIGIN ?? url.origin;

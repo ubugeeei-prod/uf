@@ -2,13 +2,17 @@
 // @flow
 
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
+
 import * as React from "@uniflowed/react";
 import { useEffect, useRef, useState } from "@uniflowed/react";
 import { promise, runPromiseExit } from "@uniflowed/effect";
+
 import { Icon } from "../_shared/ui.js";
+
 import type { Clip, Playback } from "./clip-model.js";
 
 /** Convert a browser's rejected play request into a recoverable playback state. */
+
 async function requestPlayback(player: HTMLVideoElement, blocked: () => void): Promise<void> {
   const result = await runPromiseExit(promise(() => player.play()));
 
@@ -22,6 +26,7 @@ async function requestPlayback(player: HTMLVideoElement, blocked: () => void): P
  * Autoplay respects reduced motion; backgrounding and cleanup pause playback.
  * A late rejection from an inactive slide cannot overwrite the current state.
  */
+
 export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute: () => void) {
   const video = useRef<HTMLVideoElement | null>(null);
   const [playback, setPlayback] = useState<Playback>({ kind: "paused" });
@@ -145,6 +150,7 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
  * Coordinate one visible video through scroll snapping, visibility observation, and keyboard controls.
  * The observer owns selection; navigation scrolls to a slide without preloading every video.
  */
+
 export component Clips(clips: $ReadOnlyArray<Clip>) {
   const viewport = useRef<HTMLDivElement | null>(null);
   const [selected, setSelected] = useState(0);

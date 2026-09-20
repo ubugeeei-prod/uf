@@ -1,15 +1,18 @@
 // @flow
 
 import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { props, stylex } from "@uniflowed/stylex";
 import { AvatarFallback, AvatarImage, AvatarRoot, SkeletonBox } from "@uniflowed/ui";
+
 import { avatarPhoto } from "./social-model.js";
 
 /**
  * Render decorative line icons on a shared grid; the owning control supplies its accessible name.
  */
+
 export component Icon(name: string, size: number = 20) {
   const paths: { [string]: string } = {
     video: "M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 5 5 4-5 4Z",
@@ -56,6 +59,7 @@ export component Icon(name: string, size: number = 20) {
 }
 
 /** Compose the UI avatar primitive with a licensed portrait or a stable initials fallback. */
+
 export component Avatar(
   user: { readonly id: string, readonly photo?: ?string, readonly avatar: string, ... },
   small: boolean = false,
@@ -81,6 +85,7 @@ export component Avatar(
 }
 
 /** Render a regional explanation with an optional typed recovery action. */
+
 export component EmptyState(
   title: string,
   children: string,
@@ -99,6 +104,7 @@ export component EmptyState(
 }
 
 /** Render navigation with the shared primary or text-link treatment. */
+
 export component ActionLink(to: string, children: string, primary: boolean = true) {
   return (
     <Link className={primary ? "button primary" : "text-link"} to={to}>
@@ -109,6 +115,7 @@ export component ActionLink(to: string, children: string, primary: boolean = tru
 }
 
 /** Expose an explicit retry for one failed async region. */
+
 export component RetryButton(onRetry: () => void) {
   return (
     <button type="button" className="button primary" onClick={onRetry}>
@@ -118,6 +125,7 @@ export component RetryButton(onRetry: () => void) {
 }
 
 /** Explain an authentication requirement without obscuring the rest of the page. */
+
 export component SignInPrompt(title: string = "Sign in to continue") renders EmptyState {
   return (
     <EmptyState title={title} action={<ActionLink to="/login">Sign in</ActionLink>}>
@@ -145,6 +153,7 @@ component SkeletonField(multiline: boolean = false) {
  * Reserve each region’s real content geometry while its own Suspense boundary waits.
  * Placeholders are decorative; one status label communicates loading to assistive technology.
  */
+
 export component LoadingState(kind: "feed" | "threads" | "conversation" | "profile") {
   const label = match (kind) {
     "feed" => "Loading notes",
@@ -371,6 +380,7 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
     </section>
   );
 }
+
 const styles = stylex.create({
   avatar: {
     position: "relative",

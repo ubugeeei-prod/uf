@@ -2,9 +2,13 @@
 // @flow
 
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
+
 import * as React from "@uniflowed/react";
+
 import { callAction } from "../_shared/action-result.client.js";
+
 import { useActionState, useOptimistic, useState, useEffect, useRef } from "@uniflowed/react";
+
 import { sendMessage } from "../_server/social-actions.js";
 import { FieldError, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
 import { Avatar, Icon } from "../_shared/ui.js";
@@ -24,6 +28,7 @@ type LocalMessage = {| readonly requestId: string, readonly message: Message |};
  * Preserve a conversation draft while pending and reconcile each submitted message once.
  * Failed sends roll back the optimistic bubble and retain the request ID for an idempotent retry.
  */
+
 export component DirectMessagesClient(
   thread: MessageThread,
   initialMessages: $ReadOnlyArray<Message>,
@@ -141,6 +146,7 @@ export component DirectMessagesClient(
 }
 
 /** Render one message with direction relative to the authenticated participant. */
+
 export component MessageBubble(message: Message) {
   const pending = message.id.startsWith("pending-");
 
@@ -157,6 +163,7 @@ export component MessageBubble(message: Message) {
 }
 
 /** Accept typed message children and synchronize scroll position with the latest message. */
+
 export component MessageLog(lastId: string, children: renders* MessageBubble) {
   const viewport = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);

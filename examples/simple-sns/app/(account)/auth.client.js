@@ -2,10 +2,12 @@
 // @flow
 
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { useActionState, useState } from "@uniflowed/react";
 import { FieldControl } from "@uniflowed/ui";
+
 import { callAction } from "../_shared/action-result.client.js";
 import { FormField, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
 import { IDLE, failed, succeeded, fieldError, type FormState } from "../_shared/social-model.js";
@@ -14,6 +16,7 @@ import { IDLE, failed, succeeded, fieldError, type FormState } from "../_shared/
  * Submit credentials to the same-origin HTTP endpoint while preserving failed field drafts.
  * The server owns the HttpOnly cookie; successful authentication starts a fresh document.
  */
+
 export component AuthClient(mode: "login" | "signup") {
   const [draft, setDraft] = useState({ name: "", email: "", handle: "", password: "" });
   const [state, submit, pending] = useActionState<FormState<null>, FormData>(

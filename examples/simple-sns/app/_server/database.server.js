@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { ensuring, runSync, sync, trySync } from "@uniflowed/effect";
 
 /** Scalar SQLite row values, converted to explicit DTOs by the repository. */
+
 export type Row = { readonly [string]: string | number | null | void, ... };
 
 type Value = string | number | null;
@@ -21,13 +22,16 @@ type Database = {|
   exec: (sql: string) => void,
   prepare: (sql: string) => Statement,
 |};
+
 const SQLite: Class<Database> = DatabaseSync;
+
 let instance: Database | null = null;
 
 /**
  * Open the process-local SQLite connection lazily and initialize its schema and fixtures.
  * The database location belongs to the application cwd, not the bundled module path.
  */
+
 export function database(): Database {
   if (instance != null) {
     return instance;
@@ -75,6 +79,7 @@ export function database(): Database {
 }
 
 /** Release the connection at an explicit application or test lifecycle boundary. */
+
 export function closeDatabase(): void {
   instance?.close();
   instance = null;
@@ -86,6 +91,7 @@ export function closeDatabase(): void {
  * the mutation adapter can still distinguish InputError from a database defect.
  * Callbacks must not return promises or open nested transactions.
  */
+
 export function transaction<T>(body: (Database) => T): T {
   const db = database();
   let open = false;
