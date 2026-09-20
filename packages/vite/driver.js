@@ -1616,6 +1616,10 @@ async function deploy() {
       emptyOutDir: false,
       rollupOptions: {
         input,
+        // Workers provide the selected built-ins, but cannot use Node's
+        // createRequire(import.meta.url) runtime helper. External requires
+        // above become ESM imports; the remaining helpers are platform neutral.
+        ...(shape.workerBuiltins === true ? { platform: "neutral" } : {}),
         output: {
           entryFileNames: "[name].js",
           // Route modules are lazy `import()`s, so the server bundle splits

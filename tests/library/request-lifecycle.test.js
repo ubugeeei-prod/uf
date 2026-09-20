@@ -99,7 +99,7 @@ describe("the seam the hosts reach through", () => {
     // The four hosts are driven end to end by `crates/uf_cli/tests/vite.rs`,
     // which needs sockets. This is the one line of that seam that does not.
     expect(serverModuleSource("./app.js")).toContain(
-      'export { beginRequest } from "@uniflowed/router/server";',
+      "export const { beginRequest } = createInstrumentation();",
     );
   });
 });

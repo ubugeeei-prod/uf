@@ -157,17 +157,18 @@ await probe("node", () => ({
 if (process.env.UF_SKIP_EDGE !== "1") {
   build("edge");
   await probe("edge", (port) => ({
-    binary: "npx",
+    binary: uf,
     args: [
-      "--yes",
-      "wrangler@4.128.0",
-      "dev",
-      "--local",
+      "run",
+      "instrumentation:worker",
+      "--",
+      "--cwd",
+      path.join(fixture, ".uf/deploy/edge"),
       "--ip",
       "127.0.0.1",
       "--port",
       String(port),
     ],
-    cwd: path.join(fixture, ".uf/deploy/edge"),
+    cwd: root,
   }));
 }
