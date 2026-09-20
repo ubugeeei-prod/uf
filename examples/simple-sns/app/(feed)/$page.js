@@ -1,9 +1,12 @@
 // @flow
 
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+
 import type { LoaderArgs } from "@uniflowed/router";
+
 import { SocialFrame } from "../_shared/social-frame.js";
 import { sessionData, timelineData } from "../_server/social-queries.js";
 import { TimelineClient } from "./timeline.client.js";
@@ -19,6 +22,7 @@ import {
 } from "../_shared/social-model.js";
 
 /** Resolved shell identity and URL state with an independently deferred feed. */
+
 export type Data = {|
   readonly session: Session,
   readonly filter: FeedFilter,
@@ -26,6 +30,7 @@ export type Data = {|
 |};
 
 /** Start session and feed reads together; await only the identity needed by the page shell. */
+
 export async function loader({ searchParams }: LoaderArgs): Promise<Data> {
   const filter = feedFilter(
     String(searchParams.topic ?? "all"),
@@ -39,6 +44,7 @@ export async function loader({ searchParams }: LoaderArgs): Promise<Data> {
 }
 
 /** Render the stable feed shell while the timeline region owns its deferred content. */
+
 export component Page(data: Data) {
   const feed = data.filter;
 

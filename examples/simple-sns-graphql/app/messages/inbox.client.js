@@ -1,10 +1,13 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { graphql, useFragment } from "@uniflowed/relay";
+
 import { SignInPrompt } from "../_shared/ui.js";
 import { Thread } from "./thread.client.js";
 import { Conversation } from "./conversation.client.js";
+
 import type { SnsInbox_query$key } from "./__generated__/SnsInbox_query.graphql.js";
 
 const inboxFragment = graphql`
@@ -26,10 +29,12 @@ const inboxFragment = graphql`
 `;
 
 /** The inbox composes fragment references; it cannot read its children's fields. */
+
 export component Inbox(queryRef: SnsInbox_query$key) {
   const data = useFragment(inboxFragment, queryRef);
   if (data.viewer == null) return <SignInPrompt title="Sign in to read your messages" />;
   const conversation = data.conversation;
+
   return (
     <>
       <header className="page-heading">

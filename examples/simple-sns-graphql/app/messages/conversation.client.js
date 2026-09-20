@@ -1,9 +1,12 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { graphql, useFragment, useMutation } from "@uniflowed/relay";
+
 import { Message } from "./message.client.js";
+
 import type { SnsConversation_conversation$key } from "./__generated__/SnsConversation_conversation.graphql.js";
 import type { SnsSendMessageMutation } from "./__generated__/SnsSendMessageMutation.graphql.js";
 
@@ -40,6 +43,7 @@ export component Conversation(conversationRef: SnsConversation_conversation$key)
   const [body, setBody] = useState("");
   const [requestId, setRequestId] = useState("");
   const [error, setError] = useState("");
+
   return (
     <section className="conversation">
       <header className="conversation-heading">

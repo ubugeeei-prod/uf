@@ -4,11 +4,13 @@
 import * as React from "@uniflowed/react";
 import { useActionState } from "@uniflowed/react";
 import { promise, runPromiseExit } from "@uniflowed/effect";
+
 import { Icon } from "./ui.js";
 
 /**
  * Revoke the session through HTTP and leave authenticated React state by reloading the document.
  */
+
 export component SignOut() {
   const [error, submit, pending] = useActionState<string, FormData>(async () => {
     const result = await runPromiseExit(

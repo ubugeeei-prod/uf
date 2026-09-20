@@ -2,15 +2,21 @@
 // @flow
 
 import { styled, styles as sharedStyles } from "./commonplace.stylex.js";
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+
 import { Avatar, Icon } from "./ui.js";
+
 import { graphql, useFragment } from "@uniflowed/relay";
+
 import { UserAvatar } from "./avatar.client.js";
+
 import type {
   SnsSocialFrame_query$key,
   SnsSocialFrame_query$data,
 } from "./__generated__/SnsSocialFrame_query.graphql.js";
+
 import { SignOut } from "./session.client.js";
 import { TOPICS, topicLabel, feedHref, type User, type View } from "./social-model.js";
 
@@ -41,6 +47,7 @@ const PEOPLE: $ReadOnlyArray<User> = [
 /**
  * Compose the shared navigation and route content, with a compact shell for the immersive Clips view.
  */
+
 export component SocialFrame(
   active: View,
   queryRef: SnsSocialFrame_query$key,

@@ -2,6 +2,7 @@
 // @flow
 // These are callable read capabilities. uf does not yet send a Flight component tree.
 // Each read establishes its own identity, even when invoked outside a page loader.
+
 import { viewer } from "./session.server.js";
 import { listPosts, listThreads, listMessages, settingsFor } from "./repository.server.js";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../_shared/social-model.js";
 
 /** Return this request’s public identity state for the shared page shell. */
+
 export async function sessionData(): Promise<Session> {
   const user = viewer();
 
@@ -24,6 +26,7 @@ export async function sessionData(): Promise<Session> {
 }
 
 /** Read a bounded public feed page with reactions relative to this request’s viewer. */
+
 export async function timelineData(
   topic: string = "all",
   query: string = "",
@@ -37,6 +40,7 @@ export async function timelineData(
 }
 
 /** Authorize this request before exposing any private inbox previews. */
+
 export async function threadsData(): Promise<InboxData> {
   const current = viewer();
 
@@ -48,6 +52,7 @@ export async function threadsData(): Promise<InboxData> {
 /**
  * Authorize and select exactly one conversation; absent and inaccessible IDs reveal no messages.
  */
+
 export async function messagesData(threadId: string = ""): Promise<ConversationData> {
   const current = viewer();
   if (current == null) {
@@ -64,6 +69,7 @@ export async function messagesData(threadId: string = ""): Promise<ConversationD
 }
 
 /** Return private profile fields only for the account identified by this request’s cookie. */
+
 export async function settingsData(): Promise<Protected<Settings>> {
   const current = viewer();
 

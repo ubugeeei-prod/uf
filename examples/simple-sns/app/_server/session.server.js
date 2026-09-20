@@ -2,12 +2,15 @@
 
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { cookies } from "@uniflowed/server";
+
 import { database, transaction } from "./database.server.js";
 import { member, publicUser, welcomeConversation } from "./repository.server.js";
 import { InputError, field, handleField, emailField } from "./validation.server.js";
+
 import type { User } from "../_shared/social-model.js";
 
 export const SESSION_COOKIE = "commonplace.session";
+
 const TTL = 60 * 60 * 24 * 7;
 
 function digest(token: string): string {
@@ -17,6 +20,7 @@ function digest(token: string): string {
 /**
  * Resolve a well-formed session token against its hash and expiry; invalid tokens are guests.
  */
+
 export function viewerFor(token: string | null): User | null {
   if (token == null || !/^[a-f0-9]{64}$/.test(token)) {
     return null;
@@ -29,11 +33,13 @@ export function viewerFor(token: string | null): User | null {
 }
 
 /** Read identity from this request’s cookie context, never from process-global user state. */
+
 export function viewer(): User | null {
   return viewerFor(cookies().get(SESSION_COOKIE));
 }
 
 /** Require a current session for repository callers that need a concrete account. */
+
 export function requireViewer(): User {
   const current = viewer();
   if (current == null) {
@@ -63,6 +69,7 @@ function passwordField(form: FormData): string {
  * Validate credentials with asynchronous scrypt and persistent per-handle throttling.
  * Signup creates the account and its welcome thread atomically; fixture accounts cannot sign in.
  */
+
 export async function authenticate(form: FormData, mode: string): Promise<User> {
   const handle = handleField(form);
   const password = passwordField(form);
@@ -119,6 +126,7 @@ export async function authenticate(form: FormData, mode: string): Promise<User> 
  * Rotate a session atomically and return its HttpOnly cookie.
  * Persist only the token hash; the caller must write this header before streaming a response.
  */
+
 export function issueSession(user: User, oldToken: string | null, secure: boolean): string {
   const token = randomBytes(32).toString("hex");
   transaction((db) => {
@@ -136,6 +144,7 @@ export function issueSession(user: User, oldToken: string | null, secure: boolea
 }
 
 /** Delete the presented session and return an expired cookie for the HTTP response. */
+
 export function revokeSession(token: string | null, secure: boolean): string {
   if (token != null)
     database().prepare("DELETE FROM sessions WHERE token_hash=?").run(digest(token));

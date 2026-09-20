@@ -2,10 +2,12 @@
 // @flow
 
 import * as React from "@uniflowed/react";
+
 import { settingsData } from "../_server/social-queries.js";
 import { AsyncRegion, useRetryableResource } from "../_shared/async-region.client.js";
 import { LoadingState, SignInPrompt } from "../_shared/ui.js";
 import { SettingsClient } from "./settings.client.js";
+
 import type { Settings, Protected } from "../_shared/social-model.js";
 
 component Profile(data: Protected<Settings>) {
@@ -16,6 +18,7 @@ component Profile(data: Protected<Settings>) {
 }
 
 /** Load and retry the private profile independently, then hand resolved data to the editor. */
+
 export component SettingsRegion(initial: Promise<Protected<Settings>>) {
   const { resource, retry } = useRetryableResource(initial, settingsData);
 

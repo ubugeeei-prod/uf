@@ -9,6 +9,7 @@ import {
   type EffectGenerator,
   type Tag,
 } from "@uniflowed/effect";
+
 import { inputEffect, type InputProblem } from "./input-effect.server.js";
 import { InputError, field, handleField, emailField, identifier } from "./validation.server.js";
 import {
@@ -23,9 +24,11 @@ import {
 } from "../_shared/social-model.js";
 
 /** Request-time identity capability; implementations must not cache a global current user. */
+
 export type Identity = {| readonly current: () => User | null |};
 
 /** Persistence capabilities injected into mutation programs for production or isolated tests. */
+
 export type Store = {|
   readonly insertPost: (User, string, Topic, string) => Post,
   readonly setReaction: (User, string, boolean) => Post,
@@ -34,18 +37,23 @@ export type Store = {|
 |};
 
 /** Expected failures callers can act on; unexpected storage faults remain defects. */
+
 export type MutationProblem = {| readonly kind: "unauthenticated" |} | InputProblem;
 
 /** Dependency key for resolving the account when the program runs. */
+
 export const IdentityService: Tag<Identity> = tag("commonplace/identity");
 
 /** Dependency key for authorized persistence operations. */
+
 export const SocialStore: Tag<Store> = tag("commonplace/store");
 
 /** A typed write program requiring identity and persistence capabilities. */
+
 export type Mutation<out T> = Effect<T, MutationProblem, Identity | Store>;
 
 /** Run a repository operation lazily, classifying only its expected rejections. */
+
 function attempt<T>(body: () => T): Effect<T, MutationProblem> {
   return inputEffect(trySync({ try: body, catch: (error) => error }));
 }
@@ -65,6 +73,7 @@ const authenticated: Effect<User, MutationProblem, Identity> = effect(function* 
 });
 
 /** Authenticate, validate the form, and publish using an idempotent submission ID. */
+
 export function publishNote(form: FormData): Mutation<Post> {
   return effect(function* (): EffectGenerator<Post, MutationProblem, Identity | Store> {
     const user = yield* authenticated;
@@ -81,6 +90,7 @@ export function publishNote(form: FormData): Mutation<Post> {
 }
 
 /** Authenticate and validate a requested reaction state before updating the store. */
+
 export function appreciateNote(id: string, liked: boolean): Mutation<Post> {
   return effect(function* (): EffectGenerator<Post, MutationProblem, Identity | Store> {
     const user = yield* authenticated;
@@ -96,6 +106,7 @@ export function appreciateNote(id: string, liked: boolean): Mutation<Post> {
 }
 
 /** Authenticate and validate a message before the repository checks thread membership. */
+
 export function deliverMessage(form: FormData): Mutation<Message> {
   return effect(function* (): EffectGenerator<Message, MutationProblem, Identity | Store> {
     const user = yield* authenticated;
@@ -112,6 +123,7 @@ export function deliverMessage(form: FormData): Mutation<Message> {
 }
 
 /** Authenticate and validate private profile edits before the transactional update. */
+
 export function changeProfile(form: FormData): Mutation<Settings> {
   return effect(function* (): EffectGenerator<Settings, MutationProblem, Identity | Store> {
     const user = yield* authenticated;

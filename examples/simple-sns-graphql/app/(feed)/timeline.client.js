@@ -1,14 +1,17 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useFragment } from "@uniflowed/relay";
+
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
 import { Icon, ActionLink, EmptyState } from "../_shared/ui.js";
 import { SearchNotes } from "./search.client.js";
 import { PostCard } from "./post.client.js";
 import { Composer } from "./composer.client.js";
 import { topicLabel, TOPICS, feedHref, type FeedFilter } from "../_shared/social-model.js";
+
 import type { SnsTimeline_query$key } from "./__generated__/SnsTimeline_query.graphql.js";
 
 const timelineFragment = graphql`
@@ -32,9 +35,11 @@ const timelineFragment = graphql`
 `;
 
 /** The same Commonplace feed; data and fragment ownership belong to Relay. */
+
 export component Timeline(queryRef: SnsTimeline_query$key, filter: FeedFilter) {
   const data = useFragment(timelineFragment, queryRef);
   const posts = data.feed?.posts ?? [];
+
   return (
     <>
       <header className="page-heading">

@@ -1,5 +1,7 @@
 // @flow
+
 import * as React from "react";
+
 export type Note = {|
   readonly id: string,
   readonly author: string,
@@ -7,6 +9,7 @@ export type Note = {|
   readonly topic: string,
   readonly body: string,
 |};
+
 const initial: Array<Note> = [
   {
     id: "garden",
@@ -30,8 +33,11 @@ const initial: Array<Note> = [
     body: "Saturday walk along the river, anyone? Meet by the footbridge at nine. Bring a friend.",
   },
 ];
+
 type Notes = {| readonly notes: $ReadOnlyArray<Note>, readonly publish: (string) => void |};
+
 const Context: React.Context<Notes | null> = React.createContext(null);
+
 export component NotesProvider(children: React.Node) {
   const [notes, setNotes] = React.useState(initial);
   const publish = (body: string) => {
@@ -44,6 +50,7 @@ export component NotesProvider(children: React.Node) {
   };
   return <Context.Provider value={{ notes, publish }}>{children}</Context.Provider>;
 }
+
 export function useNotes(): Notes {
   const notes = React.useContext(Context);
   if (notes == null) throw new Error("NotesProvider is missing");
