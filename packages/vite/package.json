@@ -47,7 +47,8 @@
     "shiki": "^3.23.0",
     "unist-util-mdx-define": "^1.1.2",
     "vite": "^8.2.2",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "rolldown": "^1.2.7"
   },
   "peerDependencies": {
     "axe-core": ">=4",

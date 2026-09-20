@@ -228,6 +228,9 @@ export default defineConfig({
     // emitted `worker.js`, `wrangler.json` and assets binding and answer the
     // same fixture over HTTP. No `inputs`, for the same reason as `test:lib`:
     // Wrangler, Node and the installed package tree are part of the check.
+    "instrumentation:smoke": {
+      command: "node tools/ci/instrumentation-smoke.mjs",
+    },
     "edge:smoke": {
       command: "tools/ci/edge-worker-smoke.sh",
       dependsOn: ["build"],
@@ -1030,6 +1033,7 @@ export default defineConfig({
         "check:lib",
         "test:lib",
         "edge:smoke",
+        "instrumentation:smoke",
         "native:smoke",
         "native:example",
         "docs:build",

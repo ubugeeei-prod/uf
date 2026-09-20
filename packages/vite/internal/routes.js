@@ -14,6 +14,8 @@
 // route table imports every page and layout lazily, so a route is a chunk of
 // its own and the client only downloads what it navigates to.
 
+import { clientInstrumentationSource } from "./instrumentation.js";
+
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -28,6 +30,7 @@ export const RESERVED = Object.freeze({
   error: "$error",
   loading: "$loading",
   route: "$route",
+  instrumentation: "$instrumentation",
 });
 
 /**
@@ -381,6 +384,15 @@ export function scanRoutes(appRoot, options = {}) {
     );
 
     refuseUnsupportedTemplateFiles(directory, entries);
+    for (const entry of entries) {
+      if (entry.name.startsWith("$instrumentation") && !/\.test\.jsx?$/.test(entry.name)) {
+        if (depth !== 0 || !/^\$instrumentation(?:\.client)?\.jsx?$/.test(entry.name)) {
+          throw new Error(
+            `uf: ${path.join(directory, entry.name)} must be $instrumentation.js or $instrumentation.client.js at the router root`,
+          );
+        }
+      }
+    }
 
     // A `$default.js` answers one question — what a slot renders when the
     // URL says nothing about it — and this walk is everywhere a slot is not,
@@ -1660,7 +1672,7 @@ export function clientModuleSource(appEntry, options = {}) {
   return `import { ${mount} } from "@uniflowed/router/client";
 import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-${mount}({ App, routes, notFound, errors${strictMode}${navigation}${staleTime}${routing} });
+${clientInstrumentationSource(options.instrumentation)}${mount}({ App, routes, notFound, errors${strictMode}${navigation}${staleTime}${routing} });
 `;
 }
 
@@ -1718,9 +1730,12 @@ ${mount}({ App, routes, notFound, errors${strictMode}${navigation}${staleTime}${
  * shorter proof of the paragraph above: the copy the router dispatches and
  * renders with is by construction the copy the host is handed.
  */
-export function serverModuleSource(appEntry, routing = routingRulesOf({})) {
+export function serverModuleSource(appEntry, routing = routingRulesOf({}), instrumentation = null) {
   return `import {
   createActionDispatcher,
+  createInstrumentation,
+  instrumentRender,
+  traceRequestPhase,
   createDispatcher,
   createMiddlewareRunner,
   createRenderer,
@@ -1731,14 +1746,19 @@ import { actions } from ${JSON.stringify(VIRTUAL.actions)};
 import App from ${JSON.stringify(appEntry)};
 ${routingExportSource(routing)}installRouting(routing);
 export { routes, handlers, middleware, notFound, errors };
-export { beginRequest } from "@uniflowed/router/server";
+${instrumentation == null ? "" : `import * as hooks from ${JSON.stringify(instrumentation)};`}
+export const { beginRequest } = createInstrumentation(${instrumentation == null ? "" : "hooks"});
 const renderer = createRenderer({ App, routes, notFound, errors });
-export const render = renderer.render;
+export const render = (url, assets, options = {}) => instrumentRender(
+  (onError) => renderer.render(url, assets, { ...options, onError }), options.onError,
+);
 export const prerender = renderer.prerender;
 export { shellDocument } from "@uniflowed/router/server";
-export const dispatch = createDispatcher({ handlers });
+const dispatchRoute = createDispatcher({ handlers });
+export const dispatch = (request) => traceRequestPhase("route", () => dispatchRoute(request));
 export const callAction = createActionDispatcher({ actions });
-export const runMiddleware = createMiddlewareRunner({ middleware });
+const guard = createMiddlewareRunner({ middleware });
+export const runMiddleware = (request) => traceRequestPhase("middleware", () => guard(request));
 `;
 }
 

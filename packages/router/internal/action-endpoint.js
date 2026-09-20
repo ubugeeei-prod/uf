@@ -88,6 +88,8 @@
 // it. Written here because this is the file somebody reads before deciding
 // otherwise.
 
+import { traceRequestPhase, reportRequestError } from "@uniflowed/server/instrumentation";
+
 import { asResponder, nativeActionAllowed } from "@uniflowed/server/host";
 
 import {
@@ -232,7 +234,7 @@ export function createActionDispatcher(options: {|
         // `decodeActionArguments` produced, so what is unchecked here is the
         // shape of the function and not the shape of the payload.
         const call = action as $FlowFixMe;
-        result = await call(...args);
+        result = await traceRequestPhase("action", () => call(...args));
       } catch (error) {
         report(record, error);
         return refusal(500);
@@ -430,6 +432,7 @@ function refusal(status: number): Response {
  * here and nowhere the caller can read.
  */
 function report(record: ActionRecord, error: mixed): void {
+  reportRequestError(error, "action");
   // eslint-disable-next-line no-console
   console.error(`uf: server action \`${record.export}\` in \`${record.module}\` failed`, error);
 }

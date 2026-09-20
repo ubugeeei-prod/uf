@@ -18,5 +18,7 @@
     "internal",
     "!*.test.js"
   ],
-  "dependencies": {}
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1"
+  }
 }

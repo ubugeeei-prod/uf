@@ -22,6 +22,88 @@ else.
 **What you need first:** a project that serves requests —
 [Routing](/guide/routing).
 
+## Startup and error hooks
+
+Place `$instrumentation.js` at the router root. `register()` runs once per
+application instance, before its first request; concurrent first requests await
+the same promise. A failed startup stays failed. Development reloads create a new
+instance, and each Worker isolate or serverless instance starts independently.
+
+```js
+// app/$instrumentation.js
+// @flow
+import { logger } from "@uniflowed/server";
+import { startTelemetry } from "./_server/telemetry.js";
+
+export async function register() {
+  await startTelemetry();
+}
+
+export async function onRequestError(error, context) {
+  logger().error("request failed", {
+    error,
+    phase: context.phase,
+    route: context.route,
+    requestId: context.requestId,
+  });
+}
+```
+
+The context includes `method`, the matched route pattern (or `null`), the request
+id and `phase`: `middleware`, `route`, `loader`, `render`, `action`, or `request`.
+The hook also receives exceptions recovered by a route boundary and late streamed
+render failures. One exception is reported once per request. An error in the hook
+is logged without replacing the application's response. Workers keep asynchronous
+error hooks alive through `waitUntil`.
+
+This entry works under `uf dev`, `uf start`, `uf preview` and every runtime adapter.
+It does not run while prerendering a static build. Hook modules belong directly at
+the router root; they are never routes or browser imports.
+
+## OpenTelemetry
+
+uf emits through `@opentelemetry/api`; the application installs its own SDK,
+context manager and exporter in `register()`. Any compatible exporter can receive
+the spans. Without an SDK the API is a no-op: uf starts no exporter, background
+timer or network connection. Use the SDK appropriate to the deployment; the
+framework does not select a vendor or a Node-only SDK.
+
+The trace contains `uf.request`, `uf.middleware`, `uf.route`, `uf.loader`,
+`uf.render`, `uf.action` and `uf.fetch`. An `@uniflowed/fetch` call inside an async
+Server Component is a child of its render. Loaders remain optional; component
+fetching is traced directly. `uf.render` measures the renderer through its shell;
+`uf.request` remains open while a returned response body is consumed or cancelled.
+
+Attributes include `http.request.method`, `http.route`, and the response status
+when available. Outgoing fetch spans include the upstream hostname and scheme.
+uf does not add query strings, credentials, cookies or request bodies to these
+attributes. Exceptions can contain application data: choose filtering and
+retention in the application's exporter. Configure a context manager for async
+parentage and a propagator to join inbound trace headers to an upstream trace.
+`@uniflowed/fetch` injects that propagator's headers into its outgoing requests.
+
+For example, a Node application can install `@opentelemetry/sdk-trace-base`,
+`@opentelemetry/context-async-hooks` and its chosen exporter, construct a
+`BasicTracerProvider` with a span processor, then register it with
+`trace.setGlobalTracerProvider(provider)` and install an
+`AsyncLocalStorageContextManager` with `context.setGlobalContextManager(...)`.
+See [OpenTelemetry's JavaScript instrumentation guide](https://opentelemetry.io/docs/languages/js/instrumentation/)
+for SDK and exporter configuration.
+
+## Browser instrumentation
+
+`app/$instrumentation.client.js` runs before hydration and can export an async
+`register()`, `onError(error, { source })`, and `onNavigation(timing)`. The error
+sources are `error`, `unhandledrejection`, `navigation`, and `startup`. Observers
+are removed during HMR; an observer failure does not interrupt navigation.
+
+Navigation timing contains `kind`, `pathname`, `duration` in milliseconds and
+`status`. `kind: "document"` comes from the browser's Navigation Timing API;
+`kind: "router"` measures the router's asynchronous `push` and `replace` work.
+These timings do not claim to measure when every Suspense boundary paints.
+The pathname excludes the query string. The browser module is separate from the
+server module, so server credentials and SDKs stay out of client bundles.
+
 ## Saying something
 
 ```js

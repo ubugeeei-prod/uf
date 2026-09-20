@@ -160,6 +160,8 @@ pub enum ReservedRole {
     Loading,
     /// Answers a request instead of rendering a page.
     Route,
+    /// Startup and request instrumentation at the application root.
+    Instrumentation,
     /// Names a rendered state of a component, for `@uniflowed/story`.
     Story,
 }
@@ -179,6 +181,7 @@ impl ReservedRole {
             Self::Loading => "loading",
             Self::Route => "route",
             Self::Story => "story",
+            Self::Instrumentation => "instrumentation",
         }
     }
 
@@ -190,7 +193,7 @@ impl ReservedRole {
     /// Two `all` in one module meaning two different things is the drift this
     /// module exists to prevent, one level up.
     #[must_use]
-    pub const fn all() -> [Self; 10] {
+    pub const fn all() -> [Self; 11] {
         [
             Self::Layout,
             Self::Template,
@@ -202,6 +205,7 @@ impl ReservedRole {
             Self::Loading,
             Self::Route,
             Self::Story,
+            Self::Instrumentation,
         ]
     }
 
@@ -237,6 +241,7 @@ impl FromStr for ReservedRole {
             "loading" => Ok(Self::Loading),
             "route" => Ok(Self::Route),
             "story" => Ok(Self::Story),
+            "instrumentation" => Ok(Self::Instrumentation),
             _ => Err(()),
         }
     }
@@ -255,6 +260,8 @@ pub enum ReservedVariant {
     Android,
     /// Applies to the web target only.
     Web,
+    /// Browser instrumentation; never a route entry.
+    Client,
     /// A test colocated with the route it covers.
     Test,
 }
@@ -271,6 +278,7 @@ impl ReservedVariant {
             Self::Android => Some("android"),
             Self::Web => Some("web"),
             Self::Test => Some("test"),
+            Self::Client => Some("client"),
         }
     }
 
@@ -280,12 +288,12 @@ impl ReservedVariant {
     /// colocated test is a companion to a route and never is.
     #[must_use]
     pub const fn is_route_entry(self) -> bool {
-        !matches!(self, Self::Test)
+        !matches!(self, Self::Test | Self::Client)
     }
 
     /// Every variant, in declaration order.
     #[must_use]
-    pub const fn all() -> [Self; 6] {
+    pub const fn all() -> [Self; 7] {
         [
             Self::Default,
             Self::Native,
@@ -293,6 +301,7 @@ impl ReservedVariant {
             Self::Android,
             Self::Web,
             Self::Test,
+            Self::Client,
         ]
     }
 }
@@ -307,6 +316,7 @@ impl FromStr for ReservedVariant {
             "android" => Ok(Self::Android),
             "web" => Ok(Self::Web),
             "test" => Ok(Self::Test),
+            "client" => Ok(Self::Client),
             _ => Err(()),
         }
     }
@@ -387,6 +397,7 @@ impl ReservedRole {
             | Self::Loading
             | Self::Route
             | Self::Story
+            | Self::Instrumentation
             | Self::Template => &crate::MODULE_EXTENSIONS,
         }
     }
@@ -437,6 +448,18 @@ pub fn classify_reserved_file(file_name: &str) -> ReservedName {
     };
     if segments.next().is_some() {
         // `$page.native.test.js` and friends: one variant, not a stack of them.
+        return ReservedName::Unknown;
+    }
+
+    if variant == ReservedVariant::Client && role != ReservedRole::Instrumentation {
+        return ReservedName::Unknown;
+    }
+    if role == ReservedRole::Instrumentation
+        && !matches!(
+            variant,
+            ReservedVariant::Default | ReservedVariant::Client | ReservedVariant::Test
+        )
+    {
         return ReservedName::Unknown;
     }
 
@@ -1004,7 +1027,19 @@ mod tests {
         for role in ReservedRole::all() {
             for variant in ReservedVariant::all() {
                 let file = ReservedFile { role, variant };
-                assert_eq!(recognized(&file.file_name()), file);
+                let allowed = if role == ReservedRole::Instrumentation {
+                    matches!(
+                        variant,
+                        ReservedVariant::Default | ReservedVariant::Client | ReservedVariant::Test
+                    )
+                } else {
+                    variant != ReservedVariant::Client
+                };
+                if allowed {
+                    assert_eq!(recognized(&file.file_name()), file);
+                } else {
+                    assert!(classify_reserved_file(&file.file_name()).is_unknown());
+                }
             }
         }
     }
@@ -1014,7 +1049,7 @@ mod tests {
         for variant in ReservedVariant::all() {
             assert_eq!(
                 variant.is_route_entry(),
-                variant != ReservedVariant::Test,
+                !matches!(variant, ReservedVariant::Test | ReservedVariant::Client),
                 "{variant:?}"
             );
         }

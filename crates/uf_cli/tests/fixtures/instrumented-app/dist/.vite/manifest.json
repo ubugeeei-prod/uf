@@ -1,0 +1,66 @@
+{
+  "../../../../../packages/router/internal/boundaries.js": {
+    "file": "assets/client-reference-2-BWf2KcRK.js",
+    "name": "client-reference-2",
+    "src": "../../../../../packages/router/internal/boundaries.js",
+    "isEntry": true,
+    "imports": [
+      "_runtime-Djx-75Bk.js"
+    ]
+  },
+  "../../../../../packages/router/internal/error-view.js": {
+    "file": "assets/client-reference-3-jnAnPP37.js",
+    "name": "client-reference-3",
+    "src": "../../../../../packages/router/internal/error-view.js",
+    "isEntry": true,
+    "imports": [
+      "_runtime-Djx-75Bk.js"
+    ]
+  },
+  "_jsx-runtime-BhAlOjtF.js": {
+    "file": "assets/jsx-runtime-BhAlOjtF.js",
+    "name": "jsx-runtime"
+  },
+  "_navigation-cache-Dveh8AKj.js": {
+    "file": "assets/navigation-cache-Dveh8AKj.js",
+    "name": "navigation-cache"
+  },
+  "_runtime-Djx-75Bk.js": {
+    "file": "assets/runtime-Djx-75Bk.js",
+    "name": "runtime",
+    "imports": [
+      "_jsx-runtime-BhAlOjtF.js",
+      "_navigation-cache-Dveh8AKj.js"
+    ]
+  },
+  "app/$error.js": {
+    "file": "assets/client-reference-0-C4Vmq8su.js",
+    "name": "client-reference-0",
+    "src": "app/$error.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BhAlOjtF.js"
+    ]
+  },
+  "app/action/button.client.js": {
+    "file": "assets/client-reference-1-CZsG-DfO.js",
+    "name": "client-reference-1",
+    "src": "app/action/button.client.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BhAlOjtF.js",
+      "_navigation-cache-Dveh8AKj.js"
+    ]
+  },
+  "virtual:uf/client": {
+    "file": "assets/client-CceACemw.js",
+    "name": "client",
+    "src": "virtual:uf/client",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BhAlOjtF.js",
+      "_runtime-Djx-75Bk.js",
+      "_navigation-cache-Dveh8AKj.js"
+    ]
+  }
+}

@@ -27,7 +27,8 @@
     "./handler": "./handler.js",
     "./middleware": "./middleware.js",
     "./native-navigation": "./native-navigation.js",
-    "./http-client": "./http-client.js"
+    "./http-client": "./http-client.js",
+    "./instrumentation": "./instrumentation.js"
   },
   "files": [
     "action.js",
@@ -45,7 +46,8 @@
     "server.js",
     "native-navigation.js",
     "http-client.js",
-    "!*.test.js"
+    "!*.test.js",
+    "instrumentation.js"
   ],
   "peerDependencies": {
     "react": ">=19.2.3",

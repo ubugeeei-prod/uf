@@ -24,6 +24,8 @@
 // which.
 
 import { currentNonce, noteRoute } from "@uniflowed/server/host";
+import { traceLoader } from "./internal/server-instrumentation.js";
+
 import * as React from "react";
 
 import {
@@ -335,7 +337,11 @@ export function createRenderer(options: {|
     try {
       return {
         kind: "route",
-        route: await resolveMatch(table, url, { defer, onMatch: noteRoute }),
+        route: await resolveMatch(table, url, {
+          defer,
+          onMatch: noteRoute,
+          runLoader: traceLoader,
+        }),
       };
     } catch (error) {
       if (error instanceof RedirectError) {
@@ -512,3 +518,9 @@ export function shellDocument(assets: RenderAssets): string {
   const shell = shellFor(assets);
   return `${shell.open}${shell.body}${shell.close}`;
 }
+
+export {
+  createInstrumentation,
+  instrumentRender,
+  traceRequestPhase,
+} from "@uniflowed/server/instrumentation";

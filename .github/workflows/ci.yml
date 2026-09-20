@@ -351,6 +351,7 @@ jobs:
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run test:lib
       - run: ./target/release/uf run edge:smoke
+      - run: ./target/release/uf run instrumentation:smoke
       - run: ./target/release/uf run migration:smoke
 
   # The same suite on Node 26, which ships a native `Temporal`.

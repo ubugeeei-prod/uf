@@ -154,6 +154,8 @@ export type RequestContext = {
   responder: string | null,
   /** Work deferred until the response has been sent. */
   readonly deferred: Array<() => mixed | Promise<mixed>>,
+  /** Keep a late streaming error observer alive on hosts with waitUntil. */
+  waitUntil?: (work: Promise<mixed>) => void,
   /**
    * How many times this request has read state that varies per request.
    *
