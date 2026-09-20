@@ -309,6 +309,9 @@ pub struct ReservedFileViolation {
 
 #[derive(Debug, Error)]
 pub enum RouterError {
+    /// Instrumentation is application-wide, never local to a route or slot.
+    #[error("{file}: instrumentation modules must be directly inside the router root")]
+    InstrumentationOutsideRoot { file: Utf8PathBuf },
     #[error("failed to walk {path}: {source}")]
     Walk {
         path: Utf8PathBuf,
@@ -1182,8 +1185,14 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
                 file: path,
             });
         }
-        let Some(role) = classify_reserved_file(&file_name)
-            .recognized()
+        let reserved = classify_reserved_file(&file_name).recognized();
+        if reserved.is_some_and(|file| {
+            file.role == ReservedRole::Instrumentation && file.variant != ReservedVariant::Test
+        }) && path.parent() != Some(app_root)
+        {
+            return Err(RouterError::InstrumentationOutsideRoot { file: path });
+        }
+        let Some(role) = reserved
             .filter(|file| reserved_file_applies_to_target(*file, target))
             .map(|file| file.role)
         else {

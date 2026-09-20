@@ -64,7 +64,6 @@ export async function installClientInstrumentation(
   } catch (failure) {
     notify(() => hooks.onError?.(failure, { source: "startup" }));
     dispose();
-    throw failure;
   }
   return dispose;
 }

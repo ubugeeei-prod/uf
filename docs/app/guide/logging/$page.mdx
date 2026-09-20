@@ -99,9 +99,13 @@ for SDK and exporter configuration.
 ## Browser instrumentation
 
 `app/$instrumentation.client.js` runs before hydration and can export an async
-`register()`, `onError(error, { source })`, and `onNavigation(timing)`. The error
-sources are `error`, `unhandledrejection`, `navigation`, and `startup`. Observers
+`register()`, `onError(error, { source })`, and `onNavigation(timing)`. Error sources
+are `error`, `unhandledrejection`, `navigation`, and `startup`. Observers
 are removed during HMR; an observer failure does not interrupt navigation.
+
+A rejected client registration is reported as `startup`; its listeners are
+disposed and the application still mounts or hydrates. Server registration stays
+fail-closed, as described above.
 
 Navigation timing contains `kind`, `pathname`, `duration` in milliseconds and
 `status`. `kind: "document"` comes from the browser's Navigation Timing API;

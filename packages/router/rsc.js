@@ -206,14 +206,16 @@ export function createFlightRenderer(options: {|
     if (failure != null) reportRequestError(failure, "render");
     const report = (error) => {
       reportRequestError(error, "render");
-      return settings?.onError?.(error);
+      if (settings?.onError != null) return settings.onError(error);
+      console.error(error);
+      return undefined;
     };
     // Inside the route's store, so a server component's `useRoute()` finds the
     // route however many `await`s into the render it asks.
     const stream = withServerRoute(state, () =>
       renderToReadableStream(root, {
         // Handed over as it is, so that the digest it returns reaches the row.
-        // Absent, React logs the exception to the console itself.
+        // Our callback preserves React's console fallback when none was given.
         onError: report,
         signal: settings?.signal,
       }),

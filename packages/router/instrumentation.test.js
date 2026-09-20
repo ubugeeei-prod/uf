@@ -5,6 +5,27 @@ import { installDom } from "../react-testing/internal/dom.js";
 import { installClientInstrumentation, observeNavigation } from "./instrumentation.js";
 
 describe("client instrumentation", () => {
+  it("reports a failed registration without rejecting the client entry", async () => {
+    installDom();
+    const failure = new Error("telemetry unavailable");
+    const events = [];
+    const dispose = await installClientInstrumentation({
+      async register() {
+        throw failure;
+      },
+      onError(error, context) {
+        events.push({ error, source: context.source });
+      },
+    });
+    expect(typeof dispose).toBe("function");
+    await Promise.resolve();
+    expect(events).toEqual([{ error: failure, source: "startup" }]);
+    window.dispatchEvent(new window.ErrorEvent("error", { error: new Error("ignored") }));
+    await Promise.resolve();
+    expect(events.length).toBe(1);
+    dispose();
+  });
+
   it("observes startup, browser errors and navigation, and disposes its listeners", async () => {
     installDom();
     const events = [];

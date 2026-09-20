@@ -231,7 +231,9 @@ export function instrumentRender<Result extends { readonly error?: mixed, ... }>
   return traceRequestPhase<Result>("render", async (): Promise<Result> => {
     const result = await render((error) => {
       reportRequestError(error, "render");
-      return report?.(error);
+      if (report != null) return report(error);
+      console.error(error);
+      return undefined;
     });
     if (result.error != null) reportRequestError(result.error, "render");
     return result;

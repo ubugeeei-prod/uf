@@ -144,6 +144,31 @@ describe("request instrumentation", () => {
     expect(reports[0].details.route).toBe("/notes/:id");
   });
 
+  it("preserves the renderer's console fallback and a caller's error digest", async () => {
+    const failure = new Error("render failure");
+    const logged = [];
+    const original = console.error;
+    console.error = (error) => {
+      logged.push(error);
+    };
+    try {
+      await instrumentRender(async (onError) => {
+        expect(onError(failure)).toBe(undefined);
+        return {};
+      });
+      await instrumentRender(
+        async (onError) => {
+          expect(onError(failure)).toBe("digest");
+          return {};
+        },
+        () => "digest",
+      );
+      expect(logged).toEqual([failure]);
+    } finally {
+      console.error = original;
+    }
+  });
+
   it("keeps a failed startup failed without running it again or serving a request", async () => {
     let starts = 0;
     let requests = 0;
