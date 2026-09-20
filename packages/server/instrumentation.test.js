@@ -170,15 +170,48 @@ describe("request instrumentation", () => {
     expect(requests).toBe(0);
   });
 
+  it("keeps lazy stream fetching inside the request's context after the handler returns", async () => {
+    exporter.reset();
+    const client = createFetch({ fetch: async () => new Response("ok") });
+    const lifecycle = createInstrumentation().beginRequest(new Request("https://example.com/"));
+    const response = await lifecycle.run(
+      async () =>
+        new Response(
+          new ReadableStream(
+            {
+              async pull(controller) {
+                noteRoute("/stream");
+                await client.raw("https://upstream.example/");
+                controller.enqueue(new TextEncoder().encode("streamed"));
+                controller.close();
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+        ),
+    );
+    await lifecycle.settle();
+    expect(exporter.getFinishedSpans().length).toBe(0);
+    expect(await response.text()).toBe("streamed");
+    const spans = exporter.getFinishedSpans();
+    expect(spans.length).toBe(2);
+    const request = spans.find((span) => span.name === "uf.request");
+    const fetch = spans.find((span) => span.name === "uf.fetch");
+    expect(fetch.parentSpanContext.spanId).toBe(request.spanContext().spanId);
+    expect(request.attributes["http.route"]).toBe("/stream");
+  });
+
   it("keeps a streamed request open through cancellation and a late error hook alive", async () => {
     exporter.reset();
     const reports = [];
+    const errorSpans = [];
     const background = [];
     const failure = new Error("stream failed");
     const instrumentation = createInstrumentation({
       async onRequestError(error) {
         await Promise.resolve();
         reports.push(error);
+        errorSpans.push(trace.getSpan(context.active())?.spanContext().spanId);
       },
     });
     const lifecycle = instrumentation.beginRequest(new Request("https://example.com/"));
@@ -210,6 +243,7 @@ describe("request instrumentation", () => {
     expect(caught).toBe(failure);
     expect(reports).toEqual([failure]);
     expect(exporter.getFinishedSpans().length).toBe(1);
+    expect(errorSpans).toEqual([exporter.getFinishedSpans()[0].spanContext().spanId]);
 
     const cancelled = instrumentation.beginRequest(new Request("https://example.com/"));
     let cancellations = 0;

@@ -11,7 +11,7 @@ import { beginRequest, currentContext, runWithContext } from "./internal/context
 import { processWide } from "./internal/process-state.js";
 
 import type { RequestContext, RequestLifecycle } from "./internal/context.js";
-import type { Span } from "@opentelemetry/api";
+import type { Context, Span } from "@opentelemetry/api";
 
 export type RequestPhase = "request" | "middleware" | "route" | "loader" | "render" | "action";
 
@@ -33,6 +33,7 @@ type State = {
   method: string,
   reported: Set<mixed>,
   span: Span,
+  traceContext: Context,
 };
 
 // A server render and its RSC graph must see the same request's hooks.
@@ -58,7 +59,7 @@ export function reportRequestError(error: mixed, phase: RequestPhase): void {
   const details = { phase, method: state.method, route: request.route, requestId: request.id };
   // A failed observer cannot replace the response or recursively report itself.
   const pending = Promise.resolve()
-    .then(() => hook(error, details))
+    .then(() => telemetry.with(state.traceContext, () => hook(error, details)))
     .catch((failure) => {
       console.error("uf instrumentation: onRequestError failed", failure);
     });
@@ -123,6 +124,10 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
         state?.span.setAttribute("http.response.status_code", result.status);
         if (result.body == null) return result;
         const reader = result.body.getReader();
+        const active = state?.traceContext ?? telemetry.active();
+        function inRequest<Value>(body: () => Value): Value {
+          return runWithContext(lifecycle.context, () => telemetry.with(active, body));
+        }
         bodyPending = true;
         let closing = false;
         const complete = () => {
@@ -135,7 +140,7 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
           {
             async pull(controller) {
               try {
-                const chunk = await reader.read();
+                const chunk = await inRequest(() => reader.read());
                 if (closing) return;
                 if (chunk.done) {
                   controller.close();
@@ -151,7 +156,7 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
             async cancel(reason) {
               closing = true;
               try {
-                await reader.cancel(reason);
+                await inRequest(() => reader.cancel(reason));
               } finally {
                 complete();
               }
@@ -184,9 +189,10 @@ export function createInstrumentation(hooks: Instrumentation = {}): {|
                 },
                 parent,
               );
-            state = { hooks, method: request.method, reported: new Set(), span };
+            const traceContext = trace.setSpan(parent, span);
+            state = { hooks, method: request.method, reported: new Set(), span, traceContext };
             states.set(lifecycle.context, state);
-            return telemetry.with(trace.setSpan(parent, span), async () => {
+            return telemetry.with(traceContext, async () => {
               try {
                 const result = await body();
                 return hooks.onRequestError != null || span.isRecording()
