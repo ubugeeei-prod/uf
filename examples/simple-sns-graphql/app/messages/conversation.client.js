@@ -4,11 +4,29 @@
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { graphql, useFragment, useMutation } from "@uniflowed/relay";
+import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+
+import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
 import { Message } from "./message.client.js";
 
+import type {
+  SnsConversationQuery$variables,
+  SnsConversationQuery$data,
+} from "./__generated__/SnsConversationQuery.graphql.js";
 import type { SnsConversation_conversation$key } from "./__generated__/SnsConversation_conversation.graphql.js";
 import type { SnsSendMessageMutation } from "./__generated__/SnsSendMessageMutation.graphql.js";
+
+const conversationQuery = graphql`
+  query SnsConversationQuery($thread: ID!) {
+    conversation(id: $thread) {
+      thread {
+        id
+      }
+      ...SnsConversation_conversation
+    }
+  }
+`;
 
 const conversationFragment = graphql`
   fragment SnsConversation_conversation on Conversation {
@@ -34,7 +52,21 @@ const sendMessage = graphql`
   }
 `;
 
-export component Conversation(conversationRef: SnsConversation_conversation$key) {
+/** The selected conversation's own preload. A new thread remounts the draft with its log. */
+
+export component ConversationPane(
+  queryRef: PreloadedQueryRef<SnsConversationQuery$variables, SnsConversationQuery$data>,
+) {
+  const { conversation } = useQueryFromServer(conversationQuery, queryRef);
+
+  return conversation == null ? (
+    <p>Conversation not found.</p>
+  ) : (
+    <Conversation key={conversation.thread.id} conversationRef={conversation} />
+  );
+}
+
+component Conversation(conversationRef: SnsConversation_conversation$key) {
   const conversation = useFragment(conversationFragment, conversationRef);
   const [commit, pending] = useMutation<
     SnsSendMessageMutation["variables"],

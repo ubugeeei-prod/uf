@@ -2,20 +2,18 @@
 // @flow
 
 import * as React from "@uniflowed/react";
-import { Suspense, useState } from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
 import { RelayEnvironmentProvider } from "@uniflowed/relay";
 
 import { environment } from "./relay-environment.js";
-import { LoadingState } from "./ui.js";
 
-/** One environment for this request's tree. Each route owns its query and fragments. */
+/**
+ * One browser environment for the mounted document. Server components stay outside Relay:
+ * they preload, and each client island commits its own reference into this store.
+ */
 
 export component RelayRoot(children: React.Node) {
   const [client] = useState(() => environment("/graphql"));
 
-  return (
-    <RelayEnvironmentProvider environment={client}>
-      <Suspense fallback={<LoadingState kind="feed" />}>{children}</Suspense>
-    </RelayEnvironmentProvider>
-  );
+  return <RelayEnvironmentProvider environment={client}>{children}</RelayEnvironmentProvider>;
 }

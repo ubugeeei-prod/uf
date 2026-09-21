@@ -10,14 +10,29 @@ import {
   useRelayEnvironment,
   fetchQuery,
 } from "@uniflowed/relay";
+import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+
+import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
 import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
 import { UserAvatar } from "../_shared/avatar.client.js";
-import feedQuery from "./__generated__/SnsFeedPageQuery.graphql.js";
+import timelineQuery from "./__generated__/SnsTimelineQuery.graphql.js";
 import { TOPICS, topicLabel, type FeedFilter } from "../_shared/social-model.js";
 
+import type {
+  SnsComposerQuery$variables,
+  SnsComposerQuery$data,
+} from "./__generated__/SnsComposerQuery.graphql.js";
 import type { SnsComposer_viewer$key } from "./__generated__/SnsComposer_viewer.graphql.js";
 import type { SnsCreatePostMutation } from "./__generated__/SnsCreatePostMutation.graphql.js";
+
+const composerQuery = graphql`
+  query SnsComposerQuery {
+    viewer {
+      ...SnsComposer_viewer
+    }
+  }
+`;
 
 const composerFragment = graphql`
   fragment SnsComposer_viewer on User {
@@ -35,7 +50,19 @@ const createPost = graphql`
   }
 `;
 
-export component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
+/** Read the viewer's own preload; `guest` is the server-rendered invitation for everyone else. */
+
+export component ComposerSlot(
+  queryRef: PreloadedQueryRef<SnsComposerQuery$variables, SnsComposerQuery$data>,
+  filter: FeedFilter,
+  guest: React.Node,
+) {
+  const { viewer } = useQueryFromServer(composerQuery, queryRef);
+
+  return viewer == null ? guest : <Composer viewerRef={viewer} filter={filter} />;
+}
+
+component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
   const viewer = useFragment(composerFragment, viewerRef);
   const [commit, pending] = useMutation<
     SnsCreatePostMutation["variables"],
@@ -65,7 +92,7 @@ export component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter)
             setRequestId("");
             fetchQuery(
               environment,
-              feedQuery,
+              timelineQuery,
               {
                 topic: filter.topic,
                 search: filter.query,
