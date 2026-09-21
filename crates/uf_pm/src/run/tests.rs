@@ -22,6 +22,22 @@ fn operands(list: &[&str]) -> Vec<String> {
     list.iter().map(ToString::to_string).collect()
 }
 
+#[test]
+fn windows_package_manager_lookup_honors_pathext() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let npm = dir.path().join("npm.cmd");
+    std::fs::write(&npm, "").expect("a shim file");
+
+    let found = windows_program_in_path(
+        "npm",
+        dir.path().as_os_str(),
+        std::ffi::OsStr::new(".cmd;.exe"),
+    )
+    .expect("PATHEXT should find npm.cmd");
+
+    assert_eq!(found, npm.into_os_string());
+}
+
 fn args(
     manager: PackageManager,
     operation: Operation<'_>,
