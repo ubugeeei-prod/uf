@@ -1,17 +1,19 @@
 // @flow
 //
-// The transform cache, through the in-thread hooks `register.js` installs
-// wherever `node:module` has `registerHooks` — which is every Node this suite
-// runs on.
+// The transform cache, through the loader thread `register()` starts: what an
+// older Node gets, and what `@uniflowed/vite`'s driver registers. Every Node
+// this suite runs on has `registerHooks`, so the in-thread file alone would
+// leave this loader unexercised — which is how a loader stops working without
+// anybody noticing.
 //
 // The bodies are `../../tests/library/transform-cache.js`, shared with
-// `./transform-cache-loader-thread.test.js`; the names are here because `uf test` reads this file's own
+// `./transform-cache.test.js`; the names are here because `uf test` reads this file's own
 // source to decide whether it holds tests at all.
 
 import { describe, it } from "@uniflowed/test";
 
 import {
-  IN_THREAD_HOOKS,
+  LOADER_THREAD,
   servesASecondRunFromDiskRatherThanCompilingAgain,
   compilesAgainWhenUfItselfWasRebuilt,
   stillHasABuildsEntriesWhenThatBuildComesBack,
@@ -23,40 +25,40 @@ import {
   leavesACommonjsModuleThatSomethingRequiresToNode,
 } from "../../tests/library/transform-cache.js";
 
-describe("the transform cache, through the in-thread hooks", () => {
+describe("the transform cache, through the loader thread", () => {
   it("serves a second run from disk rather than compiling again", () => {
-    servesASecondRunFromDiskRatherThanCompilingAgain(IN_THREAD_HOOKS);
+    servesASecondRunFromDiskRatherThanCompilingAgain(LOADER_THREAD);
   });
 
   it("compiles again when uf itself was rebuilt", () => {
-    compilesAgainWhenUfItselfWasRebuilt(IN_THREAD_HOOKS);
+    compilesAgainWhenUfItselfWasRebuilt(LOADER_THREAD);
   });
 
   it("still has a build's entries when that build comes back", () => {
-    stillHasABuildsEntriesWhenThatBuildComesBack(IN_THREAD_HOOKS);
+    stillHasABuildsEntriesWhenThatBuildComesBack(LOADER_THREAD);
   });
 
   it("does not serve what it cached when it cannot tell which uf compiled it", () => {
-    doesNotServeWhatItCachedWhenItCannotTellWhichUfCompiledIt(IN_THREAD_HOOKS);
+    doesNotServeWhatItCachedWhenItCannotTellWhichUfCompiledIt(LOADER_THREAD);
   });
 
   it("does not serve a build's entries to the build that replaced it mid-run", () => {
-    doesNotServeABuildsEntriesToTheBuildThatReplacedItMidrun(IN_THREAD_HOOKS);
+    doesNotServeABuildsEntriesToTheBuildThatReplacedItMidrun(LOADER_THREAD);
   });
 
   it("does not serve what it cached through a binary that can no longer run", () => {
-    doesNotServeWhatItCachedThroughABinaryThatCanNoLongerRun(IN_THREAD_HOOKS);
+    doesNotServeWhatItCachedThroughABinaryThatCanNoLongerRun(LOADER_THREAD);
   });
 
   it("identifies the binary a host started by hand finds on PATH", () => {
-    identifiesTheBinaryAHostStartedByHandFindsOnPath(IN_THREAD_HOOKS);
+    identifiesTheBinaryAHostStartedByHandFindsOnPath(LOADER_THREAD);
   });
 
   it("fails the import of a module the compiler refused, with what the compiler said", () => {
-    failsTheImportOfAModuleTheCompilerRefusedWithWhatTheCompilerSaid(IN_THREAD_HOOKS);
+    failsTheImportOfAModuleTheCompilerRefusedWithWhatTheCompilerSaid(LOADER_THREAD);
   });
 
   it("leaves a CommonJS module that something requires to Node", () => {
-    leavesACommonjsModuleThatSomethingRequiresToNode(IN_THREAD_HOOKS);
+    leavesACommonjsModuleThatSomethingRequiresToNode(LOADER_THREAD);
   });
 });
