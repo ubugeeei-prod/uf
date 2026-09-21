@@ -198,6 +198,19 @@ const projectThatRequires = (): string => {
   return root;
 };
 
+/** The two modules, and React Compiler output that asks for its runtime. */
+const projectWithCompilerRuntime = (): string => {
+  const root = project();
+  fs.writeFileSync(
+    path.join(root, "main.js"),
+    'import { c } from "react/compiler-runtime";\n' +
+      'import { compiledBy } from "./thing.js";\n' +
+      "const cache = c(2);\n" +
+      'process.stdout.write(`${compiledBy} ${cache.length}:${cache[0] === Symbol.for("react.memo_cache_sentinel")}`);\n',
+  );
+  return root;
+};
+
 /** Run `body` against a fresh project, and take the project away afterwards. */
 const inAProject = (body: (root: string) => void, make?: () => string): void => {
   const root = (make ?? project)();
@@ -266,6 +279,18 @@ const cached = (root: string): Array<string> => {
 
 for (const loader of LOADERS) {
   describe(`the transform cache, through ${loader.name}`, () => {
+    it("supplies the React Compiler runtime to test workers", () => {
+      inAProject((root) => {
+        const binary = buildUf(root, "first-build", FIRST);
+        const result = run(root, { UF_BINARY: binary, UF_IN_SOURCE_TESTS: "1" }, loader);
+
+        expect(result.error).toBe(null);
+        expect(result.stderr).toContain("compiled ");
+        expect(result.status).toBe(0);
+        expect(result.stdout).toBe("first-build 2:true");
+      }, projectWithCompilerRuntime);
+    });
+
     it("serves a second run from disk rather than compiling again", () => {
       inAProject((root) => {
         const binary = buildUf(root, "first-build", FIRST);

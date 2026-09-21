@@ -40,10 +40,14 @@ export const FLOW_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs"];
  */
 export function isFlowModule(id) {
   if (id.startsWith("\0")) return false;
-  const clean = stripQuery(id);
+  const clean = normalizePathSeparators(stripQuery(id));
   if (!FLOW_EXTENSIONS.some((extension) => clean.endsWith(extension))) return false;
   const at = clean.lastIndexOf("/node_modules/");
   return at === -1 || clean.slice(at).startsWith("/node_modules/@uniflowed/");
+}
+
+function normalizePathSeparators(id) {
+  return id.replaceAll("\\", "/");
 }
 
 function stripQuery(id) {
@@ -100,7 +104,7 @@ export const FLOW_MODULE_PATTERN = new RegExp(
   // Reject when the *last* `/node_modules/` on the path is not followed by
   // `@uniflowed/`, which is `isFlowModule`'s `lastIndexOf` written as a
   // lookahead: the inner negative lookahead is what pins "last".
-  String.raw`^(?![^?#]*/node_modules/(?![^?#]*/node_modules/)(?!@uniflowed/))` +
+  String.raw`^(?![^?#]*[\\/]node_modules[\\/](?![^?#]*[\\/]node_modules[\\/])(?!@uniflowed[\\/]))` +
     String.raw`[^?#]*\.(?:${FLOW_EXTENSIONS.map((extension) => extension.slice(1)).join("|")})` +
     String.raw`(?:[?#].*)?$`,
 );

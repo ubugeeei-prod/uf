@@ -27,7 +27,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { isFlowModule, sharedService, transformFlow, ufBinaryIdentity } from "../transform.js";
+import {
+  environmentVariable,
+  isFlowModule,
+  sharedService,
+  transformFlow,
+  ufBinaryIdentity,
+} from "../transform.js";
 import {
   cacheDirectoryFor,
   cacheEntryFor,
@@ -48,6 +54,33 @@ let root = null;
 export async function initialize(data) {
   root = data?.root ?? process.cwd();
   cacheDirectory = cacheDirectoryFor(root);
+}
+
+const TEST_COMPILER_RUNTIME_URL =
+  "data:text/javascript;charset=utf-8," +
+  encodeURIComponent(`const sentinel = Symbol.for("react.memo_cache_sentinel");
+export function c(size) {
+  const cache = new Array(size);
+  for (let index = 0; index < size; index += 1) cache[index] = sentinel;
+  return cache;
+}
+`);
+
+function isTestCompilerRuntime(specifier) {
+  return (
+    specifier === "react/compiler-runtime" && environmentVariable("UF_IN_SOURCE_TESTS") === "1"
+  );
+}
+
+/**
+ * The `resolve` hook: while `uf test` is running Flow-compiled modules
+ * without Vite's RSC graph, supply the compiler's memo-cache helper directly.
+ */
+export async function resolve(specifier, context, nextResolve) {
+  if (isTestCompilerRuntime(specifier)) {
+    return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
+  }
+  return nextResolve(specifier, context);
 }
 
 /**

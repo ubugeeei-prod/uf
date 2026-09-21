@@ -440,15 +440,48 @@ jobs:
       - name: Scaffold, install, and check a Windows project
         shell: pwsh
         run: |
+          function Run-Uf {
+            & $uf @args
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          function Run-Npm {
+            & npm @args
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          function Run-Node {
+            & node @args
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           $uf = Join-Path $PWD "target/ci-opt/uf.exe"
           $app = Join-Path $env:RUNNER_TEMP "uf-windows-app"
-          & $uf new $app --name windows-smoke
-          & $uf --cwd $app install
-          & $uf --cwd $app fmt --check
-          & $uf --cwd $app lint
-          & $uf --cwd $app check
-          & $uf --cwd $app test
-          & $uf --cwd $app build
+          Run-Uf new $app --name windows-smoke
+          Run-Uf --cwd $app install
+          $hostPackage = Join-Path $PWD "packages/host"
+          Push-Location $app
+          try {
+            Run-Npm install --no-save $hostPackage
+          } finally {
+            Pop-Location
+          }
+          $resolveHost = @'
+          const { createRequire } = require("node:module");
+          const path = require("node:path");
+          const app = process.argv[1];
+          const host = path.resolve(process.argv[2]);
+          const resolved = createRequire(path.join(app, "package.json")).resolve("@uniflowed/host/transform");
+          const actual = path.resolve(resolved);
+          if (!actual.startsWith(host + path.sep)) {
+            console.error(`expected @uniflowed/host from ${host}, got ${actual}`);
+            process.exit(1);
+          }
+          console.log(`@uniflowed/host -> ${actual}`);
+          '@
+          Run-Node -e $resolveHost $app $hostPackage
+          Run-Uf --cwd $app fmt --check
+          Run-Uf --cwd $app lint
+          Run-Uf --cwd $app check
+          Run-Uf --cwd $app test
+          Run-Uf --cwd $app build
 
   editors:
     name: Editors
