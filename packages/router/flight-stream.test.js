@@ -254,7 +254,119 @@ describe("where a streamed document puts its payload", () => {
       expect(tail(html)).toMatch(ENDING);
     }
   });
+
+  // Between elements is where the parser keeps a payload element; React is
+  // stricter. Hydrating, it steps over an element it did not render only among
+  // the children of its root and of `<body>`. One level further in, the element
+  // is a child the tree has no fiber for: the hydration fails at the frame, and
+  // React discards the server's markup and renders the whole document again.
+  // A page whose shell is one server-rendered frame is what finds this — React
+  // ends a piece in front of every long string, so inside the frame and on a
+  // `>`, which is everything the rule above asks for.
+  it("writes the payload only among the children of React's root", async () => {
+    for (const [shape, Page, deepest] of [
+      ["wrapped", Frame, 1],
+      ["document", FramedDocument, 0],
+    ]) {
+      const payload = handPayload();
+      payload.write('0:["rows","written","before","the","frame"]\n');
+      const text = (
+        await renderDocument(<Page />, { shell, onError: () => {}, payload: payload.stream })
+      ).text();
+      payload.end();
+      const html = await text;
+
+      // Some piece has to end inside the frame, or this checks nothing.
+      expect(html).toContain(`<p>${LONG_TEXT}</p>`);
+      const depths = depthAtEachElement(html);
+      expect(depths.length).toBeGreaterThan(0);
+      expect({ shape, inside: depths.filter((depth) => depth > deepest) }).toEqual({
+        shape,
+        inside: [],
+      });
+      expect(decode(payloadOf(html))).toBe('0:["rows","written","before","the","frame"]\n');
+    }
+  });
+
+  it("waits for a frame to close when a piece ends between two of its children", async () => {
+    const payload = handPayload();
+    const row = '0:{"tree":"the whole payload, ready before the second piece"}\n';
+    payload.write(row);
+    payload.end();
+    // The document a signed-out `/signup` was: a boundary that finished inside
+    // the shell, and a piece that ends where the sidebar does.
+    const chunks = [
+      '<html><head></head><body><div class="app-shell"><aside><!--$--><a href="/login">Sign in</a><!--/$--></aside>',
+      '<div class="workspace"><main>page</main></div></div>',
+      "</body></html>",
+    ];
+    let chunkIndex = 0;
+    const body = await renderWithReadableStream(
+      async () => ({
+        getReader: () => ({
+          read: async () => {
+            const chunk = chunks[chunkIndex++];
+            return chunk == null ? { done: true } : { done: false, value: encode(chunk) };
+          },
+          releaseLock: () => {},
+        }),
+      }),
+      <p />,
+      { shell, onError: () => {}, payload: payload.stream },
+    );
+    const html = await body.text();
+    expect(depthAtEachElement(html)).toEqual([0, 0]);
+    expect(html.indexOf("data-uf-flight")).toBeGreaterThan(html.indexOf("</main></div></div>"));
+    expect(decode(payloadOf(html))).toBe(row);
+  });
 });
+
+/** Long enough that React writes it on its own, ending the piece before it. */
+const LONG_TEXT = "a frame rendered on the server ".repeat(160);
+
+/** One element around the whole page, the way an application's shell is. */
+component Frame() {
+  return (
+    <div className="frame">
+      <aside>navigation</aside>
+      {Array.from({ length: 6 }, (_, index) => (
+        <p key={index}>{LONG_TEXT}</p>
+      ))}
+      <main>content</main>
+    </div>
+  );
+}
+
+/** The same frame in a document React writes, where the root is `<body>`. */
+component FramedDocument() {
+  return (
+    <html lang="en">
+      <head>
+        <title>Framed</title>
+      </head>
+      <body>
+        <Frame />
+      </body>
+    </html>
+  );
+}
+
+/** How many elements are open inside `<body>` where each payload element is. */
+function depthAtEachElement(html: string): Array<number> {
+  const depths = [];
+  const pattern =
+    /<script type="application\/json" data-uf-flight>[\s\S]*?<\/script>|<!--[\s\S]*?-->|<(\/?)[a-z][^>]*?(\/?)>/gi;
+  pattern.lastIndex = html.indexOf(">", html.search(/<body[\s>]/)) + 1;
+  let depth = 0;
+  let match = pattern.exec(html);
+  while (match != null) {
+    if (match[0].includes("data-uf-flight")) depths.push(depth);
+    else if (match[1] === "/") depth -= 1;
+    else if (match[1] === "" && match[2] === "") depth += 1;
+    match = pattern.exec(html);
+  }
+  return depths;
+}
 
 /** Two hundred and forty links, each long enough to be split by React's buffer. */
 component LongPage() {

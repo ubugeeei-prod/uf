@@ -311,9 +311,16 @@ async function* assembled(
   chunks: AsyncGenerator<string, void, void>,
   shell: DocumentShell,
   transformHead?: (html: string) => Promise<string>,
+  layout?: Layout,
 ): AsyncGenerator<string, void, void> {
   let held = "";
   let shape = "unknown";
+  // A document uf wraps is the only one whose root is not `<body>` itself.
+  const wrapped = () => {
+    if (layout != null) {
+      layout.rootDepth = advanced(NOTHING_WRITTEN, shell.open + shell.body, 0).depth ?? 0;
+    }
+  };
   // The opening chunk is the only one the hook sees, and every path below
   // reaches exactly one of them. Awaiting here rather than at each `yield`
   // keeps them from drifting apart. The hook sees only the document opening:
@@ -343,6 +350,7 @@ async function* assembled(
         continue;
       }
       shape = "shell-open";
+      wrapped();
       yield await opening(shell.open + split.head + shell.body, split.rest);
       held = "";
       continue;
@@ -382,6 +390,7 @@ async function* assembled(
     // still open is over and whatever was left of it is markup like any other.
     const split = hoisted(held);
     shape = "shell-open";
+    wrapped();
     yield await opening(shell.open + split.head + shell.body, split.rest);
   }
   if (shape === "shell-open") {
@@ -721,7 +730,9 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
             bodyOf(
               outgoing(
                 withPayload(
-                  assembled(queue.chunks(), options.shell, options.transformHead),
+                  queue.chunks(),
+                  options.shell,
+                  options.transformHead,
                   options.payload,
                   options.nonce,
                 ),
@@ -801,7 +812,9 @@ export function renderWithReadableStream(
     bodyOf(
       outgoing(
         withPayload(
-          assembled(decoded(stream), options.shell, options.transformHead),
+          decoded(stream),
+          options.shell,
+          options.transformHead,
           options.payload,
           options.nonce,
         ),
@@ -861,26 +874,54 @@ export async function prerenderDocument(node: React.Node, options: RenderOptions
       : await ReactDOMStatic.prerender(node, settings);
   return bodyOf(
     withPayload(
-      assembled(preludeChunks(result.prelude), options.shell, options.transformHead),
+      preludeChunks(result.prelude),
+      options.shell,
+      options.transformHead,
       options.payload,
     ),
   ).text();
 }
 
-/** `chunks` unchanged when there is no payload, and [`interleaved`] with one. */
+/**
+ * What [`assembled`] learns about a document that [`interleaved`] needs.
+ *
+ * Which shape a document has is decided on its opening bytes, inside
+ * `assembled`, and `interleaved` reads that document's chunks — so by the time
+ * it has HTML to follow, the answer is here.
+ */
+type Layout = {|
+  /**
+   * How many elements are open inside `<body>` where React's root begins: none
+   * for a document React wrote, and uf's own container for one uf wraps.
+   */
+  rootDepth: number,
+|};
+
+/** [`assembled`] alone when there is no payload, and [`interleaved`] with one. */
 function withPayload(
   chunks: AsyncGenerator<string, void, void>,
+  shell: DocumentShell,
+  transformHead: ?(html: string) => Promise<string>,
   payload: ?ReadableStream<Uint8Array>,
   nonce?: string | null,
 ): AsyncGenerator<string, void, void> {
-  return payload == null ? chunks : interleaved(chunks, payload, nonce);
+  if (payload == null) {
+    return assembled(chunks, shell, transformHead ?? undefined);
+  }
+  const layout: Layout = { rootDepth: 0 };
+  return interleaved(
+    assembled(chunks, shell, transformHead ?? undefined, layout),
+    payload,
+    nonce,
+    layout,
+  );
 }
 
 /**
  * A document's chunks, with the Flight payload it was rendered from written
  * into it as it arrives.
  *
- * Four rules, and each is the answer to a way the obvious version is wrong.
+ * Six rules, and each is the answer to a way the obvious version is wrong.
  *
  * **Nothing before the head.** The first chunk this is handed is the whole
  * opening of the document — `assembled` does not let one go until the head is
@@ -906,6 +947,19 @@ function withPayload(
  * from chunk to chunk, and otherwise waits for the HTML that finishes what is
  * open.
  *
+ * **Only where React steps over it.** Between elements is where the *parser*
+ * keeps a payload element. React is stricter: hydrating, it steps over an
+ * element it did not render only among the children of its root and of
+ * `<html>`, `<head>` and `<body>`. Anywhere deeper the element is a child the
+ * tree has no fiber for, the hydration fails there, and React throws the
+ * server's markup away and renders the document again. A shell that is one
+ * large element — a frame around the page, all of it rendered on the server —
+ * is written in many pieces, several of which end between two of its children,
+ * and a payload that was already waiting used to go out at the first of them.
+ * So [`advanced`] also follows how many elements are open inside `<body>`, and
+ * a payload waits for the root's own level: between React's top-level
+ * elements, which is where every streamed segment is written anyway.
+ *
  * **Outside replaceable boundaries.** Even between tags, a payload inside a
  * Suspense fallback disappears when React reveals its content. A browser that
  * loads the Flight reader afterwards then sees an incomplete stream. React's
@@ -927,6 +981,7 @@ async function* interleaved(
   chunks: AsyncGenerator<string, void, void>,
   payload: ReadableStream<Uint8Array>,
   nonce?: string | null,
+  layout?: Layout,
 ): AsyncGenerator<string, void, void> {
   const encoder = createChunkEncoder(nonce);
   const reader = payload.getReader();
@@ -992,7 +1047,7 @@ async function* interleaved(
       }
       if (text !== "") {
         yield text;
-        boundary = advanced(boundary, text);
+        boundary = advanced(boundary, text, layout?.rootDepth ?? 0);
       }
       next = chunks.next();
     }
@@ -1029,9 +1084,35 @@ type Boundary = {|
   readonly replaceable: number,
   /** A tag, or a comment, the HTML has started and not yet finished. */
   readonly open: string,
+  /** How many elements are open inside `<body>`; `null` until it has opened. */
+  readonly depth: number | null,
 |};
 
-const NOTHING_WRITTEN: Boundary = { safe: false, rawText: null, replaceable: 0, open: "" };
+const NOTHING_WRITTEN: Boundary = {
+  safe: false,
+  rawText: null,
+  replaceable: 0,
+  open: "",
+  depth: null,
+};
+
+/** Elements with no closing tag, for markup whose `/>` React did not write. */
+const VOID_ELEMENTS: $ReadOnlySet<string> = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
 
 /**
  * `boundary`, once `html` has been written after it.
@@ -1044,12 +1125,21 @@ const NOTHING_WRITTEN: Boundary = { safe: false, rawText: null, replaceable: 0, 
  * the content of an inline script or stylesheet, where a `>` is code, so an
  * opening `<script>` or `<style>` is followed to its closing tag. A tag split
  * across two chunks is carried in `open` and read whole with the next one.
+ *
+ * And it may follow only HTML that leaves `rootDepth` elements open inside
+ * `<body>`, or none: the children of React's root and of `<body>` are the ones
+ * hydration steps over. Every tag from `<body>` on is counted for that, React's
+ * void elements by the `/>` it writes them with. Markup React did not write —
+ * `dangerouslySetInnerHTML` — can leave a tag open that the parser would close,
+ * and the count then stays too deep for the rest of the document. That errs the
+ * safe way: the payload waits, and goes out before `</body>` as it always can.
  */
-function advanced(boundary: Boundary, html: string): Boundary {
+function advanced(boundary: Boundary, html: string, rootDepth: number): Boundary {
   const text = boundary.open + html;
   let rawText = boundary.rawText;
   let replaceable = boundary.replaceable;
-  const tags = /<!--([\s\S]*?)-->|<(\/?)(script|style)(?=[\s/>])[^>]*>/gi;
+  let depth = boundary.depth;
+  const tags = /<!--([\s\S]*?)-->|<(\/?)([a-z][^\s/>]*)[^>]*?(\/?)>/gi;
   let tag = tags.exec(text);
   while (tag != null) {
     const comment = tag[1];
@@ -1060,20 +1150,36 @@ function advanced(boundary: Boundary, html: string): Boundary {
       }
     } else {
       const name = tag[3].toLowerCase();
-      if (tag[2] === "/") {
-        if (rawText === name) rawText = null;
-      } else if (rawText == null) {
-        rawText = name;
+      const closes = tag[2] === "/";
+      if (rawText != null) {
+        // Inside a script or a stylesheet a `<` is code, up to its own end tag.
+        if (closes && rawText === name) {
+          rawText = null;
+          if (depth != null) depth -= 1;
+        }
+      } else if (closes) {
+        if (depth != null) depth -= 1;
+      } else if (depth == null) {
+        if (name === "body") depth = 0;
+        else if (name === "script" || name === "style") rawText = name;
+      } else if (tag[4] !== "/" && !VOID_ELEMENTS.has(name)) {
+        depth += 1;
+        if (name === "script" || name === "style") rawText = name;
       }
     }
     tag = tags.exec(text);
   }
   const start = text.lastIndexOf("<");
   return {
-    safe: rawText == null && replaceable === 0 && text.endsWith(">"),
+    safe:
+      rawText == null &&
+      replaceable === 0 &&
+      text.endsWith(">") &&
+      (depth === 0 || (depth != null && depth === rootDepth)),
     rawText,
     replaceable,
     open: start > text.lastIndexOf(">") ? text.slice(start) : "",
+    depth,
   };
 }
 
