@@ -2269,14 +2269,28 @@ fn a_forking_host_shim_does_not_leave_the_run_hanging() {
     let real = String::from_utf8(found.stdout).unwrap().trim().to_owned();
     let shims = tempfile::tempdir().unwrap();
     let shim = shims.path().join("node");
-    // `<&0` rather than nothing: a background command in a non-interactive
-    // shell is given `/dev/null` for stdin unless it is redirected explicitly,
-    // and a worker whose stdin is at end of file exits before it is asked for
-    // anything. The shim has to pass the pipe on, which is what a real one
-    // does.
+    let marks = shims.path().join("pids");
+    // `exec 3<&0` and then `<&3`, rather than `<&0` or nothing at all. POSIX
+    // gives an asynchronous command `/dev/null` for standard input *before*
+    // its own redirections, and dash reads that in the order it is written:
+    // `<&0` there duplicates the `/dev/null` the shell had just installed, so
+    // the worker met end of input and exited 0 before it was asked for
+    // anything. Only macOS's `/bin/sh` passed the pipe through, which is why
+    // this went out green and came back red. A descriptor saved before the
+    // redirection cannot be the one the rule replaced.
+    //
+    // The two `echo`s are what keep the test non-vacuous: a shell that decided
+    // to `exec` the last command would make this an ordinary host again, and a
+    // regression test for a forking shim that stopped forking would pass
+    // without exercising anything. The assertion below is that two different
+    // processes were involved.
     std::fs::write(
         &shim,
-        format!("#!/bin/sh\n'{real}' \"$@\" <&0 &\nwait $!\n"),
+        format!(
+            "#!/bin/sh\nexec 3<&0\n'{real}' \"$@\" <&3 &\nchild=$!\n\
+             printf 'shim %s child %s\\n' \"$$\" \"$child\" >> '{marks}'\nwait \"$child\"\n",
+            marks = marks.display()
+        ),
     )
     .unwrap();
     std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -2308,4 +2322,19 @@ fn a_forking_host_shim_does_not_leave_the_run_hanging() {
     let document: serde_json::Value = serde_json::from_str(&stdout).expect("--json output");
     assert_eq!(document["passed"], 1, "{stdout}");
     assert_eq!(document["failed"], 0, "{stdout}");
+
+    // And that the host uf started really was a shim in front of another
+    // process, which is the whole premise.
+    let marked = std::fs::read_to_string(&marks).unwrap_or_default();
+    let forked = marked.lines().any(|line| {
+        let mut words = line.split_whitespace();
+        matches!(
+            (words.next(), words.next(), words.next(), words.next()),
+            (Some("shim"), Some(shim), Some("child"), Some(child)) if shim != child
+        )
+    });
+    assert!(
+        forked,
+        "the shim exec'd rather than forked, so this proved nothing:\n{marked}"
+    );
 }
