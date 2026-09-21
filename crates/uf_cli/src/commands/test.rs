@@ -29,8 +29,8 @@ use uf_runtime::RuntimeHost;
 use uf_term::PhaseTimer;
 use uf_test::{
     Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
-    RetryPolicy, RunOptions, TestApplicationTarget, TestFile, TestFilter, TestRunReport,
-    TestRunner, TestTimings, WatchOptions, load_timings, save_timings,
+    PlannedTestFile, RetryPolicy, RunOptions, TestApplicationTarget, TestFile, TestFilter,
+    TestPlan, TestRunReport, TestRunner, TestTimings, WatchOptions, load_timings, save_timings,
 };
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
@@ -58,6 +58,12 @@ use render::{render_list, render_report};
 
 /// How many of the slowest files are named in the summary.
 const SLOWEST_SHOWN: usize = 5;
+
+#[derive(Debug, Clone)]
+struct PlannedProjectFile {
+    file: ProjectFile,
+    plan: TestPlan,
+}
 
 /// Everything `uf test` was asked to do.
 #[derive(Debug, Clone, Default)]
@@ -456,7 +462,13 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         None
     };
 
-    let files = test_bearing(files);
+    let (planned, files) = if changed.is_none() && args.shard.is_none() {
+        let planned = planned_test_bearing(files);
+        let files = planned.iter().map(|planned| planned.file.clone()).collect();
+        (Some(planned), files)
+    } else {
+        (None, test_bearing(files))
+    };
     let files = match &changed {
         Some(selection) => changed::narrow(ui, selection, files, settings.enabled),
         None => files,
@@ -469,8 +481,9 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         .shard
         .map(|shard| shards::cut(ui, &files, &args, &timings, shard));
     let run_files = cut.as_ref().map_or(&files[..], |cut| &cut.files[..]);
-    let report = timer.measure("run", || {
-        run_once(ui, &root, &host, run_files, &args, timings.clone())
+    let report = timer.measure("run", || match &planned {
+        Some(planned) => run_once_planned(ui, &root, &host, planned, &args, timings.clone()),
+        None => run_once(ui, &root, &host, run_files, &args, timings.clone()),
     })?;
 
     // A shard measures and records. The reports and the thresholds are
@@ -1139,6 +1152,40 @@ pub(crate) fn run_once(
     Ok(runner.run_observed(&sources, &observer)?)
 }
 
+fn run_once_planned(
+    ui: &Ui,
+    root: &Utf8Path,
+    host: &HostCommand,
+    files: &[PlannedProjectFile],
+    args: &TestArgs,
+    timings: TestTimings,
+) -> Result<TestRunReport> {
+    let sources = planned_test_files(root, files);
+    let runner = TestRunner::new()
+        .with_options(args.options())
+        .with_filter(args.filter())
+        .with_timings(timings)
+        .with_host(host.clone());
+
+    let mut progress = ui.progress();
+    if !progress.is_enabled() {
+        return Ok(runner.run_planned(&sources)?);
+    }
+
+    let mut line = String::new();
+    let observer = LockedObserver::new(move |completed: usize, total: usize, report: &_| {
+        let report: &uf_test::FileReport = report;
+        line.clear();
+        line.push_str(&completed.to_string());
+        line.push('/');
+        line.push_str(&total.to_string());
+        line.push(' ');
+        line.push_str(&report.file);
+        progress.tick(&line);
+    });
+    Ok(runner.run_planned_observed(&sources, &observer)?)
+}
+
 /// The files that declare at least one test.
 ///
 /// Every module in a project is not a test: importing one to find out would
@@ -1146,17 +1193,28 @@ pub(crate) fn run_once(
 /// has nothing to report. Discovery answers the question by reading, which is
 /// the same answer `uf test --list` shows.
 pub(crate) fn test_bearing(files: Vec<ProjectFile>) -> Vec<ProjectFile> {
+    planned_test_bearing(files)
+        .into_iter()
+        .map(|planned| planned.file)
+        .collect()
+}
+
+fn planned_test_bearing(files: Vec<ProjectFile>) -> Vec<PlannedProjectFile> {
     files
         .into_iter()
-        .filter(|file| {
+        .filter_map(|file| {
             // A file with a declaration discovery could not read is still a
             // test file: the worker imports it and finds whatever registers.
             // Requiring a *readable* case meant `it(name, …)` in a loop made a
             // file vanish, and the run said "0 passed" and exited 0.
             let plan = uf_test::discover_tests(&file.relative_path, &file.source);
-            plan.runnable_count() > 0 || plan.bench_count() > 0 || !plan.unsupported.is_empty()
+            plan_declares_tests(&plan).then_some(PlannedProjectFile { file, plan })
         })
         .collect()
+}
+
+fn plan_declares_tests(plan: &TestPlan) -> bool {
+    plan.runnable_count() > 0 || plan.bench_count() > 0 || !plan.unsupported.is_empty()
 }
 
 /// Every collected file, as the runner wants them.
@@ -1172,6 +1230,22 @@ pub(crate) fn test_files(root: &Utf8Path, files: &[ProjectFile]) -> Vec<TestFile
                 file.relative_path.clone(),
                 root.join(&file.relative_path),
                 file.source.clone(),
+            )
+        })
+        .collect()
+}
+
+fn planned_test_files(root: &Utf8Path, files: &[PlannedProjectFile]) -> Vec<PlannedTestFile> {
+    files
+        .iter()
+        .map(|planned| {
+            PlannedTestFile::new(
+                TestFile::new(
+                    planned.file.relative_path.clone(),
+                    root.join(&planned.file.relative_path),
+                    planned.file.source.clone(),
+                ),
+                planned.plan.clone(),
             )
         })
         .collect()
@@ -1377,6 +1451,26 @@ mod tests {
             .map(|file| file.relative_path.as_str())
             .collect();
         assert_eq!(kept, vec!["loop.test.js", "plain.test.js"]);
+    }
+
+    #[test]
+    fn planned_test_files_carry_the_discovered_plan() {
+        let planned = planned_test_bearing(vec![
+            file(
+                "loop.test.js",
+                "for (const name of ['a']) {\n  it(name, () => {});\n}\n",
+            ),
+            file("component.js", "export const Button = () => null;\n"),
+        ]);
+
+        assert_eq!(planned.len(), 1);
+        assert_eq!(planned[0].file.relative_path, "loop.test.js");
+        assert_eq!(planned[0].plan.unsupported.len(), 1);
+
+        let runner_files = planned_test_files(camino::Utf8Path::new("/project"), &planned);
+        assert_eq!(runner_files.len(), 1);
+        assert_eq!(runner_files[0].file.relative, "loop.test.js");
+        assert_eq!(runner_files[0].plan, planned[0].plan);
     }
 
     #[test]

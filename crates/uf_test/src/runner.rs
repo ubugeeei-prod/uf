@@ -30,6 +30,7 @@
 //! honest option: a retried test must see the same module state a first run
 //! would.
 
+use std::borrow::Cow;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -40,6 +41,7 @@ use crate::discovery::merge_plans;
 use crate::filter::TestFilter;
 use crate::host::{FileOutcome, HostCommand, SpawnError, Worker};
 use crate::options::{Bail, Concurrency, RunOptions};
+use crate::plan::TestPlan;
 use crate::report::{FileReport, FileStatus, TestRunReport, TestStatus, TestSummary};
 use crate::schedule::{ScheduleEntry, auto_workers, schedule_files};
 use crate::timings::TestTimings;
@@ -70,6 +72,27 @@ impl TestFile {
     }
 }
 
+/// One file whose discovery plan was already computed by the caller.
+///
+/// `uf test` has to know which project files are tests before it schedules the
+/// run. Carrying the plan into the runner lets that discovery pass serve the
+/// scheduler, the registered-nothing check and the final report, instead of
+/// scanning the same source again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedTestFile {
+    /// The file to run.
+    pub file: TestFile,
+    /// What discovery found in that file.
+    pub plan: TestPlan,
+}
+
+impl PlannedTestFile {
+    /// Pair a test file with its discovery plan.
+    pub fn new(file: TestFile, plan: TestPlan) -> Self {
+        Self { file, plan }
+    }
+}
+
 /// One selected file, and what discovery read out of it.
 ///
 /// The plan travels with the file because two decisions need it after the
@@ -78,7 +101,7 @@ impl TestFile {
 #[derive(Debug)]
 struct SelectedFile<'a> {
     file: &'a TestFile,
-    plan: crate::plan::TestPlan,
+    plan: Cow<'a, TestPlan>,
 }
 
 /// Notified as each file finishes, so a caller can draw a progress line.
@@ -179,6 +202,15 @@ impl TestRunner {
         self.run_observed(files, &SilentObserver)
     }
 
+    /// Run already-discovered files, reporting nothing as it goes.
+    ///
+    /// # Errors
+    ///
+    /// [`RunError`] when no host is configured or the host will not start.
+    pub fn run_planned(&self, files: &[PlannedTestFile]) -> Result<TestRunReport, RunError> {
+        self.run_planned_observed(files, &SilentObserver)
+    }
+
     /// Run every file, notifying `observer` as each one finishes.
     ///
     /// # Errors
@@ -191,6 +223,30 @@ impl TestRunner {
     ) -> Result<TestRunReport, RunError> {
         let started = Instant::now();
         let selected = self.select(files);
+        self.run_selected(started, selected, observer)
+    }
+
+    /// Run already-discovered files, notifying `observer` as each one finishes.
+    ///
+    /// # Errors
+    ///
+    /// [`RunError`] when no host is configured or the host will not start.
+    pub fn run_planned_observed(
+        &self,
+        files: &[PlannedTestFile],
+        observer: &dyn RunObserver,
+    ) -> Result<TestRunReport, RunError> {
+        let started = Instant::now();
+        let selected = self.select_planned(files);
+        self.run_selected(started, selected, observer)
+    }
+
+    fn run_selected<'a>(
+        &self,
+        started: Instant,
+        selected: Vec<SelectedFile<'a>>,
+        observer: &dyn RunObserver,
+    ) -> Result<TestRunReport, RunError> {
         let schedule = schedule_files(&sources_of(&selected), &self.timings);
         if schedule.is_empty() {
             return Ok(assemble(
@@ -291,8 +347,23 @@ impl TestRunner {
             .iter()
             .filter(|file| self.filter.matches_path(&file.relative))
             .map(|file| SelectedFile {
-                plan: crate::discovery::discover_tests(&file.relative, &file.source),
+                plan: Cow::Owned(crate::discovery::discover_tests(
+                    &file.relative,
+                    &file.source,
+                )),
                 file,
+            })
+            .collect()
+    }
+
+    /// Files that survive the path filter, with caller-provided discovery plans.
+    fn select_planned<'a>(&self, files: &'a [PlannedTestFile]) -> Vec<SelectedFile<'a>> {
+        files
+            .iter()
+            .filter(|planned| self.filter.matches_path(&planned.file.relative))
+            .map(|planned| SelectedFile {
+                file: &planned.file,
+                plan: Cow::Borrowed(&planned.plan),
             })
             .collect()
     }
@@ -643,7 +714,11 @@ fn assemble(
     // The scan every file was selected on, handed over rather than repeated:
     // the schedule, the check that a file registered what it declared, and
     // this plan are three readings of one discovery pass.
-    let plan = merge_plans(selected.into_iter().map(|selected| selected.plan));
+    let plan = merge_plans(
+        selected
+            .into_iter()
+            .map(|selected| selected.plan.into_owned()),
+    );
 
     let mut summary = TestSummary {
         files: files.len(),
