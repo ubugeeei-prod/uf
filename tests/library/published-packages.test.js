@@ -80,16 +80,31 @@ const cache: string = (() => {
 })();
 
 /**
- * The paths npm would publish for the package in `directory`, as npm sees them.
+ * The paths npm would publish for each package directory in `names`, as npm
+ * sees them, keyed by the directory the name came from.
  *
  * `--dry-run` is what keeps this offline and side-effect free: npm reports the
  * list and writes no tarball.
+ *
+ * One `npm pack` for the whole list, and the reason is the clock: npm takes
+ * about half a second to start, and asking it once per package made this the
+ * slowest file in the suite by a factor of three — 17.9 s of a 21.6 s run,
+ * nearly all of it npm booting thirty-five times. The same question asked in
+ * one invocation is answered in half a second, because `npm pack` takes as
+ * many specs as it is given and reports one object per spec. Nothing about
+ * what is asked changed; only how many processes were started to ask it.
+ *
+ * A folder spec has to be written as a path — `./packages/ui` rather than
+ * `packages/ui` — or npm reads it as `user/repo` on GitHub and tries to clone
+ * it. With one spec that never came up, because the folder was the working
+ * directory and there was no spec at all.
  */
-const packedPaths = (directory: string): Set<string> => {
+const packedPaths = (names: Array<string>): Map<string, Set<string>> => {
+  const specs = names.map((name) => `./packages/${name}`);
   let stdout;
   try {
-    stdout = execFileSync("npm", ["pack", "--dry-run", "--json"], {
-      cwd: directory,
+    stdout = execFileSync("npm", ["pack", "--dry-run", "--json", ...specs], {
+      cwd: repository,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       // npm's default cache is `~/.npm`, and it writes there even for a dry
@@ -100,16 +115,42 @@ const packedPaths = (directory: string): Set<string> => {
       // the question: it costs a directory and depends on nothing a person did
       // to their machine before today.
       env: { ...process.env, npm_config_cache: cache },
+      // One report per package in one document — 55 KB today, and this used to
+      // be one document per package. Node's default is a megabyte, and a
+      // package list that grew past it would fail here as `ENOBUFS` wearing
+      // the message below, which says npm could not run when npm ran fine.
+      maxBuffer: 64 * 1024 * 1024,
     });
   } catch (error) {
     const said = String(error.stderr ?? "").trim();
     throw new Error(
-      `\`npm pack --dry-run\` failed in ${directory}. This test asks npm what it ` +
-        `would publish, so npm has to be able to run:\n${said || String(error)}`,
+      "`npm pack --dry-run` failed. This test asks npm what it would publish, " +
+        `so npm has to be able to run:\n${said || String(error)}`,
     );
   }
-  const [report] = JSON.parse(stdout);
-  return new Set(report.files.map((file) => file.path));
+  const reports = JSON.parse(stdout);
+  // Keyed by what npm answered with — the package's name — rather than by the
+  // order the specs went out in, so a release list and a report that disagree
+  // are a named failure instead of a file list quietly attributed to the wrong
+  // package.
+  const byName = new Map(
+    reports.map((report) => [report.name, new Set(report.files.map((file) => file.path))]),
+  );
+  return new Map(
+    names.map((name) => {
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(repository, "packages", name, "package.json"), "utf8"),
+      );
+      const files = byName.get(manifest.name);
+      if (files === undefined) {
+        throw new Error(
+          `npm pack reported nothing for ${manifest.name} (packages/${name}), so this test ` +
+            "would have passed over it",
+        );
+      }
+      return [name, files];
+    }),
+  );
 };
 
 /** Every string an `exports` map can end at, however deeply it nests. */
@@ -262,14 +303,12 @@ describe("what the release packages pack", () => {
     ]);
   });
 
-  // One `npm pack` per package, read by both assertions. The packages are
-  // walked here rather than in a `describe` per package because a `describe`
-  // built in a loop is not a declaration `uf test` can expand, and a suite
-  // that reports itself as unexpandable is a worse trade than a failure
-  // message that names the package itself.
-  const packed: Map<string, Set<string>> = new Map(
-    releasePackages.map((name) => [name, packedPaths(path.join(repository, "packages", name))]),
-  );
+  // One `npm pack` for every package, read by both assertions. The packages
+  // are walked here rather than in a `describe` per package because a
+  // `describe` built in a loop is not a declaration `uf test` can expand, and
+  // a suite that reports itself as unexpandable is a worse trade than a
+  // failure message that names the package itself.
+  const packed: Map<string, Set<string>> = packedPaths(releasePackages);
 
   it("every package publishes every file it exports", () => {
     const missing = [];

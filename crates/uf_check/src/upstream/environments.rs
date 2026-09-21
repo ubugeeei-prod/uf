@@ -76,6 +76,17 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
         "vite-assets.js",
         include_str!("../../libdefs/vite-assets.js"),
     ),
+    // WHATWG Streams, of which the vendored `streams.js` has the shapes and
+    // not the generics: `ReadableStream` there takes no type argument, so
+    // `ReadableStream<Uint8Array>` — what a module that streams a response
+    // writes, and what every runtime uf targets implements — was "not a
+    // polymorphic type". After `streams.js`, `bom.js` and `dom.js` so that it
+    // shadows all three, and with a default on every parameter so that their
+    // own unparameterised uses keep meaning what they mean.
+    (
+        "web-streams.js",
+        include_str!("../../libdefs/web-streams.js"),
+    ),
     // Web Crypto, of which the vendored `bom.js` declares `digest` and no
     // more — no `sign`, no `importKey`, and no `CryptoKey` to annotate a key
     // with. A module that signs reported errors for calls every runtime uf
