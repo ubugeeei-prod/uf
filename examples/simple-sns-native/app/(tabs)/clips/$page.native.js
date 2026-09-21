@@ -92,7 +92,20 @@ const local = stylex.create({
   list: { gap: 18, marginTop: 24 },
   clip: { borderRadius: 14, overflow: "hidden", backgroundColor: "#151515" },
   poster: { width: "100%", height: 420 },
-  caption: { position: "absolute", left: 18, right: 18, bottom: 18, gap: 4 },
+  // A band rather than a gradient, which would be another dependency: the caption has to
+  // read over a bright sky as well as over a city at night.
+  caption: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    gap: 4,
+    paddingLeft: 18,
+    paddingRight: 18,
+    paddingTop: 14,
+    paddingBottom: 18,
+    backgroundColor: "#00000066",
+  },
   title: { fontSize: 20, fontWeight: "600", letterSpacing: -0.4, color: "#ffffff" },
   description: { fontSize: 13, lineHeight: 20, color: "#ffffffd9" },
   credit: { fontSize: 11, color: "#ffffffb3", marginTop: 6 },

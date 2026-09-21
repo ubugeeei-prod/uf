@@ -75,22 +75,22 @@ export function topicLabel(topic: Topic): string {
   return "Community";
 }
 
-/** Format a UTC calendar date, the way the web examples print a note's day. */
+/**
+ * A note's day, in the web examples' format. They print UTC so that the server's markup and the
+ * browser's agree; nothing is rendered twice here, so the person sees their own time zone.
+ */
 
 export function displayDate(value: string): string {
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
-/** Format a UTC message time. */
+/** A message's time, in the device's time zone. */
 
 export function displayTime(value: string): string {
   return new Intl.DateTimeFormat("en", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "UTC",
   }).format(new Date(value));
 }
 
