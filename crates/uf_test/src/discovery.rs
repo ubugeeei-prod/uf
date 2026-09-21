@@ -82,102 +82,117 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
     let line_index = LineIndex::new(source);
     let code_mask = code_byte_mask(source);
     let imports = value_imports(source, &code_mask);
+    let foreign = REGISTRATIONS.map(|(call, _)| foreign_runner(&imports, call));
     let mut cases = Vec::new();
     let mut unsupported = Vec::new();
 
-    for (call, kind) in REGISTRATIONS {
-        let foreign = foreign_runner(&imports, call);
-        let mut search_start = 0;
-        while let Some(relative) = source[search_start..].find(call) {
-            let offset = search_start + relative;
-            search_start = offset + call.len();
-
-            if !code_mask.get(offset).copied().unwrap_or(false) {
-                continue;
-            }
-            let Some(shape) = call_shape_at(source, offset, call) else {
-                continue;
-            };
-
-            // Somebody else's `test`, named as such. Recorded rather than
-            // dropped: the file is still handed to a worker — it may hold
-            // uf's own declarations too — and `--list` has to stop counting
-            // this one as a test the run will execute.
-            if let Some(module) = foreign {
-                if unsupported.len() < MAX_CASES_PER_FILE {
-                    let position = line_index.line_col(offset);
-                    unsupported.push(UnsupportedDeclaration {
-                        file: file.to_string(),
-                        call: call.to_compact_string(),
-                        imported_from: Some(module.to_compact_string()),
-                        line: position.line,
-                        column: position.column,
-                    });
-                }
-                continue;
-            }
-
-            let (modifier, args_from) = match shape {
-                CallShape::Plain => (TestModifier::None, offset + call.len()),
-                CallShape::Property { name, end } => match modifier_for(name, kind) {
-                    Some(modifier) => (modifier, end),
-                    None => {
-                        if unsupported.len() < MAX_CASES_PER_FILE {
-                            let position = line_index.line_col(offset);
-                            unsupported.push(UnsupportedDeclaration {
-                                file: file.to_string(),
-                                call: format_args!("{call}.{name}").to_compact_string(),
-                                imported_from: None,
-                                line: position.line,
-                                column: position.column,
-                            });
-                        }
-                        continue;
-                    }
-                },
-            };
-
-            let Some(name) = extract_first_string_arg(&source[args_from..]) else {
-                // A registration whose name is not a literal — `it(name, …)`
-                // inside a loop, a template with a substitution. Discovery
-                // cannot read it, and dropping it silently made the file look
-                // like it held no tests at all: the run reported "0 passed" and
-                // exited 0 for a file with tests in it. Recorded instead, so
-                // the file is still handed to a worker and the report says what
-                // could not be read.
-                if unsupported.len() < MAX_CASES_PER_FILE {
-                    let position = line_index.line_col(offset);
-                    unsupported.push(UnsupportedDeclaration {
-                        file: file.to_string(),
-                        call: call.to_compact_string(),
-                        imported_from: None,
-                        line: position.line,
-                        column: position.column,
-                    });
-                }
-                continue;
-            };
-            if cases.len() >= MAX_CASES_PER_FILE {
-                break;
-            }
-
-            let position = line_index.line_col(offset);
-            cases.push(TestCase {
-                file: file.to_string(),
-                name,
-                kind,
-                modifier,
-                line: position.line,
-                column: position.column,
-                byte_offset: offset,
-                end_byte_offset: call_end(source, args_from),
-            });
+    let bytes = source.as_bytes();
+    let mut offset = 0;
+    while offset < bytes.len() {
+        if !code_mask.get(offset).copied().unwrap_or(false) {
+            offset += 1;
+            continue;
         }
+        let Some(registration) = registration_at(bytes, offset) else {
+            offset += 1;
+            continue;
+        };
+        let (call, kind) = REGISTRATIONS[registration];
+        offset += call.len();
+
+        let Some(shape) = call_shape_at(source, offset - call.len(), call) else {
+            continue;
+        };
+
+        let call_offset = offset - call.len();
+        // Somebody else's `test`, named as such. Recorded rather than
+        // dropped: the file is still handed to a worker — it may hold
+        // uf's own declarations too — and `--list` has to stop counting
+        // this one as a test the run will execute.
+        if let Some(module) = foreign[registration] {
+            if unsupported.len() < MAX_CASES_PER_FILE {
+                let position = line_index.line_col(call_offset);
+                unsupported.push(UnsupportedDeclaration {
+                    file: file.to_string(),
+                    call: call.to_compact_string(),
+                    imported_from: Some(module.to_compact_string()),
+                    line: position.line,
+                    column: position.column,
+                });
+            }
+            continue;
+        }
+
+        let (modifier, args_from) = match shape {
+            CallShape::Plain => (TestModifier::None, call_offset + call.len()),
+            CallShape::Property { name, end } => match modifier_for(name, kind) {
+                Some(modifier) => (modifier, end),
+                None => {
+                    if unsupported.len() < MAX_CASES_PER_FILE {
+                        let position = line_index.line_col(call_offset);
+                        unsupported.push(UnsupportedDeclaration {
+                            file: file.to_string(),
+                            call: format_args!("{call}.{name}").to_compact_string(),
+                            imported_from: None,
+                            line: position.line,
+                            column: position.column,
+                        });
+                    }
+                    continue;
+                }
+            },
+        };
+
+        let Some(name) = extract_first_string_arg(&source[args_from..]) else {
+            // A registration whose name is not a literal — `it(name, …)`
+            // inside a loop, a template with a substitution. Discovery
+            // cannot read it, and dropping it silently made the file look
+            // like it held no tests at all: the run reported "0 passed" and
+            // exited 0 for a file with tests in it. Recorded instead, so
+            // the file is still handed to a worker and the report says what
+            // could not be read.
+            if unsupported.len() < MAX_CASES_PER_FILE {
+                let position = line_index.line_col(call_offset);
+                unsupported.push(UnsupportedDeclaration {
+                    file: file.to_string(),
+                    call: call.to_compact_string(),
+                    imported_from: None,
+                    line: position.line,
+                    column: position.column,
+                });
+            }
+            continue;
+        };
+        if cases.len() >= MAX_CASES_PER_FILE {
+            continue;
+        }
+
+        let position = line_index.line_col(call_offset);
+        cases.push(TestCase {
+            file: file.to_string(),
+            name,
+            kind,
+            modifier,
+            line: position.line,
+            column: position.column,
+            byte_offset: call_offset,
+            end_byte_offset: call_end(source, args_from),
+        });
     }
 
     cases.sort_by(|a, b| a.line.cmp(&b.line).then(a.column.cmp(&b.column)));
     unsupported.sort_by(|a, b| a.line.cmp(&b.line).then(a.column.cmp(&b.column)));
     TestPlan { cases, unsupported }
+}
+
+fn registration_at(bytes: &[u8], offset: usize) -> Option<usize> {
+    match bytes[offset] {
+        b'd' if bytes[offset..].starts_with(b"describe") => Some(0),
+        b'i' if bytes[offset..].starts_with(b"it") => Some(1),
+        b't' if bytes[offset..].starts_with(b"test") => Some(2),
+        b'b' if bytes[offset..].starts_with(b"bench") => Some(3),
+        _ => None,
+    }
 }
 
 /// The other runner `call` was imported from, when the file imports it from

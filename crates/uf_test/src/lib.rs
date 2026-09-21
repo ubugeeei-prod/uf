@@ -111,7 +111,8 @@ pub use crate::report::{
 pub use crate::reporters::{CoverageRow, cobertura, junit, lcov, text_rows};
 pub use crate::retry_schedule::{Attempt, Decision, MAX_DELAY, Schedule};
 pub use crate::runner::{
-    LockedObserver, RunError, RunObserver, SilentObserver, TestFile, TestRunner, run_tests,
+    LockedObserver, PlannedTestFile, RunError, RunObserver, SilentObserver, TestFile, TestRunner,
+    run_tests,
 };
 pub use crate::runner_plan::{
     NativeTestRunnerPlan, TestApplicationTarget, TestHost, TestHostList, TestImportList,
