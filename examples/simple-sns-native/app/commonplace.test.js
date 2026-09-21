@@ -229,3 +229,23 @@ test("the inbox and settings belong to the account, and signing out closes them"
   await press(screen.getByText("Inbox"));
   expect(await screen.findByText("Sign in to read your messages")).toBeTruthy();
 });
+
+test("clips are one to a screen, and the counter follows the clip", async () => {
+  await render(<Commonplace service={instant()} />);
+  await press(await screen.findByText("Clips"));
+  expect(await screen.findByText("01 / 03")).toBeTruthy();
+  expect(screen.getByLabelText("1 of 3: After dark")).toBeTruthy();
+  // There is nothing before the first clip: the step is disabled, and pressing it changes nothing.
+  await press(screen.getByLabelText("Previous clip"));
+  expect(screen.getByText("01 / 03")).toBeTruthy();
+
+  await press(screen.getByLabelText("Next clip"));
+  expect(await screen.findByText("02 / 03")).toBeTruthy();
+  await press(screen.getByLabelText("Next clip"));
+  expect(await screen.findByText("03 / 03")).toBeTruthy();
+  await press(screen.getByLabelText("Next clip"));
+  expect(screen.getByText("03 / 03")).toBeTruthy();
+  expect(screen.getByLabelText("3 of 3: The long way home")).toBeTruthy();
+  await press(screen.getByLabelText("Previous clip"));
+  expect(await screen.findByText("02 / 03")).toBeTruthy();
+});

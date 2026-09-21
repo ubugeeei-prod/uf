@@ -8,7 +8,7 @@ React Navigation stacks and tabs, bundled images, and the real native test rende
 | --- | --- |
 | Feed: channels, search, composer, reactions | The Feed tab; channel and search are the screen's state rather than the URL |
 | A note in the feed | Also its own screen, pushed over the tabs |
-| Clips: a vertical player | The Clips tab: the same clips as posters that link to their source — no video dependency |
+| Clips: a vertical player | The Clips tab, one clip to a screen: edge to edge under the status bar, paged vertically, with a dark tab bar. The same clips as posters that link to their source — no video dependency |
 | Inbox: thread list beside the conversation | The Inbox tab lists threads; a conversation is pushed over the tabs |
 | Settings | The Settings tab, with sign out |
 | Signup and login | One Join screen without a password: there is no service to check one against |
