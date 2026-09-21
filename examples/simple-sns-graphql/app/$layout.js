@@ -6,6 +6,8 @@ import type { Metadata, LayoutProps } from "@uniflowed/router";
 
 import { props, stylex } from "@uniflowed/stylex";
 
+import { RelayRoot } from "./_shared/relay-root.client.js";
+
 import "./_shared/base.css";
 
 export const metadata: Metadata = {
@@ -13,7 +15,10 @@ export const metadata: Metadata = {
   description: "Commonplace community workspace. Notes, private conversations, and your profile.",
 };
 
-/** Install shared visual styles and render the router-owned layout slot. */
+/**
+ * Install shared visual styles and the browser's Relay provider, then render the router-owned
+ * layout slot. Every route below is a server component that preloads for its own client islands.
+ */
 
 export component Layout(...{ children }: LayoutProps) {
   return (
@@ -24,7 +29,9 @@ export component Layout(...{ children }: LayoutProps) {
         <meta name="color-scheme" content="light" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
-      <body {...props(styles.body)}>{children}</body>
+      <body {...props(styles.body)}>
+        <RelayRoot>{children}</RelayRoot>
+      </body>
     </html>
   );
 }

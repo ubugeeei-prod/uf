@@ -1421,7 +1421,8 @@ time {
     border-top-color: #fff;
     backdrop-filter: blur(24px);
   }
-  .mobile-nav > a {
+  .mobile-nav > a,
+  .mobile-nav > .mobile-nav-pending {
     display: grid;
     place-items: center;
     gap: 5px;

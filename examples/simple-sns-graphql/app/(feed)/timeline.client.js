@@ -3,26 +3,24 @@
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
-import { graphql, useFragment } from "@uniflowed/relay";
+import { graphql } from "@uniflowed/relay";
+import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
-import { Icon, ActionLink, EmptyState } from "../_shared/ui.js";
-import { SearchNotes } from "./search.client.js";
+import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
+
+import { Icon, EmptyState } from "../_shared/ui.js";
 import { PostCard } from "./post.client.js";
-import { Composer } from "./composer.client.js";
-import { topicLabel, TOPICS, feedHref, type FeedFilter } from "../_shared/social-model.js";
+import { feedHref, type FeedFilter } from "../_shared/social-model.js";
 
-import type { SnsTimeline_query$key } from "./__generated__/SnsTimeline_query.graphql.js";
+import type {
+  SnsTimelineQuery$variables,
+  SnsTimelineQuery$data,
+} from "./__generated__/SnsTimelineQuery.graphql.js";
 
-const timelineFragment = graphql`
-  fragment SnsTimeline_query on Query
-  @argumentDefinitions(
-    topic: { type: "String!" }
-    search: { type: "String!" }
-    page: { type: "Int!" }
-  ) {
+const timelineQuery = graphql`
+  query SnsTimelineQuery($topic: String!, $search: String!, $page: Int!) {
     viewer {
-      ...SnsComposer_viewer
+      id
     }
     feed(topic: $topic, search: $search, page: $page) {
       posts {
@@ -34,77 +32,41 @@ const timelineFragment = graphql`
   }
 `;
 
-/** The same Commonplace feed; data and fragment ownership belong to Relay. */
+/**
+ * The notes and their pagination. Reactions and the composer's refresh write to the normalized
+ * store, so this list lives in the browser; the page around it does not.
+ */
 
-export component Timeline(queryRef: SnsTimeline_query$key, filter: FeedFilter) {
-  const data = useFragment(timelineFragment, queryRef);
-  const posts = data.feed?.posts ?? [];
+export component Timeline(
+  queryRef: PreloadedQueryRef<SnsTimelineQuery$variables, SnsTimelineQuery$data>,
+  filter: FeedFilter,
+) {
+  const data = useQueryFromServer(timelineQuery, queryRef);
+  const posts = data.feed.posts;
 
   return (
     <>
-      <header className="page-heading">
-        <div>
-          <h1>Feed</h1>
-          <p>Notes from the people in your community.</p>
-        </div>
-      </header>
-      <div {...styled("feed-toolbar", sharedStyles.feedToolbar)}>
-        <nav className="feed-tabs" aria-label="Feed channels">
-          <Link
-            to={feedHref("all", filter.query)}
-            aria-current={filter.topic === "all" ? "page" : undefined}
-          >
-            All notes
-          </Link>
-          {TOPICS.map((topic) => (
-            <Link
-              key={topic}
-              to={feedHref(topic, filter.query)}
-              aria-current={filter.topic === topic ? "page" : undefined}
-            >
-              {topicLabel(topic)}
-            </Link>
+      {posts.length ? (
+        <section aria-label="Timeline posts">
+          {posts.map((post) => (
+            <PostCard key={post.id} postRef={post} signedIn={data.viewer != null} />
           ))}
-        </nav>
-      </div>
-      <SearchNotes filter={filter} key={filter.query} />
-      {filter.query ? (
-        <p {...styled("result-label", sharedStyles.resultLabel)}>Results for “{filter.query}”</p>
-      ) : null}
-      <div className="feed-content">
-        {data.viewer ? (
-          <Composer viewerRef={data.viewer} filter={filter} />
+        </section>
+      ) : (
+        <EmptyState title="No notes here yet">Try another channel or search.</EmptyState>
+      )}
+      <nav className="pagination" aria-label="Feed pagination">
+        {filter.page > 1 ? (
+          <Link to={feedHref(filter.topic, filter.query, filter.page - 1)}>Newer notes</Link>
         ) : (
-          <div className="sign-in-composer">
-            <div>
-              <h2>What are you working on?</h2>
-              <p>Sign in to post an update or ask a question.</p>
-            </div>
-            <ActionLink to="/signup">Create account</ActionLink>
-          </div>
+          <span>Latest notes</span>
         )}
-        {posts.length ? (
-          <section aria-label="Timeline posts">
-            {posts.map((post) => (
-              <PostCard key={post.id} postRef={post} signedIn={data.viewer != null} />
-            ))}
-          </section>
-        ) : (
-          <EmptyState title="No notes here yet">Try another channel or search.</EmptyState>
-        )}
-        <nav className="pagination" aria-label="Feed pagination">
-          {filter.page > 1 ? (
-            <Link to={feedHref(filter.topic, filter.query, filter.page - 1)}>Newer notes</Link>
-          ) : (
-            <span>Latest notes</span>
-          )}
-          {data.feed?.hasNext ? (
-            <Link to={feedHref(filter.topic, filter.query, filter.page + 1)}>
-              Older notes <Icon name="arrow" size={14} />
-            </Link>
-          ) : null}
-        </nav>
-      </div>
+        {data.feed.hasNext ? (
+          <Link to={feedHref(filter.topic, filter.query, filter.page + 1)}>
+            Older notes <Icon name="arrow" size={14} />
+          </Link>
+        ) : null}
+      </nav>
     </>
   );
 }

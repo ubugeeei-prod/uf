@@ -42,83 +42,73 @@ export component AccountForm(register: boolean) {
   const pending = signingUp || signingIn;
 
   return (
-    <section className="auth-panel">
-      <header className="page-heading">
-        <div>
-          <h1>{register ? "Join Commonplace" : "Welcome back"}</h1>
-          <p>
-            {register ? "A place to share what you are working on." : "Sign in to your community."}
-          </p>
-        </div>
-      </header>
-      <form
-        className="auth-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setError("");
-          const values = new FormData(event.currentTarget);
-          const handle = String(values.get("handle"));
-          const password = String(values.get("password"));
-          const callbacks = {
-            onCompleted: () => window.location.assign("/"),
-            onError: (failure: Error) => setError(failure.message),
-          };
-          if (register)
-            signup({
-              ...callbacks,
-              variables: {
-                input: {
-                  name: String(values.get("name")),
-                  email: String(values.get("email")),
-                  handle,
-                  password,
-                },
+    <form
+      className="auth-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setError("");
+        const values = new FormData(event.currentTarget);
+        const handle = String(values.get("handle"));
+        const password = String(values.get("password"));
+        const callbacks = {
+          onCompleted: () => window.location.assign("/"),
+          onError: (failure: Error) => setError(failure.message),
+        };
+        if (register)
+          signup({
+            ...callbacks,
+            variables: {
+              input: {
+                name: String(values.get("name")),
+                email: String(values.get("email")),
+                handle,
+                password,
               },
-            });
-          else signin({ ...callbacks, variables: { handle, password } });
-        }}
-      >
-        {register ? (
-          <label className="field">
-            <span>Display name</span>
-            <input name="name" autoComplete="name" required maxLength={80} />
-          </label>
-        ) : null}
+            },
+          });
+        else signin({ ...callbacks, variables: { handle, password } });
+      }}
+    >
+      {register ? (
         <label className="field">
-          <span>Handle</span>
-          <input name="handle" autoComplete="username" required pattern="[a-z][a-z0-9_]{2,23}" />
+          <span>Display name</span>
+          <input name="name" autoComplete="name" required maxLength={80} />
         </label>
-        {register ? (
-          <label className="field">
-            <span>Email</span>
-            <input type="email" name="email" autoComplete="email" required />
-          </label>
-        ) : null}
+      ) : null}
+      <label className="field">
+        <span>Handle</span>
+        <input name="handle" autoComplete="username" required pattern="[a-z][a-z0-9_]{2,23}" />
+      </label>
+      {register ? (
         <label className="field">
-          <span>Password</span>
-          <input
-            type="password"
-            name="password"
-            autoComplete={register ? "new-password" : "current-password"}
-            required
-            minLength={register ? 12 : undefined}
-            maxLength={256}
-          />
+          <span>Email</span>
+          <input type="email" name="email" autoComplete="email" required />
         </label>
-        {error ? (
-          <p role="alert" {...styled("post-error", sharedStyles.postError)}>
-            {error}
-          </p>
-        ) : null}
-        <button type="submit" className="button primary" disabled={pending}>
-          {pending ? "Please wait…" : register ? "Create account" : "Sign in"}
-        </button>
-        <p className="auth-switch">
-          <Link to={register ? "/login" : "/signup"}>
-            {register ? "Already have an account? Sign in" : "New here? Create an account"}
-          </Link>
+      ) : null}
+      <label className="field">
+        <span>Password</span>
+        <input
+          type="password"
+          name="password"
+          autoComplete={register ? "new-password" : "current-password"}
+          required
+          minLength={register ? 12 : undefined}
+          maxLength={256}
+        />
+      </label>
+      {error ? (
+        <p role="alert" {...styled("post-error", sharedStyles.postError)}>
+          {error}
         </p>
-      </form>
-    </section>
+      ) : null}
+      <button type="submit" className="button primary" disabled={pending}>
+        {pending ? "Please wait…" : register ? "Create account" : "Sign in"}
+      </button>
+      <p className="auth-switch">
+        <Link to={register ? "/login" : "/signup"}>
+          {register ? "Already have an account? Sign in" : "New here? Create an account"}
+        </Link>
+      </p>
+    </form>
   );
 }

@@ -65,13 +65,12 @@ accepts the generated `$key` type. It reads the reference with `useFragment`.
 A parent selects only its own fields and spreads its children's fragments;
 it passes the references through without accessing the children's masked data.
 
-The example follows this ownership from `SnsScreenQuery` through the screen,
-frame, timeline, composer, post and avatar, and through the inbox, thread,
-conversation and individual message. The entry query contains only a fragment
-spread. Explicit fragment arguments carry feed filters and the selected thread;
-Relay's conditional aliases identify which route fragments were fetched.
-Settings owns its private fields. Each mutation lives with the component that
-commits it, and spreads the affected leaf fragments where appropriate.
+The example follows this ownership from each island's query: the timeline
+through post and avatar, the thread list through each thread, and the
+conversation through each message. Query variables carry the feed filters and
+the selected thread. Settings owns its private fields. Each mutation lives with
+the component that commits it, and spreads the affected leaf fragments where
+appropriate.
 
 ## Stream an RSC preload
 
@@ -85,9 +84,27 @@ The explicit entry points mirror the experimental APIs in
 
 Create the server factory once and let Relay's `React.cache` scope each
 environment to the RSC request. Read request cookies inside that factory.
-Preload in a server component and pass its reference to a client component,
-which owns a fresh Relay environment and a `RelayEnvironmentProvider`.
-Do not share a server `Environment` singleton between visitors.
+Do not share a server `Environment` singleton between visitors. The root
+layout mounts one client `RelayEnvironmentProvider` with a fresh environment.
+
+Keep routes and shared chrome as server components, and preload beside the
+island that needs the data:
+
+```js
+<Suspense fallback={<LoadingState kind="threads" />}>
+  <Threads queryRef={relay.serverPreloadQuery(threadsQuery, {})} selected={thread} />
+</Suspense>
+```
+
+The island declares the query with its `graphql` tag and reads the reference
+with `useQueryFromServer(threadsQuery, queryRef)`; the server imports the
+compiled artifact. Every `serverPreloadQuery` call in a render pass starts
+immediately, so several islands fetch in parallel and stream into their own
+Suspense boundaries. One reference may feed several islands: the example's
+frame passes its viewer preload to the sidebar controls, the mobile
+navigation, and a `SignedIn` gate that picks between two server-rendered
+subtrees. A `"use client"` file is left only where the browser holds state,
+such as a mutation, a draft, or records that mutations rewrite.
 
 The Commonplace example verifies the initial query reaches the browser through
 Flight without a second GraphQL request. Client route transitions consume new

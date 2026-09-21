@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a566a9a75ee82e6fbe5d16a79ad457d0>>
+ * @generated SignedSource<<daff94e6a5650b9b31a4ccdcf4d45988>>
  * @flow
  * @lightSyntaxTransform
  */
@@ -10,14 +10,16 @@
 
 /*::
 import type { ConcreteRequest, Query } from 'relay-runtime';
-import type { SnsSocialFrame_query$fragmentType } from "./../../_shared/__generated__/SnsSocialFrame_query.graphql";
-export type SnsClipsPageQuery$variables = {};
-export type SnsClipsPageQuery$data = {
-  readonly $fragmentSpreads: SnsSocialFrame_query$fragmentType,
+import type { SnsComposer_viewer$fragmentType } from "./SnsComposer_viewer.graphql";
+export type SnsComposerQuery$variables = {};
+export type SnsComposerQuery$data = {
+  readonly viewer: ?{
+    readonly $fragmentSpreads: SnsComposer_viewer$fragmentType,
+  },
 };
-export type SnsClipsPageQuery = {
-  response: SnsClipsPageQuery$data,
-  variables: SnsClipsPageQuery$variables,
+export type SnsComposerQuery = {
+  response: SnsComposerQuery$data,
+  variables: SnsComposerQuery$variables,
 };
 */
 
@@ -26,12 +28,23 @@ var node/*: ConcreteRequest*/ = {
     "argumentDefinitions": [],
     "kind": "Fragment",
     "metadata": null,
-    "name": "SnsClipsPageQuery",
+    "name": "SnsComposerQuery",
     "selections": [
       {
+        "alias": null,
         "args": null,
-        "kind": "FragmentSpread",
-        "name": "SnsSocialFrame_query"
+        "concreteType": "User",
+        "kind": "LinkedField",
+        "name": "viewer",
+        "plural": false,
+        "selections": [
+          {
+            "args": null,
+            "kind": "FragmentSpread",
+            "name": "SnsComposer_viewer"
+          }
+        ],
+        "storageKey": null
       }
     ],
     "type": "Query",
@@ -41,7 +54,7 @@ var node/*: ConcreteRequest*/ = {
   "operation": {
     "argumentDefinitions": [],
     "kind": "Operation",
-    "name": "SnsClipsPageQuery",
+    "name": "SnsComposerQuery",
     "selections": [
       {
         "alias": null,
@@ -56,13 +69,6 @@ var node/*: ConcreteRequest*/ = {
             "args": null,
             "kind": "ScalarField",
             "name": "name",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "handle",
             "storageKey": null
           },
           {
@@ -92,18 +98,18 @@ var node/*: ConcreteRequest*/ = {
     ]
   },
   "params": {
-    "cacheID": "d78add9914fa0c9c9f5f1238a878e70e",
+    "cacheID": "d9dfa1327aac801009af099e7eea6e94",
     "id": null,
     "metadata": {},
-    "name": "SnsClipsPageQuery",
+    "name": "SnsComposerQuery",
     "operationKind": "query",
-    "text": "query SnsClipsPageQuery {\n  ...SnsSocialFrame_query\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsSocialFrame_query on Query {\n  viewer {\n    name\n    handle\n    ...SnsAvatar_user\n    id\n  }\n}\n"
+    "text": "query SnsComposerQuery {\n  viewer {\n    ...SnsComposer_viewer\n    id\n  }\n}\n\nfragment SnsAvatar_user on User {\n  id\n  photo\n  avatar\n}\n\nfragment SnsComposer_viewer on User {\n  name\n  ...SnsAvatar_user\n}\n"
   }
 };
 
-(node/*:: as any*/).hash = "e5d97d6f01f4e2add441741f0dee5b87";
+(node/*:: as any*/).hash = "80e8e6d8a04397c5eb13f87e0e9e6253";
 
 export default ((node/*:: as any*/)/*:: as Query<
-  SnsClipsPageQuery$variables,
-  SnsClipsPageQuery$data,
+  SnsComposerQuery$variables,
+  SnsComposerQuery$data,
 >*/);
