@@ -5,26 +5,36 @@ import { Tabs } from "@uniflowed/router/native-navigation";
 import { FAINT, INK } from "../_shared/commonplace.stylex.js";
 import { Glyph, type GlyphName } from "../_shared/glyphs.native.js";
 
+type Tab = {| readonly title: string, readonly glyph: GlyphName |};
+
 /** The web's mobile navigation: Feed, Clips, Inbox and Settings. */
 
-const TABS: { readonly [path: string]: {| readonly title: string, readonly glyph: GlyphName |} } = {
-  "/": { title: "Feed", glyph: "feed" },
-  "/clips": { title: "Clips", glyph: "clips" },
-  "/messages": { title: "Inbox", glyph: "inbox" },
-  "/settings": { title: "Settings", glyph: "settings" },
-};
+function tabFor(path: string): Tab {
+  return match (path) {
+    "/clips" => { title: "Clips", glyph: "clips" },
+    "/messages" => { title: "Inbox", glyph: "inbox" },
+    "/settings" => { title: "Settings", glyph: "settings" },
+    _ => { title: "Feed", glyph: "feed" },
+  };
+}
+
+/** React Navigation asks for an icon with the tint it chose; the answer is always a glyph. */
+
+component TabIcon(glyph: GlyphName, color: string) renders Glyph {
+  return <Glyph name={glyph} color={color} />;
+}
 
 export component Layout() {
   return (
     <Tabs
       screenOptions={({ route }: { route: { name: string, ... }, ... }) => {
-        const tab = TABS[route.name] ?? TABS["/"];
+        const tab = tabFor(route.name);
 
         return {
           headerShown: false,
           title: tab.title,
           tabBarIcon: ({ color }: { color: string, ... }) => (
-            <Glyph name={tab.glyph} color={color} />
+            <TabIcon glyph={tab.glyph} color={color} />
           ),
           tabBarActiveTintColor: INK,
           tabBarInactiveTintColor: FAINT,

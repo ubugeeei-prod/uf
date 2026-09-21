@@ -55,8 +55,11 @@ visual language: a feed with channels, search, a composer and reactions, clips,
 a private inbox with conversations, settings, and account creation. It uses
 StyleX native objects, bundled images and app-owned React Navigation factories.
 Screen components live beside their routes. The same model the web examples keep
-in a service stays in memory here; the separate GraphQL example demonstrates the
-BFF and backend.
+in a service stays in memory here, behind an asynchronous interface, so the
+screens are written as the web's are: reads suspend under `use`, writes are
+Actions with `useActionState` and `useOptimistic`, and results are handled with
+Flow's `match` and typed with `renders`. The separate GraphQL example
+demonstrates the BFF and backend.
 
 Run `uf install`, `uf dev --target ios` (or `android`) and `uf test` from that
 example's directory. CI exercises the real input and navigation components and
