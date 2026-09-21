@@ -3985,6 +3985,7 @@ dependencies = [
  "camino",
  "compact_str",
  "criterion",
+ "libc",
  "oxc_sourcemap",
  "serde",
  "serde_json",

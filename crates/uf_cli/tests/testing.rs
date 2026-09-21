@@ -2235,3 +2235,106 @@ fn a_test_runtime_that_cannot_be_installed_is_refused_naming_the_spec() {
     );
     assert!(!stdout.contains("adds"), "{stdout}");
 }
+
+/// A `node` that is a shim, and a run that has to end anyway.
+///
+/// Version managers put a shim on `PATH` rather than the runtime itself, and
+/// some of them *fork* the real one instead of `exec`ing it — Volta's
+/// `volta-shim` is where this was found. uf's child is then the shim, and the
+/// process importing the test file is the shim's child, holding the worker's
+/// stdout by inheritance.
+///
+/// Retiring a worker used to signal uf's own child, which ended the shim and
+/// left that grandchild running with the pipe open. Every file ran, every
+/// result was reported, and `uf test` never returned: no output, no exit, on
+/// every run on such a machine. The signal goes to the worker's process group
+/// now — see `uf_test::host::Worker::kill` — and what this asserts is the
+/// thing that was missing, which is an end.
+#[test]
+fn a_forking_host_shim_does_not_leave_the_run_hanging() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&[(
+        "src/sum.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"adds\", () => { expect(1 + 1).toBe(2); });\n",
+    )]);
+
+    let found = std::process::Command::new("sh")
+        .args(["-c", "command -v node"])
+        .output()
+        .unwrap();
+    let real = String::from_utf8(found.stdout).unwrap().trim().to_owned();
+    let shims = tempfile::tempdir().unwrap();
+    let shim = shims.path().join("node");
+    let marks = shims.path().join("pids");
+    // `exec 3<&0` and then `<&3`, rather than `<&0` or nothing at all. POSIX
+    // gives an asynchronous command `/dev/null` for standard input *before*
+    // its own redirections, and dash reads that in the order it is written:
+    // `<&0` there duplicates the `/dev/null` the shell had just installed, so
+    // the worker met end of input and exited 0 before it was asked for
+    // anything. Only macOS's `/bin/sh` passed the pipe through, which is why
+    // this went out green and came back red. A descriptor saved before the
+    // redirection cannot be the one the rule replaced.
+    //
+    // The two `echo`s are what keep the test non-vacuous: a shell that decided
+    // to `exec` the last command would make this an ordinary host again, and a
+    // regression test for a forking shim that stopped forking would pass
+    // without exercising anything. The assertion below is that two different
+    // processes were involved.
+    std::fs::write(
+        &shim,
+        format!(
+            "#!/bin/sh\nexec 3<&0\n'{real}' \"$@\" <&3 &\nchild=$!\n\
+             printf 'shim %s child %s\\n' \"$$\" \"$child\" >> '{marks}'\nwait \"$child\"\n",
+            marks = marks.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!(
+        "{}:{}",
+        shims.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--json"])
+        .env("PATH", path)
+        .timeout(Duration::from_secs(120))
+        .output()
+        .expect("uf runs");
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    // A run killed by the deadline has no exit code, only the signal that
+    // ended it. That is the failure this test exists for, so it is named
+    // before the status is judged.
+    assert!(
+        output.status.code().is_some(),
+        "`uf test` never returned on a host whose `node` forks:\n{stdout}\n{stderr}"
+    );
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    let document: serde_json::Value = serde_json::from_str(&stdout).expect("--json output");
+    assert_eq!(document["passed"], 1, "{stdout}");
+    assert_eq!(document["failed"], 0, "{stdout}");
+
+    // And that the host uf started really was a shim in front of another
+    // process, which is the whole premise.
+    let marked = std::fs::read_to_string(&marks).unwrap_or_default();
+    let forked = marked.lines().any(|line| {
+        let mut words = line.split_whitespace();
+        matches!(
+            (words.next(), words.next(), words.next(), words.next()),
+            (Some("shim"), Some(shim), Some("child"), Some(child)) if shim != child
+        )
+    });
+    assert!(
+        forked,
+        "the shim exec'd rather than forked, so this proved nothing:\n{marked}"
+    );
+}

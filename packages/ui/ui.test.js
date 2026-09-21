@@ -11,11 +11,11 @@
 // "this key does Y", because those are the two promises this package makes and
 // the two things a refactor must not be allowed to break quietly.
 //
-// The one exception is the last block, which runs `uf check` over the package.
-// The type of the props a caller may spread is part of what this package
-// promises too, and it is not a promise any amount of rendering can check.
+// The promises that are types rather than behaviour — the props a caller may
+// spread, a `side` that is a union and not a string — are held in
+// `./types.test.js`, which runs the checker. They are a separate file because
+// each of them starts a `uf check` and this one does not start anything.
 
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -108,16 +108,10 @@ import { focusable } from "./internal/focus.js";
 // one — so every `fireEvent` aimed at the page itself narrows through here
 // rather than thirteen times over. See ubugeeei-prod/uf#573.
 import { bodyOf } from "../../tests/library/dom.js";
-// The negative type tests below run `uf check` and read what it said; this is
-// the harness that does it, shared with the five other suites that make the
-// same kind of claim. See its module header for why the package goes to the
-// checker in the same command as the fixture.
-import type { CheckReport } from "../../tests/library/type-tests.js";
-import {
-  everyMisuseIsReported,
-  repositoryRoot as repository,
-  ufBinary as UF,
-} from "../../tests/library/type-tests.js";
+// The checkout, for the blocks that hold a list to the files it was made from.
+// The negative type tests that used to be here are in `./types.test.js`, with
+// the rest of what that harness supplies.
+import { repositoryRoot as repository } from "../../tests/library/type-tests.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -9239,12 +9233,11 @@ describe("caller props never disable the component", () => {
   });
 });
 
-// What `uf check` says about this package, and the two promises only it can
-// hold: that no part makes React's `key` a `mixed`, and that a misused `side`
-// or `align` is an error at the call rather than an overlay in the wrong place.
-// Both blocks below run the checker; `./type-tests.js` holds what it takes to
-// run it — the checkout, the binary `uf test` named, and the marker harness
-// the three fixture blocks share with five other suites.
+// What the package's own source says about itself: which parts hand their
+// element to the caller, and which do not. Held to the files rather than to a
+// rendered tree, because a part that dropped its escape hatch renders exactly
+// as it did before. What the *checker* says about the package is
+// `./types.test.js`.
 
 describe("the escape hatch: which part hands its element to the caller", () => {
   // ubugeeei-prod/uf#303. This package has no copy step, and the thing a copy
@@ -9888,145 +9881,5 @@ describe("the escape hatch, exercised", () => {
     expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
     const form: $FlowFixMe = screen.getByTestId("signup");
     expect(new form.ownerDocument.defaultView.FormData(form).get("plan")).toBe("pro");
-  });
-});
-
-describe("the props a part spreads onto its element", () => {
-  // A type is a promise the same way a role is, and this is the only test here
-  // that can hold one to it.
-  //
-  // Every part takes `...rest: Rest` and spreads it onto an intrinsic. `Rest`
-  // — `packages/ui/internal/merge-props.js` — names `key` out of its indexer,
-  // because React's `key` is `string | number` and an indexer answers `mixed`
-  // for every name. Widen it back to a bare `{ readonly [string]: mixed }` and
-  // `uf check` reports "Cannot create button element because in property key"
-  // once for every element the package renders: thirty-two of them, which is
-  // what #206 was.
-  //
-  // Scoped to that one family on purpose. `packages/ui` still reports
-  // `value-as-type` errors for `React.Node` and `React.Context`, because
-  // nothing resolves a module for `@uniflowed/react` and the import is typed
-  // `any` — a different bug, with a different fix, and not one this test
-  // should start failing over.
-  //
-  // And scoped to what the package *ships*. `uf check packages/ui` now reads
-  // this file too, because this file is in `packages/ui` — that is what
-  // co-locating the suite means. The claim above is about the elements the
-  // package renders, so a diagnostic against a test file is not evidence for
-  // or against it, and counting one would make the suite's own call sites the
-  // subject. There is one today: the `Plans` component below spreads
-  // `Field.Control`'s render props onto a `RadioGroup.Root`, and the checker
-  // has an opinion about the `key` in them that nothing had asked for until
-  // this file moved. That is a real finding about the API and it belongs in
-  // an issue about `Field.Control`, not in an assertion about `merge-props.js`.
-
-  it("does not make React's key mixed", () => {
-    const run = spawnSync(UF, ["check", "packages/ui", "--json"], {
-      cwd: repository,
-      encoding: "utf8",
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    // A non-zero status is expected: the package still has the `value-as-type`
-    // errors above. The answer is on stdout either way — and when it is not,
-    // this says so. `JSON.parse("")` reports `Unexpected end of JSON input`
-    // and names neither the command, the directory, nor what the command said
-    // instead, which is the half of #313 that made a wrong directory take an
-    // afternoon to find rather than a minute.
-    if (run.stdout === "") {
-      throw new Error(
-        `\`uf check packages/ui --json\` in ${repository} printed nothing: ` +
-          `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
-      );
-    }
-    const report: CheckReport = JSON.parse(run.stdout);
-    // Without this the test would pass just as happily on a run that checked
-    // nothing at all.
-    expect(report.typeCheck.status).toBe("checked");
-    expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
-
-    const keyed = report.typeCheck.diagnostics
-      .filter((diagnostic) => !diagnostic.primary.path.endsWith(".test.js"))
-      .map((diagnostic) => ({
-        at: `${diagnostic.primary.path}:${String(diagnostic.primary.start.line)}`,
-        said: diagnostic.message.map((span) => span.text).join(""),
-      }))
-      .filter((diagnostic) => diagnostic.said.includes("in property key"));
-    expect(keyed).toEqual([]);
-    // And the checker read the package rather than only this file, which is
-    // the way the filter above could have emptied the list it is asserting on.
-    expect(
-      report.typeCheck.diagnostics.some(
-        (diagnostic) => !diagnostic.primary.path.endsWith(".test.js"),
-      ),
-    ).toBe(true);
-  });
-});
-
-describe("a side and an alignment are unions, not strings", () => {
-  // The other promise a type makes, and the other one no amount of rendering
-  // can check. `internal/anchor.js` says a side is one of four names and an
-  // alignment one of three; the claim that follows is that a consumer who
-  // misspells one is stopped by the checker rather than by a reader finding an
-  // overlay in the wrong place.
-  //
-  // `tests/type-tests/anchoring.js` is the misuse, written down.
-
-  it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "anchoring.js"),
-      alongside: ["packages/ui"],
-      atLeast: 4,
-    });
-  });
-});
-
-describe("a wrong child is a type error and not a review comment", () => {
-  // The strongest claim `packages/ui/index.js` makes, and the one nothing here
-  // held: `Tabs.List` declares `renders* Tabs.Tab`, so a `<button>` in a tab
-  // list does not compile. Thirteen containers in this package state a constraint
-  // like that — `Menu.Body`, `Combobox.List`, `Select.List`, `Toast.Region`,
-  // `Pagination.Content` and the rest — and every one of them was an unverified
-  // promise: they were checked by hand against a scratch file while `select.js`
-  // and `toast.js` were written, and a scratch file survives no refactor. That
-  // is ubugeeei-prod/uf#358.
-  //
-  // It is checked here rather than by rendering anything because there is
-  // nothing to render. The failure a `renders*` prevents does not reach a
-  // browser: it is a `<button>` announced as "button" where the reader expected
-  // "tab, 2 of 5", in a build that never happened.
-  //
-  // Both directions are in the fixture, which is the part worth keeping. A
-  // constraint that stopped rejecting a `<div>` would take the guarantee away
-  // and nothing else would notice; one that started rejecting the parts it
-  // exists to admit would take the library away, and this test would name which
-  // container did it.
-  //
-  // `tests/type-tests/composition.js` is the misuse, written down.
-
-  it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "composition.js"),
-      alongside: ["packages/ui"],
-      atLeast: 4,
-    });
-  });
-});
-
-describe("an edge, a role, an alphabet and an orientation are unions too", () => {
-  // The same claim, for the dialog-shaped components, the three that replace
-  // something the browser already does, and the rule between two of them. A
-  // sheet's `side`, a sidebar's — which has two members rather than four,
-  // because a sidebar is never along the top — a modal's `role`, what a
-  // one-time code is made of, and which way a `Separator` runs: five unions
-  // whose misuse has no symptom at run time and none in a screenshot.
-  //
-  // `tests/type-tests/overlays.js` is the misuse, written down.
-
-  it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported({
-      fixture: path.join("tests", "type-tests", "overlays.js"),
-      alongside: ["packages/ui"],
-      atLeast: 4,
-    });
   });
 });
