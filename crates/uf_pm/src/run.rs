@@ -879,7 +879,7 @@ fn windows_program_in_path(program: &str, path: &OsStr, pathext: &OsStr) -> Opti
     let has_extension = std::path::PathBuf::from(program).extension().is_some();
     for directory in std::env::split_paths(path) {
         let candidate = directory.join(program);
-        if candidate.is_file() {
+        if has_extension && candidate.is_file() {
             return Some(candidate.into_os_string());
         }
         if has_extension {

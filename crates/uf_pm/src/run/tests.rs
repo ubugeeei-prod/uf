@@ -38,6 +38,24 @@ fn windows_package_manager_lookup_honors_pathext() {
     assert_eq!(found, npm.into_os_string());
 }
 
+#[test]
+fn windows_package_manager_lookup_skips_extensionless_shims() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let extensionless = dir.path().join("npm");
+    let cmd = dir.path().join("npm.cmd");
+    std::fs::write(&extensionless, "#!/bin/sh\n").expect("a shell shim");
+    std::fs::write(&cmd, "").expect("a cmd shim");
+
+    let found = windows_program_in_path(
+        "npm",
+        dir.path().as_os_str(),
+        std::ffi::OsStr::new(".cmd;.exe"),
+    )
+    .expect("PATHEXT should find npm.cmd");
+
+    assert_eq!(found, cmd.into_os_string());
+}
+
 fn args(
     manager: PackageManager,
     operation: Operation<'_>,
