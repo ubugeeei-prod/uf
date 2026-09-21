@@ -91,10 +91,10 @@
       that restarts the server when `uf.config.js` changes, because the server
       reads it once. Cursor installs the same extension rather than a copy.
       Neovim, Vim, Helix and Emacs each get one configuration file:
-      `vim.lsp.start`, vim-lsp, `languages.toml` and Eglot. **Zed is not
-      working**: it can only take a language server from a Rust/WASM extension,
-      which cannot be built or tested in this repository, so `editors/zed` has
-      the manifest and a README saying exactly what the missing half must do.
+      `vim.lsp.start`, vim-lsp, `languages.toml` and Eglot. Zed has both the
+      manifest and the `zed_extension_api` Rust/WASM half that starts `uf lsp`,
+      and CI checks it for `wasm32-wasip1`. JetBrains uses LSP4IJ, documented
+      in `editors/jetbrains`.
       `tests/library/vscode-extension.test.js` covers the extension's own
       decisions without an editor host, and `tests/library/lsp.test.js` drives
       the real `uf lsp` over framed messages and asserts every capability the
@@ -249,10 +249,11 @@
       react-testing` mounts into a real document, queries by role, label,
       text, placeholder and test id, and tells React it is a test — so
       `act` warnings mean something rather than arriving on every render.
-- [ ] Implement native React Native testing utilities.
-      First contract in place: `@uniflowed/react-native-testing` can query an
-      existing React Native test tree by text, role and testID, while `render`
-      still refuses until the native renderer and host config exist.
+- [x] Implement native React Native testing utilities.
+      `@uniflowed/react-native-testing` keeps the renderer-independent query
+      surface for existing native trees, and its `/native` entry renders real
+      React Native components through the official test renderer and drives
+      press, text and scroll handlers. The package is in the published closure.
 - [x] Add watch mode with dependency-aware reruns.
 - [x] Add strict CLI integration tests for every command.
       `crates/uf_cli/tests/every_command.rs` takes `uf --help` as its checklist
@@ -325,8 +326,10 @@
 - [x] Start `@uniflowed/rm` runtime manager inference/acquire/apply planning.
 - [x] Implement local current-binary runtime activation for `uf use`.
 - [ ] Implement host detection and adaptation in `@uniflowed/rm`.
-- [ ] Publish `curl -fsSL https://setup.uniflowed.dev | sh` installer.
-- [ ] Support sh, bash, zsh, ush, Windows, macOS, and Linux installer targets.
+- [x] Publish `curl -fsSL https://setup.uniflowed.dev | sh` and
+      `irm https://setup.uniflowed.dev/install.ps1 | iex` installers, with
+      release-workflow verification against the packaged archives.
+- [x] Support sh, bash, zsh, Windows x86-64, macOS, and Linux installer targets.
 - [x] Start napi-rs-style native target package generation contracts.
 - [x] Start generated TypeScript declaration to Flow declaration conversion.
 - [x] Implement `uf install` for workspace package discovery, lockfile writes, store manifest writes, and npm-script rejection.
@@ -338,7 +341,8 @@
 - [x] Add `uf release alpha` command surface.
 - [x] Wire `uf release alpha` to prerelease calculation and `uf@*` tag metadata.
 - [ ] Wire `uf release alpha` to changelog generation and tag push.
-- [ ] Ship `curl -fsSL https://setup.uniflowed.dev | sh`.
+- [x] Ship `curl -fsSL https://setup.uniflowed.dev | sh` and
+      `irm https://setup.uniflowed.dev/install.ps1 | iex`.
 
 ## P5: Standard Library, Legal, And Formal Methods
 

@@ -691,8 +691,7 @@ worse. The rule is there for modules whose real shape is platform-specific.
 ## Compared with Expo
 
 Expo is a complete application platform, and uf is not trying to become a
-second one. The line is the one [#501](https://github.com/ubugeeei-prod/uf/issues/501)
-records: uf owns the Flow toolchain, the file-system routes and the
+second one. uf owns the Flow toolchain, the file-system routes and the
 orchestration of the loop; Expo owns the app runtime, the native project and the
 services that build and update it. Where Expo already has the answer, uf runs
 Expo rather than replacing it.
@@ -869,9 +868,9 @@ Physical devices and simulator refresh remain separate checks tracked in
 [#1288](https://github.com/ubugeeei-prod/uf/issues/1288). A renderer test does not
 validate native layout, gestures, platform permissions or signing.
 
-[#501](https://github.com/ubugeeei-prod/uf/issues/501) tracks this target.
-[Testing](/guide/testing#react-native-test-trees) covers the query surface, and
-[Packages](/reference/packages) lists the packages that exist today.
+The repository checks now cover this target. [Testing](/guide/testing#react-native-test-trees)
+covers the query surface, and [Packages](/reference/packages) lists the packages
+that exist today.
 
 ## Where to go next
 

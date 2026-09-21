@@ -1434,22 +1434,23 @@ Generated projects do not use npm scripts. Tasks are declared in
 `uf.config.js` and executed by `uf run` through Vite Task.
 
 Editor integrations live under `editors/` and stay thin. VS Code, Neovim,
-Emacs, Vim, Helix, Zed and Cursor all connect to `uf lsp`; the Rust workspace
-remains responsible for parsing, linting, formatting, route type generation and
-diagnostics. None of the integrations implements a language feature — each one
-is a client, and what it may offer is exactly what `initialize` advertises:
+Emacs, Vim, Helix, Zed, Cursor and JetBrains all connect to `uf lsp`; the Rust
+workspace remains responsible for parsing, linting, formatting, route type
+generation and diagnostics. None of the integrations implements a language
+feature — each one is a client, and what it may offer is exactly what
+`initialize` advertises:
 diagnostics, `textDocument/formatting`, `textDocument/codeAction` (`quickfix`
 and `source.fixAll.uf`) and `textDocument/hover`, and nothing else.
 
-Only VS Code is a package, and Cursor installs that same package because it is
-the same extension format. The rest are configuration — a `languages.toml`, a
-Lua module, a `uf.el`, a `uf.vim` — small enough to copy, and short because the
-protocol does the work. Zed is the exception: it can only take a language server
-from a Rust/WASM extension, so `editors/zed` carries the manifest and its README
-says what the missing half must do rather than shipping a file nothing can
-build. `tests/library/lsp.test.js` drives the real `uf lsp` binary over framed
-messages and asserts every capability those READMEs claim, including that the
-ones they disclaim are absent.
+VS Code is a package, and Cursor installs that same package because it is the
+same extension format. Zed is also a package: the manifest names the language
+server and a `zed_extension_api` Rust crate returns the command Zed starts, with
+CI checking the `wasm32-wasip1` target. The rest are configuration — a
+`languages.toml`, a Lua module, a `uf.el`, a `uf.vim`, or an LSP4IJ definition
+— small enough to copy, and short because the protocol does the work.
+`tests/library/lsp.test.js` drives the real `uf lsp` binary over framed messages
+and asserts every capability those READMEs claim, including that the ones they
+disclaim are absent.
 
 The constraint every client has to satisfy is naming the project. `uf lsp`
 reads its configuration once, at start-up — from the directory `--cwd` names, or
@@ -1512,9 +1513,10 @@ Runtime manager paths follow the XDG Base Directory layout: config in
 `XDG_CONFIG_HOME`, runtime data and versions in `XDG_DATA_HOME`, cache in
 `XDG_CACHE_HOME`, durable state in `XDG_STATE_HOME`, runtime sockets under
 `XDG_RUNTIME_DIR` when available, and the `uf` shim under the user-local bin
-directory. The target POSIX installer is
-`curl -fsSL https://setup.uniflowed.dev | sh`; shell targets include sh, bash,
-zsh, and ush, and platform targets include Windows, macOS, and Linux.
+directory. The POSIX installer is
+`curl -fsSL https://setup.uniflowed.dev | sh`, and the Windows installer is
+`irm https://setup.uniflowed.dev/install.ps1 | iex`; release CI verifies both
+against the packaged archives for Windows, macOS, and Linux.
 
 ## Performance Defaults
 

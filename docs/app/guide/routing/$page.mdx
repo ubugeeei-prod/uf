@@ -204,8 +204,8 @@ Four rules, each refused by name rather than by silence:
 - a slot holds pages, layouts, templates, loading fallbacks, nested slots,
   [intercepting routes](#intercepting-routes) and one default —
   `$not-found.js`, `$route.js` or `$middleware.js` inside one is refused,
-  because uf's slots do not carry those request-level answers of their own
-  yet ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
+  because slots are not request boundaries. Put those files in the route tree
+  outside the slot.
 
 `$loading.js` in a slot is slot-local. It wraps the slot's matched page and the
 layouts under that slot, not the segment's `children`, so a slow side panel can

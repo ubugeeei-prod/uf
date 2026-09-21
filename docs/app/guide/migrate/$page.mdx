@@ -545,9 +545,9 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
   at most one form ([What is not here](/guide/server-actions#what-is-not-here)).
 - **Intercepting routes under Server Components.** An intercepted URL is an
   ordinary navigation to the page it names
-  ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot holds
-  no `$not-found.js`, `$route.js` or `$middleware.js`
-  ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
+  ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot is not
+  a request boundary, so it holds no `$not-found.js`, `$route.js` or
+  `$middleware.js`.
 - **The rest of ISR.** A `--compile` binary carries no cache and the `ppr` mode
   name selects nothing yet. Function caching uses explicit
   [`cacheFunction`](/guide/cache), with a name, arguments and lifetime;

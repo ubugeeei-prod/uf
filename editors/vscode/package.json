@@ -3,7 +3,6 @@
   "displayName": "uf",
   "description": "Flow diagnostics, formatting, quick fixes and hover from the uf toolchain, over uf lsp.",
   "version": "0.0.0",
-  "private": true,
   "license": "MIT",
   "publisher": "uniflowed",
   "repository": {

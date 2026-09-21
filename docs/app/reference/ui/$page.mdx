@@ -136,6 +136,25 @@ This is not minimalism for its own sake. A missing component should be a clear
 "compose these parts" or "not implemented yet", never a thin wrapper that looks
 like progress while weakening the guarantees above.
 
+## React Aria parity
+
+React Aria is the comparison set for this package: not because uf should copy
+its API, but because it names the accessible behaviours product teams actually
+need. This table is the audit line for #948.
+
+| React Aria area | uf status | Tracking |
+| --- | --- | --- |
+| Interactions: press, hover, focus-visible, long press, move, keyboard and merged props | Shipped as the shared interaction layer used by the primitives above | Held by `packages/ui/interactions.test.js` |
+| Modal and overlay surfaces | Shipped: `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Popover`, `Tooltip`, `HoverCard`, `Menu`, `ContextMenu`, `Menubar` | Held by `packages/ui/ui.test.js` |
+| Select, combobox and menu collections | Shipped for select-only and editable combobox flows, with option groups, typeahead and menu semantics | Held by the `Select`, `Combobox` and `Menu` blocks in `packages/ui/ui.test.js` |
+| Standalone collection primitives | Not shipped: standalone ListBox, GridList, Tree and TagGroup still need a collection/state contract of their own | [#1309](https://github.com/ubugeeei-prod/uf/issues/1309) |
+| Calendar and single-date picker | Shipped: `Calendar` and `DatePicker` cover the single-date path | Held by the calendar and date-picker blocks in `packages/ui/ui.test.js` |
+| Range and segmented date/time fields | Not shipped: RangeCalendar, DateRangePicker, DateField and TimeField | [#1311](https://github.com/ubugeeei-prod/uf/issues/1311) |
+| Number field | Not shipped: locale parsing, formatting, stepping and validation need their own primitive | [#1313](https://github.com/ubugeeei-prod/uf/issues/1313) |
+| Table | Shipped for the package's table contract: sort announcements, mixed selection and row counts | Held by the table block in `packages/ui/ui.test.js` |
+| Drag/drop and color controls | Not shipped: drag/drop hooks, collection drop targets and ColorPicker | [#1310](https://github.com/ubugeeei-prod/uf/issues/1310) |
+| Locale and direction infrastructure | Partial: component-local keyboard maps exist, but there is no I18nProvider-style locale/direction layer | [#1312](https://github.com/ubugeeei-prod/uf/issues/1312) |
+
 ## Import shapes
 
 `@uniflowed/ui` is the package's one entry point. It exports namespaces for app

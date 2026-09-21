@@ -417,6 +417,67 @@ jobs:
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run install:test
 
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+        shell: bash
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: windows-native
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: cargo build --profile ci-opt --bin uf
+      - name: Scaffold, install, and check a Windows project
+        shell: pwsh
+        run: |
+          $uf = Join-Path $PWD "target/ci-opt/uf.exe"
+          $app = Join-Path $env:RUNNER_TEMP "uf-windows-app"
+          & $uf new $app --name windows-smoke
+          & $uf --cwd $app install
+          & $uf --cwd $app fmt --check
+          & $uf --cwd $app lint
+          & $uf --cwd $app check
+          & $uf --cwd $app test
+          & $uf --cwd $app build
+
+  editors:
+    name: Editors
+    needs: toolchain
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly-2026-08-01
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: editors
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Package the VS Code extension
+        working-directory: editors/vscode
+        run: |
+          npm install --omit=dev --package-lock=false --no-audit --no-fund
+          npx --yes @vscode/vsce package --out "$RUNNER_TEMP/uf.vsix"
+      - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1
+
   bench-compile:
     name: Bench Compile
     needs: toolchain
@@ -906,6 +967,8 @@ jobs:
       - library
       - library-node-26
       - installer
+      - windows
+      - editors
       - bench-compile
       - metadata
       - upstream-integrations

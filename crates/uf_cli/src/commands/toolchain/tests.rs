@@ -405,7 +405,7 @@ fn placing_over_a_runtime_replaces_its_files_and_keeps_its_directory() {
 /// carry a truncated or renamed script into the binary.
 #[test]
 fn the_embedded_installer_is_the_one_that_acquires_a_release() {
-    assert!(INSTALLER.starts_with("#!/bin/sh\n"));
+    assert!(INSTALLER_SH.starts_with("#!/bin/sh\n"));
     for marker in [
         "UF_RELEASE_BASE",
         "UF_INSTALL_ROOT",
@@ -417,7 +417,7 @@ fn the_embedded_installer_is_the_one_that_acquires_a_release() {
         "writes outside its own directory",
     ] {
         assert!(
-            INSTALLER.contains(marker),
+            INSTALLER_SH.contains(marker),
             "the embedded installer does not mention {marker}"
         );
     }

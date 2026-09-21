@@ -1,6 +1,6 @@
 ---
 title: "Editors · uf"
-description: "uf lsp in VS Code, Cursor, Neovim, Vim, Helix and Emacs: what it answers, what it does not, and the config it reads."
+description: "uf lsp in VS Code, Cursor, Neovim, Vim, Helix, Emacs, Zed and JetBrains: what it answers, what it does not, and the config it reads."
 ---
 
 <p className="eyebrow">Start</p>
@@ -103,9 +103,10 @@ opened is linted, even one `uf lint` would skip.
 
 ## VS Code and Cursor
 
-An extension in [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode),
-built from source. It is not published to the Marketplace or Open VSX yet
-([#977](https://github.com/ubugeeei-prod/uf/issues/977)):
+An extension in [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode).
+CI packages it on every editor change, and `uf@*` tags publish it to the
+Visual Studio Marketplace when `VSCE_PAT` is present and Open VSX when
+`OVSX_PAT` is present:
 
 ```sh
 cd editors/vscode
@@ -204,11 +205,21 @@ right directory. `uf-executable` names a different binary; restart with
 
 ## Zed
 
-Not working. [`editors/zed`](https://github.com/ubugeeei-prod/uf/tree/main/editors/zed)
-holds the extension manifest, and a Zed extension that provides a language server
-also needs a Rust half compiled to WebAssembly, which is not written
-([#977](https://github.com/ubugeeei-prod/uf/issues/977)). Meanwhile `uf fmt`,
-`uf lint` and `uf check` run as tasks from Zed's terminal.
+[`editors/zed`](https://github.com/ubugeeei-prod/uf/tree/main/editors/zed)
+holds the extension manifest and the `zed_extension_api` Rust half that returns
+`uf lsp`. CI checks it for `wasm32-wasip1`, because a Zed language-server
+extension is WebAssembly.
+
+Install the directory as a Zed dev extension. It uses `worktree.which("uf")`,
+so a project-pinned `node_modules/.bin/uf` wins before a global one on `PATH`.
+
+## JetBrains
+
+[`editors/jetbrains`](https://github.com/ubugeeei-prod/uf/tree/main/editors/jetbrains)
+documents the LSP4IJ setup. There is no native JetBrains plugin here: LSP4IJ
+starts `uf lsp` in the project root and receives the same diagnostics,
+formatting, quick fixes, hover and `uf.config.js` completion as the other
+clients.
 
 ## Where to go next
 

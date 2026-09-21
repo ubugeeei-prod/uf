@@ -10,16 +10,17 @@ a client, and none of them implements a language feature.
 
 | Editor | What is here | Working |
 | --- | --- | --- |
-| [VS Code](vscode) | An extension: `package.json`, four source files, a `.vscodeignore` | Yes, built from source. Not published. |
+| [VS Code](vscode) | An extension: `package.json`, four source files, a `.vscodeignore` | Yes. CI packages it, and `uf@*` tags publish it when `VSCE_PAT` or `OVSX_PAT` are present. |
 | [Cursor](cursor) | Nothing of its own — it installs the VS Code extension | Yes |
 | [Neovim](neovim) | [`lua/uf.lua`](neovim/lua/uf.lua), using core `vim.lsp.start` | Yes |
 | [Vim](vim) | [`uf.vim`](vim/uf.vim), a vim-lsp registration | Yes |
 | [Helix](helix) | [`languages.toml`](helix/languages.toml) | Yes |
 | [Emacs](emacs) | [`uf.el`](emacs/uf.el), for Eglot or lsp-mode | Yes |
-| [Zed](zed) | [`extension.toml`](zed/extension.toml), the manifest only | **No** — Zed also needs a Rust/WASM half that cannot be built here. Its README says exactly what is missing and what the code has to be. |
+| [Zed](zed) | [`extension.toml`](zed/extension.toml) and a `zed_extension_api` Rust extension | Yes. CI checks the WASM target. |
+| [JetBrains](jetbrains) | LSP4IJ setup notes | Manual. JetBrains loads `uf lsp` through the LSP4IJ plugin rather than a native plugin here. |
 
-Only VS Code is a package. The rest are configuration: a file to copy, four to
-eighty lines long.
+VS Code and Zed are packages. The rest are configuration: a file to copy, four
+to eighty lines long, or an editor plugin configured to start `uf lsp`.
 
 ## What every one of them gets
 

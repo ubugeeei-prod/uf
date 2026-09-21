@@ -74,7 +74,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/editors",
         title: "Editors",
         blurb:
-          "uf lsp in VS Code, Cursor, Neovim, Vim, Helix and Emacs: what it answers, what it does not, and the config it reads.",
+          "uf lsp in VS Code, Cursor, Neovim, Vim, Helix, Emacs, Zed and JetBrains: what it answers, what it does not, and the config it reads.",
       },
       {
         href: "/guide/tutorial",

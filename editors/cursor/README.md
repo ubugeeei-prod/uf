@@ -8,7 +8,8 @@ the restart command, drifting apart one fix at a time.
 
 ## In place
 
-Build a `.vsix` from `editors/vscode` and install it:
+Install the Marketplace/Open VSX package when one is available, or build a
+`.vsix` from `editors/vscode` and install it:
 
 ```sh
 cd editors/vscode
