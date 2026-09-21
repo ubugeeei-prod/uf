@@ -128,7 +128,12 @@ const packedPaths = (names: Array<string>): Map<string, Set<string>> => {
         `so npm has to be able to run:\n${said || String(error)}`,
     );
   }
-  const reports = JSON.parse(stdout);
+  const answered = JSON.parse(stdout);
+  // npm 11 answers with an array of reports and npm 12 with an object keyed by
+  // package name. The test runs on whichever npm is installed, and a shape it
+  // did not expect would fail as `reports.map is not a function` — a message
+  // about this file rather than about npm. Both are a list of reports.
+  const reports = Array.isArray(answered) ? answered : Object.values(answered);
   // Keyed by what npm answered with — the package's name — rather than by the
   // order the specs went out in, so a release list and a report that disagree
   // are a named failure instead of a file list quietly attributed to the wrong
