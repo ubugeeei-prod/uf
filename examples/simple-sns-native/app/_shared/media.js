@@ -15,17 +15,16 @@ import park from "./media/clips/park.jpg";
 
 const asset = (image: string): ImageSourcePropType => image as $FlowFixMe;
 
-const PORTRAITS: { readonly [id: string]: ImageSourcePropType } = {
-  "seed-mika": asset(mika),
-  "seed-ren": asset(ren),
-  "seed-sora": asset(sora),
-  "seed-niko": asset(niko),
-};
-
 /** Licensed portraits for the fixture members; a new account keeps its initials. */
 
 export function portrait(id: string): ImageSourcePropType | null {
-  return PORTRAITS[id] ?? null;
+  return match (id) {
+    "seed-mika" => asset(mika),
+    "seed-ren" => asset(ren),
+    "seed-sora" => asset(sora),
+    "seed-niko" => asset(niko),
+    _ => null,
+  };
 }
 
 export const POSTERS = {

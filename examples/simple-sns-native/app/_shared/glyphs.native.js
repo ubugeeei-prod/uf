@@ -12,47 +12,36 @@ export component Glyph(name: GlyphName, color: string) {
   const ink = { backgroundColor: color };
   const outline = { borderColor: color };
 
-  if (name === "feed") {
-    return (
+  return match (name) {
+    "feed" =>
       <View {...stylex.props(glyph.box, glyph.stack)}>
         <View style={[stylex.props(glyph.line).style, ink]} />
         <View style={[stylex.props(glyph.line, glyph.lineShort).style, ink]} />
         <View style={[stylex.props(glyph.line).style, ink]} />
-      </View>
-    );
-  }
-
-  if (name === "clips") {
-    return (
+      </View>,
+    "clips" =>
       <View {...stylex.props(glyph.box)}>
         <View style={[stylex.props(glyph.frame, glyph.portrait).style, outline]}>
           <View style={[stylex.props(glyph.play).style, { borderLeftColor: color }]} />
         </View>
-      </View>
-    );
-  }
-
-  if (name === "inbox") {
-    return (
+      </View>,
+    "inbox" =>
       <View {...stylex.props(glyph.box)}>
         <View style={[stylex.props(glyph.frame, glyph.bubble).style, outline]}>
           <View style={[stylex.props(glyph.line, glyph.lineInset).style, ink]} />
           <View style={[stylex.props(glyph.line, glyph.lineInset, glyph.lineShort).style, ink]} />
         </View>
-      </View>
-    );
-  }
-
-  return (
-    <View {...stylex.props(glyph.box, glyph.stack, glyph.sliders)}>
-      <View style={[stylex.props(glyph.line).style, ink]}>
-        <View style={[stylex.props(glyph.knob, glyph.knobLeft).style, ink]} />
-      </View>
-      <View style={[stylex.props(glyph.line).style, ink]}>
-        <View style={[stylex.props(glyph.knob, glyph.knobRight).style, ink]} />
-      </View>
-    </View>
-  );
+      </View>,
+    "settings" =>
+      <View {...stylex.props(glyph.box, glyph.stack, glyph.sliders)}>
+        <View style={[stylex.props(glyph.line).style, ink]}>
+          <View style={[stylex.props(glyph.knob, glyph.knobLeft).style, ink]} />
+        </View>
+        <View style={[stylex.props(glyph.line).style, ink]}>
+          <View style={[stylex.props(glyph.knob, glyph.knobRight).style, ink]} />
+        </View>
+      </View>,
+  };
 }
 
 const glyph = stylex.create({

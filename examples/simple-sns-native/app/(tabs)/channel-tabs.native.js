@@ -7,33 +7,53 @@ import type { TopicFilter } from "../_shared/social.js";
 
 import { TOPICS, topicLabel } from "../_shared/social.js";
 
-/** The feed's channels, as the underlined tabs the web page scrolls sideways. */
+component ChannelTab(channel: TopicFilter, selected: boolean, onPress: () => void) {
+  const label = match (channel) {
+    "all" => "All notes",
+    "design" | "release" | "runtime" | "community" as const topic => topicLabel(topic),
+  };
 
-export component ChannelTabs(topic: TopicFilter, onChange: (TopicFilter) => void) {
-  const channels: $ReadOnlyArray<TopicFilter> = ["all", ...TOPICS];
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      {...stylex.props(local.tab, selected && local.tabSelected)}
+    >
+      <Text {...stylex.props(local.label, selected && local.labelSelected)}>{label}</Text>
+    </Pressable>
+  );
+}
 
+/** The strip takes tabs and nothing else, so what scrolls sideways is always a channel. */
+
+component TabStrip(children: renders* ChannelTab) {
   return (
     <View {...stylex.props(local.bar)}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityRole="tablist">
-        {channels.map((channel) => {
-          const selected = channel === topic;
-          const label = channel === "all" ? "All notes" : topicLabel(channel);
-
-          return (
-            <Pressable
-              key={channel}
-              accessibilityRole="tab"
-              accessibilityLabel={label}
-              accessibilityState={{ selected }}
-              onPress={() => onChange(channel)}
-              {...stylex.props(local.tab, selected && local.tabSelected)}
-            >
-              <Text {...stylex.props(local.label, selected && local.labelSelected)}>{label}</Text>
-            </Pressable>
-          );
-        })}
+        {children}
       </ScrollView>
     </View>
+  );
+}
+
+/** The feed's channels, as the underlined tabs the web page scrolls sideways. */
+
+export component ChannelTabs(topic: TopicFilter, onChange: (TopicFilter) => void) renders TabStrip {
+  const channels: $ReadOnlyArray<TopicFilter> = ["all", ...TOPICS];
+
+  return (
+    <TabStrip>
+      {channels.map((channel) => (
+        <ChannelTab
+          key={channel}
+          channel={channel}
+          selected={channel === topic}
+          onPress={() => onChange(channel)}
+        />
+      ))}
+    </TabStrip>
   );
 }
 

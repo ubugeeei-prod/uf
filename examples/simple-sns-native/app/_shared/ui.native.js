@@ -8,7 +8,7 @@ import { stylex } from "@uniflowed/stylex/native";
 
 import { route } from "../../router";
 
-import type { Topic, User } from "./social.js";
+import type { FormState, Topic, User } from "./social.js";
 
 import { TOP_ALIGNED, styles } from "./commonplace.stylex.js";
 import { portrait } from "./media.js";
@@ -42,53 +42,70 @@ export component PageHeading(title: string, children: string) {
   );
 }
 
-/** A licensed portrait for a fixture member, or the account's initials. */
+/** The circle every avatar is drawn in; decorative, because a name is always beside it. */
 
-export component Avatar(user: User, small: boolean = false) {
-  const photo = portrait(user.id);
-
+component AvatarFrame(small: boolean, children: React.Node) {
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       {...stylex.props(styles.avatar, small && styles.avatarSmall)}
     >
-      {photo == null ? null : small ? (
+      {children}
+    </View>
+  );
+}
+
+/** A licensed portrait for a fixture member, or the account's initials. */
+
+export component Avatar(user: User, small: boolean = false) renders AvatarFrame {
+  const photo = portrait(user.id);
+
+  return (
+    <AvatarFrame small={small}>
+      {photo == null ? (
+        <Text {...stylex.props(styles.avatarInitials, small && styles.avatarInitialsSmall)}>
+          {user.avatar}
+        </Text>
+      ) : small ? (
         <Image source={photo} {...stylex.props(local.photoSmall)} />
       ) : (
         <Image source={photo} {...stylex.props(local.photo)} />
       )}
-      {photo != null ? null : (
-        <Text {...stylex.props(styles.avatarInitials, small && styles.avatarInitialsSmall)}>
-          {user.avatar}
-        </Text>
-      )}
-    </View>
+    </AvatarFrame>
   );
 }
+
+/**
+ * `pending` is an Action's: the button says what is happening and cannot start it twice, which is
+ * what the web examples' submit buttons do with `useActionState`'s third value.
+ */
 
 export component Button(
   children: string,
   onPress: () => void,
   primary: boolean = true,
   disabled: boolean = false,
+  pending: string | null = null,
   label?: string,
 ) {
+  const busy = pending != null;
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label ?? children}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityState={{ disabled: disabled || busy, busy }}
+      disabled={disabled || busy}
       onPress={onPress}
       {...stylex.props(
         styles.button,
         primary && styles.buttonPrimary,
-        disabled && styles.buttonDisabled,
+        (disabled || busy) && styles.buttonDisabled,
       )}
     >
       <Text {...stylex.props(styles.buttonLabel, primary && styles.buttonLabelPrimary)}>
-        {children}
+        {pending ?? children}
       </Text>
     </Pressable>
   );
@@ -96,7 +113,7 @@ export component Button(
 
 /** Navigation with the primary button's treatment, as the web's `ActionLink`. */
 
-export component ActionLink(href: string, children: string, primary: boolean = true) {
+export component ActionLink(href: string, children: string, primary: boolean = true) renders Link {
   return (
     <Link href={href} accessibilityLabel={children}>
       <View {...stylex.props(styles.button, primary && styles.buttonPrimary)}>
@@ -145,6 +162,35 @@ export component Field(
   );
 }
 
+/** One line under a form: an alert a screen reader interrupts for, or a quiet confirmation. */
+
+component Feedback(tone: "alert" | "status", children: string) {
+  return match (tone) {
+    "alert" =>
+      <Text accessibilityRole="alert" {...stylex.props(styles.alert)}>
+        {children}
+      </Text>,
+    "status" =>
+      <Text accessibilityLiveRegion="polite" {...stylex.props(styles.status)}>
+        {children}
+      </Text>,
+  };
+}
+
+/**
+ * What an Action left behind. A failure is always said; a success only where the screen does not
+ * already show it, and `quiet` is how a caller says that it does.
+ */
+
+export component FormStatus(state: FormState<mixed>, quiet: boolean = false) renders? Feedback {
+  return match (state) {
+    {status: "idle"} => null,
+    {status: "error", message: const message} => <Feedback tone="alert">{message}</Feedback>,
+    {status: "success", message: const message, ...} =>
+      quiet || message === "" ? null : <Feedback tone="status">{message}</Feedback>,
+  };
+}
+
 export component ChannelBadge(topic: Topic) {
   return (
     <View {...stylex.props(local.badge)}>
@@ -154,7 +200,13 @@ export component ChannelBadge(topic: Topic) {
   );
 }
 
-export component EmptyState(title: string, children: string, action: React.Node = null) {
+/** A regional explanation with an optional recovery: navigation, or a retry. */
+
+export component EmptyState(
+  title: string,
+  children: string,
+  action: renders? (ActionLink | Button) = null,
+) {
   return (
     <View {...stylex.props(styles.empty)}>
       <Text {...stylex.props(styles.emptyTitle)}>{title}</Text>
@@ -166,7 +218,7 @@ export component EmptyState(title: string, children: string, action: React.Node 
 
 /** What a private screen shows a guest, as the web's `SignInPrompt`. */
 
-export component SignInPrompt(title: string = "Sign in to continue") {
+export component SignInPrompt(title: string = "Sign in to continue") renders EmptyState {
   return (
     <EmptyState
       title={title}
@@ -174,6 +226,78 @@ export component SignInPrompt(title: string = "Sign in to continue") {
     >
       Your conversations and settings stay with your account.
     </EmptyState>
+  );
+}
+
+component Bone(width: number | "100%", height: number = 10, round: boolean = false) {
+  return (
+    <View style={[stylex.props(local.bone, round && local.boneRound).style, { width, height }]} />
+  );
+}
+
+export type Loading = "feed" | "threads" | "conversation" | "profile";
+
+/**
+ * Hold each region's real geometry while its own boundary waits, as the web's `LoadingState`.
+ * The bones are decorative; one label tells assistive technology what is loading.
+ */
+
+export component LoadingState(kind: Loading) {
+  const label = match (kind) {
+    "feed" => "Loading notes",
+    "threads" => "Loading conversations",
+    "conversation" => "Loading messages",
+    "profile" => "Loading profile",
+  };
+
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+      accessibilityState={{ busy: true }}
+      {...stylex.props(local.loading)}
+    >
+      {
+        match (kind) {
+          "feed" =>
+            [0, 1, 2].map((row) => (
+              <View key={row} {...stylex.props(styles.rule, local.skeletonPost)}>
+                <Bone width={42} height={42} round />
+                <View {...stylex.props(styles.grow, local.skeletonLines)}>
+                  <Bone width={120} />
+                  <Bone width="100%" />
+                  <Bone width="100%" />
+                  <Bone width={row === 1 ? 140 : 210} />
+                </View>
+              </View>
+            )),
+          "threads" =>
+            [0, 1].map((row) => (
+              <View key={row} {...stylex.props(styles.rule, local.skeletonThread)}>
+                <Bone width={34} height={34} round />
+                <View {...stylex.props(styles.grow, local.skeletonLines)}>
+                  <Bone width={96} />
+                  <Bone width={220} />
+                </View>
+              </View>
+            )),
+          "conversation" =>
+            <View {...stylex.props(local.skeletonLog)}>
+              <Bone width={230} height={42} />
+              <View {...stylex.props(local.skeletonMine)}>
+                <Bone width={180} height={42} />
+              </View>
+            </View>,
+          "profile" =>
+            [0, 1, 2].map((row) => (
+              <View key={row} {...stylex.props(local.skeletonField)}>
+                <Bone width={84} />
+                <Bone width="100%" height={row === 1 ? 76 : 40} />
+              </View>
+            )),
+        }
+      }
+    </View>
   );
 }
 
@@ -212,4 +336,19 @@ const local = stylex.create({
   },
   badge: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 4, paddingBottom: 4 },
   badgeLabel: { fontSize: 10, color: "#6b6b6b" },
+  loading: { paddingTop: 4 },
+  bone: { borderRadius: 4, backgroundColor: "#e6e6e6" },
+  boneRound: { borderRadius: 21 },
+  skeletonPost: { flexDirection: "row", gap: 14, paddingTop: 24, paddingBottom: 24 },
+  skeletonThread: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  skeletonLines: { gap: 10, paddingTop: 4 },
+  skeletonLog: { gap: 14, paddingLeft: 20, paddingRight: 20, paddingTop: 18 },
+  skeletonMine: { alignItems: "flex-end" },
+  skeletonField: { gap: 8, marginBottom: 19 },
 });
