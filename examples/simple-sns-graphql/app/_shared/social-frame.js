@@ -72,7 +72,18 @@ export component SocialFrame(
             </Link>
           ))}
         </div>
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            // The link looks the same to everyone; only where it leads waits for the viewer.
+            <>
+              <span className="compose-link" aria-hidden="true">
+                <Icon name="compose" size={16} />
+                Write a note
+              </span>
+              <div className="account" aria-hidden="true" />
+            </>
+          }
+        >
           <SessionControls queryRef={session} />
         </Suspense>
       </aside>
@@ -169,7 +180,14 @@ export component SocialFrame(
             <span>{link.label}</span>
           </Link>
         ))}
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <span className="mobile-nav-pending" aria-hidden="true">
+              <Icon name="compose" size={20} />
+              <span>&nbsp;</span>
+            </span>
+          }
+        >
           <MobileCompose queryRef={session} />
         </Suspense>
       </nav>
