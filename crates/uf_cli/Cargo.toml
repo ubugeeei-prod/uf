@@ -55,6 +55,10 @@ uf_lint = { path = "../uf_lint" }
 uf_plugin = { path = "../uf_plugin" }
 uf_pm = { path = "../uf_pm" }
 uf_prepare = { path = "../uf_prepare" }
+# The spans the linter and the checker already carry, so that `UF_PROFILE=1 uf
+# check` can print where a run's time went. Off by a relaxed atomic load when
+# nobody asked; see `commands/check.rs`'s `Profile`.
+uf_profiler = { path = "../uf_profiler" }
 uf_project = { path = "../uf_project" }
 walkdir.workspace = true
 tempfile.workspace = true

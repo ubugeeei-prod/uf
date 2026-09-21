@@ -3619,6 +3619,7 @@ dependencies = [
  "uf_plugin",
  "uf_pm",
  "uf_prepare",
+ "uf_profiler",
  "uf_project",
  "uf_rm",
  "uf_router",

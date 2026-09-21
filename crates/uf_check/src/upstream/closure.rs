@@ -57,6 +57,8 @@ use flow_common::flow_import_specifier::FlowImportSpecifier;
 use flow_common::options::Options;
 use flow_parser::file_key::{FileKey, FileKeyInner};
 
+use uf_infra::FxHashMap;
+
 use super::packages::{PackageFile, WorkspacePackages, is_manifest};
 use super::parse;
 use super::resolve::{self, ModuleIndex};
@@ -82,6 +84,50 @@ pub(super) struct Closure {
     pub(super) unresolved: Vec<UnresolvedImport>,
 }
 
+/// What each file imports, kept between calls.
+///
+/// A closure costs a parse per module it reaches, and `uf check` asks for one
+/// per *round*: a round that finds an installed package adds it to the pool
+/// and asks again, so a project whose dependencies bring dependencies walks
+/// the same files three or four times. Over this repository that was 1.72 s of
+/// a 2.38 s warm check, and every round after the first re-read files it had
+/// already read.
+///
+/// A file's text does not change inside one command, so its imports do not
+/// either — but "inside one command" is the caller's promise and not this
+/// module's, so the entry carries a digest of the text it was computed from
+/// and is dropped rather than trusted when the text is not the same. That
+/// costs a hash of each file per round, which is microseconds against the
+/// parse it replaces.
+#[derive(Default)]
+pub(crate) struct Requires {
+    by_path: FxHashMap<CompactString, (u64, Vec<CompactString>)>,
+}
+
+impl Requires {
+    /// The specifiers `source` imports, parsing it only the first time.
+    fn of(&mut self, source: &Source<'_>, options: &Options) -> Vec<CompactString> {
+        let digest = digest_of(source.source);
+        if let Some((seen, found)) = self.by_path.get(source.path)
+            && *seen == digest
+        {
+            return found.clone();
+        }
+        let found = requires(source, options);
+        self.by_path
+            .insert(source.path.to_compact_string(), (digest, found.clone()));
+        found
+    }
+}
+
+/// A file's text, as one number.
+fn digest_of(source: &str) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = uf_infra::FxHasher::default();
+    source.hash(&mut hasher);
+    hasher.finish()
+}
+
 /// The closure of `seeds` over `available`.
 ///
 /// A seed naming nothing in `available` is skipped rather than reported: the
@@ -97,6 +143,7 @@ pub(super) fn closure(
     available: &[Source<'_>],
     options: &Options,
     declared: &dyn Fn(&str) -> bool,
+    cached: &mut Requires,
 ) -> Closure {
     let index = ModuleIndex::new(available.iter().map(|source| source.path));
     let packages = WorkspacePackages::new(available, options);
@@ -113,7 +160,7 @@ pub(super) fn closure(
 
     while let Some(module) = frontier.pop() {
         let source = available[module];
-        for specifier in requires(&source, options) {
+        for specifier in cached.of(&source, options) {
             let declared = declared(&specifier);
             let relative = resolve::is_relative(&specifier);
             let resolved = if relative {
@@ -204,12 +251,42 @@ mod tests {
         false
     }
 
+    /// A cache held across walks answers the same thing, and only while the
+    /// text it read is still the text.
+    #[test]
+    fn a_held_cache_is_reused_and_dropped_when_the_file_changes() {
+        let options = options::options(&CheckLimits::default());
+        let mut cached = Requires::default();
+        let before = [
+            Source::new("app.js", "import { b } from './b.js';\n"),
+            Source::new("b.js", "export const b = 1;\n"),
+            Source::new("c.js", "export const c = 1;\n"),
+        ];
+
+        let first = closure(&["app.js"], &before, &options, &undeclared, &mut cached);
+        let again = closure(&["app.js"], &before, &options, &undeclared, &mut cached);
+        assert_eq!(first.reached, again.reached, "the same walk, twice");
+        assert_eq!(first.reached, [0, 1]);
+
+        // The same path, importing something else. An entry kept on the path
+        // alone would answer `b.js` here, and the batch would be assembled
+        // without the file the checker is about to go looking for.
+        let after = [
+            Source::new("app.js", "import { c } from './c.js';\n"),
+            Source::new("b.js", "export const b = 1;\n"),
+            Source::new("c.js", "export const c = 1;\n"),
+        ];
+        let moved = closure(&["app.js"], &after, &options, &undeclared, &mut cached);
+        assert_eq!(moved.reached, [0, 2], "the edit is read rather than cached");
+    }
+
     fn reached<'a>(seeds: &[&str], available: &[Source<'a>]) -> Vec<&'a str> {
         let found = closure(
             seeds,
             available,
             &options::options(&CheckLimits::default()),
             &undeclared,
+            &mut Requires::default(),
         );
         found
             .reached
@@ -224,6 +301,7 @@ mod tests {
             available,
             &options::options(&CheckLimits::default()),
             &undeclared,
+            &mut Requires::default(),
         )
         .unresolved
         .into_iter()
@@ -340,6 +418,7 @@ mod tests {
             &available,
             &options::options(&CheckLimits::default()),
             &|specifier| specifier == "react",
+            &mut Requires::default(),
         );
 
         assert_eq!(
@@ -369,6 +448,7 @@ mod tests {
             &available,
             &options::options(&CheckLimits::default()),
             &|specifier| specifier == "editor-pkg",
+            &mut Requires::default(),
         );
 
         assert_eq!(found.reached, [0]);
