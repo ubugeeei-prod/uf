@@ -50,10 +50,13 @@ React Native inside an app platform, and not a replacement for that platform.
 ## Commonplace example
 
 [`examples/simple-sns-native`](https://github.com/ubugeeei-prod/uf/tree/main/examples/simple-sns-native)
-is a separate Expo app with a feed, composer, note detail and profile. It uses
-StyleX native objects and app-owned React Navigation factories. Screen components
-and their tests live beside their routes. Notes stay in memory for this example;
-the separate GraphQL example demonstrates the BFF and backend.
+is a separate Expo app with the web Commonplace examples' screens, members and
+visual language: a feed with channels, search, a composer and reactions, clips,
+a private inbox with conversations, settings, and account creation. It uses
+StyleX native objects, bundled images and app-owned React Navigation factories.
+Screen components live beside their routes. The same model the web examples keep
+in a service stays in memory here; the separate GraphQL example demonstrates the
+BFF and backend.
 
 Run `uf install`, `uf dev --target ios` (or `android`) and `uf test` from that
 example's directory. CI exercises the real input and navigation components and
