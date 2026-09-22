@@ -47,7 +47,9 @@ export function isFlowModule(id) {
 }
 
 function normalizePathSeparators(id) {
-  return process.platform === "win32" ? id.replaceAll("\\", "/") : id;
+  return typeof process !== "undefined" && process.platform === "win32"
+    ? id.replaceAll("\\", "/")
+    : id;
 }
 
 function stripQuery(id) {
@@ -100,7 +102,8 @@ function stripQuery(id) {
  * a path import an epoch identity, so the pattern accepts query-carrying file
  * paths while still deciding from the path itself.
  */
-const separator = process.platform === "win32" ? String.raw`[\\/]` : "/";
+const separator =
+  typeof process !== "undefined" && process.platform === "win32" ? String.raw`[\\/]` : "/";
 export const FLOW_MODULE_PATTERN = new RegExp(
   // Reject when the *last* `/node_modules/` on the path is not followed by
   // `@uniflowed/`, which is `isFlowModule`'s `lastIndexOf` written as a
