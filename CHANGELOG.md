@@ -1,5 +1,11 @@
 # Changelog
 
+## uf@0.0.0-alpha.46
+
+- ci: validate releases through maintainer pull requests (#1326) (18c0b1d4)
+- docs: simplify the README and add clear entry points (#1325) (18332c9f)
+- feat(scaffold): demonstrate task dependencies with clearer guides (#1324) (62a34ae2)
+
 ## uf@0.0.0-alpha.45
 
 _2026-09-22_

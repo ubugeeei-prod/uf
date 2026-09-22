@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/stylex",
-  "version": "0.0.0-alpha.45",
+  "version": "0.0.0-alpha.46",
   "description": "Flow declarations for @uniflowed/stylex, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.45"
+    "@uniflowed/core": "0.0.0-alpha.46"
   },
   "peerDependencies": {
     "react-native": ">=0.86.0"
