@@ -1,15 +1,6 @@
 // @flow
 //
-// The home page.
-//
-// A choice of path, not a pitch. The heading says what uf is for; under it,
-// before anything else, is every kind of reader the manual has and the page
-// each should open first. That list is generated from `_design/nav.js`, so the
-// home page cannot offer a path the manual does not have. The install command
-// comes after it, because the most common path starts with it.
-//
-// The argument for uf, with the rows it loses, is the "Why uf" section — one
-// of the paths, rather than the first thing on the page.
+// The documentation home page: quick links, reader paths and installation.
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
@@ -39,10 +30,15 @@ export default component Home() {
             experience with Modern Flow.
           </h1>
           <Lede>
-            uf gives Flow-first React apps one native command for dev, builds, tests, formatting and
-            linting. The official Flow parser, React Compiler and oxc stay in the same toolchain,
-            with one config file for the whole path.
+            Build React apps with Modern Flow. Use one native toolchain for development, builds,
+            tests, formatting and type checking.
           </Lede>
+          <nav className="hero-actions" aria-label="Documentation">
+            <Link className="hero-primary" to="/guide/start">
+              Getting started <span aria-hidden="true">→</span>
+            </Link>
+            <Link to="/reference">Reference</Link>
+          </nav>
         </div>
 
         {/*
@@ -70,40 +66,28 @@ export default component Home() {
 
       <section className="hero-tail">
         <div className="notice">
-          <strong>Pre-release.</strong> uf is at <code>0.0.0-alpha</code>. Interfaces move without
-          warning, and every <code>@uniflowed/*</code> release on npm is a prerelease under the{" "}
-          <code>alpha</code> tag. The guide says what works today and{" "}
-          <Link to="/guide/testing">where it loses</Link> to the tools it means to replace.
+          <strong>Pre-release.</strong> uf is in alpha. Commands, configuration and package APIs may
+          change between releases. See <Link to="/guide/scope">current capabilities</Link>.
         </div>
       </section>
 
       <section className="home-section">
         <h2 className="seam-mark">Where to begin</h2>
-        <p>
-          The manual is arranged by what you came to do. Find the question you arrived with: the
-          page it leads to says who that part of the manual is for, what is in it, and the order to
-          read it in.
-        </p>
+        <p>Choose a guide for your task, or use the reference to look up an API.</p>
         <ReaderPaths />
       </section>
 
       <section className="home-section">
         <h2 className="seam-mark">Install it</h2>
-        <p>
-          One binary. It reads the checksum from the release manifest before it writes anything, and
-          it is short enough to read first.
-        </p>
+        <p>On macOS or Linux, install the native CLI:</p>
         <Command>curl -fsSL https://setup.uniflowed.dev | sh</Command>
         <p>Then a project, its packages, and a dev server:</p>
         <Command>uf new my-site</Command>
         <Command>cd my-site &amp;&amp; uf install</Command>
         <Command>uf dev</Command>
         <p>
-          <code>uf new</code> writes the project and nothing else, so its packages come second:{" "}
-          <code>uf install</code> fetches them with the project&apos;s package manager. There is no
-          toolchain to <code>npm install</code> and no config to copy from somewhere. To build uf
-          from source, or to pin a project to Bun, <Link to="/guide/install">the install page</Link>{" "}
-          covers both.
+          See the <Link to="/guide/install">installation guide</Link> for Windows, Nix, source
+          builds and JavaScript hosts.
         </p>
       </section>
     </div>

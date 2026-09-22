@@ -1,53 +1,38 @@
 ---
 title: "Start · uf"
-description: "Install uf, make a project, set up your editor, and build one application end to end."
+description: "Install uf, create a project and build your first app."
 ---
 
 import { SectionContents } from "../../_design/parts.js";
 
 <p className="eyebrow">Start</p>
 
-# Start
+# Getting started
 
 <div className="lede">
-For a reader who wants uf running on their own machine. These pages are a
-sequence, and each assumes the one before it: install the binary, make a project
-and read every file in it, connect your editor, then build one application end
-to end.
+Install uf, create a React project, connect your editor and build an application.
+Follow these guides in order if you are new to uf.
 </div>
 
-## What you need first
+## Before you start
 
-- **macOS or Linux**, on x86-64 or ARM64, or **Windows** on x86-64. Windows
-  uses the PowerShell installer; WSL2 can use the Linux install line unchanged.
-- **Node.js or Bun.** uf parses, transforms, schedules and reports in Rust, and
-  hands Vite and your test bodies to a JavaScript host. Deno runs `uf test`
-  through an ahead-of-time pass, graded experimental, and has no loader for
-  `uf dev` or `uf build` yet ([#246](https://github.com/ubugeeei-prod/uf/issues/246)).
-- **React you already know.** The pages explain Flow's `component` and `hook`
-  syntax where they first use it, and assume you know what a component, a hook
-  and a prop are.
+- Use macOS or Linux on x86-64 or ARM64, or Windows on x86-64.
+- Install a JavaScript host such as Node.js. Bun and Deno 2.8+ are also supported;
+  see [runtime details](/guide/install#the-javascript-host).
+- Be familiar with React components and hooks. The guides explain Flow syntax
+  as it appears.
 
-## The pages, in order
+## Follow the guides
 
 <SectionContents section="Start" />
 
-[Install](/guide/install) puts `uf` on your `PATH` and ends with `uf info`,
-which says which JavaScript host it found. [Your first project](/guide/project)
-scaffolds a project and explains each file the scaffold writes, and the config
-files a React project usually has and this one does not. [Editors](/guide/editors)
-connects VS Code, Cursor, Neovim, Vim, Helix or Emacs to `uf lsp`, so lint
-findings and formatting reach the editor while you write.
-[Build a reading list](/guide/tutorial) is the long one: routes, a loader, shared
-state, an accessible tab list, a validated form, the tests for all of it and the
-build, with what each command printed.
+Start with [installation](/guide/install), then
+[create your first project](/guide/project). Set up your
+[editor](/guide/editors) and follow the [reading-list tutorial](/guide/tutorial)
+to add routes, state, forms and tests.
 
-## When you are done
+## Other paths
 
-[Build an app](/guide/build-an-app) is next: one guide per thing an application
-does, starting with the Flow syntax and the route table the tutorial leaned on.
-
-Two other readers pass through here. If you are moving an application you
-already have, read [Migrating to uf](/guide/migrate) before you convert anything.
-If you are still deciding whether uf is for your team, [Why uf](/guide/why-uf)
-is the argument, with the rows uf loses.
+[Build an app](/guide/build-an-app) has guides for individual features.
+[Migrating to uf](/guide/migrate) covers existing applications.
+[Why uf](/guide/why-uf) explains the project's goals and tradeoffs.

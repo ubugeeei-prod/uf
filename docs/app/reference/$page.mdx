@@ -1,6 +1,6 @@
 ---
 title: "Reference · uf"
-description: "Every command, config key, package and export, for looking one up."
+description: "Look up commands, configuration, packages and APIs."
 ---
 
 import { SectionContents } from "../_design/parts.js";
@@ -10,33 +10,26 @@ import { SectionContents } from "../_design/parts.js";
 # Reference
 
 <div className="lede">
-For a reader who knows what they are looking for. Each page is the whole of one
-surface — every flag and exit code, every config key and its default, every
-package and what it exports — and the guides link into it rather than repeating
-it.
+Look up command flags, configuration defaults and package APIs.
+For step-by-step instructions, use the [guides](/guide/start).
 </div>
 
-## Which page answers which question
+## Find an API
 
-| You want to know | Page |
+| Topic | Reference |
 | --- | --- |
-| what a flag does, and what a command exits with | [Commands](/reference/cli) |
-| what a key in `uf.config.js` defaults to, and what reads it | [uf.config.js](/reference/config) |
-| which `@uniflowed/*` package something is in, and whether it is on npm | [Packages](/reference/packages) |
-| what parts a component has, and which keys it owns | [Components](/reference/ui) |
-| what a browser hook renders before hydration | [Browser hooks](/reference/hooks) |
-| what `@uniflowed/effect` exports, and what Flow cannot say about it | [Effects](/reference/effect) |
-| how a message is written, typed and matched to a locale | [Internationalisation](/reference/i18n) |
-| which parts of Go's standard library have a Flow counterpart | [Standard library](/reference/std) |
+| Commands, flags and exit codes | [CLI](/reference/cli) |
+| Project settings and defaults | [uf.config.js](/reference/config) |
+| Package exports and publication status | [Packages](/reference/packages) |
+| Component parts and keyboard controls | [Components](/reference/ui) |
+| Browser hooks and server rendering | [Browser hooks](/reference/hooks) |
+| Effect APIs | [Effects](/reference/effect) |
+| Messages and locales | [Internationalisation](/reference/i18n) |
+| Standard library modules | [Standard library](/reference/std) |
 
-## The pages
+## All reference pages
 
 <SectionContents section="Reference" />
 
-## When a reference page is not enough
-
-A reference page says what exists; it does not say which of it you need. If you
-arrived with a task rather than a name, the guide for it is one of the paths on
-[the home page](/): [Build an app](/guide/build-an-app) for application code,
-[The toolchain](/guide/toolchain) for the commands, [Targets](/guide/targets)
-for where it runs.
+For examples, see [Build an app](/guide/build-an-app),
+[The toolchain](/guide/toolchain) or [Targets](/guide/targets).

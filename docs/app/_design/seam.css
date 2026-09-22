@@ -743,6 +743,44 @@ tbody tr:last-child :is(td, th) {
   flex: 1 1 26rem;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-block: 1.75rem 2rem;
+}
+
+.hero-actions a {
+  align-items: center;
+  background: var(--doc-paper);
+  border: 1px solid var(--doc-rule-strong);
+  border-radius: 0.3rem;
+  color: var(--doc-ink);
+  display: inline-flex;
+  font-weight: 600;
+  gap: 0.6rem;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.7rem 1.15rem;
+  text-decoration: none;
+}
+
+.hero-actions a:hover {
+  background: var(--doc-paper-sunk);
+  border-color: var(--doc-ink);
+}
+
+.hero-actions .hero-primary {
+  background: var(--doc-ink);
+  border-color: var(--doc-ink);
+  color: var(--doc-paper);
+}
+
+.hero-actions .hero-primary:hover {
+  background: var(--doc-ink-muted);
+  border-color: var(--doc-ink-muted);
+}
+
 /* The mark is the one place on the site the brand is stated at size, so it
    gets to be as large as the row allows. It shrinks with the viewport and
    drops above the copy — the `wrap-reverse` above — before it would squeeze

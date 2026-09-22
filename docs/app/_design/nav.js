@@ -56,8 +56,7 @@ export const sections: $ReadOnlyArray<Section> = [
     landing: {
       href: "/guide/start",
       title: "Start",
-      blurb:
-        "Install uf, make a project, set up your editor, and build one application end to end.",
+      blurb: "Install uf, create a project and build your first app.",
     },
     pages: [
       {
@@ -356,7 +355,7 @@ export const sections: $ReadOnlyArray<Section> = [
     landing: {
       href: "/reference",
       title: "Reference",
-      blurb: "Every command, config key, package and export, for looking one up.",
+      blurb: "Look up commands, configuration, packages and APIs.",
     },
     pages: [
       {
