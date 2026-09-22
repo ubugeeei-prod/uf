@@ -155,7 +155,9 @@ try {
   if ($LASTEXITCODE -ne 0) { Fail "self-update through installed uf failed" }
   & (Join-Path $work "pinned/bin/uf.cmd") --version
   if ($LASTEXITCODE -ne 0) { Fail "updated launcher failed" }
-  Pass "installed uf updates without replacing its running executable"
+  & (Join-Path $work "pinned/bin/uf.cmd") self-update
+  if ($LASTEXITCODE -ne 0) { Fail "self-update latest through the embedded installer failed" }
+  Pass "installed uf updates pinned and latest without replacing its running executable"
 
   foreach ($bad in @("../escape", "*", ".hidden", "-flag")) {
     if (RunInstaller "invalid" $bad) { Fail "accepted invalid version $bad" }
