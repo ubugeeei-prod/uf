@@ -41,7 +41,8 @@ if (require.main === module) {
     // Authorization errors fail the job; they must never become a quick run.
     release = require("../release/policy.cjs").checkCandidate(base, paths);
     code = needsFullSuite(paths);
-    full = release;
+    // The queue validates the final main merge once, before it can land.
+    full = release && process.env.GITHUB_EVENT_NAME === "merge_group";
     console.log(`${paths.length} changed files; code: ${code}; full suite: ${full}`);
   }
   const version = release

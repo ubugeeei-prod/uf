@@ -143,8 +143,8 @@ jobs:
             [ -f "$file" ] && assets="${assets} ${file}"
           done
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" "${release_kind_args[@]}"
             gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber $assets
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false "${release_kind_args[@]}"
           else
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
               --target "$RELEASE_COMMIT" --title "uf ${version}" --generate-notes "${release_kind_args[@]}" $assets

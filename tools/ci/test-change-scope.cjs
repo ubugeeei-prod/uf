@@ -95,3 +95,34 @@ test("CI reuses its executable, fails if missing, and local tasks still build", 
     rmSync(dir, { recursive: true });
   }
 });
+
+// Exercise the emitted workflow outputs, including the release-artifact flag.
+test("only the final release merge group gets full validation", () => {
+  const { runInNewContext } = require("node:vm");
+  const source = readFileSync(resolve(__dirname, "change-scope.cjs"), "utf8");
+  for (const [event, release, full] of [
+    ["pull_request", true, false],
+    ["merge_group", true, true],
+    ["merge_group", false, false],
+    ["push", false, false],
+  ]) {
+    let output;
+    const module = { exports: {} };
+    const requireMock = (name) => {
+      if (name === "node:child_process") return { execFileSync: () => "Cargo.toml\0" };
+      if (name === "node:fs") return {
+        appendFileSync: (_file, value) => { output = value; },
+        readFileSync: () => JSON.stringify({ version: "0.0.0-alpha.46" }),
+      };
+      if (name === "../release/policy.cjs") return { checkCandidate: () => release };
+      throw new Error(`Unexpected dependency: ${name}`);
+    };
+    requireMock.main = module;
+    runInNewContext(source, {
+      require: requireMock, module,
+      process: { env: { BASE_SHA: "a".repeat(40), GITHUB_EVENT_NAME: event, GITHUB_OUTPUT: "output" } },
+      console: { log() {} },
+    });
+    assert.equal(output, `full=${full}\ncode=true\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\n`, event);
+  }
+});

@@ -43,7 +43,7 @@ jobs:
             if (batch.length < 100) break;
           }
           const protectedPath = (file) => file.startsWith("tools/release/") ||
-            /^\.github\/workflows\/(release[^/]*|publish)\.yml$/.test(file) || file === ".github/release.json" || file === ".github/workflows/ci.yml" ||
+            /^\.github\/workflows\/(release[^/]*|publish|editors)\.yml$/.test(file) || file === ".github/release.json" || file === ".github/workflows/ci.yml" ||
             file.startsWith(".github/actions/rust-cache/") || file === "tools/ci/change-scope.cjs";
           let release = pr.head.ref.startsWith("release/") || files.includes(".github/release.json");
           if (files.includes("packages/core/package.json")) {

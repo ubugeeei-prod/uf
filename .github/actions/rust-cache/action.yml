@@ -11,7 +11,8 @@ runs:
       with:
         key: ${{ github.repository }}-rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}
         path: target
-        commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+        # Recompiled files can keep the same size, which on-change does not detect.
+        commit: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
     - uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
       with:
         key: ${{ github.repository }}-cargo-registry-${{ runner.os }}-${{ runner.arch }}

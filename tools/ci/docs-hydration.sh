@@ -322,11 +322,14 @@ async function stopChrome(chrome) {
   if (chrome.exitCode !== null || chrome.signalCode !== null) {
     return;
   }
-  chrome.kill("SIGTERM");
-  await Promise.race([
-    new Promise((resolve) => chrome.once("exit", resolve)),
-    sleep(2000).then(() => chrome.kill("SIGKILL")),
-  ]);
+  await new Promise((resolve) => {
+    const timer = setTimeout(() => chrome.kill("SIGKILL"), 2000);
+    chrome.once("close", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    chrome.kill("SIGTERM");
+  });
 }
 
 async function checkPage(cdp, sessionId, origin, route, width) {
@@ -442,7 +445,7 @@ async function main() {
     if (chrome) {
       await stopChrome(chrome);
     }
-    fs.rmSync(profile, { recursive: true, force: true });
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 

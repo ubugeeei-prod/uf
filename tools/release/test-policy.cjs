@@ -6,6 +6,7 @@ const {
   assertPullRequest,
   assertValidation,
   assertQueueBase,
+  assertQueueTree,
   assertArtifacts,
 } = require("./policy.cjs");
 const { nextVersion } = require("./open-release.cjs");
@@ -99,4 +100,60 @@ test("publication refuses missing or expired native archives before npm is touch
   assert.throws(() => assertArtifacts(artifacts.slice(1)));
   assert.throws(() => assertArtifacts(artifacts.map((item, i) => i ? item : { ...item, expired: true })));
   assert.throws(() => assertArtifacts(artifacts.map((item, i) => i ? item : { ...item, size_in_bytes: 0 })));
+});
+
+test("a squash queue commit accepts the current PR tree, but rejects stale or different trees", () => {
+  const { execFileSync } = require("node:child_process");
+  const { mkdtempSync, writeFileSync, rmSync } = require("node:fs");
+  const { tmpdir } = require("node:os");
+  const { join } = require("node:path");
+  const previous = process.cwd();
+  const directory = mkdtempSync(join(tmpdir(), "uf-release-queue-"));
+  const git = (...args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  try {
+    process.chdir(directory);
+    git("init", "-b", "main");
+    git("config", "user.name", "Test");
+    git("config", "user.email", "test@example.invalid");
+    writeFileSync("version", "1");
+    git("add", "."); git("commit", "-m", "initial");
+    const main = git("rev-parse", "HEAD");
+    git("checkout", "-b", "release");
+    writeFileSync("version", "2");
+    git("commit", "-am", "release");
+    const head = git("rev-parse", "HEAD");
+    git("checkout", "-b", "queue", main);
+    git("merge", "--squash", "release"); git("commit", "-m", "queue squash");
+    assert.throws(() => git("merge-base", "--is-ancestor", head, "HEAD"));
+    assertQueueTree(main, head);
+    writeFileSync("version", "3"); git("commit", "-am", "unexpected change");
+    assert.throws(() => assertQueueTree(main, head), /current release PR tree/);
+    git("checkout", "main"); git("commit", "--allow-empty", "-m", "main advanced");
+    assert.throws(() => assertQueueTree(git("rev-parse", "HEAD"), head, head));
+  } finally {
+    process.chdir(previous);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("the command stops after queue failure and handles a merge during polling", async () => {
+  const { readFileSync } = require("node:fs");
+  const { resolve } = require("node:path");
+  const { runInNewContext } = require("node:vm");
+  const source = readFileSync(resolve(__dirname, "open-release.cjs"), "utf8");
+  for (const merged of [false, true]) {
+    const module = { exports: {} };
+    const requireMock = (name) => name === "./policy.cjs" ? {
+      gh: (command) => JSON.stringify(command === "pr" ? {
+        state: "OPEN", mergeStateStatus: "UNSTABLE", statusCheckRollup: [], autoMergeRequest: null,
+      } : { data: { repository: { pullRequest: {
+        state: merged ? "MERGED" : "OPEN", mergeCommit: { oid: commit },
+        autoMergeRequest: null, mergeQueueEntry: null,
+      } } } }),
+    } : require(name);
+    runInNewContext(source + "\nmodule.exports.waitForMerge = waitForMerge;", { require: requireMock, module });
+    const result = module.exports.waitForMerge({ repository, pr: 123 });
+    if (merged) assert.equal(await result, commit);
+    else await assert.rejects(result, /no longer queued/);
+  }
 });

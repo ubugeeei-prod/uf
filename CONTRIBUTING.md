@@ -259,14 +259,15 @@ The command requires GitHub CLI authentication and repository **maintain** or
 and also protects changes to release automation. The command creates a separate worktree, updates versions and the
 changelog, and opens a release PR. Your current worktree stays untouched.
 
-Normal PRs run quick checks. Release PRs also run the full integration suite
-and build and install all five native archives. The command updates the PR
-with current `main` when needed. The merge queue validates the final commit
-against current `main` before merging.
+PRs first run quick checks. When a release PR enters the merge queue, it runs
+the full integration suite and builds and installs all five native archives.
+This full validation runs once, on the final commit with current `main`, before
+merge. The command updates the PR with current `main` when needed.
 
 After merge, the command publishes and verifies npm packages, then publishes
 the tested native archives. The GitHub Release creates the tag only after the
-archives are ready; the command never pushes a tag to start validation.
+archives are ready. It then runs the editor packaging and publication workflow.
+The command never pushes a tag to start validation.
 Publication requires successful queue validation for that exact commit and
 checks the PR author's permissions again.
 

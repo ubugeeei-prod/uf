@@ -1135,7 +1135,7 @@ jobs:
   release-artifacts:
     name: Release artifacts
     needs: changes
-    if: needs.changes.outputs.release == 'true'
+    if: needs.changes.outputs.release == 'true' && needs.changes.outputs.full == 'true'
     uses: $/.github/workflows/release-build.yml
     with:
       version: ${{ needs.changes.outputs.version }}
@@ -1171,7 +1171,7 @@ jobs:
     steps:
       - name: Every job it depends on succeeded
         env:
-          RELEASE: ${{ needs.changes.outputs.release }}
+          RELEASE: ${{ needs.changes.outputs.release == 'true' && needs.changes.outputs.full == 'true' }}
           RESULTS: ${{ toJSON(needs) }}
         run: |
           set -eu

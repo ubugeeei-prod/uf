@@ -92,7 +92,7 @@ function checkCandidate(base, paths) {
   const main = api(`repos/${repository}/git/ref/heads/main`).object.sha;
   if (event.merge_group) {
     assertQueueBase(event.merge_group.base_sha, main);
-    git("merge-base", "--is-ancestor", pr.head.sha, "HEAD");
+    assertQueueTree(main, pr.head.sha);
   } else if (event.pull_request) {
     git("merge-base", "--is-ancestor", main, pr.head.sha);
   } else if (process.env.GITHUB_EVENT_NAME === "push") {
@@ -101,6 +101,13 @@ function checkCandidate(base, paths) {
     return false; // The exact merge commit already passed the full queue suite.
   } else throw new Error("Unsupported release validation event.");
   return true;
+}
+function assertQueueTree(main, head, queued = "HEAD") {
+  git("merge-base", "--is-ancestor", main, head);
+  // A squash commit has main as its parent, not the PR head. Its tree must
+  // still match the up-to-date PR exactly in our single-entry merge queue.
+  if (git("rev-parse", `${head}^{tree}`) !== git("rev-parse", `${queued}^{tree}`))
+    throw new Error("The release merge group must contain exactly the current release PR tree.");
 }
 function assertArtifacts(artifacts) {
   for (const target of [
@@ -178,6 +185,7 @@ module.exports = {
   assertPullRequest,
   assertValidation,
   assertQueueBase,
+  assertQueueTree,
   assertArtifacts,
   gh,
   api,

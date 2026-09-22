@@ -38,6 +38,7 @@ test("ordinary PRs do not require release permissions", () => check({ role: "wri
 test("a writer cannot release or replace the trusted release gate", () => {
   assert.throws(() => check({ role: "write" }), /maintain or admin/);
   assert.throws(() => check({ role: "write", branch: "fix/policy", files: [".github/workflows/release-policy.yml"] }), /maintain or admin/);
+  assert.throws(() => check({ role: "write", branch: "fix/editors", files: [".github/workflows/editors.yml"] }), /maintain or admin/);
 });
 test("stale release heads, stale queue bases and fork releases are refused", () => {
   assert.throws(() => check({ comparison: "diverged" }), /current main/);
