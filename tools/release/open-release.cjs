@@ -93,7 +93,7 @@ async function waitForMerge(state) {
         "--repo",
         state.repository,
         "--json",
-        "state,mergeStateStatus,mergeCommit,statusCheckRollup,headRefOid",
+        "state,mergeStateStatus,mergeCommit,statusCheckRollup,headRefOid,autoMergeRequest",
       ),
     );
     if (pr.state === "MERGED") return pr.mergeCommit.oid;
@@ -114,6 +114,28 @@ async function waitForMerge(state) {
       throw new Error(
         `Release PR checks failed: ${failed.map((check) => check.name || check.context).join(", ")}. Fix or rerun them, then repeat the release command.`,
       );
+    if (!pr.autoMergeRequest) {
+      const [owner, name] = state.repository.split("/");
+      const current = JSON.parse(
+        gh(
+          "api",
+          "graphql",
+          "-f",
+          "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){state mergeCommit{oid} autoMergeRequest{enabledAt} mergeQueueEntry{state}}}}",
+          "-f",
+          `owner=${owner}`,
+          "-f",
+          `name=${name}`,
+          "-F",
+          `number=${state.pr}`,
+        ),
+      ).data.repository.pullRequest;
+      if (current.state === "MERGED") return current.mergeCommit.oid;
+      if (!current.autoMergeRequest && !current.mergeQueueEntry)
+        throw new Error(
+          `Release PR #${state.pr} is no longer queued. Check the merge-queue results, fix or rerun them, then repeat the release command.`,
+        );
+    }
     const pending = pr.statusCheckRollup.filter(
       (check) => check.status !== "COMPLETED" && check.state !== "SUCCESS",
     ).length;
