@@ -433,6 +433,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: windows-native
+          cache-on-failure: true
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -444,14 +445,6 @@ jobs:
             & $uf @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          function Run-Npm {
-            & npm @args
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          function Run-Node {
-            & node @args
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
           $uf = Join-Path $PWD "target/ci-opt/uf.exe"
           $app = Join-Path $env:RUNNER_TEMP "uf-windows-app"
           Run-Uf new $app --name windows-smoke
@@ -459,7 +452,8 @@ jobs:
           $hostPackage = Join-Path $PWD "packages/host"
           Push-Location $app
           try {
-            Run-Npm install --no-save $hostPackage
+            & npm.cmd install --no-save $hostPackage
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
           }
@@ -476,7 +470,8 @@ jobs:
           }
           console.log(`@uniflowed/host -> ${actual}`);
           '@
-          Run-Node -e $resolveHost $app $hostPackage
+          & node -e $resolveHost $app $hostPackage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Run-Uf --cwd $app fmt --check
           Run-Uf --cwd $app lint
           Run-Uf --cwd $app check
