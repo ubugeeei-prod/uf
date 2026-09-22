@@ -362,6 +362,7 @@ async function main() {
     { ...inputs, npm_run: npm.id },
     save,
   );
+  await dispatch(state, "editors", `Editors ${state.version}`, { version: state.version }, save);
   const release = JSON.parse(
     gh(
       "release",
