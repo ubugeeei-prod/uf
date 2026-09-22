@@ -9280,6 +9280,16 @@ describe("the escape hatch: which part hands its element to the caller", () => {
 
   /** Parts that take `render` and hand their props to the caller. */
   const RENDER: $ReadOnlyArray<string> = [
+    "I18nProvider",
+    "ColorPicker.Root",
+    "ColorPicker.Input",
+    "ColorPicker.Field",
+    "ColorPicker.Channel",
+    "ColorPicker.Swatch",
+    "NumberField.Root",
+    "NumberField.Input",
+    "NumberField.Increment",
+    "NumberField.Decrement",
     "Accordion.Content",
     "Accordion.Item",
     "Accordion.Root",
@@ -9416,6 +9426,17 @@ describe("the escape hatch: which part hands its element to the caller", () => {
 
   /** Parts with no element of their own: a context, or another part of this package. */
   const NO_ELEMENT: $ReadOnlyArray<string> = [
+    "ListBox",
+    "GridList",
+    "Tree",
+    "TagGroup",
+    "DateField",
+    "TimeField",
+    "DateRangePicker.Root",
+    "DateRangePicker.StartField",
+    "DateRangePicker.EndField",
+    "DateRangePicker.Trigger",
+    "DateRangePicker.Calendar",
     "Accordion.Header",
     "AlertDialog.Root",
     "Calendar.Next",
@@ -9443,6 +9464,11 @@ describe("the escape hatch: which part hands its element to the caller", () => {
 
   /** Parts whose element a caller still cannot change. #303's remainder; it only shrinks. */
   const FIXED: $ReadOnlyArray<string> = [
+    "RangeCalendar.Root",
+    "RangeCalendar.Month",
+    "RangeCalendar.Day",
+    "RangeCalendar.Previous",
+    "RangeCalendar.Next",
     "Calendar.Day",
     "Calendar.Month",
     "Calendar.Root",
@@ -9509,7 +9535,20 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     // The five that are one component rather than a namespace of parts. They
     // are exported by name and `the five that are one element` above is the
     // suite that covers them.
-    for (const alone of ["Checkbox", "Progress", "Separator", "Switch", "Toggle"]) {
+    for (const alone of [
+      "Checkbox",
+      "Progress",
+      "Separator",
+      "Switch",
+      "Toggle",
+      "I18nProvider",
+      "ListBox",
+      "GridList",
+      "Tree",
+      "TagGroup",
+      "DateField",
+      "TimeField",
+    ]) {
       parts.set(alone, alone);
     }
     return parts;

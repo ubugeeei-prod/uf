@@ -67,6 +67,7 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import type { DateTimeFormatOptions, PlainDate } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
 
+import { useLocale } from "./i18n.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Rest } from "./internal/merge-props.js";
 import {
@@ -127,6 +128,7 @@ type CalendarState = {|
    */
   readonly focusedDayRef: { current: HTMLElement | null },
   readonly isDisabled: (date: PlainDate) => boolean,
+  readonly isDateSelected: ((date: PlainDate) => boolean) | void,
   readonly locale: string | void,
   readonly moveFocus: (date: PlainDate, viaKeyboard: boolean) => void,
   /**
@@ -180,6 +182,7 @@ export component CalendarRoot(
   focusedDayRef?: { current: HTMLElement | null },
   /** Whether a date may be chosen. A rejected date stays reachable; see the header. */
   isDateDisabled?: (date: PlainDate) => boolean,
+  isDateSelected?: (date: PlainDate) => boolean,
   locale?: string,
   onMonthChange?: (firstOfMonth: PlainDate) => mixed,
   onValueChange?: (value: PlainDate) => mixed,
@@ -189,6 +192,8 @@ export component CalendarRoot(
   weekStartsOn?: number,
   ...rest: Rest
 ) {
+  const inherited = useLocale();
+  const resolvedLocale = locale ?? inherited.locale;
   const base = useId();
   const pendingFocusRef = useRef<string | null>(null);
   // One is always allocated, because a hook may not be called conditionally;
@@ -228,8 +233,8 @@ export component CalendarRoot(
   });
 
   const weekStart = useMemo(
-    () => (weekStartsOn == null ? firstDayOfWeekFor(locale) : weekStartsOn),
-    [locale, weekStartsOn],
+    () => (weekStartsOn == null ? firstDayOfWeekFor(resolvedLocale) : weekStartsOn),
+    [resolvedLocale, weekStartsOn],
   );
 
   const isDisabled = useStableCallback((date: PlainDate) => isDateDisabled?.(date) === true);
@@ -256,7 +261,10 @@ export component CalendarRoot(
     setFocused((current) => (current.equals(date) ? current : date));
   });
 
-  const caption = useMemo(() => focused.toLocaleString(locale, CAPTION_FORMAT), [focused, locale]);
+  const caption = useMemo(
+    () => focused.toLocaleString(resolvedLocale, CAPTION_FORMAT),
+    [focused, resolvedLocale],
+  );
 
   const [announcement, setAnnouncement] = useState("");
   const shown = useRef(`${focused.year}-${focused.month}`);
@@ -284,7 +292,8 @@ export component CalendarRoot(
       focused,
       focusedDayRef: dayRef,
       isDisabled,
-      locale,
+      isDateSelected,
+      locale: resolvedLocale,
       moveFocus,
       pendingFocusRef,
       select,
@@ -299,7 +308,8 @@ export component CalendarRoot(
       dayRef,
       focused,
       isDisabled,
-      locale,
+      isDateSelected,
+      resolvedLocale,
       moveFocus,
       select,
       selected,
@@ -354,7 +364,7 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
       return;
     }
     const at = focused.toString();
-    const cell: HTMLElement | null = (grid.querySelector(`[data-date="${at}"]`): $FlowFixMe);
+    const cell: HTMLElement | null = grid.querySelector(`[data-date="${at}"]`) as $FlowFixMe;
     focusedDayRef.current = cell;
     // Only when a key asked for it, and only once the render it asked for has
     // happened: `ArrowRight` off the end of October sets this to the 1st of
@@ -379,6 +389,7 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
       // attribute points at the caption that is there either way, so the two
       // answers cannot disagree.
       aria-labelledby={`${calendar.base}-caption`}
+      aria-multiselectable={calendar.isDateSelected != null || undefined}
       onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         const grid: $FlowFixMe = event.currentTarget;
         const movement = movementForDateKey(event, directionOf(grid));
@@ -452,7 +463,9 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
 export component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Rest) {
   const calendar = useCalendar("Calendar.Day");
   const disabled = calendar.isDisabled(date);
-  const chosen = calendar.selected != null && calendar.selected.equals(date);
+  const chosen =
+    calendar.isDateSelected?.(date) ??
+    (calendar.selected != null && calendar.selected.equals(date));
   const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown"]);
 
   return (
