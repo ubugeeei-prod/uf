@@ -217,6 +217,8 @@ debug = false
 incremental = false
 
 [profile.ci-opt]
+# Optimize the test CLI without release linking costs. Published binaries use dist.
 inherits = "release"
-codegen-units = 16
-lto = "thin"
+codegen-units = 64
+lto = false
+opt-level = 2

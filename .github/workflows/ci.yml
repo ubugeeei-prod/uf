@@ -404,11 +404,11 @@ jobs:
       - run: ./target/release/uf run test:lib
         if: needs.changes.outputs.code == 'true'
       - run: ./target/release/uf run edge:smoke
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run instrumentation:smoke
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run migration:smoke
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.full == 'true'
 
   # The same suite on Node 26, which ships a native `Temporal`.
   # `@uniflowed/core/temporal` defers to a host's Temporal and supplies Lite
