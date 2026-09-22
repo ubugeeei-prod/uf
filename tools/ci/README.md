@@ -2,7 +2,7 @@
 
 Normal PRs target two-minute feedback. They run unit tests, formatting, lint,
 metadata, library tests and docs checks. Full integration tests and platform
-checks run for release PRs and their merge-queue commits.
+checks run once for release PRs in the merge queue, before merge.
 
 - CI builds `uf` once. `UF_CI_PREBUILT=1` makes dependent tasks require that
   artifact instead of building it again. Local development still builds it.

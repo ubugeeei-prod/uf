@@ -217,8 +217,8 @@ async function main() {
             base: git("rev-parse", "origin/main"),
             steps: [
               "release PR",
-              "full validation",
-              "merge queue",
+              "quick PR checks",
+              "full validation in the merge queue",
               "npm publication and verification",
               "native publication and tag",
             ],
