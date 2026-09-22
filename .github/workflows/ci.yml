@@ -470,10 +470,12 @@ jobs:
       - name: Resolve Windows versions across content types
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/test-install-version.ps1
+      # Exercise installation without paying for three optimized LTO links.
+      # release.yml verifies the optimized archives on the same host.
       - name: Package the Windows CI binaries
         shell: bash
         env:
-          UF_CARGO_PROFILE: ci-opt
+          UF_CARGO_PROFILE: ci
           UF_CARGO_TARGET: "0"
         run: tools/release/package-binaries.sh
       - name: Verify Windows install and self-update
@@ -490,7 +492,7 @@ jobs:
             & $uf @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          $uf = Join-Path $PWD "target/ci-opt/uf.exe"
+          $uf = Join-Path $PWD "target/ci/uf.exe"
           $app = Join-Path $env:RUNNER_TEMP "uf-windows-app"
           Run-Uf new $app --name windows-smoke
           & node tools/ci/workspace-fixture.js $app
