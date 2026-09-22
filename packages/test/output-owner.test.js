@@ -30,6 +30,7 @@
 // path — the same modules the worker loads, so the two halves share one
 // registry rather than each collecting into its own.
 
+import { denoWorkerArguments } from "../../tests/library/deno-worker.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -98,15 +99,13 @@ type Event = {
 };
 
 /**
- * How this host starts a worker, mirroring `HostCommand::with_flow_loader`.
- *
- * The worker imports Flow — `@uniflowed/test` is Flow source — so it needs the
- * host's loader, and each host registers one its own way. Deno has none in
- * `@uniflowed/host` yet, so it cannot run this at all; a named failure is
- * better than a skip that reads like a pass.
+ * How this host starts a nested fixture with its Flow loader.
+ * Node, Bun and Deno all exercise the same worker protocol. These fixtures
+ * receive the repository suite's explicit process and filesystem grants.
  */
 function loaderArguments(): Array<string> {
   const host = path.basename(process.execPath);
+  if (host.startsWith("deno")) return denoWorkerArguments(repository);
   if (host.startsWith("node")) {
     const register = path.join(repository, "packages", "host", "register.js");
     return ["--enable-source-maps", "--import", pathToFileURL(register).href];

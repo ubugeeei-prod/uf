@@ -465,6 +465,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             None => commands::task::list_tasks(&cwd, ui),
         },
         Commands::Test {
+            host,
             list,
             mode,
             watch,
@@ -493,6 +494,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             &cwd,
             ui,
             commands::test::TestArgs {
+                host,
                 list,
                 mode,
                 watch,

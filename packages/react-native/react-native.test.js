@@ -463,7 +463,7 @@ function runPlainNode(args: $ReadOnlyArray<string>): {
   stdout: string,
   stderr: string,
 } {
-  const node = process.versions.bun == null ? process.execPath : "node";
+  const node = "node";
   const env = { ...process.env };
   delete env.NODE_OPTIONS;
   const run = spawnSync(node, args, { encoding: "utf8", env });

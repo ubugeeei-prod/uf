@@ -94,15 +94,15 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Input", "Field", "Channel", "Swatch"],
             UiRuntime::Client,
         ),
-        UiComponent::new("DateField", &[], UiRuntime::Client),
+        UiComponent::new("DateField", &["Root"], UiRuntime::Client),
         UiComponent::new(
             "DateRangePicker",
             &["Root", "StartField", "EndField", "Trigger", "Calendar"],
             UiRuntime::Client,
         ),
-        UiComponent::new("GridList", &[], UiRuntime::Client),
-        UiComponent::new("I18nProvider", &[], UiRuntime::Client),
-        UiComponent::new("ListBox", &[], UiRuntime::Client),
+        UiComponent::new("GridList", &["Root"], UiRuntime::Client),
+        UiComponent::new("I18nProvider", &["Root"], UiRuntime::Client),
+        UiComponent::new("ListBox", &["Root"], UiRuntime::Client),
         UiComponent::new(
             "NumberField",
             &["Root", "Input", "Increment", "Decrement"],
@@ -113,9 +113,9 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Month", "Day", "Previous", "Next"],
             UiRuntime::Client,
         ),
-        UiComponent::new("TagGroup", &[], UiRuntime::Client),
-        UiComponent::new("TimeField", &[], UiRuntime::Client),
-        UiComponent::new("Tree", &[], UiRuntime::Client),
+        UiComponent::new("TagGroup", &["Root"], UiRuntime::Client),
+        UiComponent::new("TimeField", &["Root"], UiRuntime::Client),
+        UiComponent::new("Tree", &["Root"], UiRuntime::Client),
         // Implemented in `packages/ui/accordion.js`. `Header` is a part rather
         // than something the trigger renders for itself, because the heading
         // level belongs to the caller: an accordion inside an `<h2>` section

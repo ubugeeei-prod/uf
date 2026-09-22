@@ -615,7 +615,7 @@ it("compiles a module reached by a computed path", async () => {
 }
 
 #[test]
-fn uf_test_json_reports_deno_as_an_implemented_host() {
+fn uf_test_host_override_reports_deno_and_preserves_config() {
     once_more_if_v8_aborts(|| {
         if !deno_ready() || !deno_with_hooks() {
             return;
@@ -626,10 +626,13 @@ fn uf_test_json_reports_deno_as_an_implemented_host() {
          it(\"passes\", () => {\n  expect(1).toBe(1);\n});\n",
         )]);
 
+        let config = "export default { test: { runtime: \"node\" } };\n";
+        project.write("uf.config.js", config);
+
         let output = uf()
             .arg("--cwd")
             .arg(project.path())
-            .args(["test", "--json", "probe.test.js"])
+            .args(["test", "--host", "deno", "--json", "probe.test.js"])
             .output()
             .expect("uf runs");
 
@@ -638,6 +641,11 @@ fn uf_test_json_reports_deno_as_an_implemented_host() {
         assert!(
             output.status.success(),
             "a Flow suite must run on Deno\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(project.path().join("uf.config.js")).unwrap(),
+            config,
+            "a host override must not rewrite the project"
         );
         let document: serde_json::Value =
             serde_json::from_str(&stdout).expect("`uf test --json` is one document");
@@ -683,7 +691,7 @@ fn uf_test_json_reports_reasoned_deno_skips() {
         let output = uf()
             .arg("--cwd")
             .arg(project.path())
-            .args(["test", "--json", "probe.test.js"])
+            .args(["test", "--host", "deno", "--json", "probe.test.js"])
             .output()
             .expect("uf runs");
 

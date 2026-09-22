@@ -193,6 +193,11 @@ export default defineConfig({
     // The name stays `test:lib` because that is what it runs — the library's
     // suite — and because CI, CONTRIBUTING.md and every muscle memory point at
     // it. What changed is the door, not the room.
+    "test:lib:deno": {
+      command: "UF_BINARY=./target/release/uf node tools/ci/deno-library.js",
+      dependsOn: ["build"],
+    },
+
     "test:lib": {
       command: "./target/release/uf test",
       dependsOn: ["build"],
@@ -1032,6 +1037,7 @@ export default defineConfig({
         "fmt:check",
         "check:lib",
         "test:lib",
+        "test:lib:deno",
         "edge:smoke",
         "instrumentation:smoke",
         "native:smoke",

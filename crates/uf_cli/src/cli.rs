@@ -739,6 +739,9 @@ pub(crate) enum Commands {
     },
     /// Run the project's tests.
     Test {
+        /// Run on this installed JavaScript host instead of test.runtime.
+        #[arg(long, value_parser = ["node", "bun", "deno"], conflicts_with = "browser")]
+        host: Option<String>,
         /// List what would run instead of running it.
         #[arg(long)]
         list: bool,

@@ -43,7 +43,7 @@ const runModule = (files: { [string]: string }, entry: string): Result => {
     for (const name of Object.keys(files)) {
       fs.writeFileSync(path.join(root, name), files[name]);
     }
-    const result = spawnSync(process.execPath, ["--import", REGISTER, path.join(root, entry)], {
+    const result = spawnSync("node", ["--import", REGISTER, path.join(root, entry)], {
       cwd: root,
       env: { ...process.env, UF_PROJECT_ROOT: root },
       encoding: "utf8",
