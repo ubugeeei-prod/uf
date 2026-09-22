@@ -6,4 +6,8 @@ import type { CollectionProps } from "./internal/collection.js";
 export component ListBox(...props: CollectionProps) {
   return <CollectionRoot options={props} kind="listbox" />;
 }
-export type { CollectionItem, CollectionProps } from "./internal/collection.js";
+export type {
+  CollectionItem,
+  CollectionItemState,
+  CollectionProps,
+} from "./internal/collection.js";

@@ -17,6 +17,12 @@ export type CollectionItem = {
   readonly disabled?: boolean,
   readonly children?: $ReadOnlyArray<CollectionItem>,
 };
+export type CollectionItemState = {
+  readonly selected: boolean,
+  readonly active: boolean,
+  readonly disabled: boolean,
+  readonly level: number,
+};
 type Entry = {
   item: CollectionItem,
   level: number,
@@ -262,7 +268,13 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
       const { item } = row;
       const chosen = selected.includes(item.key);
       const grid = kind === "grid" || kind === "tags";
-      const content = children?.(item) ?? item.textValue;
+      const content =
+        children?.(item, {
+          selected: chosen,
+          active: activeKey === item.key,
+          disabled: disabled(item),
+          level: row.level,
+        }) ?? item.textValue;
       const props = {
         ...drag.getDragProps(item.key, item.textValue),
         ...drag.getDropProps(item.key, item.textValue),
@@ -279,6 +291,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
         "aria-setsize": grid ? undefined : kind === "tree" ? row.count : rows.length,
         "aria-rowindex": grid ? index + 1 : undefined,
         "data-key": item.key,
+        "data-active": activeKey === item.key || undefined,
         style: virtualized
           ? { position: "absolute", top: index * rowHeight, height: rowHeight, width: "100%" }
           : undefined,
@@ -360,7 +373,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
 
 export type CollectionProps = {
   items: $ReadOnlyArray<CollectionItem>,
-  children?: (item: CollectionItem) => React.Node,
+  children?: (item: CollectionItem, state: CollectionItemState) => React.Node,
   selectionMode?: "single" | "multiple" | "none",
   selectedKeys?: $ReadOnlyArray<string>,
   defaultSelectedKeys?: $ReadOnlyArray<string>,

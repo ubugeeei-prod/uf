@@ -177,7 +177,9 @@ providers inherit the surrounding locale. `useLocale()` returns both values,
 
 `ListBox`, `GridList`, `Tree` and `TagGroup` accept items with unique `key` and
 `textValue` strings. An item can be `disabled`; tree items can have `children`.
-A `children(item)` render function supplies the visible row content.
+A `children(item, state)` render function supplies the visible row content.
+`state` exposes `selected`, `active`, `disabled` and the one-based tree `level`;
+custom rows can draw keyboard focus without tracking it separately.
 `selectionMode` is `single`, `multiple` or `none`; controlled `selectedKeys`
 and `onSelectionChange` have `defaultSelectedKeys` counterparts. Disabled rows
 are skipped. Arrow keys, Home/End, collator-backed typeahead, Shift ranges,

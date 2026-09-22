@@ -478,24 +478,23 @@ jobs:
           $uf = Join-Path $PWD "target/ci-opt/uf.exe"
           $app = Join-Path $env:RUNNER_TEMP "uf-windows-app"
           Run-Uf new $app --name windows-smoke
+          & node tools/ci/workspace-fixture.js $app
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Copy local packages into node_modules, as npm publication does.
+          $env:npm_config_install_links = "true"
           Run-Uf --cwd $app install
           $hostPackage = Join-Path $PWD "packages/host"
-          Push-Location $app
-          try {
-            & npm.cmd install --no-save $hostPackage
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } finally {
-            Pop-Location
-          }
           $resolveHost = @'
           const { createRequire } = require("node:module");
           const path = require("node:path");
           const app = process.argv[1];
           const host = path.resolve(process.argv[2]);
           const resolved = createRequire(path.join(app, "package.json")).resolve("@uniflowed/host/transform");
+          const fs = require("node:fs");
           const actual = path.resolve(resolved);
-          if (!actual.startsWith(host + path.sep)) {
-            console.error(`expected @uniflowed/host from ${host}, got ${actual}`);
+          const expected = path.join(host, "transform.js");
+          if (!fs.readFileSync(actual).equals(fs.readFileSync(expected))) {
+            console.error(`installed host does not match the checkout: ${actual}`);
             process.exit(1);
           }
           console.log(`@uniflowed/host -> ${actual}`);

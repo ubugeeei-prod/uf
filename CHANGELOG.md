@@ -6,6 +6,7 @@ _2026-09-22_
 
 ### Added
 
+- **ui**: styled registry components with examples and accessibility checks for every new UI family, available through `uf ui add` (#1315).
 - **ui**: locale-aware ListBox, GridList, Tree and TagGroup; NumberField; segmented date/time fields and range pickers; ColorPicker; keyboard/native drag-and-drop; shared locale and RTL support (#1315, #1322).
 - **platform**: native Windows release artifacts, immutable versioned installs, stable command launchers and self-update verification (#1315).
 - **test**: `uf test --host node|bun|deno`, JSON discovery with `--list --json`, and required Deno library coverage with original reports and named runtime exceptions (#1315).

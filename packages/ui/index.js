@@ -1800,7 +1800,7 @@ export { ListBox } from "./list-box.js";
 export { GridList } from "./grid-list.js";
 export { Tree } from "./tree.js";
 export { TagGroup } from "./tag-group.js";
-export type { CollectionItem, CollectionProps } from "./list-box.js";
+export type { CollectionItem, CollectionItemState, CollectionProps } from "./list-box.js";
 
 export type { Drop, DragAndDrop } from "./drag-drop.js";
 export { useDragAndDrop } from "./drag-drop.js";
