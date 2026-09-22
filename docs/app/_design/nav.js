@@ -63,12 +63,12 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/install",
         title: "Install",
-        blurb: "One binary, three runtimes, no plugins to add.",
+        blurb: "Install uf on macOS, Linux or Windows.",
       },
       {
         href: "/guide/project",
         title: "Your first project",
-        blurb: "From an empty directory to a built site.",
+        blurb: "Create, run, test and build a React application.",
       },
       {
         href: "/guide/editors",
@@ -79,7 +79,7 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/tutorial",
         title: "Build a reading list",
-        blurb: "One application end to end: routes, data, state, a form, tests, the build.",
+        blurb: "Build a React application with routes, shared state, a form and tests.",
       },
     ],
     then: "/guide/build-an-app",
@@ -318,8 +318,7 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/tasks",
         title: "Tasks",
-        blurb:
-          "uf run, ufr and ufx: tasks as a dependency graph, run side by side, cached on the files they declare.",
+        blurb: "Define commands, connect dependencies and cache task results.",
       },
       {
         href: "/guide/ci",
