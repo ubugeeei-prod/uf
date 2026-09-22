@@ -1,6 +1,14 @@
 const { execFileSync } = require("node:child_process");
 const { appendFileSync } = require("node:fs");
 
+const rootDocumentation = new Set([
+  "README.md",
+  "CONTRIBUTING.md",
+  "CHANGELOG.md",
+  "LICENSE",
+  "AGENTS.md",
+]);
+
 // Unknown paths and missing history run the full suite. Check both sides of
 // renames so moving source into docs cannot hide a code change.
 function needsFullSuite(paths) {
@@ -8,12 +16,7 @@ function needsFullSuite(paths) {
     paths.length === 0 ||
     paths.some(
       (path) =>
-        !(
-          /^(README|CONTRIBUTING|CHANGELOG|LICENSE)(\.[^/]*)?$/.test(path) ||
-          path === "AGENTS.md" ||
-          path.startsWith("docs/") ||
-          path.startsWith("brand/")
-        ),
+        !(rootDocumentation.has(path) || path.startsWith("docs/") || path.startsWith("brand/")),
     )
   );
 }

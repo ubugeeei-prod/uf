@@ -76,7 +76,7 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         with:
           key: docs
       - name: Mount npm cache

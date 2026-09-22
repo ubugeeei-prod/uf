@@ -17,6 +17,8 @@ test("source, dependencies, CI, unknown paths and empty diffs require the suite"
     "crates/uf_cli/src/main.rs",
     "packages/host/register.js",
     "Cargo.lock",
+    "README.js",
+    "LICENSE.rs",
     "package-lock.json",
     ".github/workflows/ci.yml",
     "uf.config.js",

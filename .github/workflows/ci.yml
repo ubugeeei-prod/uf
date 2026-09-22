@@ -54,7 +54,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: nightly-2026-08-01
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         with:
           key: toolchain
       # Built once and shared, because every job below runs its checks through
@@ -107,7 +107,7 @@ jobs:
         with:
           toolchain: nightly-2026-08-01
           components: clippy
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
           key: clippy
@@ -141,7 +141,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
           key: test
@@ -657,7 +657,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
           key: bench-compile
@@ -877,7 +877,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
           key: upstream-typecheck
@@ -904,7 +904,7 @@ jobs:
         with:
           toolchain: nightly
           components: clippy
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.code == 'true'
         with:
           key: upstream-flow
@@ -969,7 +969,7 @@ jobs:
         if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: ./.github/actions/rust-cache
+      - uses: $/.github/actions/rust-cache
         if: needs.changes.outputs.full == 'true'
         with:
           key: bun-adapter
@@ -1136,7 +1136,7 @@ jobs:
     name: Release artifacts
     needs: changes
     if: needs.changes.outputs.release == 'true'
-    uses: ./.github/workflows/release-build.yml
+    uses: $/.github/workflows/release-build.yml
     with:
       version: ${{ needs.changes.outputs.version }}
 
