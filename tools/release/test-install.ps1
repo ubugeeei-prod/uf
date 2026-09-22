@@ -127,13 +127,14 @@ try {
     Fail "installing latest failed"
   }
   foreach ($name in @("uf", "ufr", "ufx")) {
-    if (-not (Test-Path (Join-Path $work "latest/bin/$name.cmd"))) {
-      Fail "latest: $name.exe was not installed"
+    $launcher = Join-Path $work "latest/bin/$name.cmd"
+    if (-not (Test-Path $launcher)) {
+      Fail "latest: $name.cmd was not installed"
     }
-  }
-  $installedVersion = & (Join-Path $work "latest/bin/uf.cmd") --version
-  if ($installedVersion -notmatch [regex]::Escape($version)) {
-    Fail "latest: uf --version said '$installedVersion', expected $version"
+    $installedVersion = & $launcher --version
+    if ($LASTEXITCODE -ne 0 -or $installedVersion -notmatch [regex]::Escape($version)) {
+      Fail "latest: $name --version failed or reported '$installedVersion', expected $version"
+    }
   }
   Pass "latest resolves, installs uf/ufr/ufx, and runs"
 

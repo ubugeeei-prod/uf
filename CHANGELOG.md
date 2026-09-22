@@ -7,6 +7,7 @@ _2026-09-22_
 ### Fixed
 
 - **installer**: decode Windows version responses served as either text or binary content, completing the native Windows release introduced in alpha.44.
+- **cli**: reserve enough main-stack space for unoptimized Windows CLI argument dispatch; verify all three installed launchers exit successfully.
 
 ## uf@0.0.0-alpha.44
 
