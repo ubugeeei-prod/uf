@@ -69,7 +69,7 @@ struct PlannedProjectFile {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TestArgs {
     /// Override the configured runtime with an installed host.
-    pub(crate) host: Option<String>,
+    pub(crate) host: Option<crate::cli::TestHostArg>,
     /// List what would run instead of running it.
     pub(crate) list: bool,
     /// Run in this mode instead of `test`.

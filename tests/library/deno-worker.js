@@ -10,7 +10,7 @@ export function denoWorkerArguments(repository: string): Array<string> {
     "--allow-run",
     "--allow-net=127.0.0.1,localhost,[::1]",
     "--allow-ffi",
-    "--allow-sys=uid",
+    "--allow-sys=uid,homedir",
     "--preload",
     `${repository}/packages/host/deno-preload.js`,
   ];
