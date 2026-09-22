@@ -85,10 +85,37 @@ use crate::descriptor::{FormContract, UiComponent, UiRuntime};
 /// purpose, and `the_ui_hook_modules_export_hooks_and_no_component` holds each
 /// name to a module that exports hooks and nothing capitalised, so a component
 /// cannot ship through the gap.
-pub const UI_HOOK_MODULES: &[&str] = &["interactions"];
+pub const UI_HOOK_MODULES: &[&str] = &["interactions", "drag-drop"];
 
 pub fn ui_components() -> Vec<UiComponent> {
     vec![
+        UiComponent::new(
+            "ColorPicker",
+            &["Root", "Input", "Field", "Channel", "Swatch"],
+            UiRuntime::Client,
+        ),
+        UiComponent::new("DateField", &[], UiRuntime::Client),
+        UiComponent::new(
+            "DateRangePicker",
+            &["Root", "StartField", "EndField", "Trigger", "Calendar"],
+            UiRuntime::Client,
+        ),
+        UiComponent::new("GridList", &[], UiRuntime::Client),
+        UiComponent::new("I18nProvider", &[], UiRuntime::Client),
+        UiComponent::new("ListBox", &[], UiRuntime::Client),
+        UiComponent::new(
+            "NumberField",
+            &["Root", "Input", "Increment", "Decrement"],
+            UiRuntime::Client,
+        ),
+        UiComponent::new(
+            "RangeCalendar",
+            &["Root", "Month", "Day", "Previous", "Next"],
+            UiRuntime::Client,
+        ),
+        UiComponent::new("TagGroup", &[], UiRuntime::Client),
+        UiComponent::new("TimeField", &[], UiRuntime::Client),
+        UiComponent::new("Tree", &[], UiRuntime::Client),
         // Implemented in `packages/ui/accordion.js`. `Header` is a part rather
         // than something the trigger renders for itself, because the heading
         // level belongs to the caller: an accordion inside an `<h2>` section

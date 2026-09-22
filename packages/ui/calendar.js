@@ -67,7 +67,7 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import type { DateTimeFormatOptions, PlainDate } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
 
-import { useLocale } from "./i18n.js";
+import { useLocale } from "./i18n-provider.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Rest } from "./internal/merge-props.js";
 import {

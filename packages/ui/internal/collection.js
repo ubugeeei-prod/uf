@@ -4,12 +4,12 @@
 import * as React from "@uniflowed/react";
 import { useId, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
-import { useDragAndDrop } from "./drag-drop.js";
-import { useControlled } from "./internal/controlled-state.js";
-import { composeHandlers, composeRefs, withProps } from "./internal/merge-props.js";
-import type { RenderProp, Rest } from "./internal/merge-props.js";
-import { directionOf } from "./internal/roving-focus.js";
-import { startsWithLocale, useLocale } from "./i18n.js";
+import { useDragAndDrop } from "../drag-drop.js";
+import { useControlled } from "./controlled-state.js";
+import { composeHandlers, composeRefs, withProps } from "./merge-props.js";
+import type { RenderProp, Rest } from "./merge-props.js";
+import { directionOf } from "./roving-focus.js";
+import { startsWithLocale, useLocale } from "../i18n-provider.js";
 
 export type CollectionItem = {
   readonly key: string,
@@ -380,15 +380,3 @@ export type CollectionProps = {
   readonly key?: empty,
   readonly [string]: mixed,
 };
-export component ListBox(...props: CollectionProps) {
-  return <CollectionRoot options={props} kind="listbox" />;
-}
-export component GridList(...props: CollectionProps) {
-  return <CollectionRoot options={props} kind="grid" />;
-}
-export component Tree(...props: CollectionProps) {
-  return <CollectionRoot options={props} kind="tree" />;
-}
-export component TagGroup(...props: CollectionProps) {
-  return <CollectionRoot options={props} kind="tags" />;
-}

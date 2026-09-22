@@ -1782,7 +1782,7 @@ export const Skeleton = {
   Box: SkeletonBox,
 };
 
-export { I18nProvider, useLocale, useCollator, useFilter } from "./i18n.js";
+export { I18nProvider, useLocale, useCollator, useFilter } from "./i18n-provider.js";
 import {
   NumberFieldRoot,
   NumberFieldInput,
@@ -1796,8 +1796,11 @@ export const NumberField = {
   Decrement: NumberFieldDecrement,
 };
 
-export { ListBox, GridList, Tree, TagGroup } from "./collection.js";
-export type { CollectionItem } from "./collection.js";
+export { ListBox } from "./list-box.js";
+export { GridList } from "./grid-list.js";
+export { Tree } from "./tree.js";
+export { TagGroup } from "./tag-group.js";
+export type { CollectionItem, CollectionProps } from "./list-box.js";
 
 export type { Drop, DragAndDrop } from "./drag-drop.js";
 export { useDragAndDrop } from "./drag-drop.js";
@@ -1816,16 +1819,17 @@ export const ColorPicker = {
   Swatch: ColorPickerSwatch,
 };
 
-export { DateField, TimeField } from "./date-field.js";
+export { DateField } from "./date-field.js";
+export { TimeField } from "./time-field.js";
 export type { DateFieldProps } from "./date-field.js";
+import { RangeCalendarRoot } from "./range-calendar.js";
 import {
-  RangeCalendarRoot,
   DateRangePickerRoot,
   DateRangePickerStartField,
   DateRangePickerEndField,
   DateRangePickerTrigger,
   DateRangePickerCalendar,
-} from "./range-calendar.js";
+} from "./date-range-picker.js";
 export type { DateRange } from "./range-calendar.js";
 export const RangeCalendar = {
   Root: RangeCalendarRoot,
@@ -1841,3 +1845,30 @@ export const DateRangePicker = {
   Trigger: DateRangePickerTrigger,
   Calendar: DateRangePickerCalendar,
 };
+
+export {
+  NumberFieldRoot,
+  NumberFieldInput,
+  NumberFieldIncrement,
+  NumberFieldDecrement,
+  parseNumber,
+} from "./number-field.js";
+export type { NumberFormatOptions } from "./number-field.js";
+export {
+  ColorPickerRoot,
+  ColorPickerInput,
+  ColorPickerField,
+  ColorPickerChannel,
+  ColorPickerSwatch,
+  parseColor,
+} from "./color-picker.js";
+export { RangeCalendarRoot } from "./range-calendar.js";
+export {
+  DateRangePickerRoot,
+  DateRangePickerStartField,
+  DateRangePickerEndField,
+  DateRangePickerTrigger,
+  DateRangePickerCalendar,
+} from "./date-range-picker.js";
+export type { Locale } from "./i18n-provider.js";
+export { startsWithLocale } from "./i18n-provider.js";

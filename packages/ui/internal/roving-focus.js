@@ -45,7 +45,7 @@
 // one the components make.
 
 import { useCallback, useEffect, useRef, useState } from "@uniflowed/react";
-import { useLocale, startsWithLocale } from "../i18n.js";
+import { useLocale, startsWithLocale } from "../i18n-provider.js";
 
 /** Which way a key asks the focus to move within a set. */
 export type Movement = "previous" | "next" | "first" | "last";

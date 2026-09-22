@@ -7,7 +7,7 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useControlled } from "./internal/controlled-state.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeHandlers, withProps } from "./internal/merge-props.js";
-import { useLocale } from "./i18n.js";
+import { useLocale } from "./i18n-provider.js";
 
 type NumberFormatter = {
   format: (value: number) => string,
