@@ -16,7 +16,7 @@ pub use bumpalo::{Bump, collections::Vec as ArenaVec};
 pub use compact_str::CompactString;
 pub use memchr::{memchr, memchr_iter};
 pub use phf;
-pub use rustc_hash::{FxHashMap, FxHashSet};
+pub use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 pub use smallvec::{SmallVec, smallvec};
 
 use simdutf8::basic;

@@ -107,10 +107,14 @@ export function installFlowHooks(root) {
 
   return nodeModule.registerHooks({
     resolve(specifier, context, nextResolve) {
-      if (isTestCompilerRuntime(specifier)) {
-        return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
+      try {
+        return nextResolve(specifier, context);
+      } catch (error) {
+        if (isTestCompilerRuntime(specifier) && error.code === "ERR_MODULE_NOT_FOUND") {
+          return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
+        }
+        throw error;
       }
-      return nextResolve(specifier, context);
     },
 
     load(url, context, nextLoad) {

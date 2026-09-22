@@ -199,6 +199,10 @@ if ($releaseBase) {
   $channelUrl = "https://github.com/$repo/releases/download/uf@$requestedVersion"
 }
 
+if (-not $version -or $version.Length -gt 128 -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9.+-]*$') {
+  Fail "invalid uf version" "use a release version such as 0.0.0-alpha.43"
+}
+
 if ($stopAfter -eq "resolve") {
   Write-Output $version
   exit 0
@@ -264,17 +268,32 @@ try {
   Move-Item $stagingDir $incomingDir
 
   if (Test-Path $runtimeDir) {
-    Remove-Item -Recurse -Force $runtimeDir
+    foreach ($name in @("uf", "ufr", "ufx")) {
+      $existing = Join-Path $runtimeDir "bin/$name.exe"
+      $incoming = Join-Path $incomingDir "bin/$name.exe"
+      if (-not (Test-Path $existing -PathType Leaf) -or
+          (Get-FileHash $existing).Hash -ne (Get-FileHash $incoming).Hash) {
+        Fail "uf@$version is already installed with different or incomplete binaries" "remove that inactive version before reinstalling it"
+      }
+    }
+    Remove-Item -Recurse -Force $incomingDir
+  } else {
+    Move-Item $incomingDir $runtimeDir
   }
-  Move-Item $incomingDir $runtimeDir
   Step "installed" $runtimeDir
 
   if ($stopAfter -eq "unpack") {
     exit 0
   }
 
-  foreach ($name in @("uf", "ufr", "ufx")) {
-    Copy-Item -Force (Join-Path $runtimeDir "bin/$name.exe") (Join-Path $binDir "$name.exe")
+  # Match uf self-update's .cmd launchers. The mapped executable stays in its
+  # immutable version directory while the small launcher switches versions.
+  foreach ($name in @("ufr", "ufx", "uf")) {
+    $target = Join-Path $runtimeDir "bin/$name.exe"
+    $launcher = Join-Path $binDir "$name.cmd"
+    $incoming = "$launcher.incoming.$PID"
+    [System.IO.File]::WriteAllText($incoming, "@echo off`r`n`"$target`" %*`r`n")
+    Move-Item -Force $incoming $launcher
   }
   Step "linked" $binDir
 

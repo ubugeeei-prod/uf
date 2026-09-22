@@ -22,6 +22,12 @@ serde_json.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 
+# Signalling a worker's whole process group; see `Worker::kill`. Unix only
+# because uf is: there is no Windows build, and the shim this is about is a
+# Unix `PATH` entry.
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 criterion.workspace = true
 similar-asserts.workspace = true

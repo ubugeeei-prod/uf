@@ -127,11 +127,11 @@ try {
     Fail "installing latest failed"
   }
   foreach ($name in @("uf", "ufr", "ufx")) {
-    if (-not (Test-Path (Join-Path $work "latest/bin/$name.exe"))) {
+    if (-not (Test-Path (Join-Path $work "latest/bin/$name.cmd"))) {
       Fail "latest: $name.exe was not installed"
     }
   }
-  $installedVersion = & (Join-Path $work "latest/bin/uf.exe") --version
+  $installedVersion = & (Join-Path $work "latest/bin/uf.cmd") --version
   if ($installedVersion -notmatch [regex]::Escape($version)) {
     Fail "latest: uf --version said '$installedVersion', expected $version"
   }
@@ -140,10 +140,28 @@ try {
   if (-not (RunInstaller "pinned" "uf@$version")) {
     Fail "installing uf@$version failed"
   }
-  if (-not (Test-Path (Join-Path $work "pinned/bin/uf.exe"))) {
+  if (-not (Test-Path (Join-Path $work "pinned/bin/uf.cmd"))) {
     Fail "pinned: uf.exe was not installed"
   }
   Pass "UF_VERSION=uf@$version installs the pinned release"
+
+  # Execute the installed runtime while it updates the launchers it was reached
+  # through. Replacing an active .exe in place fails on Windows.
+  $env:UF_INSTALL_ROOT = Join-Path $work "pinned/share"
+  $env:UF_BIN_DIR = Join-Path $work "pinned/bin"
+  $env:XDG_STATE_HOME = Join-Path $work "state"
+  $env:UF_RELEASE_BASE = $base
+  & (Join-Path $work "pinned/bin/uf.cmd") self-update $version
+  if ($LASTEXITCODE -ne 0) { Fail "self-update through installed uf failed" }
+  & (Join-Path $work "pinned/bin/uf.cmd") --version
+  if ($LASTEXITCODE -ne 0) { Fail "updated launcher failed" }
+  Pass "installed uf updates without replacing its running executable"
+
+  foreach ($bad in @("../escape", "*", ".hidden", "-flag")) {
+    if (RunInstaller "invalid" $bad) { Fail "accepted invalid version $bad" }
+  }
+  Pass "versions cannot escape the runtime directory"
+
 
   $tamperedDir = Join-Path $site "tampered"
   New-Item -ItemType Directory -Path $tamperedDir | Out-Null

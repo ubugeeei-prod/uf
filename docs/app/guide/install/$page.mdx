@@ -31,8 +31,8 @@ On Windows:
 
 <div className="command"><code>irm https://setup.uniflowed.dev/install.ps1 | iex</code></div>
 
-The installer picks the binary for your platform, checks it, and puts it on your
-`PATH`. The POSIX script works under `sh`, `bash` and `zsh`; the Windows script
+The installer picks the binary for your platform, checks it, and puts it in its bin
+directory. Add that directory to `PATH` if it is not already there. The POSIX script works under `sh`, `bash` and `zsh`; the Windows script
 runs under PowerShell. Read either one before you run it — they are served from
 `https://setup.uniflowed.dev/install.sh` and
 `https://setup.uniflowed.dev/install.ps1` if you would rather fetch them first.

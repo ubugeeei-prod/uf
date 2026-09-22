@@ -1,5 +1,30 @@
 # Changelog
 
+## uf@0.0.0-alpha.43
+
+_2026-09-21_
+
+### Added
+
+- **examples**: show native clips one to a screen, like short video on a phone (#1308)
+- **examples**: write the native Commonplace with Async React, match and renders (#1307)
+- **examples**: bring the native Commonplace to the web examples' screens and design (#1305)
+
+### Fixed
+
+- **test**: end a run whose node is a forking shim, and halve the suite (#1317)
+- **examples**: keep clip captions legible and show times in the device's zone (#1306)
+- **router**: write the Flight payload only among the children of React's root (#1304)
+
+### Performance
+
+- **check**: walk the module graph once per command, not once per round (#1318)
+- reuse test discovery plans (#1316)
+
+### Internal
+
+- **examples**: preload per island in the Relay SNS instead of one client screen (#1303)
+
 ## uf@0.0.0-alpha.42
 
 _2026-09-20_

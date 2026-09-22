@@ -23,6 +23,22 @@ fn operands(list: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn windows_package_manager_lookup_skips_powershell_scripts() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(dir.path().join("npm.PS1"), "").unwrap();
+    let npm = dir.path().join("npm.CMD");
+    std::fs::write(&npm, "").unwrap();
+    assert_eq!(
+        windows_program_in_path(
+            "npm",
+            dir.path().as_os_str(),
+            std::ffi::OsStr::new(".PS1;.CMD")
+        ),
+        Some(npm.into_os_string())
+    );
+}
+
+#[test]
 fn windows_package_manager_lookup_honors_pathext() {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let npm = dir.path().join("npm.cmd");

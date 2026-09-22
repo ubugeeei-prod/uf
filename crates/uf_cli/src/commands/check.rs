@@ -15,8 +15,9 @@ use camino::Utf8Path;
 use serde_json::{Value, json};
 #[cfg(feature = "upstream-typecheck")]
 use uf_check::{
-    BuiltinsTiming, CheckCache, CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic,
-    active_backend, backend_name, check_sources_cached, lib_paths, module_closure,
+    BuiltinsTiming, CheckCache, CheckError, CheckLimits, CheckReport, ModuleRequires, Source,
+    TypeDiagnostic, active_backend, backend_name, check_sources_cached, lib_paths,
+    module_closure_cached,
 };
 #[cfg(feature = "upstream-typecheck")]
 use uf_infra::FxHashSet;
@@ -38,6 +39,82 @@ use crate::ui::Ui;
 /// How many untyped imports are named before the list is summarised.
 #[cfg(feature = "upstream-typecheck")]
 const UNTYPED_MODULES_SHOWN: usize = 5;
+
+/// Where a check's time went, when `UF_PROFILE` asks.
+///
+/// The linter and the checker are full of `profile_span!`s already, and
+/// `uf_profiler`'s header says what they are for: a benchmark says the run got
+/// slower, and a profile says which part did. Until this existed nothing
+/// outside `uf_check`'s own examples could turn them on, so the spans could
+/// only be read over a batch of one file assembled by a test — never over a
+/// project, which is where the interesting half of the time is. `uf check` on
+/// this repository spends a tenth of a warm run inside inference; the question
+/// this answers is what the other nine tenths are.
+///
+/// Off unless asked for. Each span costs a relaxed atomic load while the gate
+/// is shut, and the table is written to stderr so that `--json` stays one
+/// document on stdout.
+struct Profile {
+    started: Option<std::time::Instant>,
+}
+
+impl Profile {
+    /// Open the gate when `UF_PROFILE` is set to anything but the empty string.
+    fn start() -> Self {
+        let asked = std::env::var_os("UF_PROFILE").is_some_and(|value| !value.is_empty());
+        if !asked {
+            return Self { started: None };
+        }
+        uf_profiler::scope::enable();
+        Self {
+            started: Some(std::time::Instant::now()),
+        }
+    }
+
+    /// The spans, deepest cost first, or nothing at all.
+    ///
+    /// Self time rather than inclusive, because inclusive always names the
+    /// outermost span and every reader already knows the whole run is the
+    /// whole run. Allocations are not reported: counting them needs the
+    /// counting allocator, and this binary has `mimalloc` — a column of zeroes
+    /// would say something false. `uf_check`'s `alloc_report` example is where
+    /// the allocation question is asked.
+    fn render(&self) {
+        let Some(started) = self.started else {
+            return;
+        };
+        let elapsed = started.elapsed();
+        uf_profiler::scope::flush_thread_spans();
+        let mut spans = uf_profiler::scope::take_collected_spans();
+        // One row per name: a span entered on the check thread and on this one
+        // arrives as two records, and they are one question.
+        spans.sort_by_key(|span| span.name);
+        let mut merged: Vec<uf_profiler::ScopeRecord> = Vec::new();
+        for span in spans {
+            match merged.last_mut() {
+                Some(last) if last.name == span.name => {
+                    last.hits += span.hits;
+                    last.inclusive += span.inclusive;
+                    last.self_time += span.self_time;
+                    last.slowest = last.slowest.max(span.slowest);
+                }
+                _ => merged.push(span),
+            }
+        }
+        merged.sort_by_key(|span| std::cmp::Reverse(span.self_time));
+        eprintln!("\n  {elapsed:.2?} in {} spans", merged.len());
+        eprintln!("  {:<28}{:>8}{:>12}{:>12}", "span", "hits", "self", "total");
+        for span in &merged {
+            eprintln!(
+                "  {:<28}{:>8}{:>12}{:>12}",
+                span.name,
+                span.hits,
+                format!("{:.2?}", span.self_time),
+                format!("{:.2?}", span.inclusive),
+            );
+        }
+    }
+}
 
 /// What the run did, beyond what the report describes.
 ///
@@ -176,6 +253,7 @@ pub(crate) fn check(
     paths: &[String],
     explain_any: Option<&str>,
 ) -> Result<()> {
+    let profile = Profile::start();
     let mut progress = ui.progress();
     // Before the scan, and only the *lint* fixes: `uf check` is `uf lint` plus
     // inference, and inference has no fix catalogue of its own. A type error
@@ -187,6 +265,7 @@ pub(crate) fn check(
         None
     };
     progress.draw("scanning sources");
+    uf_profiler::profile_span!("cli::lint_run");
     let LintRun {
         report: lint,
         sources,
@@ -227,6 +306,10 @@ pub(crate) fn check(
             plural(project_rules.problems.len(), "problem")
         );
     }
+    // After the report and before the verdict: a run that ends in `bail!` is
+    // exactly the run somebody profiling wants the table from, and a `?` on
+    // the way out would swallow it.
+    profile.render();
     let errors = severity_count(&lint, Severity::Error) + types.count(TypeSeverity::Error);
     if errors > 0 {
         bail!(
@@ -263,6 +346,7 @@ fn type_check(
     // are part of the environment every file is checked in, so a batch that
     // asked for the environment first would be handed one without them.
     // ubugeeei-prod/uf#480.
+    uf_profiler::profile_span!("cli::type_check");
     let libdefs = match lib_paths(root.as_std_path()) {
         Ok(paths) => libdefs::load(root, &paths),
         Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
@@ -310,10 +394,15 @@ fn type_check(
     // translation of those. ubugeeei-prod/uf#946.
     let mut declarations = declarations::Declarations::open(root);
     let mut builtins = None;
+    // Held across the rounds rather than rebuilt inside each one: what a file
+    // imports is the same answer every time it is asked, and asking again was
+    // the largest row in a warm check's profile. See `uf_check::ModuleRequires`.
+    let mut requires = ModuleRequires::default();
     let batch_paths = loop {
         // In its own scope: the walk borrows `installed` and `declarations`,
         // and the round that follows it grows both.
         let round = {
+            uf_profiler::profile_span!("cli::closure_round");
             let pool: Vec<Source<'_>> = project
                 .iter()
                 .copied()
@@ -321,7 +410,7 @@ fn type_check(
                 .chain(declarations.sources().iter())
                 .map(as_input)
                 .collect();
-            match module_closure(&seeds, &pool, &libs, &limits) {
+            match module_closure_cached(&seeds, &pool, &libs, &limits, &mut requires) {
                 Ok(closure) => {
                     if builtins.is_none() {
                         builtins = closure.builtins;
@@ -343,7 +432,10 @@ fn type_check(
             Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
             Err(error) => return TypeCheck::Failed(error),
         };
-        let more = dependencies::load_packages(root, &unresolved, &mut read, &mut declarations);
+        let more = {
+            uf_profiler::profile_span!("cli::load_packages");
+            dependencies::load_packages(root, &unresolved, &mut read, &mut declarations)
+        };
         // A package translated this round changes the batch without adding a
         // file to `installed`, so it keeps the rounds going too — its
         // declarations import packages of their own.
@@ -377,12 +469,14 @@ fn type_check(
     // Under the project root, because that is what the cache is about: the same
     // sources checked from two roots are two projects, and `.uf/` is where uf
     // already keeps per-project state that `.gitignore` covers.
+    uf_profiler::profile_span!("cli::cache_open");
     let cache = CheckCache::open(root.as_std_path());
     // Before the run adds to it, once, and silently. A check is about to write
     // one record per file it could not answer from disk, and this is what
     // stops the directory from being every record every build of `uf` has ever
     // produced — which it was, without a ceiling, until #218.
     if let Some(cache) = cache.as_ref() {
+        uf_profiler::profile_span!("cli::cache_sweep");
         cache.sweep();
     }
     match check_sources_cached(&batch, &libs, &limits, cache.as_ref()) {

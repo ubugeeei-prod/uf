@@ -30,9 +30,8 @@ fn language_server_command(
 
 Two things are load-bearing.
 
-`worktree.which` rather than a bare `"uf"`: it searches the worktree's own
-`node_modules/.bin` before `PATH`, which is what gives a project the copy of uf
-it pinned, the same order the VS Code extension uses.
+`worktree.which` rather than a bare `"uf"`: it searches the worktree shell's
+`PATH`. Add `node_modules/.bin` to that path when using a project-pinned uf.
 
 And the process must run **in the worktree root**. `uf lsp` reads `uf.config.js`
 from its working directory, once, at start-up, and that read is the only source

@@ -707,16 +707,26 @@ fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<
 
 #[cfg(windows)]
 fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<String> {
-    let mut child = Command::new("pwsh")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "-"])
-        .env("UF_VERSION", version)
-        .env("UF_INSTALL_ROOT", store.root().as_str())
-        .env("UF_BIN_DIR", store.bin_dir.as_str())
-        .env("UF_STOP_AFTER", stop_after.as_str())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .with_context(|| "failed to run pwsh, which the Windows uf installer is written in")?;
+    let spawn = |shell: &str| {
+        Command::new(shell)
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "-"])
+            .env("UF_VERSION", version)
+            .env("UF_INSTALL_ROOT", store.root().as_str())
+            .env("UF_BIN_DIR", store.bin_dir.as_str())
+            .env("UF_STOP_AFTER", stop_after.as_str())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+    };
+    let mut child = spawn("pwsh")
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                spawn("powershell.exe")
+            } else {
+                Err(error)
+            }
+        })
+        .with_context(|| "failed to run PowerShell for the Windows uf installer")?;
     let mut stdin = child
         .stdin
         .take()

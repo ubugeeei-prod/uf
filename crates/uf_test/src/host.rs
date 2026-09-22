@@ -812,6 +812,16 @@ pub struct Worker {
     /// Cleared as each request is sent, so a request that ended any way other
     /// than with the worker's own answer never reports the previous file's.
     reported_micros: Option<u64>,
+    /// Whether this worker has been stopped and waited for.
+    ///
+    /// Stopping twice is ordinary — a file that times out kills its worker,
+    /// and the run retires the same worker afterwards — and the second time
+    /// must do nothing at all. A pid stops naming this process the moment it
+    /// is waited for, and the kernel is free to hand it to somebody else; a
+    /// second signal, to a *group* named by that pid, would then be aimed at a
+    /// stranger. [`std::process::Child::kill`] guards itself for exactly this
+    /// reason, and this is the same guard for the part it cannot see.
+    stopped: bool,
 }
 
 /// Why a worker could not be started.
@@ -869,6 +879,22 @@ impl Worker {
             // warning, a deprecation — and it is not part of the report. It is
             // inherited so a person debugging sees it, rather than swallowed.
             .stderr(Stdio::inherit());
+        // Each worker leads a process group of its own, so [`Worker::kill`] can
+        // stop everything it started rather than only the process uf spawned.
+        // Why that distinction is not academic is written down there: `node` on
+        // `PATH` is frequently a shim that forks the real runtime, and the
+        // process uf started is not the process running the test file.
+        //
+        // It also takes the workers out of the terminal's foreground group,
+        // which is what a job-control signal — a Ctrl-C — is delivered to.
+        // Nothing is lost: uf's own stdin is the pipe each worker reads, so a
+        // uf that dies for any reason closes it, and `packages/test/worker.js`
+        // exits on that end of input.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt as _;
+            process.process_group(0);
+        }
         if let Some(binary) = &command.uf_binary {
             process.env("UF_BINARY", binary.as_str());
         }
@@ -944,6 +970,7 @@ impl Worker {
             // for a process that might never have existed.
             spawned: Instant::now(),
             reported_micros: None,
+            stopped: false,
         })
     }
 
@@ -1145,9 +1172,12 @@ impl Worker {
     /// CI" are the same sentence otherwise. Whatever is left is killed, which
     /// costs that worker's counts and nothing else.
     ///
-    /// Stdout closing is the signal, not a timer: the worker's stdout is a pipe
-    /// only that process holds, so the reader thread sees the end of it exactly
-    /// when the process is gone — after its exit handlers have run.
+    /// Stdout closing is the signal, not a timer: the reader thread sees the
+    /// end of that pipe exactly when the last process holding its write end is
+    /// gone — after the worker's exit handlers have run. "The last process"
+    /// rather than "the worker", because a `node` that is a version manager's
+    /// shim has forked the runtime that does the work and handed it those
+    /// pipes; [`Worker::kill`] is where that stops being a detail.
     pub fn shutdown(&mut self, grace: Duration) {
         drop(self.stdin.take());
         let until = Instant::now() + grace;
@@ -1163,14 +1193,102 @@ impl Worker {
     }
 
     /// Stop the worker, waiting for its reader so no thread outlives the run.
+    ///
+    /// # Why the signal goes to the group and not to the child
+    ///
+    /// `node` on `PATH` is often not node. A version manager installs a shim —
+    /// Volta's `volta-shim` is one, and any wrapper that wants to see how the
+    /// tool exited is another — which *forks* the real runtime rather than
+    /// `exec`ing it. uf's child is then the shim, and the process importing
+    /// the test file is the shim's child, holding the same stdin and stdout
+    /// pipes by inheritance.
+    ///
+    /// A `SIGKILL` addressed to the shim ends the shim and nothing else. The
+    /// real runtime is reparented to `init` and keeps the write end of this
+    /// worker's stdout open, so the reader thread's `read` never returns end
+    /// of file and the `join` below never returns either. Every file had run,
+    /// every result had been reported, and `uf test` sat there: no output, no
+    /// exit, on every run, on any machine whose `node` is a forking shim.
+    ///
+    /// So the signal goes to the process group [`Worker::spawn`] gave this
+    /// worker, which is the shim and everything it started.
+    ///
+    /// # And why the reader is joined with a bound
+    ///
+    /// The group covers a child that stays in it, which is every host uf
+    /// starts. It cannot cover one that leaves — a `setsid` in a wrapper
+    /// script — and the cost of being wrong about that must not be a runner
+    /// that hangs. So the reader is given a moment to see the end of the pipe
+    /// and is abandoned if it does not: a thread parked in `read` costs
+    /// nothing at exit, and a report that arrives is worth more than a thread
+    /// that is accounted for.
     pub fn kill(&mut self) {
+        if self.stopped {
+            return;
+        }
+        self.stopped = true;
+        kill_group(&self.child);
         let _ = self.child.kill();
         let _ = self.child.wait();
-        if let Some(reader) = self.reader.take() {
+        if let Some(reader) = self.reader.take()
+            && self.reader_ended(READER_GRACE)
+        {
             let _ = reader.join();
         }
     }
+
+    /// Whether the reader thread is done, waiting up to `grace` for it.
+    ///
+    /// Asked through the channel rather than of the thread, because a
+    /// [`std::thread::JoinHandle`] cannot be joined with a deadline: the
+    /// reader owns the sending half, so a [`RecvTimeoutError::Disconnected`]
+    /// is the reader's loop having ended and its sender having dropped, which
+    /// is exactly the moment a `join` becomes free.
+    fn reader_ended(&self, grace: Duration) -> bool {
+        let until = Instant::now() + grace;
+        while let Some(left) = until.checked_duration_since(Instant::now()) {
+            match self.events.recv_timeout(left) {
+                // Whatever a stopped worker had already written. Nothing is
+                // waiting for it any more.
+                Ok(_) => continue,
+                Err(RecvTimeoutError::Disconnected) => return true,
+                Err(RecvTimeoutError::Timeout) => return false,
+            }
+        }
+        false
+    }
 }
+
+/// How long [`Worker::kill`] waits for the reader to see the end of the pipe.
+///
+/// Generous next to what it bounds — the group is signalled first, so the
+/// usual answer arrives in well under a millisecond — and short next to a run.
+/// It is only ever spent when something outlived the signal, which is the case
+/// this exists to survive rather than to wait out.
+const READER_GRACE: Duration = Duration::from_millis(500);
+
+/// `SIGKILL` to the process group `child` leads.
+///
+/// A no-op where there are no process groups. [`Worker::spawn`] puts each
+/// worker in its own, so the group is the worker and its descendants and
+/// never uf itself; a group that has already gone answers `ESRCH`, which is
+/// the same nothing as killing a child that has already exited.
+#[cfg(unix)]
+fn kill_group(child: &Child) {
+    let Ok(pid) = i32::try_from(child.id()) else {
+        return;
+    };
+    // SAFETY: `killpg` takes a process group id and a signal and returns a
+    // code; it touches nothing this process owns. The id is this child's own,
+    // which `spawn` made a group leader, so the group named here is the one uf
+    // started and cannot be uf's own.
+    unsafe {
+        libc::killpg(pid, libc::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_group(_child: &Child) {}
 
 impl Drop for Worker {
     fn drop(&mut self) {

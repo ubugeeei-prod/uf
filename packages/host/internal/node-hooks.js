@@ -77,10 +77,14 @@ function isTestCompilerRuntime(specifier) {
  * without Vite's RSC graph, supply the compiler's memo-cache helper directly.
  */
 export async function resolve(specifier, context, nextResolve) {
-  if (isTestCompilerRuntime(specifier)) {
-    return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
+  try {
+    return await nextResolve(specifier, context);
+  } catch (error) {
+    if (isTestCompilerRuntime(specifier) && error.code === "ERR_MODULE_NOT_FOUND") {
+      return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
+    }
+    throw error;
   }
-  return nextResolve(specifier, context);
 }
 
 /**

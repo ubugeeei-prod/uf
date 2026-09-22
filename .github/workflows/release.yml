@@ -78,7 +78,7 @@ jobs:
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: nightly-2026-08-01
           targets: ${{ matrix.target }}
@@ -346,9 +346,11 @@ jobs:
           UF_REPO: ${{ github.repository }}
           UF_VERIFY_ORIGIN: require
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $version = if ($env:INPUT_VERSION) { $env:INPUT_VERSION } else { $env:REF_NAME -replace '^uf@', '' }
           $env:UF_VERSION = $version
           pwsh -NoProfile -ExecutionPolicy Bypass -File infra/cloudflare/setup-assets/install.ps1
-          & "$HOME/.local/bin/uf.exe" --version
-          & "$HOME/.local/bin/ufr.exe" --version
-          & "$HOME/.local/bin/ufx.exe" --version
+          & "$HOME/.local/bin/uf.cmd" --version
+          & "$HOME/.local/bin/ufr.cmd" --version
+          & "$HOME/.local/bin/ufx.cmd" --version

@@ -25,7 +25,7 @@
 
 mod assets;
 mod builtins;
-mod closure;
+pub(crate) mod closure;
 mod convert;
 mod environments;
 mod graph;
@@ -146,11 +146,15 @@ pub(crate) fn check_sources(
 }
 
 /// The closure of `seeds` over `available`, by the batch's own rules.
+///
+/// `cached` is what each file was already found to import, which a caller that
+/// walks more than once hands back to itself. See [`closure::Requires`].
 pub(crate) fn module_closure<'a>(
     seeds: &[&str],
     available: &[Source<'a>],
     libs: &[Source<'_>],
     limits: &CheckLimits,
+    cached: &mut closure::Requires,
 ) -> Result<crate::ModuleClosure<'a>, CheckError> {
     let path = seeds.first().copied().unwrap_or("<empty>");
     on_check_thread(path, || {
@@ -163,35 +167,41 @@ pub(crate) fn module_closure<'a>(
         // relative-only walk should not pay #678's fixed environment cost just
         // to assemble the batch.
         let probe = ProjectModules::new(&[], options.clone(), None, limits);
-        let found = closure::closure(seeds, available, &options, &|specifier| {
-            if !declaration_probe_needs_builtins(specifier) {
-                return false;
-            }
-            if failure.borrow().is_some() {
-                return false;
-            }
-            let mut environment = environment.borrow_mut();
-            if environment.is_none() {
-                match builtins::prepare(libs) {
-                    Ok(builtins) => *environment = Some(BatchEnvironment::new(builtins)),
+        let found = closure::closure(
+            seeds,
+            available,
+            &options,
+            &|specifier| {
+                if !declaration_probe_needs_builtins(specifier) {
+                    return false;
+                }
+                if failure.borrow().is_some() {
+                    return false;
+                }
+                let mut environment = environment.borrow_mut();
+                if environment.is_none() {
+                    match builtins::prepare(libs) {
+                        Ok(builtins) => *environment = Some(BatchEnvironment::new(builtins)),
+                        Err(error) => {
+                            *failure.borrow_mut() = Some(error);
+                            return false;
+                        }
+                    }
+                }
+                let environment = environment
+                    .as_mut()
+                    .expect("the environment was installed above");
+                match environment.mk_builtins(libs, &options) {
+                    Ok(mk_builtins) => probe.set_mk_builtins(mk_builtins),
                     Err(error) => {
                         *failure.borrow_mut() = Some(error);
                         return false;
                     }
                 }
-            }
-            let environment = environment
-                .as_mut()
-                .expect("the environment was installed above");
-            match environment.mk_builtins(libs, &options) {
-                Ok(mk_builtins) => probe.set_mk_builtins(mk_builtins),
-                Err(error) => {
-                    *failure.borrow_mut() = Some(error);
-                    return false;
-                }
-            }
-            probe.declared_externally(specifier)
-        });
+                probe.declared_externally(specifier)
+            },
+            cached,
+        );
         probe.release();
         if let Some(error) = failure.into_inner() {
             return Err(error);

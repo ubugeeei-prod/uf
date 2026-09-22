@@ -47,7 +47,7 @@ export function isFlowModule(id) {
 }
 
 function normalizePathSeparators(id) {
-  return id.replaceAll("\\", "/");
+  return process.platform === "win32" ? id.replaceAll("\\", "/") : id;
 }
 
 function stripQuery(id) {
@@ -100,11 +100,12 @@ function stripQuery(id) {
  * a path import an epoch identity, so the pattern accepts query-carrying file
  * paths while still deciding from the path itself.
  */
+const separator = process.platform === "win32" ? String.raw`[\\/]` : "/";
 export const FLOW_MODULE_PATTERN = new RegExp(
   // Reject when the *last* `/node_modules/` on the path is not followed by
   // `@uniflowed/`, which is `isFlowModule`'s `lastIndexOf` written as a
   // lookahead: the inner negative lookahead is what pins "last".
-  String.raw`^(?![^?#]*[\\/]node_modules[\\/](?![^?#]*[\\/]node_modules[\\/])(?!@uniflowed[\\/]))` +
+  String.raw`^(?![^?#]*${separator}node_modules${separator}(?![^?#]*${separator}node_modules${separator})(?!@uniflowed${separator}))` +
     String.raw`[^?#]*\.(?:${FLOW_EXTENSIONS.map((extension) => extension.slice(1)).join("|")})` +
     String.raw`(?:[?#].*)?$`,
 );

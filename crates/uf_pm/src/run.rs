@@ -886,7 +886,10 @@ fn windows_program_in_path(program: &str, path: &OsStr, pathext: &OsStr) -> Opti
             continue;
         }
         for extension in pathext.to_string_lossy().split(';') {
-            if extension.is_empty() {
+            if ![".COM", ".EXE", ".BAT", ".CMD"]
+                .iter()
+                .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+            {
                 continue;
             }
             let candidate = directory.join(format!("{program}{extension}"));

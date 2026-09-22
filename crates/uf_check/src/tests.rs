@@ -433,6 +433,74 @@ fn the_platform_globals_resolve() {
     }
 }
 
+/// A stream carries the type of its chunks, which the vendored libdef's does
+/// not.
+///
+/// `evals/flow-typed/environment/streams.js` declares `ReadableStream` with no
+/// type parameter, so every `ReadableStream<Uint8Array>` in a module that
+/// streams a response was *"not a polymorphic type"* — twenty-nine of them in
+/// this repository alone, and two hundred diagnostics pointing into that file.
+/// `libdefs/web-streams.js` shadows it; this is what the shadow has to be able
+/// to say. See `upstream/environments.rs`.
+#[test]
+fn a_stream_carries_the_type_of_its_chunks() {
+    require_checker!();
+
+    let source = r#"// @flow
+export function body(): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1]));
+      controller.close();
+    },
+  });
+}
+
+// `done` is what narrows `value` to a chunk, which is the loop everybody
+// writes around a reader.
+export async function firstLength(stream: ReadableStream<Uint8Array>): Promise<number> {
+  const next = await stream.getReader().read();
+  return next.done ? 0 : next.value.byteLength;
+}
+
+// `pipeThrough` answers the readable half. The vendored declaration returned
+// `void`, so a chain of transforms had nothing to read from.
+export function through(stream: ReadableStream<Uint8Array>): ReadableStream<string> {
+  const transform: TransformStream<Uint8Array, string> = new TransformStream({
+    transform(chunk, controller) {
+      controller.enqueue(String(chunk.byteLength));
+    },
+  });
+  return stream.pipeThrough(transform);
+}
+
+export async function drain(stream: ReadableStream<string>, out: WritableStream<string>): Promise<void> {
+  for await (const chunk of stream) {
+    await out.getWriter().write(chunk);
+  }
+}
+
+// And the spelling with no type argument at all, which `bom.js` and `dom.js`
+// use out of reach of the shadow: a parameter with no default would turn every
+// one of those into an error of its own.
+export function bare(response: Response): mixed {
+  return response.body;
+}
+"#;
+
+    let diagnostics = check_source(
+        Source::new("streams.js", source),
+        &[],
+        &CheckLimits::default(),
+    )
+    .expect("the checker runs");
+
+    assert!(
+        diagnostics.is_empty(),
+        "the streams libdef should type all of this:\n{diagnostics:#?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Checking across modules.
 //

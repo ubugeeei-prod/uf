@@ -211,7 +211,8 @@ holds the extension manifest and the `zed_extension_api` Rust half that returns
 extension is WebAssembly.
 
 Install the directory as a Zed dev extension. It uses `worktree.which("uf")`,
-so a project-pinned `node_modules/.bin/uf` wins before a global one on `PATH`.
+which searches the worktree shell's `PATH`. Add `node_modules/.bin` to that
+`PATH` to use a project-pinned executable.
 
 ## JetBrains
 

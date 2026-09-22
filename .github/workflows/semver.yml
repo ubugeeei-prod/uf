@@ -20,7 +20,7 @@ jobs:
     name: Cargo Semver Checks
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           fetch-depth: 0
           persist-credentials: false

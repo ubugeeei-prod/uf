@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/vrt",
-  "version": "0.0.0-alpha.42",
+  "version": "0.0.0-alpha.43",
   "private": true,
   "description": "Chromium test pages and visual comparisons for Flow applications.",
   "type": "module",
@@ -19,8 +19,8 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/browser": "0.0.0-alpha.42",
-    "@uniflowed/core": "0.0.0-alpha.42",
-    "@uniflowed/test": "0.0.0-alpha.42"
+    "@uniflowed/browser": "0.0.0-alpha.43",
+    "@uniflowed/core": "0.0.0-alpha.43",
+    "@uniflowed/test": "0.0.0-alpha.43"
   }
 }
