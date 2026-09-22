@@ -53,10 +53,11 @@ repository of several packages needs and one package does not:
   root read for every package, so formatting and lint levels are written once.
   Each package keeps its own config for its router or its library build.
 - tasks that reach one package with the `#member` selector, by path:
-  `uf run bundle` verifies the repository, then runs `uf build#packages/ui`
-  before `uf build#apps/web`, and
-  `uf run serve:web` is `uf dev#apps/web`. A package is also selected by its
-  manifest's name, `@NAME/web`.
+  `uf build#packages/ui` builds the library and `uf build#apps/web` builds the
+  application. `uf dev#apps/web` starts its development server. A package is
+  also selected by its manifest's name, `@NAME/web`.
+  [The task guide](/guide/tasks) explains how to connect these commands with
+  `dependsOn`.
 
 Every template — `react`, `monorepo` and `--lib` — is formatted, linted, type
 checked, tested and built in CI, in `crates/uf_cli/tests/templates.rs`.
