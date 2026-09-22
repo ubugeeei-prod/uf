@@ -154,8 +154,8 @@ export default defineConfig({
     "rust:clippy": {
       command: "cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings",
     },
-    "rust:test": "cargo test --workspace --profile ci",
-    "rust:bench": "cargo bench --workspace --no-run",
+    "rust:test": "cargo test --workspace --all-features --profile ci",
+    "rust:bench": "cargo bench --workspace --no-run --profile ci",
     "rust:metadata": "cargo metadata --format-version 1 --locked",
     "rust:lints": {
       command: "tools/ci/workspace-rust-lints.sh",
@@ -175,7 +175,7 @@ export default defineConfig({
     // this repository, not a script that reimplements one. `uf test` is the
     // command a contributor types; the task exists so CI types it too, and so
     // `uf run ci` covers it.
-    build: "cargo build --release --bin uf",
+    build: "tools/ci/build-toolchain.sh",
 
     // Every `@uniflowed/*` package is Flow, so `cargo test` cannot run a line
     // of it. These are uf tests, run by the runner this repository ships.

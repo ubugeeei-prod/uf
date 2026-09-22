@@ -1,19 +1,6 @@
 name: CI
 
-# `merge_group` as well as `pull_request`, because `main` requires branches to
-# be up to date and this pipeline takes about eleven minutes. Those two
-# multiply: every merge makes every other open pull request `BEHIND`, so they
-# land one at a time, each paying a full pipeline for a base change that did
-# not touch it — ten green pull requests is roughly two hours of CI to land
-# work that was already green.
-#
-# A merge queue builds the *result* of merging a batch together, once, and
-# merges the batch if that is green. It is also a stronger guarantee than
-# `strict`: `strict` proves each branch against the base it was rebased onto
-# and never against the other branch merging beside it. The queue only has
-# that to build with if the checks it must pass run on `merge_group`, which is
-# what this line is. `tools/ci/gate-covers-every-job.sh` holds every workflow
-# that reports a required context to it. See #588.
+# Check both the pull request and the merge queue result.
 on:
   merge_group:
   pull_request:
@@ -27,7 +14,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UF_CI_PREBUILT: "1"
+  CARGO_UNSTABLE_CHECKSUM_FRESHNESS: "true"
+  CARGO_BUILD_FINGERPRINT: content
+
 jobs:
+  changes:
+    name: Changed files
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: node tools/ci/change-scope.cjs
+
   toolchain:
     name: Toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
@@ -39,7 +50,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: toolchain
       # Built once and shared, because every job below runs its checks through
       # `uf run` — this repository is a uf project, and its pipeline uses the
       # toolchain it ships rather than a second description of the same checks.
@@ -52,77 +65,98 @@ jobs:
 
   format:
     name: Format
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
           components: rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run rust:fmt:check
+        if: needs.changes.outputs.full == 'true'
 
   clippy:
     name: Clippy
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: ./.github/actions/rust-cache
+        if: needs.changes.outputs.full == 'true'
+        with:
+          key: clippy
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run rust:clippy
+        if: needs.changes.outputs.full == 'true'
 
   test:
     name: Test
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       # The React Compiler's own fixtures, at the commit `react_compiler` was
       # published from. `rust:test` runs uf's compile path over them and fails
       # when any fixture's result differs from
       # `crates/uf_transform/tests/react_compiler_conformance/baseline.tsv`.
       - run: tools/react-compiler/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: ./.github/actions/rust-cache
+        if: needs.changes.outputs.full == 'true'
+        with:
+          key: test
       # `uf dev` and `uf build` run Vite on a JavaScript host, and the end-to-end
       # tests build the docs site through it, so the workspace's npm packages
       # are installed the way a project's would be.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - name: Mount npm cache
+        if: needs.changes.outputs.full == 'true'
         uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
           commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
       - run: npm ci --prefer-offline --no-audit --no-fund
+        if: needs.changes.outputs.full == 'true'
       # `uf build --compile` embeds the build in a Bun runtime, and the two
       # tests that exercise it fail rather than skip when Bun is absent: a
       # single-file build nobody runs is a single-file build nobody has.
@@ -134,9 +168,11 @@ jobs:
       # actually have. The `bun-adapter` job below runs the declared minimum
       # and the newest on purpose. See ubugeeei-prod/uf#1048.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: needs.changes.outputs.full == 'true'
         with:
           bun-version: 1.3.14
       - run: bun --version
+        if: needs.changes.outputs.full == 'true'
       # pnpm 10, pnpm 12, Yarn 1 and Yarn 4, for `crates/uf_cli/tests/managers.rs`,
       # which runs `uf add`, `uf remove`, `uf dedupe` and `uf link` against each
       # of them — and npm and the Bun above — the way `dependencies.rs` runs npm.
@@ -145,6 +181,7 @@ jobs:
       # nobody knows is right. The releases are pinned in the script, and
       # `tools/ci/workspace-suite-runtimes.sh` holds every suite job to it.
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/uf-package-managers"
+        if: needs.changes.outputs.full == 'true'
       # Deno runs uf projects through `@uniflowed/host/deno-preload`, which is
       # built on `node:module`'s `registerHooks` — a hook Deno implemented in
       # 2.8 — and `crates/uf_cli/tests/deno_host.rs` is what keeps
@@ -157,28 +194,34 @@ jobs:
       # measured an absence particular to that line — no global `process` — and
       # uf no longer starts a Deno that old.
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: needs.changes.outputs.full == 'true'
         with:
           deno-version: v2.x
       - run: deno --version
+        if: needs.changes.outputs.full == 'true'
       # Blacksmith's image carries Chromium, but the distro binary can spend
       # browser-mode's start budget talking to a broken DBus session before it
       # opens the test page. Use the same wrapper the publish job uses so the
       # browser integration test is still real, just started with CI's sandbox
       # constraints named explicitly.
       - run: tools/ci/browser-wrapper.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       # A crash in the suite leaves a core, kept with the binary that wrote it.
       # `uf_fmt`'s `guarantees` died of SIGSEGV twice on 2026-09-14 with nothing
       # but the signal in the log, and 560 runs looking for it found nothing:
       # the crash that can be read is the one that happens. See #1071.
       - run: tools/ci/test-cores.sh run ./target/release/uf run rust:test
-      - if: failure()
+        if: needs.changes.outputs.full == 'true'
+      - if: needs.changes.outputs.full == 'true' && failure()
         run: tools/ci/test-cores.sh collect
-      - if: failure()
+      - if: needs.changes.outputs.full == 'true' && failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-cores-${{ github.run_attempt }}
@@ -198,7 +241,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # `uf fmt` hands the JSON and CSS to the non-Flow formatter, which is a
       # dependency rather than a global install — so the dependencies have to be
       # here even though nothing in this job runs JavaScript.
@@ -234,7 +276,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # `uf lint` reads `uf.config.js`, which imports `@uniflowed/config`, so
       # the dependencies have to be installed even though the linter does not
       # run a line of JavaScript.
@@ -271,7 +312,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -320,39 +360,49 @@ jobs:
 
   library:
     name: Library
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - name: Mount npm cache
+        if: needs.changes.outputs.full == 'true'
         uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
           commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
       - run: npm ci --prefer-offline --no-audit --no-fund
+        if: needs.changes.outputs.full == 'true'
       # The `@uniflowed/*` packages are Flow, so `cargo test` cannot run a line
       # of them — their tests are uf tests, run by the runner this repository
       # ships. Without this job the library has a suite nothing executes.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run test:lib
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run edge:smoke
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run instrumentation:smoke
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run migration:smoke
+        if: needs.changes.outputs.full == 'true'
 
   # The same suite on Node 26, which ships a native `Temporal`.
   # `@uniflowed/core/temporal` defers to a host's Temporal and supplies Lite
@@ -363,37 +413,44 @@ jobs:
   # (#1052). Both were green in this pipeline until this job existed.
   library-node-26:
     name: Library (Node 26)
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 26
       - name: Mount npm cache
+        if: needs.changes.outputs.full == 'true'
         uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-26
           path: ~/.npm
           commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
       - run: npm ci --prefer-offline --no-audit --no-fund
+        if: needs.changes.outputs.full == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run test:lib
+        if: needs.changes.outputs.full == 'true'
 
   library-deno:
     name: Library (Deno 2.9.7)
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
@@ -401,21 +458,27 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: needs.changes.outputs.full == 'true'
         with:
           deno-version: v2.9.7
       - run: npm ci --prefer-offline --no-audit --no-fund
+        if: needs.changes.outputs.full == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       # Reuse the toolchain artifact; the local task builds it as a dependency.
       - run: UF_BINARY=./target/release/uf node tools/ci/deno-library.js
+        if: needs.changes.outputs.full == 'true'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
+        if: needs.changes.outputs.full == 'true' && always()
         with:
           name: deno-library
           path: .uf/deno-library
@@ -423,62 +486,76 @@ jobs:
 
   installer:
     name: Installer
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       # Packages a release and installs it with the real installer. Keeps
       # install.sh and package-binaries.sh from drifting apart between releases,
       # when the only thing that notices is a user running `curl … | sh`.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run install:test
+        if: needs.changes.outputs.full == 'true'
 
   windows:
     name: Windows
     runs-on: windows-latest
     timeout-minutes: 45
+    needs: changes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
         shell: bash
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        if: needs.changes.outputs.full == 'true'
         with:
           key: windows-native
           cache-on-failure: true
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - name: Resolve Windows versions across content types
+        if: needs.changes.outputs.full == 'true'
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/test-install-version.ps1
       # Exercise installation without paying for three optimized LTO links.
       # release.yml verifies the optimized archives on the same host.
       - name: Package the Windows CI binaries
+        if: needs.changes.outputs.full == 'true'
         shell: bash
         env:
           UF_CARGO_PROFILE: ci
           UF_CARGO_TARGET: "0"
         run: tools/release/package-binaries.sh
       - name: Verify Windows install and self-update
+        if: needs.changes.outputs.full == 'true'
         shell: pwsh
         run: |
           $version = & node -p "require('./packages/core/package.json').version"
@@ -486,6 +563,7 @@ jobs:
           $env:UF_TEST_RELEASE_DIR = Join-Path $PWD "dist/release/uf/$version"
           pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/test-install.ps1
       - name: Scaffold, install, and check a Windows project
+        if: needs.changes.outputs.full == 'true'
         shell: pwsh
         run: |
           function Run-Uf {
@@ -526,51 +604,66 @@ jobs:
 
   editors:
     name: Editors
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
+        if: needs.changes.outputs.full == 'true'
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
           targets: wasm32-wasip1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        if: needs.changes.outputs.full == 'true'
         with:
           key: editors
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
           package-manager-cache: false
       - name: Package the VS Code extension
+        if: needs.changes.outputs.full == 'true'
         working-directory: editors/vscode
         run: |
           npm ci --no-audit --no-fund
           ./node_modules/.bin/vsce package --out "$RUNNER_TEMP/uf.vsix"
       - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1
+        if: needs.changes.outputs.full == 'true'
 
   bench-compile:
     name: Bench Compile
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: ./.github/actions/rust-cache
+        if: needs.changes.outputs.full == 'true'
+        with:
+          key: bench-compile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run rust:bench
+        if: needs.changes.outputs.full == 'true'
 
   metadata:
     name: Metadata
@@ -712,6 +805,7 @@ jobs:
       # a list somebody has to add to. This reads the workflow and says so
       # when it does not, and checks that every required context is a job
       # that cannot report `skipped`. See #367.
+      - run: node --test tools/ci/change-scope.test.cjs
       - run: ./target/release/uf run ci:gate
       - run: ./target/release/uf run ci:gate:test
       - run: ./target/release/uf run ci:semver:test
@@ -728,8 +822,10 @@ jobs:
     name: Upstream Integrations
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           persist-credentials: false
       # React's compiler crates, Relay's compiler crates, React Native's codegen
@@ -737,7 +833,9 @@ jobs:
       # only thing that would notice a pin that has been force-pushed away or a
       # directory upstream moved. `sync.sh` fails on a missing subtree.
       - run: tools/upstream/sync.sh --integrations
+        if: needs.changes.outputs.full == 'true'
       - name: The crates the manifest promises
+        if: needs.changes.outputs.full == 'true'
         run: |
           set -eu
           test -d upstream/react/compiler/crates/react_compiler_validation
@@ -753,8 +851,8 @@ jobs:
   # nothing else has: `uf_check`'s `upstream-typecheck` is on by default, but
   # any other optional feature in the workspace is compiled only here.
   upstream-typecheck:
-    name: Upstream Flow Typecheck
-    needs: toolchain
+    name: Minimal feature build
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     env:
       # Flow's typing crates declare `#![feature(box_patterns)]`, which the
@@ -768,61 +866,22 @@ jobs:
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
-      # The React Compiler's fixtures, for the conformance test in the suite,
-      # which fails rather than skips without them. Same reason as `Test`.
-      - run: tools/react-compiler/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      # The suite builds the docs site through the real `@uniflowed/vite`, and
-      # those tests fail rather than skip when the workspace is not installed.
-      # Same reason the `Test` job installs, and the reason this job failed the
-      # first time it came back.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: ./.github/actions/rust-cache
+        if: needs.changes.outputs.full == 'true'
         with:
-          node-version: 24
-      - name: Mount npm cache
-        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
-        with:
-          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
-          path: ~/.npm
-          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
-      - run: npm ci --prefer-offline --no-audit --no-fund
-      # `uf build --compile` embeds the build in a Bun runtime, and the two
-      # tests that exercise it fail rather than skip when Bun is absent: a
-      # single-file build nobody runs is a single-file build nobody has.
-      # Pinned rather than `latest`. `latest` is a different runtime on
-      # different days, and a suite that only ever meets the newest Bun cannot
-      # see a defect that needs an older one: the Bun adapter shipped output no
-      # Bun before 1.3.14 could parse, and all three jobs that install Bun
-      # installed `latest`, so CI never ran it on a Bun a deployment might
-      # actually have. The `bun-adapter` job below runs the declared minimum
-      # and the newest on purpose. See ubugeeei-prod/uf#1048.
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.3.14
-      - run: bun --version
-      # And pnpm and both Yarns, for `crates/uf_cli/tests/managers.rs`, for the
-      # reason the `Test` job installs them: the same suite runs here.
-      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/uf-package-managers"
-      # And Deno, for `crates/uf_cli/tests/deno_host.rs`, for the reason the
-      # `Test` job installs it. This job runs the same suite, so a runtime
-      # missing here is a suite that fails here — which is the policy working:
-      # those tests fail rather than skip, so that a host claim nobody checked
-      # cannot be green.
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version: v2.x
-      - run: deno --version
-      # Same browser-host test suite as the `Test` job, this time under
-      # `--all-features`.
-      - run: tools/ci/browser-wrapper.sh
-      - run: cargo test --workspace --all-features --profile ci
+          key: upstream-typecheck
+      # The full suite runs once, with all features, in Test.
+      - run: cargo check --workspace --all-targets --no-default-features --profile ci
+        if: needs.changes.outputs.full == 'true'
 
   upstream-flow:
     name: Upstream Flow
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     env:
       # `rust-toolchain.toml` pins the release nightly and overrides
@@ -833,23 +892,32 @@ jobs:
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: ./.github/actions/rust-cache
+        if: needs.changes.outputs.full == 'true'
+        with:
+          key: upstream-flow
       # Early warning that the Flow port still builds on the moving channel, so
       # the pin in `rust-toolchain.toml` can be advanced deliberately rather
       # than discovered when it breaks. Only the parser: the typing crates need
       # `box_patterns`, which the current nightly no longer has, which is
       # exactly what this job is here to tell us about.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run flow:clippy
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run flow:test
+        if: needs.changes.outputs.full == 'true'
 
   # The Bun adapter, on the Bun uf says it needs and on the newest one.
   #
@@ -874,7 +942,7 @@ jobs:
   # why that check scans only jobs running the suite.
   bun-adapter:
     name: Bun adapter (${{ matrix.bun }})
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     strategy:
       fail-fast: false
@@ -890,31 +958,41 @@ jobs:
       # present, because Cargo resolves path dependencies even when the feature
       # that uses them is off.
       - run: tools/upstream/sync.sh
+        if: needs.changes.outputs.full == 'true'
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        if: needs.changes.outputs.full == 'true'
         with:
           toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: ./.github/actions/rust-cache
+        if: needs.changes.outputs.full == 'true'
+        with:
+          key: bun-adapter
       # The adapter test builds a fixture through the real `@uniflowed/vite`,
       # so the workspace has to be installed or the test skips itself — and a
       # skipped test here is the absence this job exists to end.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - run: npm ci --prefer-offline --no-audit --no-fund
+        if: needs.changes.outputs.full == 'true'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: needs.changes.outputs.full == 'true'
         with:
           bun-version: ${{ matrix.bun }}
       # Printed because the matrix leg named `latest` is otherwise a run whose
       # runtime nobody can identify from the log.
       - run: bun --version
+        if: needs.changes.outputs.full == 'true'
       # `UF_ALLOW_FIXTURE_SKIP` is deliberately unset: these tests fail rather
       # than skip without Bun and without the workspace, which is the policy
       # that makes this job mean something.
-      - run: cargo test -p uf_cli --test vite bun_adapter -- --nocapture
+      - run: cargo test -p uf_cli --profile ci --test vite bun_adapter -- --nocapture
+        if: needs.changes.outputs.full == 'true'
 
   relay-sns:
     name: Relay SNS example
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
@@ -922,21 +1000,28 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           go-version: 1.25.x
           cache-dependency-path: examples/simple-sns-graphql/backend/go.sum
       - run: npm ci --no-audit --no-fund
+        if: needs.changes.outputs.full == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: tools/ci/browser-wrapper.sh
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run example:sns:graphql
-      - if: failure()
+        if: needs.changes.outputs.full == 'true'
+      - if: needs.changes.outputs.full == 'true' && failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: relay-sns-failure
@@ -945,7 +1030,7 @@ jobs:
 
   browser-testing:
     name: RSC and browser testing
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
@@ -953,17 +1038,23 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - run: npm ci --no-audit --no-fund
+        if: needs.changes.outputs.full == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: sh tools/ci/pinned-browser.sh
+        if: needs.changes.outputs.full == 'true'
       - run: sh tools/ci/test-browser.sh
-      - if: always()
+        if: needs.changes.outputs.full == 'true'
+      - if: needs.changes.outputs.full == 'true' && always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: browser-testing
@@ -972,7 +1063,7 @@ jobs:
 
   native-bundle:
     name: Native bundles
-    needs: toolchain
+    needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
@@ -980,23 +1071,31 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.full == 'true'
         with:
           node-version: 24
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        if: needs.changes.outputs.full == 'true'
         with:
           packages: platform-tools
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.full == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+        if: needs.changes.outputs.full == 'true'
       - run: ./target/release/uf run native:smoke
+        if: needs.changes.outputs.full == 'true'
       - run: sh tools/ci/native-renderer-smoke.sh
+        if: needs.changes.outputs.full == 'true'
       - run: sh tools/ci/native-example.sh
+        if: needs.changes.outputs.full == 'true'
 
   # One check that is true only when every other one is.
   #
@@ -1031,6 +1130,7 @@ jobs:
     name: CI
     if: always()
     needs:
+      - changes
       - toolchain
       - format
       - clippy
