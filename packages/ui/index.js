@@ -1781,3 +1781,63 @@ export const Skeleton = {
   Root: SkeletonRoot,
   Box: SkeletonBox,
 };
+
+export { I18nProvider, useLocale, useCollator, useFilter } from "./i18n.js";
+import {
+  NumberFieldRoot,
+  NumberFieldInput,
+  NumberFieldIncrement,
+  NumberFieldDecrement,
+} from "./number-field.js";
+export const NumberField = {
+  Root: NumberFieldRoot,
+  Input: NumberFieldInput,
+  Increment: NumberFieldIncrement,
+  Decrement: NumberFieldDecrement,
+};
+
+export { ListBox, GridList, Tree, TagGroup } from "./collection.js";
+export type { CollectionItem } from "./collection.js";
+
+export type { Drop, DragAndDrop } from "./drag-drop.js";
+export { useDragAndDrop } from "./drag-drop.js";
+import {
+  ColorPickerRoot,
+  ColorPickerInput,
+  ColorPickerField,
+  ColorPickerChannel,
+  ColorPickerSwatch,
+} from "./color-picker.js";
+export const ColorPicker = {
+  Root: ColorPickerRoot,
+  Input: ColorPickerInput,
+  Field: ColorPickerField,
+  Channel: ColorPickerChannel,
+  Swatch: ColorPickerSwatch,
+};
+
+export { DateField, TimeField } from "./date-field.js";
+export type { DateFieldProps } from "./date-field.js";
+import {
+  RangeCalendarRoot,
+  DateRangePickerRoot,
+  DateRangePickerStartField,
+  DateRangePickerEndField,
+  DateRangePickerTrigger,
+  DateRangePickerCalendar,
+} from "./range-calendar.js";
+export type { DateRange } from "./range-calendar.js";
+export const RangeCalendar = {
+  Root: RangeCalendarRoot,
+  Month: CalendarMonth,
+  Day: CalendarDay,
+  Previous: CalendarPrevious,
+  Next: CalendarNext,
+};
+export const DateRangePicker = {
+  Root: DateRangePickerRoot,
+  StartField: DateRangePickerStartField,
+  EndField: DateRangePickerEndField,
+  Trigger: DateRangePickerTrigger,
+  Calendar: DateRangePickerCalendar,
+};
