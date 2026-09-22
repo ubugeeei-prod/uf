@@ -102,6 +102,19 @@ function checkCandidate(base, paths) {
   } else throw new Error("Unsupported release validation event.");
   return true;
 }
+function assertArtifacts(artifacts) {
+  for (const target of [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+  ]) {
+    const artifact = artifacts.find((item) => item.name === `uf-release-${target}`);
+    if (!artifact || artifact.expired || artifact.size_in_bytes <= 0)
+      throw new Error(`Validated archive is missing or expired: ${target}`);
+  }
+}
 function assertQueueBase(base, main) {
   if (!SHA.test(main || "") || base !== main)
     throw new Error("The merge queue must rebuild against current main.");
@@ -141,6 +154,9 @@ function authorizePublication() {
   if (!["ahead", "identical"].includes(comparison.status))
     throw new Error("Release commit is not on main.");
   assertValidation(api(`repos/${repository}/actions/runs/${runId}`), commit, repository);
+  assertArtifacts(
+    api(`repos/${repository}/actions/runs/${runId}/artifacts?per_page=100`).artifacts,
+  );
   if (process.env.NPM_RUN) {
     const run = api(`repos/${repository}/actions/runs/${process.env.NPM_RUN}`);
     if (
@@ -162,6 +178,7 @@ module.exports = {
   assertPullRequest,
   assertValidation,
   assertQueueBase,
+  assertArtifacts,
   gh,
   api,
   git,

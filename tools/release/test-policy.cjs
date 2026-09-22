@@ -6,6 +6,7 @@ const {
   assertPullRequest,
   assertValidation,
   assertQueueBase,
+  assertArtifacts,
 } = require("./policy.cjs");
 const { nextVersion } = require("./open-release.cjs");
 const repository = "owner/project";
@@ -90,4 +91,12 @@ test("queue validation rejects an older main base", () => {
   assertQueueBase(commit, commit);
   assert.throws(() => assertQueueBase("b".repeat(40), commit));
   assert.throws(() => assertQueueBase(undefined, commit));
+});
+
+test("publication refuses missing or expired native archives before npm is touched", () => {
+  const artifacts = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"].map((target) => ({ name: `uf-release-${target}`, expired: false, size_in_bytes: 100 }));
+  assertArtifacts(artifacts);
+  assert.throws(() => assertArtifacts(artifacts.slice(1)));
+  assert.throws(() => assertArtifacts(artifacts.map((item, i) => i ? item : { ...item, expired: true })));
+  assert.throws(() => assertArtifacts(artifacts.map((item, i) => i ? item : { ...item, size_in_bytes: 0 })));
 });
