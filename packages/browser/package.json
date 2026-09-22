@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/browser",
-  "version": "0.0.0-alpha.44",
+  "version": "0.0.0-alpha.45",
   "private": true,
   "description": "Chromium test pages and visual comparisons for Flow applications.",
   "type": "module",
@@ -19,7 +19,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.44",
-    "@uniflowed/test": "0.0.0-alpha.44"
+    "@uniflowed/core": "0.0.0-alpha.45",
+    "@uniflowed/test": "0.0.0-alpha.45"
   }
 }
