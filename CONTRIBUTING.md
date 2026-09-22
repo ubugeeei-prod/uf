@@ -241,3 +241,40 @@ previous-release fixture before applying it. Comments and unrelated config
 must survive, a second run must be unchanged, and ambiguous settings must stay
 in the report. Adoption fixtures run install, check, lint and test after
 uf migrate in the Library CI lane.
+
+## Release UF
+
+From this repository, run:
+
+```sh
+uf run release -- alpha
+```
+
+Use `patch`, `minor`, `major`, or an exact version instead of `alpha` when
+needed. `node tools/release/open-release.cjs --dry-run alpha` prints the plan
+without creating a PR or publishing.
+
+The command requires GitHub CLI authentication and repository **maintain** or
+**admin** permission. A required policy check runs from trusted workflow code
+and also protects changes to release automation. The command creates a separate worktree, updates versions and the
+changelog, and opens a release PR. Your current worktree stays untouched.
+
+Normal PRs run quick checks. Release PRs also run the full integration suite
+and build and install all five native archives. The command updates the PR
+with current `main` when needed. The merge queue validates the final commit
+against current `main` before merging.
+
+After merge, the command publishes and verifies npm packages, then publishes
+the tested native archives. The GitHub Release creates the tag only after the
+archives are ready; the command never pushes a tag to start validation.
+Publication requires successful queue validation for that exact commit and
+checks the PR author's permissions again.
+
+If a PR check fails, fix it or rerun the failed check, then repeat the command.
+For a failed publication, repeating the command retries only the failed jobs. Progress is saved in the Git common directory, so it
+resumes the same PR and version. Published npm versions and tags are not
+replaced. Keep the command running until it prints the public release URL.
+
+Repository setup: the merge queue must merge one PR per group with no batching
+delay. The `release` environment allows deployments from `main` only and needs
+no manual approval. These rules keep publication on the validated main commit.

@@ -79,6 +79,7 @@ Test
 Bench Compile
 Metadata
 Zizmor
+Release policy
 CI"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/uf-gate-covers.XXXXXX")"

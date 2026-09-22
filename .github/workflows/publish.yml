@@ -1,192 +1,70 @@
-# npm only. Native binaries are built, verified, and released by
-# `release.yml`, which runs on the same `uf@*` tags.
 name: Publish
+run-name: Publish ${{ inputs.version }} (${{ inputs.commit }})
 
 on:
-  push:
-    tags:
-      - "uf@*"
-  # And by hand, for the release that half-sent. `uf@0.0.0-alpha.14` was tagged,
-  # its binaries were built and released, and this job failed before publishing
-  # anything — so the tag existed, the GitHub release existed, and npm had
-  # nothing. A tag-only trigger leaves no way out of that but a second tag for
-  # code that has not changed. The version is the tag to publish, without the
-  # `uf@` prefix, and the checkout below uses it.
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish, without the uf@ prefix"
+        description: Version from the merged release PR
+        required: true
+        type: string
+      commit:
+        description: Exact merged commit
+        required: true
+        type: string
+      validation_run:
+        description: Successful merge-queue CI run containing the tested archives
         required: true
         type: string
 
 permissions:
   contents: read
-  id-token: write
+  actions: read # Verify the exact successful merge-queue run.
+
+concurrency:
+  group: publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  npm:
-    name: Trusted npm Publish
+  authorize:
+    name: Authorize npm publication
     runs-on: ubuntu-latest
-    # This job checks out the release tag and then runs the full workspace test
-    # suite before npm gets a package. A cold GitHub-hosted runner can still be
-    # running healthy tests after twenty minutes, so give the guardrail enough
-    # room for the release check it is meant to be.
-    timeout-minutes: 45
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The tag on a push; the tag the operator named on a dispatch. Not
-          # the default branch: a re-run has to publish the code that was
-          # released, not whatever has merged since.
-          ref: ${{ inputs.version && format('uf@{0}', inputs.version) || github.ref }}
-      - run: tools/upstream/sync.sh
-      # The React Compiler's fixtures. The suite below includes the conformance
-      # run over them, which fails rather than skips when they are absent, so a
-      # publish without this step would fail before sending a package.
-      - run: tools/react-compiler/sync.sh
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+          fetch-depth: 0
+      - run: node tools/release/policy.cjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          VALIDATION_RUN: ${{ inputs.validation_run }}
+
+  npm:
+    name: Trusted npm Publish
+    needs: authorize
+    environment: release
+    permissions:
+      contents: read
+      id-token: write # Authenticate npm trusted publishing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: nightly-2026-08-01
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          cache-on-failure: true
-          key: publish-${{ inputs.version || github.ref_name }}-${{ runner.os }}-${{ runner.arch }}
-      # Node, and deliberately without `registry-url:`. That input writes an
-      # `.npmrc` holding `_authToken=${NODE_AUTH_TOKEN}` and points every npm
-      # client at it for the rest of the job — and Yarn 1 expands environment
-      # variables in npm config eagerly, on every command, so while that
-      # variable is unset it exits on `Failed to replace env in config` before
-      # doing anything at all. This job defines the token for no step, because
-      # it publishes with an OIDC id-token and there is no npm token here to
-      # define it from.
-      #
-      # `uf@0.0.0-alpha.38` was tagged and all seven Yarn 1 rows of
-      # `crates/uf_cli/tests/managers.rs` failed right here, in the gate,
-      # before a package was sent: a tag, a GitHub release, and nothing on npm.
-      # `ci.yml`'s `Test` job runs the same suite and has always passed,
-      # because it configures no publishing registry.
-      #
-      # So the registry is configured below instead, after the suite and
-      # immediately before the publish that needs it. That leaves this gate
-      # running the suite in the environment `ci.yml` runs it in, which is the
-      # environment a contributor's machine has — rather than one that is
-      # unique to this job, and that only this job can fail in.
-      # `tools/ci/workspace-suite-runtimes.sh` refuses the other order.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          package-manager-cache: false
-      # The suite drives the docs site through the real `@uniflowed/vite`, and
-      # those tests now fail rather than skip when the workspace is not
-      # installed. Without this the publish job failed on a missing fixture
-      # while the packages it was about to publish were fine.
-      - run: npm ci --no-audit --no-fund
-      # And `uf build --compile` needs Bun, for the same reason: its two tests
-      # fail rather than skip without it, and a publish job that cannot run
-      # them is a publish job that cannot say the feature works.
-      # Pinned rather than `latest`, for the reason the Rust toolchain and
-      # every action here are pinned: `latest` is a different runtime on
-      # different days, and a suite that only ever meets the newest Bun cannot
-      # see a defect that needs an older one. `uf@0.0.0-alpha.39` shipped a Bun
-      # adapter whose output no Bun before 1.3.14 could parse, and all three
-      # jobs that install Bun installed `latest`, so nothing in CI ever ran it
-      # on the Bun a deployment might actually have. See ubugeeei-prod/uf#1048.
-      # `tools/ci/workspace-suite-runtimes.sh` holds the suite jobs to one
-      # version, the way it already does for Deno.
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.3.14
-      - run: bun --version
-      # And pnpm and both Yarns, for `crates/uf_cli/tests/managers.rs`, which
-      # fails rather than skips without them. The releases are the ones
-      # `ci.yml` installs, from the same script.
-      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/uf-package-managers"
-      # And Deno, for `crates/uf_cli/tests/deno_host.rs`. Those tests fail
-      # rather than skip when the runtime is absent — deliberately, so that a
-      # host claim nobody checked cannot be green — and this job runs the same
-      # suite, so a runtime missing here is a publish that cannot happen.
-      #
-      # It was missing here. `uf@0.0.0-alpha.14` was tagged, its four binaries
-      # were built and released, and this job failed on six Deno tests before
-      # publishing a single package: a release with a tag, a GitHub release and
-      # nothing on npm. `tools/ci/workspace-suite-runtimes.sh` is why the next
-      # runtime cannot be added to one workflow and not the other.
-      #
-      # Then the same thing happened with the version. `ci.yml` moved to `v2.x`
-      # when uf's Deno host started loading Flow through `registerHooks`, which
-      # arrived in Deno 2.8. This job stayed on `v1.x`, and `uf@0.0.0-alpha.36`
-      # failed every Deno test here before publishing a package. That check now
-      # covers the version too.
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version: v2.x
-      - run: deno --version
-      # GitHub-hosted Ubuntu runners install Chromium-family browsers but do
-      # not give Chromium a usable sandbox under the AppArmor/user-namespace
-      # policy in this image, and the distro `chromium` shim can spend the
-      # browser worker's start budget talking to a broken DBus session before
-      # it ever opens the test page. Keep the wrapper shared with CI so the
-      # release still proves browser mode before npm receives the packages.
-      - name: Make Chromium usable on the publish runner
-        run: tools/ci/browser-wrapper.sh
-      - run: cargo test --workspace --profile ci
-      # The gate is past, so now the registry, for the publish below: the
-      # `.npmrc` naming registry.npmjs.org that `npm publish` reads when it
-      # exchanges this job's OIDC id-token. It is the same step this job always
-      # ran, moved to where publishing happens. Nothing above this line wants
-      # it — `npm ci` and `tools/ci/install-package-managers.sh` read public
-      # packages from the default registry, which is this one — and the suite
-      # must not have it. Node is installed already; this writes the `.npmrc`.
+          persist-credentials: false
+          ref: ${{ inputs.commit }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-      # Only the packages in `tools/release/published-packages.txt`, which is
-      # the OIDC publish closure this workflow is allowed to send.
-      #
-      # A name that has not been bound by `tools/release/trust-npm.sh` fails
-      # here, and the packages published before it stay published. That is
-      # recoverable — npm is additive, and re-running this job after binding
-      # the name publishes the rest — but it means adding a package to the
-      # list and tagging without running that script leaves a release
-      # half-sent.
-      #
-      # This job cannot check the bindings itself: `npm trust list` reads them
-      # as the *user*, and this job authenticates as a workflow. An earlier
-      # version tried, and reported every package as unbound including the
-      # five that were bound, because an unauthenticated read returns nothing. Publishing a declaration module whose
-      # functions throw would squat the name and would need a trusted-publisher
-      # configuration of its own, which is a manual step on npmjs.com.
-      #
-      # Every one of these is bound to this workflow by `npm trust`, so this
-      # job is the only thing that can publish them and it authenticates with
-      # the OIDC id-token GitHub mints for it. There is no npm token in this
-      # repository, in its secrets, or on anyone's machine.
-      # See tools/release/trust-npm.sh.
-      #
-      # `--tag alpha` on a prerelease is the right rule and it stays: a
-      # prerelease must not displace a stable release. What it does not do is
-      # move `latest`, and these packages have no stable release for `latest`
-      # to be protecting — so it stayed where the first publish left it,
-      # `0.0.0-alpha.1` on five names and `0.0.0-alpha.2` on twelve, through
-      # seven releases. That is what `npm install @uniflowed/react` gave a
-      # person. See ubugeeei-prod/uf#408.
-      #
-      # The move cannot happen here. npm exchanges this job's id-token for
-      # `npm publish` and for nothing else — `lib/utils/oidc.js` is required
-      # from `lib/commands/publish.js` alone, the exchange is per package, and
-      # the token it returns lives in that one command's config rather than in
-      # an `.npmrc` — while `npm dist-tag add` is an authenticated `PUT` that
-      # asks a 2FA account for a one-time password. Adding an npm token to
-      # this repository's secrets to get around that would give away the
-      # property this whole job is built on.
-      #
-      # So it is a person's step, after the publish and never inside it:
-      # `tools/release/promote-latest.sh`, which reads the registry, leaves
-      # alone any name that has a stable release, and is idempotent.
-      # `tools/release/preflight.sh` fails on the drift before the next tag.
       - name: Refuse missing npm names before publishing
         run: tools/release/publish-names-exist.sh
       - name: Publish
@@ -222,33 +100,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The same ref the publish job used, for the same reason.
-          ref: ${{ inputs.version && format('uf@{0}', inputs.version) || github.ref }}
+          ref: ${{ inputs.commit }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-      # The job above can succeed and leave the registry without the version
-      # it was asked to publish — `uf@0.0.0-alpha.2` had a tag, a GitHub
-      # release and nothing on npm, and nothing between that and a user
-      # noticed. This reads the registry back and installs from it.
-      # On a tag push `github.ref_name` is `uf@<version>`; on a dispatch it is
-      # the branch the workflow was started from — `main` — and this job then
-      # asked npm for `@uniflowed/react@main` and reported every package
-      # missing while the publish above had just succeeded. The version comes
-      # from the same expression the publish job resolves, so the two cannot
-      # disagree about which release they are talking about.
       - name: What actually reached npm
         env:
           VERSION: ${{ inputs.version || github.ref_name }}
         run: tools/release/verify-npm.sh "${VERSION#uf@}"
-      # The one part of a release this pipeline cannot do, said where it is
-      # noticed: at the end of the release, rather than in a script nobody has
-      # a reason to open. It prints and does not check, because at this moment
-      # `latest` is always behind — the move happens after this job, by a
-      # person, and `tools/release/preflight.sh` is what fails on it if it
-      # never happened.
       - name: The dist-tag move this pipeline cannot make
         run: |
           set -eu

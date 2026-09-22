@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 # Set every version in the repository to one value.
 #
-# A release is one tag, `uf@<version>`, and `release.yml` refuses to build a
-# tag whose version disagrees with the workspace. This script is the one place
-# that knows every file carrying the version, so a bump is a single command:
+# Releases go through `uf run release -- <bump>`. It calls this internal
+# helper after writing the changelog. This file owns the synchronized version
+# fields in Cargo and npm manifests:
 #
 #   tools/release/bump-version.sh 0.0.0-alpha.2
 #
@@ -105,4 +105,4 @@ EOF
 cargo metadata --format-version 1 >/dev/null
 npm install --package-lock-only --no-audit --no-fund >/dev/null
 echo "Cargo.lock and package-lock.json refreshed"
-echo "next: commit, then \`git tag uf@${version} && git push origin uf@${version}\`"
+echo "next: validate and merge the release PR; the release command publishes after its checks pass"

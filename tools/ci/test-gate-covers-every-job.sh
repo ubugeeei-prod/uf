@@ -155,6 +155,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: true
+  release-policy:
+    name: Release policy
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
 YAML
 
 }

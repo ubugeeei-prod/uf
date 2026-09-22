@@ -1,0 +1,37 @@
+name: Persistent Rust cache
+description: Keep Cargo downloads and compiled workspace crates between CI runs.
+inputs:
+  key:
+    description: Separate build profiles and concurrent writers.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+      with:
+        key: ${{ github.repository }}-rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}
+        path: target
+        commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+    - uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+      with:
+        key: ${{ github.repository }}-cargo-registry-${{ runner.os }}-${{ runner.arch }}
+        path: ~/.cargo/registry
+        commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+    - uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
+      with:
+        key: ${{ github.repository }}-cargo-git-${{ runner.os }}-${{ runner.arch }}
+        path: ~/.cargo/git
+        commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+    - id: target
+      shell: bash
+      run: |
+        if test -f target/.uf-sticky-initialized; then
+          echo 'warm=true' >> "$GITHUB_OUTPUT"
+        fi
+        touch target/.uf-sticky-initialized
+    # Seed new disks from the existing cache. save-if=false also prevents the
+    # action's cleanup from deleting workspace crates before disk snapshotting.
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      if: steps.target.outputs.warm != 'true'
+      with:
+        save-if: false
