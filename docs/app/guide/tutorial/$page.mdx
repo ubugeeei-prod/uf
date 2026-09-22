@@ -1,6 +1,6 @@
 ---
 title: "Build a reading list · uf"
-description: "One application end to end: routes, data, state, a form, tests, the build."
+description: "Build a React application with routes, shared state, a form and tests."
 ---
 
 <p className="eyebrow">Start</p>
@@ -8,82 +8,30 @@ description: "One application end to end: routes, data, state, a form, tests, th
 # Build a reading list
 
 <div className="lede">
-One application, from `uf new` to a directory you can upload: routing, a
-layout, a loader, shared state, an accessible tab list, a validated form, and
-the tests for all of it. Every command on this page was run, and every block of
-terminal output is what it printed.
+Build an article list with topic filters, saved articles and a suggestion form.
+Then test it and create a static build.
 </div>
-
-**What you will be able to do:** build one application from `uf new` to a
-directory you can upload — routes, a layout, a loader, shared state, an
-accessible tab list, a validated form and its tests — and read what each command
-printed.
-
-**What you need first:** uf [installed](/guide/install), and [Your first
-project](/guide/project) for what the scaffold writes. [Before you
-start](#before-you-start), below, has the rest.
-
-## What you are building
-
-A page listing articles somebody means to read, a page per article, a tab list
-that filters by topic, a save button whose count appears in the header, and a
-form that adds a suggestion. Eleven files, three of which are tests.
-
-The point is not the application. It is that routing, data, state, forms, UI
-primitives, type checking, formatting, testing and the build are one toolchain
-with one config file — and this page is the evidence, because nothing below
-installs a plugin, writes a second config, or configures a transform.
 
 ## Before you start
 
-The `@uniflowed/*` packages a scaffolded project depends on **are** on npm, as
-prereleases under the `alpha` tag; see
-[publishing status](/reference/packages). This application was written and run
-inside uf's own repository, where every package resolves through the npm
-workspace instead — which is the only difference between this transcript and
-the same commands in a fresh project.
+You need [uf installed](/guide/install) and a JavaScript host such as Node.js.
+[Your first project](/guide/project) explains the generated files.
 
-You need [uf installed](/guide/install) and a JavaScript host. The transcripts
-below are `uf 0.0.0-alpha.5` on Node v25.8.1.
+## Create the project
 
-## Scaffold it
-
-<div className="command"><code>uf new reading-list</code></div>
-
-<figure className="terminal">
-
-```
-uf new · reading-list
-─────────────────────
-
-  reading-list
-  ├─ app
-  │  ├─ Counter.js
-  │  ├─ $layout.js
-  │  ├─ $page.js
-  │  ├─ $page.test.js
-  │  └─ useCounter.js
-  ├─ .gitignore
-  ├─ app.js
-  ├─ package.json
-  └─ uf.config.js
-
-  next steps
-    1. cd reading-list
-    2. uf install
-    3. uf dev
-
-✓ created 10 files in /private/tmp/claude-501/cap/reading-list
+```sh
+uf new reading-list
+cd reading-list
+uf install
+uf add @uniflowed/state@alpha @uniflowed/ui@alpha @uniflowed/form@alpha
+uf add --dev @uniflowed/testing@alpha
 ```
 
-</figure>
+`uf new` uses the React template by default. The extra packages provide the
+state, UI, form and component-testing APIs used below. UF packages are currently
+published under the `alpha` tag; see [package status](/reference/packages).
 
-`react` is the template and `reading-list` is the directory. Both are
-positional, and the template is not optional today even though there is only one
-of it.
-
-Nine files, and no `vite.config.ts`, `babel.config.js`, `.eslintrc`,
-`tsconfig.json` or `vitest.config.ts` among them. The config is this, entire:
+The generated `uf.config.js` contains:
 
 ```js
 // @flow
@@ -91,38 +39,32 @@ import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   tasks: {
-    dev: { command: "uf dev" },
-    build: { command: "uf build" },
-    check: { command: "uf check" },
-    lint: { command: "uf lint" },
-    fmt: { command: "uf fmt" },
-    test: { command: "uf test" },
+    "verify:format": { command: "uf fmt --check" },
+    "verify:source": { command: "uf check" },
+    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    bundle: { command: "uf build", dependsOn: ["verify"] },
   },
 });
 ```
 
-Nothing in it describes the application. `app/` is the route root and `app.js`
-is the entry because those are the defaults; the `tasks` block is there so
-`uf run build` and CI say the same thing. Every option is in
-[the config reference](/reference/config).
+`uf run verify` checks formatting and source in parallel, then runs tests.
+`uf run bundle` builds after verification succeeds. `uf check` includes linting
+and type checking. [Tasks](/guide/tasks) explains how `dependsOn` works.
 
-Delete the three files the template wrote as a demonstration —
-`app/Counter.js`, `app/useCounter.js` and `app/$page.test.js` — and start.
+Delete `app/Counter.js`, `app/useCounter.js` and `app/$page.test.js`.
+The following sections replace the example pages and add the application's files.
 
-## The data
+## Define the articles
 
-Plain Flow, no framework in it. This is the module everything else reads:
+Create `app/articles.js`:
 
 ```js
 // @flow
 
-/// The subject of an article. A union rather than a set of loose strings, so
-/// the `match` in `topicLabel` is exhaustive: adding a topic stops the project
-/// compiling until every place that reads one has been updated.
+/// Supported article topics. `topicLabel` handles each one.
 export type Topic = "flow" | "react" | "rust";
 
-/// One saved article. `slug` is the URL segment, so it is also the identity:
-/// two articles with the same slug would be one page.
+/// An article with a unique URL slug.
 export type Article = {
   readonly slug: string,
   readonly title: string,
@@ -172,19 +114,13 @@ export function topicLabel(topic: Topic): string {
 }
 ```
 
-`match` is an expression, and over a union of string literals it is exhaustive:
-add `"go"` to `Topic` and `uf check` fails here rather than rendering
-`undefined` in production. [Flow, the modern parts](/guide/flow) is the longer
-version of that argument.
+`match` checks every member of the `Topic` union. If you add a topic, `uf check`
+reports any missing case. Use `readonly` for read-only properties; the older
+`+` variance syntax is deprecated. See [Flow syntax](/guide/flow).
 
-One thing to copy from this file rather than from habit: `readonly` on an
-object property, not `+`. The variance sigil is deprecated in modern Flow, and
-`uf check` reports it as an error rather than a style note.
+## Create the list page
 
-## The list page
-
-A page is `$page.js`, and a page that needs data exports a `loader` that runs
-before it renders:
+Replace `app/$page.js`. Its `loader` runs before the page renders:
 
 ```js
 // @flow
@@ -217,20 +153,14 @@ export component Page(data: { readonly articles: $ReadOnlyArray<Article> }) {
 }
 ```
 
-The router hands every page three props — `params`, `searchParams` and `data` —
-and a `component` declaration takes the ones it wants, by name. Here that is
-`data`, whose type is the loader's return type written a second time: uf does
-not infer one from the other.
+Pages receive `params`, `searchParams` and `data`. This page only needs `data`.
+Declare its type explicitly: uf does not infer page props from the loader's
+return type. Use the named `Page` export to pass the component lint rule.
 
-Export it as `Page`, not as a default. Both work — the router looks for
-`module.default ?? module.Page` — but `uf check` warns on a default-exported
-component, on the grounds that a route wired by name is easier to find than one
-wired by position.
+## Add an article route
 
-## The article page
-
-A directory in brackets is a parameter, so
-`app/articles/[slug]/$page.js` serves `/articles/one-parse`:
+Create `app/articles/[slug]/$page.js`. The `[slug]` directory captures a URL
+segment, such as `/articles/one-parse`:
 
 ```js
 // @flow
@@ -266,23 +196,16 @@ export component Page(data: { readonly article: Article }) {
 }
 ```
 
-`generateStaticParams` is what makes a parameterised route prerenderable: the
-build asks it which parameter sets exist and writes one HTML file for each.
-Without it, a dynamic route gets no file: `uf build` lists it under `answered by
-a server`, and a static host would answer it with a 404. On `0.0.0-alpha.5` the
-build skipped it without saying so, which was the one thing on this page that
-cost a rebuild to discover.
+`generateStaticParams` lists the article pages to prerender. Without it, this
+dynamic route needs a server and will return 404 on a static host.
 
-`notFound()` is written `throw notFound()` here. It does throw on its own, and
-[the routing page](/guide/routing) describes it that way; the `throw` is for the
-type checker. It reads the router's real signature now — `notFound(): empty` —
-and that is still not enough, because Flow ends a branch on a `throw`
-*statement* and has no analysis that says a call which cannot return does not
-return. Without the `throw`, `article` is still `null` on the next line.
+Use `throw notFound()` here so Flow knows the missing-article branch ends.
+Calling `notFound()` alone does not narrow `article` in the following code.
 
-## The layout
+## Add the layout
 
-`app/$layout.js` renders the document and receives the page as `children`:
+Replace `app/$layout.js`. It renders the document and receives the current page
+as `children`:
 
 ```js
 // @flow
@@ -311,56 +234,38 @@ export component Layout(children: React.Node) {
 }
 ```
 
-`React.Node` is a type imported by a package name, and `uf check` resolves it
-the same way it resolves the `Article` above: through `@uniflowed/react`'s own
-manifest in `node_modules` and the `exports` map in it. That line used to read
-`children: mixed`, because the checker resolved no package and an annotation
-written against an any-typed value is an error rather than a weak type.
-[#248](https://github.com/ubugeeei-prod/uf/issues/248) and
-[#403](https://github.com/ubugeeei-prod/uf/issues/403) are the two halves of
-the work that changed it back. The scaffold still writes `mixed`, for a reason
-that has not gone away: it runs before `uf install`, so nothing is resolvable
-when it writes.
+`React.Node` describes renderable children. The layout stays mounted during
+navigation between its pages, so the header remains in place.
 
-A layout stays mounted while you navigate between pages under it, so the
-header's count survives navigation without being lifted anywhere.
+## Share state between components
 
-## State two components share
-
-`@uniflowed/state` is atoms: a value declared at module scope, read and written
-from anywhere, with no provider to mount and no context to thread.
+Create `app/state.js`. Atoms hold values, selectors compute derived values, and
+actions update them:
 
 ```js
 "use client";
 // @flow
 import { action, atom, selector } from "@uniflowed/state";
 
-/// The slugs the reader has saved. One atom, written from the list and read
-/// from the header, with nothing passed between them.
+/// Saved article slugs, shared by the list and header.
 export const savedSlugs = atom<$ReadOnlyArray<string>>([]);
 
-/// Derived, so the header re-renders when the count changes and not when the
-/// list is rewritten with the same length.
+/// The header updates when the saved count changes.
 export const savedCount = selector<number>((get) => get(savedSlugs).length);
 
-/// A write-only atom: `useSetAtom(toggleSaved)` gives a component the setter
-/// without subscribing it to the list.
+/// Toggle a saved article without subscribing to the list.
 export const toggleSaved = action<string>((get, set, slug) => {
   const saved = get(savedSlugs);
   set(savedSlugs, saved.includes(slug) ? saved.filter((each) => each !== slug) : [...saved, slug]);
 });
 
-/// One thing the reader typed into the form on this page. The id is here
-/// because a title is not an identity: nothing stops the same article being
-/// suggested twice, and two `<li>` siblings under one key is a list React is
-/// entitled to reconcile wrongly.
+/// A suggestion needs its own ID because titles may repeat.
 export type Suggestion = {
   readonly id: number,
   readonly title: string,
 };
 
-/// Client-side only: this is what the form writes, and it is thrown away on
-/// reload.
+/// Suggestions are stored in memory and reset on reload.
 export const suggestions = atom<$ReadOnlyArray<Suggestion>>([]);
 
 let nextSuggestionId = 0;
@@ -371,7 +276,7 @@ export const suggest = action<string>((get, set, title) => {
 });
 ```
 
-The header reads the derived count and nothing else:
+Create `app/SavedCount.js` to display the derived count:
 
 ```js
 "use client";
@@ -386,22 +291,14 @@ export component SavedCount() {
 }
 ```
 
-If you have used Jotai the shape is familiar and the naming is not:
-`atom(value)`, `atom(read)`, `atom(read, write)` and `atom(null, write)` are
-four separate functions here — `atom`, `selector`, `writableSelector` and
-`action` — because Flow resolves an overload set worse than TypeScript does, and
-because `atom(f)` cannot tell a derived atom from a primitive one holding a
-function. [The state guide](/guide/state) has the rest of the differences,
-including the one that will surprise you: an async atom is a `Loadable` value,
-not something a component suspends on.
+`"use client"` marks these modules for the browser. If you later use server-side
+rendering, give each request a separate store with `Provider` to avoid sharing
+state between users. This tutorial prerenders the pages.
+[The state guide](/guide/state) covers stores and async values.
 
-`"use client"` marks the module as the browser's. State at module scope is
-per-process on a server, so an application that renders per request should hand
-each request its own store with `Provider`; a prerender like this one does not.
+## Filter articles with tabs
 
-## A tab list you can use with a keyboard
-
-`@uniflowed/ui` ships behaviour and no styles. This is the whole filter:
+Create `app/TopicTabs.js`:
 
 ```js
 "use client";
@@ -453,19 +350,15 @@ export component TopicTabs(articles: $ReadOnlyArray<Article>) {
 }
 ```
 
-What that bought, without a line of it being written here: `role="tablist"`,
-`role="tab"` and `role="tabpanel"` wired to each other in both directions,
-exactly one tab in the page's tab order, arrow keys that move along the list and
-wrap, `Home` and `End`, and `ArrowDown` deliberately left alone so it still
-scrolls the page. Each of those is an assertion in `packages/ui/ui.test.js`,
-and [the UI guide](/guide/ui) maps every key of every component to the test that
-holds it.
+`Tabs` connects the tab, tab list and panel ARIA attributes. It supports arrow
+keys, Home and End, with one tab in the page's tab order.
+The components have no default styles. Use `className` with a stylesheet,
+CSS Modules or [uf's styling tools](/guide/styling).
+See [UI components](/guide/ui) for more controls.
 
-`className` passes through every part, so these take a stylesheet, CSS Modules,
-or uf's own presets — [styling](/guide/styling) covers the last of those, and
-what about it does not work yet.
+## Add a suggestion form
 
-## The form
+Create `app/AddArticle.js`:
 
 ```js
 "use client";
@@ -524,34 +417,19 @@ export component AddArticle() {
 }
 ```
 
-The inputs are uncontrolled: `register` gives each one a `name`, a `ref` and —
-once it has failed — `aria-invalid="true"` and an `aria-describedby` pointing at
-the message. `errorProps("title")` supplies the other half, the matching `id` and
-`role="alert"`, so the wiring is a pair of calls rather than a convention you
-have to remember. Neither attribute is emitted while the field is valid, because
-an `aria-describedby` pointing at an element that is not there makes a screen
-reader announce nothing at all.
+`register` provides the input's name and ref. When validation fails, it also
+sets `aria-invalid` and connects the input to the message from `errorProps`.
 
-The list keys by `suggestion.id` rather than by the title, which is why `suggest`
-gives out an id at all. Nothing in the form stops the same article being
-suggested twice — `required` asks for *a* title, not a new one — and two
-siblings under one key is the case React is allowed to get wrong, quietly, in a
-list that until then looked fine.
+Each suggestion has a unique ID, so repeated titles still have distinct React
+keys. Suggestions are stored in memory and disappear on reload.
 
-Coming from React Hook Form, three differences matter here and
-[the form guide](/guide/form) has the rest. Errors are flat, keyed by the string
-you registered — `errors["profile.city"]`, not `errors.profile.city`. A *dotted*
-field path is `string` and the value behind it is `mixed`, because Flow has no
-template-literal types; the same path given as **segments** is checked and
-typed — `getValues("profile", "city")` is a `string`, four segments deep. And
-reading `formState` where you called `useForm` costs one
-render when `isDirty` first turns on and two per submit, rather than the zero
-React Hook Form buys with a `Proxy` — a technique that depends on a render
-having happened, which is exactly what the React Compiler is allowed to skip.
+Errors use flat keys, such as `errors["profile.city"]`. For typed nested values,
+pass path segments: `getValues("profile", "city")`.
+[The form guide](/guide/form) covers validation and render behavior.
 
-## Test it
+## Test the application
 
-Three files: one that needs nothing, and two that render.
+Create `app/articles.test.js` for the data functions:
 
 ```js
 // @flow
@@ -576,9 +454,7 @@ describe("the reading list", () => {
 });
 ```
 
-A component test imports the runner and the DOM helpers from one place,
-`@uniflowed/testing`, and needs no setup file: a DOM is installed on the first
-render, on whichever host is running.
+Create `app/TopicTabs.test.js` for tab and save-button interactions:
 
 ```js
 // @flow
@@ -603,7 +479,10 @@ describe("TopicTabs", () => {
 });
 ```
 
-The form's test asserts the accessibility wiring rather than trusting it:
+`@uniflowed/testing` provides the test runner and DOM helpers. It creates the
+test DOM on the first render; no setup file is needed.
+
+Create `app/AddArticle.test.js` to check validation and accessible errors:
 
 ```js
 // @flow
@@ -638,250 +517,33 @@ describe("AddArticle", () => {
 });
 ```
 
-<div className="command"><code>uf test</code></div>
+Run the tests:
 
-<figure className="terminal">
-
-```
-uf test · reading-list
-──────────────────────
-
-  ✓ app/AddArticle.test.js  AddArticle > reports a missing title, and wires the message to the input
-  ✓ app/AddArticle.test.js  AddArticle > adds the article once both fields are answered
-  ✓ app/TopicTabs.test.js   TopicTabs > shows one topic at a time
-  ✓ app/TopicTabs.test.js   TopicTabs > moves between topics with the arrow keys
-  ✓ app/articles.test.js    the reading list > finds an article by its slug
-  ✓ app/articles.test.js    the reading list > answers null for a slug nothing matches
-  ✓ app/articles.test.js    the reading list > gives every topic a label
-
-  output
-  app/AddArticle.test.js
-    (node:7271) Warning: `--localstorage-file` was provided without a valid path
-    (Use `node --trace-warnings ...` to show where the warning was created)
-  app/TopicTabs.test.js
-    (node:7273) Warning: `--localstorage-file` was provided without a valid path
-    (Use `node --trace-warnings ...` to show where the warning was created)
-
-  slowest files
-  file                    duration
-  app/TopicTabs.test.js      1.38s
-  app/AddArticle.test.js     1.38s
-  app/articles.test.js       267ms
-
-  run   ························ 1.39s
-  total ························ 1.39s
-
-  passed    7
-  failed    0
-  skipped   0
-  todo      0
-  files     3
-  workers   12
-  schedule  3 recorded, 0 by size
-  timings   .uf/test-timings.json
-  host      node
-
-✓ 7 passed, 0 failed in 1.39s
+```sh
+uf test
 ```
 
-</figure>
+## Check, format and build
 
-Those two Node warnings came from installing the DOM, not from your test, and
-`uf test` no longer prints them:
-[#308](https://github.com/ubugeeei-prod/uf/issues/308) is closed, and
-`packages/react-testing/dom-storage.test.js` asserts a component test prints no
-`--localstorage-file` warning. They are left in this transcript because it was
-taken on `0.0.0-alpha.5`, and a clean one would have to be invented.
-
-## Check and format
-
-<div className="command"><code>uf check</code></div>
-
-<figure className="terminal">
-
-```
-uf check
-────────
-
-  files checked  14
-  errors         0
-  warnings       0
-  rules skipped  16
-
-  › these rules need Flow type inference, which uf does not implement yet
-    - flow/default-import-access
-    - flow/invalid-import-star-use
-    - flow/invalid-this-arg
-    - flow/libdef-override
-    - flow/nonstrict-import
-    - and 11 more
-
-✓ no problems
-
-  types checked  105
-  asked about    14 of 105
-  inference      786.5ms
-  builtins       28.8ms (cold)
-
-  › these imports are typed as any; uf resolved no module for them
-    - @uniflowed/cell
-    - @uniflowed/host/module-mocks
-    - @uniflowed/react-testing
-    - @uniflowed/validator
-    - node:async_hooks
-    - and 1 more
+```sh
+uf fmt
+uf run bundle
 ```
 
-</figure>
+`uf fmt` formats your changes. The `bundle` task then checks formatting, runs
+lint and type checks, runs tests, and builds the application.
 
-Fourteen files were asked about and a hundred and five were typed: the other
-ninety-one are the `@uniflowed` packages this application imports, read out of
-`node_modules` so that everything above is checked *against* the router's and
-the form's real types rather than against `any`. Six names are left over, and
-each is a different reason: `@uniflowed/host/module-mocks` says `@noflow` on
-purpose, because the loader runs before any transform exists; `@uniflowed/cell`,
-`@uniflowed/react-testing` and `@uniflowed/validator` are packages the ones
-above import and this project has not installed; and `node:async_hooks` and
-`node:module` are runtime builtins Flow's library definitions do not declare.
-An import that is typed as `any` is named, so that the hole is stated rather
-than silent.
+The build writes the home page and each article listed by
+`generateStaticParams` to `dist/`. To inspect bundle sizes, run
+`uf build --size-report`.
 
-`uf fmt --check` exits 0 on every file in this page, which is how they were
-written: the code here was formatted by the tool rather than by hand.
+Build reports are stored in `.uf/build/meta/`, outside the public output.
+Set [`site.url`](/reference/config#site) to generate `sitemap.xml` and `robots.txt`.
 
-## Build it
+Use `uf dev` while editing, `uf preview` to inspect the build, and
+[Deploy a web build](/guide/deploy) to choose a deployment target.
 
-<div className="command"><code>uf build --size-report</code></div>
+## Next steps
 
-<figure className="terminal">
-
-```
-uf build · reading-list
-───────────────────────
-
-  config       ························ 122.6µs
-  routes       ························ 192.3µs
-  router types ························ 300.3µs
-  rsc analysis ························     1ms
-  vite         ························   3.49s
-  manifest     ························ 726.5µs
-  rsc manifest ························ 272.9µs
-  metadata     ························   167ns
-  bundle size  ························   2.95s
-  total        ························   6.45s
-
-  engine             vite
-  host               node
-  entries            app.js
-  routes             2
-  prerendered pages  4
-  modules            11
-  client components  3
-  server actions     0
-  rsc diagnostics    0
-
-  shipped
-    assets  17
-    raw     245.35 kB
-    gzip    80.11 kB
-    brotli  69.45 kB
-
-    asset                                          kind             gzip        raw
-    assets/client-Ck9fJOtz.js.map                  source-map  176.63 kB  881.84 kB
-    assets/client-Ck9fJOtz.js                      javascript   63.64 kB  202.42 kB
-    assets/$page-CCpsAGfo.js.map                source-map   58.84 kB  213.07 kB
-    assets/state-C5bwrBVn.js.map                   source-map   29.72 kB   98.43 kB
-    assets/$page-CCpsAGfo.js                    javascript   10.10 kB   28.65 kB
-    assets/state-C5bwrBVn.js                       javascript    2.58 kB    6.56 kB
-    assets/articles-DzlNJoIc.js.map                source-map      911 B    2.00 kB
-    assets/$page-Dk6TuWlb.js.map                source-map      803 B    1.97 kB
-    index.html                                     html            801 B    1.95 kB
-    assets/$layout-DVv7YWPk.js.map              source-map      743 B    1.92 kB
-    assets/$layout-DVv7YWPk.js                  javascript      522 B      914 B
-    assets/$page-Dk6TuWlb.js                    javascript      522 B      933 B
-    assets/articles-DzlNJoIc.js                    javascript      415 B      651 B
-    articles/the-compiler-is-not-magic/index.html  html            407 B      676 B
-    articles/component-syntax/index.html           html            406 B      671 B
-    articles/one-parse/index.html                  html            393 B      634 B
-    .vite/manifest.json                            json            323 B    1.27 kB
-
-  output
-    reading-list
-    ├─ .uf
-    │  └─ build
-    │     └─ meta
-    │        ├─ uf-build-manifest.json
-    │        ├─ uf-bundle-report.json
-    │        └─ uf-rsc-manifest.json
-    ├─ dist
-    │  ├─ articles
-    │  │  ├─ component-syntax
-    │  │  │  └─ index.html
-    │  │  ├─ one-parse
-    │  │  │  └─ index.html
-    │  │  └─ the-compiler-is-not-magic
-    │  │     └─ index.html
-    │  └─ index.html
-    └─ router.js
-```
-
-</figure>
-
-Two routes, four prerendered pages: `/`, and one per `generateStaticParams`
-entry. The tab list is in the HTML with its ARIA already on it, the loader ran
-during the build, and 63.6 kB of the 80 kB gzipped is React itself.
-
-Thirty-eight lines are cut from that transcript, all of them the same warning:
-`! [plugin uf:flow] a function: This value cannot be modified` and two variants
-of it, from React Compiler passes over code inside `@uniflowed/form` and
-`@uniflowed/state`. On `0.0.0-alpha.5` they named no file, no line and no
-function, so there was nothing an application author could do with them; a
-React Compiler finding names its file and its function now
-([#307](https://github.com/ubugeeei-prod/uf/issues/307)). They are the only
-lines removed from any output on this page.
-
-`dist/` is static files, and any static host serves them — which is why the
-three JSON files are not in it. `uf-build-manifest.json`,
-`uf-rsc-manifest.json` and `uf-bundle-report.json` are for you and for tooling,
-nothing reads them to answer a request, and between them they name every route
-including the ones nothing links to, the source file behind each one and the
-size of every chunk. They go in `.uf/build/meta/`, one directory away from
-anything a visitor can fetch.
-
-This project sets no `site.url`, so the build wrote no `sitemap.xml` and no
-`robots.txt` — that is the `metadata 167ns` line above, which is the phase
-deciding it has nothing to do. [`uf.config.js`](/reference/config#site) has the
-one field that changes it.
-
-[Deploy a web build](/guide/deploy) is the guide for what happens after this:
-`uf preview`, `uf start`, `uf build --adapter` for one of seven targets, or
-`uf build --compile` for a single executable. No server target's output has
-been deployed to its real platform by uf's own pipeline yet
-([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
-
-`uf dev` runs the same application with hot reload. It is the one command on
-this page with no transcript: the sandbox this was written in cannot bind a
-port, and output nobody produced does not belong here.
-
-## What did not work
-
-Four things were found while writing this page, and left visible rather than
-written around. Three have been fixed since: the stylesheet `stylex.create`
-compiles now reaches `dist/`
-([#306](https://github.com/ubugeeei-prod/uf/issues/306)), a React Compiler
-finding names its file and its function
-([#307](https://github.com/ubugeeei-prod/uf/issues/307)), and a component test
-no longer prints Node's `--localstorage-file` warning
-([#308](https://github.com/ubugeeei-prod/uf/issues/308)). One still does not
-work:
-
-| What | Where it bites | Tracked |
-| --- | --- | --- |
-| A call that cannot return does not end the branch | `throw notFound()`, where `notFound(): empty` would do | Flow's own; no analysis for it |
-
-## Where to go next
-
-That is the end of Start. [Build an app](/guide/build-an-app) is next: one guide
-per thing an application does, starting with the Flow syntax and the route table
-this application leaned on. [Testing](/guide/testing) is watch mode, and where
-the runner stands against Bun.
+[Build an app](/guide/build-an-app) links to guides for routing, data and UI.
+[Testing](/guide/testing) covers watch mode and more test helpers.

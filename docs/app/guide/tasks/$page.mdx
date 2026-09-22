@@ -1,6 +1,6 @@
 ---
 title: "Tasks · uf"
-description: "uf run, ufr and ufx: tasks as a dependency graph, run side by side, cached on the files they declare."
+description: "Define commands, connect dependencies and cache task results."
 ---
 
 <p className="eyebrow">The toolchain</p>
@@ -8,23 +8,17 @@ description: "uf run, ufr and ufx: tasks as a dependency graph, run side by side
 # Tasks
 
 <div className="lede">
-`uf install` refuses a `package.json` with `scripts` in it, so a uf project's
-automation lives in `uf.config.js`, as tasks. `uf run` runs one and everything it
-depends on — in dependency order, several at a time, and from a cache when the
-files a task reads have not changed.
+Define project commands in `uf.config.js`. `uf run` runs a task and its
+dependencies, with parallel execution and optional caching.
 </div>
 
-**What you will be able to do:** declare tasks, run them in the order their
-dependencies need, make a slow one cacheable and know what its cache key holds,
-read why each task ran or was replayed, and run a package's binary with `ufx`.
+Start with [a uf project](/guide/project). Project automation belongs in the
+config's `tasks` field; `uf install` rejects `package.json` scripts.
 
-**What you need first:** a project with a `uf.config.js` —
-[Your first project](/guide/project) has one. Nothing has to be installed for
-`uf run` to read your tasks: the config is read without being run.
+## Define tasks
 
-## Declaring them
-
-A task is a command under `tasks`, as a string or as an object:
+A task can be a command string or an object with options. This example assumes
+the project has scripts for generating tokens, icons and an asset summary:
 
 ```js
 // @flow
@@ -48,20 +42,20 @@ export default defineConfig({
 });
 ```
 
-| Field | What it does |
+| Field | Purpose |
 | --- | --- |
-| `command` | What runs. Required in practice: a task without one is handed to Vite Task, below |
-| `dependsOn` | Tasks that have to succeed first — `member#task` for one in another workspace member |
-| `inputs` | Globs naming the files the task reads. A task with none is never cached |
-| `outputs` | Globs naming what it writes, checked before a cached result is replayed |
-| `env` | Variables uf sets for the task |
-| `cwd` | Where it runs, relative to the project root |
-| `cache` | `false` turns caching off for a task that declares `inputs` |
+| `command` | Command to execute; omitting it delegates to [Vite Task](#a-task-with-no-command) |
+| `dependsOn` | Tasks that must succeed first; use `member#task` for another workspace member |
+| `inputs` | File globs used to calculate the cache key; no inputs means no caching |
+| `outputs` | File globs checked before replaying a cached result |
+| `env` | Environment variables for the task |
+| `cwd` | Working directory relative to the project root |
+| `cache` | Set to `false` to disable caching |
 
-`uf run` with no task lists what the project defines, and `ufr` is the same
-command under a shorter name:
+Use task names that describe your workflow, such as `verify` or `bundle`.
+Built-in commands such as `uf fmt` and `uf lint` are available directly.
 
-<figure className="terminal">
+Run `uf run` without a name to list tasks:
 
 ```
 uf run · site
@@ -76,15 +70,10 @@ uf run · site
 › 4 tasks; run one with `uf run <task>`
 ```
 
-</figure>
+`ufr` is a shortcut for `uf run`. `ufx` is a shortcut for `uf exec`.
+Both are installed with uf.
 
-`ufr` and `ufx` are binaries of their own, installed beside `uf` by the installer
-and the Nix flake, and each one is `uf` choosing its command from the name it was
-started under — `ufr` is `uf run`, `ufx` is `uf exec`.
-
-## Running one, and what it depends on
-
-<figure className="terminal">
+## Run a task and its dependencies
 
 ```
 $ uf run assets
@@ -97,62 +86,51 @@ done
   3 tasks, 0 replayed, 3 run, in 0.05s
 ```
 
-</figure>
+`tokens` and `icons` run in parallel. `assets` starts after both succeed.
+A shared dependency runs only once.
 
-The two dependencies ran at the same time, because neither depends on the other.
-`uf run` starts at most four tasks at once, or one per core when the machine has
-fewer, and `-j N` changes that — never past the number of cores. A dependency
-reached by two paths runs once.
+By default, uf runs up to four tasks at once, limited by the number of CPU cores.
+Use `-j N` to change the limit; it cannot exceed the core count.
 
-What a dependency prints is written behind its name, and what the task you asked
-for prints is written plainly, so the output you asked for reads the way it would
-on its own. The `✓` lines and the summary are uf's and go to stderr. A run of one
-task prints neither, unless you ask why.
+Dependency output is prefixed with the task name. The requested task's output
+is printed directly. Status lines and the summary go to stderr. A single task
+has no summary unless you pass `--why`.
 
-## How a command runs
+## Commands and arguments
 
-A command that is a program and its arguments is started by uf itself, with no
-shell in between, so it runs the same on a machine without one. A command that
-uses shell syntax — a pipe, `&&`, a redirection, `$VARIABLE`, a glob, a built-in
-such as `cd` — is handed to `sh -c` as written. A leading `NAME=value` sets a
-variable without a shell.
+uf starts a program and its arguments directly. Commands that use shell syntax,
+such as pipes, `&&`, redirects, `$VARIABLE`, globs or `cd`, run through `sh -c`.
+Those commands need a POSIX shell, including on Windows.
+A leading `NAME=value` sets a variable without requiring a shell.
 
-A task's environment is the `.env` cascade for the mode (`development` unless
-`--mode` says otherwise; [Environments](/guide/env) has the order), then the
-task's `env`, then any `NAME=value` in the command — and a variable already set
-in the process environment beats every file.
+Tasks receive the [mode's environment files](/guide/env), followed by the task's
+`env` and any leading `NAME=value` assignments. Existing process variables take
+priority over environment files. The default mode is `development`; change it
+with `--mode`.
 
-**Arguments after the task name are added to the command and read again.** They
-do not reach the program one to an argument:
-
-<figure className="terminal">
+Arguments after the task name are appended to the command and parsed again.
+Quoted arguments may split, and shell characters can cause shell execution:
 
 ```
 $ uf run greet -- --loud "two words"
 arguments: ["--loud","two","words"]
 ```
 
-</figure>
+Use `--` to separate task arguments from uf options such as `--why`, `--force`,
+`--mode` and `-j`.
 
-`two words` arrived as two arguments, and a `;` or a `$` in an argument would hand
-the whole line to `sh`. The flags `uf run` has itself — `--why`, `--force`,
-`--mode`, `-j` — are uf's when they come straight after the task name, which is
-what the `--` above is for.
+## Cache results
 
-## The cache
+An object task is cacheable when it has non-empty `inputs` and `cache` is not
+`false`. The cache key includes:
 
-A task is cached when it is written as an object with a non-empty `inputs`, and
-`cache` is not `false`. Its key is a hash of:
+- The task name, command and arguments.
+- The mode, resolved environment-file values, task `env` and `cwd`.
+- The `inputs` patterns and the contents of matching files.
+- The `outputs` patterns.
 
-- the task's name and its command, with the arguments it was given;
-- the mode, the `.env` values the task was given, its `env` and its `cwd`;
-- the `inputs` patterns as written, and every file they match, by content;
-- the `outputs` patterns as written.
-
-A second run with the same key replays what the first one printed and does not run
-the command. `--why` says, for each task, why it ran or was replayed:
-
-<figure className="terminal">
+A matching result replays the previous output without running the command.
+Use `--why` to see each decision:
 
 ```
 $ uf run assets --why
@@ -165,55 +143,38 @@ done
   3 tasks, 2 replayed, 1 run, in 0.02s
 ```
 
-</figure>
-
-Change a file one task reads, and only that task runs again; delete a file one of
-them wrote, and the cache refuses to call that task done:
-
-<figure className="terminal">
+Changing an input or deleting an output runs the affected task again:
 
 ```
 ✓ tokens  ran       0.02s  — tokens/colors.json changed
 ✓ icons   ran       0.02s  — generated/icons.txt is missing
 ```
 
-</figure>
+Outputs are checked, not restored. Every recorded output must still exist with
+the same content. Failed runs are not cached. `--force` reruns tasks and records
+fresh results. Cache records live in `.uf/cache/task/`; `uf clean` removes
+`.uf/`, including this cache.
 
-`outputs` are checked, not restored: a result is replayed only while every file
-it recorded is still on disk with the content it had, which is why deleting a
-build directory rebuilds it. A run that failed is never recorded. `--force` runs
-every cacheable task whatever the cache holds, and still records what they
-produce. The records are under `.uf/cache/task/`, and `uf clean` removes all of
-`.uf/`.
+The `--why` metadata stores environment variable names and value digests,
+not raw values. Digests of predictable values can still be guessed.
 
-The note `--why` compares against keeps the name of every variable a task was
-given and a digest of its value, never the value, which is how `--why` can say
-that `API_TOKEN` changed without saying what to. A digest does not hide a value
-that can be guessed — `DEBUG=true` is one of a handful — and no cache keyed by
-content can: whoever holds `.uf/cache` can check a guess against it.
+### Cache limits
 
-Four things the key does not know, and what each one costs:
+Account for these when choosing `inputs`:
 
-- **The process environment.** A variable exported in the shell and read by the
-  task is not in the key, so changing it replays a stale answer. Put a value the
-  task depends on in `env`, where uf sets it.
-- **The machine.** uf's own version, the Node on `PATH`, the platform and the
-  shell are not in it. A task whose answer depends on one of them should not
-  declare `inputs`, the argument this repository's own `uf.config.js` makes for
-  every `cargo` task.
-- **Its dependencies' results, inside one project.** A task is replayed on its
-  own key; a dependency in the same project that ran again does not make its
-  dependents run again — name the files that dependency writes in `inputs`. A
-  dependency in another workspace member is the exception, below.
-- **Every directory.** `**` does not descend into `.git`, `.uf`, `.uniflowed`,
-  `dist`, `node_modules` or `target` unless the pattern names that directory
-  literally, and does not follow symbolic links. So `outputs: ["packages/*/dist/**"]`
-  matches nothing, and a deleted `dist` behind it is not noticed — name the
-  directory, `packages/ui/dist/**`.
+- **Process environment:** exported shell variables are not part of the key.
+  Declare values that affect a task in its `env`.
+- **Toolchain and platform:** the uf version, JavaScript host, OS and shell are
+  not included. Disable caching when those can change the result.
+- **Dependencies in the same project:** a dependency rerunning does not
+  invalidate its dependents. Include the files it generates in their `inputs`.
+  [Cross-member dependencies](#workspaces) also include the dependency result.
+- **Excluded directories:** `**` skips `.git`, `.uf`, `.uniflowed`, `dist`,
+  `node_modules` and `target`, and does not follow symlinks. Name an excluded
+  directory with its literal path: `packages/ui/dist/**` works;
+  `packages/*/dist/**` does not.
 
-## When a task fails
-
-<figure className="terminal">
+## Handle failures
 
 ```
 $ uf run release
@@ -225,18 +186,12 @@ schema  | schema: the field `id` is declared twice
 error: task "schema" exited with exit status: 3
 ```
 
-</figure>
+After a failure, no new task starts. Tasks already running finish.
+`uf run` exits with status 1 and reports the failed task's exit code.
+Use `uf exec` when you need to return a child program's exit code directly.
 
-After the first failure no new task starts; the ones already running finish.
-`uf run` exits 1 whatever the failing task exited with — the task's own status is
-in the message, and `uf exec` is the command that passes a child's status on.
-
-## What it refuses before it starts
-
-A loop in `dependsOn`, a name that is not a task, and a request to cache a task
-that names nothing to key on are refused before anything runs:
-
-<figure className="terminal">
+Before execution, uf rejects dependency cycles, missing tasks and requests to
+cache a task without inputs:
 
 ```
 error: `dependsOn` in uf.config.js closes a loop: loop-a → loop-b → loop-a
@@ -244,35 +199,21 @@ error: `dependsOn` in uf.config.js closes a loop: loop-a → loop-b → loop-a
   each of these waits for the next, so none of them can start
 ```
 
-</figure>
-
-<figure className="terminal">
-
 ```
 error: task "asets" is not defined in uf.config.js
 
   did you mean: assets
 ```
 
-</figure>
-
-A cycle between tasks the one you asked for never reaches is not reported,
-because only what that task reaches is planned.
+Only tasks reachable from the requested task are checked for cycles.
 
 ## Workspaces
 
-A workspace member is a directory with its own `uf.config.js`, or a package the
-root `package.json#workspaces` lists, and it declares its tasks in its own
-`uf.config.js`. `uf run#site build` runs the `build` task of the member named
-`site`, exactly as `uf run build` inside `site` would.
+A workspace member is a directory with `uf.config.js`, or a package listed in
+the root's `package.json` workspaces. Each member defines its own tasks.
 
-`uf run build -r` runs `build` in every member that defines one. Each member runs
-after the members its `package.json` depends on — `dependencies`,
-`devDependencies`, `peerDependencies` or `optionalDependencies`, matched by name
-whatever the version says — so the workspace builds in the order it has to, and
-members with nothing between them run at once, under the same `-j` limit:
-
-<figure className="terminal">
+`uf run#site build` runs `build` in the `site` member.
+`uf run build -r` runs it in every member that defines it:
 
 ```
 $ uf run build -r
@@ -282,45 +223,37 @@ $ uf run build -r
   3 tasks, 0 replayed, 3 run, in 0.06s
 ```
 
-</figure>
+Members run after their package dependencies. uf uses `dependencies`,
+`devDependencies`, `peerDependencies` and `optionalDependencies`, matched by
+package name. Independent members run in parallel under the same `-j` limit.
+The root's own tasks are excluded from `-r`; run those without `-r`.
 
-The workspace root's own tasks are not part of `-r`: `uf run build` at the root
-runs the root's `build`.
-
-`--filter` runs the task in some members instead of all of them, and implies
-`-r`. Write it more than once to select more:
+`--filter` selects members and implies `-r`. Repeat it to combine selections:
 
 | `--filter` | Selects |
 | --- | --- |
-| `ui` | the member named `ui`, or at the path `ui` |
-| `@acme/*`, `packages/*` | the members whose name or path the glob matches |
-| `./packages/ui` | the member at that path; a glob after `./` matches paths only |
-| `app...` | `app` and everything it depends on |
-| `app^...` | only what `app` depends on |
-| `...ui` | `ui` and everything that depends on it |
-| `...^ui` | only what depends on `ui` |
+| `ui` | Member named `ui` or at path `ui` |
+| `@acme/*`, `packages/*` | Members matching the name or path glob |
+| `./packages/ui` | Member at that path; globs after `./` match paths only |
+| `app...` | `app` and its dependencies |
+| `app^...` | Only the dependencies of `app` |
+| `...ui` | `ui` and its dependents |
+| `...^ui` | Only the dependents of `ui` |
 
-A selector that selects no member is refused, rather than running nothing and
-exiting 0.
+A filter that matches no member is an error.
 
-A task in one member can depend on a task in another: `dependsOn: ["ui#build"]`
-names `build` in the member `ui`, by its name or its path. That works at the
-workspace root and inside a member — `uf run#app build` finds `ui` through the
-workspace above `app`. A task whose own name contains a `#` is still that task
-when the config defines it.
+Use `dependsOn: ["ui#build"]` to depend on another member's task. The member can
+be named by package name or path. This works from the root or another member.
+A task name containing `#` still takes precedence when that exact task exists
+in the config.
 
-**Each member keeps its own cache**, in its own `.uf/cache/task` and keyed on its
-own `inputs`, so `uf run build` inside a member and `uf run build -r` at the root
-replay the same records. A task that depends on a task in *another* member is
-keyed on that task's result as well: change a file `ui` reads, and `ui#build`
-and then `app#build` run again while `utils#build` is replayed. A task that
-depends on another member's task that is not cached always runs, because nothing
-can say whether what it depends on changed.
+Each member keeps its cache in its own `.uf/cache/task/`. Running a task directly
+or through `-r` uses the same records. Cross-member dependencies add their
+result to the dependent task's cache key. If a dependency has no cache, its
+dependent always runs.
 
-With `--why`, a run that spans more than one member prints its graph before it
-starts, and a task that ran because another member changed says which:
-
-<figure className="terminal">
+For a run across multiple members, `--why` prints the graph and explains
+changes caused by dependencies:
 
 ```
 $ uf run build -r --why
@@ -334,27 +267,25 @@ $ uf run build -r --why
   3 tasks, 1 replayed, 2 run, in 0.04s
 ```
 
-</figure>
-
-`uf explain run` names the members, how many tasks each one defines, and the
-order they run in.
+`uf explain run` lists workspace members, task counts and execution order.
 
 ## A task with no command
 
-A task written as an object without `command` is handed to Vite Task: uf starts
-`vp run <name>`, or whatever `UF_VITE_TASK_BIN` names, in the project root, and a
-machine without it gets `task "<name>" could not start`. uf's own scheduling and
-cache do not apply to it.
+An object without `command` delegates to Vite Task. uf starts `vp run <name>`,
+or the program set by `UF_VITE_TASK_BIN`, in the project root.
+The command must be installed. uf's scheduling and cache do not apply to it.
 
-## ufx: a package's binary
+## Run a package binary
 
-`uf exec`, or `ufx`, runs a package's binary with the project's `.env` values,
-from the project root, and exits with the binary's own status. It looks in this
-order: uf's own `@uniflowed/create`, `@uniflowed/test` and `@uniflowed/pm`, run
-inside uf; `node_modules/.bin` in the project root — not a parent's, and not
-`PATH`; and a path to a file. Anything else is refused rather than fetched:
+`uf exec`, or `ufx`, runs from the project root with its environment values and
+returns the program's exit code. It looks for:
 
-<figure className="terminal">
+1. Built-in handlers for `@uniflowed/create`, `@uniflowed/test` and `@uniflowed/pm`.
+2. A binary in the project's `node_modules/.bin`.
+3. A file path.
+
+It does not search parent projects or `PATH`, and does not download a missing
+package by default:
 
 ```
 $ ufx left-pad
@@ -363,23 +294,18 @@ Declare it in package.json and run `uf install`, or say so explicitly:
 `uf exec --yes left-pad`, which runs `npx --yes left-pad`.
 ```
 
-</figure>
+Pass `--yes` to let the project's package manager fetch it using `npx --yes`,
+`pnpm dlx`, `yarn dlx` or `bunx`. `--yes` is a uf option even after the package
+name. A bare `--` after the name is removed; other arguments reach the binary.
 
-With `--yes`, uf hands the fetch to the project's package manager — `npx --yes`,
-`pnpm dlx`, `yarn dlx` or `bunx`. `--yes` is uf's even after the package name, and
-a bare `--` there is dropped; everything else after the name reaches the binary.
+## Current limits
 
-## What is not here
+`uf run` has no JSON output, dry run, task timeout or remote cache. Cached
+outputs are not restored from storage; missing files trigger a new run.
 
-No `--json` for `uf run`, no dry run and no way to print the plan without running
-it, no time limit on a task, no remote cache, and no restoring a task's outputs
-from the cache — a cached result that is missing its files runs again instead.
+## Next steps
 
-## Where to go next
-
-[uf in CI](/guide/ci) is next: the checks a pipeline runs on every change, and the
-install that has to come before them. A `ci` task that depends on each check, the
-way [Formatting and linting](/guide/format#in-ci) writes one, is how a laptop runs
-the same list. [Environments](/guide/env) is the `.env` cascade a task is given,
-and [`tasks`](/reference/config#tasks-and-plugins) and
-[`uf run`](/reference/cli#uf-run-script-args) are the reference.
+[uf in CI](/guide/ci) shows how to run checks in a pipeline.
+[Environments](/guide/env) explains environment files and modes.
+See the [task configuration](/reference/config#tasks-and-plugins) and
+[CLI reference](/reference/cli#uf-run-script-args) for all options.

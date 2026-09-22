@@ -1,6 +1,6 @@
 ---
 title: "Install · uf"
-description: "One binary, three runtimes, no plugins to add."
+description: "Install uf on macOS, Linux or Windows."
 ---
 
 <p className="eyebrow">Start</p>
@@ -8,136 +8,116 @@ description: "One binary, three runtimes, no plugins to add."
 # Install
 
 <div className="lede">
-uf is a single native binary. It needs a JavaScript host — Node.js, Bun or
-Deno — because Vite and your test bodies run there, but it is not installed
-through one.
+Install uf, then choose a JavaScript host for development, builds and tests.
 </div>
 
-**What you will be able to do:** install uf from a release, with Nix or from
-source, know what the installer verified, and see which JavaScript host uf will
-run on.
-
-**What you need first:** macOS or Linux on x86-64 or ARM64, or Windows on
-x86-64; and Node.js or Bun, which Vite and your tests run on.
+uf supports macOS and Linux on x86-64 and ARM64, and Windows on x86-64.
+You also need Node.js, Bun or Deno. See [JavaScript hosts](#the-javascript-host)
+for runtime differences.
 
 ## From a release
 
-Every tagged release publishes binaries for macOS and Linux on x86-64 and
-ARM64, plus Windows on x86-64:
+On macOS, Linux or WSL2:
 
-<div className="command"><code>curl -fsSL https://setup.uniflowed.dev | sh</code></div>
+```sh
+curl -fsSL https://setup.uniflowed.dev | sh
+```
 
-On Windows:
+On Windows, use PowerShell:
 
-<div className="command"><code>irm https://setup.uniflowed.dev/install.ps1 | iex</code></div>
+```powershell
+irm https://setup.uniflowed.dev/install.ps1 | iex
+```
 
-The installer picks the binary for your platform, checks it, and puts it in its bin
-directory. Add that directory to `PATH` if it is not already there. The POSIX script works under `sh`, `bash` and `zsh`; the Windows script
-runs under PowerShell. Read either one before you run it — they are served from
-`https://setup.uniflowed.dev/install.sh` and
-`https://setup.uniflowed.dev/install.ps1` if you would rather fetch them first.
+The installer downloads the release for your platform and adds the `uf`, `ufr`
+and `ufx` launchers to `~/.local/bin` by default. Add that directory to `PATH`
+if your terminal cannot find them. The installer does not edit your shell profile.
 
-### What it checks, and what that proves
+You can inspect the [POSIX installer](https://setup.uniflowed.dev/install.sh)
+or [PowerShell installer](https://setup.uniflowed.dev/install.ps1) before running it.
+The POSIX script supports `sh`, `bash` and `zsh`.
 
-Two separate things, because they answer two questions.
+### Verify downloads
 
-The **SHA-256** beside the archive proves *transit*: the bytes that arrived are
-the bytes that host advertised, which catches a truncated download or a
-corrupting proxy. It proves nothing about origin — the archive and the checksum
-come from the same host, so whoever can replace one can replace the other.
+The installer checks SHA-256 checksums to detect damaged downloads.
+It can also verify the release's Sigstore signature against the GitHub release
+workflow's identity. Install [cosign](https://github.com/sigstore/cosign) to enable
+signature verification.
 
-The **signature** proves *origin*. Every release archive is signed with keyless
-Sigstore from the release workflow's own GitHub OIDC identity, and the installer
-verifies the bundle against that identity — a root that is not on the host
-serving the archive. Install [`cosign`](https://github.com/sigstore/cosign) and
-the check runs; without it the installer says the signature was not checked
-rather than implying it was.
+Checksums from the download host alone do not establish who produced an archive.
+Set `UF_VERIFY_ORIGIN=require` to require an origin check. With the default
+`auto`, the installer reports when it cannot perform that check.
 
-| Variable | Default | What it does |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `UF_VERIFY_ORIGIN` | `auto` | `require` refuses an install whose origin nothing established; `off` skips the check |
-| `UF_CHECKSUM_BASE` | unset | A `<base>/<version>/<asset>.sha256` layout on a host that does **not** serve the archive. The two digests must agree |
-| `UF_VERSION` | `latest` | A specific release |
-| `UF_RELEASE_BASE` | unset | A mirror serving the flat `<base>/<version>/<asset>` layout |
-| `UF_INSTALL_ROOT`, `UF_BIN_DIR` | XDG paths | Where the runtime and the shims go |
+| `UF_VERIFY_ORIGIN` | `auto` | `require` demands an origin check; `off` disables it |
+| `UF_CHECKSUM_BASE` | unset | Check a second digest from an independent host, using `<base>/<version>/<asset>.sha256` |
+| `UF_VERSION` | `latest` | Install a specific version |
+| `UF_RELEASE_BASE` | unset | Download from a mirror using `<base>/<version>/<asset>` |
+| `UF_INSTALL_ROOT` | Platform data directory | Store versioned runtimes |
+| `UF_BIN_DIR` | `~/.local/bin` | Store command launchers |
 
-A signature that is present and does not verify **always** refuses, whatever
-`UF_VERIFY_ORIGIN` says — and so does a second opinion that disagrees. The
-failure prints cosign's own words, because a signature made by somebody else and
-a `cosign` too old to read the bundle exit the same way and are not the same
-problem. uf's own release pipeline installs with `UF_VERIFY_ORIGIN=require`, so
-a release whose signature does not verify never reaches you.
+When origin checking is enabled, an invalid signature or a conflicting
+independent checksum stops installation. Some older releases have no signature;
+installing those with `require` needs an independent checksum source.
 
-The default is `auto` and not `require` for one reason, which will stop being
-true: releases published before signing existed carry no bundle, and a default
-that refused them would make every pinned `UF_VERSION` of an older release
-uninstallable by the current script. Pass `UF_VERIFY_ORIGIN=require` today to
-get the stricter behaviour; it is what the default becomes once every release a
-person can still install is signed.
+### Windows paths
 
-### On Windows
+Windows uses `.cmd` launchers in `%USERPROFILE%\.local\bin`. The executables live
+in versioned directories under `%LOCALAPPDATA%\uf\runtimes`, or
+`~/.local/share/uf/runtimes` when `LOCALAPPDATA` is unset.
+Use `UF_INSTALL_ROOT` and `UF_BIN_DIR` to choose other locations.
 
-The PowerShell installer installs `uf.exe`, `ufr.exe` and `ufx.exe` into
-`%USERPROFILE%\.local\bin` by default. Add that directory to `PATH` if your
-current terminal cannot find `uf` afterwards. `UF_INSTALL_ROOT`, `UF_BIN_DIR`,
-`UF_VERSION` and `UF_RELEASE_BASE` work the same way as they do for the POSIX
-script.
+## Update or roll back
 
-WSL2 still works too, and uses the Linux install line above.
+```sh
+uf self-update
+```
 
-### Updating, and going back
+This installs the newest release with the same download checks.
+Use `uf self-update --check` to check without installing, or
+`uf self-update 0.0.0-alpha.35` to select a version.
 
-<div className="command"><code>uf self-update</code></div>
+To return to the previous installed version without downloading it again:
 
-installs the newest release through the same script, with the same checks, and
-switches `uf`, `ufr` and `ufx` to it. `uf self-update --check` says whether
-there is a newer release without installing it, and
-`uf self-update 0.0.0-alpha.35` installs that release instead of the newest.
+```sh
+uf self-update --rollback
+```
 
-The version an update replaces stays in the store, under
-`~/.local/share/uf/runtimes`, and is recorded beside it, so
+Previous runtimes remain in the install store. Running the installer again also
+records the version it replaces, so the same rollback command applies.
 
-<div className="command"><code>uf self-update --rollback</code></div>
+## Uninstall
 
-switches back to it without the network. Running the installer again records
-what it replaced in the same place, so a rollback after `curl … | sh` returns
-to the version that one replaced.
+```sh
+uf self-uninstall
+```
 
-Every switch, the installer's and uf's, renames each link over the old one with
-`uf` last, and only ever renames a whole runtime into the store. An update that
-is interrupted leaves the old version working, or the new one — never a `uf`
-that points at nothing.
-
-### Uninstalling
-
-<div className="command"><code>uf self-uninstall</code></div>
-
-lists the links, the runtimes and the toolchain store it would remove, asks, and
-removes them. `uf self-uninstall --dry-run` only lists them. A `uf` it did not
-link, your projects and your shell profile are left as they are — the installer
-never edits a profile, so there is no line of uf's to take back out.
+The command lists what it will remove and asks for confirmation.
+Use `--dry-run` to preview the list. It leaves projects, shell profiles and
+unrelated executables unchanged.
 
 ## With Nix
 
-The repository is a flake, and it is the whole install: it pins the Rust
-toolchain, fetches Meta's Flow port at the commit uf was built against, and
-applies uf's patches to it, so a build here is the same build everywhere.
+Run uf without installing it:
 
-Run it without installing anything:
+```sh
+nix run github:ubugeeei-prod/uf
+```
 
-<div className="command"><code>nix run github:ubugeeei-prod/uf</code></div>
+Or install `uf`, `ufr` and `ufx` into your profile:
 
-Install it into a profile:
+```sh
+nix profile install github:ubugeeei-prod/uf
+```
 
-<div className="command"><code>nix profile install github:ubugeeei-prod/uf</code></div>
+To run another entry point directly, use a flake output such as
+`nix run github:ubugeeei-prod/uf#ufx`.
 
-Both give you `uf`, `ufr` and `ufx`. `nix run github:ubugeeei-prod/uf#ufx` runs
-one of the others directly.
+### System configuration
 
-### In a system configuration
-
-For NixOS and nix-darwin, `nixosModules.default` and `darwinModules.default`
-take the same option; home-manager takes `homeManagerModules.default`:
+NixOS and nix-darwin expose `nixosModules.default` and `darwinModules.default`.
+Home Manager uses `homeManagerModules.default`:
 
 ```nix
 {
@@ -149,8 +129,7 @@ take the same option; home-manager takes `homeManagerModules.default`:
 }
 ```
 
-Or take the overlay, if you would rather have `pkgs.uf` and place it yourself.
-It composes in the Rust overlay uf needs, so this is the only line required:
+You can also use the overlay to provide `pkgs.uf`:
 
 ```nix
 {
@@ -159,55 +138,52 @@ It composes in the Rust overlay uf needs, so this is the only line required:
 }
 ```
 
-There is no binary cache for these yet, so the first build compiles the Flow
-parser and the React Compiler from source and takes a while. The release
-tarballs above are the fast path; this is the reproducible one.
+There is no binary cache yet. The first build compiles Flow and the React
+Compiler from source; use a release binary for a faster install.
 
-`aarch64-darwin`, `aarch64-linux`, `x86_64-darwin` and `x86_64-linux` are all
-declared. CI builds `x86_64-linux` on every change to the flake and weekly on a
-schedule; the other three are evaluated on every change but not built, so a
-break specific to one of them would reach you before it reached CI.
+The flake declares `aarch64-darwin`, `aarch64-linux`, `x86_64-darwin` and
+`x86_64-linux`. CI builds `x86_64-linux`; it evaluates the other configurations
+without building them.
 
 ## From source
 
-Without Nix. uf builds with a pinned nightly Rust toolchain — Flow's own crates
-need `box_patterns`, which is still unstable — and vendors the Flow and React
-Compiler sources as submodules.
+```sh
+git clone --recurse-submodules https://github.com/ubugeeei-prod/uf
+cd uf
+tools/upstream/sync.sh
+cargo build --release --bin uf
+```
 
-<div className="command"><code>git clone --recurse-submodules https://github.com/ubugeeei-prod/uf</code></div>
-<div className="command"><code>cd uf && cargo build --release --bin uf</code></div>
-
-The toolchain file in the repository selects the right nightly, so `rustup` will
-fetch it on the first build. Expect the first build to take a while: it compiles
-the Flow parser and the React Compiler.
+The repository pins its Rust nightly toolchain. `rustup` downloads it on the
+first build. The sync script prepares the upstream Flow sources and patches.
+The resulting binary is `target/release/uf`.
 
 ## The JavaScript host
 
-uf does the parsing, transforming, scheduling and reporting itself, and hands
-the rest to a host:
+uf selects an available host for development, builds and tests:
 
 | Host | Dev and build | Tests | Notes |
 | --- | --- | --- | --- |
-| Node.js | yes | yes | The default. Flow modules load through `module.registerHooks()`, or `module.register()` on a Node older than 22.15. |
-| Bun | yes | yes | Flow modules load through a `--preload` plugin. |
-| Deno | yes, from 2.8 | yes, from 2.8 | Flow modules load through `node:module`'s `registerHooks`, which Deno implemented in 2.8; an older Deno is refused by version. `uf test --coverage` is Node's, and a test that imports a package with a native addon fails on Deno, which is Deno's to fix. See [#246](https://github.com/ubugeeei-prod/uf/issues/246). |
+| Node.js | Yes | Yes | Default host; supports test coverage |
+| Bun | Yes | Yes | Loads Flow through a preload plugin |
+| Deno 2.8+ | Yes | Yes | Native addons and some Node APIs have runtime limits; coverage requires Node |
 
-uf detects what is available and picks one. To pin a project to a host:
+To select a host for the project:
 
-<div className="command"><code>uf use bun</code></div>
+```sh
+uf use bun
+```
 
-which writes the choice into `uf.config.js`. `uf info` prints what was detected
-and what was chosen.
+This saves the choice in `uf.config.js`. Use `uf info` to see the selected host.
+[Testing](/guide/testing) covers test-host options and limitations.
 
-## Checking the install
+## Check the installation
 
-<div className="command"><code>uf info</code></div>
+```sh
+uf info
+```
 
-prints the version, the resolved host, and the project it found. If it reports
-no project, you are outside one — that is fine, and [the next
-page](/guide/project) starts one.
+This shows the uf version, selected host and current project. Reporting no
+project is normal outside a project directory.
 
-## Where to go next
-
-[Your first project](/guide/project) is next: `uf new`, and every file it
-writes.
+Next, [create your first project](/guide/project).
