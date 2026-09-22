@@ -91,8 +91,7 @@ function checkCandidate(base, paths) {
     throw new Error("The release request belongs to a different PR.");
   const main = api(`repos/${repository}/git/ref/heads/main`).object.sha;
   if (event.merge_group) {
-    if (event.merge_group.base_sha !== main)
-      throw new Error("The merge queue must rebuild against current main.");
+    assertQueueBase(event.merge_group.base_sha, main);
     git("merge-base", "--is-ancestor", pr.head.sha, "HEAD");
   } else if (event.pull_request) {
     git("merge-base", "--is-ancestor", main, pr.head.sha);
@@ -102,6 +101,22 @@ function checkCandidate(base, paths) {
     return false; // The exact merge commit already passed the full queue suite.
   } else throw new Error("Unsupported release validation event.");
   return true;
+}
+function assertQueueBase(base, main) {
+  if (!SHA.test(main || "") || base !== main)
+    throw new Error("The merge queue must rebuild against current main.");
+}
+function assertTagTarget(repository, version, commit) {
+  const ref = `refs/tags/uf@${version}`;
+  const found = api(
+    `repos/${repository}/git/matching-refs/tags/uf@${encodeURIComponent(version)}`,
+  ).find((tag) => tag.ref === ref);
+  if (!found) return;
+  let object = found.object;
+  for (let depth = 0; object.type === "tag" && depth < 5; depth++)
+    object = api(`repos/${repository}/git/tags/${object.sha}`).object;
+  if (object.type !== "commit" || object.sha !== commit)
+    throw new Error("The release tag already points to another commit; it will not be replaced.");
 }
 function authorizePublication() {
   if (process.env.GITHUB_REF !== "refs/heads/main")
@@ -117,6 +132,7 @@ function authorizePublication() {
   );
   const request = requestAt(commit);
   assertRequest(request, version);
+  assertTagTarget(repository, version, commit);
   const pr = releasePR(request, repository);
   if (!pr.merged || pr.merge_commit_sha !== commit)
     throw new Error("The release PR has not merged at this commit.");
@@ -145,6 +161,7 @@ module.exports = {
   assertRequest,
   assertPullRequest,
   assertValidation,
+  assertQueueBase,
   gh,
   api,
   git,

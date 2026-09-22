@@ -5,6 +5,7 @@ const {
   assertRequest,
   assertPullRequest,
   assertValidation,
+  assertQueueBase,
 } = require("./policy.cjs");
 const { nextVersion } = require("./open-release.cjs");
 const repository = "owner/project";
@@ -83,4 +84,10 @@ test("release versions are calculated from the checkout, without the installed C
   assert.throws(() => nextVersion("1.2.3", "1.2.3"));
   assert.throws(() => nextVersion("1.2.3", "1.2.2"));
   assert.throws(() => nextVersion("1.2.3", "01.3.0"));
+});
+
+test("queue validation rejects an older main base", () => {
+  assertQueueBase(commit, commit);
+  assert.throws(() => assertQueueBase("b".repeat(40), commit));
+  assert.throws(() => assertQueueBase(undefined, commit));
 });

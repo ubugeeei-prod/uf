@@ -269,8 +269,8 @@ archives are ready; the command never pushes a tag to start validation.
 Publication requires successful queue validation for that exact commit and
 checks the PR author's permissions again.
 
-If a check or publication fails, fix it or rerun the failed Actions jobs, then
-repeat the same command. Progress is saved in the Git common directory, so it
+If a PR check fails, fix it or rerun the failed check, then repeat the command.
+For a failed publication, repeating the command retries only the failed jobs. Progress is saved in the Git common directory, so it
 resumes the same PR and version. Published npm versions and tags are not
 replaced. Keep the command running until it prints the public release URL.
 

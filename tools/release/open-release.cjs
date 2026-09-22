@@ -172,6 +172,15 @@ async function dispatch(state, workflow, title, inputs, save) {
     state[key] = run.id;
     save();
   }
+  const previous = api(`repos/${state.repository}/actions/runs/${state[key]}`);
+  if (previous.status === "completed" && previous.conclusion !== "success") {
+    gh("run", "rerun", String(state[key]), "--repo", state.repository, "--failed");
+    for (let retry = 0; retry < 20; retry++) {
+      await sleep(3000);
+      const current = api(`repos/${state.repository}/actions/runs/${state[key]}`);
+      if (current.run_attempt > previous.run_attempt || current.status !== "completed") break;
+    }
+  }
   console.log(`Waiting for https://github.com/${state.repository}/actions/runs/${state[key]}`);
   return waitRun(state.repository, state[key]);
 }

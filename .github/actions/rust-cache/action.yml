@@ -25,9 +25,10 @@ runs:
     - id: target
       shell: bash
       run: |
-        if test -d target/ci/.fingerprint || test -d target/ci-opt/.fingerprint || test -d target/debug/.fingerprint; then
+        if test -f target/.uf-sticky-initialized; then
           echo 'warm=true' >> "$GITHUB_OUTPUT"
         fi
+        touch target/.uf-sticky-initialized
     # Seed new disks from the existing cache. save-if=false also prevents the
     # action's cleanup from deleting workspace crates before disk snapshotting.
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2

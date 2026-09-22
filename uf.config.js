@@ -66,7 +66,17 @@ export default defineConfig({
   // `crates/uf_fmt/tests/fixtures` alone.
   // This example has a different test host and its own installed native peers.
   // native:example checks its source and runs it under that host separately.
-  ignore: ["upstream", "crates", "dist", "target", "node_modules", "examples/simple-sns-native"],
+  ignore: [
+    "upstream",
+    "crates",
+    "dist",
+    "target",
+    "node_modules",
+    "examples/simple-sns-native",
+    // Node runner checks execute separately in the Metadata job.
+    "tools/ci/test-change-scope.cjs",
+    "tools/release/test-policy.cjs",
+  ],
 
   test: {
     // `uf run test:lib:coverage` measures the packages this repository ships,
