@@ -1,0 +1,69 @@
+name: Release policy
+
+on:
+  # Read-only API checks; no checkout, PR code, secrets, or write token.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  policy:
+    name: Release policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No checkout: PR code is never executed by this trusted policy check.
+      - name: Check release author and current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const { execFileSync } = require("node:child_process");
+          const api = (route) => JSON.parse(execFileSync("gh", ["api", route], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }));
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+          const repo = process.env.GITHUB_REPOSITORY;
+          const number = event.pull_request?.number || /\/pr-(\d+)-/.exec(event.merge_group?.head_ref || "")?.[1];
+          if (!number) throw new Error("Cannot identify the PR in this single-entry merge group.");
+          const pr = api(`repos/${repo}/pulls/${number}`);
+          if (pr.base.ref !== "main") throw new Error("Expected a PR targeting main.");
+          const files = [];
+          for (let page = 1; page <= 30; page++) {
+            const batch = api(`repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`);
+            files.push(...batch.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)));
+            if (batch.length < 100) break;
+          }
+          const protectedPath = (file) => file.startsWith("tools/release/") ||
+            /^\.github\/workflows\/(release[^/]*|publish)\.yml$/.test(file) || file === ".github/release.json" || file === ".github/workflows/ci.yml" ||
+            file.startsWith(".github/actions/rust-cache/") || file === "tools/ci/change-scope.cjs";
+          let release = pr.head.ref.startsWith("release/") || files.includes(".github/release.json");
+          if (files.includes("packages/core/package.json")) {
+            const version = (sha) => {
+              const data = api(`repos/${repo}/contents/packages/core/package.json?ref=${sha}`);
+              return JSON.parse(Buffer.from(data.content, "base64").toString("utf8")).version;
+            };
+            release ||= version(pr.base.sha) !== version(pr.head.sha);
+          }
+          if (release || files.some(protectedPath) || pr.changed_files > 3000) {
+            const permission = api(`repos/${repo}/collaborators/${encodeURIComponent(pr.user.login)}/permission`);
+            if (pr.user.type !== "User" || !(permission.user?.permissions?.maintain || permission.user?.permissions?.admin || ["maintain", "admin"].includes(permission.role_name))) {
+              throw new Error("Release PRs and release automation changes require maintain or admin permission.");
+            }
+          }
+          if (release) {
+            if (pr.head.repo?.full_name !== repo) throw new Error("Release PRs must use a branch in this repository.");
+            const main = api(`repos/${repo}/git/ref/heads/main`).object.sha;
+            if (event.merge_group) {
+              if (event.merge_group.base_sha !== main) throw new Error("Merge queue base is no longer current main.");
+            } else {
+              const comparison = api(`repos/${repo}/compare/${main}...${pr.head.sha}`);
+              if (!["ahead", "identical"].includes(comparison.status)) throw new Error("Update the release PR with current main before merging.");
+            }
+          }
+          console.log(`PR #${number}: ${release ? "release author and base verified" : "ordinary PR policy passed"}`);
+          NODE

@@ -76,6 +76,7 @@ export default defineConfig({
     // Node runner checks execute separately in the Metadata job.
     "tools/ci/test-change-scope.cjs",
     "tools/release/test-policy.cjs",
+    "tools/release/test-trusted-policy.cjs",
   ],
 
   test: {
