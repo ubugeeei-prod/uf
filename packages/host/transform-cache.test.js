@@ -12,6 +12,7 @@ import { describe, it } from "@uniflowed/test";
 
 import {
   IN_THREAD_HOOKS,
+  resolvesTheProjectsCompilerRuntime,
   servesASecondRunFromDiskRatherThanCompilingAgain,
   compilesAgainWhenUfItselfWasRebuilt,
   stillHasABuildsEntriesWhenThatBuildComesBack,
@@ -24,6 +25,10 @@ import {
 } from "../../tests/library/transform-cache.js";
 
 describe("the transform cache, through the in-thread hooks", () => {
+  it("uses an installed compiler runtime before the standalone test fallback", () => {
+    resolvesTheProjectsCompilerRuntime(IN_THREAD_HOOKS);
+  });
+
   it("serves a second run from disk rather than compiling again", () => {
     servesASecondRunFromDiskRatherThanCompilingAgain(IN_THREAD_HOOKS);
   });

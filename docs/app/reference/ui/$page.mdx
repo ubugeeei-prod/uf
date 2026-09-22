@@ -130,11 +130,150 @@ but they are not primitives with a behaviour contract of their own here.
 | `Command` | `Dialog` + `Combobox` + grouped options + `useKeyCombo` | The composition is the feature; a module would duplicate two finished contracts |
 | `DataTable` | `Table` plus your table state and fetching layer | Sorting, selection and row counts are here; query/state orchestration is app-specific |
 | `FormField` | `Field` plus the control you render | The field owns ids and errors; the form library owns values and validation |
-| `RangeDatePicker` | two `DatePicker`s, until range semantics are implemented | A date range is not two strings; it needs its own announcements and keyboard rules |
 
 This is not minimalism for its own sake. A missing component should be a clear
 "compose these parts" or "not implemented yet", never a thin wrapper that looks
 like progress while weakening the guarantees above.
+
+## React Aria parity
+
+React Aria is the comparison set for this package: not because uf should copy
+its API, but because it names the accessible behaviours product teams actually
+need. This table is the audit line for #948.
+
+| React Aria area | uf status | Tracking |
+| --- | --- | --- |
+| Interactions: press, hover, focus-visible, long press, move, keyboard and merged props | Shipped as the shared interaction layer used by the primitives above | Held by `packages/ui/interactions.test.js` |
+| Modal and overlay surfaces | Shipped: `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Popover`, `Tooltip`, `HoverCard`, `Menu`, `ContextMenu`, `Menubar` | Held by `packages/ui/ui.test.js` |
+| Select, combobox and menu collections | Shipped for select-only and editable combobox flows, with option groups, typeahead and menu semantics | Held by the `Select`, `Combobox` and `Menu` blocks in `packages/ui/ui.test.js` |
+| Standalone collection primitives | Shipped: `ListBox`, `GridList`, `Tree` and `TagGroup` with stable item keys, controlled selection, disabled keys, typeahead and optional fixed-height virtualization | [#1309](https://github.com/ubugeeei-prod/uf/issues/1309) |
+| Calendar and single-date picker | Shipped: `Calendar` and `DatePicker` cover the single-date path | Held by the calendar and date-picker blocks in `packages/ui/ui.test.js` |
+| Range and segmented date/time fields | Shipped: `RangeCalendar`, `DateRangePicker`, `DateField` and `TimeField` with segmented editing, bounds, unavailable dates and range announcements | [#1311](https://github.com/ubugeeei-prod/uf/issues/1311) |
+| Number field | Shipped: `NumberField` with locale parsing/formatting, keyboard and button stepping, bounds/step validation and `Field` integration | [#1313](https://github.com/ubugeeei-prod/uf/issues/1313) |
+| Table | Shipped for the package's table contract: sort announcements, mixed selection and row counts | Held by the table block in `packages/ui/ui.test.js` |
+| Drag/drop and color controls | Shipped: `useDragAndDrop`, collection reorder targets and `ColorPicker` with hex fields, native color input and RGBA channels | [#1310](https://github.com/ubugeeei-prod/uf/issues/1310) |
+| Locale and direction infrastructure | Shipped: `I18nProvider`, `useLocale`, `useCollator` and `useFilter`; locale typeahead and mirrored horizontal navigation | [#1312](https://github.com/ubugeeei-prod/uf/issues/1312) |
+
+## Locale, collections and value fields
+
+`I18nProvider` supplies `locale`, `lang` and `dir` to its subtree. It defaults to
+`en-US` and `ltr` for the same server and client output; pass the request's
+locale explicitly. Direction follows the locale unless overridden. Nested
+providers inherit the surrounding locale. `useLocale()` returns both values,
+`useCollator(options)` returns an Intl collator for application sorting, and
+`useFilter()` provides locale-aware `startsWith` and `contains` functions.
+
+```js
+<I18nProvider locale="ar-EG">
+  <ListBox
+    aria-label="Destinations"
+    items={destinations}
+    selectionMode="multiple"
+    selectedKeys={selected}
+    onSelectionChange={setSelected}
+  />
+</I18nProvider>
+```
+
+`ListBox`, `GridList`, `Tree` and `TagGroup` accept items with unique `key` and
+`textValue` strings. An item can be `disabled`; tree items can have `children`.
+A `children(item, state)` render function supplies the visible row content.
+`state` exposes `selected`, `active`, `disabled` and the one-based tree `level`;
+custom rows can draw keyboard focus without tracking it separately.
+`selectionMode` is `single`, `multiple` or `none`; controlled `selectedKeys`
+and `onSelectionChange` have `defaultSelectedKeys` counterparts. Disabled rows
+are skipped. Arrow keys, Home/End, collator-backed typeahead, Shift ranges,
+Space/Enter and Ctrl/Cmd+A operate on enabled rows. Trees additionally accept
+`expandedKeys`, `defaultExpandedKeys` and `onExpandedChange`; horizontal arrows
+expand/collapse and follow the text direction. Tag groups use `onRemove(key)`
+for their remove buttons and Delete/Backspace commands.
+
+The application owns item order, removal and loading. `loading` exposes busy
+state; `onLoadMore` fires at the scroll boundary or End. Set `virtualized`,
+`height` and `rowHeight` for fixed-height rows: the active descendant stays
+mounted while the rest of the DOM follows the visible window. Variable-height
+rows are not measured. Give each collection an accessible label and keep
+ListBox/Tree row content noninteractive.
+
+For reordering, provide `onReorder(keys)` and update your items from the returned
+order. Native drag/drop moves an item before its target. Ctrl/Cmd+Space lifts
+the active item; arrow keys move to a target, Enter drops and Escape cancels.
+Tree reordering operates on root items. The lower-level `useDragAndDrop({
+onDrop, disabled })` returns `getDragProps(key, label)`,
+`getDropProps(key, label)`, `start`, `drop`, `cancel`, `dragging` and
+`announcement`. Apply the props to focusable elements and render `announcement`
+in a polite live region. Drop callbacks receive `{ keys, target }`.
+
+```js
+<Field.Root>
+  <Field.Label>Budget</Field.Label>
+  <NumberField.Root
+    value={budget}
+    onValueChange={setBudget}
+    minValue={0}
+    maxValue={1000}
+    step={0.5}
+    formatOptions={{ style: "currency", currency: "EUR" }}
+  >
+    <NumberField.Decrement aria-label="Decrease budget">−</NumberField.Decrement>
+    <Field.Control render={(props) => <NumberField.Input {...props} />} />
+    <NumberField.Increment aria-label="Increase budget">+</NumberField.Increment>
+  </NumberField.Root>
+  <Field.Description>Up to 1,000 euros.</Field.Description>
+</Field.Root>
+```
+
+`NumberField` values are numbers or `null`. Input commits on blur or Enter;
+invalid drafts remain visible with `aria-invalid` and do not change the value.
+`onValidationChange(invalid)` lets the application display a `Field.Error`.
+ArrowUp/Down step, PageUp/Down take ten steps and Home/End use finite bounds.
+The step origin is `minValue` or zero; an unaligned maximum is rounded down to
+the last permitted step. Percent formats default to a step of `0.01` and other
+formats to `1`. Currency, unit, accounting, decimal and locale digit forms are
+parsed; arbitrary expressions are rejected. `disabled` and `readOnly` guard
+editing and stepping.
+
+`DateField` stores a Gregorian ISO date (`YYYY-MM-DD`); `TimeField` stores a
+24-hour ISO time (`HH:mm`, or `HH:mm:ss` with `granularity="second"`). Both use
+locale ordering, digits and segment names. Time display follows the locale,
+with `hourCycle="h12"` or `"h23"` available as an override. ArrowUp/Down,
+PageUp/Down and Home/End edit segments, horizontal arrows move between them,
+and Enter or leaving the group commits a valid value. Month/year changes
+clamp the day. Values, default values and callbacks use strings or `null`;
+`minValue`, `maxValue`, `required`, `disabled`, `readOnly`, `segmentLabels` and
+`onValidationChange` configure the fields. `DateField` also accepts
+`isDateUnavailable(isoDate)`. These fields do not select time zones or other
+calendar systems.
+
+```js
+<DateRangePicker.Root
+  value={stay}
+  onValueChange={setStay}
+  minValue="2026-01-01"
+>
+  <DateRangePicker.StartField aria-label="Arrival" />
+  <DateRangePicker.EndField aria-label="Departure" />
+  <DateRangePicker.Trigger>Choose dates</DateRangePicker.Trigger>
+  <DateRangePicker.Calendar aria-label="Choose a stay" />
+</DateRangePicker.Root>
+```
+
+`RangeCalendar.Root` accepts `{ start, end }` or `null`, plus the single-date
+calendar's bounds and `isDateDisabled(plainDate)` predicate. The first choice
+anchors a range and the second completes it, inclusive and ordered; a range
+containing an unavailable day is rejected and announced. Its `Month`, `Day`,
+`Previous` and `Next` parts compose like `Calendar`. `DateRangePicker` adds two
+segmented fields and a popover that restores trigger focus after a completed
+choice. Typed ranges use the same unavailable-day validation as the calendar.
+
+`ColorPicker.Root` controls a CSS hex string through `value`, `defaultValue`
+and `onValueChange`. Short hex forms expand to `#rrggbb` or `#rrggbbaa`.
+`Input` is a native color input, `Field` retains and marks invalid hex drafts,
+`Channel` is a range input for `red`, `green`, `blue` or `alpha`, and `Swatch`
+shows the current color. Channels support arrows, PageUp/Down and Home/End;
+horizontal arrows mirror in RTL. Alpha is announced as a percentage. Supply
+labels for `Input` and `Field`; named channels have default labels. Named CSS
+colors, HSL and wide-gamut color spaces are not accepted by this hex contract.
 
 ## Import shapes
 

@@ -84,6 +84,19 @@ const table: $ReadOnlyArray<[string, boolean]> = [
   ["/p/node_modules/dep/node_modules/@uniflowed/core/index.js", true],
   ["/p/node_modules/dep/node_modules/@uniflowed/core/index.js?uf-modules=1.0", true],
   ["/node_modules/@uniflowed/core/a/b/c.cjs", true],
+  ...(process.platform === "win32"
+    ? [
+        ["C:\\p\\app.js", true],
+        ["C:\\p\\app.js?uf-modules=1.0", true],
+        ["C:\\p\\node_modules_of_mine\\x.js", true],
+        ["C:\\p\\node_modules\\@uniflowedish\\x.js", false],
+        ["C:\\p\\node_modules\\dep\\index.js", false],
+        ["C:\\p\\node_modules\\dep\\index.js?uf-modules=1.0", false],
+        ["C:\\p\\node_modules\\@uniflowed\\core\\index.js", true],
+        ["C:\\p\\node_modules\\@uniflowed\\core\\node_modules\\dep\\index.js", false],
+        ["C:\\p\\node_modules\\dep\\node_modules\\@uniflowed\\core\\index.js", true],
+      ]
+    : [["/p/node_modules/dep/node_modules\\@uniflowed/core/index.js", false]]),
 ];
 
 describe("which modules uf is responsible for", () => {

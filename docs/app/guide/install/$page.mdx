@@ -17,20 +17,25 @@ through one.
 source, know what the installer verified, and see which JavaScript host uf will
 run on.
 
-**What you need first:** macOS or Linux, on x86-64 or ARM64, or WSL2 on Windows;
-and Node.js or Bun, which Vite and your tests run on.
+**What you need first:** macOS or Linux on x86-64 or ARM64, or Windows on
+x86-64; and Node.js or Bun, which Vite and your tests run on.
 
 ## From a release
 
-Every tagged release publishes binaries for macOS and Linux, on both x86-64 and
-ARM64:
+Every tagged release publishes binaries for macOS and Linux on x86-64 and
+ARM64, plus Windows on x86-64:
 
 <div className="command"><code>curl -fsSL https://setup.uniflowed.dev | sh</code></div>
 
-The script picks the binary for your platform, checks it, and puts it on your
-`PATH`. It works under `sh`, `bash` and `zsh`. Read it before you run it — it is
-short, and it is served from `https://setup.uniflowed.dev/install.sh` if you
-would rather fetch it first.
+On Windows:
+
+<div className="command"><code>irm https://setup.uniflowed.dev/install.ps1 | iex</code></div>
+
+The installer picks the binary for your platform, checks it, and puts it in its bin
+directory. Add that directory to `PATH` if it is not already there. The POSIX script works under `sh`, `bash` and `zsh`; the Windows script
+runs under PowerShell. Read either one before you run it — they are served from
+`https://setup.uniflowed.dev/install.sh` and
+`https://setup.uniflowed.dev/install.ps1` if you would rather fetch them first.
 
 ### What it checks, and what that proves
 
@@ -72,14 +77,13 @@ person can still install is signed.
 
 ### On Windows
 
-There is no Windows build yet. The release workflow produces four artifacts,
-all of them macOS and Linux, so `irm https://setup.uniflowed.dev/install.ps1 |
-iex` resolves — deliberately, so the URL says something useful — and then
-prints an error telling you the same thing.
+The PowerShell installer installs `uf.exe`, `ufr.exe` and `ufx.exe` into
+`%USERPROFILE%\.local\bin` by default. Add that directory to `PATH` if your
+current terminal cannot find `uf` afterwards. `UF_INSTALL_ROOT`, `UF_BIN_DIR`,
+`UF_VERSION` and `UF_RELEASE_BASE` work the same way as they do for the POSIX
+script.
 
-Two paths that do work: run uf under **WSL2**, where the Linux install above
-applies unchanged; or build it from source with `cargo install`, below, which
-needs no artifact.
+WSL2 still works too, and uses the Linux install line above.
 
 ### Updating, and going back
 

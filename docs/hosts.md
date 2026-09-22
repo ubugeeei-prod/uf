@@ -292,6 +292,44 @@ to nothing and is reported separately from a missing package by
 `uf check --json` as a host-conditional module. Which host graph the checker
 should resolve, if any, is ubugeeei-prod/uf#735.
 
+### Library coverage
+
+`uf test --host deno` selects an installed Deno for one invocation, overriding
+`test.runtime` without changing the project. `--host node` and `--host bun`
+work the same way. The override is incompatible with `--browser`, and a
+contradictory native/Bun test-runner configuration is still refused.
+`uf test --list --json` reports the discovered file paths and named test
+selections without starting a worker.
+
+CI's required **Library (Deno 2.9.7)** lane runs `uf run test:lib:deno` over
+`packages/` and `tests/library/`, using the same binary built by the toolchain
+job. Each file starts in a fresh process, four files at a time: Deno's module
+graph and React renderer context otherwise persist across files. Tests of
+multi-file worker behaviour still start and reuse their own Deno worker.
+
+The suite creates temporary executable fixtures, symlinks and subprocesses, so
+its CI-only launcher explicitly grants filesystem, environment, process and
+native-addon access, plus loopback networking. These are test-fixture grants;
+application permission defaults are unchanged and separately exercised by
+`crates/uf_cli/tests/deno_host.rs`.
+
+The lane uploads discovery, every original result and stderr, and a combined
+summary. It prints each known runtime exception by file and, when loaded, by
+test name. Unexpected errors fail CI. The exceptions are narrow:
+
+- Rolldown native addons cannot load after Deno's module hook is installed.
+- Babel's `helper-globals` CommonJS exports are incomplete under that hook.
+- Concurrent dynamic imports from an external document-storage fixture can
+  fail with Deno's `Loading unprepared module` error.
+- Deferred hydration terminates Deno in the simulated DOM; the remaining
+  hydration cases are skipped and preceding cases remain counted as passed.
+
+These cases remain covered by the Node lanes. The exception list and runtime
+pin live in `tools/ci/deno-library.js` and must be reviewed together on upgrade.
+The edge acceptance path is the existing ahead-of-time build and workerd smoke
+lane; running source tests inside workerd remains the explicitly deferred
+contract recorded in #1029.
+
 ### Permissions, and why there is no `-A`
 
 Deno **is the only host that enforces the whole permission set**, and the model

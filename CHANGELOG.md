@@ -1,5 +1,30 @@
 # Changelog
 
+## uf@0.0.0-alpha.44
+
+_2026-09-22_
+
+### Added
+
+- **ui**: styled registry components with examples and accessibility checks for every new UI family, available through `uf ui add` (#1315).
+- **ui**: locale-aware ListBox, GridList, Tree and TagGroup; NumberField; segmented date/time fields and range pickers; ColorPicker; keyboard/native drag-and-drop; shared locale and RTL support (#1315, #1322).
+- **platform**: native Windows release artifacts, immutable versioned installs, stable command launchers and self-update verification (#1315).
+- **test**: `uf test --host node|bun|deno`, JSON discovery with `--list --json`, and required Deno library coverage with original reports and named runtime exceptions (#1315).
+- **editors**: reproducible VSIX packaging and documented Zed/JetBrains setup. Marketplace and Open VSX publication still require repository credentials (#1315).
+
+### Fixed
+
+- **host**: prefer an installed React compiler runtime, guard platform detection in browser bundles and normalize Windows module paths without changing POSIX paths (#1315).
+- **ui**: expose every public component part and keep the runtime registry synchronized with the shipped modules (#1315).
+
+### Performance
+
+- **test**: run the transform cache's two loaders in two files (#1320).
+
+### Internal
+
+- **deps**: update GitHub Actions dependencies (#1321).
+
 ## uf@0.0.0-alpha.43
 
 _2026-09-21_

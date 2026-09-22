@@ -39,6 +39,7 @@
 // replaces the one Node warns from, so a warning could not appear in it however
 // broken the code under test was.
 
+import { denoWorkerArguments } from "../../tests/library/deno-worker.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -112,14 +113,13 @@ ${render(`  // Captured before this module touches storage itself: what is count
   process.stdout.write(JSON.stringify({ duringInstall }) + "\\n");`)}`;
 
 /**
- * How this host starts a module that imports Flow, mirroring
- * `HostCommand::with_flow_loader`.
- *
- * Deno has no loader in `@uniflowed/host` yet, so it cannot run this at all; a
- * named failure is better than a skip that reads like a pass.
+ * How this host starts a nested fixture with its Flow loader.
+ * Node, Bun and Deno all exercise the same worker protocol. These fixtures
+ * receive the repository suite's explicit process and filesystem grants.
  */
 function loaderArguments(): Array<string> {
   const host = path.basename(process.execPath);
+  if (host.startsWith("deno")) return denoWorkerArguments(repository);
   if (host.startsWith("node")) {
     return ["--import", pathToFileURL(path.join(repository, "packages/host/register.js")).href];
   }

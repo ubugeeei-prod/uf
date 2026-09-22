@@ -5,24 +5,21 @@ window, and everything it shows — diagnostics, formatting, quick fixes, hover,
 completion in `uf.config.js` — is answered by that server, from the same crates
 `uf lint`, `uf fmt` and `uf inspect` call.
 
-Not published to any marketplace. Build it from this directory.
+CI packages the extension on every editor change. `uf@*` tags publish the same
+VSIX to the Visual Studio Marketplace when `VSCE_PAT` is present, and to Open
+VSX when `OVSX_PAT` is present; a missing token is reported as a named skip.
 
 ## Install
 
 ```sh
 cd editors/vscode
 npm install                     # vscode-languageclient, the only dependency
-npx @vscode/vsce package        # writes uf-0.0.0.vsix
+npx @vscode/vsce package        # writes uf-0.0.0.vsix locally
 code --install-extension uf-0.0.0.vsix
 ```
 
 To work on it instead, open `editors/vscode` in VS Code and press F5, which
 launches an Extension Development Host with it loaded.
-
-The manifest is `"private": true`, so `npm publish` refuses it. Nothing here is
-published to a marketplace and there is no token anywhere in this repository;
-`vsce package` writing a local `.vsix` is as far as it goes. That `private` line
-is also the one to remove if a future `vsce` starts objecting to it.
 
 ## What works
 

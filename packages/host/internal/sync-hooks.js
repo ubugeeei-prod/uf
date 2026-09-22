@@ -62,6 +62,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   TransformError,
+  environmentVariable,
   isFlowModule,
   transformFlowSync,
   ufBinary,
@@ -105,6 +106,17 @@ export function installFlowHooks(root) {
   let compiler = null;
 
   return nodeModule.registerHooks({
+    resolve(specifier, context, nextResolve) {
+      try {
+        return nextResolve(specifier, context);
+      } catch (error) {
+        if (isTestCompilerRuntime(specifier) && error.code === "ERR_MODULE_NOT_FOUND") {
+          return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
+        }
+        throw error;
+      }
+    },
+
     load(url, context, nextLoad) {
       if (!url.startsWith("file:") || !isImport(context)) return nextLoad(url, context);
       const filename = fileURLToPath(url);
@@ -154,6 +166,22 @@ export function installFlowHooks(root) {
 function isImport(context) {
   const conditions = context?.conditions;
   return Array.isArray(conditions) && conditions.includes("import");
+}
+
+const TEST_COMPILER_RUNTIME_URL =
+  "data:text/javascript;charset=utf-8," +
+  encodeURIComponent(`const sentinel = Symbol.for("react.memo_cache_sentinel");
+export function c(size) {
+  const cache = new Array(size);
+  for (let index = 0; index < size; index += 1) cache[index] = sentinel;
+  return cache;
+}
+`);
+
+function isTestCompilerRuntime(specifier) {
+  return (
+    specifier === "react/compiler-runtime" && environmentVariable("UF_IN_SOURCE_TESTS") === "1"
+  );
 }
 
 /**

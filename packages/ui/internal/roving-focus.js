@@ -45,6 +45,7 @@
 // one the components make.
 
 import { useCallback, useEffect, useRef, useState } from "@uniflowed/react";
+import { useLocale, startsWithLocale } from "../i18n-provider.js";
 
 /** Which way a key asks the focus to move within a set. */
 export type Movement = "previous" | "next" | "first" | "last";
@@ -375,6 +376,7 @@ export hook useTypeahead(): (
   from: number,
   key: string,
 ) => HTMLElement | null {
+  const { locale } = useLocale();
   const buffer = useRef<{| text: string, at: number |}>({ text: "", at: 0 });
 
   return useCallback(
@@ -384,7 +386,7 @@ export hook useTypeahead(): (
       buffer.current = { text, at: now };
 
       const repeated = text.length > 1 && text.split("").every((each) => each === text[0]);
-      const needle = (repeated ? text[0] : text).toLowerCase();
+      const needle = repeated ? text[0] : text;
       // A single character — or the same one again — moves on from where we
       // are. A longer buffer starts *at* the current item, so typing "sa" after
       // "s" can keep the item "s" already found.
@@ -392,13 +394,20 @@ export hook useTypeahead(): (
 
       for (let tried = 0; tried < items.length; tried += 1) {
         const candidate = items[(((start + tried) % items.length) + items.length) % items.length];
-        if (isEnabled(candidate) && labelOf(candidate).startsWith(needle)) {
+        if (
+          isEnabled(candidate) &&
+          startsWithLocale(
+            labelOf(candidate),
+            needle,
+            candidate.closest("[lang]")?.getAttribute("lang") || locale,
+          )
+        ) {
           return candidate;
         }
       }
       return null;
     },
-    [],
+    [locale],
   );
 }
 
@@ -428,5 +437,5 @@ export function isTypeaheadKey(event: {
 /** What a reader hears for this item, lower-cased for matching. */
 function labelOf(element: HTMLElement): string {
   const spoken = element.getAttribute("aria-label") ?? element.textContent ?? "";
-  return spoken.replace(/\s+/g, " ").trim().toLowerCase();
+  return spoken.replace(/\s+/g, " ").trim();
 }

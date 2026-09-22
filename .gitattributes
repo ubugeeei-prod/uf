@@ -12,3 +12,7 @@
 # the day after this line landed on the 5th. CONTRIBUTING.md says what to do
 # with those comments; ubugeeei-prod/uf#157 is where the exclusion is argued.
 crates/uf_fmt/tests/fixtures/*.expected.js linguist-generated=true
+
+# Upstream patches are fed to `git apply` on every platform. Keep them LF-only so
+# Windows checkout settings cannot turn the header into something git refuses.
+tools/upstream/patches/flow/*.patch text eol=lf

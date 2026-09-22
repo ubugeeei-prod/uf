@@ -119,10 +119,15 @@ impl BatchEnvironment {
 /// file from disk when it can, to build a codepoint offset table. `uf` does not
 /// want that. It wants Flow's raw byte columns, which is what `uf_term`'s code
 /// frames and `uf_lint`'s diagnostics both measure in, and it already holds
-/// every source in memory. A root under a dot-directory at `/` cannot be
-/// created without root privileges, so the read always misses and the columns
-/// stay in bytes.
+/// every source in memory. On Unix, a root under a dot-directory at `/` cannot
+/// be created without root privileges, so the read always misses and the
+/// columns stay in bytes. On Windows the port still insists on a drive-qualified
+/// absolute path, so uf gives it one on `C:` and strips it back off the same
+/// way.
+#[cfg(not(windows))]
 pub(super) const VIRTUAL_ROOT: &str = "/.uf-check-virtual-root";
+#[cfg(windows)]
+pub(super) const VIRTUAL_ROOT: &str = "C:/.uf-check-virtual-root";
 
 /// Merge the builtins, on the check thread so the merge gets its stack too.
 pub(crate) fn prepare_builtins(libs: &[Source<'_>]) -> Result<BuiltinsTiming, CheckError> {
@@ -824,8 +829,13 @@ fn suppressed(
 
 #[cfg(test)]
 mod tests {
-    use super::on_check_thread;
+    use super::{VIRTUAL_ROOT, on_check_thread};
     use uf_profiler::ThreadWindow;
+
+    #[test]
+    fn the_virtual_root_is_absolute_on_this_platform() {
+        assert!(std::path::Path::new(VIRTUAL_ROOT).is_absolute());
+    }
 
     /// What runs on the check thread counts toward a window its caller opened.
     ///

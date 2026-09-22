@@ -7,6 +7,7 @@
 // the three reset verbs, which are easy to conflate, and `spyOn`'s restore,
 // which has to put an inherited method back without leaving a copy behind.
 
+import { denoWorkerArguments } from "../../tests/library/deno-worker.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -371,15 +372,13 @@ type StubRequest = {|
 type StubEvent = { event: string, status?: string, text?: string };
 
 /**
- * How this host starts a worker, mirroring `HostCommand::with_flow_loader`.
- *
- * The same shape as `module-mock.test.js` and `event-generation.test.js`: the
- * worker imports Flow, so it needs the host's loader, and each host registers
- * one its own way. Deno has none in `@uniflowed/host` yet, so it cannot run
- * this at all; a named failure is better than a skip that reads like a pass.
+ * How this host starts a nested fixture with its Flow loader.
+ * Node, Bun and Deno all exercise the same worker protocol. These fixtures
+ * receive the repository suite's explicit process and filesystem grants.
  */
 function stubLoaderArguments(): Array<string> {
   const host = path.basename(process.execPath);
+  if (host.startsWith("deno")) return denoWorkerArguments(repository);
   if (host.startsWith("node")) {
     const register = path.join(repository, "packages", "host", "register.js");
     return ["--enable-source-maps", "--import", pathToFileURL(register).href];

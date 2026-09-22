@@ -73,6 +73,21 @@ pub(super) fn render_list(
     } else {
         plural(plan.runnable_count(), "runnable test")
     };
+    if ui.is_json() {
+        let selected: Vec<String> = super::test_bearing(files.to_vec())
+            .into_iter()
+            .filter(|file| filter.matches_path(&file.relative_path))
+            .map(|file| file.relative_path)
+            .collect();
+        let tests: Vec<_> = rows.iter().map(|(location, name, selection)| {
+            serde_json::json!({ "location": location, "name": name, "selection": selection })
+        }).collect();
+        ui.json(&serde_json::json!({
+            "command": "uf test", "list": true, "files": selected,
+            "tests": tests, "unsupported": unsupported,
+        }))?;
+        return Ok(());
+    }
     let runtime = format!("{:?}", runner.runtime);
     let target = format!("{:?}", runner.performance_target);
     let label = project_label(root).to_string();

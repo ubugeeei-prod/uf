@@ -6,6 +6,24 @@ use uf_config::DeployAdapter;
 use uf_pm::DependencyKind;
 use uf_term::ColorChoice;
 
+/// An installed source host selected for one test invocation.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum TestHostArg {
+    Node,
+    Bun,
+    Deno,
+}
+
+impl TestHostArg {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Node => "node",
+            Self::Bun => "bun",
+            Self::Deno => "deno",
+        }
+    }
+}
+
 /// The `--color` flag, mapped to [`ColorChoice`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub(crate) enum ColorOption {
@@ -739,6 +757,9 @@ pub(crate) enum Commands {
     },
     /// Run the project's tests.
     Test {
+        /// Run on this installed JavaScript host instead of test.runtime.
+        #[arg(long, value_enum, conflicts_with = "browser")]
+        host: Option<TestHostArg>,
         /// List what would run instead of running it.
         #[arg(long)]
         list: bool,

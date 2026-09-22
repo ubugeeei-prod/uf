@@ -18,8 +18,8 @@ to end.
 
 ## What you need first
 
-- **macOS or Linux**, on x86-64 or ARM64. There is no Windows build; WSL2 works,
-  and [Install](/guide/install#on-windows) says what else does.
+- **macOS or Linux**, on x86-64 or ARM64, or **Windows** on x86-64. Windows
+  uses the PowerShell installer; WSL2 can use the Linux install line unchanged.
 - **Node.js or Bun.** uf parses, transforms, schedules and reports in Rust, and
   hands Vite and your test bodies to a JavaScript host. Deno runs `uf test`
   through an ahead-of-time pass, graded experimental, and has no loader for

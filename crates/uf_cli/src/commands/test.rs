@@ -68,6 +68,8 @@ struct PlannedProjectFile {
 /// Everything `uf test` was asked to do.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TestArgs {
+    /// Override the configured runtime with an installed host.
+    pub(crate) host: Option<crate::cli::TestHostArg>,
     /// List what would run instead of running it.
     pub(crate) list: bool,
     /// Run in this mode instead of `test`.
@@ -232,7 +234,14 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         return shards::merge(cwd, ui, directory, &args);
     }
 
-    let resolved = load_config(cwd)?;
+    let mut resolved = load_config(cwd)?;
+    if let Some(host) = &args.host {
+        resolved.config.test.runtime = Some(uf_config::Written::new(host.as_str()));
+        uf_config::validate_config(
+            resolved.config_path.as_deref().unwrap_or(&resolved.root),
+            &resolved.config,
+        )?;
+    }
     let root = resolved.root.clone();
     if test_application_target(&resolved.config) == TestApplicationTarget::ReactNative {
         let tables = uf_router::native::discover_native_route_tables(&root, &resolved.config)?;

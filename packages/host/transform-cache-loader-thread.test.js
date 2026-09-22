@@ -14,6 +14,7 @@ import { describe, it } from "@uniflowed/test";
 
 import {
   LOADER_THREAD,
+  resolvesTheProjectsCompilerRuntime,
   servesASecondRunFromDiskRatherThanCompilingAgain,
   compilesAgainWhenUfItselfWasRebuilt,
   stillHasABuildsEntriesWhenThatBuildComesBack,
@@ -26,6 +27,10 @@ import {
 } from "../../tests/library/transform-cache.js";
 
 describe("the transform cache, through the loader thread", () => {
+  it("uses an installed compiler runtime before the standalone test fallback", () => {
+    resolvesTheProjectsCompilerRuntime(LOADER_THREAD);
+  });
+
   it("serves a second run from disk rather than compiling again", () => {
     servesASecondRunFromDiskRatherThanCompilingAgain(LOADER_THREAD);
   });

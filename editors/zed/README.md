@@ -1,26 +1,16 @@
 # uf for Zed
 
-[`extension.toml`](extension.toml) declares the language server. It is not the
-whole extension, and this file says plainly what is missing and why.
+[`extension.toml`](extension.toml) declares the language server, and
+[`src/lib.rs`](src/lib.rs) is the Rust/WASM half Zed loads to start it.
 
 ## The state of this integration
 
 Zed has no setting that adds an arbitrary language server. A server reaches Zed
 as an extension, and an extension that provides one is a Rust crate compiled to
-WebAssembly: the manifest names it, and a `zed::Extension` implementation
-returns the command to run.
+WebAssembly. This directory has both halves: the manifest Zed reads and the
+`zed_extension_api` implementation CI checks with `wasm32-wasip1`.
 
-The manifest is here. **The Rust half is not**, and that is a decision rather
-than an oversight: it needs `zed_extension_api` from crates.io pinned to the Zed
-version being targeted and a `wasm32-wasip1` toolchain, neither of which is in
-this project's lockfile or its CI, so nothing here could build it or check that
-it compiles. A file written against a guessed-at API version, that no test
-touches, would look like an integration and not be one.
-
-So: Zed is **not** working today. What follows is the four lines it needs, for
-whoever adds it with a Zed checkout to build against.
-
-## What the Rust half has to do
+The command it returns is intentionally small:
 
 ```rust
 fn language_server_command(
@@ -40,9 +30,8 @@ fn language_server_command(
 
 Two things are load-bearing.
 
-`worktree.which` rather than a bare `"uf"`: it searches the worktree's own
-`node_modules/.bin` before `PATH`, which is what gives a project the copy of uf
-it pinned, the same order the VS Code extension uses.
+`worktree.which` rather than a bare `"uf"`: it searches the worktree shell's
+`PATH`. Add `node_modules/.bin` to that path when using a project-pinned uf.
 
 And the process must run **in the worktree root**. `uf lsp` reads `uf.config.js`
 from its working directory, once, at start-up, and that read is the only source
@@ -52,8 +41,8 @@ opening the project folder — the one with `uf.config.js` in it — is enough.
 
 ## What it would give you
 
-Once the Rust half exists, `uf lsp` answers exactly this much, and
-`tests/library/lsp.test.js` drives the server and asserts each one:
+`uf lsp` answers exactly this much, and `tests/library/lsp.test.js` drives the
+server and asserts each one:
 
 * **Diagnostics**, pushed on open and on every change, source `uf`, code the
   rule id.
@@ -69,8 +58,8 @@ Once the Rust half exists, `uf lsp` answers exactly this much, and
 Not go-to-definition, rename, references, completion in any other file, or the
 type at a position. `uf lsp` advertises none of them.
 
-## Meanwhile
+## Install
 
-Zed also runs `uf` as a plain command. `uf fmt`, `uf lint` and `uf check` in a
-terminal are the same crates the server would answer from, and a task in
-`.zed/tasks.json` gets them onto a keybinding.
+Run `cargo build --manifest-path editors/zed/Cargo.toml --release --target
+wasm32-wasip1`, then install this directory as a Zed dev extension. `uf` still
+has to be installed in the project or on `PATH`; the extension only starts it.

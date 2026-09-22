@@ -17,12 +17,12 @@
 //! Acquiring a release means resolving a version, downloading
 //! `uf-<target>.tar.gz`, checking it against the sha256 published beside it,
 //! refusing an archive whose members escape their own directory, and unpacking
-//! it. `infra/cloudflare/setup-assets/install.sh` does all five, it is what
-//! `curl -fsSL https://setup.uniflowed.dev | sh` runs, and
-//! `tools/release/test-install.sh` proves it against a real packaged release on
-//! every release build. So uf does not write a second one: it runs that one,
-//! from [`INSTALLER`], by piping it into `sh` exactly the way the documented
-//! install line does.
+//! it. `infra/cloudflare/setup-assets/install.sh` and `install.ps1` do all
+//! five, and `tools/release/test-install.sh` plus `test-install.ps1` prove them
+//! against a real packaged release on every release build. So uf does not write
+//! a second one: it runs the installer for the host it is on, from
+//! `INSTALLER_SH` or `INSTALLER_POWERSHELL`, the way the documented install
+//! line does.
 //!
 //! The alternative was porting it to Rust, and it is worse in every direction
 //! that matters here. uf links no HTTP client — `uf_pm::registry` and
@@ -90,10 +90,14 @@ use switch::{
 /// The installer, as it stood when this binary was built.
 ///
 /// The same bytes served at `https://setup.uniflowed.dev`, and the same bytes
-/// `tools/release/test-install.sh` runs against a packaged release. See the
-/// module documentation for why it is embedded rather than fetched, and why
-/// there is no second acquisition path.
-const INSTALLER: &str = include_str!("../../../../infra/cloudflare/setup-assets/install.sh");
+/// the installer tests run against a packaged release. See the module
+/// documentation for why they are embedded rather than fetched, and why there
+/// is no second acquisition path.
+#[cfg(any(test, not(windows)))]
+const INSTALLER_SH: &str = include_str!("../../../../infra/cloudflare/setup-assets/install.sh");
+#[cfg(windows)]
+const INSTALLER_POWERSHELL: &str =
+    include_str!("../../../../infra/cloudflare/setup-assets/install.ps1");
 
 /// The version this binary is, which is the only version it can honestly
 /// install a copy of itself as.
@@ -678,10 +682,10 @@ fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<
     // A script that stops early — at a resolution, or at a failure it has
     // already explained — may close its end before reading the rest. What
     // happened is in its exit status, not in the pipe.
-    if let Err(error) = stdin.write_all(INSTALLER.as_bytes())
-        && error.kind() != std::io::ErrorKind::BrokenPipe
-    {
-        return Err(error).with_context(|| "failed to hand the installer to sh");
+    match stdin.write_all(INSTALLER_SH.as_bytes()) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(error) => return Err(error).with_context(|| "failed to hand the installer to sh"),
     }
     drop(stdin);
     let output = child
@@ -701,11 +705,58 @@ fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<
         .map_err(|_| anyhow!("the uf installer printed a version that is not UTF-8"))
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<String> {
+    let spawn = |shell: &str| {
+        Command::new(shell)
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "-"])
+            .env("UF_VERSION", version)
+            .env("UF_INSTALL_ROOT", store.root().as_str())
+            .env("UF_BIN_DIR", store.bin_dir.as_str())
+            .env("UF_STOP_AFTER", stop_after.as_str())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+    };
+    let mut child = spawn("pwsh")
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                spawn("powershell.exe")
+            } else {
+                Err(error)
+            }
+        })
+        .with_context(|| "failed to run PowerShell for the Windows uf installer")?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("pwsh accepted no script on stdin"))?;
+    match stdin.write_all(INSTALLER_POWERSHELL.as_bytes()) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(error) => return Err(error).with_context(|| "failed to hand the installer to pwsh"),
+    }
+    drop(stdin);
+    let output = child
+        .wait_with_output()
+        .with_context(|| "failed to wait for the uf installer")?;
+
+    if !output.status.success() {
+        let verb = match stop_after {
+            StopAfter::Resolve => "resolve",
+            StopAfter::Unpack => "install",
+        };
+        bail!("the uf installer could not {verb} uf@{version}");
+    }
+    String::from_utf8(output.stdout)
+        .map_err(|_| anyhow!("the uf installer printed a version that is not UTF-8"))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn run_installer(_store: &Store, version: &str, _stop_after: StopAfter) -> Result<String> {
     bail!(
-        "uf publishes no Windows build yet, so uf@{version} cannot be acquired here\n\n  \
-         run uf under WSL2, or build from source:\n    \
+        "uf publishes no build for this platform yet, so uf@{version} cannot be acquired here\n\n  \
+         build from source instead:\n    \
          cargo install --git https://github.com/ubugeeei-prod/uf uf_cli"
     )
 }

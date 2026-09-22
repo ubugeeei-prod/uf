@@ -128,7 +128,13 @@ type Result = {
  * A module carrying the refusal token is answered the way `uf transform`
  * answers source it cannot compile: an error, and where.
  */
-const compiler = (marker: string): string => `#!${process.execPath}
+// These fixtures exercise Node's two hook APIs, even when the parent suite
+// runs on Deno. Resolve before the PATH-isolation case replaces the environment.
+const NODE = String(
+  spawnSync("node", ["-p", "process.execPath"], { encoding: "utf8" }).stdout,
+).trim();
+
+const compiler = (marker: string): string => `#!${NODE}
 const MARKER = ${JSON.stringify(marker)};
 let rest = "";
 process.stdin.setEncoding("utf8");
@@ -271,10 +277,23 @@ const run = (root: string, env: { [string]: string | void }, loader: Loader): Re
   for (const name of Object.keys(environment)) {
     if (environment[name] == null) delete environment[name];
   }
+  // Deno's node:child_process retains omitted inherited variables. Clear
+  // explicitly absent keys inside the Node fixture before its loader starts.
+  const unset = Object.keys(env).filter((name) => env[name] == null);
+  const clear =
+    "data:text/javascript," +
+    encodeURIComponent(
+      unset.map((name) => `delete process.env[${JSON.stringify(name)}];`).join("\n"),
+    );
   const result = spawnSync(
-    process.execPath,
-    ["--import", loader.imports(root), path.join(root, "main.js")],
-    { cwd: root, env: environment, encoding: "utf8", timeout: 60_000 },
+    NODE,
+    ["--import", clear, "--import", loader.imports(root), path.join(root, "main.js")],
+    {
+      cwd: root,
+      env: environment,
+      encoding: "utf8",
+      timeout: 60_000,
+    },
   );
   return {
     status: result.status,
@@ -469,4 +488,33 @@ export function leavesACommonjsModuleThatSomethingRequiresToNode(loader: Loader)
     expect(required.stdout).toBe(`first-build ${path.join("common", "js")}`);
     expect(required.stderr).not.toContain("legacy.cjs");
   }, projectThatRequires);
+}
+
+/** A non-React test project may not install React; a React app owns its runtime. */
+export function resolvesTheProjectsCompilerRuntime(loader: Loader): void {
+  inAProject((root) => {
+    const binary = buildUf(root, "first-build", FIRST);
+    fs.writeFileSync(
+      path.join(root, "main.js"),
+      'import { c } from "react/compiler-runtime"; process.stdout.write(String(c(2).length));',
+    );
+    const env = { UF_BINARY: binary, UF_IN_SOURCE_TESTS: "1" };
+    const fallback = run(root, env, loader);
+    expect(fallback.status).toBe(0);
+    expect(fallback.stdout).toBe("2");
+    const react = path.join(root, "node_modules/react");
+    fs.mkdirSync(react, { recursive: true });
+    fs.writeFileSync(
+      path.join(react, "package.json"),
+      JSON.stringify({
+        name: "react",
+        type: "module",
+        exports: { "./compiler-runtime": "./runtime.js" },
+      }),
+    );
+    fs.writeFileSync(path.join(react, "runtime.js"), "export const c = () => [1, 2, 3];");
+    const installed = run(root, env, loader);
+    expect(installed.status).toBe(0);
+    expect(installed.stdout).toBe("3");
+  });
 }

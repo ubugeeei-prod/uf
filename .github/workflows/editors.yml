@@ -1,0 +1,113 @@
+name: Editors
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/editors.yml"
+      - "editors/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/editors.yml"
+      - "editors/**"
+    tags:
+      - "uf@*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to package, without the uf@ prefix"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editors-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vscode:
+    name: VS Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version != '' && format('uf@{0}', inputs.version) || github.ref }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Resolve extension version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          if [ -n "$INPUT_VERSION" ]; then
+            version="$INPUT_VERSION"
+          elif [ "${REF_NAME#uf@}" != "$REF_NAME" ]; then
+            version="${REF_NAME#uf@}"
+          else
+            version="$(node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync("editors/vscode/package.json","utf8")); process.stdout.write(p.version)')"
+          fi
+          node -e 'const fs=require("node:fs"); const file="editors/vscode/package.json"; const p=JSON.parse(fs.readFileSync(file,"utf8")); p.version=process.argv[1]; fs.writeFileSync(file, JSON.stringify(p, null, 2)+"\n")' "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Package VSIX
+        working-directory: editors/vscode
+        run: |
+          set -eu
+          npm ci --no-audit --no-fund
+          ./node_modules/.bin/vsce package --out "../../uf-${{ steps.version.outputs.version }}.vsix"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: uf-vscode-${{ steps.version.outputs.version }}
+          path: uf-${{ steps.version.outputs.version }}.vsix
+          if-no-files-found: error
+      - name: Publish to Visual Studio Marketplace
+        if: startsWith(github.ref, 'refs/tags/uf@') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -eu
+          if [ -z "${VSCE_PAT:-}" ]; then
+            echo "::notice::VSCE_PAT is not set; skipping Visual Studio Marketplace publish"
+            exit 0
+          fi
+          editors/vscode/node_modules/.bin/vsce publish --packagePath "uf-${{ steps.version.outputs.version }}.vsix" --pat "$VSCE_PAT"
+      - name: Publish to Open VSX
+        if: startsWith(github.ref, 'refs/tags/uf@') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          set -eu
+          if [ -z "${OVSX_PAT:-}" ]; then
+            echo "::notice::OVSX_PAT is not set; skipping Open VSX publish"
+            exit 0
+          fi
+          editors/vscode/node_modules/.bin/ovsx publish "uf-${{ steps.version.outputs.version }}.vsix" -p "$OVSX_PAT"
+
+  zed:
+    name: Zed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: zed-extension
+      - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1
+      - run: cargo build --manifest-path editors/zed/Cargo.toml --release --target wasm32-wasip1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: uf-zed-wasm
+          path: editors/zed/target/wasm32-wasip1/release/uf_zed.wasm
+          if-no-files-found: error

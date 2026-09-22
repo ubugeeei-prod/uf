@@ -158,9 +158,9 @@ describe("Time", () => {
     // The default has to be a zone both renders agree on. The host's zone is the
     // one thing that is guaranteed to differ between a server and a reader,
     // which is the whole problem restated.
-    render(<Time value="2026-09-04T22:00:00Z" format="date" />);
+    const { container } = render(<Time value="2026-09-04T22:00:00Z" format="date" />);
 
-    expect(screen.getByText("2026-09-04")).toBeInTheDocument();
+    expect(container.textContent).toBe("2026-09-04");
   });
 
   it("accepts an instant as a Date, a string, or a number", () => {

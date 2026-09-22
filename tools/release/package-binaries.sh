@@ -50,12 +50,18 @@ archive="uf-${target}.tar.gz"
 rm -rf "$stage_dir"
 mkdir -p "$stage_dir/bin" "$out_dir"
 
+exe=""
+case "$target" in
+  *-pc-windows-msvc) exe=".exe" ;;
+esac
+
 for name in uf ufr ufx; do
-  if [ ! -x "$bin_root/$name" ]; then
-    echo "package-binaries: missing built binary: $bin_root/$name" >&2
+  built="$bin_root/$name$exe"
+  if [ ! -f "$built" ]; then
+    echo "package-binaries: missing built binary: $built" >&2
     exit 1
   fi
-  cp "$bin_root/$name" "$stage_dir/bin/$name"
+  cp "$built" "$stage_dir/bin/$name$exe"
 done
 
 case "$target" in

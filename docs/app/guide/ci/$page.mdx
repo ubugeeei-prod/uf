@@ -62,10 +62,9 @@ The action installs the *toolchain*. `uf install` is a separate line because it
 is a separate thing — see [Install before you check](#install-before-you-check),
 which is the one mistake in this page that does not announce itself.
 
-On a Windows runner it **fails** rather than skipping. uf publishes macOS and
-Linux binaries only, and a matrix leg that quietly does nothing still reports
-the matrix green — which is the failure mode that would let a Windows job pass
-for a year without running anything. Run uf under WSL2 there.
+On a Windows runner it uses the PowerShell installer and installs the Windows
+release artifact. A matrix leg that cannot install uf fails rather than quietly
+doing nothing, because a skipped platform still reports the matrix green.
 
 ## GitLab CI
 
@@ -400,11 +399,12 @@ is what still catches a commit made with `--no-verify`.
 There is no Jenkins, Buildkite, Woodpecker or Drone file, and no Docker image
 that ships uf preinstalled. All of them are the same five lines — install,
 `PATH`, cache, `uf install`, run — and none of them is written here yet.
-`curl -fsSL https://setup.uniflowed.dev | sh` followed by adding
-`~/.local/bin` to `PATH` is the whole of the first two, and everything on this
-page from [Install before you check](#install-before-you-check) onwards applies
-to a system with no file here exactly as it applies to the three that have one:
-they are properties of uf, not of the runner.
+`curl -fsSL https://setup.uniflowed.dev | sh` (or
+`irm https://setup.uniflowed.dev/install.ps1 | iex` on Windows) followed by
+adding the installer's bin directory to `PATH` is the whole of the first two,
+and everything on this page from [Install before you check](#install-before-you-check)
+onwards applies to a system with no file here exactly as it applies to the three
+that have one: they are properties of uf, not of the runner.
 
 There is also no `--json` on `uf fmt --check`, which is the one thing on this
 page a pipeline has to read as prose. It is a gap rather than a decision, and it

@@ -38,6 +38,7 @@
 // files the way `event-generation.test.js` does: a fixture in this workspace
 // that registers cases would be collected and run by this very suite.
 
+import { denoWorkerArguments } from "../../tests/library/deno-worker.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -50,7 +51,7 @@ import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 // to have the binding.
 import * as staticallyImported from "../../tests/library/fixtures/module-mock/client.js";
 
-import { hostName, unsupportedReason } from "./internal/modules.js";
+import { moduleMockingUnavailable, unsupportedReason } from "./internal/modules.js";
 
 const CLIENT = "../../tests/library/fixtures/module-mock/client.js";
 const CONSUMER = "../../tests/library/fixtures/module-mock/consumer.js";
@@ -431,7 +432,7 @@ describe("a host that cannot intercept a module", () => {
   it("is not this one", () => {
     // Node's synchronous module hooks are the whole requirement, and the suite
     // above would be meaningless if this were a host without them.
-    expect(hostName()).toBe("this host");
+    expect(moduleMockingUnavailable()).toBe(null);
   });
 
   it("would be told which host it is and what to do instead", () => {
@@ -614,14 +615,13 @@ type Request = {|
 type Event = { event: string, status?: string, text?: string };
 
 /**
- * How this host starts a worker, mirroring `HostCommand::with_flow_loader`.
- *
- * The same shape as `event-generation.test.js`, and for the same reason: what
- * is being asserted is a property of a worker serving two files, so the test
- * has to be a worker serving two files.
+ * How this host starts a nested fixture with its Flow loader.
+ * Node, Bun and Deno all exercise the same worker protocol. These fixtures
+ * receive the repository suite's explicit process and filesystem grants.
  */
 function loaderArguments(): Array<string> {
   const host = path.basename(process.execPath);
+  if (host.startsWith("deno")) return denoWorkerArguments(repository);
   if (host.startsWith("node")) {
     const register = path.join(repository, "packages", "host", "register.js");
     return ["--enable-source-maps", "--import", pathToFileURL(register).href];

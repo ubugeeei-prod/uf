@@ -44,6 +44,7 @@
 //! which manager ran and why, because "uf installed your dependencies" is not
 //! true and should not be printed.
 
+use std::ffi::{OsStr, OsString};
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -252,8 +253,9 @@ pub fn run_operation_with_detection(
     let (manager, substituted) = installable(detection);
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
-    let mut command = Command::new(invocation.program);
-    if let Some(path) = prefixed_path(path) {
+    let path = prefixed_path(path);
+    let mut command = Command::new(program_to_spawn(invocation.program, path.as_deref()));
+    if let Some(path) = path {
         command.env("PATH", path);
     }
     command.envs(invocation.env.iter().copied());
@@ -330,8 +332,9 @@ pub fn run_captured_with_detection(
     let (manager, _) = installable(detection);
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
-    let mut command = Command::new(invocation.program);
-    if let Some(path) = prefixed_path(path) {
+    let path = prefixed_path(path);
+    let mut command = Command::new(program_to_spawn(invocation.program, path.as_deref()));
+    if let Some(path) = path {
         command.env("PATH", path);
     }
     command.envs(invocation.env.iter().copied());
@@ -738,8 +741,9 @@ pub fn run_watched_with_detection(
         .args
         .push(std::borrow::Cow::Borrowed(reader.verbosity_argument()));
 
-    let mut command = Command::new(invocation.program);
-    if let Some(path) = prefixed_path(path) {
+    let path = prefixed_path(path);
+    let mut command = Command::new(program_to_spawn(invocation.program, path.as_deref()));
+    if let Some(path) = path {
         command.env("PATH", path);
     }
     command.envs(invocation.env.iter().copied());
@@ -842,6 +846,59 @@ fn pump<R: Read + Send + 'static>(
             }
         }
     })
+}
+
+fn program_to_spawn(program: &str, path: Option<&OsStr>) -> OsString {
+    #[cfg(windows)]
+    {
+        windows_program_to_spawn(program, path).unwrap_or_else(|| OsString::from(program))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        OsString::from(program)
+    }
+}
+
+#[cfg(windows)]
+fn windows_program_to_spawn(program: &str, path: Option<&OsStr>) -> Option<OsString> {
+    if program.contains('/') || program.contains('\\') {
+        return None;
+    }
+    let search = path
+        .map(OsString::from)
+        .or_else(|| std::env::var_os("PATH"))
+        .unwrap_or_default();
+    let extensions =
+        std::env::var_os("PATHEXT").unwrap_or_else(|| OsString::from(".COM;.EXE;.BAT;.CMD"));
+    windows_program_in_path(program, &search, &extensions)
+}
+
+#[cfg(any(windows, test))]
+fn windows_program_in_path(program: &str, path: &OsStr, pathext: &OsStr) -> Option<OsString> {
+    let has_extension = std::path::PathBuf::from(program).extension().is_some();
+    for directory in std::env::split_paths(path) {
+        let candidate = directory.join(program);
+        if has_extension && candidate.is_file() {
+            return Some(candidate.into_os_string());
+        }
+        if has_extension {
+            continue;
+        }
+        for extension in pathext.to_string_lossy().split(';') {
+            if ![".COM", ".EXE", ".BAT", ".CMD"]
+                .iter()
+                .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+            {
+                continue;
+            }
+            let candidate = directory.join(format!("{program}{extension}"));
+            if candidate.is_file() {
+                return Some(candidate.into_os_string());
+            }
+        }
+    }
+    None
 }
 
 /// The manager to actually spawn, and whether it was substituted.
