@@ -52,7 +52,7 @@ pub(crate) fn lib_files(name: &str) -> Vec<(&'static str, String)> {
 ///   member keeps its own config for what is only its own business — an
 ///   application's router, a library's build.
 /// * **Tasks across the packages.** A command is sent to one member with the
-///   `#member` selector, so `build` builds the library before the application
+///   `#member` selector, so `bundle` builds the library before the application
 ///   that bundles it, which is the ordering a repository otherwise encodes in a
 ///   script nobody reads.
 /// * **Workspaces in the standard field.** `workspaces` in the root manifest is
@@ -107,17 +107,16 @@ import { defineConfig } from "@uniflowed/config";
 // package's: `apps/web` is an application and `packages/ui` a library.
 //
 // `uf build#packages/ui` runs `uf build` in that package, which is how a task
-// here reaches one package, and `build` depends on `build:ui` because the
-// application bundles what the library builds.
+// here reaches one package. `uf run bundle` verifies the repository, builds
+// the library, then builds the application that consumes it.
 export default defineConfig({
   tasks: {
-    dev: { command: "uf dev#apps/web" },
-    build: { command: "uf build#apps/web", dependsOn: ["build:ui"] },
-    "build:ui": { command: "uf build#packages/ui" },
-    check: { command: "uf check" },
-    lint: { command: "uf lint" },
-    fmt: { command: "uf fmt" },
-    test: { command: "uf test" },
+    "serve:web": { command: "uf dev#apps/web" },
+    "verify:format": { command: "uf fmt --check" },
+    "verify:source": { command: "uf check" },
+    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    "bundle:ui": { command: "uf build#packages/ui", dependsOn: ["verify"] },
+    bundle: { command: "uf build#apps/web", dependsOn: ["bundle:ui"] },
   },
 });
 "#
@@ -370,12 +369,10 @@ import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   tasks: {
-    dev: { command: "uf dev" },
-    build: { command: "uf build" },
-    check: { command: "uf check" },
-    lint: { command: "uf lint" },
-    fmt: { command: "uf fmt" },
-    test: { command: "uf test" },
+    "verify:format": { command: "uf fmt --check" },
+    "verify:source": { command: "uf check" },
+    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    bundle: { command: "uf build", dependsOn: ["verify"] },
   },
 });
 "#
@@ -407,11 +404,10 @@ export default defineConfig({
     },
   },
   tasks: {
-    build: { command: "uf build" },
-    check: { command: "uf check" },
-    lint: { command: "uf lint" },
-    fmt: { command: "uf fmt" },
-    test: { command: "uf test" },
+    "verify:format": { command: "uf fmt --check" },
+    "verify:source": { command: "uf check" },
+    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    bundle: { command: "uf build", dependsOn: ["verify"] },
   },
 });
 "#

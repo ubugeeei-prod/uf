@@ -653,14 +653,14 @@ fn an_ignore_entry_with_a_separator_still_means_one_place() {
     assert_eq!(files[0].relative_path, "lib/generated/keep.js");
 }
 
-/// The `test` task a scaffolded project gets must run its tests.
+/// The verification task a scaffolded project gets must run its tests.
 ///
 /// Both templates shipped `uf test --list`, which lists what would run and
 /// runs none of it. A generated project therefore had a green `uf run test`
 /// that executed nothing, which is worse than having no task at all: it is a
 /// check that reports success without checking.
 #[test]
-fn a_scaffolded_project_gets_a_test_task_that_runs_tests() {
+fn a_scaffolded_project_gets_a_verification_task_that_runs_tests() {
     for (kind, files) in [("app", app_react_files("demo")), ("lib", lib_files("demo"))] {
         let config = files
             .iter()
@@ -669,8 +669,8 @@ fn a_scaffolded_project_gets_a_test_task_that_runs_tests() {
             .unwrap_or_else(|| panic!("the {kind} template writes a uf.config.js"));
 
         assert!(
-            config.contains(r#"test: { command: "uf test" }"#),
-            "the {kind} template's test task must run the tests:\n{config}"
+            config.contains(r#"verify: { command: "uf test", dependsOn:"#),
+            "the {kind} template's verification task must run the tests:\n{config}"
         );
         assert!(
             !config.contains("--list"),

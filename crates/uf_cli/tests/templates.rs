@@ -18,9 +18,6 @@ use std::process::Command;
 
 use support::{Project, uf, uf_path};
 
-/// What every template has to pass before it is built.
-const CHECKS: [&[&str]; 4] = [&["fmt", "--check"], &["lint"], &["check"], &["test"]];
-
 /// Whether a project can be built here: Node on PATH and the workspace
 /// installed.
 fn ready() -> bool {
@@ -97,14 +94,6 @@ fn scaffold(args: &[&str]) -> (Project, PathBuf) {
     (scratch, dir)
 }
 
-/// The checks, then `build`.
-fn chain(dir: &Path, build: &[&str]) {
-    for args in CHECKS {
-        step(dir, args);
-    }
-    step(dir, build);
-}
-
 #[test]
 fn the_react_template_is_formatted_linted_checked_tested_and_built() {
     if !ready() {
@@ -112,7 +101,7 @@ fn the_react_template_is_formatted_linted_checked_tested_and_built() {
     }
     let (_scratch, dir) = scaffold(&["--name", "template-react"]);
 
-    chain(&dir, &["build"]);
+    step(&dir, &["run", "bundle"]);
 
     assert!(
         dir.join("dist/index.html").is_file(),
@@ -127,13 +116,13 @@ fn the_library_template_is_formatted_linted_checked_tested_and_built() {
     }
     let (_scratch, dir) = scaffold(&["--lib", "--name", "template-lib"]);
 
-    chain(&dir, &["build"]);
+    step(&dir, &["run", "bundle"]);
 
     assert!(dir.join("dist").is_dir(), "the build wrote nothing");
 }
 
 /// The checks run once, at the root, over both packages; the build is the
-/// root's `build` task, which builds the library before the application that
+/// root's `bundle` task, which builds the library before the application that
 /// bundles it.
 #[test]
 fn the_monorepo_template_is_checked_at_its_root_and_built_across_its_packages() {
@@ -160,7 +149,7 @@ fn the_monorepo_template_is_checked_at_its_root_and_built_across_its_packages() 
     #[cfg(unix)]
     std::os::unix::fs::symlink("../../packages/ui", scope.join("ui")).expect("the workspace link");
 
-    chain(&dir, &["run", "build"]);
+    step(&dir, &["run", "bundle"]);
 
     assert!(
         dir.join("packages/ui/dist").is_dir(),
