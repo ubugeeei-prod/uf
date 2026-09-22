@@ -19,7 +19,7 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: read # Verify the exact successful merge-queue run.
 
 concurrency:
   group: publish-${{ inputs.version }}
@@ -52,7 +52,7 @@ jobs:
     environment: release
     permissions:
       contents: read
-      id-token: write
+      id-token: write # Authenticate npm trusted publishing.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

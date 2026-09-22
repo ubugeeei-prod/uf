@@ -9,7 +9,11 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: read # Read PR authors and changed paths without executing PR code.
+
+concurrency:
+  group: release-policy-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   policy:

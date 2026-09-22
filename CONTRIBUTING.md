@@ -255,7 +255,8 @@ needed. `node tools/release/open-release.cjs --dry-run alpha` prints the plan
 without creating a PR or publishing.
 
 The command requires GitHub CLI authentication and repository **maintain** or
-**admin** permission. It creates a separate worktree, updates versions and the
+**admin** permission. A required policy check runs from trusted workflow code
+and also protects changes to release automation. The command creates a separate worktree, updates versions and the
 changelog, and opens a release PR. Your current worktree stays untouched.
 
 Normal PRs run quick checks. Release PRs also run the full integration suite

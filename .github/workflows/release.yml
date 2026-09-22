@@ -23,7 +23,7 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: read # Inspect validation and npm publication runs.
 
 concurrency:
   group: release-${{ inputs.version }}
@@ -58,9 +58,9 @@ jobs:
     timeout-minutes: 20
     environment: release
     permissions:
-      actions: read
-      contents: write
-      id-token: write
+      actions: read # Download the validated queue artifacts.
+      contents: write # Create the release, upload assets and create its tag.
+      id-token: write # Sign archives with the workflow identity.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

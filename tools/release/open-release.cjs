@@ -248,7 +248,7 @@ async function main() {
     state = { repository, version, branch, pr: existing[0]?.number };
     save();
   }
-  if (state && process.argv.includes("--dry-run")) {
+  if (process.argv.includes("--dry-run")) {
     console.log(JSON.stringify(state, null, 2));
     return;
   }
