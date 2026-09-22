@@ -38,6 +38,16 @@ function Note($message) {
   Write-Host "  $message"
 }
 
+# PowerShell returns byte[] for application/octet-stream (including a VERSION
+# asset served by a generic file server), and string for text/plain.
+function ReadVersion($url) {
+  $content = (Invoke-WebRequest -Uri $url -UseBasicParsing).Content
+  if ($content -is [byte[]]) {
+    return ([System.Text.Encoding]::UTF8.GetString($content)).Trim()
+  }
+  return ([string]$content).Trim()
+}
+
 function Fetch($url, $path, $message) {
   try {
     Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
@@ -177,7 +187,7 @@ if ($releaseBase) {
   $channelUrl = "$releaseBase/$requestedVersion"
   if ($requestedVersion -eq "latest") {
     try {
-      $version = (Invoke-WebRequest -Uri "$channelUrl/VERSION" -UseBasicParsing).Content.Trim()
+      $version = ReadVersion "$channelUrl/VERSION"
     } catch {
       Fail "no version at $channelUrl/VERSION" "set UF_VERSION to install a specific release"
     }
@@ -185,7 +195,7 @@ if ($releaseBase) {
 } elseif ($requestedVersion -eq "latest") {
   $stableUrl = "https://github.com/$repo/releases/latest/download"
   try {
-    $version = (Invoke-WebRequest -Uri "$stableUrl/VERSION" -UseBasicParsing).Content.Trim()
+    $version = ReadVersion "$stableUrl/VERSION"
     $channelUrl = $stableUrl
   } catch {
     $tag = LatestPrereleaseTag

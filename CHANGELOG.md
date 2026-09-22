@@ -1,5 +1,13 @@
 # Changelog
 
+## uf@0.0.0-alpha.45
+
+_2026-09-22_
+
+### Fixed
+
+- **installer**: decode Windows version responses served as either text or binary content, completing the native Windows release introduced in alpha.44.
+
 ## uf@0.0.0-alpha.44
 
 _2026-09-22_
