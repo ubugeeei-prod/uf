@@ -1,25 +1,32 @@
 # CI
 
-Normal PRs should get feedback within two minutes. Cold Rust builds and the
-full browser integration suite can take longer; check Actions timings before
-claiming that target is met.
+Normal PRs target two-minute feedback. They run unit tests, formatting, lint,
+metadata, library tests and docs checks. Full integration tests and platform
+checks run for release PRs and their merge-queue commits.
 
-- CI builds `uf` once and shares it with the other jobs. `UF_CI_PREBUILT=1`
-  makes the local `build` task require that artifact instead of rebuilding it.
-- Docs and brand edits run formatting, lint, metadata and site checks. They
-  do not rerun the Rust workspace or unrelated platform tests. Source changes,
-  unknown paths and missing Git history run the full suite.
-- The Rust suite runs once with all features. A separate compile check covers
-  disabled default features. Benchmarks are compiled with the `ci` profile;
-  release packaging still uses `dist`.
-- Sticky disks keep Cargo downloads and workspace build outputs. Only `main`
-  saves snapshots. Each compiling job has its own target disk. Fresh disks
-  can restore the previous Actions cache, without pruning workspace crates.
-- Cargo checks source contents instead of checkout timestamps on the pinned
-  nightly. It still decides which crates need rebuilding.
-- Docs deployment downloads the site that passed the build job.
+- CI builds `uf` once. `UF_CI_PREBUILT=1` makes dependent tasks require that
+  artifact instead of building it again. Local development still builds it.
+- Docs and brand edits keep site checks without unrelated Rust checks.
+  Unknown paths still run code checks. Missing history runs the full suite.
+- Sticky disks retain Cargo downloads and workspace outputs. Only `main`
+  saves snapshots. Compiling jobs use separate target disks. Fresh disks can
+  restore the previous Actions cache without pruning workspace crates.
+- Cargo checks contents instead of checkout timestamps on the pinned nightly.
+- The Rust suite runs once with all features. Another job compiles disabled
+  default features. Benchmark compile checks use `ci`; release archives use
+  `dist`.
+- Hydration checks cover every page at both widths in eight browser tabs.
+- Docs deployment reuses the site artifact from its build job.
 
-Run `node --test tools/ci/change-scope.test.cjs` after changing the scope or
-prebuilt-binary rules. The `CI` gate still requires every job to succeed:
-conditional work lives in steps, so a failed prerequisite cannot become an
-accepted skipped job.
+The `CI` gate requires successful jobs. Only the release artifact job may be
+skipped, and only when the scope job confirms this is not a release candidate.
+A failed prerequisite still fails the gate.
+
+Run the quick regression checks with:
+
+```sh
+node --test tools/ci/test-change-scope.cjs tools/release/test-policy.cjs
+```
+
+Cold Rust builds and release validation can exceed two minutes. Compare
+Actions timings after caches are warm before reporting the target as met.

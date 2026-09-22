@@ -154,6 +154,7 @@ export default defineConfig({
     "rust:clippy": {
       command: "cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings",
     },
+    "rust:test:unit": "cargo test --workspace --lib --all-features --profile ci",
     "rust:test": "cargo test --workspace --all-features --profile ci",
     "rust:bench": "cargo bench --workspace --no-run --profile ci",
     "rust:metadata": "cargo metadata --format-version 1 --locked",
@@ -637,6 +638,7 @@ export default defineConfig({
     // gone out, which half-sends a release. It also reports where each name's
     // `latest` points, which is the other half of #408 and is checked here
     // because nothing in the pipeline can see it.
+    release: "node tools/release/open-release.cjs",
     "release:preflight": "tools/release/preflight.sh",
     // And the step that moves `latest`, after the release. `publish.yml` sends
     // a prerelease on the `alpha` tag — right, and it stays that way, because

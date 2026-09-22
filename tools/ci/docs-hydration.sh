@@ -80,14 +80,18 @@ const HYDRATION_ERROR =
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function timeout(label, ms) {
-  return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-  });
-}
-
-function withTimeout(promise, label, ms) {
-  return Promise.race([promise, timeout(label, ms)]);
+async function withTimeout(promise, label, ms) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function mimeType(file) {
@@ -397,23 +401,27 @@ async function main() {
     chrome = started.chrome;
     const socket = await openWebSocket(started.wsUrl);
     const cdp = new Cdp(socket);
-    const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
-    const { sessionId } = await cdp.send("Target.attachToTarget", {
-      targetId,
-      flatten: true,
-    });
-    await cdp.send("Runtime.enable", {}, sessionId);
-    await cdp.send("Log.enable", {}, sessionId);
-    await cdp.send("Page.enable", {}, sessionId);
-
+    const cases = pages.flatMap((route) => [464, 1440].map((width) => ({ route, width })));
     const findings = [];
-    for (const route of pages) {
-      for (const width of [464, 1440]) {
-        findings.push(...(await checkPage(cdp, sessionId, origin, route, width)));
+    let next = 0;
+    // Each worker owns a tab and CDP session. Keep both viewport checks and
+    // the hydration observation window, without waiting for 116 pages serially.
+    await Promise.all(Array.from({ length: Math.min(8, cases.length) }, async () => {
+      const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
+      const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+      try {
+        await cdp.send("Runtime.enable", {}, sessionId);
+        await cdp.send("Log.enable", {}, sessionId);
+        await cdp.send("Page.enable", {}, sessionId);
+        while (next < cases.length) {
+          const { route, width } = cases[next++];
+          findings.push(...(await checkPage(cdp, sessionId, origin, route, width)));
+        }
+      } finally {
+        await cdp.send("Target.closeTarget", { targetId });
       }
-    }
+    }));
 
-    await cdp.send("Target.closeTarget", { targetId });
     socket.close();
 
     if (findings.length > 0) {

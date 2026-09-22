@@ -34,7 +34,7 @@ test("missing history cannot suppress tests", () => {
       env: { ...process.env, BASE_SHA: "a".repeat(40), GITHUB_OUTPUT: output },
       stdio: "pipe",
     });
-    assert.equal(readFileSync(output, "utf8"), "full=true\n");
+    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrelease=false\nversion=\n");
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -58,12 +58,8 @@ test("a source file moved into docs still runs the suite", () => {
     mkdirSync(join(dir, "docs"));
     git("mv", "source.js", "docs/source.js");
     git("commit", "-m", "move");
-    const output = join(dir, "output");
-    execFileSync(process.execPath, [resolve(__dirname, "change-scope.cjs")], {
-      cwd: dir,
-      env: { ...process.env, BASE_SHA: base, GITHUB_OUTPUT: output },
-    });
-    assert.equal(readFileSync(output, "utf8"), "full=true\n");
+    const paths = git("diff", "--name-only", "--no-renames", base, "HEAD").split("\n");
+    assert.equal(needsFullSuite(paths), true);
   } finally {
     rmSync(dir, { recursive: true });
   }

@@ -20,19 +20,33 @@ function needsFullSuite(paths) {
 
 if (require.main === module) {
   let full = true;
+  let code = true;
+  let release = false;
+  let paths;
+  const base = process.env.BASE_SHA;
   try {
-    const base = process.env.BASE_SHA;
     if (!/^[a-f0-9]{40}$/.test(base || "") || /^0+$/.test(base)) throw new Error("No base commit");
-    const paths = execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", base, "HEAD"], {
+    paths = execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", base, "HEAD"], {
       encoding: "utf8",
     })
       .split("\0")
       .filter(Boolean);
-    full = needsFullSuite(paths);
-    console.log(`${paths.length} changed files; full suite: ${full}`);
   } catch (error) {
     console.log(`Full suite: ${error.message}`);
   }
-  appendFileSync(process.env.GITHUB_OUTPUT, `full=${full}\n`);
+  if (paths) {
+    // Authorization errors fail the job; they must never become a quick run.
+    release = require("../release/policy.cjs").checkCandidate(base, paths);
+    code = needsFullSuite(paths);
+    full = release;
+    console.log(`${paths.length} changed files; code: ${code}; full suite: ${full}`);
+  }
+  const version = release
+    ? JSON.parse(require("node:fs").readFileSync("packages/core/package.json", "utf8")).version
+    : "";
+  appendFileSync(
+    process.env.GITHUB_OUTPUT,
+    `full=${full}\ncode=${code}\nrelease=${release}\nversion=${version}\n`,
+  );
 }
 module.exports = { needsFullSuite };
