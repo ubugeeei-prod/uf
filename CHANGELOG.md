@@ -2,6 +2,7 @@
 
 ## uf@0.0.0-alpha.47
 
+- fix(router): read a missing chunk off a resolution in one helper, back under the lint budget (#1343) (72187f8b)
 - fix(server): spell the adapter contract's fields `readonly` (#1342) (8e30e4f6)
 - ci(bench): commit the first CI baseline and fix the gate and the comparison on a runner (#1339) (2c45e91c)
 - ci(deploy-parity): run the version-skew fixture where a socket can be bound (#1340) (8010f8d1)
