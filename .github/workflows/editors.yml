@@ -48,26 +48,54 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -eu
+          release=true
           if [ -n "$INPUT_VERSION" ]; then
             version="$INPUT_VERSION"
           elif [ "${REF_NAME#uf@}" != "$REF_NAME" ]; then
             version="${REF_NAME#uf@}"
           else
-            version="$(node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync("editors/vscode/package.json","utf8")); process.stdout.write(p.version)')"
+            version="$(node -p 'require("./editors/vscode/package.json").version')"
+            release=false
           fi
-          node -e 'const fs=require("node:fs"); const file="editors/vscode/package.json"; const p=JSON.parse(fs.readFileSync(file,"utf8")); p.version=process.argv[1]; fs.writeFileSync(file, JSON.stringify(p, null, 2)+"\n")' "$version"
+          # The Marketplace takes no semver prerelease, so uf's version is
+          # mapped onto one it does take. editors/vscode/release/version.js
+          # says how, and fails on a version it cannot place.
+          node editors/vscode/release/version.js "$version" > "$RUNNER_TEMP/published"
+          cat "$RUNNER_TEMP/published"
+          marketplace_version="$(sed -n 's/^marketplace_version=//p' "$RUNNER_TEMP/published")"
+          pre_release="$(sed -n 's/^pre_release=//p' "$RUNNER_TEMP/published")"
+          # Only a release is stamped. Any other run's VSIX keeps
+          # package.json's 0.0.0, which every published version replaces.
+          if [ "$release" = true ]; then
+            node -e 'const fs=require("node:fs"); const file="editors/vscode/package.json"; const p=JSON.parse(fs.readFileSync(file,"utf8")); p.version=process.argv[1]; fs.writeFileSync(file, JSON.stringify(p, null, 2)+"\n")' "$marketplace_version"
+          else
+            pre_release=false
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "pre_release=$pre_release" >> "$GITHUB_OUTPUT"
       - name: Package VSIX
         working-directory: editors/vscode
+        env:
+          PRE_RELEASE: ${{ steps.version.outputs.pre_release }}
         run: |
           set -eu
+          # The Marketplace page links the licence from the package.
+          cp ../../LICENSE LICENSE
           npm ci --no-audit --no-fund
-          ./node_modules/.bin/vsce package --out "../../uf-${{ steps.version.outputs.version }}.vsix"
+          flags=""
+          if [ "$PRE_RELEASE" = "true" ]; then
+            flags="--pre-release"
+          fi
+          ./node_modules/.bin/vsce package $flags --out "../../uf-${{ steps.version.outputs.version }}.vsix"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uf-vscode-${{ steps.version.outputs.version }}
           path: uf-${{ steps.version.outputs.version }}.vsix
           if-no-files-found: error
+      # A step without its token says so by name and succeeds, so a release
+      # made before the owner has created the tokens is not red for it.
+      # `--skip-duplicate` makes a rerun of a partly published release, or a
+      # tag push arriving beside the dispatch, a no-op rather than a failure.
       - name: Publish to Visual Studio Marketplace
         if: startsWith(github.ref, 'refs/tags/uf@') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
         env:
@@ -78,7 +106,7 @@ jobs:
             echo "::notice::VSCE_PAT is not set; skipping Visual Studio Marketplace publish"
             exit 0
           fi
-          editors/vscode/node_modules/.bin/vsce publish --packagePath "uf-${{ steps.version.outputs.version }}.vsix" --pat "$VSCE_PAT"
+          editors/vscode/node_modules/.bin/vsce publish --skip-duplicate --packagePath "uf-${{ steps.version.outputs.version }}.vsix" --pat "$VSCE_PAT"
       - name: Publish to Open VSX
         if: startsWith(github.ref, 'refs/tags/uf@') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
         env:
@@ -89,7 +117,7 @@ jobs:
             echo "::notice::OVSX_PAT is not set; skipping Open VSX publish"
             exit 0
           fi
-          editors/vscode/node_modules/.bin/ovsx publish "uf-${{ steps.version.outputs.version }}.vsix" -p "$OVSX_PAT"
+          editors/vscode/node_modules/.bin/ovsx publish "uf-${{ steps.version.outputs.version }}.vsix" --skip-duplicate -p "$OVSX_PAT"
 
   zed:
     name: Zed
@@ -103,11 +131,20 @@ jobs:
         with:
           toolchain: nightly-2026-08-01
           targets: wasm32-wasip1
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          workspaces: editors/zed
           key: zed-extension
-      - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1
-      - run: cargo build --manifest-path editors/zed/Cargo.toml --release --target wasm32-wasip1
+      # editors/zed is its own workspace, so the workspace's fmt and clippy
+      # runs never see it.
+      - run: cargo fmt --manifest-path editors/zed/Cargo.toml -- --check
+      # The decisions (which binary, which arguments, which environment) are
+      # plain functions, tested on the host.
+      - run: cargo test --manifest-path editors/zed/Cargo.toml --locked
+      - run: cargo clippy --manifest-path editors/zed/Cargo.toml --locked --all-targets -- -D warnings
+      - run: cargo clippy --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip1 -- -D warnings
+      - run: cargo build --manifest-path editors/zed/Cargo.toml --locked --release --target wasm32-wasip1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uf-zed-wasm

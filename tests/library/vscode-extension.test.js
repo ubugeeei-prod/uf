@@ -29,6 +29,7 @@ const loadCjs = createRequire(import.meta.url);
 const binary = loadCjs("../../editors/vscode/src/binary.js");
 const client = loadCjs("../../editors/vscode/src/client.js");
 const project = loadCjs("../../editors/vscode/src/project.js");
+const release = loadCjs("../../editors/vscode/release/version.js");
 
 const FOLDER: string = path.join("/home", "dev", "app");
 
@@ -276,5 +277,53 @@ describe("reading the settings", () => {
       serverPath: "",
       formatOnSave: false,
     });
+  });
+});
+
+describe("the version the registries are sent", () => {
+  const published = (uf: string) => release.marketplaceVersion(uf);
+
+  it("maps a prerelease onto a plain version flagged as a pre-release", () => {
+    // `vsce publish` refuses `0.0.0-alpha.46` itself.
+    expect(published("0.0.0-alpha.46")).toEqual({ version: "0.0.46", preRelease: true });
+    expect(published("1.2.0-beta.3")).toEqual({ version: "1.2.1003", preRelease: true });
+    expect(published("1.2.0-rc.1")).toEqual({ version: "1.2.2001", preRelease: true });
+  });
+
+  it("publishes a release as a release", () => {
+    expect(published("1.2.0")).toEqual({ version: "1.2.9999", preRelease: false });
+    expect(published("1.2.1")).toEqual({ version: "1.2.19999", preRelease: false });
+  });
+
+  it("sorts in the order uf's versions do", () => {
+    // VS Code updates to the highest number it sees, so the order is the
+    // whole contract.
+    const order = [
+      "0.0.0-alpha.9",
+      "0.0.0-alpha.46",
+      "0.0.0-beta.0",
+      "0.0.0-rc.2",
+      "0.0.0",
+      "0.0.1-alpha.0",
+      "0.0.1",
+      "0.1.0-alpha.1",
+      "0.1.0",
+      "1.0.0-rc.1",
+      "1.0.0",
+    ];
+    const numbers = order.map((uf) => published(uf).version.split(".").map(Number));
+    for (let index = 1; index < numbers.length; index++) {
+      const [a, b] = [numbers[index - 1], numbers[index]];
+      const later = b[0] !== a[0] ? b[0] > a[0] : b[1] !== a[1] ? b[1] > a[1] : b[2] > a[2];
+      expect(`${order[index]} after ${order[index - 1]}: ${String(later)}`).toBe(
+        `${order[index]} after ${order[index - 1]}: true`,
+      );
+    }
+  });
+
+  it("refuses a version it cannot place rather than guessing", () => {
+    for (const uf of ["0.0.0-nightly.1", "0.0.0-alpha.1000", "0.0.0-alpha", "v1.0.0", ""]) {
+      expect(() => published(uf)).toThrow("has no extension version");
+    }
   });
 });
