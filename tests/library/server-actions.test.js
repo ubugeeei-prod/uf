@@ -1045,7 +1045,7 @@ describe("the module the browser is given in place of a `use server` file", () =
       fs.mkdtempSync(path.join(os.tmpdir(), "uf-actions-")),
       "uf-rsc-manifest.json",
     );
-    const actionManifest = (id) => ({
+    const actionManifest = (id: string) => ({
       ...manifest,
       serverActions: [
         {

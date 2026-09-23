@@ -26,7 +26,7 @@ import { use } from "@uniflowed/react";
 import { render, screen, userEvent } from "@uniflowed/react-testing";
 import { RouteView, RouterProvider, resolveMatch, routerView, useRouter } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
-import { afterAll, describe, expect, it } from "@uniflowed/test";
+import { afterAll, describe, expect, it, uft } from "@uniflowed/test";
 
 import {
   LAYOUT_PROP_NAMES,
@@ -437,14 +437,11 @@ async function chunksOf(result: {
   const started = Date.now();
   const decoder = new TextDecoder();
   const reader = result.stream().getReader();
-  const out = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done === true) {
-      return out;
-    }
-    out.push({ at: Date.now() - started, text: decoder.decode(value, { stream: true }) });
+  const out: Array<{| readonly at: number, readonly text: string |}> = [];
+  for (let chunk = await reader.read(); chunk.done !== true; chunk = await reader.read()) {
+    out.push({ at: Date.now() - started, text: decoder.decode(chunk.value, { stream: true }) });
   }
+  return out;
 }
 
 describe("rendering a route that has one", () => {
@@ -662,14 +659,18 @@ describe("rendering a route that has one", () => {
     };
     const originalError = console.error;
     const originalWarn = console.warn;
-    console.error = (...args: $ReadOnlyArray<mixed>) => {
-      if (shouldIgnoreExpectedReactLog(args)) return;
-      originalError(...args);
-    };
-    console.warn = (...args: $ReadOnlyArray<mixed>) => {
+    // Through `spyOn`, which puts the real methods back in `finally`: the
+    // console's methods are not something to assign over.
+    const error = uft
+      .spyOn(console, "error")
+      .mockImplementation((...args: $ReadOnlyArray<mixed>) => {
+        if (shouldIgnoreExpectedReactLog(args)) return;
+        originalError(...args);
+      });
+    const warn = uft.spyOn(console, "warn").mockImplementation((...args: $ReadOnlyArray<mixed>) => {
       if (shouldIgnoreExpectedReactLog(args)) return;
       originalWarn(...args);
-    };
+    });
     try {
       render(
         <RouterProvider url="/dashboard/members" initial={resolved}>
@@ -681,8 +682,8 @@ describe("rendering a route that has one", () => {
       expect(screen.getByText("the sidebar")).not.toBe(null);
       await Promise.resolve();
     } finally {
-      console.error = originalError;
-      console.warn = originalWarn;
+      error.mockRestore();
+      warn.mockRestore();
     }
   });
 });
