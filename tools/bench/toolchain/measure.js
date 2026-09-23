@@ -71,12 +71,46 @@ export type Environment = { readonly [string]: string | void };
 
 export type Finished = {
   readonly ms: number,
+  /**
+   * User plus system CPU time of the command and every process under it that
+   * was waited for, or `null` when it was not asked for or could not be read.
+   */
+  readonly cpuMs: number | null,
   readonly code: number | null,
   readonly signal: string | null,
   readonly timedOut: boolean,
   readonly stdout: string,
   readonly stderr: string,
 };
+
+/**
+ * The shell a command is run under when its CPU time is wanted.
+ *
+ * `times` is POSIX: its second line is the user and system time of every child
+ * the shell has waited for — and a child's own figure already includes the
+ * children *it* waited for, so this is the whole tree: uf's Node host, Vite's
+ * workers, a formatter's threads. Node has no way to ask for that about a
+ * child (`process.resourceUsage()` is this process only), and `/usr/bin/time`
+ * takes different flags on Linux and macOS. It goes to descriptor 3, so the
+ * command's own stdout — which some stages parse as JSON — is untouched.
+ */
+const WITH_TIMES = '"$@"; status=$?; times >&3; exit "$status"';
+
+/**
+ * Seconds from one line of `times` output — `0m1.250s 0m0.300s` in bash,
+ * `0m1.250000s 0m0.300000s` in dash — summed, as milliseconds.
+ */
+export function parseTimes(output: string): number | null {
+  const lines = output.trim().split("\n");
+  if (lines.length < 2) {
+    return null;
+  }
+  const fields = [...lines[1].matchAll(/(\d+)m([\d.]+)s/g)];
+  if (fields.length !== 2) {
+    return null;
+  }
+  return fields.reduce((sum, field) => sum + (Number(field[1]) * 60 + Number(field[2])) * 1000, 0);
+}
 
 /**
  * The part of a child process this file uses.
@@ -95,6 +129,7 @@ type Child = {
   readonly pid: ?number,
   readonly stdout: ?Stream,
   readonly stderr: ?Stream,
+  readonly stdio: $ReadOnlyArray<?Stream>,
   on(event: string, listener: (...values: Array<mixed>) => void): mixed,
   ...
 };
@@ -145,25 +180,44 @@ export function stopEverything(): void {
  * grandchild that keeps stdout open would add its lifetime to a command that
  * had already given the prompt back. The promise still waits for `close`, so
  * the output is complete when it is read.
+ *
+ * With `cpu`, the command runs under `/bin/sh` so that its CPU time can be read
+ * (see `WITH_TIMES`). That adds the shell's own start-up, a millisecond or two,
+ * to the wall clock of every command measured that way — which is every
+ * one-shot command of every tool, so it cancels in a comparison.
  */
 export function run(
   program: string,
   args: $ReadOnlyArray<string>,
-  options: { readonly cwd: string, readonly env: Environment, readonly timeoutMs: number },
+  options: {
+    readonly cwd: string,
+    readonly env: Environment,
+    readonly timeoutMs: number,
+    readonly cpu?: boolean,
+  },
 ): Promise<Finished> {
   return new Promise<Finished>((resolve, reject) => {
+    const cpu = options.cpu === true;
     const startedAt = performance.now();
     let exitedAt = startedAt;
     let timedOut = false;
-    const child: Child = spawn(program, [...args], {
-      cwd: options.cwd,
-      env: options.env,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child: Child = cpu
+      ? spawn("/bin/sh", ["-c", WITH_TIMES, "sh", program, ...args], {
+          cwd: options.cwd,
+          env: options.env,
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe", "pipe"],
+        })
+      : spawn(program, [...args], {
+          cwd: options.cwd,
+          env: options.env,
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
     live.add(child);
     let stdout = "";
     let stderr = "";
+    let times = "";
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk: string) => {
@@ -171,6 +225,11 @@ export function run(
     });
     child.stderr?.on("data", (chunk: string) => {
       stderr += chunk;
+    });
+    const timesStream = cpu ? child.stdio[3] : null;
+    timesStream?.setEncoding("utf8");
+    timesStream?.on("data", (chunk: string) => {
+      times += chunk;
     });
     const timer = setTimeout(() => {
       timedOut = true;
@@ -189,6 +248,7 @@ export function run(
       live.delete(child);
       resolve({
         ms: exitedAt - startedAt,
+        cpuMs: cpu ? parseTimes(times) : null,
         code: typeof code === "number" ? code : null,
         signal: typeof signal === "string" ? signal : null,
         timedOut,
@@ -250,6 +310,8 @@ async function fetchText(
 }
 
 export type DevServer = {
+  /** The command as typed, for messages: `uf dev`, `vp dev`. */
+  readonly label: string,
   readonly port: number,
   readonly startedAt: number,
   readonly exited: () => number | null,
@@ -261,7 +323,12 @@ export type DevServer = {
 export function startDevServer(
   program: string,
   args: $ReadOnlyArray<string>,
-  options: { readonly cwd: string, readonly env: Environment, readonly port: number },
+  options: {
+    readonly cwd: string,
+    readonly env: Environment,
+    readonly port: number,
+    readonly label?: string,
+  },
 ): DevServer {
   const startedAt = performance.now();
   const child: Child = spawn(program, [...args], {
@@ -287,6 +354,7 @@ export function startDevServer(
     });
   });
   return {
+    label: options.label ?? "uf dev",
     port: options.port,
     startedAt,
     exited: () => exitCode,
@@ -342,7 +410,8 @@ export async function waitForDocument(
     const code = server.exited();
     if (code != null) {
       throw new Error(
-        `\`uf dev\` exited with ${String(code)} before it served a document:\n${tail(server.log())}`,
+        `\`${server.label}\` exited with ${String(code)} before it served a document:\n` +
+          tail(server.log()),
       );
     }
     try {
@@ -360,7 +429,8 @@ export async function waitForDocument(
     await sleep(10);
   }
   throw new Error(
-    `\`uf dev\` served no 200 for / within ${String(timeoutMs / 1000)} s:\n${tail(server.log())}`,
+    `\`${server.label}\` served no 200 for / within ${String(timeoutMs / 1000)} s:\n` +
+      tail(server.log()),
   );
 }
 
