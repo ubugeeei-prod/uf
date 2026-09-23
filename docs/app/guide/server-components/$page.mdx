@@ -46,8 +46,8 @@ covers and what it does not yet.
 | Diagnostics | invalid directives, server-only imports in client graphs and client APIs in server modules are named | binding custom hooks to the browser APIs they call |
 | The split | a Server Component never reaches the browser: the browser gets the payload it rendered and the `"use client"` modules that payload names | no known gap |
 | HTML streaming | the document streams, and carries the Flight payload its tree was rendered from; a Suspense boundary resolves from the rows that arrive later in the same response | no known gap |
-| Navigation | a navigation fetches the next route's payload at `<route>/__uf.flight`; a prerendered route has that file beside its `index.html` | intercepting routes, which need the router that resolves routes from modules |
-| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references, a server function passed to a client component as a prop, and native form progressive enhancement |
+| Navigation | a navigation fetches the next route's payload at `<route>/__uf.flight`; a prerendered route has that file beside its `index.html`; an intercepted navigation asks for the page underneath with the interception in its slot | no known gap |
+| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)), a server function passed to a client component as a prop ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359)), and a form that submits before hydration ([#1358](https://github.com/ubugeeei-prod/uf/issues/1358)) |
 | Flight payload | React's own renderer and client (`react-server-dom-parcel`) in a second Vite environment resolved under `react-server` | no known gap |
 
 `app.rsc: false` in `uf.config.js` turns the model off: routes render from their
@@ -300,12 +300,9 @@ of a server component's code reaches the browser.
 
 - **A server function passed to a client component as a prop.** A client
   component imports the `"use server"` module instead; Flight server references
-  are not wired.
-- **Inline `"use server"` closures**, which have no export name to reference.
-- **Intercepting routes**, which need the router that resolves routes from their
-  modules: under React Server Components an intercepted URL is an ordinary
-  navigation to the page it names
-  ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)).
+  are not wired ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359)).
+- **Inline `"use server"` closures**, which have no export name to reference
+  ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)).
 
 [What uf does not do](/guide/scope) lists these beside every other gap.
 

@@ -1,0 +1,154 @@
+---
+title: "uf and Next.js · uf"
+description: "The Next.js App Router, feature by feature: what uf implements, what it does differently, and what is still missing."
+---
+
+<p className="eyebrow">Why uf</p>
+
+# uf and Next.js
+
+<div className="lede">
+Next.js is the framework uf has to be measured against, so this page is the
+audit: every App Router feature in one row, with uf's answer and one of four
+words beside it. The words are the point. A row marked Planned is a feature you
+cannot use today, whatever the rest of the table says.
+</div>
+
+**What you will be able to do:** check whether the Next.js feature your
+application depends on exists in uf, in what shape, and where it is tracked when
+it does not.
+
+**What you need first:** nothing installed. [uf compared](/guide/compare) is the
+shorter version, and says when to choose Next.js instead.
+
+| Word | Means |
+| --- | --- |
+| **Implemented** | code and tests on `main` |
+| **Partial** | implemented, with the hole named in the row |
+| **Planned** | no code yet; the issue is linked |
+| **Refused** | a decision not to, with the reason on the linked page |
+
+[#1357](https://github.com/ubugeeei-prod/uf/issues/1357) is the issue this
+table is kept from. A pull request that changes a row changes both.
+
+## What kind of server this is
+
+uf's server half is a **backend for this frontend**: route handlers, server
+actions and rendering, sized to what the interface needs. It is not where a
+team's domain lives. Your services, their database and their business rules
+stay where they are, and a uf application talks to them. That is why several
+Next.js rows below end in "use a route handler" or "Refused": a framework that
+grows a backend grows a second place for the domain to live.
+
+It is also why no row depends on a hosting company. Server features run on
+`uf start` and on the server adapters, each target says what it cannot do, and
+what a static host cannot run is refused by name at build time rather than
+dropped.
+
+## Routing
+
+| Next.js | uf | Status |
+| --- | --- | --- |
+| `page`, `layout`, `template`, `loading`, `error`, `not-found`, `default` | `$page.js`, `$layout.js`, `$template.js`, `$loading.js`, `$error.js`, `$not-found.js`, `$default.js` ([Routing](/guide/routing#the-file-names)) | Implemented |
+| `unauthorized.js`, `forbidden.js` | one `$error.js`; `unauthorized()` and `forbidden()` arrive as cases of `RouteError` and answer 401 and 403 | Implemented, one file on purpose |
+| `global-error.js` | a throw in the root layout, or in `$error.js` itself, reaches a framework boundary that renders uf's own page | Partial: a project cannot supply that page |
+| `route.js` | `$route.js`, which may also export `QUERY` | Implemented |
+| `middleware.ts`, one at the root | `$middleware.js` at any depth, chosen by the request path and never by a header ([Answering requests](/guide/routing/requests#middleware)) | Implemented |
+| `(group)` | `(group)` | Implemented |
+| `[slug]`, `[...slug]` | the same | Implemented |
+| `[[...slug]]`, the optional catch-all | nothing; write `[...slug]` and a page at the parent path | Planned, [#1361](https://github.com/ubugeeei-prod/uf/issues/1361) |
+| `@slot` parallel routes | the same ([Parallel routes](/guide/routing#parallel-routes)) | Implemented |
+| `(.)`, `(..)`, `(...)` intercepting routes | the same markers, only inside a slot, under Server Components and without them ([Intercepting routes](/guide/routing#intercepting-routes)) | Implemented |
+| `redirects`, `rewrites`, `headers` in `next.config` | `app.router` in `uf.config.js` | Implemented |
+| `basePath`, `trailingSlash` | the same names | Implemented |
+| i18n routing | `@uniflowed/i18n/routing` ([i18n](/reference/i18n#locale-routes)) | Implemented |
+
+## Rendering and data
+
+| Next.js | uf | Status |
+| --- | --- | --- |
+| React Server Components | React's own Flight payload, from `react-server-dom-parcel` ([Server Components](/guide/server-components)) | Implemented |
+| Streaming and Suspense | HTML streaming on `uf start` and every server adapter but `serverless`, which buffers | Implemented; Partial on `serverless` |
+| Partial prerendering | `ppr`: a static shell with holes streamed per request ([Rendering](/guide/rendering#ppr-a-static-shell-with-holes)) | Implemented |
+| Static generation, `generateStaticParams` | the same name | Implemented |
+| ISR and `revalidate` | `isr`, kept on disk, in Workers KV or in a store you name ([Rendering](/guide/rendering#isr-pages-that-regenerate)) | Implemented |
+| `revalidatePath`, `revalidateTag` | the same names ([Caching](/guide/cache#invalidating-on-demand)) | Implemented |
+| The fetch cache | opt-in per request ([Caching](/guide/cache#the-fetch-cache)) | Implemented |
+| `unstable_cache`, `"use cache"` | `cacheFunction`, named explicitly; a blanket data cache is refused | Partial, a different shape |
+| `after()` | `after()` from `@uniflowed/server` | Implemented |
+| `cookies()`, `headers()`, `draftMode()` | the same names | Implemented |
+| `connection()` | nothing | Planned |
+| `instrumentation.js`, OpenTelemetry | `instrumentation.js` and request spans | Implemented |
+
+## Server actions
+
+| Next.js | uf | Status |
+| --- | --- | --- |
+| Exported functions of a `"use server"` module, callable from the client | the same, with ids that are an HMAC of the build and a closed JSON grammar for arguments ([Server actions](/guide/server-actions)) | Implemented |
+| `useActionState`, `useFormStatus`, `useOptimistic` | React's own | Implemented once the page has hydrated |
+| A `<form action={serverFunction}>` that submits before hydration | React writes `action="javascript:throw …"`, so a submit before hydration throws in the page | Planned, [#1358](https://github.com/ubugeeei-prod/uf/issues/1358) |
+| A server function passed to a client component as a prop | the client component imports the `"use server"` module instead | Planned, [#1359](https://github.com/ubugeeei-prod/uf/issues/1359) |
+| Inline `"use server"` closures, with their captured variables encrypted | recognised and keyed, not callable | Planned, [#1360](https://github.com/ubugeeei-prod/uf/issues/1360) |
+| A file upload through an action | refused at the call site; use a route handler | Refused |
+| Caching an action's result | `rendering.cache.actions` is refused when the config loads | Refused |
+
+## Metadata and assets
+
+| Next.js | uf | Status |
+| --- | --- | --- |
+| `metadata`, `generateMetadata`, JSON-LD | the same names ([Metadata](/guide/routing#metadata)) | Implemented |
+| `sitemap.js`, `robots.js` | `sitemap.xml` and `robots.txt`, written by `uf build` from the route table and `site.url` | Implemented, generated rather than authored |
+| `opengraph-image`, rendered to a PNG | a card template; uf ships no rasteriser ([An Open Graph card](/guide/assets#an-open-graph-card)) | Partial |
+| `next/image` | build-time resizing with `srcset` and a blur placeholder, and `/__uf/image` behind `remotePatterns` for remote images ([Images](/guide/assets#a-remote-image)) | Implemented; no AVIF at build time, which is refused |
+| `next/font` | imported fonts self-hosted with a metric-matched fallback; nothing downloaded from a provider | Partial |
+| `next/script` loading strategies | nothing | Planned |
+
+## Types
+
+The rows where Flow should put uf ahead rather than level.
+
+| Next.js | uf | Status |
+| --- | --- | --- |
+| `typedRoutes`, which checks `<Link href>` | a generated `route()` builder whose paths and parameters `uf check` checks ([Types for routes](/guide/routing#types-for-routes)); `<Link to>` and `router.push` still take any string | Partial |
+| Route parameters | typed per route in the generated `router.js` | Implemented |
+| `searchParams` | `{ [string]: string }`, and a repeated key keeps one value | Planned: a page declares a Validator schema and receives its output type, [#1362](https://github.com/ubugeeei-prod/uf/issues/1362) |
+| Whether an action's arguments can cross the network | `uf prepare` holds every action's arguments and result against the wire grammar in one `uf check` ([The types the wire needs](/guide/server-actions#the-types-the-wire-needs)) | Implemented; Next.js has no equivalent |
+
+## Where it runs
+
+| Target | Written by | Tested | Deployed to the real platform by uf's pipeline |
+| --- | --- | --- | --- |
+| `uf start`, `uf preview` on Node.js, Bun or Deno | `uf build` | yes | not applicable |
+| Node.js, container | `--adapter node`, `--adapter container` | yes, including a parity harness against a built artefact | no ([#956](https://github.com/ubugeeei-prod/uf/issues/956)) |
+| Bun, Deno | `--adapter bun`, `--adapter deno` | yes, in process | no |
+| Cloudflare Workers | `--adapter edge` | yes, under Wrangler's local runtime | no |
+| AWS Lambda | `--adapter serverless`, bodies buffered | yes, in process | no |
+| Any static host | `--adapter static`, which refuses server features by name | yes | not applicable |
+| One executable | `--compile`, with no cache | yes | not applicable |
+
+[Deploy a web build](/guide/deploy) has what each one needs and what it refuses.
+
+## Measured against Next.js
+
+From `tools/bench/toolchain/baseline.json`: the Bench workflow on a 32-core AMD
+EPYC runner, Next.js 16.3.6 against uf `0.0.0-alpha.46`, each the median of
+seven runs on the same generated application. [Benchmarks](/guide/benchmarks)
+has every row and how it was taken.
+
+| Stage | uf | Next.js |
+| --- | --- | --- |
+| dev server, first document, cold | 1,099 ms | **1,014 ms** |
+| dev server, first document, warm | **875 ms** | 1,020 ms |
+| build, cold | **2,547 ms** | 3,053 ms |
+| build, warm | 2,419 ms | **1,399 ms** |
+| production server throughput | not measured | not measured |
+
+uf loses the cold dev start by about 8% and the warm build by about 1.7 times.
+There is no production-server comparison yet, so nothing on this site claims uf
+renders faster than `next start`;
+[#1363](https://github.com/ubugeeei-prod/uf/issues/1363) adds that row.
+
+## Where to go next
+
+[uf and Vite+](/guide/vite-plus) is next: the toolchain uf is most often
+compared to, and why the two answer different questions.

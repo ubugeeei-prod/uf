@@ -46,7 +46,7 @@ production-server row still belongs to Next.js.
 | --- | --- | --- |
 | Test throughput | `bun test` | 125 ms against **58 ms** on 50 files, 1,000 tests, 2,000 assertions ([Testing](/guide/testing)) |
 | Deployment maturity | Next.js | seven adapters and `--compile` are implemented, and CI starts the generated Cloudflare Worker under Wrangler's local runtime, but no server adapter has been deployed in anger; `serverless` buffers streamed documents, and every hosted target still needs real-world proof ([#956](https://github.com/ubugeeei-prod/uf/issues/956), [Commands](/reference/cli#uf-build---adapter-target)) |
-| Server Components | Next.js | routes render through React's own Flight payload, so a Server Component never reaches the browser; a server function passed to a client component as a prop, an inline `"use server"` closure and native form progressive enhancement are not here, and under Server Components an intercepted URL is an ordinary navigation ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038), [Server Components](/guide/server-components#the-current-contract)) |
+| Server Components | Next.js | routes render through React's own Flight payload, so a Server Component never reaches the browser; a server function passed to a client component as a prop, an inline `"use server"` closure and a form that submits before hydration are not here ([#1358](https://github.com/ubugeeei-prod/uf/issues/1358), [#1359](https://github.com/ubugeeei-prod/uf/issues/1359), [#1360](https://github.com/ubugeeei-prod/uf/issues/1360), [Server Components](/guide/server-components#the-current-contract)) |
 | The typed ecosystem | everything | a package with no Flow libdef is `any` ([Flow and TypeScript](/guide/typescript)) |
 | Being installable | everything | on npm as prereleases, and only the closure a project needs; `@uniflowed/std` is still pending because its root is a declaration surface while several subpaths run ([#710](https://github.com/ubugeeei-prod/uf/issues/710)) |
 | Runtime coverage | Bun, Next.js | Node.js, Bun and Deno 2.8 or newer run every command, but `uf test --coverage` is Node's alone; edge and serverless are deploy artefacts with target limits rather than runtimes you develop on ([#246](https://github.com/ubugeeei-prod/uf/issues/246), [Commands](/reference/cli#uf-build---adapter-target)) |
@@ -121,7 +121,8 @@ the fully static case.
 uf now has the same categories of output — a local preview, a production
 server, server adapters, a static adapter and a single executable — but that is
 not the same thing as having Next.js's deployment record. The comparison below
-therefore separates "there is code" from "this is mature".
+therefore separates "there is code" from "this is mature". [uf and Next.js](/guide/nextjs)
+is the full audit, one App Router feature per row.
 
 | Capability | Next.js | uf today |
 | --- | --- | --- |
@@ -222,6 +223,6 @@ does not.
 
 ## Where to go next
 
-[uf and Vite+](/guide/vite-plus) is next: the toolchain uf is most often
-compared to, and why the two answer different questions. [Migrating to
-uf](/guide/migrate) is what moving from any of the above costs.
+[uf and Next.js](/guide/nextjs) is next: every App Router feature, one row
+each, with what uf has in its place. [Migrating to uf](/guide/migrate) is what
+moving from any of the above costs.

@@ -114,6 +114,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Against Next.js, Vite, Bun and CRA, including the rows uf loses.",
       },
       {
+        href: "/guide/nextjs",
+        title: "uf and Next.js",
+        blurb:
+          "The Next.js App Router, feature by feature: what uf implements, what it does differently, and what is still missing.",
+      },
+      {
         href: "/guide/vite-plus",
         title: "uf and Vite+",
         blurb: "Where uf sits next to the toolchain it will be compared to.",
