@@ -31,8 +31,10 @@ Red Hat's LSP client plugin, runs any server:
 
 1. **Settings → Plugins**: install LSP4IJ.
 2. **Settings → Languages & Frameworks → Language Servers → +**, then
-   **Template → Import from custom template…**, and select
-   `editors/jetbrains/lsp4ij-template` from a uf checkout.
+   **Template → Import from custom template…**, and select the template
+   directory. `uf editor install jetbrains` writes it to
+   `~/.local/share/uf/editors/jetbrains/lsp4ij-template`, and a uf checkout
+   has it at `editors/jetbrains/lsp4ij-template`.
 3. It fills in `uf lsp --cwd $PROJECT_DIR$` for `*.js`, `*.mjs` and `*.cjs`
    (as `javascript`) and `*.jsx` (as `javascriptreact`). The
    [README](https://github.com/ubugeeei-prod/uf/tree/main/editors/jetbrains)

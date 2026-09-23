@@ -24,7 +24,8 @@ TypeScript errors on Flow syntax.
 
 ## 1. Start uf in a uf project
 
-Copy [`editors/neovim/lua/uf.lua`](https://github.com/ubugeeei-prod/uf/tree/main/editors/neovim)
+`uf editor install neovim` writes `uf.lua` to `~/.config/nvim/lua/`. It will not
+replace a file of that name that uf did not write. Or copy [`editors/neovim/lua/uf.lua`](https://github.com/ubugeeei-prod/uf/tree/main/editors/neovim)
 to `~/.config/nvim/lua/uf.lua`, then in `init.lua`:
 
 ```lua
@@ -77,14 +78,16 @@ that skips Deno projects. The markers are then yours to maintain.
 To keep the configuration in the project, Neovim's `exrc` option reads a
 `.nvim.lua` from the directory Neovim starts in, after you approve it once with
 `:trust`. With `vim.o.exrc = true` in your own configuration, commit a
-`.nvim.lua` that calls `require("uf").setup()`.
+`.nvim.lua` that calls `require("uf").setup()`. `uf editor setup neovim` writes
+it.
 
 ## Vim
 
 Vim has no LSP client of its own. uf's registration for
 [vim-lsp](https://github.com/prabirshrestha/vim-lsp) is
 [`editors/vim/uf.vim`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vim).
-Source it after vim-lsp is loaded. It runs `uf lsp --cwd <root>` for a uf
+`uf editor install vim` puts it in `~/.vim/plugin/`. Otherwise, source it
+after vim-lsp is loaded. It runs `uf lsp --cwd <root>` for a uf
 project. vim-lsp chooses servers by file type, not by project, so `uf.vim`
 cannot keep `typescript-language-server` off a uf project. If
 vim-lsp-settings registers that server for you, its documented per-server

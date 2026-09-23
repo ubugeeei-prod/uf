@@ -1347,8 +1347,8 @@ checks are skipped.
 
 ## Editors and agents
 
-[Editors](/guide/editors) is the guide to `uf lsp`, and [Agents](/guide/agents)
-to `uf mcp`.
+[Editors](/guide/editors) is the guide to `uf lsp` and `uf editor`, and
+[Agents](/guide/agents) to `uf mcp`.
 
 ### uf lsp
 
@@ -1359,7 +1359,7 @@ once, when it starts.
 
 | Method | What it answers |
 | --- | --- |
-| `textDocument/publishDiagnostics` | Pushed on open and on every change, from the linter `uf lint` runs |
+| `textDocument/publishDiagnostics` | Pushed on open and on every change, from the linter `uf lint` runs; and Flow's type errors, from the checker `uf check` runs, once typing pauses |
 | `textDocument/formatting` | One edit over the whole document, from the printer `uf fmt` runs |
 | `textDocument/codeAction` | `quickfix` where a rule's fix is mechanical, and `source.fixAll.uf` for every such fix at once |
 | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`; anywhere else in a Flow file, the inferred type under the cursor, printed as Flow |
@@ -1398,9 +1398,77 @@ fetched on a thread of its own, so the versions appear as you type on; a list
 older than a day is offered as it is and refreshed behind the request.
 `UF_INDEX_CACHE` moves the cache, and `UF_TOOL_INDEX_BASE` the publishers.
 
-Not served: rename, references, document symbols, signature help, organize
-imports, and type errors as diagnostics.
+Not served: rename, references, document symbols, signature help and organize
+imports. Flow type errors are pushed as diagnostics beside the lint findings,
+source `flow`.
 `tests/library/lsp.test.js` drives the binary and asserts both lists.
+
+### uf editor install EDITOR
+
+Installs uf's integration for one editor on this machine. `EDITOR` is
+`vscode` (or `code`), `cursor`, `zed`, `jetbrains` (or `webstorm`, `idea`),
+`neovim` (or `nvim`), `vim`, `helix` (or `hx`) or `emacs`.
+
+```
+uf editor install vscode
+```
+
+| Editor | What it does |
+| --- | --- |
+| VS Code, Cursor | Downloads `uf-vscode-<version>.vsix` and its `.sha256` from the GitHub release of the running uf, checks the digest, and runs `code --install-extension <file> --force` (`cursor` for Cursor). A file that fails the check is never handed to the editor |
+| Zed | Writes the extension's sources to `$XDG_DATA_HOME/uf/editors/zed`. Zed has no command-line install, so the next step is **zed: install dev extension** on that directory |
+| JetBrains | Writes the LSP4IJ template to `$XDG_DATA_HOME/uf/editors/jetbrains/lsp4ij-template`, to import from LSP4IJ |
+| Neovim | Writes `uf.lua` to `$XDG_CONFIG_HOME/nvim/lua/` (`~/.config/nvim/lua/`) |
+| Vim | Writes `uf.vim` to `~/.vim/plugin/` |
+| Emacs | Writes `uf.el` to `$XDG_DATA_HOME/uf/editors/emacs` and prints the `load-path` line |
+| Helix | Nothing: Helix is configured per project, with `uf editor setup helix` |
+
+The files are part of the uf binary, so they match the uf that writes them and
+need no network. A file in the editor's own configuration directory that uf did
+not write is not replaced: the command stops and names it. An earlier copy uf
+wrote is brought up to date.
+
+- `--version VERSION` installs the extension from that release, `0.2.0` or
+  `uf@0.2.0`, instead of the running uf's.
+- `--vsix FILE` installs a `.vsix` you built, with no download and no check.
+- `--force` replaces a file uf did not write.
+- `--dry-run` prints what would be downloaded and written, and does nothing.
+
+`UF_EDITOR_RELEASE_BASE` replaces the release host with
+`<base>/<version>/<asset>`, the layout `UF_RELEASE_BASE` uses for the
+installer. Releases before the one that added this command did not attach the
+`.vsix`. For those, the error says so and points at `--vsix`.
+
+### uf editor setup EDITOR
+
+Writes the project's settings for one editor: the ones that stop the editor's
+own JavaScript or TypeScript server from checking the project's Flow files, and
+the ones that make uf the formatter. Each is what that editor's page under
+[Editors](/guide/editors) tells you to commit.
+
+```
+uf editor setup vscode
+```
+
+| Editor | File |
+| --- | --- |
+| VS Code, Cursor | `.vscode/settings.json` (both validation switches, uf as the formatter for `javascript` and `javascriptreact`, fix-all on save) and `.vscode/extensions.json` (the recommendation). Cursor gets only the validation name it has |
+| Zed | `.zed/settings.json`: `uf` in and `vtsls` out of the JavaScript servers, uf as the formatter, format on save |
+| Helix | `.helix/languages.toml` |
+| Neovim | `.nvim.lua`, for `exrc` |
+| Emacs | `.dir-locals.el`, turning off lsp-mode's TypeScript clients |
+| JetBrains, Vim | No file: the steps are printed |
+
+It adds what is missing and prints each line it adds. A value the project
+already set is kept and reported, whichever way it was set. Comments and order
+in a settings file are kept, because the file is edited in place rather than
+rewritten. A file uf cannot merge into (a `languages.toml` that already
+configures JavaScript, an existing `.dir-locals.el`) is left alone, and the
+lines to add by hand are printed. Running it again adds nothing. It needs a
+`uf.config.js` in the directory or above it.
+
+- `--check` writes nothing and exits `1` if anything would be added, so CI can
+  hold a project to its settings.
 
 ### uf mcp
 

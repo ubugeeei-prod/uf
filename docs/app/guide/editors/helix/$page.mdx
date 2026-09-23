@@ -22,7 +22,9 @@ diagnostics, hover, definitions, completion, code actions and format on write.
 
 ## 1. Commit `.helix/languages.toml`
 
-Copy [`editors/helix/languages.toml`](https://github.com/ubugeeei-prod/uf/tree/main/editors/helix)
+`uf editor setup helix` writes it. If the project already has a
+`.helix/languages.toml` that configures JavaScript, it prints the lines to add
+instead of writing. Or copy [`editors/helix/languages.toml`](https://github.com/ubugeeei-prod/uf/tree/main/editors/helix)
 into the project. Its substance:
 
 ```toml

@@ -90,6 +90,7 @@ pub(crate) const KNOWN: &[&str] = &[
     "publish",
     "release",
     "lsp",
+    "editor",
     "mcp",
     "ui",
     "sqlc",
@@ -340,6 +341,7 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
         "release" => release_stages(resolved),
         "lsp" => lsp_stages(resolved),
         "mcp" => mcp_stages(),
+        "editor" => editor_stages(),
         "ui" => ui_stages(resolved),
         "sqlc" => sqlc_stages(),
         _ => return None,
@@ -903,6 +905,43 @@ fn lsp_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 
 /// `uf mcp`, whose two facts are the framing and the fact that it runs the
 /// commands rather than reimplementing them.
+/// `uf editor install` and `uf editor setup`: who does each part.
+///
+/// Install hands its two external steps to curl and to the editor's own
+/// launcher; everything else, and all of `setup`, is uf's. See
+/// `commands/editor.rs`.
+fn editor_stages() -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "download",
+            provider: "curl".to_string(),
+            detail: "install, VS Code and Cursor: uf-vscode-<version>.vsix and the .sha256 beside \
+                     it, from the GitHub release of this uf (or UF_EDITOR_RELEASE_BASE)"
+                .to_string(),
+        },
+        Stage {
+            name: "verification",
+            provider: "uf".to_string(),
+            detail: "the file's sha256 must equal the published one, or nothing is installed"
+                .to_string(),
+        },
+        Stage {
+            name: "install",
+            provider: "code / cursor".to_string(),
+            detail: "--install-extension <file> --force; every other editor's integration is \
+                     files compiled into uf, written where the editor loads them"
+                .to_string(),
+        },
+        Stage {
+            name: "setup",
+            provider: "uf".to_string(),
+            detail: "the project's editor settings, added to in place: missing keys inserted, \
+                     the project's own values and comments kept"
+                .to_string(),
+        },
+    ]
+}
+
 fn mcp_stages() -> Vec<Stage> {
     let tools = crate::commands::mcp::tools();
     let writes = tools

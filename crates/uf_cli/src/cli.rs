@@ -605,6 +605,19 @@ pub(crate) enum Commands {
     },
     /// Serve the language server over stdin/stdout, for an editor.
     Lsp,
+    /// Install uf's integration for an editor, or write a project's editor settings.
+    ///
+    /// `uf editor install vscode` downloads the extension that matches this uf
+    /// from its GitHub release, checks it against the sha256 published beside
+    /// it, and installs it with `code --install-extension`. `uf editor setup
+    /// vscode` writes the project's `.vscode/` settings that turn VS Code's
+    /// own JavaScript checking off for its Flow files and make uf the
+    /// formatter, adding what is missing and keeping everything the project
+    /// already says. See `/guide/editors` for each editor.
+    Editor {
+        #[command(subcommand)]
+        command: EditorCommand,
+    },
     /// Serve the Model Context Protocol over stdin/stdout, for an agent.
     ///
     /// The live dev tools, `uf_dev_errors`, `uf_dev_logs`, `uf_dev_routes` and
@@ -1240,6 +1253,83 @@ pub(crate) enum RoutesCommand {
         /// Also write `$middleware.js`: what runs before this path answers.
         #[arg(long)]
         middleware: bool,
+    },
+}
+
+/// The editors `uf editor` knows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum Editor {
+    /// Visual Studio Code.
+    #[value(alias = "code")]
+    Vscode,
+    /// Cursor, which installs the same extension.
+    Cursor,
+    /// Zed.
+    Zed,
+    /// WebStorm and IntelliJ IDEA, through the LSP4IJ plugin.
+    #[value(alias = "webstorm", alias = "idea")]
+    Jetbrains,
+    /// Neovim.
+    #[value(alias = "nvim")]
+    Neovim,
+    /// Vim, through vim-lsp.
+    Vim,
+    /// Helix.
+    #[value(alias = "hx")]
+    Helix,
+    /// Emacs, with Eglot or lsp-mode.
+    Emacs,
+}
+
+/// What `uf editor` can do.
+#[derive(Debug, Subcommand)]
+pub(crate) enum EditorCommand {
+    /// Install uf's integration for an editor on this machine.
+    ///
+    /// VS Code and Cursor: the extension from this uf's GitHub release,
+    /// checked against its published sha256 and installed with the editor's
+    /// own `--install-extension`. Zed, Emacs and JetBrains: the extension
+    /// sources, `uf.el` or the LSP4IJ template, written under
+    /// `$XDG_DATA_HOME/uf/editors` with the step that points the editor at
+    /// them. Neovim and Vim: `uf.lua` or `uf.vim` where the editor loads it;
+    /// a file there that uf did not write is left alone unless `--force`.
+    /// Helix needs nothing installed. `UF_EDITOR_RELEASE_BASE` replaces the
+    /// release host with `<base>/<version>/<asset>`.
+    Install {
+        /// The editor.
+        #[arg(value_enum)]
+        editor: Editor,
+        /// Install the extension from this uf release instead of the one
+        /// matching the running uf: `0.2.0`, or `uf@0.2.0`.
+        #[arg(long, value_name = "VERSION", conflicts_with = "vsix")]
+        version: Option<String>,
+        /// Install this `.vsix` instead of downloading one (VS Code and
+        /// Cursor). It is not checked against a release.
+        #[arg(long, value_name = "FILE")]
+        vsix: Option<Utf8PathBuf>,
+        /// Replace a file in the editor's configuration that uf did not write.
+        #[arg(long)]
+        force: bool,
+        /// Say what would be downloaded and written, and do nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Write the project's settings for an editor, so its own JavaScript
+    /// support stops checking Flow files and uf formats them.
+    ///
+    /// VS Code and Cursor: `.vscode/settings.json` and `extensions.json`.
+    /// Zed: `.zed/settings.json`. Helix: `.helix/languages.toml`. Neovim: a
+    /// `.nvim.lua`. Emacs: a `.dir-locals.el` for lsp-mode. What is missing
+    /// is added, with the lines shown; a value the project already set is kept
+    /// and reported, never replaced; comments in a settings file are kept.
+    /// JetBrains and Vim have no file uf writes, and get the steps instead.
+    Setup {
+        /// The editor.
+        #[arg(value_enum)]
+        editor: Editor,
+        /// Write nothing, and exit non-zero if anything would be added.
+        #[arg(long)]
+        check: bool,
     },
 }
 

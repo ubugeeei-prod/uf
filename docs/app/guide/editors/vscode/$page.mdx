@@ -41,7 +41,11 @@ project.
 
 ## 1. Install the extension
 
-The extension is `uniflowed.uf`. Cursor installs the same one.
+The extension is `uniflowed.uf`. Cursor installs the same one. From a
+terminal, `uf editor install vscode` (or `cursor`) downloads the extension that
+matches your uf from its GitHub release, checks it against the published
+sha256, and installs it with the editor's own `--install-extension`. Or, from
+the registries:
 
 ```sh
 code --install-extension uniflowed.uf      # VS Code, from the Marketplace
@@ -57,7 +61,10 @@ before one on `PATH`, one server per folder that has a `uf.config.js`.
 
 ## 2. Turn off VS Code's JavaScript validation, for this project
 
-Commit this as `.vscode/settings.json` in the project:
+`uf editor setup vscode` (or `cursor`) writes the settings below and the
+recommendation. It adds what is missing, keeps anything the project already
+sets, and prints each line it adds. By hand, commit this as
+`.vscode/settings.json` in the project:
 
 ```jsonc
 {
