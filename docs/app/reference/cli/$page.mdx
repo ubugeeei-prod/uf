@@ -315,6 +315,55 @@ untouched, that every line is the project's own edit because the registry has
 not moved since the copy was written, or that the lines mix the project's edits
 with the registry's changes.
 
+### uf ui update [NAME...] [--dry-run] [--offline] [--json]
+
+Brings the project's copies up to this uf's components. When the project has
+edited a copy, this uf's changes are merged into it rather than written over
+the edit. With no names, every component the project has is updated.
+
+```
+uf ui update
+uf ui update dialog --dry-run
+```
+
+| The copy | What `uf ui update` does |
+| --- | --- |
+| Untouched, and already this uf's version | Nothing |
+| Untouched, written by an older uf | Replaces it with this uf's version |
+| Edited, and this uf's version has not moved | Keeps it: every difference is the project's |
+| Edited, and this uf's version has moved | Merges three ways, from the text the copy began as |
+| Not written by `uf ui add` | Leaves it alone |
+
+A three-way merge needs a third text: the registry text the copy began as.
+The stamp on the copy's last line records that text's SHA-256, so any
+candidate can be checked against it. `uf ui update` looks in two places, in
+this order:
+
+1. **The project's git history.** A copy is usually committed as `uf ui add`
+   wrote it and edited afterwards, so the first update finds its base here,
+   offline.
+2. **The uf source at the release the stamp names** (the tag `uf@<version>`),
+   fetched with `curl`. A merged copy is stamped against this uf's text, which
+   was never committed to the project, so later updates find their base here.
+   `UF_UI_REGISTRY_URL` replaces the address, with `{version}` and `{name}` in
+   it. Point it at a mirror, or at a `file://` checkout on a machine with no
+   network. `--offline` skips this step.
+
+A candidate is used only if it hashes to the recorded digest. A mirror or a
+rewritten history can therefore make a merge impossible, but it cannot make a
+merge wrong. When no base is found, the copy is left alone and the command
+names the alternatives: `uf ui diff` to see both changes, or `uf ui add
+--overwrite` to take this uf's version.
+
+The merged copy is stamped against this uf's text. It then reads as edited
+since this uf's version, with every remaining difference the project's own, so a
+later `uf ui add` still refuses to replace it. Edits that overlap are written
+with diff3 conflict markers, which show the text the copy began as between
+`|||||||` and `=======`. The run names each conflicted file and exits non-zero,
+and `uf check` fails on the file until the markers are gone. Components that
+the new versions import and the project lacks are written, and missing
+packages are added first, the same as `uf ui add`.
+
 ## Running and building
 
 [Dev and build](/guide/dev) is the guide to `uf dev` and `uf build`,

@@ -161,7 +161,7 @@ fn candidates(words: &[String], tasks: &[Task<'_>]) -> Vec<String> {
         ["explain"] => matching(current, super::explain::KNOWN.iter().copied()),
         // The registry's own names, read out of this binary, so a component
         // added to `registry/ui/` completes in the release that carries it.
-        ["ui", "add" | "diff", ..] => matching(current, ui_components()),
+        ["ui", "add" | "diff" | "update", ..] => matching(current, ui_components()),
         // Everything else that completes is a subcommand, and those are the
         // parser's: at the top level, which is the empty path, and under every
         // parent below it.

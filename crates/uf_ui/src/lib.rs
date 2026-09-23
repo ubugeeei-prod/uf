@@ -144,6 +144,7 @@ pub mod diff;
 pub mod project;
 pub mod registry;
 pub mod stamp;
+pub mod update;
 
 pub use project::DEFAULT_DIRECTORY;
 pub use registry::{Component, REGISTRY_VERSION, Registry, RegistryError, UnknownComponent};
