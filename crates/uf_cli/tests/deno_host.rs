@@ -830,9 +830,13 @@ fn uf_test_watch_on_deno_reports_an_edit_on_the_next_run() {
             "double.js",
             "// @flow\nexport function double(value: number): number {\n  return value * 3;\n}\n",
         );
+            // The assertion's own message rather than "1 failed": `uf test` now
+            // prints a file's counts on the line that names it, before the
+            // failure under it, so waiting for the count and then killing the
+            // run could stop it one line short of the message this test reads.
             wait_for(
                 &lines,
-                "1 failed",
+                "expected 63 to be 42",
                 Duration::from_secs(120),
                 &mut transcript,
             )
