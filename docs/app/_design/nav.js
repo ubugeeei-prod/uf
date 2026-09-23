@@ -76,6 +76,11 @@ export const sections: $ReadOnlyArray<Section> = [
     },
     pages: [
       {
+        href: "/guide/goals",
+        title: "What you can do",
+        blurb: "Every goal uf covers, its status, and the pages to read in order to get there.",
+      },
+      {
         href: "/guide/install",
         title: "Install",
         blurb: "Install uf on macOS, Linux or Windows.",
@@ -102,7 +107,13 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Build a React application with routes, shared state, a form and tests.",
       },
     ],
-    featured: ["/guide/install", "/guide/project", "/guide/tutorial", "/guide/flow"],
+    featured: [
+      "/guide/install",
+      "/guide/project",
+      "/guide/goals",
+      "/guide/tutorial",
+      "/guide/flow",
+    ],
     then: "/guide/toolchain",
   },
   {

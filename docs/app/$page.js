@@ -6,7 +6,7 @@ import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import type { Metadata } from "@uniflowed/router";
 
-import { Command, Eyebrow, Lede, ReaderPaths } from "./_design/parts.js";
+import { Command, Eyebrow, GoalMap, Lede, ReaderPaths } from "./_design/parts.js";
 
 /**
  * The one page whose canonical URL is the site's own.
@@ -69,6 +69,12 @@ export default component Home() {
           <strong>Pre-release.</strong> uf is in alpha. Commands, configuration and package APIs may
           change between releases. See <Link to="/guide/scope">current capabilities</Link>.
         </div>
+      </section>
+
+      <section className="home-section">
+        <h2 className="seam-mark">What you can do</h2>
+        <p>A goal, whether it works today, and the pages to read in order. Each step is a link.</p>
+        <GoalMap compact={true} />
       </section>
 
       <section className="home-section">
