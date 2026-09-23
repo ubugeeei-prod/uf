@@ -52,13 +52,22 @@ export const FOCUS_STOPS: string =
  * document.
  */
 export function focusable(root: HTMLElement): Array<HTMLElement> {
-  return Array.from(root.querySelectorAll(FOCUS_STOPS)).filter(
-    (element: $FlowFixMe) =>
+  const found: Array<HTMLElement> = [];
+  for (const element of root.querySelectorAll(FOCUS_STOPS)) {
+    if (
+      // Asked rather than annotated: `querySelectorAll` answers `Element`, and
+      // what focus lands on is an HTML or SVG element, both `HTMLElement` to
+      // Flow.
+      (element instanceof HTMLElement || element instanceof SVGElement) &&
       // All three hide a whole subtree, so all three are asked of the
       // ancestors; see the module header for what reading them off the element
       // alone let through.
       element.closest("[hidden]") == null &&
       element.closest("[inert]") == null &&
-      element.closest('[aria-hidden="true"]') == null,
-  );
+      element.closest('[aria-hidden="true"]') == null
+    ) {
+      found.push(element);
+    }
+  }
+  return found;
 }

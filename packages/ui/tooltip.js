@@ -389,7 +389,7 @@ export component TooltipBody(
     id: `${tooltip.base}-body`,
     // React calls callback refs during commit; placement effects read it later.
     // uf-lint-disable-next-line react-compiler/refs
-    ref: composeRefs(rest.ref, (element) => {
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       bodyRef.current = element;
     }),
     role: "tooltip",

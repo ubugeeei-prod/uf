@@ -31,17 +31,20 @@ it("reorders a collection by keyboard and lets Escape cancel", async () => {
 it("accepts the native drag data path and rejects malformed payloads", async () => {
   const reorder = fn();
   render(<ListBox items={items} aria-label="Order" onReorder={reorder} />);
-  const data = new Map();
+  const data = new Map<string, string>();
   const transfer = {
     types: ["application/x-uf-collection"],
-    setData: (key, value) => data.set(key, value),
-    getData: (key) => data.get(key) ?? "",
+    setData: (key: string, value: string) => data.set(key, value),
+    getData: (key: string) => data.get(key) ?? "",
     effectAllowed: "",
     dropEffect: "",
   };
-  const dispatch = async (element, name) => {
+  const dispatch = async (element: Element, name: string) => {
     const event = new Event(name, { bubbles: true, cancelable: true });
-    Object.defineProperty(event, "dataTransfer", { value: transfer });
+    // A plain `Event` carrying a `dataTransfer`, which is the part of a drag
+    // event the collection reads. `Reflect` because `Event` declares no such
+    // property and this adds one.
+    Reflect.defineProperty(event, "dataTransfer", { value: transfer });
     await act(() => element.dispatchEvent(event));
   };
   await dispatch(screen.getByRole("option", { name: "Alpha" }), "dragstart");
