@@ -126,13 +126,18 @@ export hook useFieldSource<
   TOutput,
   TName extends FieldSegment<TValues>,
 >(form: UseFormReturn<TValues, TOutput>, name: TName, rules?: ValidationRules): FieldSource {
-  const path: string = name;
+  // A form's values are an object, so its top-level segments are keys; `String`
+  // is what makes that a `string` to Flow, which cannot see it from the bound.
+  const path = String(name);
   // Narrow: this component re-renders when *this* field's error changes and
   // not when any other field's does.
   const state = useFormState({ control: form.control, name: path });
   const registered = form.register(path, rules);
 
-  const control: { [string]: mixed } = {};
+  // Typed as never holding a `key`: `FieldSource.control` is spread onto an
+  // element, where `key` is React's and not a prop, and what `register` hands
+  // back has none to copy.
+  const control: { key?: empty, [string]: mixed } = {};
   for (const key of Object.keys(registered)) {
     if (!FIELD_COMPUTES.includes(key)) {
       control[key] = (registered as $FlowFixMe)[key];
