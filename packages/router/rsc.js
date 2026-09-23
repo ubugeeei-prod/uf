@@ -50,7 +50,7 @@ import * as React from "react";
 import { use } from "react";
 // React's Flight server. Only this graph can load it: it refuses to evaluate
 // unless `react` resolved under the `react-server` condition.
-import { renderToReadableStream } from "react-server-dom-parcel/server";
+import { registerServerReference, renderToReadableStream } from "react-server-dom-parcel/server";
 
 import { noteRoute } from "@uniflowed/server/host";
 import { reportRequestError } from "@uniflowed/server/instrumentation";
@@ -141,6 +141,48 @@ const BOUNDARY_MARKS: boolean = import.meta.hot != null;
 
 /** How a client reference says what it is. React's symbol, not uf's. */
 const CLIENT_REFERENCE: symbol = Symbol.for("react.client.reference");
+
+/** How a server reference says what it is. React's symbol, not uf's. */
+const SERVER_REFERENCE: symbol = Symbol.for("react.server.reference");
+
+/**
+ * Let a server action cross to a Client Component as a prop.
+ *
+ * `@uniflowed/vite` calls this, in this graph, on every callable export of a
+ * `"use server"` module, with the id the build derived for it. It is React's
+ * `registerServerReference`, so Flight writes the function as a server
+ * reference — an id and its bound arguments — rather than refusing it, and the
+ * browser's Flight client turns that back into a function that calls through
+ * uf's own action wire (`./internal/flight-browser.js`). The reference is
+ * named by the action id alone, the same 64 characters the JSON call and a
+ * native form post carry, so there is one id per action whichever way it
+ * reached the browser.
+ *
+ * Only what the build marked callable is registered, so a `"use server"`
+ * function nothing can hand to the client still cannot cross: Flight refuses it
+ * as it refuses any function. Calling the function on the server is unchanged,
+ * and `.bind` is React's, which records the bound arguments so they travel
+ * with the reference. See ubugeeei-prod/uf#1359.
+ */
+export function registerServerFunction<T>(fn: T, id: string, exportName: string): T {
+  if (typeof fn !== "function") {
+    return fn;
+  }
+  const already: mixed = (fn as $FlowFixMe).$$typeof;
+  if (already === SERVER_REFERENCE) {
+    return fn;
+  }
+  registerServerReference(fn, id, exportName);
+  // React names a reference `id#export`; uf's id already selects one export.
+  Object.defineProperty(fn, "$$id", { value: id, configurable: true });
+  // An empty list rather than React's `null` for "nothing bound", so the
+  // payload always carries the bound arguments as a row of their own. The HTML
+  // renderer's form encoder waits on that row (`encodeFormAction` in
+  // `./internal/flight-ssr.js`); for `null` React would hand it a new
+  // `Promise.resolve([])` on every call, which nothing can tell has settled.
+  Object.defineProperty(fn, "$$bound", { value: [], configurable: true });
+  return fn;
+}
 
 /**
  * The renderer for one route table.

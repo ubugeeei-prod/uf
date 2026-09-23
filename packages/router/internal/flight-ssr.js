@@ -25,6 +25,8 @@
 import { createFromReadableStream } from "react-server-dom-parcel/client.edge";
 
 import type { FlightRoot } from "./flight.js";
+import { encodeActionArguments } from "./action-wire.js";
+import { type FormActionFields, formFields } from "./form-action.js";
 import { requireServerComponentsReact } from "./react-version.js";
 
 /** A module namespace, as far as the hook looks into one. */
@@ -86,6 +88,73 @@ export function readPayload(
 ): Promise<FlightRoot> {
   requireServerComponentsReact(ENTRY);
   return options?.partial === true
-    ? createFromReadableStream(stream, { unstable_allowPartialStream: true })
-    : createFromReadableStream(stream);
+    ? createFromReadableStream(stream, { unstable_allowPartialStream: true, encodeFormAction })
+    : createFromReadableStream(stream, { encodeFormAction });
+}
+
+/** A bound-arguments promise, as far as this module has seen it settle. */
+type Settled = {| status: "pending" | "fulfilled" | "rejected", value: mixed |};
+const settled: WeakMap<Promise<mixed>, Settled> = new WeakMap();
+
+/**
+ * The form fields for a server reference a payload carried as a prop.
+ *
+ * React's Flight client calls this from the reference's `$$FORM_ACTION` while
+ * the HTML renders, so a `<form action={fn}>` in a Client Component posts
+ * before hydration whether `fn` was imported or handed down by a Server
+ * Component (ubugeeei-prod/uf#1358, #1359). The fields are
+ * `./form-action.js`'s, which the endpoint's second door reads.
+ *
+ * Two differences from an imported action's. The bound arguments arrive as a
+ * promise, so a render that meets one before it has settled suspends on it —
+ * the promise is thrown, which React's HTML renderer waits on and retries. That
+ * needs the promise to be the same one on the retry, which is why
+ * `registerServerFunction` in `../rsc.js` gives every reference a bound list,
+ * empty or not: the payload's row for it is one promise for the whole render,
+ * where React's stand-in for "nothing bound" is a new one per call. And
+ * React does not pass the form's prefix here, so the prefix is derived from the
+ * id and the bound arguments: two buttons in one form bound to different
+ * arguments get different fields, and two bound the same are the same submit.
+ */
+export function encodeFormAction(id: string, bound: Promise<Array<mixed>>): FormActionFields {
+  let state = settled.get(bound);
+  if (state == null) {
+    const tracked: Settled = { status: "pending", value: undefined };
+    state = tracked;
+    settled.set(bound, tracked);
+    bound.then(
+      (value) => {
+        tracked.status = "fulfilled";
+        tracked.value = value;
+      },
+      (reason) => {
+        tracked.status = "rejected";
+        tracked.value = reason;
+      },
+    );
+  }
+  if (state.status === "pending") {
+    throw bound;
+  }
+  if (state.status === "rejected") {
+    throw state.value;
+  }
+  const args: Array<mixed> = Array.isArray(state.value) ? state.value : [];
+  return formFields(id, args, referencePrefix(id, args));
+}
+
+/**
+ * A short prefix that is the same for the same id and bound arguments.
+ *
+ * FNV-1a over the id and the arguments as the wire writes them, in base 36.
+ * Not a secret and not a checksum: it only keeps two forms' fields apart.
+ */
+function referencePrefix(id: string, args: $ReadOnlyArray<mixed>): string {
+  const text = args.length === 0 ? id : `${id}:${encodeActionArguments(args)}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `s${hash.toString(36)}`;
 }

@@ -446,21 +446,34 @@ export function declaresDefaultExport(source) {
  * the endpoint, a route handler and a server component call exactly what they
  * called before. See ubugeeei-prod/uf#1358.
  *
+ * In the rsc graph the registration is React's instead: each callable export
+ * becomes a Flight server reference (`registerServerFunction` in
+ * `@uniflowed/router/rsc`), so a Server Component can pass it to a Client
+ * Component as a prop (ubugeeei-prod/uf#1359). The two graphs never share a
+ * module instance, so each gets the registration its renderer reads.
+ *
  * @param {string} file absolute path of the module
  * @param {Array<{id: string, module: string, export: string}>} actions its callable exports
  * @param {boolean} hasDefault whether the file declares a default export
+ * @param {boolean} [flight] whether this is the rsc graph
  */
-export function serverActionSource(file, actions, hasDefault) {
+export function serverActionSource(file, actions, hasDefault, flight = false) {
   const impl = JSON.stringify(`${file}${SERVER_ACTION_IMPL_QUERY}`);
   const lines = [
-    'import { registerServerAction } from "@uniflowed/router/action";',
+    flight
+      ? 'import { registerServerFunction } from "@uniflowed/router/rsc";'
+      : 'import { registerServerAction } from "@uniflowed/router/action";',
     `import * as impl from ${impl};`,
     `export * from ${impl};`,
   ];
   if (hasDefault) lines.push(`export { default } from ${impl};`);
   for (const action of actions) {
+    const name = JSON.stringify(action.export);
+    const id = JSON.stringify(action.id);
     lines.push(
-      `registerServerAction(impl[${JSON.stringify(action.export)}], ${JSON.stringify(action.id)});`,
+      flight
+        ? `registerServerFunction(impl[${name}], ${id}, ${name});`
+        : `registerServerAction(impl[${name}], ${id});`,
     );
   }
   return `${lines.join("\n")}\n`;

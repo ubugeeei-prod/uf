@@ -23,8 +23,13 @@
 // and turning it into an `import()` would be letting bytes decide which script
 // runs.
 
-import { createFromFetch, createFromReadableStream } from "react-server-dom-parcel/client.browser";
+import {
+  createFromFetch,
+  createFromReadableStream,
+  setServerCallback,
+} from "react-server-dom-parcel/client.browser";
 
+import { createServerReference } from "../action.js";
 import { withDeployment } from "./deployment.js";
 import { FLIGHT_CHUNK_ATTRIBUTE, flightChunkBytes } from "./flight-chunks.js";
 import {
@@ -53,6 +58,12 @@ const ENTRY = "@uniflowed/router/rsc/client";
  */
 export function installBrowserModules(): void {
   requireServerComponentsReact(ENTRY);
+  // A server function a Server Component passed as a prop arrives as a Flight
+  // server reference, and React's client calls this with its id and arguments.
+  // The id is the action's own (`registerServerFunction` in `../rsc.js`), so
+  // the call is the one an imported action makes — same grammar, same
+  // endpoint, same deployment check. See ubugeeei-prod/uf#1359.
+  setServerCallback(callServerFunction);
   const loaded: Map<string, ModuleNamespace> = new Map();
   // A function with three properties, which is the shape React's Parcel client
   // calls: `parcelRequire(id)` for a module, `parcelRequire.load(url)` for the
@@ -103,6 +114,25 @@ type DocumentLike = interface {
 type ElementLike = interface {
   readonly textContent: string | null,
 };
+
+/** One reference per id, so a function passed twice is one function to call. */
+const serverFunctions: Map<string, (...args: Array<mixed>) => Promise<mixed>> = new Map();
+
+/**
+ * Call a server reference Flight decoded, by its id.
+ *
+ * The error a failed call throws names the action by id rather than by module,
+ * because a payload carries no module name — and should not: a name is for the
+ * build's log, where the endpoint writes it.
+ */
+export function callServerFunction(id: string, args: Array<mixed>): Promise<mixed> {
+  let call = serverFunctions.get(id);
+  if (call == null) {
+    call = createServerReference(id, `server function ${id.slice(0, 12)}…`) as $FlowFixMe;
+    serverFunctions.set(id, call);
+  }
+  return call(...args);
+}
 
 /**
  * The payload a document carries, as the byte stream React's client reads.

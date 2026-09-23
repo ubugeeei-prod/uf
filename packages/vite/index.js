@@ -682,7 +682,12 @@ function flowPlugin({
           } catch {
             return null;
           }
-          return serverActionSource(id, exported, declaresDefaultExport(source));
+          return serverActionSource(
+            id,
+            exported,
+            declaresDefaultExport(source),
+            this.environment?.name === RSC_ENVIRONMENT,
+          );
         }
       }
       return null;
