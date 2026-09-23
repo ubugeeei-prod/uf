@@ -60,6 +60,32 @@
 // middleware writes against `/pricing` holds for a client navigation too, and
 // a rewrite of the document becomes a rewrite of its payload.
 //
+// # A payload that renders over another page runs that page's guards too
+//
+// An intercepted navigation — a modal slot opening over the page it was clicked
+// from — asks for the payload of the URL it opens, and names the page it
+// renders over in `uf-intercepted-from`. The answer is *both* pages: the one
+// the URL names, in the slot, and the one the header names, underneath it,
+// with that page's loader run and its data in the payload.
+//
+// So the chain matched against the URL alone would be the wrong chain. A guard
+// on `/feed` holds for a request *for* `/feed`, and a payload for `/photo/1`
+// rendered over `/feed` is `/feed` as much as it is `/photo/1`. After the
+// ordinary chain has admitted the request, every middleware guarding the page
+// underneath runs as well — against a `GET` for that page, with its params and
+// query — including one that already ran for the URL, because a middleware
+// that decides by reading the pathname (one root `$middleware.js` guarding
+// several sections is a common shape) has only been asked about the other
+// path. If every one of them declines, the interception stands. If any
+// answers or rewrites, the page underneath is not this request's to render:
+// the header is taken off, and what renders is the page the URL names on its
+// own — exactly what a reader who could not open the page underneath would
+// see after a reload. The guard's own answer is not sent: the request was for
+// `/photo/1`, which that guard does not cover.
+//
+// The header is taken off whenever it is not a path on this origin, too, so
+// the renderer is never handed a value this module has not judged.
+//
 // # The request it runs inside
 //
 // The runner does not establish one. The host does — `beginRequest` in
@@ -96,7 +122,7 @@
 // `routesModuleSource` keeps the middleware table in an export the client
 // never imports, for the same reason it does that with route handlers.
 
-import { documentPathOf, flightUrl } from "./internal/flight.js";
+import { INTERCEPTED_FROM_HEADER, documentPathOf, flightUrl } from "./internal/flight.js";
 import { requireRequest } from "./internal/request.js";
 import type { RouteParams } from "./internal/runtime.js";
 
@@ -160,7 +186,10 @@ export type MiddlewareRecord = {|
  * caller's signal to carry on to the handler or the page. Returns a `Request`
  * when one of them rewrote: the same request at the destination, which the
  * caller carries on with instead — and which has already been past the
- * destination's middleware.
+ * destination's middleware. It also returns a `Request` when a payload request
+ * names a page to render over and that page's guards did not all admit it: the
+ * same request without `uf-intercepted-from`. The host must carry on with that
+ * request and read the header off nothing else, or the decision is undone.
  *
  * The runner is called once per request, above both the dispatcher and the
  * renderer, rather than from inside each of them. Putting the call inside
@@ -242,13 +271,97 @@ export function createMiddlewareRunner(options: {|
       return result;
     }
 
-    if (!rewritten) {
-      return null;
+    const admitted: Request | null = !rewritten
+      ? null
+      : document == null
+        ? seen
+        : requestAt(seen, new URL(flightUrl(url.pathname + url.search), url));
+
+    // A payload rendered over another page: that page's guards have their say
+    // too. See "A payload that renders over another page" above.
+    if (document != null && request.headers.has(INTERCEPTED_FROM_HEADER)) {
+      const carried = admitted ?? request;
+      const underneath = interceptionBase(request.headers.get(INTERCEPTED_FROM_HEADER), url);
+      if (underneath == null || !(await guardsAdmit(table, carried, underneath))) {
+        return withoutInterception(carried);
+      }
     }
-    return document == null
-      ? seen
-      : requestAt(seen, new URL(flightUrl(url.pathname + url.search), url));
+    return admitted;
   };
+}
+
+/**
+ * The page an intercepted payload names in its header, as a URL on `base`'s
+ * origin, or `null` when the value is not a path on this origin.
+ *
+ * The same shape the renderer accepts (`usableInterceptionBase` in `./rsc.js`,
+ * `interceptedFrom` in `@uniflowed/server`): a path, not a network-path
+ * reference, with any fragment dropped. Parsed rather than compared as text,
+ * so the pathname the guards are matched against is the one the renderer's
+ * route matching will read.
+ */
+function interceptionBase(header: string | null, base: URL): URL | null {
+  if (header == null || !header.startsWith("/") || header.startsWith("//")) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(header, base);
+  } catch {
+    return null;
+  }
+  if (parsed.origin !== base.origin) {
+    return null;
+  }
+  parsed.hash = "";
+  return parsed;
+}
+
+/**
+ * Whether every middleware guarding `underneath` lets this request see it.
+ *
+ * Each one is asked exactly as it would be asked by a request for that page: a
+ * `GET` at its URL carrying this request's headers, with the params of the
+ * directory it guards and the page's query. All of them, root first, whether
+ * or not they already ran for the URL the request names — a guard that reads
+ * the pathname has so far only been asked about the other one.
+ *
+ * A `Response` is a refusal and so is a `rewrite()`: the page a guard would
+ * serve instead is not the page the header names, and the renderer has no way
+ * to render one under the other. Nothing either returns is sent; the caller
+ * only learns that the page underneath is not this request's to render.
+ */
+async function guardsAdmit(
+  table: $ReadOnlyArray<MiddlewareRecord>,
+  request: Request,
+  underneath: URL,
+): Promise<boolean> {
+  const asked = new Request(underneath.href, { method: "GET", headers: request.headers });
+  for (const record of table) {
+    const params = matchPrefix(record.path, underneath.pathname);
+    if (params == null) {
+      continue;
+    }
+    const middleware = pick(await record.load(), record.file);
+    const result = await middleware(asked, { params, searchParams: underneath.searchParams });
+    if (result != null) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * `request` with its `uf-intercepted-from` header taken off, so the renderer
+ * answers with the page its URL names and nothing underneath it.
+ *
+ * Only a payload request reaches here, and a payload is a `GET` or a `HEAD`,
+ * so there is no body to hand on.
+ */
+function withoutInterception(request: Request): Request {
+  const headers = new Headers(request.headers);
+  headers.delete(INTERCEPTED_FROM_HEADER);
+  return new Request(request.url, { method: request.method, headers, signal: request.signal });
 }
 
 /**

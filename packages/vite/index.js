@@ -1122,10 +1122,16 @@ function flowPlugin({
               if (payloadFor != null && (request.method === "GET" || request.method === "HEAD")) {
                 const query = url.includes("?") ? url.slice(url.indexOf("?")) : "";
                 const target = payloadFor + query;
-                const fromHeader = request.headers[INTERCEPTED_FROM_HEADER];
+                // Read off the request the guard handed back, never off the
+                // one Node received: the middleware runner takes this header
+                // off when the page it names is one the guards of that page
+                // would not serve, and reading the original would render it
+                // anyway. See "A payload that renders over another page" in
+                // `@uniflowed/router/middleware`.
+                const interceptedFrom = asRequest.headers.get(INTERCEPTED_FROM_HEADER) ?? undefined;
                 const answered = await entry.flight(target, {
                   onError: (error) => reportRenderError(devServer, target, error),
-                  interceptedFrom: Array.isArray(fromHeader) ? fromHeader[0] : fromHeader,
+                  interceptedFrom,
                 });
                 if (answered.error != null) reportRenderError(devServer, target, answered.error);
                 if (request.method === "HEAD") await answered.stream?.cancel();
