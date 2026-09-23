@@ -141,7 +141,10 @@ export function scalarWidth(code: number): number {
 export function graphemeWidth(cluster: string): number {
   let width = 0;
   let previousNarrow = false;
-  for (const character of cluster) {
+  // `new String(…)` because Flow does not let a primitive string stand for an
+  // `Iterable` (facebook/flow's tests/interface/string.js). The wrapper
+  // iterates the same code points.
+  for (const character of new String(cluster)) {
     const code = character.codePointAt(0) ?? 0;
     if (code === ZWJ) {
       previousNarrow = false;

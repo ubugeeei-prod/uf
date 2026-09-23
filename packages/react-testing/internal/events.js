@@ -714,7 +714,9 @@ export const userEvent = {
    */
   async type(element: Element, text: string): Promise<void> {
     focus(element);
-    for (const character of text) {
+    // `new String(…)`: Flow does not let a primitive string stand for an
+    // `Iterable`. The wrapper iterates the same code points.
+    for (const character of new String(text)) {
       const { key, code, text: printable } = describeKey(character);
       dispatch(element, "keydown", { key, code });
       // Nothing is typed into an element that shows no value; see `keyboard`

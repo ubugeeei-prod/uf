@@ -293,17 +293,24 @@ async function poll<T>(body: () => T | Promise<T>, timeout: number, interval: nu
   const deadline = Date.now() + timeout;
   let lastError: mixed = null;
 
-  while (true) {
+  // The loop ends when the deadline passes, and what follows it is the one way
+  // out that is not a result. Written as a condition rather than `while (true)`
+  // because Flow does not treat an infinite loop as ending the function
+  // (facebook/flow#7657), so a `throw` inside one still left `Promise<void>`
+  // as a possible return.
+  let expired = false;
+  while (!expired) {
     try {
       return await body();
     } catch (error) {
       lastError = error;
     }
-    if (Date.now() >= deadline) {
-      throw lastError instanceof Error
-        ? lastError
-        : new Error(`waitFor timed out after ${timeout}ms: ${String(lastError)}`);
+    expired = Date.now() >= deadline;
+    if (!expired) {
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
-    await new Promise((resolve) => setTimeout(resolve, interval));
   }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`waitFor timed out after ${timeout}ms: ${String(lastError)}`);
 }

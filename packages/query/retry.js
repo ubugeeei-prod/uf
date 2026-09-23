@@ -84,7 +84,12 @@ export async function runWithRetry<T>(options: {|
   readonly onFailure?: (failureCount: number, error: Error) => void,
 |}): Promise<T> {
   let failureCount = 0;
-  for (;;) {
+  // The failure that exhausted the policy, once one has. The loop runs until
+  // there is one, and throwing it after the loop is the only way out that is
+  // not a result. A condition rather than `for (;;)`, because Flow does not
+  // treat an infinite loop as ending the function (facebook/flow#7657).
+  let exhausted: ?Error = null;
+  while (exhausted == null) {
     if (options.signal.aborted) {
       throw cancellation(options.signal);
     }
@@ -101,12 +106,14 @@ export async function runWithRetry<T>(options: {|
       const error = asError(thrown);
       failureCount += 1;
       options.onFailure?.(failureCount, error);
-      if (!shouldRetry(options.retry, failureCount, error)) {
-        throw error;
+      if (shouldRetry(options.retry, failureCount, error)) {
+        await sleep(delayFor(options.retryDelay, failureCount, error), options.signal);
+      } else {
+        exhausted = error;
       }
-      await sleep(delayFor(options.retryDelay, failureCount, error), options.signal);
     }
   }
+  throw exhausted;
 }
 
 /** Whatever was thrown, as an `Error`, because state has to hold one shape. */

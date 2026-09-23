@@ -160,17 +160,22 @@ export async function waitFor<T>(
   const deadline = Date.now() + timeout;
   let last: mixed = null;
 
-  for (;;) {
+  // Ends when the deadline passes; the `throw` after it is the only way out
+  // that is not a result. A condition rather than `for (;;)`, because Flow does
+  // not treat an infinite loop as ending the function (facebook/flow#7657).
+  let expired = false;
+  while (!expired) {
     try {
       return await body();
     } catch (thrown) {
       last = thrown;
     }
-    if (Date.now() >= deadline) {
-      throw last ?? new Error(`uft.waitFor: gave up after ${timeout}ms`);
+    expired = Date.now() >= deadline;
+    if (!expired) {
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
-    await new Promise((resolve) => setTimeout(resolve, interval));
   }
+  throw last ?? new Error(`uft.waitFor: gave up after ${timeout}ms`);
 }
 
 /** Run `body` until it returns something truthy, or the timeout passes. */
