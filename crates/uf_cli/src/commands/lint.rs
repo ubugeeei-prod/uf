@@ -283,6 +283,29 @@ pub(crate) fn severity_count(report: &LintReport, severity: Severity) -> usize {
         .count()
 }
 
+/// Every file `uf lint` with no paths would read, for a caller that already
+/// holds the project's root and configuration: the language server's type
+/// session, which checks the project the way `uf check` does.
+///
+/// A file that cannot be read is left out rather than failing the scan; the
+/// session answers about the files it has.
+#[cfg(feature = "upstream-typecheck")]
+pub(crate) fn project_sources(
+    root: &Utf8Path,
+    config: &uf_config::UniflowedConfig,
+) -> Result<Vec<SourceFile>> {
+    let scan = scan_selected_source_files_matching(root, config, &[], lint_kind)?;
+    Ok(scan
+        .files
+        .into_iter()
+        .filter(|file| lint_kind(file.kind))
+        .map(|file| SourceFile {
+            path: file.relative_path,
+            source: file.source,
+        })
+        .collect())
+}
+
 fn lint_kind(kind: SourceKind) -> bool {
     kind.is_flow() || kind == SourceKind::PackageManifest
 }

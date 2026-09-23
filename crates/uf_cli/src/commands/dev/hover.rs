@@ -23,20 +23,12 @@
 //!    `// uf-lint-disable-next-line flow/unclear-type` comment says what is
 //!    being switched off, which is the moment a reader most wants to know.
 //!
-//! # What is deliberately not answered
+//! # What is not answered here
 //!
-//! **The type at the position.** `uf check` runs Flow's own inference through
-//! `uf_check`, and the upstream port it embeds does have the query — the
-//! `flow_services_type_info::type_at_pos` that `flow type-at-pos` and the
-//! wasm build both call. `uf_check` cannot serve it today: its public surface
-//! is `check_sources`, which converts each file's errors into
-//! `TypeDiagnostic`s and then drops the `Context`, the file signature and the
-//! typed AST that a positional query needs. Serving hover types needs a new
-//! entry point that keeps those three alive for the queried file and runs the
-//! query on the same oversized stack `on_check_thread` already provides,
-//! because the port's state is `Rc`-based and cannot cross a thread. Until
-//! that exists this returns no answer for a plain expression rather than an
-//! empty popup, which an editor renders as a confident "no type".
+//! **The type at the position.** That is [`super::types`]' answer, asked after
+//! these three: what uf says about a diagnostic or an import is more specific
+//! than the type of the token it sits on, and it is answered from data the
+//! server already has rather than from inference.
 
 use camino::Utf8Path;
 use uf_lib::NativeModule;

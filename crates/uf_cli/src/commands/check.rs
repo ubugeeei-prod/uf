@@ -378,72 +378,15 @@ fn type_check(
             .collect()
     };
 
-    // The batch is what was asked about plus what it imports, because an
-    // import is only typed against a file in the same batch. A run that skipped
-    // this checked its files against nothing: every
-    // `import type { Control } from "@uniflowed/form"` was an `any`-typed
-    // value, so the annotations written against it were neither right nor
-    // wrong — ubugeeei-prod/uf#403.
-    //
-    // In rounds, because a package read from `node_modules` imports packages
-    // of its own. It terminates because `read` never lets a package be looked
-    // for twice and there are finitely many of them.
-    let mut installed: Vec<SourceFile> = Vec::new();
-    let mut read: FxHashSet<String> = FxHashSet::default();
-    // The packages with no Flow and with TypeScript declarations, typed from a
-    // translation of those. ubugeeei-prod/uf#946.
-    let mut declarations = declarations::Declarations::open(root);
-    let mut builtins = None;
-    // Held across the rounds rather than rebuilt inside each one: what a file
-    // imports is the same answer every time it is asked, and asking again was
-    // the largest row in a warm check's profile. See `uf_check::ModuleRequires`.
-    let mut requires = ModuleRequires::default();
-    let batch_paths = loop {
-        // In its own scope: the walk borrows `installed` and `declarations`,
-        // and the round that follows it grows both.
-        let round = {
-            uf_profiler::profile_span!("cli::closure_round");
-            let pool: Vec<Source<'_>> = project
-                .iter()
-                .copied()
-                .chain(installed.iter())
-                .chain(declarations.sources().iter())
-                .map(as_input)
-                .collect();
-            match module_closure_cached(&seeds, &pool, &libs, &limits, &mut requires) {
-                Ok(closure) => {
-                    if builtins.is_none() {
-                        builtins = closure.builtins;
-                    }
-                    Ok((
-                        closure
-                            .sources
-                            .iter()
-                            .map(|source| source.path.to_owned())
-                            .collect::<Vec<String>>(),
-                        closure.unresolved,
-                    ))
-                }
-                Err(error) => Err(error),
-            }
-        };
-        let (paths, unresolved) = match round {
-            Ok(round) => round,
-            Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
-            Err(error) => return TypeCheck::Failed(error),
-        };
-        let more = {
-            uf_profiler::profile_span!("cli::load_packages");
-            dependencies::load_packages(root, &unresolved, &mut read, &mut declarations)
-        };
-        // A package translated this round changes the batch without adding a
-        // file to `installed`, so it keeps the rounds going too — its
-        // declarations import packages of their own.
-        let translated = declarations.flush();
-        if more.is_empty() && !translated {
-            break paths;
-        }
-        installed.extend(more);
+    let Closure {
+        paths: batch_paths,
+        installed,
+        declarations,
+        builtins,
+    } = match closure(root, &project, &seeds, &libs, &limits) {
+        Ok(closure) => closure,
+        Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
+        Err(error) => return TypeCheck::Failed(error),
     };
 
     let reached: FxHashSet<&str> = batch_paths.iter().map(String::as_str).collect();
@@ -502,6 +445,145 @@ fn type_check(
         Err(error) if error.is_unavailable() => TypeCheck::Unavailable,
         Err(error) => TypeCheck::Failed(error),
     }
+}
+
+/// What [`closure`] found: the paths the batch reaches, and the sources it had
+/// to bring in from outside the scan to reach them.
+#[cfg(feature = "upstream-typecheck")]
+struct Closure {
+    /// Every path the batch holds, in the walk's order.
+    paths: Vec<String>,
+    /// Packages read from `node_modules`, Flow they ship.
+    installed: Vec<SourceFile>,
+    /// Packages typed from a translation of their TypeScript declarations.
+    declarations: declarations::Declarations,
+    /// What the walk paid for the builtin environment, if it needed one.
+    builtins: Option<BuiltinsTiming>,
+}
+
+/// The batch `seeds` are checked in: what was asked about plus what it imports,
+/// from `project` and from the packages installed under `root`.
+///
+/// Because an import is only typed against a file in the same batch. A run
+/// that skipped this checked its files against nothing: every
+/// `import type { Control } from "@uniflowed/form"` was an `any`-typed value,
+/// so the annotations written against it were neither right nor wrong —
+/// ubugeeei-prod/uf#403.
+///
+/// In rounds, because a package read from `node_modules` imports packages of
+/// its own. It terminates because `read` never lets a package be looked for
+/// twice and there are finitely many of them.
+///
+/// `uf check` and the language server's session both assemble their batch
+/// here, so a hover is answered against the same modules a check is.
+#[cfg(feature = "upstream-typecheck")]
+fn closure(
+    root: &Utf8Path,
+    project: &[&SourceFile],
+    seeds: &[&str],
+    libs: &[Source<'_>],
+    limits: &CheckLimits,
+) -> Result<Closure, CheckError> {
+    let mut installed: Vec<SourceFile> = Vec::new();
+    let mut read: FxHashSet<String> = FxHashSet::default();
+    // The packages with no Flow and with TypeScript declarations, typed from a
+    // translation of those. ubugeeei-prod/uf#946.
+    let mut declarations = declarations::Declarations::open(root);
+    let mut builtins = None;
+    // Held across the rounds rather than rebuilt inside each one: what a file
+    // imports is the same answer every time it is asked, and asking again was
+    // the largest row in a warm check's profile. See `uf_check::ModuleRequires`.
+    let mut requires = ModuleRequires::default();
+    loop {
+        // In its own scope: the walk borrows `installed` and `declarations`,
+        // and the round that follows it grows both.
+        let (paths, unresolved) = {
+            uf_profiler::profile_span!("cli::closure_round");
+            let pool: Vec<Source<'_>> = project
+                .iter()
+                .copied()
+                .chain(installed.iter())
+                .chain(declarations.sources().iter())
+                .map(as_input)
+                .collect();
+            let closure = module_closure_cached(seeds, &pool, libs, limits, &mut requires)?;
+            if builtins.is_none() {
+                builtins = closure.builtins;
+            }
+            (
+                closure
+                    .sources
+                    .iter()
+                    .map(|source| source.path.to_owned())
+                    .collect::<Vec<String>>(),
+                closure.unresolved,
+            )
+        };
+        let more = {
+            uf_profiler::profile_span!("cli::load_packages");
+            dependencies::load_packages(root, &unresolved, &mut read, &mut declarations)
+        };
+        // A package translated this round changes the batch without adding a
+        // file to `installed`, so it keeps the rounds going too — its
+        // declarations import packages of their own.
+        let translated = declarations.flush();
+        if more.is_empty() && !translated {
+            return Ok(Closure {
+                paths,
+                installed,
+                declarations,
+                builtins,
+            });
+        }
+        installed.extend(more);
+    }
+}
+
+/// A whole project as one batch, owned: what the language server's type
+/// session is loaded with.
+#[cfg(feature = "upstream-typecheck")]
+pub(crate) struct ProjectBatch {
+    /// The project's library definitions, in merge order.
+    pub(crate) libs: Vec<SourceFile>,
+    /// Every source the scan found, and every module those import.
+    pub(crate) sources: Vec<SourceFile>,
+}
+
+/// Assemble the batch `uf check` with no paths would check, from sources
+/// already scanned: every one of them is a seed.
+///
+/// # Errors
+///
+/// As `uf check`'s type half: a `.flowconfig` that does not parse, or a
+/// closure walk the checker refused.
+#[cfg(feature = "upstream-typecheck")]
+pub(crate) fn project_batch(
+    root: &Utf8Path,
+    scanned: &[SourceFile],
+) -> Result<ProjectBatch, CheckError> {
+    let limits = CheckLimits::default();
+    let libdefs = libdefs::load(root, &lib_paths(root.as_std_path())?);
+    let declared: FxHashSet<&str> = libdefs.iter().map(|lib| lib.path.as_str()).collect();
+    let project: Vec<&SourceFile> = scanned
+        .iter()
+        .filter(|source| !declared.contains(source.path.as_str()))
+        .collect();
+    let seeds: Vec<&str> = project.iter().map(|source| source.path.as_str()).collect();
+    let libs: Vec<Source<'_>> = libdefs.iter().map(as_input).collect();
+    let found = closure(root, &project, &seeds, &libs, &limits)?;
+    let reached: FxHashSet<&str> = found.paths.iter().map(String::as_str).collect();
+    let sources = project
+        .iter()
+        .copied()
+        .chain(found.installed.iter())
+        .chain(found.declarations.sources().iter())
+        .filter(|source| reached.contains(source.path.as_str()))
+        .cloned()
+        .collect();
+    Ok(ProjectBatch {
+        libs: libdefs,
+        sources,
+    })
 }
 
 /// One scanned file as the checker takes it.
