@@ -1900,9 +1900,11 @@ fn a_scaffolded_project_lints_clean() {
         "uf lint on a new project:\n{stdout}{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(stdout.contains("no problems"), "{stdout}");
-    assert!(stdout.contains("warnings       0"), "{stdout}");
-    assert!(stdout.contains("errors         0"), "{stdout}");
+    // The verdict is the last line uf prints for the files it read, and it
+    // counts nothing because there is nothing to count.
+    assert!(stdout.contains("✓ no problems · "), "{stdout}");
+    assert!(!stdout.contains("error["), "{stdout}");
+    assert!(!stdout.contains("warning["), "{stdout}");
 }
 
 /// The same claim for the routes after the first: what `uf routes add` writes

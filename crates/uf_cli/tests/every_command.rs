@@ -577,7 +577,7 @@ fn an_unreadable_path_fails_the_run_and_the_rest_is_still_done() {
     // stopped, having linted nothing at all — the linter reads `package.json`
     // and `src/app.js`, and the formatter only the latter.
     for (command, (code, stdout, stderr), processed) in [
-        ("lint", lint, "files checked  2"),
+        ("lint", lint, "2 files checked"),
         ("fmt --check", fmt, "of 1 need formatting"),
     ] {
         assert_eq!(

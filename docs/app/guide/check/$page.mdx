@@ -48,8 +48,8 @@ export const due: string = total([{ name: "tea", cents: 450 }]);
 <figure className="terminal">
 
 ```
-uf check
-────────
+uf check · my-app
+─────────────────
 
 lib/summary.js  1 error
 
@@ -63,13 +63,6 @@ lib/summary.js  1 error
     note: [2] is here
      --> lib/summary.js:4:19
 
-  files checked  10
-  errors         1
-  warnings       0
-  rules skipped  16
-
-✗ 1 error
-
   types checked  46
   asked about    10 of 46
   unchanged      44 of 46
@@ -82,6 +75,9 @@ lib/summary.js  1 error
     - node:async_hooks
     - node:module
     - react-dom
+
+✗ 1 error · 10 files checked · 412.3ms
+  › 16 enabled rules skipped: they need Flow type inference, which uf does not have yet; `uf lint --rules` marks them
 error: uf check failed with 1 error
 ```
 
@@ -91,8 +87,9 @@ The first half of the report is `uf lint`'s, and a lint error fails `uf check` a
 surely as a type error does; on the same two files `uf lint` alone reports no
 problems. The second half is inference: `types checked` counts every file Flow
 read, `asked about` the ones the run was for, and `unchanged` the ones answered
-from the cache. The run exits 1, with the sentence on the last line written to
-stderr.
+from the cache. The verdict comes last, on one line: the total across both
+halves, the files the linter read, and how long the whole run took. The run
+exits 1, with the sentence on the last line written to stderr.
 
 `--fix` and `--fix-unsafe` apply `uf lint`'s fixes before the check, the way they
 do for [`uf lint`](/guide/format). Nothing fixes a type error.
@@ -129,11 +126,10 @@ reported:
 ```
 $ uf check lib/summary.js
 
-  files checked  1
-  errors         1
-
   types checked  2
   asked about    1 of 2
+
+✗ 1 error · 1 file checked · 301.8ms
 ```
 
 </figure>
@@ -290,8 +286,8 @@ longer suppresses anything is not reported.
 
 ## What is not here
 
-- **The lint rules that need inference.** `rules skipped` counts them and the
-  JSON names them. They do not run under `uf lint`, and they do not run under
+- **The lint rules that need inference.** The last line's hint counts them,
+  `uf lint --rules` marks them, and the JSON names them. They do not run under `uf lint`, and they do not run under
   `uf check` either, although inference does.
 - **Type errors in the editor.** `uf lsp` publishes lint diagnostics and no type
   errors. It does answer types — hover, go to definition and member completion
