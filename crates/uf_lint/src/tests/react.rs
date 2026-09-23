@@ -177,6 +177,42 @@ fn hook_rule_prefers_flow_hook_syntax() {
     assert!(fired(&diagnostics, "react/hook-syntax"));
 }
 
+/// The shapes a hook is usually written in when it is not written with
+/// `hook`: exported, async, and bound to an arrow or a function expression.
+/// Only the bare `function useX` was reported before.
+#[test]
+fn hook_rule_reports_the_exported_and_arrow_forms() {
+    for source in [
+        "// @flow\nexport function useThing(): number { return 1; }\n",
+        "// @flow\nexport async function useLoad(): Promise<number> { return 1; }\n",
+        "// @flow\nconst useThing = (): number => 1;\n",
+        "// @flow\nexport const useThing = (value: number): number => value;\n",
+        "// @flow\nexport const useThing: () => number = () => 1;\n",
+        "// @flow\nconst useThing = function (): number { return 1; };\n",
+        "// @flow\nconst useThing = value => value;\n",
+    ] {
+        let diagnostics = lint_one("react/hook-syntax", "src/app/page.jsx", source);
+        assert!(fired(&diagnostics, "react/hook-syntax"), "{source}");
+    }
+}
+
+/// And what is not a plain function stays unreported: `hook` syntax itself, a
+/// hook made by a factory, which no `hook` declaration can express, and names
+/// that only look like hooks.
+#[test]
+fn hook_rule_leaves_factories_and_non_hooks_alone() {
+    for source in [
+        "// @flow\nexport hook useThing(): number { return 1; }\n",
+        "// @flow\nexport const useStore = create((set) => ({ count: 0 }));\n",
+        "// @flow\nconst user = (): number => 1;\n",
+        "// @flow\nexport function used(): number { return 1; }\n",
+        "// @flow\nif (useThing == other) {}\n",
+    ] {
+        let diagnostics = lint_one("react/hook-syntax", "src/app/page.jsx", source);
+        assert!(!fired(&diagnostics, "react/hook-syntax"), "{source}");
+    }
+}
+
 /// ubugeeei-prod/uf#451: source a module *generates* is not source it *is*.
 ///
 /// `packages/vite/driver.js` builds a Cloudflare Worker entry as text, and the
