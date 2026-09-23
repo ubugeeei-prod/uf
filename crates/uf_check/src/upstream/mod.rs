@@ -73,7 +73,8 @@ use crate::{BuiltinsTiming, CheckError, CheckLimits, CheckReport, Source};
 
 /// The per-call builtin environment, built only if this batch really needs it.
 struct BatchEnvironment {
-    builtins: BuiltinsTiming,
+    /// [`None`] until something needed the builtins.
+    builtins: Option<BuiltinsTiming>,
     base_metadata: Option<Metadata>,
     mk_builtins: Option<MkBuiltins>,
 }
@@ -81,10 +82,25 @@ struct BatchEnvironment {
 impl BatchEnvironment {
     fn new(builtins: BuiltinsTiming) -> Self {
         Self {
-            builtins,
+            builtins: Some(builtins),
             base_metadata: None,
             mk_builtins: None,
         }
+    }
+
+    /// An environment nothing has asked for yet: the builtins are merged — or
+    /// borrowed from the process's memo — the first time a file needs them.
+    fn deferred() -> Self {
+        Self {
+            builtins: None,
+            base_metadata: None,
+            mk_builtins: None,
+        }
+    }
+
+    /// What the builtins cost this batch, or that it never needed them.
+    fn timing(&self) -> BuiltinsTiming {
+        self.builtins.unwrap_or_else(BuiltinsTiming::not_needed)
     }
 
     fn mk_builtins(
@@ -96,6 +112,9 @@ impl BatchEnvironment {
             return Ok(mk_builtins.dupe());
         }
 
+        if self.builtins.is_none() {
+            self.builtins = Some(builtins::prepare(libs)?);
+        }
         let mk_builtins = {
             profile_span!("check::environment");
             let master_cx = builtins::master_context(libs)?;
@@ -168,6 +187,14 @@ pub(crate) fn module_closure<'a>(
         // relative-only walk should not pay #678's fixed environment cost just
         // to assemble the batch.
         let probe = ProjectModules::new(&[], options.clone(), None, limits);
+        // The parts of a record's key that every file in this walk shares, so
+        // a file the last check filed a record for is read rather than parsed.
+        let record_inputs = cached
+            .disk()
+            .map(|_| (limits_field(limits), builtins::digest(libs)));
+        let record_key = record_inputs
+            .as_ref()
+            .map(|(limits, libdefs)| closure::RecordKey { limits, libdefs });
         let found = closure::closure(
             seeds,
             available,
@@ -202,6 +229,7 @@ pub(crate) fn module_closure<'a>(
                 probe.declared_externally(specifier)
             },
             cached,
+            record_key.as_ref(),
         );
         probe.release();
         if let Some(error) = failure.into_inner() {
@@ -209,7 +237,7 @@ pub(crate) fn module_closure<'a>(
         }
         let builtins = environment
             .into_inner()
-            .map(|environment| environment.builtins);
+            .and_then(|environment| environment.builtins);
         Ok(crate::ModuleClosure {
             sources: found
                 .reached
@@ -306,7 +334,15 @@ fn check_batch(
         }
     }
 
-    let mut environment = BatchEnvironment::new(builtins::prepare(libs)?);
+    // Deferred until a file needs it. A batch whose every file is answered by
+    // its record — the whole of a check nothing has touched since the last one
+    // — never merges the builtins at all, and the merge is the largest fixed
+    // cost a warm `uf check` has.
+    let mut environment = BatchEnvironment::deferred();
+    // The merge used to be what installed the port's process-wide roots, and
+    // rendering a diagnostic's location reads them whether or not anything was
+    // merged; so they are installed here, where the merge used to begin.
+    builtins::ensure_roots();
     let options = {
         profile_span!("check::options");
         options::options(limits)
@@ -462,7 +498,7 @@ fn check_batch(
         files_from_cache: from_cache,
         untyped_modules: untyped.into_iter().collect(),
         host_conditional_modules: host_conditional.into_iter().collect(),
-        builtins: environment.builtins,
+        builtins: environment.timing(),
         elapsed: started.elapsed(),
     })
 }
@@ -475,7 +511,7 @@ fn check_batch(
 /// a property of any file — raising the recursion limit, or adding a
 /// `declare module` to `flow-typed`, changes what every file in the batch
 /// reports, including the files that reach nothing at all.
-fn file_key(
+pub(super) fn file_key(
     cache: &CheckCache,
     limits_field: &str,
     libdefs: &Digest,

@@ -792,3 +792,132 @@ fn a_batch_only_half_of_which_was_re_inferred_reports_what_a_cold_run_does() {
     assert_eq!(rendered(&partial), rendered(&fresh));
     assert_eq!(partial.untyped_modules, fresh.untyped_modules);
 }
+
+#[test]
+fn a_batch_answered_entirely_from_the_cache_never_asks_for_the_builtins() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+
+    let first = check(&cache, &limits(), &CHAIN);
+    let second = check(&cache, &limits(), &CHAIN);
+    let edited = check(
+        &cache,
+        &limits(),
+        &chain_with("alone.js", "// @flow\nexport const one: number = 2;\n"),
+    );
+
+    assert!(
+        first.builtins.needed,
+        "a cold batch infers, and inference needs them"
+    );
+    assert_eq!(second.files_from_cache, CHAIN.len());
+    assert!(
+        !second.builtins.needed,
+        "every file was answered by its record, so nothing needed the environment"
+    );
+    assert_eq!(second.builtins, crate::BuiltinsTiming::not_needed());
+    assert!(edited.builtins.needed, "an edited file is inferred again");
+    assert_eq!(codes(&second), codes(&first));
+}
+
+/// A file importing a package Flow's libdefs declare, one nothing declares,
+/// and a sibling.
+const WALKED: [(&str, &str); 3] = [
+    (
+        "app.js",
+        "// @flow\nimport * as React from \"react\";\nimport pad from \"left-pad\";\nimport { b } from \"./b.js\";\nexport const x: number = b;\n",
+    ),
+    ("b.js", "// @flow\nexport const b: number = 1;\n"),
+    ("c.js", "// @flow\nexport const c: number = 1;\n"),
+];
+
+/// The paths and left-over specifiers a walk from `app.js` found.
+fn walk(
+    files: &[(&str, &str)],
+    requires: &mut crate::ModuleRequires,
+) -> (Vec<String>, Vec<String>, bool) {
+    let sources: Vec<Source<'_>> = files
+        .iter()
+        .map(|(path, source)| Source::new(path, source))
+        .collect();
+    let found = crate::module_closure_cached(&["app.js"], &sources, &[], &limits(), requires)
+        .expect("the walk runs");
+    (
+        found
+            .sources
+            .iter()
+            .map(|source| source.path.to_owned())
+            .collect(),
+        found
+            .unresolved
+            .iter()
+            .map(|left| format!("{} in {}", left.specifier, left.importer))
+            .collect(),
+        found.builtins.is_some(),
+    )
+}
+
+#[test]
+fn a_walk_backed_by_the_cache_reads_a_checked_file_instead_of_merging_the_builtins() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+
+    let (paths, unresolved, merged) = walk(&WALKED, &mut crate::ModuleRequires::default());
+    assert!(
+        merged,
+        "whether a libdef declares `react` is a question for the builtins"
+    );
+
+    // What `uf check` does between two walks: check the batch, which files a
+    // record per file saying what it imports and what the libdefs declare.
+    check(&cache, &limits(), &WALKED);
+
+    let backed = walk(
+        &WALKED,
+        &mut crate::ModuleRequires::backed_by(cache.clone()),
+    );
+    assert_eq!(backed.0, paths, "the same modules are reached");
+    assert_eq!(
+        backed.1, unresolved,
+        "and the same specifiers are left over"
+    );
+    assert_eq!(unresolved, ["left-pad in app.js"]);
+    assert!(
+        !backed.2,
+        "every answer came from a record, so the builtins were never merged"
+    );
+}
+
+#[test]
+fn a_walk_backed_by_the_cache_reads_an_edit_rather_than_the_record() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+    check(&cache, &limits(), &WALKED);
+
+    // The same path, importing a different sibling. A record found by path
+    // alone would walk to `b.js`, and the batch would lack the file the checker
+    // then goes looking for.
+    let edited = [
+        (
+            "app.js",
+            "// @flow\nimport { c } from \"./c.js\";\nexport const x: number = c;\n",
+        ),
+        WALKED[1],
+        WALKED[2],
+    ];
+    let (paths, unresolved, _) = walk(
+        &edited,
+        &mut crate::ModuleRequires::backed_by(cache.clone()),
+    );
+    assert_eq!(paths, ["app.js", "c.js"]);
+    assert!(unresolved.is_empty());
+}

@@ -62,6 +62,7 @@ use uf_infra::FxHashMap;
 use super::packages::{PackageFile, WorkspacePackages, is_manifest};
 use super::parse;
 use super::resolve::{self, ModuleIndex};
+use crate::cache::{CheckCache, Digest};
 use crate::{Source, UnresolvedImport};
 
 /// What a set of seeds reaches.
@@ -99,24 +100,100 @@ pub(super) struct Closure {
 /// and is dropped rather than trusted when the text is not the same. That
 /// costs a hash of each file per round, which is microseconds against the
 /// parse it replaces.
+///
+/// # Across commands
+///
+/// A walk that is handed a [`CheckCache`] ([`Requires::backed_by`]) reads a
+/// file it has not seen in this process from the record the last check filed
+/// for it, before it parses. The record's key is the file's own key — the
+/// compiler, the limits, the library definitions, the path and the text — so a
+/// record found under it is about exactly this file as it is now, and it holds
+/// both halves a walk needs: what the file imports, and whether Flow's library
+/// definitions declare each bare specifier. The second half is the one that
+/// matters most. Deciding it needs the merged builtin environment, so a walk
+/// that read it from a record never merges one, and a check whose every file is
+/// unchanged parses nothing and merges nothing to find out that it is.
 #[derive(Default)]
 pub(crate) struct Requires {
-    by_path: FxHashMap<CompactString, (u64, Vec<CompactString>)>,
+    by_path: FxHashMap<CompactString, (u64, Vec<Import>)>,
+    disk: Option<CheckCache>,
+}
+
+/// One import, and whether Flow's library definitions declare it when that is
+/// already known.
+#[derive(Clone)]
+pub(super) struct Import {
+    pub(super) specifier: CompactString,
+    /// [`None`] when the file was parsed rather than read from a record: the
+    /// walk asks the builtins, lazily, only if it needs the answer.
+    pub(super) declared: Option<bool>,
+}
+
+/// What a record lookup needs besides the cache: the parts of a file's key
+/// that are the same for every file in one walk.
+pub(super) struct RecordKey<'a> {
+    pub(super) limits: &'a str,
+    pub(super) libdefs: &'a Digest,
 }
 
 impl Requires {
-    /// The specifiers `source` imports, parsing it only the first time.
-    fn of(&mut self, source: &Source<'_>, options: &Options) -> Vec<CompactString> {
+    /// A memo that also reads the records `cache` holds.
+    pub(crate) fn backed_by(cache: CheckCache) -> Self {
+        Self {
+            by_path: FxHashMap::default(),
+            disk: Some(cache),
+        }
+    }
+
+    /// The cache this memo reads records from, if it reads any.
+    pub(super) fn disk(&self) -> Option<&CheckCache> {
+        self.disk.as_ref()
+    }
+
+    /// What `source` imports: from this process's memo, then from the record
+    /// the last check filed under the file's key, and by parsing only when
+    /// neither knows.
+    fn of(
+        &mut self,
+        source: &Source<'_>,
+        options: &Options,
+        key: Option<&RecordKey<'_>>,
+    ) -> Vec<Import> {
         let digest = digest_of(source.source);
         if let Some((seen, found)) = self.by_path.get(source.path)
             && *seen == digest
         {
             return found.clone();
         }
-        let found = requires(source, options);
+        let found = self
+            .recorded(source, key)
+            .unwrap_or_else(|| requires(source, options));
         self.by_path
             .insert(source.path.to_compact_string(), (digest, found.clone()));
         found
+    }
+
+    /// What the record filed under `source`'s key says it imports.
+    ///
+    /// A manifest is never looked up: it is JSON, it imports nothing, and
+    /// [`requires`] says so without reading anything.
+    fn recorded(&self, source: &Source<'_>, key: Option<&RecordKey<'_>>) -> Option<Vec<Import>> {
+        let (cache, key) = (self.disk.as_ref()?, key?);
+        if is_manifest(source.path) {
+            return None;
+        }
+        let file_key = super::file_key(cache, key.limits, key.libdefs, source);
+        let record = cache.read(&file_key, source.path)?;
+        Some(
+            record
+                .requires
+                .into_iter()
+                .map(|require| Import {
+                    specifier: require.specifier,
+                    declared: Some(require.declared),
+                })
+                .collect(),
+        )
     }
 }
 
@@ -144,6 +221,7 @@ pub(super) fn closure(
     options: &Options,
     declared: &dyn Fn(&str) -> bool,
     cached: &mut Requires,
+    key: Option<&RecordKey<'_>>,
 ) -> Closure {
     let index = ModuleIndex::new(available.iter().map(|source| source.path));
     let packages = WorkspacePackages::new(available, options);
@@ -160,8 +238,12 @@ pub(super) fn closure(
 
     while let Some(module) = frontier.pop() {
         let source = available[module];
-        for specifier in cached.of(&source, options) {
-            let declared = declared(&specifier);
+        for Import {
+            specifier,
+            declared: recorded,
+        } in cached.of(&source, options, key)
+        {
+            let declared = recorded.unwrap_or_else(|| declared(&specifier));
             let relative = resolve::is_relative(&specifier);
             let resolved = if relative {
                 index.resolve(source.path, &specifier)
@@ -218,7 +300,7 @@ fn reach(target: usize, seen: &mut [bool], frontier: &mut Vec<usize>) {
 /// [`super::project::ProjectModules::facts`] gives — this is that function
 /// with the signature packing left out, because a closure needs to know what a
 /// file imports and never needs to know what it exports.
-fn requires(source: &Source<'_>, options: &Options) -> Vec<CompactString> {
+fn requires(source: &Source<'_>, options: &Options) -> Vec<Import> {
     // A manifest is JSON. Handing it to the Flow parser produces a syntax
     // error and no imports, which is the right answer by a slow route.
     if is_manifest(source.path) {
@@ -235,7 +317,10 @@ fn requires(source: &Source<'_>, options: &Options) -> Vec<CompactString> {
         .keys()
         .map(|specifier| {
             let FlowImportSpecifier::Userland(userland) = specifier;
-            userland.as_str().to_compact_string()
+            Import {
+                specifier: userland.as_str().to_compact_string(),
+                declared: None,
+            }
         })
         .collect()
 }
@@ -263,8 +348,22 @@ mod tests {
             Source::new("c.js", "export const c = 1;\n"),
         ];
 
-        let first = closure(&["app.js"], &before, &options, &undeclared, &mut cached);
-        let again = closure(&["app.js"], &before, &options, &undeclared, &mut cached);
+        let first = closure(
+            &["app.js"],
+            &before,
+            &options,
+            &undeclared,
+            &mut cached,
+            None,
+        );
+        let again = closure(
+            &["app.js"],
+            &before,
+            &options,
+            &undeclared,
+            &mut cached,
+            None,
+        );
         assert_eq!(first.reached, again.reached, "the same walk, twice");
         assert_eq!(first.reached, [0, 1]);
 
@@ -276,7 +375,14 @@ mod tests {
             Source::new("b.js", "export const b = 1;\n"),
             Source::new("c.js", "export const c = 1;\n"),
         ];
-        let moved = closure(&["app.js"], &after, &options, &undeclared, &mut cached);
+        let moved = closure(
+            &["app.js"],
+            &after,
+            &options,
+            &undeclared,
+            &mut cached,
+            None,
+        );
         assert_eq!(moved.reached, [0, 2], "the edit is read rather than cached");
     }
 
@@ -287,6 +393,7 @@ mod tests {
             &options::options(&CheckLimits::default()),
             &undeclared,
             &mut Requires::default(),
+            None,
         );
         found
             .reached
@@ -302,6 +409,7 @@ mod tests {
             &options::options(&CheckLimits::default()),
             &undeclared,
             &mut Requires::default(),
+            None,
         )
         .unresolved
         .into_iter()
@@ -419,6 +527,7 @@ mod tests {
             &options::options(&CheckLimits::default()),
             &|specifier| specifier == "react",
             &mut Requires::default(),
+            None,
         );
 
         assert_eq!(
@@ -449,6 +558,7 @@ mod tests {
             &options::options(&CheckLimits::default()),
             &|specifier| specifier == "editor-pkg",
             &mut Requires::default(),
+            None,
         );
 
         assert_eq!(found.reached, [0]);

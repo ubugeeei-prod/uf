@@ -389,12 +389,26 @@ fn type_check(
             .collect()
     };
 
+    // Under the project root, because that is what the cache is about: the same
+    // sources checked from two roots are two projects, and `.uf/` is where uf
+    // already keeps per-project state that `.gitignore` covers.
+    //
+    // Opened before the walk rather than before the check, because the walk
+    // reads it too: a file the last check filed a record for is read, not
+    // parsed, and so is whether Flow's libdefs declare what it imports.
+    let cache = {
+        uf_profiler::profile_span!("cli::cache_open");
+        CheckCache::open(root.as_std_path())
+    };
+    let requires = cache
+        .clone()
+        .map_or_else(ModuleRequires::default, ModuleRequires::backed_by);
     let Closure {
         paths: batch_paths,
         installed,
         declarations,
         builtins,
-    } = match closure(root, &project, &seeds, &libs, &limits) {
+    } = match closure(root, &project, &seeds, &libs, &limits, requires) {
         Ok(closure) => closure,
         Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
         Err(error) => return TypeCheck::Failed(error),
@@ -420,11 +434,6 @@ fn type_check(
         explained: None,
     };
 
-    // Under the project root, because that is what the cache is about: the same
-    // sources checked from two roots are two projects, and `.uf/` is where uf
-    // already keeps per-project state that `.gitignore` covers.
-    uf_profiler::profile_span!("cli::cache_open");
-    let cache = CheckCache::open(root.as_std_path());
     // Before the run adds to it, once, and silently. A check is about to write
     // one record per file it could not answer from disk, and this is what
     // stops the directory from being every record every build of `uf` has ever
@@ -494,6 +503,7 @@ fn closure(
     seeds: &[&str],
     libs: &[Source<'_>],
     limits: &CheckLimits,
+    mut requires: ModuleRequires,
 ) -> Result<Closure, CheckError> {
     let mut installed: Vec<SourceFile> = Vec::new();
     let mut read: FxHashSet<String> = FxHashSet::default();
@@ -501,10 +511,11 @@ fn closure(
     // translation of those. ubugeeei-prod/uf#946.
     let mut declarations = declarations::Declarations::open(root);
     let mut builtins = None;
-    // Held across the rounds rather than rebuilt inside each one: what a file
-    // imports is the same answer every time it is asked, and asking again was
-    // the largest row in a warm check's profile. See `uf_check::ModuleRequires`.
-    let mut requires = ModuleRequires::default();
+    // `requires` is held across the rounds rather than rebuilt inside each one:
+    // what a file imports is the same answer every time it is asked, and asking
+    // again was the largest row in a warm check's profile. Backed by the check
+    // cache, it answers the first round from disk as well. See
+    // `uf_check::ModuleRequires`.
     loop {
         // In its own scope: the walk borrows `installed` and `declarations`,
         // and the round that follows it grows both.
@@ -581,7 +592,14 @@ pub(crate) fn project_batch(
         .collect();
     let seeds: Vec<&str> = project.iter().map(|source| source.path.as_str()).collect();
     let libs: Vec<Source<'_>> = libdefs.iter().map(as_input).collect();
-    let found = closure(root, &project, &seeds, &libs, &limits)?;
+    let found = closure(
+        root,
+        &project,
+        &seeds,
+        &libs,
+        &limits,
+        ModuleRequires::default(),
+    )?;
     let reached: FxHashSet<&str> = found.paths.iter().map(String::as_str).collect();
     let sources = project
         .iter()
@@ -653,6 +671,7 @@ fn type_check_payload(types: &TypeCheck) -> Value {
             .unwrap_or(report.builtins);
         value["builtinsMs"] = json!(builtins.cold_elapsed.as_secs_f64() * 1000.0);
         value["builtinsCold"] = json!(builtins.cold);
+        value["builtinsNeeded"] = json!(builtins.needed);
         value["untypedModules"] = json!(report.untyped_modules);
         value["hostConditionalModules"] = json!(report.host_conditional_modules);
     }
@@ -863,11 +882,15 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             );
             let inference = format!("{:.1?}", report.elapsed);
             let builtins_timing = batch.builtins.unwrap_or(report.builtins);
-            let builtins = format!(
-                "{:.1?} ({})",
-                builtins_timing.cold_elapsed,
-                if builtins_timing.cold { "cold" } else { "warm" }
-            );
+            let builtins = if builtins_timing.needed {
+                format!(
+                    "{:.1?} ({})",
+                    builtins_timing.cold_elapsed,
+                    if builtins_timing.cold { "cold" } else { "warm" }
+                )
+            } else {
+                String::from("not needed")
+            };
             // Only shown when it happened. A project with nothing opted out
             // should not have to read a line saying so.
             let skipped = report.files_skipped.to_string();

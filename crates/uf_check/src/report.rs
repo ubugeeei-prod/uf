@@ -95,6 +95,25 @@ pub struct BuiltinsTiming {
     pub cold_elapsed: Duration,
     /// Whether this call is the one that did the merge.
     pub cold: bool,
+    /// Whether anything needed the builtins at all.
+    ///
+    /// `false` for a batch whose every file was answered from the check cache:
+    /// such a batch neither merges the builtins nor borrows a merged copy, and
+    /// the two durations are zero because nothing was spent, not because the
+    /// merge was free.
+    pub needed: bool,
+}
+
+impl BuiltinsTiming {
+    /// The timing of a batch that never needed the builtins.
+    pub const fn not_needed() -> Self {
+        Self {
+            elapsed: Duration::ZERO,
+            cold_elapsed: Duration::ZERO,
+            cold: false,
+            needed: false,
+        }
+    }
 }
 
 /// The result of checking a batch of files.
