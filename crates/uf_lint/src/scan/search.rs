@@ -67,6 +67,9 @@ pub(crate) fn find_words<'a>(
 /// - After it: whitespace with something behind it, or the quote that opened
 ///   the string. `pnpm-workspace.yaml` fails on the `-`; `spawn("pnpm", […])`
 ///   passes, because a program with its arguments beside it is still a program.
+///   A string that is *only* the name counts when it is a call's first
+///   argument and nowhere else: `| "pnpm"` in a union type, `bin: "pnpm"` and
+///   `["pnpm", "bun"]` are names of tools, not invocations of them.
 ///
 /// # What it still cannot tell
 ///
@@ -80,8 +83,8 @@ pub(crate) fn heads_a_command(haystack: &str, at: usize, len: usize) -> bool {
     let bytes = haystack.as_bytes();
     let opener = match prev_non_space(haystack, at) {
         None => None,
-        Some((_, byte)) => match byte {
-            b'\'' | b'"' | b'`' => Some(byte),
+        Some((quote, byte)) => match byte {
+            b'\'' | b'"' | b'`' => Some((quote, byte)),
             b'(' | b',' | b'[' | b'{' | b';' | b'&' | b'|' | b'=' | b'>' => None,
             // Anything else before it is another word, an operator, or prose.
             _ => return false,
@@ -89,8 +92,15 @@ pub(crate) fn heads_a_command(haystack: &str, at: usize, len: usize) -> bool {
     };
 
     match bytes.get(at + len) {
-        // The whole string is the program: `spawn("pnpm", ["install"])`.
-        Some(&byte) if Some(byte) == opener => true,
+        // The whole string is the program: `spawn("pnpm", ["install"])`. Only
+        // as a call's first argument, though — the one place a bare name is
+        // the program being run. Anywhere else a string holding nothing but
+        // the name is the name: a member of `"npm" | "pnpm" | "yarn"`, a
+        // `bin: "pnpm"` row in a table, `["pnpm", "bun"]` in a list of tools
+        // to measure. Each of those was a suppression in this repository.
+        Some(&byte) if opener.is_some_and(|(_, quote)| quote == byte) => opener
+            .and_then(|(quote, _)| prev_non_space(haystack, quote))
+            .is_some_and(|(_, before)| before == b'('),
         // A program with arguments, which is every other invocation.
         Some(&byte) if byte == b' ' || byte == b'\t' => {
             next_non_space(haystack, at + len).is_some()
