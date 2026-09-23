@@ -13,8 +13,8 @@ export async function loader(): Promise<{| readonly at: number |}> {
   return { at: Date.now() };
 }
 
-export default component OnDemand(at: number) {
+export default component OnDemand(data: {| readonly at: number |}) {
   cacheLife({ revalidate: 3600 });
   cacheTag("isr-tag");
-  return <h1>{`tagged rendered at ${String(at)}`}</h1>;
+  return <h1>{`tagged rendered at ${String(data.at)}`}</h1>;
 }

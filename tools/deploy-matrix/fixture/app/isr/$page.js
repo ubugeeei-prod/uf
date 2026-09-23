@@ -16,8 +16,8 @@ export async function loader(): Promise<{| readonly at: number |}> {
   return { at: Date.now() };
 }
 
-export default component TimeBased(at: number) {
+export default component TimeBased(data: {| readonly at: number |}) {
   cacheLife({ revalidate: 2 });
   cacheTag("isr-time");
-  return <h1>{`isr rendered at ${String(at)}`}</h1>;
+  return <h1>{`isr rendered at ${String(data.at)}`}</h1>;
 }

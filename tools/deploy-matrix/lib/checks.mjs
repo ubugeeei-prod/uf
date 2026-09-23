@@ -159,6 +159,52 @@ async function ssr({ base }) {
 }
 
 /**
+ * When `first` and then `second` arrived in one answer for `path`.
+ *
+ * Asked the way a browser asks — `accept-encoding: gzip, deflate, br` — because
+ * a host that compresses may hold a small streamed chunk in its compressor,
+ * and that is what a visitor would see. When the answer is not progressive the
+ * same question is asked again with `identity`, and both are in the failure,
+ * so a log says whether the application or the host's compression held it.
+ */
+async function arrival(base, path, first, second, headers = {}) {
+  const ask = async (encoding) => {
+    // One path per question: a page that suspends keeps its promise per id,
+    // so asking the same id twice would be answered at once the second time.
+    const asked = path();
+    const answer = await request(base, asked, {
+      headers: { ...headers, "accept-encoding": encoding },
+    });
+    expectStatus(answer, 200, `GET ${asked}`);
+    const at = { first: arrivalOf(answer, first), second: arrivalOf(answer, second()) };
+    assert.ok(
+      at.first != null,
+      `GET ${asked}: body lacks ${JSON.stringify(first)}\n  ${describe(answer)}`,
+    );
+    assert.ok(
+      at.second != null,
+      `GET ${asked}: body lacks ${JSON.stringify(second())}\n  ${describe(answer)}`,
+    );
+    return {
+      gap: Math.round(at.second - at.first),
+      first: Math.round(at.first),
+      second: Math.round(at.second),
+      reads: answer.chunks.length,
+      encoding: answer.headers.get("content-encoding") ?? "none",
+    };
+  };
+  const browser = await ask("gzip, deflate, br");
+  const says = (label, seen) =>
+    `${label}: ${JSON.stringify(first)} at ${seen.first} ms, the rest at ${seen.second} ms, ${seen.reads} reads, content-encoding ${seen.encoding}`;
+  return {
+    browser,
+    says,
+    /** The same question without compression, for a failure message. */
+    identity: async () => says("with accept-encoding: identity", await ask("identity")),
+  };
+}
+
+/**
  * Streaming SSR with Suspense.
  *
  * `expect: "whole"` is a target that buffers by design (a Lambda's payload is
@@ -167,43 +213,50 @@ async function ssr({ base }) {
  * matrix honest about which targets stream.
  */
 async function streaming({ base, expect }) {
-  const id = unique("stream");
-  const answer = await request(base, `/stream/${id}`);
-  expectStatus(answer, 200, `GET /stream/${id}`);
-  expectBody(answer, "stream: waiting", `GET /stream/${id}`);
-  expectBody(answer, `stream: ${id}`, `GET /stream/${id}`);
-  const fallback = arrivalOf(answer, "stream: waiting");
-  const content = arrivalOf(answer, `stream: ${id}`);
-  const gap = Math.round(content - fallback);
+  let id = "";
+  const measured = await arrival(
+    base,
+    () => {
+      id = unique("stream");
+      return `/stream/${id}`;
+    },
+    "stream: waiting",
+    () => `stream: ${id}`,
+  );
+  const { browser } = measured;
   if (expect === "whole") {
     assert.ok(
-      gap < 400,
-      `a buffering target sent the fallback ${gap} ms before the content; it streams after all — change the matrix`,
+      browser.gap < 400,
+      `a buffering target sent the fallback ${browser.gap} ms before the content; it streams after all — change the matrix`,
     );
-    return [`arrived whole: fallback and content ${gap} ms apart, ${answer.chunks.length} reads`];
+    return [measured.says("arrived whole", browser)];
   }
   // The page waits 1200 ms; the fallback must be out well before that.
-  assert.ok(
-    gap >= 600,
-    `the fallback arrived only ${gap} ms before the content (fallback at ${Math.round(fallback)} ms, content at ${Math.round(content)} ms, ${answer.chunks.length} reads): the body was not streamed`,
-  );
-  return [`fallback at ${Math.round(fallback)} ms, content at ${Math.round(content)} ms`];
+  if (browser.gap < 600) {
+    assert.fail(
+      `the body was not streamed. ${measured.says("as a browser asks", browser)}; ${await measured.identity()}`,
+    );
+  }
+  return [measured.says("as a browser asks", browser)];
 }
 
 /** `ppr`: the static shell arrives first, the per-request hole about 1200 ms later. */
 async function ppr({ base }) {
-  const answer = await request(base, "/ppr", { headers: { cookie: "who=ada" } });
-  expectStatus(answer, 200, "GET /ppr");
-  expectBody(answer, "ppr shell", "GET /ppr");
-  expectBody(answer, "ppr hole for ada", "GET /ppr");
-  const shell = arrivalOf(answer, "ppr shell");
-  const hole = arrivalOf(answer, "ppr hole for ada");
-  const gap = Math.round(hole - shell);
-  assert.ok(
-    gap >= 600,
-    `the hole arrived ${gap} ms after the shell (shell at ${Math.round(shell)} ms): the shell was not sent first`,
+  const measured = await arrival(
+    base,
+    () => "/ppr",
+    "ppr shell",
+    () => "ppr hole for ada",
+    {
+      cookie: "who=ada",
+    },
   );
-  return [`shell at ${Math.round(shell)} ms, hole at ${Math.round(hole)} ms`];
+  if (measured.browser.gap < 600) {
+    assert.fail(
+      `the shell was not sent before the hole. ${measured.says("as a browser asks", measured.browser)}; ${await measured.identity()}`,
+    );
+  }
+  return [measured.says("as a browser asks", measured.browser)];
 }
 
 /** The instant the build rendered `page` at, from the regeneration copy it wrote. */

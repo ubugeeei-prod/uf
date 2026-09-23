@@ -143,38 +143,38 @@ async function processHost(name, spawnArgs, { cwd, env = {}, port }) {
   };
 }
 
-/** `node server.js`, as `uf build --adapter node` prints it. */
-async function node(deployDir) {
-  const port = await freePort();
-  return processHost("node server.js", ["node", "server.js"], {
-    cwd: deployDir,
-    env: { PORT: String(port), HOST: "127.0.0.1" },
-    port,
-  });
-}
-
-/** `bun server.js`. */
-async function bun(deployDir) {
-  const port = await freePort();
-  return processHost("bun server.js", ["bun", "server.js"], {
-    cwd: deployDir,
-    env: { PORT: String(port), HOST: "127.0.0.1" },
-    port,
-  });
-}
-
 /**
- * `deno run --allow-net --allow-read --allow-env server.js` — the exact
- * command `uf build --adapter deno` prints, so the matrix checks what a person
- * is told to type rather than a more permissive one.
+ * The command `uf build` printed for the directory it wrote — the `run` line
+ * of its summary, without the `cd <directory> &&` in front — as an argument
+ * list.
+ *
+ * Read from the build rather than written here, so the matrix starts a server
+ * the way a person is told to, including every permission flag the printed
+ * command has (or lacks). None of the commands has quoting in it; one that did
+ * would be refused here rather than split wrongly.
+ *
+ * @param {string} output everything `uf build --adapter` printed
  */
-async function deno(deployDir) {
+export function printedCommand(output) {
+  const line = output.split("\n").find((candidate) => /^\s*run\s{2,}\S/.test(candidate));
+  assert.ok(line != null, `uf build printed no run line:\n${output.slice(-2000)}`);
+  const command = line
+    .replace(/^\s*run\s+/, "")
+    .replace(/^cd \S+ && /, "")
+    .trim();
+  assert.ok(!/["'\\]/.test(command), `the printed run command needs a shell: ${command}`);
+  return command.split(/\s+/);
+}
+
+/** A server started with the command `uf build` printed: `node`, `bun`, `deno`. */
+async function printed(deployDir, { output }) {
   const port = await freePort();
-  return processHost(
-    "deno server.js",
-    ["deno", "run", "--allow-net", "--allow-read", "--allow-env", "server.js"],
-    { cwd: deployDir, env: { PORT: String(port), HOST: "127.0.0.1" }, port },
-  );
+  const command = printedCommand(output);
+  return processHost(command.join(" "), command, {
+    cwd: deployDir,
+    env: { PORT: String(port), HOST: "127.0.0.1" },
+    port,
+  });
 }
 
 /** The generated `Dockerfile`, built and run; the image listens on 3000. */
@@ -206,8 +206,14 @@ async function container(deployDir) {
     try {
       await waitUntilAnswering(base, { alive: running });
     } catch (error) {
+      let state = "";
+      try {
+        state = docker("inspect", "-f", "{{json .State}}", name);
+      } catch (inspected) {
+        state = String(inspected.stderr ?? inspected.message);
+      }
       throw new Error(
-        `the container did not start: ${error.message}\n--- docker logs ---\n${logs().slice(-4000)}`,
+        `the container did not start: ${error.message}\n--- state ---\n${state}\n--- docker logs ---\n${logs().slice(-4000)}`,
       );
     }
   };
@@ -303,7 +309,10 @@ function staticHost(deployDir) {
         compatibility_date: "2024-09-23",
         assets: {
           directory: path.relative(hostDir, deployDir),
-          html_handling: "auto-trailing-slash",
+          // uf links to `/posts/first`, and the build writes
+          // `posts/first/index.html`: served at the link's URL, not redirected
+          // to one with a trailing slash first.
+          html_handling: "drop-trailing-slash",
           not_found_handling: "404-page",
         },
       },
@@ -469,4 +478,12 @@ async function serverless(deployDir) {
 }
 
 /** Every host, by the target id `../matrix.json` uses. */
-export const HOSTS = { node, bun, deno, container, edge, serverless, static: staticHost };
+export const HOSTS = {
+  node: printed,
+  bun: printed,
+  deno: printed,
+  container,
+  edge,
+  serverless,
+  static: staticHost,
+};

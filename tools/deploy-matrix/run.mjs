@@ -156,7 +156,7 @@ if (argv.includes("--build-only")) {
 const order = Object.keys(cells).sort(
   (left, right) => Number(left.startsWith("isr-")) - Number(right.startsWith("isr-")),
 );
-const host = await HOSTS[target.id](deployDir);
+const host = await HOSTS[target.id](deployDir, { output: built.output });
 process.stdout.write(`  host: ${host.base}\n`);
 try {
   for (const mode of order) {
