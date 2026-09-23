@@ -156,62 +156,95 @@ if (argv.includes("--build-only")) {
 const order = Object.keys(cells).sort(
   (left, right) => Number(left.startsWith("isr-")) - Number(right.startsWith("isr-")),
 );
-const host = await HOSTS[target.id](deployDir, { output: built.output });
-process.stdout.write(`  host: ${host.base}\n`);
+let host;
 try {
+  host = await HOSTS[target.id](deployDir, { output: built.output });
+} catch (error) {
+  if (target.knownBug == null) throw error;
+  // The documented failure: the host cannot start (`knownBug` in the
+  // matrix), so every cell it would have answered is blocked by that issue.
+  process.stdout.write(
+    `  host did not start, as #${target.knownBug.issue} says:\n    ${String(error.message).split("\n").slice(0, 6).join("\n    ")}\n`,
+  );
   for (const mode of order) {
     const cell = cells[mode];
     if (!wanted(mode) || cell.status === "rejected") continue;
-    if (cell.status === "planned") {
-      record(mode, { ok: true, outcome: "planned, not run" });
-      continue;
-    }
-    const started = performance.now();
-    let error = null;
-    let notes = [];
-    try {
-      notes =
-        mode === "hydration"
-          ? await hydration(host.base, { actions: cells["action-json"]?.status === "verified" })
-          : await CHECKS[mode]({
-              base: host.base,
-              target: target.id,
-              expect: cell.expect,
-              buildDir: dir,
-              deployDir,
-              restart: host.restart,
-            });
-    } catch (caught) {
-      error = caught?.message ?? String(caught);
-    }
-    const ms = Math.round(performance.now() - started);
-    if (cell.status === "verified") {
-      record(mode, {
-        ok: error == null,
-        outcome: error == null ? `passed (${ms} ms)` : `failed (${ms} ms)`,
-        error,
-        notes,
-        ms,
-      });
-    } else {
-      // `not-emulated`: the failure is the documented gap; a pass means the
-      // emulator caught up and the matrix should say so.
-      record(mode, {
-        ok: error != null,
-        outcome:
-          error != null
-            ? `failed as documented (${ms} ms)`
-            : "passed, so the emulator now supports it: mark it verified",
-        error: error == null ? null : error.split("\n")[0],
-        ms,
-      });
-    }
+    record(
+      mode,
+      cell.status === "planned"
+        ? { ok: true, outcome: "planned, not run" }
+        : {
+            ok: cell.status === "known-bug",
+            outcome: `host did not start (#${target.knownBug.issue})`,
+          },
+    );
   }
-} finally {
-  const failed = Object.values(results).some((result) => !result.ok);
-  if (failed) process.stdout.write(`\n--- host output (tail) ---\n${host.logs().slice(-8000)}\n`);
-  await host.stop();
 }
+if (host != null && target.knownBug != null) {
+  process.stdout.write(
+    `  host started, so #${target.knownBug.issue} no longer stops it: remove knownBug from ${target.id} in matrix.json\n`,
+  );
+  results.knownBug = { status: "known-bug", ok: false, outcome: "the host started" };
+}
+if (host != null) process.stdout.write(`  host: ${host.base}\n`);
+if (host != null)
+  try {
+    for (const mode of order) {
+      const cell = cells[mode];
+      if (!wanted(mode) || cell.status === "rejected") continue;
+      if (cell.status === "planned") {
+        record(mode, { ok: true, outcome: "planned, not run" });
+        continue;
+      }
+      const started = performance.now();
+      let error = null;
+      let notes = [];
+      try {
+        notes =
+          mode === "hydration"
+            ? await hydration(host.base, { actions: cells["action-json"]?.status === "verified" })
+            : await CHECKS[mode]({
+                base: host.base,
+                target: target.id,
+                expect: cell.expect,
+                buildDir: dir,
+                deployDir,
+                restart: host.restart,
+              });
+      } catch (caught) {
+        error = caught?.message ?? String(caught);
+      }
+      const ms = Math.round(performance.now() - started);
+      if (cell.status === "verified") {
+        record(mode, {
+          ok: error == null,
+          outcome: error == null ? `passed (${ms} ms)` : `failed (${ms} ms)`,
+          error,
+          notes,
+          ms,
+        });
+      } else {
+        // `not-emulated` and `known-bug`: the failure is the documented gap; a
+        // pass means the emulator caught up or the bug was fixed, and the matrix
+        // has to say so before this column is green again.
+        record(mode, {
+          ok: error != null,
+          outcome:
+            error != null
+              ? `failed as documented (${ms} ms)`
+              : cell.status === "known-bug"
+                ? `passed, so #${String(cell.issue)} is fixed: mark it verified`
+                : "passed, so the emulator now supports it: mark it verified",
+          error: error == null ? null : error.split("\n")[0],
+          ms,
+        });
+      }
+    }
+  } finally {
+    const failed = Object.values(results).some((result) => !result.ok);
+    if (failed) process.stdout.write(`\n--- host output (tail) ---\n${host.logs().slice(-8000)}\n`);
+    await host.stop();
+  }
 
 mkdirSync(outDir, { recursive: true });
 const versions = {};

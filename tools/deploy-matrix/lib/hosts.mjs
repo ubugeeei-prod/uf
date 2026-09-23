@@ -22,7 +22,7 @@
 // installs them); `../matrix.json` names them for the docs.
 
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -103,6 +103,15 @@ function startProcess(command, args, { cwd, env, log }) {
       }
     },
   };
+}
+
+/**
+ * A container's output, both streams: `docker logs` replays the container's
+ * stderr on its own stderr, which is where a crashing server writes why.
+ */
+function dockerLogs(name) {
+  const logged = spawnSync("docker", ["logs", name], { encoding: "utf8" });
+  return `${logged.stdout ?? ""}${logged.stderr ?? ""}`;
 }
 
 /** Run `docker …` and answer its stdout; throws with its stderr on failure. */
@@ -192,16 +201,7 @@ async function container(deployDir) {
       return false;
     }
   };
-  const logs = () => {
-    try {
-      return execFileSync("docker", ["logs", name], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      return String(error.stdout ?? "") + String(error.stderr ?? "");
-    }
-  };
+  const logs = () => dockerLogs(name);
   const ready = async () => {
     try {
       await waitUntilAnswering(base, { alive: running });
@@ -389,16 +389,7 @@ async function serverless(deployDir) {
       LAMBDA_IMAGE,
       "lambda.handler",
     );
-  const functionLogs = () => {
-    try {
-      return execFileSync("docker", ["logs", name], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      return String(error.stdout ?? "") + String(error.stderr ?? "");
-    }
-  };
+  const functionLogs = () => dockerLogs(name);
   startFunction();
 
   await kumoCall(kumo, "POST", "/2015-03-31/functions", {

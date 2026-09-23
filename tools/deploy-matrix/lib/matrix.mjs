@@ -24,6 +24,7 @@ export const STATUSES = {
   verified: "Verified in CI",
   rejected: "Unsupported (rejected)",
   "not-emulated": "Not emulated",
+  "known-bug": "Known bug",
   planned: "Planned",
 };
 
@@ -46,6 +47,12 @@ export function loadMatrix(file = MATRIX_FILE) {
   for (const target of matrix.targets) {
     if (ids.has(target.id)) throw new Error(`matrix.json: target ${target.id} is listed twice`);
     ids.add(target.id);
+    if (target.knownBug != null && !Number.isInteger(target.knownBug.issue)) {
+      throw new Error(`matrix.json: ${target.id}: knownBug names the issue that tracks it`);
+    }
+    if (target.knownBug?.note != null && matrix.notes?.[target.knownBug.note] == null) {
+      throw new Error(`matrix.json: ${target.id}: note ${target.knownBug.note} is not in notes`);
+    }
     for (const [mode, cell] of Object.entries(target.cells ?? {})) {
       const where = `matrix.json: ${target.id} × ${mode}`;
       if (!modes.has(mode)) throw new Error(`${where}: no such mode`);
@@ -64,6 +71,9 @@ export function loadMatrix(file = MATRIX_FILE) {
       if (cell.note != null && matrix.notes?.[cell.note] == null) {
         throw new Error(`${where}: note ${cell.note} is not in notes`);
       }
+      if (cell.status === "known-bug" && !Number.isInteger(cell.issue)) {
+        throw new Error(`${where}: a known-bug cell names the issue that tracks it`);
+      }
       if ((cell.status === "not-emulated" || cell.status === "planned") && cell.note == null) {
         throw new Error(`${where}: a ${cell.status} cell says why in a note`);
       }
@@ -79,8 +89,16 @@ export function loadMatrix(file = MATRIX_FILE) {
  */
 export function cellsOf(matrix, target) {
   const cells = {};
-  for (const mode of matrix.modes)
-    cells[mode.id] = target.cells?.[mode.id] ?? { status: "verified" };
+  for (const mode of matrix.modes) {
+    const cell = target.cells?.[mode.id] ?? { status: "verified" };
+    // A target whose host cannot start at all (`knownBug`) has every cell
+    // that would be checked on that host blocked by the same issue; a
+    // refusal is checked at build time and still stands.
+    cells[mode.id] =
+      target.knownBug != null && cell.status === "verified"
+        ? { status: "known-bug", issue: target.knownBug.issue, note: target.knownBug.note }
+        : cell;
+  }
   return cells;
 }
 
@@ -101,7 +119,8 @@ export function renderDocs(matrix) {
     const cells = matrix.targets.map((target) => {
       const cell = cellsOf(matrix, target)[mode.id];
       const label = STATUSES[cell.status];
-      return cell.note == null ? label : `${label} [${noteNumber(cell.note)}]`;
+      const named = cell.status === "known-bug" ? `${label} (#${String(cell.issue)})` : label;
+      return cell.note == null ? named : `${named} [${noteNumber(cell.note)}]`;
     });
     return `| ${mode.title} | ${cells.join(" | ")} |`;
   });

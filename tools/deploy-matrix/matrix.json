@@ -6,27 +6,82 @@
     "`tests/library/deploy-matrix.test.js` fails when the table in docs/app/guide/deploy/$page.mdx is not `report.mjs --docs` of this file.",
     "Statuses: verified (the check runs and must pass), rejected (unsupported by design: the build must refuse, naming it),",
     "not-emulated (the target supports it but the emulator cannot show it: the check runs and must fail, so a fixed emulator is noticed),",
+    "known-bug (a uf bug with an open issue: the check runs and must fail; `knownBug` on a target means its host cannot start),",
     "planned (no check yet)."
   ],
   "modes": [
-    { "id": "ssg", "title": "Static (SSG), incl. `generateStaticParams`" },
-    { "id": "ssr", "title": "SSR per request" },
-    { "id": "streaming", "title": "Streaming SSR with Suspense" },
-    { "id": "ppr", "title": "Static shell with holes (`ppr`)" },
-    { "id": "isr-time", "title": "ISR, time-based" },
-    { "id": "isr-on-demand", "title": "ISR, on demand (`revalidateTag`)" },
-    { "id": "rsc-payload", "title": "RSC navigation (Flight payload)" },
-    { "id": "action-json", "title": "Server action, JSON call" },
-    { "id": "action-form", "title": "Server action, form before hydration" },
-    { "id": "route-handlers", "title": "Route handlers" },
-    { "id": "cookies", "title": "Cookies in and out" },
-    { "id": "middleware", "title": "Middleware rewrite" },
-    { "id": "router-rules", "title": "Redirects, rewrites, headers" },
-    { "id": "not-found", "title": "Not-found boundary (404)" },
-    { "id": "error-boundary", "title": "Error boundary (500)" },
-    { "id": "static-assets", "title": "Hashed client assets" },
-    { "id": "hydration", "title": "Hydration and client navigation (browser)" },
-    { "id": "images", "title": "Image optimiser (`/__uf/image`)" }
+    {
+      "id": "ssg",
+      "title": "Static (SSG), incl. `generateStaticParams`"
+    },
+    {
+      "id": "ssr",
+      "title": "SSR per request"
+    },
+    {
+      "id": "streaming",
+      "title": "Streaming SSR with Suspense"
+    },
+    {
+      "id": "ppr",
+      "title": "Static shell with holes (`ppr`)"
+    },
+    {
+      "id": "isr-time",
+      "title": "ISR, time-based"
+    },
+    {
+      "id": "isr-on-demand",
+      "title": "ISR, on demand (`revalidateTag`)"
+    },
+    {
+      "id": "rsc-payload",
+      "title": "RSC navigation (Flight payload)"
+    },
+    {
+      "id": "action-json",
+      "title": "Server action, JSON call"
+    },
+    {
+      "id": "action-form",
+      "title": "Server action, form before hydration"
+    },
+    {
+      "id": "route-handlers",
+      "title": "Route handlers"
+    },
+    {
+      "id": "cookies",
+      "title": "Cookies in and out"
+    },
+    {
+      "id": "middleware",
+      "title": "Middleware rewrite"
+    },
+    {
+      "id": "router-rules",
+      "title": "Redirects, rewrites, headers"
+    },
+    {
+      "id": "not-found",
+      "title": "Not-found boundary (404)"
+    },
+    {
+      "id": "error-boundary",
+      "title": "Error boundary (500)"
+    },
+    {
+      "id": "static-assets",
+      "title": "Hashed client assets"
+    },
+    {
+      "id": "hydration",
+      "title": "Hydration and client navigation (browser)"
+    },
+    {
+      "id": "images",
+      "title": "Image optimiser (`/__uf/image`)"
+    }
   ],
   "targets": [
     {
@@ -35,7 +90,20 @@
       "adapter": "node",
       "runtime": "`node server.js`, Node 24",
       "cells": {
-        "images": { "status": "planned", "note": "images" }
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1493,
+          "note": "route-cache"
+        },
+        "cookies": {
+          "status": "known-bug",
+          "issue": 1490,
+          "note": "set-cookie"
+        }
       }
     },
     {
@@ -44,7 +112,15 @@
       "adapter": "bun",
       "runtime": "`bun server.js`, Bun 1.3.14",
       "cells": {
-        "images": { "status": "planned", "note": "images" }
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1493,
+          "note": "route-cache"
+        }
       }
     },
     {
@@ -53,7 +129,19 @@
       "adapter": "deno",
       "runtime": "`deno run --allow-net --allow-read --allow-env server.js` (the command `uf build` prints), Deno 2.9.7",
       "cells": {
-        "images": { "status": "planned", "note": "images" }
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1493,
+          "note": "route-cache"
+        }
+      },
+      "knownBug": {
+        "issue": 1497,
+        "note": "deno-cache"
       }
     },
     {
@@ -62,7 +150,24 @@
       "adapter": "container",
       "runtime": "`docker build` + `docker run` of the generated `Dockerfile`",
       "cells": {
-        "images": { "status": "planned", "note": "images" }
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1493,
+          "note": "route-cache"
+        },
+        "cookies": {
+          "status": "known-bug",
+          "issue": 1490,
+          "note": "set-cookie"
+        }
+      },
+      "knownBug": {
+        "issue": 1496,
+        "note": "container-cache"
       }
     },
     {
@@ -71,9 +176,38 @@
       "adapter": "edge",
       "runtime": "`wrangler dev --local` (workerd), Wrangler 4.128.0, local Workers KV",
       "cells": {
-        "isr-time": { "status": "verified", "note": "kv" },
-        "isr-on-demand": { "status": "verified", "note": "kv" },
-        "images": { "status": "planned", "note": "images" }
+        "isr-time": {
+          "status": "verified",
+          "note": "kv"
+        },
+        "isr-on-demand": {
+          "status": "verified",
+          "note": "kv"
+        },
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1493,
+          "note": "route-cache-edge"
+        },
+        "ppr": {
+          "status": "known-bug",
+          "issue": 1494,
+          "note": "workers-gzip"
+        },
+        "rsc-payload": {
+          "status": "known-bug",
+          "issue": 1495,
+          "note": "flight-type"
+        },
+        "hydration": {
+          "status": "known-bug",
+          "issue": 1495,
+          "note": "flight-type"
+        }
       }
     },
     {
@@ -96,7 +230,11 @@
         "config": "serverless"
       },
       "cells": {
-        "streaming": { "status": "verified", "expect": "whole", "note": "buffered" },
+        "streaming": {
+          "status": "verified",
+          "expect": "whole",
+          "note": "buffered"
+        },
         "ppr": {
           "status": "rejected",
           "note": "ppr-serverless",
@@ -115,11 +253,26 @@
             "pattern": "regenerates 2 pages \\(/isr, /tagged\\).*--adapter serverless. has nowhere of its own"
           }
         },
-        "isr-on-demand": { "status": "verified", "note": "s3" },
-        "action-json": { "status": "not-emulated", "note": "kumo-host" },
-        "action-form": { "status": "not-emulated", "note": "kumo-host" },
-        "cookies": { "status": "not-emulated", "note": "kumo-cookies" },
-        "images": { "status": "planned", "note": "images" }
+        "isr-on-demand": {
+          "status": "verified",
+          "note": "s3"
+        },
+        "action-json": {
+          "status": "not-emulated",
+          "note": "kumo-host"
+        },
+        "action-form": {
+          "status": "not-emulated",
+          "note": "kumo-host"
+        },
+        "cookies": {
+          "status": "not-emulated",
+          "note": "kumo-cookies"
+        },
+        "images": {
+          "status": "planned",
+          "note": "images"
+        }
       }
     },
     {
@@ -127,7 +280,10 @@
       "title": "Static host",
       "adapter": "static",
       "runtime": "Workers static assets under `wrangler dev --local` (`html_handling: drop-trailing-slash`, `404-page`), no Worker script",
-      "build": { "features": [], "config": "static" },
+      "build": {
+        "features": [],
+        "config": "static"
+      },
       "cells": {
         "ssr": {
           "status": "rejected",
@@ -211,9 +367,16 @@
         },
         "router-rules": {
           "status": "rejected",
-          "refusal": { "features": [], "config": "full", "pattern": "/moved/:slug" }
+          "refusal": {
+            "features": [],
+            "config": "full",
+            "pattern": "/moved/:slug"
+          }
         },
-        "not-found": { "status": "verified", "expect": "static" },
+        "not-found": {
+          "status": "verified",
+          "expect": "static"
+        },
         "error-boundary": {
           "status": "rejected",
           "refusal": {
@@ -222,7 +385,20 @@
             "pattern": "/boom/:id \\(app/boom/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
           }
         },
-        "images": { "status": "planned", "note": "images" }
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "rsc-payload": {
+          "status": "known-bug",
+          "issue": 1495,
+          "note": "flight-type"
+        },
+        "hydration": {
+          "status": "known-bug",
+          "issue": 1495,
+          "note": "flight-type"
+        }
       }
     }
   ],
@@ -233,6 +409,13 @@
     "s3": "With a project provider in `rendering.cache.store` (the fixture's `s3-cache.js`, over an S3 bucket in Kumo); the check restarts the function container and reads the page back from S3. Without a provider the build refuses the regenerating pages by name, which is checked too.",
     "kumo-host": "Kumo 0.30.0's HTTP API event carries no `host` header and no `requestContext.domainName`, so uf's same-origin check refuses every action (as it should for a request that names no host). Real API Gateway sends both. The check runs and is expected to fail until Kumo does.",
     "kumo-cookies": "Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.",
-    "images": "The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet."
+    "images": "The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.",
+    "route-cache": "With `rendering.cache.route` on — which `isr` needs, and the fixture has ISR pages — every page rendered per request is buffered whole, so a `$loading.js` fallback arrives with the page it stands in for. The same build with the route cache off streams.",
+    "route-cache-edge": "The route-cache buffering of #1493, and on top of it the compression of #1494.",
+    "workers-gzip": "Under `wrangler dev`, gzip compression for a client that accepts it holds the static shell until the document ends (shell and hole together at ~1.2 s); with `accept-encoding: identity` the shell arrives at ~4 ms. The Worker streams; the host's compression buffers.",
+    "set-cookie": "`@uniflowed/server/node` sends only the last `Set-Cookie` of a response (fixed by #1491).",
+    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type, so the client router loads the document instead: navigation works, as full page loads.",
+    "container-cache": "The generated `Dockerfile` cannot write the route cache's directory, so a build with `isr` exits at start-up (fixed by #1499).",
+    "deno-cache": "The Deno command `uf build` prints has no write permission for the route cache, so a build with `isr` exits at start-up (fixed by #1499)."
   }
 }
