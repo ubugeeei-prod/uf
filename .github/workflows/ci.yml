@@ -1232,7 +1232,9 @@ jobs:
         if: needs.changes.outputs.deploy == 'true'
       - name: Run the ${{ matrix.target }} column
         if: needs.changes.outputs.deploy == 'true'
-        run: node tools/deploy-matrix/run.mjs --target "${{ matrix.target }}" --uf ./target/release/uf --out output/deploy-matrix
+        env:
+          TARGET: ${{ matrix.target }}
+        run: node tools/deploy-matrix/run.mjs --target "$TARGET" --uf ./target/release/uf --out output/deploy-matrix
       # The Worker smoke the edge documentation cites: the served-app, action
       # and regeneration fixtures, and the table of Node built-ins a Worker
       # only stubs, measured again under workerd.
