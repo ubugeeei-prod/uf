@@ -40,6 +40,7 @@ import { describe, expect, it } from "@uniflowed/test";
 import {
   currentHref,
   entryFor,
+  featuredIn,
   nextAfter,
   openSectionFor,
   pages,
@@ -187,6 +188,27 @@ describe("the manual's navigation", () => {
       }
     }
     expect(disagreeing).toEqual([]);
+  });
+
+  // The home page and each landing page lead with a section's featured pages
+  // (#1420). A feature that is not one of the section's own pages would offer
+  // a link the sidebar puts somewhere else; more than five is a second list,
+  // not a lead; and a section with pages that features none leads with nothing.
+  it("features three to five of each section's own pages, once each", () => {
+    for (const section of sections) {
+      const own = new Set(section.pages.map((page) => page.href));
+      const featured = section.featured;
+      expect({
+        section: section.title,
+        foreign: featured.filter((href) => !own.has(href)),
+        repeated: featured.length !== new Set(featured).size,
+        count:
+          section.pages.length === 0
+            ? featured.length === 0
+            : featured.length >= Math.min(3, section.pages.length) && featured.length <= 5,
+      }).toEqual({ section: section.title, foreign: [], repeated: false, count: true });
+      expect(featuredIn(section).map((page) => page.href)).toEqual(featured);
+    }
   });
 
   it("puts every page in exactly one section", () => {

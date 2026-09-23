@@ -48,6 +48,14 @@ export type Section = {|
   /** The section's pages, in the order its reader should read them. */
   readonly pages: $ReadOnlyArray<Entry>,
   /**
+   * The three to five pages most readers of the section open first, by
+   * `href`, most important first. The home page and the section's landing
+   * page lead with them, above the full list. Each must be one of the
+   * section's own pages — `tests/library/docs-nav.test.js` holds that — and a
+   * one-page section features nothing, because its landing page is the page.
+   */
+  readonly featured: $ReadOnlyArray<string>,
+  /**
    * The landing page of the section this reader goes to next, or `null` for
    * the section that ends the manual. "Next page" on a section's last page
    * points here rather than at whichever section happens to be listed below:
@@ -94,16 +102,17 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Build a React application with routes, shared state, a form and tests.",
       },
     ],
+    featured: ["/guide/install", "/guide/project", "/guide/tutorial", "/guide/flow"],
     then: "/guide/toolchain",
   },
   {
     title: "The toolchain",
-    question: "How do I pin runtimes, run CI, tune lint and cache tasks?",
+    question: "How do I run, test, type-check and lint it, every day and in CI?",
     landing: {
       href: "/guide/toolchain",
       title: "The toolchain",
       blurb:
-        "One guide per command: what it runs, what it reads, what it refuses, and how to put it in CI.",
+        "The commands you run every day — dev, build, test, check, fmt and lint — one guide each, and how to put them in CI.",
     },
     pages: [
       {
@@ -162,6 +171,7 @@ export const sections: $ReadOnlyArray<Section> = [
           "uf mcp: twelve tools over stdio, the two that write, and what an agent should not assume.",
       },
     ],
+    featured: ["/guide/dev", "/guide/testing", "/guide/check", "/guide/format", "/guide/ci"],
     then: "/guide/build-an-app",
   },
   {
@@ -281,6 +291,13 @@ export const sections: $ReadOnlyArray<Section> = [
           "Five numbers the browser already has, and nothing that leaves the machine unless you ask.",
       },
     ],
+    featured: [
+      "/guide/routing",
+      "/guide/server-components",
+      "/guide/server-actions",
+      "/guide/data",
+      "/guide/form",
+    ],
     then: "/guide/targets",
   },
   {
@@ -310,6 +327,7 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
       },
     ],
+    featured: ["/guide/deploy", "/guide/react-native", "/guide/tui"],
     then: "/reference",
   },
   {
@@ -371,6 +389,13 @@ export const sections: $ReadOnlyArray<Section> = [
           "MessageFormat 2 with typed arguments, the subset uf implements, and where the type system stops.",
       },
     ],
+    featured: [
+      "/reference/cli",
+      "/reference/config",
+      "/reference/api",
+      "/reference/packages",
+      "/reference/std",
+    ],
     then: null,
   },
   {
@@ -386,6 +411,7 @@ export const sections: $ReadOnlyArray<Section> = [
         "From CRA, Vite or Next.js: what carries over, the moves in order, and what still differs.",
     },
     pages: [],
+    featured: [],
     then: "/guide/start",
   },
   {
@@ -446,9 +472,25 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "What went wrong with create-react-app, and the lines uf will not cross.",
       },
     ],
+    featured: ["/guide", "/guide/scope", "/guide/compare", "/guide/benchmarks"],
     then: "/guide/start",
   },
 ];
+
+/**
+ * A section's featured pages, as entries, in the order `featured` names them.
+ * An `href` that is not one of the section's pages throws, so a stale feature
+ * fails the build rather than a landing page offering a link to nowhere.
+ */
+export function featuredIn(section: Section): $ReadOnlyArray<Entry> {
+  return section.featured.map((href) => {
+    const found = section.pages.find((page) => page.href === href);
+    if (found == null) {
+      throw new Error(`nav.js: ${section.title} features ${href}, which it does not list`);
+    }
+    return found;
+  });
+}
 
 /** Every page, flattened: each section's landing page, then its pages. */
 export const pages: $ReadOnlyArray<Entry> = sections.flatMap((section) => [
