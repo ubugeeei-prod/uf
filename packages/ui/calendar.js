@@ -77,6 +77,7 @@ import {
   withoutComposed,
 } from "./internal/merge-props.js";
 import { directionOf } from "./internal/roving-focus.js";
+import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 import {
   firstDayOfWeekFor,
   moveDate,
@@ -321,7 +322,16 @@ export component CalendarRoot(
     <CalendarContext.Provider value={state}>
       <div {...rest}>
         {children}
-        <div aria-atomic="true" aria-live="polite" id={`${base}-status`} role="status">
+        {/* Heard and not drawn: the caption above the grid already shows the
+            month, and a second copy under it is what a sighted reader would
+            otherwise see after the first page. */}
+        <div
+          aria-atomic="true"
+          aria-live="polite"
+          id={`${base}-status`}
+          role="status"
+          style={visuallyHiddenStyle}
+        >
           {announcement}
         </div>
       </div>

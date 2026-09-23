@@ -5307,6 +5307,10 @@ describe("Calendar", () => {
     // is the same constraint.
     const status = screen.getByRole("status");
     expect(status.textContent).toBe("");
+    // Heard, not drawn: the caption already shows the month, and an unhidden
+    // region printed it a second time under the grid after the first page.
+    expect(status.style.position).toBe("absolute");
+    expect(status.style.clipPath).toBe("inset(50%)");
 
     act(() => {
       screen.getByRole("gridcell", { name: "14" }).focus();
