@@ -155,6 +155,48 @@ function announcerIn(document: Document): Announcer | null {
 }
 
 /**
+ * The timers `announce` has scheduled and not yet run, per politeness, so
+ * `clearAnnouncements` can take back a message that has not arrived yet as
+ * well as one that has.
+ */
+const pending: {| readonly polite: Set<TimeoutID>, readonly assertive: Set<TimeoutID> |} = {
+  polite: new Set(),
+  assertive: new Set(),
+};
+
+/**
+ * Run `work` after `ms`, unless `clearAnnouncements` cancels it first.
+ *
+ * A timer outlives whatever scheduled it: a test worker restores its globals
+ * between files, and an app can unmount, replace `<body>` or tear its window
+ * down, all while a message is still waiting to arrive or to leave. So a timer
+ * never reads the `document` global — `work` is handed the document and
+ * regions captured when the message was announced, and each timer checks they
+ * are still there before touching them.
+ */
+function schedule(politeness: Politeness, ms: number, work: () => void): void {
+  const timers = pending[politeness];
+  const timer: TimeoutID = setTimeout(() => {
+    timers.delete(timer);
+    work();
+  }, ms);
+  timers.add(timer);
+}
+
+/**
+ * Whether `document` is still the document this realm has, and `region` still
+ * in it: the one condition under which a timer may write to either.
+ */
+function stillLive(document: Document, region: HTMLElement): boolean {
+  return (
+    typeof globalThis.document !== "undefined" &&
+    globalThis.document === document &&
+    region.isConnected &&
+    region.ownerDocument === document
+  );
+}
+
+/**
  * Say something to a screen reader, from anywhere.
  *
  *     announce(`${count} results`);
@@ -162,30 +204,56 @@ function announcerIn(document: Document): Announcer | null {
  *
  * A function rather than a hook, because what needs announcing comes from
  * event handlers, effects and `catch` blocks — `toast()` makes the same choice.
- * An empty message is ignored rather than announced as silence.
+ * An empty message is ignored rather than announced as silence. On the server
+ * it returns before scheduling anything.
  */
 export function announce(message: string, options?: AnnounceOptions): void {
   if (message.trim() === "" || typeof document === "undefined") return;
-  const current = announcerIn(document);
+  // Captured now, and the only document the timers below ever use.
+  const doc = document;
+  const current = announcerIn(doc);
   if (current == null) return;
   const politeness = options?.politeness ?? "polite";
   const timeout = options?.timeout ?? 7000;
   const target = politeness === "assertive" ? current.assertive : current.polite;
   const insert = () => {
-    const node = document.createElement("div");
+    // The document went away (a worker's teardown, an unmounted frame) or the
+    // regions were taken out of it: there is nobody left to tell.
+    if (!stillLive(doc, target)) return;
+    const node = doc.createElement("div");
     node.textContent = message;
     target.append(node);
-    if (timeout > 0 && Number.isFinite(timeout)) setTimeout(() => node.remove(), timeout);
+    if (timeout > 0 && Number.isFinite(timeout))
+      schedule(politeness, timeout, () => {
+        // Removing a detached node is harmless; only a live one needs it.
+        if (node.isConnected) node.remove();
+      });
   };
   const wait = current.created + SETTLE_MS - Date.now();
-  if (wait > 0) setTimeout(insert, wait);
+  if (wait > 0) schedule(politeness, wait, insert);
   else insert();
 }
 
-/** Take every message still in the regions out, for one politeness or both. */
+/**
+ * Take every message out, for one politeness or both: the ones in the regions
+ * and the ones still waiting to arrive, whose timers are cancelled. After it,
+ * nothing `announce` scheduled for that politeness runs.
+ */
 export function clearAnnouncements(politeness?: Politeness): void {
+  const both: $ReadOnlyArray<Politeness> = ["assertive", "polite"];
+  for (const which of both) {
+    if (politeness != null && politeness !== which) continue;
+    const timers = pending[which];
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
+  }
   const current = announcer;
   if (current == null) return;
+  // Regions a teardown took out are not reused, and need not be kept alive.
+  if (!current.root.isConnected) {
+    announcer = null;
+    return;
+  }
   if (politeness !== "polite") current.assertive.replaceChildren();
   if (politeness !== "assertive") current.polite.replaceChildren();
 }
