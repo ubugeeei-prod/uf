@@ -244,8 +244,9 @@ const relativeImports = (source: string): Array<string> => {
   const pattern = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'](\.[^"']*)["']/g;
   const code = withoutComments(source);
   const found = [];
-  let match;
-  while ((match = pattern.exec(code)) !== null) found.push(match[1]);
+  for (let match = pattern.exec(code); match != null; match = pattern.exec(code)) {
+    found.push(match[1]);
+  }
   return found;
 };
 
@@ -418,8 +419,7 @@ const packageImports = (source: string): Array<{| specifier: string, type: boole
   const pattern = /\bimport\s+(type\s+)?([^;]*?)\bfrom\s*["'](@uniflowed\/[^"']*)["']/g;
   const code = withoutComments(source);
   const found = [];
-  let match;
-  while ((match = pattern.exec(code)) !== null) {
+  for (let match = pattern.exec(code); match != null; match = pattern.exec(code)) {
     // `import { type Foo }` is a type import too, and is the form uf's own
     // formatter produces when a value from the same module is imported beside
     // it. A clause with any binding that is *not* prefixed is a value import.
