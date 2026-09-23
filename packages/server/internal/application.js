@@ -17,6 +17,15 @@
 import type { RequestLifecycle } from "./context.js";
 import type { RoutingRules } from "./routing.js";
 
+/**
+ * React's `ReactFormState`: a form action's result, the `useActionState` key
+ * that submitted, the action's id, and how many arguments the action was bound
+ * with besides the state. The same tuple `@uniflowed/router` builds in
+ * `internal/form-action.js`; spelled here so this package does not import the
+ * router for a type.
+ */
+export type FormState = [mixed, string, string, number];
+
 export type { RequestLifecycle } from "./context.js";
 export type { RoutingRules } from "./routing.js";
 
@@ -87,7 +96,15 @@ export type Application = {|
   readonly render: (
     url: string,
     assets: DocumentAssets,
-    options?: {| readonly onError?: (error: mixed) => void |},
+    options?: {|
+      readonly onError?: (error: mixed) => void,
+      /**
+       * React's `formState` for a page rendered in answer to a form posted
+       * before hydration, so the `useActionState` that submitted starts from
+       * the action's result. Only `callAction`'s `postback` passes one.
+       */
+      readonly formState?: FormState,
+    |},
   ) => Promise<RenderedDocument>,
   /**
    * A route's Flight payload, for a browser that is navigating.
@@ -141,7 +158,17 @@ export type Application = {|
    * an application whose actions quietly stopped being reachable once it was
    * built.
    */
-  readonly callAction: (request: Request) => Promise<Response | null>,
+  readonly callAction: (
+    request: Request,
+    settings?: {|
+      /**
+       * Render the page this request is for with `formState`: the answer to a
+       * `useActionState` form posted before its page hydrated. A host passes
+       * it; without one such a post is answered with a `303` back to the page.
+       */
+      readonly postback?: (formState: FormState) => Promise<Response>,
+    |},
+  ) => Promise<Response | null>,
   /**
    * The guard on the path, run before anything under it answers.
    *

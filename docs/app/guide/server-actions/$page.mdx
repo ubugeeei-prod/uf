@@ -193,9 +193,59 @@ A rejected submit is a value on the state rather than an exception: the endpoint
 answers a thrown action with a `500` and nothing in it, and "your note is too
 long" is not an internal error.
 
-**A form submitted before its page has hydrated does not work.** That is the one
-piece of React's form story uf does not have, and it is a deliberate trade; the
-last section says what it buys.
+**The same form works before its page has hydrated.** See the next section.
+
+## Before the page hydrates
+
+A form bound to a server action is a real HTML form in the document the server
+sends. React asks the action for `$$FORM_ACTION` while it renders to HTML, and
+uf's actions answer, so the markup above comes out as
+
+```html
+<form action="" encType="application/x-www-form-urlencoded" method="POST">
+  <input type="hidden" name="$uf_ref_0"/>
+  <input type="hidden" name="$uf_id_0" value="…the action's id…"/>
+  <input type="hidden" name="$uf_bound_0" value="{&quot;args&quot;:[…the state…]}"/>
+  <input type="hidden" name="$ACTION_KEY" value="k…"/>
+  <input name="note" maxLength="80" value=""/>
+  …
+</form>
+```
+
+A person who submits it before the JavaScript has arrived — a slow network, a
+script blocked, a click in the first second — sends an ordinary browser post to
+the page's own URL. The server runs the action with the previous state and the
+form, and answers:
+
+| The action | The answer |
+| --- | --- |
+| was called by a `useActionState` | the page, rendered again with the action's result as that hook's state; the browser hydrates with the same state |
+| was a plain `<form action={fn}>` | `303 See Other` back to the page, so a reload does not submit twice |
+| called `redirect()` | `303 See Other` to where it pointed |
+| threw | `500`, with nothing of the exception in it |
+
+Once the page has hydrated nothing about this runs: React calls the reference,
+and the call is the JSON request below.
+
+**The native post is a separate door, and a narrower one.** It accepts only
+`application/x-www-form-urlencoded` — never `multipart/form-data`, so a file
+still cannot cross — and only a post carrying a `$uf_ref_` field; anything else,
+including an ordinary form posted to a route handler at the same URL, is left
+alone with its body unread. It refuses with a `403` unless `Origin` equals
+`Host`, and unless `Sec-Fetch-Site` is `same-origin` when the browser sends
+it. The id, the bound state and every field go through the same lookup and the
+same grammar as the JSON call, with the same limits. What it does not have is
+the JSON call's custom header and content type, because a native post cannot
+carry them — so it rests on `Origin` alone, which every current browser sends
+on a `POST`. [`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md)
+has the row.
+
+**What the state has to be.** `useActionState`'s initial state travels in the
+form, so it has to be something that can cross: `useActionState(save, null)`
+or a plain object, not a `Date` or `undefined`. A state that cannot cross
+costs the pre-hydration submit and nothing else — React logs "Failed to
+serialize an action for progressive enhancement" on the server and writes the
+form it writes for any client action.
 
 ## What may cross
 
@@ -383,15 +433,6 @@ imports the action already has its type.
 
 ## What is not here
 
-- **Progressive enhancement.** A form that submits before its JavaScript has
-  arrived does not work. React's mechanism for that is a `$$FORM_ACTION`
-  property that turns the submit into a *native* form post, and a native form
-  post is `multipart/form-data` — the content type this endpoint refuses on
-  purpose. So a reference carries no such property, React writes
-  `action="javascript:throw …"` as it does for any client action, and a submit
-  before hydration throws in the page rather than posting anywhere. Nothing
-  reaches a server that was not meant to; what is missing is the submit working
-  at all ([#1358](https://github.com/ubugeeei-prod/uf/issues/1358)).
 - **Uploads.** A `File` entry is refused by name at the call site. Multipart
   parsing is its own attack surface and is deliberately absent; use a route
   handler.

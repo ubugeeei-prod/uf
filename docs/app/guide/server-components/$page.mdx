@@ -47,7 +47,7 @@ covers and what it does not yet.
 | The split | a Server Component never reaches the browser: the browser gets the payload it rendered and the `"use client"` modules that payload names | no known gap |
 | HTML streaming | the document streams, and carries the Flight payload its tree was rendered from; a Suspense boundary resolves from the rows that arrive later in the same response | no known gap |
 | Navigation | a navigation fetches the next route's payload at `<route>/__uf.flight`; a prerendered route has that file beside its `index.html`; an intercepted navigation asks for the page underneath with the interception in its slot | no known gap |
-| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)), a server function passed to a client component as a prop ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359)), and a form that submits before hydration ([#1358](https://github.com/ubugeeei-prod/uf/issues/1358)) |
+| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)) and a server function passed to a client component as a prop ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359)); a form works before hydration ([Server actions](/guide/server-actions#before-the-page-hydrates)) |
 | Flight payload | React's own renderer and client (`react-server-dom-parcel`) in a second Vite environment resolved under `react-server` | no known gap |
 
 `app.rsc: false` in `uf.config.js` turns the model off: routes render from their

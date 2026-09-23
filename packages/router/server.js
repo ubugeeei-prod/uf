@@ -48,6 +48,7 @@ import {
   resolveMatch,
 } from "./internal/runtime.js";
 
+import type { FormState } from "./internal/form-action.js";
 import { type StreamDiagnostic, streamReporter } from "./internal/inspector.js";
 
 import { redirectDocument, redirectResult, shellFor } from "./internal/shell.js";
@@ -198,6 +199,12 @@ export type RenderOptions = {|
    * it changes is a failing test rather than a surprise.
    */
   readonly transformHead?: (html: string) => Promise<string>,
+  /**
+   * React's `formState` for a page rendered in answer to a form posted before
+   * hydration; see `internal/form-action.js`. Only a host's `postback` passes
+   * one.
+   */
+  readonly formState?: FormState,
   /**
    * Told, in words, when a document streamed differently than it did last time.
    *
@@ -436,11 +443,12 @@ export function createRenderer(options: {|
     let body: DocumentBody;
     try {
       body = await renderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(assets, nonce),
+        shell: shellFor(assets, nonce, settings?.formState),
         onError,
         transformHead: settings?.transformHead,
         onStream,
         nonce,
+        formState: settings?.formState,
       });
       streaming = true;
       // Recovered before the shell was ready: a `<Suspense>` boundary whose
@@ -469,11 +477,12 @@ export function createRenderer(options: {|
       // where somebody can fix it.
       streaming = true;
       body = await renderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(assets, nonce),
+        shell: shellFor(assets, nonce, settings?.formState),
         onError,
         transformHead: settings?.transformHead,
         onStream,
         nonce,
+        formState: settings?.formState,
       });
     }
 

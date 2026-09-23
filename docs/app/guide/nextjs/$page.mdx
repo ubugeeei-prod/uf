@@ -85,8 +85,8 @@ dropped.
 | Next.js | uf | Status |
 | --- | --- | --- |
 | Exported functions of a `"use server"` module, callable from the client | the same, with ids that are an HMAC of the build and a closed JSON grammar for arguments ([Server actions](/guide/server-actions)) | Implemented |
-| `useActionState`, `useFormStatus`, `useOptimistic` | React's own | Implemented once the page has hydrated |
-| A `<form action={serverFunction}>` that submits before hydration | React writes `action="javascript:throw …"`, so a submit before hydration throws in the page | Planned, [#1358](https://github.com/ubugeeei-prod/uf/issues/1358) |
+| `useActionState`, `useFormStatus`, `useOptimistic` | React's own | Implemented |
+| A `<form action={serverFunction}>` that submits before hydration | a urlencoded native post to the page, answered with the page rendered with `useActionState`'s new state, behind `Origin` and `Sec-Fetch-Site` ([Before the page hydrates](/guide/server-actions#before-the-page-hydrates)) | Implemented; no multipart, so no file fields |
 | A server function passed to a client component as a prop | the client component imports the `"use server"` module instead | Planned, [#1359](https://github.com/ubugeeei-prod/uf/issues/1359) |
 | Inline `"use server"` closures, with their captured variables encrypted | recognised and keyed, not callable | Planned, [#1360](https://github.com/ubugeeei-prod/uf/issues/1360) |
 | A file upload through an action | refused at the call site; use a route handler | Refused |

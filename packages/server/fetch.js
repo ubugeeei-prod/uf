@@ -356,7 +356,25 @@ export function createFetchHandler(
       return guarded;
     }
 
-    const acted = await app.callAction(request);
+    // A form posted before its page hydrated is answered with the page itself,
+    // rendered with the action's result as the submitting `useActionState`'s
+    // state: `postback` is that render, outside every cache because it is one
+    // person's answer. See `packages/router/internal/action-endpoint.js`.
+    const posted = request;
+    const acted = await app.callAction(request, {
+      postback: async (formState) => {
+        const at = new URL(posted.url);
+        const result = await runInScope(newScope({ key: [] }), () =>
+          app.render(at.pathname + at.search, document, {
+            onError: (error: mixed) => {
+              console.error(error);
+            },
+            formState,
+          }),
+        );
+        return streamedResponse(result, "GET");
+      },
+    });
     if (acted != null) return acted;
 
     // A browser that is navigating, asking for the next route's payload rather

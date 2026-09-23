@@ -948,15 +948,15 @@ the previous state and then a `FormData`, and `useFormStatus` reads the submit
 in flight. One argument of a call may therefore be a form, written beside the
 values under its own key rather than as a tag inside one — the value grammar
 does not move, and the only constructor the decoder can call is fixed in the
-source. What that does not buy is a form that submits before the page has
-hydrated. React's progressive enhancement works through a `$$FORM_ACTION`
-property that turns the submit into a native form post, and a native form post
-is `multipart/form-data` — the content type the endpoint refuses, as one of the
-three things standing between it and a cross-site call. Supporting the
-pre-hydration submit would mean accepting that content type, so uf does not
-ship `$$FORM_ACTION` on a reference, and React writes the form it writes for
-any client action: `action="javascript:throw …"`, whose submit throws in the
-page rather than posting anywhere.
+source. A form that submits before the page has hydrated is a different request
+and gets a different door. React's progressive enhancement asks the action for
+`$$FORM_ACTION` and turns the submit into a native form post; a server action
+answers it (`packages/router/internal/form-action.js`) with a urlencoded
+`POST` to the page and hidden fields naming the action, and the endpoint
+accepts that post only as `application/x-www-form-urlencoded`, only when
+`Origin` equals `Host`, and only through the same lookup and grammar as the
+JSON call. The JSON door keeps all three of its guards; the native door has the
+one a native post can carry. See ubugeeei-prod/uf#1358.
 
 The refusal is the reason for the choice and not what enforces it, which is
 worth separating because they fail differently. No request is made at all, so

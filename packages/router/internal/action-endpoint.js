@@ -55,16 +55,46 @@
 // header for what is excluded and why.
 //
 // A submitted form is inside that boundary and does not widen it: `<form
-// action={fn}>` reaches here as the same `application/json` body, with the
-// form's entries beside the values under a `form` key, bounded in count and in
-// field-name length and holding strings only. Nothing about it is multipart
-// and nothing about it is a content type a cross-origin `<form>` could
-// produce, so rule 4 is exactly as true of a form call as of any other. The
-// cost of keeping it that way is written down where it is paid — a form that
-// submits before its page has hydrated throws in the page rather than posting
-// anywhere, because React writes `action="javascript:throw …"` for a form
-// whose action carries no `$$FORM_ACTION`, and giving it one would mean
-// accepting a native form post here.
+// action={fn}>` on a hydrated page reaches here as the same `application/json`
+// body, with the form's entries beside the values under a `form` key, bounded
+// in count and in field-name length and holding strings only. Nothing about it
+// is multipart and nothing about it is a content type a cross-origin `<form>`
+// could produce, so rule 4 is exactly as true of a form call as of any other.
+//
+// # The second door: a form posted before the page hydrated
+//
+// React's progressive enhancement is a *native* form post, and a native post is
+// the one request rule 4 was written to keep out. So it is not let in through
+// that door. It has its own, narrower than the first, and it is worth being
+// exact about what it keeps of the six rules above:
+//
+// - **Rules 1, 2, 3, 5 and 6 hold unchanged.** The id selects a row and is
+//   compared the same way; a failed lookup is the same `404`; the bound
+//   arguments and the form cross through `decodeActionArguments`, so the
+//   grammar, the counts, the depth and the field limits are the JSON call's
+//   own; a throw is the same fixed `500`.
+// - **Rule 4 keeps one of its three guards.** A native post is a simple
+//   request, so there is no custom header and no JSON content type to lean on.
+//   What is left is `Origin`, which every browser sends on a `POST` and which
+//   must equal `Host` exactly as before — and `Sec-Fetch-Site`, which must say
+//   `same-origin` when the browser sends it. A cross-site form, a sandboxed
+//   frame (`Origin: null`) and a request with no `Origin` are `403`s.
+// - **It accepts one content type**, `application/x-www-form-urlencoded`, which
+//   is what `$$FORM_ACTION` asks React to write. Not multipart: a file cannot
+//   cross to an action, and a multipart parser is surface uf does not open.
+// - **It is recognised by its fields, read from a copy of the body.** A post
+//   that carries no `$uf_ref_` field is somebody else's — an ordinary form to a
+//   route handler — and is declined with `null` and its body untouched. So is
+//   one larger than an action accepts or not UTF-8, because it cannot be known
+//   to be an action post without reading it; it goes on to the route handlers,
+//   and a page answers a `POST` with a `404`.
+//
+// The answer is a document rather than JSON, because a person is looking at it:
+// a `303` back to the page for a plain form action, the page rendered again
+// with the action's result as the submitting `useActionState`'s state (the
+// host supplies that render as `postback`), or a `303` to wherever
+// `redirect()` pointed. See `./form-action.js` for the fields and
+// ubugeeei-prod/uf#1358.
 //
 // **6. Nothing about a failure goes back.** An action that throws is a `500`
 // with a fixed body; the exception goes to the host's error reporting. A
@@ -102,7 +132,30 @@ import {
   encodeActionResult,
   isActionId,
 } from "./action-wire.js";
+import { addressOf } from "./base-path.js";
+import {
+  FORM_ACTION_CONTENT_TYPE,
+  type FormPost,
+  type FormState,
+  readFormPost,
+} from "./form-action.js";
 import { requireRequest } from "./request.js";
+import { RedirectError } from "./routing.js";
+
+export type { FormState } from "./form-action.js";
+
+/**
+ * What a host gives the dispatcher beyond the request.
+ *
+ * `postback` renders the page the request is for, with a `useActionState`'s
+ * result as React's `formState`, and is how a form posted before hydration
+ * gets the page back with its answer in it. A host that supplies none still
+ * serves native posts: the answer is a `303` back to the page, which runs the
+ * action and loses only the state.
+ */
+export type ActionDispatchOptions = {|
+  readonly postback?: (formState: FormState) => Promise<Response>,
+|};
 
 /** A module holding server actions, as the generated table loads it. */
 export type ActionModule = { readonly [name: string]: mixed };
@@ -146,10 +199,13 @@ const ANSWER_HEADERS: { readonly [string]: string } = {
  */
 export function createActionDispatcher(options: {|
   readonly actions: $ReadOnlyArray<ActionRecord>,
-|}): (request: Request) => Promise<Response | null> {
+|}): (request: Request, settings?: ActionDispatchOptions) => Promise<Response | null> {
   const table = options.actions;
 
-  return async function callAction(request: Request): Promise<Response | null> {
+  return async function callAction(
+    request: Request,
+    settings?: ActionDispatchOptions,
+  ): Promise<Response | null> {
     // The host's half of the contract, checked rather than assumed, exactly as
     // `dispatch` and `runMiddleware` check it: an action that calls `cookies()`
     // has to answer about the request it is inside.
@@ -157,7 +213,9 @@ export function createActionDispatcher(options: {|
 
     const id = request.headers.get(ACTION_HEADER);
     if (id == null) {
-      return null;
+      // Not a JSON call. It may still be a form posted before its page
+      // hydrated, which is the second door in the header.
+      return nativeFormPost(table, request, settings?.postback);
     }
 
     // Cheapest and most protective first, and all of it before a byte of the
@@ -257,6 +315,151 @@ export function createActionDispatcher(options: {|
 }
 
 /**
+ * Answer a form the browser posted natively, or decline with `null`.
+ *
+ * The header's second door. Declines everything that is not a urlencoded
+ * `POST` carrying a `$uf_ref_` field, and answers everything that is,
+ * refusals included — the same promise the JSON door makes, for the same
+ * reason.
+ */
+async function nativeFormPost(
+  table: $ReadOnlyArray<ActionRecord>,
+  request: Request,
+  postback: ?(formState: FormState) => Promise<Response>,
+): Promise<Response | null> {
+  if (request.method.toUpperCase() !== "POST") {
+    return null;
+  }
+  if (!isMedia(request.headers.get("content-type"), FORM_ACTION_CONTENT_TYPE)) {
+    return null;
+  }
+  // A copy, so that a form which turns out not to be an action post reaches the
+  // route handler with its body unread.
+  const text = await readBoundedText(request.clone(), MAX_ACTION_BODY_BYTES);
+  if (text == null) {
+    return null;
+  }
+  const post = readFormPost(new URLSearchParams(text));
+  if (post == null) {
+    return null;
+  }
+
+  // An action post from here on, and every outcome is an answer.
+  if (!sameOrigin(request) || !sameSiteFetch(request)) {
+    return refusal(403);
+  }
+
+  let args: Array<ActionArgument>;
+  let bound: number;
+  try {
+    ({ args, bound } = formArguments(post));
+  } catch (error) {
+    if (!(error instanceof ActionValueError)) {
+      throw error;
+    }
+    return refusal(400);
+  }
+
+  const id = post.id;
+  const record = id != null && isActionId(id) ? select(table, id) : null;
+  if (record == null) {
+    return refusal(404);
+  }
+
+  let action: mixed;
+  try {
+    const module = await record.load();
+    action = module[record.export];
+  } catch (error) {
+    report(record, error);
+    return refusal(500);
+  }
+  if (typeof action !== "function") {
+    report(record, new Error(`export \`${record.export}\` is not a function`));
+    return refusal(500);
+  }
+
+  const url = new URL(request.url);
+  const stateKey = post.stateKey;
+  return asResponder("a server action", async () => {
+    let result: mixed;
+    try {
+      const call = action as $FlowFixMe;
+      result = await traceRequestPhase("action", () => call(...args));
+    } catch (error) {
+      if (error instanceof RedirectError) {
+        return seeOther(addressOf(error.to));
+      }
+      report(record, error);
+      return refusal(500);
+    }
+    if (stateKey == null || postback == null) {
+      // Post/redirect/get: the page again, by a `GET`, so a reload does not
+      // submit the form a second time.
+      return seeOther(addressOf(url.pathname + url.search));
+    }
+    try {
+      // Held to the grammar for the reason the JSON door holds a result to it:
+      // this value is written into a document a browser parses.
+      encodeActionResult(result);
+    } catch (error) {
+      report(record, error);
+      return refusal(500);
+    }
+    // `bound - 1`: `useActionState` bound the previous state itself, and
+    // React compares the count of the bindings the *action* had.
+    return postback([result, stateKey, record.id, bound - 1]);
+  });
+}
+
+/**
+ * The arguments a native post calls its action with: the bound ones, then
+ * the form.
+ *
+ * Built into the JSON call's own envelope and decoded by the JSON call's own
+ * decoder, so there is one grammar and one set of limits, not a second one for
+ * forms that could drift from the first.
+ */
+function formArguments(post: FormPost): {|
+  readonly args: Array<ActionArgument>,
+  readonly bound: number,
+|} {
+  let bound: Array<ActionArgument> = [];
+  if (post.bound != null) {
+    bound = decodeActionArguments(post.bound);
+    if (bound.some((value) => value instanceof FormData)) {
+      throw new ActionValueError("the bound arguments", "carry a form");
+    }
+  }
+  const envelope = JSON.stringify({
+    args: [...bound, null],
+    form: { at: bound.length, entries: post.entries },
+  });
+  return { args: decodeActionArguments(envelope), bound: bound.length };
+}
+
+/**
+ * Whether the browser says the request came from this origin, when it says.
+ *
+ * `Sec-Fetch-Site` is a forbidden header name, so a page cannot set it; a
+ * browser that sends it and says anything but `same-origin` is describing a
+ * cross-site form. Absent is not a refusal on its own — older browsers do not
+ * send it, and `Origin` has already been required.
+ */
+function sameSiteFetch(request: Request): boolean {
+  const site = request.headers.get("sec-fetch-site");
+  return site == null || site === "same-origin";
+}
+
+/** A `303 See Other`, which a browser follows with a `GET`. */
+function seeOther(location: string): Response {
+  return new Response(null, {
+    status: 303,
+    headers: { location, "cache-control": "no-store" },
+  });
+}
+
+/**
  * The row with this id, or `null`, without saying which by taking longer.
  *
  * Mirrors `ServerActionRegistry::lookup`: every row is visited whatever
@@ -331,12 +534,17 @@ function sameOrigin(request: Request): boolean {
  * can.
  */
 function isJson(declared: string | null): boolean {
+  return isMedia(declared, ACTION_CONTENT_TYPE);
+}
+
+/** Whether `declared` is exactly the media type `expected`, parameters aside. */
+function isMedia(declared: string | null, expected: string): boolean {
   if (declared == null) {
     return false;
   }
   const semicolon = declared.indexOf(";");
   const media = (semicolon === -1 ? declared : declared.slice(0, semicolon)).trim().toLowerCase();
-  return media === ACTION_CONTENT_TYPE;
+  return media === expected;
 }
 
 /**

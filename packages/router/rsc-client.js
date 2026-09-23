@@ -41,6 +41,8 @@ import {
   installRouting,
   installStaleTime,
 } from "./internal/runtime.js";
+import { hydrationOptions } from "./internal/hydrate-options.js";
+import { readFormState } from "./internal/form-action.js";
 
 /**
  * Hydrate a document React Server Components rendered.
@@ -106,7 +108,7 @@ export async function hydrateFlight(options: {|
     hydrateRoot(
       container,
       options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
-      recovery == null ? undefined : { onRecoverableError: recovery },
+      hydrationOptions(recovery, readFormState(document)),
     );
     if (restoreDevHead != null) {
       setTimeout(restoreDevHead, 250);
