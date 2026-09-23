@@ -24,6 +24,7 @@ upstream-typecheck = [
   "dep:flow_aloc",
   "dep:flow_common",
   "dep:flow_common_errors",
+  "dep:flow_common_ty",
   "dep:flow_config",
   "dep:flow_data_structure_wrapper",
   "dep:flow_flowlib",
@@ -32,6 +33,10 @@ upstream-typecheck = [
   "dep:flow_parser",
   "dep:flow_parser_utils",
   "dep:flow_parsing",
+  "dep:flow_parser_utils_output",
+  "dep:flow_services_autocomplete",
+  "dep:flow_services_export",
+  "dep:flow_services_get_def",
   "dep:flow_type_sig",
   "dep:flow_typing",
   "dep:flow_typing_builtins",
@@ -57,6 +62,7 @@ dupe = { workspace = true, optional = true }
 flow_aloc = { workspace = true, optional = true }
 flow_common = { workspace = true, optional = true }
 flow_common_errors = { workspace = true, optional = true }
+flow_common_ty = { workspace = true, optional = true }
 flow_config = { workspace = true, optional = true }
 flow_data_structure_wrapper = { workspace = true, optional = true }
 flow_flowlib = { workspace = true, optional = true }
@@ -65,6 +71,13 @@ flow_lint_settings = { workspace = true, optional = true }
 flow_parser = { workspace = true, optional = true }
 flow_parser_utils = { workspace = true, optional = true }
 flow_parsing = { workspace = true, optional = true }
+# The positional queries a `Session` answers — hover, definition, completion —
+# are the port's own services, called rather than reimplemented: the same ones
+# `flow_dot_js_wasm` and Flow's language server call. See `session`.
+flow_parser_utils_output = { workspace = true, optional = true }
+flow_services_autocomplete = { workspace = true, optional = true }
+flow_services_export = { workspace = true, optional = true }
+flow_services_get_def = { workspace = true, optional = true }
 flow_type_sig = { workspace = true, optional = true }
 flow_typing = { workspace = true, optional = true }
 flow_typing_builtins = { workspace = true, optional = true }

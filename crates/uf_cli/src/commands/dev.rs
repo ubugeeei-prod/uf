@@ -25,6 +25,64 @@ pub(crate) mod config_file;
 mod hover;
 pub(crate) mod native;
 mod rsc;
+#[cfg(feature = "upstream-typecheck")]
+mod types;
+/// A build without the checker has nothing to ask: every type answer is
+/// `null`, and [`capabilities`] advertises none of the requests that need one.
+#[cfg(not(feature = "upstream-typecheck"))]
+mod types {
+    use camino::Utf8PathBuf;
+    use serde_json::Value;
+    use uf_config::UniflowedConfig;
+    use uf_infra::FxHashMap;
+
+    use super::Document;
+
+    pub(super) struct Types;
+
+    impl Types {
+        pub(super) fn new(_root: Utf8PathBuf, _config: UniflowedConfig) -> Self {
+            Self
+        }
+
+        pub(super) fn prepare(&mut self) {}
+
+        pub(super) fn changed(&mut self, _uri: &str, _text: &str) {}
+
+        pub(super) fn closed(&mut self, _uri: &str) {}
+
+        pub(super) fn hover(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Option<Value> {
+            None
+        }
+
+        pub(super) fn definition(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+            _of_type: bool,
+        ) -> Value {
+            Value::Null
+        }
+
+        pub(super) fn completion(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Value {
+            Value::Null
+        }
+    }
+}
 
 use std::cell::OnceCell;
 use std::io::{BufRead, IsTerminal, Read, Write};
@@ -52,6 +110,7 @@ use crate::ui::Ui;
 
 use crate::fix::{self, FORMATTED_AWAY, Fix, Safety};
 use rsc::RscReport;
+use types::Types;
 
 /// What `uf dev` was asked to do.
 #[derive(Debug, Clone, Default)]
@@ -326,18 +385,24 @@ fn serve(
 /// something uf cannot do.
 ///
 /// Hover, from [`hover`]: the rule behind a diagnostic, what an import
-/// specifier names, and what a rule id in a suppression comment means. Not the
-/// type at a position; that module's header says exactly what is missing.
+/// specifier names, and what a rule id in a suppression comment means. Where
+/// none of those applies, the type under the cursor, from [`types`].
 ///
-/// Completion, from [`config_file`], and in `uf.config.js` only: the keys valid
-/// at the cursor with their documentation and type, and the values of a key
-/// whose type is a fixed set. In a tool spec — `runtime: "node@26"` — the
-/// names the key takes, and after the `@` that tool's versions, from the
-/// release list `uf_env` caches; a list is fetched on a thread of its own and
-/// never waited for. A hover over one of those keys says what its
-/// completion said. Everywhere else completion answers `null`, because the
-/// type-aware completion a Flow file wants needs the positional query `hover`
-/// explains `uf_check` does not expose yet.
+/// Go to definition and go to type definition, from [`types`]: Flow's own
+/// answers, across the project's files and into its library definitions.
+///
+/// Completion, from [`config_file`] in `uf.config.js`: the keys valid at the
+/// cursor with their documentation and type, and the values of a key whose
+/// type is a fixed set. In a tool spec — `runtime: "node@26"` — the names the
+/// key takes, and after the `@` that tool's versions, from the release list
+/// `uf_env` caches; a list is fetched on a thread of its own and never waited
+/// for. A hover over one of those keys says what its completion said. In every
+/// other Flow file, from [`types`]: after `value.` the members of `value`'s
+/// type with their types, and elsewhere the names in scope.
+///
+/// [`types`] is only there when the checker is compiled in, and the
+/// capabilities say so: a build without it advertises neither definition
+/// request, and its completion answers `uf.config.js` alone.
 ///
 /// # Being hard to wedge
 ///
@@ -377,6 +442,9 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     // Project rules start with the first document that needs linting and live
     // as long as the server does: a keystroke must never pay for a host's
     // start-up. See `EditorRules`.
+    // Flow's inference, for hover, definitions and completion. Nothing is read
+    // until the client says `initialized` or asks its first question.
+    let mut types = Types::new(root.clone(), config.clone());
     let mut project_rules = EditorRules::new(root);
     let fmt = config.fmt.clone();
     // Same reasoning: `uf_lib::builtin_modules` rebuilds the whole registry on
@@ -436,22 +504,12 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 id,
                 json!({
                     "serverInfo": { "name": "uf-lsp", "version": env!("CARGO_PKG_VERSION") },
-                    "capabilities": {
-                        "textDocumentSync": 1,
-                        "documentFormattingProvider": true,
-                        "hoverProvider": true,
-                        "codeActionProvider": {
-                            "codeActionKinds": [QUICK_FIX, FIX_ALL],
-                        },
-                        // `"` opens a value, and a key written as a string.
-                        // `@` separates a tool from its version in a spec
-                        // like `node@26`, where what comes next is a version.
-                        "completionProvider": {
-                            "triggerCharacters": ["\"", "@"],
-                        },
-                    },
+                    "capabilities": capabilities(cfg!(feature = "upstream-typecheck")),
                 }),
             )?,
+            // Every editor sends this right after `initialize`, which makes it
+            // the moment to start reading the project: see `types`.
+            "initialized" => types.prepare(),
             "shutdown" => {
                 shutting_down = true;
                 respond(&mut stdout, id, Value::Null)?;
@@ -462,6 +520,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                     let document = Document::lint(&uri, text, &config, &mut project_rules);
                     publish_diagnostics(&mut stdout, &uri, &document)?;
                     project_rules.tell(&mut stdout)?;
+                    types.changed(&uri, &document.text);
                     documents.insert(uri, document);
                 }
             }
@@ -470,6 +529,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                     let document = Document::lint(&uri, text, &config, &mut project_rules);
                     publish_diagnostics(&mut stdout, &uri, &document)?;
                     project_rules.tell(&mut stdout)?;
+                    types.changed(&uri, &document.text);
                     documents.insert(uri, document);
                 }
             }
@@ -484,6 +544,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                         json!({ "uri": uri, "diagnostics": [] }),
                     )?;
                     documents.remove(&uri);
+                    types.closed(&uri);
                 }
             }
             "textDocument/formatting" => {
@@ -499,11 +560,26 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 answer_request(&mut stdout, id, answer)?;
             }
             "textDocument/hover" => {
-                let answer = hover_answer(&message, &documents, &modules);
+                let answer = hover_answer(&message, &documents, &modules, &mut types);
                 answer_request(&mut stdout, id, answer)?;
             }
             "textDocument/completion" => {
-                let answer = completion_answer(&message, &documents, fmt.quotes, &mut releases);
+                let answer =
+                    completion_answer(&message, &documents, fmt.quotes, &mut releases, &mut types);
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/definition" | "textDocument/typeDefinition"
+                if cfg!(feature = "upstream-typecheck") =>
+            {
+                let answer = position_params(&message, method).map(|(uri, line, requested)| {
+                    types.definition(
+                        &documents,
+                        &uri,
+                        line,
+                        requested,
+                        method == "textDocument/typeDefinition",
+                    )
+                });
                 answer_request(&mut stdout, id, answer)?;
             }
             // A request uf does not serve is answered as one, not ignored: an
@@ -524,6 +600,36 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// What the server tells `initialize` it can do.
+///
+/// `typed` is whether the checker is compiled in, which decides the
+/// definition requests and completion's `.`: a build without it serves
+/// neither, and a capability it could not serve would be a promise to the
+/// editor that the server then breaks.
+fn capabilities(typed: bool) -> Value {
+    // `"` opens a value, and a key written as a string. `@` separates a tool
+    // from its version in a spec like `node@26`, where what comes next is a
+    // version. `.` is a member access, whose members the checker knows.
+    let mut triggers = vec!["\"", "@"];
+    if typed {
+        triggers.push(".");
+    }
+    let mut capabilities = json!({
+        "textDocumentSync": 1,
+        "documentFormattingProvider": true,
+        "hoverProvider": true,
+        "codeActionProvider": {
+            "codeActionKinds": [QUICK_FIX, FIX_ALL],
+        },
+        "completionProvider": { "triggerCharacters": triggers },
+    });
+    if typed {
+        capabilities["definitionProvider"] = json!(true);
+        capabilities["typeDefinitionProvider"] = json!(true);
+    }
+    capabilities
 }
 
 /// JSON-RPC parse error: the body was not JSON.
@@ -979,6 +1085,7 @@ fn hover_answer(
     message: &Value,
     documents: &FxHashMap<String, Document>,
     modules: &[NativeModule],
+    types: &mut Types,
 ) -> Result<Value, String> {
     let (uri, line, requested) = position_params(message, "textDocument/hover")?;
     let Some(document) = documents.get(&uri) else {
@@ -1023,14 +1130,19 @@ fn hover_answer(
             }));
         }
     }
-    Ok(Value::Null)
+
+    // The type under the cursor, last: what uf says about a diagnostic or an
+    // import is more specific than the type of the token it sits on.
+    Ok(types
+        .hover(documents, &uri, line, requested)
+        .unwrap_or(Value::Null))
 }
 
 /// What may be written at the cursor, as `CompletionItem`s.
 ///
-/// `null` for every document but `uf.config.js`. The trigger characters are
-/// sent from every file this server is given, and a quote typed in a
-/// component is not a question uf has an answer to.
+/// In `uf.config.js`, the config schema's answer. In any other Flow file,
+/// Flow's own, from [`types`]; `null` when the checker is not compiled in or
+/// the document is not Flow.
 ///
 /// A `CompletionList` with `isIncomplete` rather than a bare list when a tool's
 /// release list is still being fetched: that is the protocol's way to have the
@@ -1041,13 +1153,14 @@ fn completion_answer(
     documents: &FxHashMap<String, Document>,
     quotes: QuoteStyle,
     releases: &mut config_file::ReleaseLists,
+    types: &mut Types,
 ) -> Result<Value, String> {
     let (uri, line, requested) = position_params(message, "textDocument/completion")?;
     let Some(document) = documents.get(&uri) else {
         return Ok(Value::Null);
     };
     if !config_file::is_config_file(&document_path(&uri)) {
-        return Ok(Value::Null);
+        return Ok(types.completion(documents, &uri, line, requested));
     }
     let index = LineIndex::new(&document.text);
     let Some(offset) = index.offset(line, requested) else {

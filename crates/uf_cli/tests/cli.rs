@@ -2230,10 +2230,17 @@ fn lsp_initialize_returns_native_capabilities() {
         stdout.contains(r#""codeActionKinds":["quickfix","source.fixAll.uf"]"#),
         "{stdout}"
     );
-    // Completion, which `uf.config.js` answers: `"` opens a value or a quoted
-    // key, and `@` separates a tool from its version.
+    // Completion: `"` opens a value or a quoted key in `uf.config.js`, `@`
+    // separates a tool from its version, and `.` is a member access, whose
+    // members the checker knows.
     assert!(
-        stdout.contains(r#""completionProvider":{"triggerCharacters":["\"","@"]}"#),
+        stdout.contains(r#""completionProvider":{"triggerCharacters":["\"","@","."]}"#),
+        "{stdout}"
+    );
+    // Both answered by the checker's positional queries.
+    assert!(stdout.contains(r#""definitionProvider":true"#), "{stdout}");
+    assert!(
+        stdout.contains(r#""typeDefinitionProvider":true"#),
         "{stdout}"
     );
     // `diagnosticProvider` is the *pull* model, where the editor asks. uf
@@ -2534,7 +2541,7 @@ fn completion_at(id: u64, uri: &str, line: u64, character: u64) -> String {
 
 /// Completion in `uf.config.js`, over the wire: the keys valid at the cursor
 /// with the schema's own documentation, the members of a string union inside
-/// its quotes, and nothing at all for a file that is not a config.
+/// its quotes, and nothing at all for a document that is not Flow.
 #[test]
 fn lsp_completes_uf_config_js_from_the_config_schema() {
     let uri = "file:///project/uf.config.js";
@@ -2545,8 +2552,8 @@ fn lsp_completes_uf_config_js_from_the_config_schema() {
         completion_at(1, uri, 2, 4),
         // Between the quotes of `quotes: ""`.
         completion_at(2, uri, 1, 18),
-        did_open("file:///project/app.js", "// @flow\nconst a = \"\";\n"),
-        completion_at(3, "file:///project/app.js", 1, 11),
+        did_open("file:///project/styles.css", "a { color: red; }\n"),
+        completion_at(3, "file:///project/styles.css", 0, 2),
         framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
     ]);
 
@@ -2833,24 +2840,34 @@ fn lsp_hovers_an_import_specifier() {
     assert!(server.contains("Server-only"), "{server}");
 }
 
-/// A hover with no answer is `null`, and that is deliberate.
+/// A hover over an expression is its type, and a hover over nothing is `null`.
 ///
-/// The type at a position is the answer a reader wants over an expression, and
-/// uf cannot give it: `uf_check` runs Flow's inference but exposes only whole
-/// file diagnostics, so there is no positional query to ask. An empty popup
-/// would read as "uf looked and this has no type", which is a different and
-/// false claim; `null` is the protocol's word for "nothing to say".
+/// The type comes from Flow's own inference, through `uf_check`'s session. An
+/// empty popup where there is nothing to say would read as "uf looked and this
+/// has no type", which is a different and false claim; `null` is the
+/// protocol's word for "nothing to say".
+///
+/// In an empty directory, because the server reads the project it runs in to
+/// answer a type, and this one should not be uf's own repository.
 #[test]
-fn lsp_has_no_hover_for_an_expression() {
-    let messages = lsp_session(&[
-        did_open("file:///a.js", "// @flow\nconst total = 1 + 2;\n"),
-        hover_at(2, "file:///a.js", 1, 8),
-        hover_at(3, "file:///a.js", 40, 0),
-        hover_at(4, "file:///nope.js", 0, 0),
-        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
-    ]);
+fn lsp_hovers_the_type_of_an_expression_and_nothing_else() {
+    let dir = tempfile::tempdir().unwrap();
+    let messages = lsp_session_in(
+        dir.path(),
+        &[
+            did_open("file:///a.js", "// @flow\nconst total = 1 + 2;\n"),
+            hover_at(2, "file:///a.js", 1, 8),
+            hover_at(3, "file:///a.js", 40, 0),
+            hover_at(4, "file:///nope.js", 0, 0),
+            framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+        ],
+    );
 
-    assert_eq!(answer(&messages, 2)["result"], serde_json::Value::Null);
+    assert_eq!(
+        answer(&messages, 2)["result"]["contents"]["value"],
+        "```flow\nconst total: number\n```",
+        "{messages:#?}"
+    );
     assert_eq!(answer(&messages, 3)["result"], serde_json::Value::Null);
     // A document the server was never told about is not an error either.
     assert_eq!(answer(&messages, 4)["result"], serde_json::Value::Null);

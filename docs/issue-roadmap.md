@@ -80,10 +80,26 @@
       mechanical; `flow/deprecated-type` has one and the rules that would need
       to guess at intent deliberately do not. Hover answers the rule behind a
       diagnostic, what an import specifier names, and what a rule id in a
-      suppression comment means. It does **not** answer the type at a position:
-      that needs a positional entry point on `uf_check`, which today exposes
-      only whole-file diagnostics. `source.organizeImports` is not advertised
+      suppression comment means — and, anywhere else, the type at the
+      position; see the next item. `source.organizeImports` is not advertised
       because uf has no import-order opinion to organise them by.
+- [ ] Answer types in the editor from Flow's inference (ubugeeei-prod/uf#949).
+      `uf_check::Session` keeps the project's batch warm on a worker thread and
+      asks the port's own services over it: `type_at_pos_type` for
+      `textDocument/hover`, `get_def` for `textDocument/definition` (across
+      files, into `node_modules` and into `flow-typed/`), the symbols of the
+      hovered type for `textDocument/typeDefinition`, and the autocomplete
+      service for `textDocument/completion` (members after `.`, with their
+      types). An edit invalidates the edited file and what imports it, and is
+      re-inferred when next asked about. Measured on this repository with the
+      `ci-opt` build: warm hover p95 0.2–4.6 ms across four files, inside the
+      50 ms target; the first hover after an edit p95 7 ms on a 155-line file
+      and 153 ms on a 2,375-line one, but 355 ms on
+      `packages/router/internal/runtime.js` and 651 ms on
+      `packages/effect/index.js` — over the 200 ms target, because the edited
+      file is re-inferred whole. Not yet: that target, `signatureHelp`,
+      `references` and `rename`, type errors as pushed diagnostics, and answers
+      in a file that does not parse.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
 - [x] Implement editor extension packages on top of `uf lsp`.
       `editors/vscode` is a working VS Code extension: JavaScript with Flow

@@ -293,8 +293,9 @@ longer suppresses anything is not reported.
 - **The lint rules that need inference.** `rules skipped` counts them and the
   JSON names them. They do not run under `uf lint`, and they do not run under
   `uf check` either, although inference does.
-- **Types in the editor.** `uf lsp` publishes lint diagnostics and no type errors,
-  and hover shows no types — see [Editors](/guide/editors).
+- **Type errors in the editor.** `uf lsp` publishes lint diagnostics and no type
+  errors. It does answer types — hover, go to definition and member completion
+  come from this checker — see [Editors](/guide/editors).
 - **A type check in `uf prepare`**, the pre-commit command.
 - **More than one exit code for failure.** A lint error, a type error and a
   `.flowconfig` that does not parse all exit 1; only an argument uf cannot parse

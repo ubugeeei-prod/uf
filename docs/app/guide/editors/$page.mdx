@@ -30,7 +30,7 @@ A session with one file, `app/flags.js`, which declares `export type Flag = bool
 
 ```
 initialize
-{"serverInfo":{"name":"uf-lsp","version":"…"},"capabilities":{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true,"codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.uf"]},"completionProvider":{"triggerCharacters":["\"","@"]}}}
+{"serverInfo":{"name":"uf-lsp","version":"…"},"capabilities":{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true,"codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.uf"]},"completionProvider":{"triggerCharacters":["\"","@","."]},"definitionProvider":true,"typeDefinitionProvider":true}}
 
 textDocument/publishDiagnostics
 flow/deprecated-type  severity 1  4:20  the `bool` type alias is deprecated; write `boolean`
@@ -57,24 +57,64 @@ Flow's own lint set · default `error` · decided from the source text
 | **Formatting** | One edit over the whole document | `uf_fmt`, the printer `uf fmt` uses, with your `fmt` options — not the editor's tab settings |
 | **Quick fixes** | `quickfix` actions for a diagnostic with a mechanical answer, and a "format this document" action where formatting clears a whitespace finding | the fix catalogue `uf lint --fix` uses |
 | **Fix all** | `source.fixAll.uf`: every **safe** fix in the file at once | the same catalogue; the unsafe tier is a quick fix you pick, never part of fix-all |
-| **Hover** | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js` | the lint rules, uf's module registry, and `@uniflowed/config` |
-| **Completion** | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec like `runtime: "node@26"`, the names its key takes and, after `@`, that tool's versions, newest first | `@uniflowed/config`'s Flow type, compiled into `uf`, so it works in a file that is half-typed; versions from the release lists uf caches under `$XDG_CACHE_HOME/uf/index`, fetched in the background and never on a request's time |
+| **Hover** | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`; anywhere else in a Flow file, the inferred type under the cursor, printed as Flow | the lint rules, uf's module registry, `@uniflowed/config`, and Flow's own inference |
+| **Go to definition** | Where the name under the cursor is declared: in the same file, in the file it was imported from, in a package under `node_modules`, or in the project's `flow-typed/` library definitions | Flow's inference |
+| **Go to type definition** | Where the named types in the type under the cursor are declared: for `const user: User`, the `type User` | Flow's inference |
+| **Completion** | In `uf.config.js`: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec like `runtime: "node@26"`, the names its key takes and, after `@`, that tool's versions, newest first. In any other Flow file: after `value.`, the members of `value`'s type with their types, and elsewhere the names in scope | `@uniflowed/config`'s Flow type, compiled into `uf`, so it works in a file that is half-typed; versions from the release lists uf caches under `$XDG_CACHE_HOME/uf/index`, fetched in the background and never on a request's time. Elsewhere, Flow's own completion service |
 
-What it does not answer: go-to-definition, rename, find-references, document
-symbols, the type at a position, and completion anywhere but `uf.config.js`. It
-advertises none of the first five, and a request for one is refused rather than
-left waiting:
+The type answers come from the checker [`uf check`](/guide/check) runs, over the
+same modules: the server reads the whole project the way `uf check` with no
+paths does — every source, what those import, the packages under
+`node_modules` they reach, and `flow-typed/` — and keeps it in memory. With
+`app/main.js` importing that file:
 
 <figure className="terminal">
 
 ```
-textDocument/definition
-{"code":-32601,"message":"uf lsp does not serve `textDocument/definition`"}
+app/main.js
+// @flow
+import { flags } from "./flags.js";
+const first = flags[0];
+
+textDocument/hover on `first`
+const first: Flag
+
+textDocument/definition on `flags`
+app/flags.js  3:14
+
+textDocument/typeDefinition on `first`
+app/flags.js  2:13
+
+textDocument/completion after `first.`
+toString  () => string
+valueOf   () => boolean
 ```
 
 </figure>
 
-Until the server answers types, the terminal is where they are: `uf check`.
+It reads the project when the editor says `initialized`, in the background, so
+the first question may wait for that to finish; after it, a hover is answered
+from memory. An edit re-infers the edited file when it is next asked about, and
+the files that import it when *they* are — not the project. What the editor has
+open and unsaved is what is asked about, not the file on disk.
+
+A file that does not parse — half a keystroke into an edit — has no inference
+to ask, so hover and definitions answer nothing until it parses again.
+Completion does answer there: `value.` is the one place a file is most often
+broken, and the completion service reads it as an access being typed.
+
+What it does not answer: rename, find-references, document symbols and
+signature help. It advertises none of them, and a request for one is refused
+rather than left waiting:
+
+<figure className="terminal">
+
+```
+textDocument/references
+{"code":-32601,"message":"uf lsp does not serve `textDocument/references`"}
+```
+
+</figure>
 
 ## Which configuration it reads
 

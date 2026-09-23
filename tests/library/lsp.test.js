@@ -57,9 +57,11 @@ type Diagnostic = {
 // One entry of a `result` that is a list. `textDocument/formatting` answers
 // with `TextEdit`s (`range` and `newText`), `textDocument/codeAction` with
 // `CodeAction`s (`title`, `kind`, `edit`), and `textDocument/completion` with
-// `CompletionItem`s (`label`, a numeric `kind`, `textEdit`); the tests tell
+// `CompletionItem`s (`label`, a numeric `kind`, `textEdit`), and
+// `textDocument/definition` with `Location`s (`uri`, `range`); the tests tell
 // them apart by which fields are set, which is itself part of what they check.
 type Entry = {
+  uri?: string,
   range?: Range,
   newText?: string,
   title?: string,
@@ -83,6 +85,7 @@ type Answer = {
     hoverProvider?: boolean,
     codeActionProvider?: { codeActionKinds: Array<string> },
     definitionProvider?: boolean,
+    typeDefinitionProvider?: boolean,
     renameProvider?: boolean,
     completionProvider?: { triggerCharacters: Array<string> },
     referencesProvider?: boolean,
@@ -95,6 +98,9 @@ type Answer = {
   isIncomplete?: boolean,
   items?: Array<Entry>,
 };
+
+// One `Location`: what `definition` and `typeDefinition` answer with a list of.
+type Location = { uri: string, range: Range };
 
 type Wire = {
   jsonrpc: string,
@@ -250,22 +256,25 @@ describe("what uf lsp tells an editor it can do", () => {
       "quickfix",
       "source.fixAll.uf",
     ]);
-    // Completion, which only `uf.config.js` answers. `"` opens a value or a
-    // quoted key; `@` separates a tool from its version.
-    expect(result.capabilities.completionProvider?.triggerCharacters).toEqual(['"', "@"]);
+    // Completion. `"` opens a value or a quoted key in `uf.config.js`; `@`
+    // separates a tool from its version; `.` is a member access, whose members
+    // Flow's inference knows.
+    expect(result.capabilities.completionProvider?.triggerCharacters).toEqual(['"', "@", "."]);
+    // Both answered by the checker; see "types" below.
+    expect(result.capabilities?.definitionProvider).toBe(true);
+    expect(result.capabilities?.typeDefinitionProvider).toBe(true);
   });
 
   it("does not advertise what it cannot do", () => {
     // The READMEs are written from this list. `source.organizeImports` is
-    // absent because uf has no import-order opinion, and go-to-definition,
-    // rename, references and symbols are absent because nothing serves them.
+    // absent because uf has no import-order opinion, and rename, references
+    // and symbols are absent because nothing serves them.
     const messages = session([
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } },
       EXIT,
     ]);
     const capabilities = answered(messages, 1).capabilities ?? {};
 
-    expect(capabilities.definitionProvider).toBe(undefined);
     expect(capabilities.renameProvider).toBe(undefined);
     expect(capabilities.referencesProvider).toBe(undefined);
     expect(capabilities.documentSymbolProvider).toBe(undefined);
@@ -274,7 +283,7 @@ describe("what uf lsp tells an editor it can do", () => {
 
   it("answers a request it does not serve instead of leaving the editor waiting", () => {
     const messages = session([
-      { jsonrpc: "2.0", id: 2, method: "textDocument/definition", params: {} },
+      { jsonrpc: "2.0", id: 2, method: "textDocument/references", params: {} },
       EXIT,
     ]);
 
@@ -500,13 +509,292 @@ describe("hover", () => {
     expect(answered(messages, 5).contents?.value).toContain("@uniflowed/effect");
   });
 
-  it("says nothing about an expression rather than showing an empty popup", () => {
-    // uf has no positional type query yet: `uf_check` exposes whole-file
-    // diagnostics only. A `null` answer is an editor showing nothing; an empty
-    // popup would be a confident "no type".
-    const messages = session([didOpen("// @flow\nconst x = 1;\n"), hover(5, 1, 6), EXIT]);
+  it("answers the type of an expression from Flow's inference", () => {
+    // Everything else about types is in "types" below; this is the one that
+    // used to be `null`, in the document every other hover test uses.
+    // In an empty directory: the server reads the project it was started in
+    // to answer a type, and this one should not be uf's own repository.
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-hover-"));
+    try {
+      const messages = session([didOpen("// @flow\nconst x = 1;\n"), hover(5, 1, 6), EXIT], empty);
 
-    expect(answer(messages, 5).result).toBe(null);
+      expect(answered(messages, 5).contents?.value).toBe("```flow\nconst x: 1\n```");
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("types", () => {
+  // A project on disk, because the server reads the project the way `uf check`
+  // does: a scan of its root, the modules those files import — including a
+  // package under `node_modules` — and the library definitions in
+  // `flow-typed/`. Real paths, because the server's root is its working
+  // directory as the file system spells it.
+  const FILES: { [string]: string } = {
+    "src/user.js": [
+      "// @flow",
+      "export type User = { name: string, age: number };",
+      "export function greet(user: User): string {",
+      "  return user.name;",
+      "}",
+      "",
+    ].join("\n"),
+    "src/app.js": [
+      "// @flow",
+      "import { greet, type User } from './user.js';",
+      "import { tick } from 'clock';",
+      "const user: User = { name: 'Ada', age: 36 };",
+      "const greeting = greet(user);",
+      "const now = tick();",
+      "const stamped = stamp();",
+      "",
+    ].join("\n"),
+    "node_modules/clock/package.json": JSON.stringify({ name: "clock", main: "index.js" }),
+    "node_modules/clock/index.js": "exports.tick = () => 0;\n",
+    "node_modules/clock/index.js.flow": "// @flow\ndeclare export function tick(): number;\n",
+    "flow-typed/stamp.js": "declare function stamp(): string;\n",
+  };
+
+  const withProject = (run: (root: string, uri: (file: string) => string) => void): void => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-types-")));
+    try {
+      for (const [file, text] of Object.entries(FILES)) {
+        fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+        fs.writeFileSync(path.join(root, file), String(text));
+      }
+      run(root, (file) => `file://${path.join(root, file)}`);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  const at = (
+    id: number,
+    method: string,
+    uri: string,
+    line: number,
+    character: number,
+  ): Message => ({
+    jsonrpc: "2.0",
+    id,
+    method,
+    params: { textDocument: { uri }, position: { line, character } },
+  });
+
+  const open = (uri: string, text: string): Message => didOpen(text, uri);
+
+  const change = (uri: string, text: string): Message => ({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: { textDocument: { uri, version: 2 }, contentChanges: [{ text }] },
+  });
+
+  const INITIALIZED: Message = { jsonrpc: "2.0", method: "initialized", params: {} };
+
+  /** One request's `result`, as the list of `Location`s a definition sends. */
+  const locations = (messages: Array<Wire>, id: number): Array<Location> =>
+    listed(messages, id).map((entry) => {
+      const { uri, range } = entry;
+      if (uri == null || range == null) {
+        throw new Error(`expected a Location for id ${id}, got ${JSON.stringify(entry)}`);
+      }
+      return { uri, range };
+    });
+
+  const app = FILES["src/app.js"];
+
+  it("hovers the inferred type of a binding, printed as Flow", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [
+          INITIALIZED,
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/hover", uri("src/app.js"), 4, 8),
+          EXIT,
+        ],
+        root,
+      );
+      const result = answered(messages, 1);
+
+      expect(result.contents).toEqual({
+        kind: "markdown",
+        value: "```flow\nconst greeting: string\n```",
+      });
+      expect(result.range).toEqual({
+        start: { line: 4, character: 6 },
+        end: { line: 4, character: 14 },
+      });
+    });
+  });
+
+  it("hovers a name imported from another file with the type that file gives it", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [open(uri("src/app.js"), app), at(1, "textDocument/hover", uri("src/app.js"), 4, 18), EXIT],
+        root,
+      );
+
+      expect(answered(messages, 1).contents?.value).toContain("(user: User) => string");
+    });
+  });
+
+  it("hovers a package's export with the type its `.flow` file declares", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [open(uri("src/app.js"), app), at(1, "textDocument/hover", uri("src/app.js"), 5, 7), EXIT],
+        root,
+      );
+
+      expect(answered(messages, 1).contents?.value).toBe("```flow\nconst now: number\n```");
+    });
+  });
+
+  it("answers the text the editor holds, not the file on disk", () => {
+    withProject((root, uri) => {
+      const edited = app.replace("const greeting = greet(user);", "const greeting = user.age;");
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/hover", uri("src/app.js"), 4, 8),
+          change(uri("src/app.js"), edited),
+          at(2, "textDocument/hover", uri("src/app.js"), 4, 8),
+          EXIT,
+        ],
+        root,
+      );
+
+      expect(answered(messages, 1).contents?.value).toContain("const greeting: string");
+      expect(answered(messages, 2).contents?.value).toContain("const greeting: number");
+    });
+  });
+
+  it("sees an edit to a file another file imports", () => {
+    withProject((root, uri) => {
+      const user = FILES["src/user.js"]
+        .replace("): string {", "): number {")
+        .replace("return user.name;", "return user.age;");
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/hover", uri("src/app.js"), 4, 8),
+          open(uri("src/user.js"), user),
+          at(2, "textDocument/hover", uri("src/app.js"), 4, 8),
+          EXIT,
+        ],
+        root,
+      );
+
+      expect(answered(messages, 1).contents?.value).toContain("const greeting: string");
+      expect(answered(messages, 2).contents?.value).toContain("const greeting: number");
+    });
+  });
+
+  it("says nothing where nothing is typed", () => {
+    withProject((root, uri) => {
+      // Inside the `// @flow` comment.
+      const messages = session(
+        [open(uri("src/app.js"), app), at(1, "textDocument/hover", uri("src/app.js"), 0, 4), EXIT],
+        root,
+      );
+
+      expect(answer(messages, 1).result).toBe(null);
+    });
+  });
+
+  it("goes to a definition in another file", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/definition", uri("src/app.js"), 4, 18),
+          EXIT,
+        ],
+        root,
+      );
+      const found = locations(messages, 1);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].uri).toBe(uri("src/user.js"));
+      // `greet`, on the third line of `src/user.js`.
+      expect(found[0].range.start).toEqual({ line: 2, character: 16 });
+    });
+  });
+
+  it("goes to a definition in a package under node_modules", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/definition", uri("src/app.js"), 5, 13),
+          EXIT,
+        ],
+        root,
+      );
+      const found = locations(messages, 1);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].uri).toBe(uri("node_modules/clock/index.js.flow"));
+      expect(found[0].range.start.line).toBe(1);
+    });
+  });
+
+  it("goes to a definition in the project's library definitions", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/definition", uri("src/app.js"), 6, 17),
+          EXIT,
+        ],
+        root,
+      );
+      const found = locations(messages, 1);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].uri).toBe(uri("flow-typed/stamp.js"));
+    });
+  });
+
+  it("goes to the declaration of a binding's type", () => {
+    withProject((root, uri) => {
+      // `user`, declared as a `User`.
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/typeDefinition", uri("src/app.js"), 3, 7),
+          EXIT,
+        ],
+        root,
+      );
+      const found = locations(messages, 1);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].uri).toBe(uri("src/user.js"));
+      expect(found[0].range.start.line).toBe(1);
+    });
+  });
+
+  it("completes the members of a value's type, with their types", () => {
+    withProject((root, uri) => {
+      const typing = `${app}user.`;
+      const lines = typing.split("\n");
+      const messages = session(
+        [
+          open(uri("src/app.js"), typing),
+          at(1, "textDocument/completion", uri("src/app.js"), lines.length - 1, 5),
+          EXIT,
+        ],
+        root,
+      );
+      const result = answered(messages, 1);
+      const offered = (result.items ?? []).map((item) => [item.label, item.detail]);
+
+      expect(offered).toContainEqual(["age", "number"]);
+      expect(offered).toContainEqual(["name", "string"]);
+      // `user.` offers what `User` has, and nothing that is merely in scope.
+      expect(offered.map(([label]) => label)).not.toContain("greeting");
+    });
   });
 });
 
@@ -786,9 +1074,16 @@ describe("completion in uf.config.js", () => {
     );
   });
 
-  it("answers nothing in a file that is not uf.config.js", () => {
-    // The trigger characters fire in every file an editor gives the server.
-    const messages = session([didOpen('// @flow\nconst a = "";\n'), complete(9, 1, 11, URI), EXIT]);
+  it("answers nothing in a document that is not Flow", () => {
+    // The trigger characters fire in every file an editor gives the server,
+    // and a stylesheet is not a question uf has an answer to. A Flow file is
+    // answered by the checker instead; see "types" below.
+    const styles = "file:///project/styles.css";
+    const messages = session([
+      didOpen("a { color: red; }\n", styles),
+      complete(9, 0, 2, styles),
+      EXIT,
+    ]);
 
     expect(answer(messages, 9).result).toBe(null);
   });

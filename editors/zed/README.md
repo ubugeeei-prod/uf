@@ -92,13 +92,17 @@ server and asserts each one:
 * **Formatting**, from the same `uf_fmt` that `uf fmt` calls.
 * **Quick fixes** and a **fix-all** action (`source.fixAll.uf`).
 * **Hover**: the rule behind a diagnostic, what an import specifier names, what
-  a rule id in a suppression comment means, and a key of `uf.config.js`.
-* **Completion** in `uf.config.js`: the keys valid at the cursor with their
-  documentation and type, the values of a key whose type is a fixed set, and
-  a tool spec's names and, after `@`, its versions.
+  a rule id in a suppression comment means, and a key of `uf.config.js`; over
+  anything else in a Flow file, the type as Flow infers it.
+* **Go to definition** and **go to type definition**, from Flow's inference:
+  across files, into `node_modules`, and into `flow-typed/`.
+* **Completion**: in `uf.config.js`, the keys valid at the cursor with their
+  documentation and type, the values of a key whose type is a fixed set, and a
+  tool spec's names and, after `@`, its versions; in any other Flow file, after
+  `.` the members of the value's type with their types, and elsewhere the names
+  in scope.
 
-Not go-to-definition, rename, references, completion in any other file, or the
-type at a position. `uf lsp` advertises none of them.
+Not rename, references or signature help. `uf lsp` advertises none of them.
 
 ## What is tested, and what is not
 

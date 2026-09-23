@@ -58,14 +58,15 @@ the LSP console.
 ## What works
 
 LSP4IJ receives the same server capabilities as the other editors:
-diagnostics, formatting, quick fixes, `source.fixAll.uf`, hover, and completion
-inside `uf.config.js`. `tests/library/lsp.test.js` drives the real server and
-asserts each of them, including that `--cwd` is the directory the configuration
-is read from.
+diagnostics, formatting, quick fixes, `source.fixAll.uf`, hover (including the
+type under the cursor), go to definition and go to type definition, and
+completion — in `uf.config.js` from its schema, elsewhere from Flow's
+inference. `tests/library/lsp.test.js` drives the real server and asserts each
+of them, including that `--cwd` is the directory the configuration is read
+from.
 
-What does not work is the same too: go-to-definition, rename, references,
-document symbols, completion outside `uf.config.js`, and the type at a position
-are not advertised by `uf lsp`.
+What does not work is the same too: rename, references, document symbols and
+signature help are not advertised by `uf lsp`.
 
 ## What no test here covers
 

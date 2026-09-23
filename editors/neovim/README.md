@@ -53,17 +53,18 @@ asserts each of them.
 | Formatting | `:lua vim.lsp.buf.format({ name = "uf" })`, or `format_on_save = true`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `:lua vim.lsp.buf.code_action()` on a diagnostic. Offered only where uf's answer is mechanical — `flow/deprecated-type` has one; a rule that would have to guess at intent deliberately does not. |
 | Fix all | `:lua vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })` |
-| Hover | `K`. The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, or what a key of `uf.config.js` is for. |
-| Completion | In `uf.config.js`: `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. The keys valid at the cursor, with their documentation and type, after `"` the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
+| Hover | `K`. The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, or what a key of `uf.config.js` is for; anywhere else in a Flow file, the type under the cursor as Flow infers it. |
+| Definition | `<C-]>`, since Neovim points `tagfunc` at the server, or `:lua vim.lsp.buf.definition()`. Across files, into `node_modules`, and into `flow-typed/`. |
+| Type definition | `:lua vim.lsp.buf.type_definition()`: the declaration of the named types in the type under the cursor. |
+| Completion | `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. In `uf.config.js`: the keys valid at the cursor, with their documentation and type, after `"` the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file: after `.`, the members of the value's type with their types, and elsewhere the names in scope. |
 
 ## What you do not get
 
-No go-to-definition, no rename, no references, no document symbols, and **no
-type on hover** — `uf lsp` does not advertise any of them, so
-`vim.lsp.buf.definition()` will tell you the server has no handler. Completion
-answers in `uf.config.js` only; in any other file the server returns nothing.
-Hover over a plain expression answers nothing rather than an empty popup; the
-reason is in `crates/uf_cli/src/commands/dev/hover.rs`.
+No rename, no references, no document symbols and no signature help — `uf lsp`
+does not advertise any of them, so `vim.lsp.buf.rename()` will tell you the
+server has no handler. Type errors are not pushed as diagnostics; `uf check`
+reports them. Hover and definitions answer nothing while the file does not
+parse, since there is no inference to ask.
 
 ## Working directory
 
