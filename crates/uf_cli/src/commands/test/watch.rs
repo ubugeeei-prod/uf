@@ -95,11 +95,73 @@ pub(super) fn watch(
     // between it and a rerun that now takes tens of milliseconds.
     let chosen = args.watch_interval.is_some();
     let mut interval = watcher.interval();
+    // Kernel file events when nobody chose an interval and this machine can
+    // give them, so a save is heard when it happens rather than at the next
+    // look; see `uf_test::EventWatcher`. A chosen interval is a request to
+    // poll, and a file system that sends no events is polled as before.
+    let (mut events, unavailable) = if chosen {
+        (None, None)
+    } else {
+        match start_events(root, &files) {
+            Ok(source) => (Some(source), None),
+            Err(error) => (None, Some(error.to_string())),
+        }
+    };
     run_and_report(ui, root, &host, &files, &files, &args, None, pool.as_ref());
-    announce(ui, files.len(), chosen.then_some(interval));
+    announce(
+        ui,
+        files.len(),
+        events.is_none().then_some(interval),
+        unavailable.as_deref(),
+    );
 
     let mut ticks: u32 = 0;
     loop {
+        if let Some(source) = events.as_mut() {
+            let moved = match source.wait(EVENT_RESCAN_EVERY) {
+                Some(batch) if !batch.rescan => match reread_heard(&mut files, &batch.changed) {
+                    Heard::Nothing => continue,
+                    Heard::Read(moved) => moved,
+                    Heard::Rescan => rescan(root, &config, &args, &mut files)?,
+                },
+                // Nothing for a while, or the backend lost events: the walk is
+                // what sees a file created where no watched file was, and what
+                // catches whatever a dropped event would have said.
+                _ => rescan(root, &config, &args, &mut files)?,
+            };
+            // A directory that gained its first watched file is heard from from
+            // now on. One the backend refuses is left to the periodic rescan.
+            let _ = source.watch_directories(files.iter().map(|file| file.relative_path.as_str()));
+            if moved.is_empty() {
+                continue;
+            }
+            refresh_graph(&mut graph, &files, &moved);
+            if let Some(pool) = &pool {
+                pool.invalidate(&loaded_paths(root, &moved));
+            }
+            let rerun = affected(&graph, &moved, &files, &filter);
+            if rerun.is_empty() {
+                report_no_op(ui, &moved);
+                continue;
+            }
+            let subset: Vec<ProjectFile> = files
+                .iter()
+                .filter(|file| rerun.iter().any(|path| path == &file.relative_path))
+                .cloned()
+                .collect();
+            run_and_report(
+                ui,
+                root,
+                &host,
+                &files,
+                &subset,
+                &args,
+                Some(&moved),
+                pool.as_ref(),
+            );
+            continue;
+        }
+
         std::thread::sleep(interval);
         ticks = ticks.wrapping_add(1);
 
@@ -210,6 +272,115 @@ fn build_graph(files: &[ProjectFile]) -> ImportGraph {
             .iter()
             .map(|file| (file.relative_path.as_str(), file.source.as_str())),
     )
+}
+
+/// How long an event-driven session goes without an event before it walks the
+/// selection anyway.
+///
+/// The walk is what finds a file created in a directory that held no watched
+/// file — no subscription covered it — and what catches whatever a dropped
+/// event would have said. Five seconds rather than the polling loop's two,
+/// because here it is the only cost an idle session has.
+const EVENT_RESCAN_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How long a session waits to hear about its own probe file before it decides
+/// events are not arriving and polls instead.
+const EVENT_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Subscribe to kernel events for the project and every directory holding a
+/// watched file, and prove they arrive.
+fn start_events(
+    root: &Utf8Path,
+    files: &[ProjectFile],
+) -> Result<uf_test::EventWatcher, uf_test::EventError> {
+    let mut source = uf_test::EventWatcher::new(root)?;
+    source.watch_directories(files.iter().map(|file| file.relative_path.as_str()))?;
+    // Heard, not only subscribed: a sandbox that denies the file-event service
+    // lets the watch start and then says nothing, and a session that trusted
+    // that would never see a save.
+    if !source.verify(&root.join(".uf"), EVENT_PROBE_TIMEOUT)? {
+        return Err(uf_test::EventError::generic(
+            "the file system accepted the watch and reported nothing",
+        ));
+    }
+    Ok(source)
+}
+
+/// What a burst of events means for the session.
+#[derive(Debug, PartialEq, Eq)]
+enum Heard {
+    /// Only paths the session has no use for: its own cache, a dependency, an
+    /// editor's swap file.
+    Nothing,
+    /// Files the session already holds, read again; the ones whose text moved.
+    Read(Vec<String>),
+    /// Something only the walk can answer: a new file, one that went, one that
+    /// could not be read.
+    Rescan,
+}
+
+/// Decide what the paths in one burst of events call for, reading again the
+/// ones the session already holds.
+fn reread_heard(files: &mut [ProjectFile], heard: &[CompactString]) -> Heard {
+    let relevant: Vec<&CompactString> = heard.iter().filter(|path| !never_watched(path)).collect();
+    if relevant.is_empty() {
+        return Heard::Nothing;
+    }
+    let (known, unknown): (Vec<CompactString>, Vec<&CompactString>) = {
+        let mut known = Vec::new();
+        let mut unknown = Vec::new();
+        for path in relevant {
+            if files.iter().any(|file| file.relative_path == path.as_str()) {
+                known.push(path.clone());
+            } else {
+                unknown.push(path);
+            }
+        }
+        (known, unknown)
+    };
+    if unknown.iter().any(|path| might_be_source(path)) {
+        return Heard::Rescan;
+    }
+    if known.is_empty() {
+        return Heard::Nothing;
+    }
+    match reread_modified(files, &known) {
+        Some(moved) => Heard::Read(moved),
+        None => Heard::Rescan,
+    }
+}
+
+/// Paths no selection ever includes: what uf and the package manager write.
+///
+/// Heard because FSEvents reports a directory's whole subtree however it was
+/// asked, and `uf test` itself writes `.uf/test-timings.json` after every run;
+/// a session that rescanned on its own writes would walk the project after
+/// every run for nothing.
+fn never_watched(path: &str) -> bool {
+    path.split('/')
+        .any(|part| matches!(part, ".uf" | ".git" | "node_modules" | "target" | "dist"))
+}
+
+/// Whether a path the session does not hold could be a new source file, and
+/// so worth a walk. An editor's swap file, a lock file, a build log are not.
+fn might_be_source(path: &str) -> bool {
+    matches!(
+        path.rsplit_once('.').map(|(_, extension)| extension),
+        Some("js" | "jsx" | "mjs" | "cjs" | "json")
+    )
+}
+
+/// Walk the selection again and say which paths moved, keeping the new list.
+fn rescan(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    args: &TestArgs,
+    files: &mut Vec<ProjectFile>,
+) -> Result<Vec<String>> {
+    let refreshed = scan_selected_source_files(root, config, &args.paths)?.files;
+    let moved = changed_paths(files, &refreshed);
+    *files = refreshed;
+    Ok(moved)
 }
 
 /// Read again the files the watcher saw move, and say which of them changed.
@@ -390,20 +561,32 @@ fn run_and_report(
     );
 }
 
-/// Say what the session is watching, and how often when somebody chose.
+/// Say what the session is watching, and how.
 ///
-/// An interval nobody chose is not printed: it follows what a poll costs and
-/// moves from one poll to the next, so any one number would be a claim about
-/// the first poll only.
-fn announce(ui: &mut Ui, files: usize, interval: Option<std::time::Duration>) {
-    let message = match interval {
-        Some(interval) => format!(
+/// With kernel events there is no interval to print. A chosen interval is
+/// printed; an adaptive one is not, because it follows what a poll costs and
+/// moves from one poll to the next. When events were wanted and could not be
+/// had, the reason is printed, so a session that is slower than it should be
+/// says why.
+fn announce(
+    ui: &mut Ui,
+    files: usize,
+    interval: Option<std::time::Duration>,
+    unavailable: Option<&str>,
+) {
+    let mut message = match interval {
+        Some(interval) if unavailable.is_none() => format!(
             "watching {} every {}",
             plural(files, "file"),
             uf_term::format_duration(interval)
         ),
-        None => format!("watching {}", plural(files, "file")),
+        _ => format!("watching {}", plural(files, "file")),
     };
+    if let Some(reason) = unavailable {
+        message.push_str(&format!(
+            " by polling; file events are unavailable: {reason}"
+        ));
+    }
     ui.render(|renderer, out| {
         renderer.blank(out);
         renderer.status(out, Status::Info, &message);

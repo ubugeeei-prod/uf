@@ -155,3 +155,68 @@ fn the_path_filter_still_applies_in_watch_mode() {
 
     assert_eq!(rerun, vec!["src/a.test.js".to_string()]);
 }
+
+#[test]
+fn a_burst_of_events_about_uf_s_own_files_calls_for_nothing() {
+    // `uf test` writes `.uf/test-timings.json` after every run; an event
+    // session that walked the project on its own writes would walk after every
+    // run for nothing.
+    let mut files = vec![file("a.js", "1")];
+    let heard = [
+        CompactString::from(".uf/test-timings.json"),
+        CompactString::from("node_modules/react/index.js"),
+        CompactString::from("a.js.swp"),
+    ];
+    assert_eq!(reread_heard(&mut files, &heard), Heard::Nothing);
+}
+
+#[test]
+fn an_event_for_a_file_nobody_holds_that_could_be_source_calls_for_a_walk() {
+    let mut files = vec![file("a.js", "1")];
+    let heard = [CompactString::from("src/new.test.js")];
+    assert_eq!(reread_heard(&mut files, &heard), Heard::Rescan);
+}
+
+#[test]
+fn an_event_for_a_file_that_cannot_be_read_calls_for_a_walk() {
+    // The file went between the event and the read: only the walk can say
+    // whether it is gone or moved.
+    let mut files = vec![file("/nonexistent/uf-watch/a.js", "1")];
+    let heard = [CompactString::from("/nonexistent/uf-watch/a.js")];
+    assert_eq!(reread_heard(&mut files, &heard), Heard::Rescan);
+}
+
+#[test]
+fn an_event_for_a_held_file_reads_it_again_and_reports_only_a_real_change() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = camino::Utf8PathBuf::from_path_buf(directory.path().join("a.js")).expect("utf-8");
+    std::fs::write(&path, "same").expect("written");
+    let mut files = vec![ProjectFile {
+        kind: uf_project::SourceKind::JavaScript,
+        absolute_path: path.clone(),
+        relative_path: String::from("a.js"),
+        source: String::from("same"),
+    }];
+    let heard = [CompactString::from("a.js")];
+
+    // A save of the same bytes is an event and not a change.
+    assert_eq!(reread_heard(&mut files, &heard), Heard::Read(Vec::new()));
+
+    std::fs::write(&path, "edited").expect("written");
+    assert_eq!(
+        reread_heard(&mut files, &heard),
+        Heard::Read(vec![String::from("a.js")])
+    );
+    assert_eq!(files[0].source, "edited");
+}
+
+#[test]
+fn only_what_could_be_a_source_file_is_worth_a_walk() {
+    assert!(might_be_source("src/a.js"));
+    assert!(might_be_source("package.json"));
+    assert!(!might_be_source("src/.a.js.swp"));
+    assert!(!might_be_source("README"));
+    assert!(never_watched(".uf/test-timings.json"));
+    assert!(never_watched("packages/ui/node_modules/x.js"));
+    assert!(!never_watched("src/uf.js"));
+}
