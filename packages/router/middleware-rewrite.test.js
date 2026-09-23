@@ -178,3 +178,97 @@ describe("a payload request", () => {
     );
   });
 });
+
+// An intercepted navigation's payload renders two pages: the one its URL names,
+// in a slot, and the one `uf-intercepted-from` names, underneath. The runner
+// asks the guards of both, and a page underneath that its guards would not
+// serve is taken off the request rather than rendered.
+describe("a payload rendered over another page", () => {
+  const FROM = "uf-intercepted-from";
+  const signedIn = (request: Request) => request.headers.get("cookie") === "session=1";
+
+  const feedGuarded = () =>
+    hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/feed", {
+            default: (request: Request) =>
+              signedIn(request) ? undefined : new Response("sign in", { status: 401 }),
+          }),
+        ],
+      }),
+    );
+
+  const intercepted = (headers: { [string]: string }) =>
+    get("/photo/1/__uf.flight", { headers: { [FROM]: "/feed", ...headers } });
+
+  const carriedFrom = (answer: Response | Request | null, request: Request): string | null => {
+    const carried = answer instanceof Request ? answer : answer == null ? request : null;
+    return carried == null ? "answered" : carried.headers.get(FROM);
+  };
+
+  it("keeps the page underneath when its guards admit the request", async () => {
+    const request = intercepted({ cookie: "session=1" });
+    const answer = await feedGuarded()(request);
+    expect(carriedFrom(answer, request)).toBe("/feed");
+  });
+
+  it("drops the page underneath when its guards would not serve it", async () => {
+    const request = intercepted({});
+    const answer = await feedGuarded()(request);
+    // Not the guard's 401: the URL asked for is not one it covers.
+    expect(answer instanceof Request).toBe(true);
+    expect(carriedFrom(answer, request)).toBe(null);
+    expect(answer instanceof Request ? answer.url : null).toBe(
+      "http://localhost/photo/1/__uf.flight",
+    );
+  });
+
+  it("asks a guard that already ran for the URL again, about the page underneath", async () => {
+    const asked = [];
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/", {
+            default: (request: Request) => {
+              const { pathname } = new URL(request.url);
+              asked.push(pathname);
+              return pathname.startsWith("/feed") && !signedIn(request)
+                ? new Response(null, { status: 401 })
+                : undefined;
+            },
+          }),
+        ],
+      }),
+    );
+    const request = intercepted({});
+    const answer = await run(request);
+    expect(asked).toEqual(["/photo/1", "/feed"]);
+    expect(carriedFrom(answer, request)).toBe(null);
+  });
+
+  it("treats a rewrite of the page underneath as not serving it", async () => {
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/feed", { default: () => rewrite("/welcome") })],
+      }),
+    );
+    const request = intercepted({});
+    expect(carriedFrom(await run(request), request)).toBe(null);
+  });
+
+  it("drops a header that does not name a path on this origin", async () => {
+    const run = hosted(
+      createMiddlewareRunner({ middleware: [record("/", { default: () => {} })] }),
+    );
+    for (const value of ["//elsewhere.example/feed", "https://elsewhere.example/feed", "feed"]) {
+      const request = get("/photo/1/__uf.flight", { headers: { [FROM]: value } });
+      expect(carriedFrom(await run(request), request)).toBe(null);
+    }
+  });
+
+  it("leaves a document request's header alone, which nothing renders from", async () => {
+    const request = get("/photo/1", { headers: { [FROM]: "/feed" } });
+    expect(await feedGuarded()(request)).toBe(null);
+  });
+});
