@@ -6,10 +6,20 @@ $serverSource = @'
 const http = require("node:http");
 const fs = require("node:fs");
 const server = http.createServer((request, response) => {
+  if (request.url.startsWith("/missing/")) {
+    response.writeHead(404, { "Content-Type": "text/plain" });
+    response.end("not found");
+    return;
+  }
   response.writeHead(200, { "Content-Type": request.url.startsWith("/text/") ? "text/plain; charset=utf-8" : "application/octet-stream" });
   response.end(Buffer.from("0.1.0-alpha.1\r\n", "utf8"));
 });
-server.listen(0, "127.0.0.1", () => fs.writeFileSync("port", String(server.address().port)));
+// Written aside and renamed: a reader polling for `port` must never see it
+// created and still empty.
+server.listen(0, "127.0.0.1", () => {
+  fs.writeFileSync("port.partial", String(server.address().port));
+  fs.renameSync("port.partial", "port");
+});
 '@
 Set-Content -Path (Join-Path $work "server.cjs") -Value $serverSource -Encoding utf8
 $server = Start-Process -FilePath (Get-Command node).Source -ArgumentList "server.cjs" -WorkingDirectory $work -PassThru
@@ -30,6 +40,18 @@ try {
     }
     Write-Host "ok: $content VERSION resolves and trims the response"
   }
+  # A VERSION that cannot be read says why. alpha.44's release check failed
+  # with only "no version at <url>" for a file the server had answered 200
+  # with, and that was read as a transient miss rather than a bug (#1328).
+  $env:UF_RELEASE_BASE = "http://127.0.0.1:$port/missing"
+  $refused = & pwsh -NoProfile -ExecutionPolicy Bypass -File $installer 2>&1
+  if ($LASTEXITCODE -eq 0) {
+    throw "a missing VERSION resolved: $refused"
+  }
+  if (($refused -join "`n") -notmatch "no version at .*/missing/latest/VERSION \(.*404") {
+    throw "a missing VERSION failed without saying why: $refused"
+  }
+  Write-Host "ok: an unreadable VERSION fails with the reason it could not be read"
 } finally {
   if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
   Remove-Item -Recurse -Force $work

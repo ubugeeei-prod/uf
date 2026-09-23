@@ -277,6 +277,16 @@ The command never pushes a tag to start validation.
 Publication requires successful queue validation for that exact commit and
 checks the PR author's permissions again.
 
+npm is published before the GitHub Release, so a release run that stops
+partway leaves a version on npm with no binaries behind `curl | sh`. The
+release workflow reads the published release back and fails unless it carries
+every target (`uf run release:published -- <version>`). The `Release audit`
+workflow checks every version on npm the same way each day, whichever path
+produced it, and ignores versions published in the last three hours while
+their release may still be running. Versions that will never get a release are
+listed with their issue in `tools/release/release-gaps.txt`; the audit fails if
+a listed version gets a release, so remove it from the list then.
+
 If a PR check fails, fix it or rerun the failed check, then repeat the command.
 For a failed publication, repeating the command retries only the failed jobs. Progress is saved in the Git common directory, so it
 resumes the same PR and version. Published npm versions and tags are not

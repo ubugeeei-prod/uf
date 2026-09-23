@@ -1,0 +1,10 @@
+# Versions on npm with no GitHub release, and none coming.
+#
+# `verify-release.sh --all` reports these instead of failing on them, and fails
+# if one of them gets a release after all, so take a line out when that
+# happens. Adding one is a decision that a version will stay without binaries,
+# so it names the issue that made it.
+#
+# <version> <issue and reason>
+0.0.0-alpha.9 #464 x86_64-apple-darwin timed out; npm published, the release never ran
+0.0.0-alpha.44 #1328 the Windows installer check failed; npm published, the release never ran
