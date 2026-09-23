@@ -1024,9 +1024,12 @@ export const INSTALL_RIVALS: $ReadOnlyArray<string> = ["pnpm", "bun"];
 /**
  * The number of passing tests a runner reports, or null if it printed none.
  *
- * Vitest and `vp test`: `Tests  200 passed (200)`. Bun: ` 200 pass`.
+ * Vitest and `vp test`: `Tests  200 passed (200)`. Bun: ` 200 pass`. Colour
+ * codes are taken out first: a runner on CI colours its summary whether or not
+ * anybody is reading it.
  */
-export function testsPassed(printed: string): number | null {
+export function testsPassed(output: string): number | null {
+  const printed = output.replace(/\u001b\[[0-9;]*m/g, "");
   const vitest = printed.match(/Tests\s+(\d+) passed/);
   if (vitest != null) {
     return Number(vitest[1]);

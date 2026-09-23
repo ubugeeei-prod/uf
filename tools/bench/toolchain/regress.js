@@ -57,8 +57,10 @@
 // When a change makes uf faster (this prints the rows that got more than 20%
 // faster) or deliberately slower, or the runner changes: run the `Bench`
 // workflow by hand (Actions → Bench → Run workflow), download its
-// `bench-comparison` artifact, and commit its `results.json` over
-// `tools/bench/toolchain/baseline.json`. The same file is what the manual's
+// `bench-comparison` artifact, copy its `results.json` over
+// `tools/bench/toolchain/baseline.json`, run `uf fmt` (the repository's JSON
+// is Biome-formatted, and `fmt:check` holds this file to it too; the numbers
+// do not change), and commit it. The same file is what the manual's
 // benchmarks page renders, so the numbers a reader sees are the numbers the
 // gate holds uf to.
 

@@ -202,6 +202,10 @@ describe("what the harness reads from other tools' output", () => {
     expect(testsPassed(" Test Files  20 passed (20)\n      Tests  200 passed (200)")).toBe(200);
     expect(testsPassed(" 200 pass\n 0 fail\n 320 expect() calls")).toBe(200);
     expect(testsPassed("no tests found")).toBe(null);
+    // As a CI runner prints it, in colour.
+    expect(
+      testsPassed("\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m200 passed\u001b[39m"),
+    ).toBe(200);
   });
 });
 
