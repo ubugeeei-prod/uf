@@ -94,12 +94,6 @@ export type CapabilityJsHost = "node" | "deno" | "bun";
  */
 // The eight below are the *names a project may pin*, not commands this module
 // runs: `@uniflowed/config` declares a type and executes nothing at all.
-// `uniflowed/no-npm-script-invocation` is a line scanner, and a string whose
-// entire contents is `pnpm` reads exactly like the `spawn("pnpm", […])` the
-// rule exists to catch — `crates/uf_lint/src/scan/search.rs` says so in its own
-// documentation and calls what is left "rare and suppressible". This is that
-// residue, and there is no spelling of these values that is not one of them.
-// uf-lint-disable uniflowed/no-npm-script-invocation
 export type PackageManagerPreference =
   | "auto"
   | "uf"
@@ -109,7 +103,6 @@ export type PackageManagerPreference =
   | "yarn-classic"
   | "yarn-berry"
   | "bun";
-// uf-lint-enable uniflowed/no-npm-script-invocation
 
 // The runtimes a project may say it is written for, which are the runtimes uf
 // has a host for. It read `"uf" | ... | "edge" | "serverless" | "container"`,

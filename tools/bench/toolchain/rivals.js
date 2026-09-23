@@ -800,7 +800,6 @@ export const RIVAL_TOOLS: $ReadOnlyArray<ToolSource> = [
   { name: "tsgo", bin: "tsc", from: "rivals", module: NATIVE_TYPESCRIPT },
   // pnpm is a name here, not a command this repository runs: it is one of the
   // tools being measured.
-  // uf-lint-disable-next-line uniflowed/no-npm-script-invocation
   { name: "pnpm", bin: "pnpm", from: "rivals" },
 ];
 
@@ -1077,7 +1076,6 @@ export const DEV_RIVALS: $ReadOnlyArray<DevSpec> = [
 ];
 
 /** The package managers timed on the manifest `uf install` is timed on. */
-// uf-lint-disable-next-line uniflowed/no-npm-script-invocation
 export const INSTALL_RIVALS: $ReadOnlyArray<string> = ["pnpm", "bun"];
 
 /**
