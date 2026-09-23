@@ -37,7 +37,15 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import { entryFor, nextAfter, pages, sections, sourceFor } from "../../docs/app/_design/nav.js";
+import {
+  currentHref,
+  entryFor,
+  nextAfter,
+  pages,
+  previousBefore,
+  sections,
+  sourceFor,
+} from "../../docs/app/_design/nav.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = path.join(REPO, "docs/app");
@@ -191,5 +199,29 @@ describe("the manual's navigation", () => {
       .map((page) => page.href);
     expect(wrong).toEqual([]);
     expect(sourceFor("/")).toBe(null);
+  });
+
+  it("steps back through each section to its landing page, and no further", () => {
+    for (const section of sections) {
+      const listed = [section.landing, ...section.pages].map((page) => page.href);
+      const visited = [];
+      let at: ?string = listed[listed.length - 1];
+      while (at != null && visited.length < listed.length) {
+        visited.push(at);
+        at = previousBefore(at)?.href;
+      }
+      expect({ section: section.title, visited, then: at ?? null }).toEqual({
+        section: section.title,
+        visited: [...listed].reverse(),
+        then: null,
+      });
+    }
+  });
+
+  it("marks the listed page a pathname is, or else the deepest listed page it is under", () => {
+    expect(currentHref("/guide/routing")).toBe("/guide/routing");
+    expect(currentHref("/guide/routing/requests/")).toBe("/guide/routing/requests");
+    expect(currentHref("/guide/routing/somewhere-unlisted")).toBe("/guide/routing");
+    expect(currentHref("/elsewhere")).toBe(null);
   });
 });

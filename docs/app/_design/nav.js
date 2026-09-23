@@ -515,9 +515,52 @@ export function sourceFor(pathname: string): string | null {
   return entry == null ? null : `docs/app${entry.href}/$page.mdx`;
 }
 
-/** `true` when `pathname` is the entry's page. */
+/**
+ * The page before this one in its section, or `null` on a section's landing
+ * page.
+ *
+ * Only inside a section. "Next" on a section's last page follows `then` to the
+ * section its reader goes on to, and walking that backwards would send a
+ * reader who arrived from anywhere to a section they may never have read.
+ */
+export function previousBefore(pathname: string): Entry | null {
+  const section = sectionFor(pathname);
+  if (section == null) {
+    return null;
+  }
+  const normalized = normalize(pathname);
+  const run = [section.landing, ...section.pages];
+  const index = run.findIndex((page) => page.href === normalized);
+  return index > 0 ? run[index - 1] : null;
+}
+
+/**
+ * The entry the sidebar marks for a pathname: the page itself when it is
+ * listed, and otherwise the listed page it is under — so a page the sidebar
+ * cannot list one by one, like each package's API reference under `API`, still
+ * shows the reader where they are. The longest match wins, so a page under
+ * `/guide/routing/requests` marks that entry and not `/guide/routing`.
+ */
+export function currentHref(pathname: string): string | null {
+  const normalized = normalize(pathname);
+  let best: string | null = null;
+  for (const page of pages) {
+    if (page.href === normalized) {
+      return page.href;
+    }
+    if (
+      normalized.startsWith(`${page.href}/`) &&
+      (best == null || page.href.length > best.length)
+    ) {
+      best = page.href;
+    }
+  }
+  return best;
+}
+
+/** `true` when the sidebar marks the entry at `href` for `pathname`. */
 export function isCurrent(pathname: string, href: string): boolean {
-  return normalize(pathname) === href;
+  return currentHref(pathname) === href;
 }
 
 function normalize(pathname: string): string {

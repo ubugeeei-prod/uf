@@ -10,7 +10,7 @@ import * as React from "@uniflowed/react";
 import { Link, useRoute } from "@uniflowed/router";
 
 import { isCurrent, sections } from "./nav.js";
-import type { Section } from "./nav.js";
+import type { Entry, Section } from "./nav.js";
 
 /**
  * The small mono label above a heading that says what kind of page follows —
@@ -52,7 +52,7 @@ export component ManualNav() {
   const { pathname } = useRoute();
 
   return (
-    <nav className="manual-nav" aria-label="Documentation">
+    <nav className="manual-nav" id="manual-nav" aria-label="Documentation">
       <h2 className="manual-nav-title">All pages</h2>
       {sections.map((section) => (
         <React.Fragment key={section.title}>
@@ -144,20 +144,35 @@ function sectionTitled(title: string): Section {
 }
 
 /**
- * The link to the next page in reading order.
- *
- * Inside a section that is the page below this one; on a section's last page
- * it is the landing page of the section its reader goes to next. Rendering
- * nothing at the end of the manual is deliberate: there is no "next" to offer,
- * and a disabled control that says so would be noise.
+ * The foot of a manual page: the page before it in its section, and the next
+ * page in reading order. A `nav` with `rel` links, so a reader, a screen
+ * reader's landmark list and a browser's own "next page" all find the pair.
  */
-export component NextPage(href: string, title: string) {
+export component PageTurn(previous: ?Entry, next: ?Entry) {
+  if (previous == null && next == null) {
+    return null;
+  }
   return (
-    <p className="next-page">
-      <Link to={href}>
-        Next: {title} <span aria-hidden="true">→</span>
-      </Link>
-    </p>
+    <nav className="page-turn" aria-label="Pages">
+      {previous != null ? (
+        <Link to={previous.href} rel="prev" className="page-turn-previous">
+          <span className="page-turn-label">Previous</span>
+          <span>
+            <span aria-hidden="true">← </span>
+            {previous.title}
+          </span>
+        </Link>
+      ) : null}
+      {next != null ? (
+        <Link to={next.href} rel="next" className="page-turn-next">
+          <span className="page-turn-label">Next</span>
+          <span>
+            {next.title}
+            <span aria-hidden="true"> →</span>
+          </span>
+        </Link>
+      ) : null}
+    </nav>
   );
 }
 
