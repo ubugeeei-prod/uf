@@ -5347,6 +5347,12 @@ describe("Calendar", () => {
     expect(today).not.toHaveAttribute("aria-selected");
     expect(chosen).toHaveAttribute("aria-selected", "true");
     expect(chosen).not.toHaveAttribute("aria-current");
+    // One chosen day is a run of one, so a stylesheet that rounds a range's
+    // ends rounds it on both sides; no other day carries either mark.
+    expect(chosen).toHaveAttribute("data-selection-start", "true");
+    expect(chosen).toHaveAttribute("data-selection-end", "true");
+    expect(today).not.toHaveAttribute("data-selection-start");
+    expect(today).not.toHaveAttribute("data-selection-end");
   });
 
   it("chooses a day when it is pressed, and moves the tab stop to it", async () => {

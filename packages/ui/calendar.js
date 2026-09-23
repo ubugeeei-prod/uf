@@ -473,9 +473,14 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
 export component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Rest) {
   const calendar = useCalendar("Calendar.Day");
   const disabled = calendar.isDisabled(date);
-  const chosen =
-    calendar.isDateSelected?.(date) ??
-    (calendar.selected != null && calendar.selected.equals(date));
+  const isChosen = (day: PlainDate) =>
+    calendar.isDateSelected?.(day) ?? (calendar.selected != null && calendar.selected.equals(day));
+  const chosen = isChosen(date);
+  // Where a run of chosen days opens and closes, for a stylesheet to round the
+  // ends of a range and join its middle. Markup only: nothing reads it, and a
+  // single chosen day is a run that opens and closes on itself.
+  const opensRun = chosen && !isChosen(date.subtract({ days: 1 }));
+  const closesRun = chosen && !isChosen(date.add({ days: 1 }));
   const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown"]);
 
   return (
@@ -491,6 +496,8 @@ export component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Re
       // makes a screen reader announce "not selected" on all thirty-one.
       aria-selected={chosen ? "true" : undefined}
       data-date={date.toString()}
+      data-selection-end={closesRun ? "true" : undefined}
+      data-selection-start={opensRun ? "true" : undefined}
       onClick={composeHandlers(rest.onClick, () => calendar.select(date))}
       // The tab stop follows real focus, which is the half of a roving set that
       // is easy to leave out and impossible to see. A press on an *unavailable*
