@@ -93,6 +93,24 @@
 // Pure: no imports, no platform APIs beyond `JSON`, so the browser half of
 // `@uniflowed/router` can reach it without reaching anything server-only.
 
+/**
+ * The response header that says a server action ended in a routing outcome
+ * rather than a result: `redirect`, `not-found`, `unauthorized` or
+ * `forbidden`.
+ *
+ * `redirect()`, `notFound()`, `unauthorized()` and `forbidden()` are how a
+ * page's code says where the visitor goes next, and an action is page code:
+ * `redirect("/notes")` at the end of a mutation is the common way to finish
+ * one. They are control flow, not failures, so the endpoint does not report
+ * them or answer `500`. It answers with this header, the matching status and,
+ * for a redirect, `Location`. The reference in the browser reads the header
+ * and navigates or throws the same error for the route's boundary. Only the
+ * kind crosses, plus the address for a redirect. The exception's message and
+ * stack never do, which is the fixed-`500` rule applied to the one failure
+ * that is not a failure.
+ */
+export const ACTION_OUTCOME_HEADER: string = "uf-action-outcome";
+
 /** The request header carrying the action id. */
 export const ACTION_HEADER: string = "uf-action";
 

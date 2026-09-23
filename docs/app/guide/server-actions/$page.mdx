@@ -222,7 +222,8 @@ form, and answers:
 | was called by a `useActionState` | the page, rendered again with the action's result as that hook's state; the browser hydrates with the same state |
 | was a plain `<form action={fn}>` | `303 See Other` back to the page, so a reload does not submit twice |
 | called `redirect()` | `303 See Other` to where it pointed |
-| threw | `500`, with nothing of the exception in it |
+| called `notFound()`, `unauthorized()` or `forbidden()` | `404`, `401` or `403` with a single fixed line of text. No page is rendered around it |
+| threw anything else | `500`, with nothing of the exception in it |
 
 Once the page has hydrated nothing about this runs: React calls the reference,
 and the call is the JSON request below.
@@ -386,9 +387,33 @@ has to be at least 8 bytes and at most 256; a value outside that is ignored and
 one is generated from operating-system entropy instead, which is also what
 happens when the variable is unset.
 
+## Redirects and the other routing calls
+
+`redirect()`, `notFound()`, `unauthorized()` and `forbidden()` work in an action
+just as they do in a loader. They are how page code says where the visitor goes
+next, so they are not failures. A mutation that ends in `redirect("/notes")`
+behaves the same whether or not the page has hydrated:
+
+| Called | Before hydration (the form post) | After hydration (the JSON call) |
+| --- | --- | --- |
+| `redirect(to)` | `303 See Other` to `to` | the endpoint answers `204` with `Location`. The reference moves the router on screen there, as `router.push` would, or loads the document when `to` is another origin. The call then resolves with `undefined` |
+| `notFound()` | `404` | `404`. The reference throws `NotFoundError` |
+| `unauthorized()` | `401` | `401`. The reference throws `UnauthorizedError`, which the route's error boundary shows as "unauthorized" |
+| `forbidden()` | `403` | `403`. The reference throws `ForbiddenError`, which the boundary shows as "forbidden" |
+
+React passes an error thrown by an action called from a form or a transition to
+the nearest error boundary. So those three reach your `$error.js`, which can
+check what it was given.
+
+The JSON call's answer carries a `uf-action-outcome` header naming the kind.
+That is how `notFound()`'s `404` is kept apart from the `404` for an id nobody
+has. Only the kind crosses, plus the address for a redirect. None of these is
+reported as a failure.
+
 ## Nothing about a failure comes back
 
-An action that throws is a `500` with a fixed body. The exception goes to the
+An action that throws anything but the four routing calls above is a `500`
+with a fixed body. The exception goes to the
 host's error reporting with the module and export named; a message, a name or a
 stack in the *response* is your application's internals published to whoever
 asked for them. This is true in development too, because `uf dev` and `uf build`

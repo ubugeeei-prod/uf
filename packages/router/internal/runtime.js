@@ -352,6 +352,56 @@ export type Router = {|
   readonly forward: () => void,
 |};
 
+/**
+ * The router of the `RouterProvider` on screen, or `null` when none is mounted.
+ *
+ * Module state, for the one caller that is not a component and still has to
+ * navigate: a server action reference whose action called `redirect()`
+ * (`../action.js`). A reference is a plain function that React calls from a
+ * form or a transition, with no hook to read the context through, and the
+ * navigation it owes is the one `router.push` would make — a client render
+ * under client navigation, a document load under document navigation.
+ */
+let mountedRouter: Router | null = null;
+
+/** Publish `router` as [`mountedRouter`] while its provider is mounted. */
+hook useMountedRouter(router: Router): void {
+  useEffect(() => {
+    mountedRouter = router;
+    return () => {
+      if (mountedRouter === router) {
+        mountedRouter = null;
+      }
+    };
+  });
+}
+
+/**
+ * Go where a server action's `redirect()` pointed.
+ *
+ * `location` is the address the action endpoint answered with — already under
+ * `app.router.basePath` for a path on this application. A path on this origin
+ * is the mounted router's `push`, so the page underneath stays hydrated and a
+ * layout keeps its state, exactly as a `Link` to it would; another origin, or
+ * no router on screen, is the browser's document load. The promise settles
+ * when the navigation has, so a `useActionState` that awaited the action is
+ * not left pending on a page that has moved on.
+ */
+export async function followActionRedirect(location: string): Promise<void> {
+  const target = new URL(location, window.location.href);
+  const router = mountedRouter;
+  if (router == null || target.origin !== window.location.origin) {
+    window.location.assign(target.href);
+    return;
+  }
+  const applicationPath = applicationPathOf(target.pathname);
+  if (applicationPath == null) {
+    window.location.assign(target.href);
+    return;
+  }
+  await router.push(applicationPath + target.search + target.hash);
+}
+
 /** What `useRoute()` returns. */
 export type RouteInfo = {|
   readonly path: string,
@@ -973,6 +1023,8 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     },
   };
 
+  useMountedRouter(router);
+
   const value: RouterState = {
     route: routeState(resolved),
     view: { kind: "modules", resolved },
@@ -1242,6 +1294,8 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       }
     },
   };
+
+  useMountedRouter(router);
 
   const value: RouterState = {
     route: root.route,
