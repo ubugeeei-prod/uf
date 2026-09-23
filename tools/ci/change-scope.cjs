@@ -21,10 +21,39 @@ function needsFullSuite(paths) {
   );
 }
 
+// What the deploy matrix (`tools/deploy-matrix`, CI's `Deploy matrix` jobs)
+// is about: the adapters and what they wrap, the build that writes them, the
+// matrix itself, and the workflow and lockfile that run it. A pull request
+// touching none of these skips the emulators; the release queue runs them
+// whatever changed.
+const deploymentPaths = [
+  "packages/server/",
+  "packages/router/",
+  "packages/vite/",
+  "packages/react/",
+  "crates/uf_cli/src/commands/deploy",
+  "crates/uf_cli/src/commands/build",
+  "crates/uf_router/",
+  "crates/uf_rsc/",
+  "crates/uf_config/",
+  "tools/deploy-matrix/",
+  "tools/ci/edge-worker-smoke.sh",
+  ".github/workflows/ci.yml",
+  "package-lock.json",
+];
+
+function touchesDeployment(paths) {
+  return (
+    paths.length === 0 ||
+    paths.some((path) => deploymentPaths.some((prefix) => path.startsWith(prefix)))
+  );
+}
+
 if (require.main === module) {
   let full = true;
   let code = true;
   let release = false;
+  let deploy = true;
   let paths;
   const base = process.env.BASE_SHA;
   try {
@@ -43,14 +72,17 @@ if (require.main === module) {
     code = needsFullSuite(paths);
     // The queue validates the final main merge once, before it can land.
     full = release && process.env.GITHUB_EVENT_NAME === "merge_group";
-    console.log(`${paths.length} changed files; code: ${code}; full suite: ${full}`);
+    deploy = full || touchesDeployment(paths);
+    console.log(
+      `${paths.length} changed files; code: ${code}; full suite: ${full}; deploy matrix: ${deploy}`,
+    );
   }
   const version = release
     ? JSON.parse(require("node:fs").readFileSync("packages/core/package.json", "utf8")).version
     : "";
   appendFileSync(
     process.env.GITHUB_OUTPUT,
-    `full=${full}\ncode=${code}\nrelease=${release}\nversion=${version}\n`,
+    `full=${full}\ncode=${code}\nrelease=${release}\nversion=${version}\ndeploy=${deploy}\n`,
   );
 }
-module.exports = { needsFullSuite };
+module.exports = { needsFullSuite, touchesDeployment };
