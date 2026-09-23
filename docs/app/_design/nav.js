@@ -422,7 +422,7 @@ export const sections: $ReadOnlyArray<Section> = [
       },
       {
         href: "/reference/effect",
-        title: "Effects",
+        title: "Effect API",
         blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
       },
       {

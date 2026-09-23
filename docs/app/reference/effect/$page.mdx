@@ -1,5 +1,5 @@
 ---
-title: "Effects · uf"
+title: "Effect API · uf"
 description: "Typed failures, fibers that own what they start, and what Flow cannot say."
 ---
 
@@ -13,9 +13,13 @@ Plain Flow — no native binding — so `Effect<A, E, R>` is a thing you can rea
 the source of in an afternoon.
 </div>
 
+This page is the contract, export by export. [Effects](/guide/effect), in the
+guide, is the walk-through — composing, recovering, `race` and `all`, and how
+it maps from Effect-TS — and is not repeated here.
+
 ```js
 // @flow
-import { effect, fail, retry, runPromise, sleep } from "@uniflowed/effect";
+import { effect, fail, promise, retry, runPromise, tryPromise } from "@uniflowed/effect";
 
 const fetchUser = (id: string) =>
   effect(function* () {
@@ -685,12 +689,15 @@ they can wait: adding them later costs nothing that adding them now would save.
 STM; `Channel`, `Sink`, `GroupBy` and `Chunk`; `forkIn`, and a schedule's `Out`
 as a type parameter, both for the reasons above; `cron` schedules; a fiber
 scheduler of its own — this runs on the host's microtask queue and its `sleep`
-is `setTimeout`; tracing, spans and metrics; a typed defect channel; and a
-heterogeneous `all`, which in Effect-TS keeps a tuple's element types and here
-takes and returns one array type.
+is `setTimeout`; tracing, spans, metrics and the logging layer; a typed defect
+channel; a `Context` module, since `tag`, `provideService` and `provide` are the
+whole surface and the context they thread is internal; and a heterogeneous
+`all`, which in Effect-TS keeps a tuple's element types and here takes and
+returns one array type.
 
-Effect-TS is built on a higher-kinded encoding. Flow has no higher-kinded types
-— a type parameter cannot itself take type arguments — so there is no `pipe`
-with inference and no typeclass dispatch here. Composition is monomorphic
-functions over `Effect`, which is a smaller surface and one with nothing to
-resolve at run time.
+Nor is there a `pipe` or typeclass dispatch: Effect-TS is built on a
+higher-kinded encoding, and Flow has no higher-kinded types — a type parameter
+cannot itself take type arguments. Composition is data-first functions over
+`Effect`, a smaller surface with nothing to resolve at run time;
+[Coming from Effect-TS](/guide/effect#coming-from-effect-ts) maps each
+Effect-TS idiom onto what is here.
