@@ -64,6 +64,7 @@
 pub mod browser;
 mod coverage;
 mod discovery;
+mod events;
 mod filter;
 mod graph;
 mod host;
@@ -92,6 +93,7 @@ pub use crate::coverage::{
     parse_document, read_directory, read_document,
 };
 pub use crate::discovery::{MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, discover_tests, merge_plans};
+pub use crate::events::{EVENT_BURST_LIMIT, EVENT_QUIET, EventBatch, EventWatcher};
 pub use crate::filter::{MAX_PATTERN_BYTES, PathPatternList, TestFilter};
 pub use crate::graph::{ImportGraph, MAX_IMPORTS_PER_MODULE, MAX_MODULES, MODULE_EXTENSIONS};
 pub use crate::host::{FileOutcome, HostCommand, HostKind, SpawnError, Worker};
@@ -137,6 +139,8 @@ pub use crate::watch::{
     ChangeSet, DEFAULT_POLL_INTERVAL, MAX_POLL_INTERVAL, MIN_POLL_INTERVAL, POLL_DUTY_DIVISOR,
     WatchOptions, Watcher, adaptive_interval, next_poll_at,
 };
+/// Why kernel file events could not be started or kept; see [`EventWatcher`].
+pub use notify::Error as EventError;
 
 /// Errors emitted by native test execution.
 ///

@@ -663,13 +663,23 @@ and it imports those, and every module it loaded that reaches one, afresh; the
 rest keep the instance they have, as they do between two files in one worker.
 A worker that cannot promise that — a host without an in-thread loader, or an
 edit that reaches a module `require()` loaded — is replaced with a fresh one.
-Without `--watch-interval` the watcher polls as often as costs about 2% of a
-core: every 50 ms on a few hundred files, backing off towards 250 ms as the
-project grows — on this repository, whose 1,169 source files take 4.4 ms to
-stat, that is about every 220 ms. `--watch-interval 50` trades that core time
-for the shortest wait. From saving a file to its result, on this repository:
+Without `--watch-interval` the session asks the operating system to say when a
+file changes — FSEvents on macOS, inotify on Linux — so a save is heard as it
+happens and an idle session costs nothing. Before relying on that it writes a
+probe file under `.uf/` and waits up to two seconds to hear about it: a sandbox
+that denies the file-event service, and many network and container file
+systems, accept the watch and then report nothing. Where the probe is not
+heard, the announcement says why and the session polls instead, as often as
+costs about 2% of a core — every 50 ms on a few hundred files, backing off
+towards 250 ms as the project grows; on this repository, whose 1,169 source
+files take 4.4 ms to stat, that is about every 220 ms. `--watch-interval MS`
+asks for polling at that interval.
 
-| save | before | kept workers | kept workers, `--watch-interval 50` |
+From saving a file to its result on this repository, with polling (the
+numbers were taken in a sandbox that denies file events, so the event path is
+not among them):
+
+| save | before | kept workers, adaptive polling | kept workers, `--watch-interval 50` |
 | --- | --- | --- | --- |
 | a small test file | 435 ms | 148 ms | 59 ms |
 | a small React test file | 756 ms | 194 ms | 61 ms |

@@ -2666,3 +2666,78 @@ fn a_watch_session_reruns_an_edit_in_the_worker_it_already_has() {
         "the rerun started a new worker instead of keeping the one it had:\n{transcript}"
     );
 }
+
+/// A watch session nobody gave an interval hears a save from the kernel, or
+/// says why it is polling instead, and reruns the edit either way.
+///
+/// Which of the two happens is the machine's: a sandbox that denies the
+/// file-event service, and many network mounts, accept the watch and report
+/// nothing, and the session finds that out with a probe before relying on
+/// it. What must hold on every machine is that the edit reaches a run and the
+/// announcement does not claim a poll interval it is not using.
+#[test]
+fn a_watch_session_with_no_interval_hears_a_save_or_says_why_it_polls() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&[
+        (
+            "probe.test.js",
+            "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\
+             import { double } from \"./double.js\";\n\n\
+             it(\"doubles\", () => {\n  expect(double(21)).toBe(42);\n});\n",
+        ),
+        (
+            "double.js",
+            "// @flow\nexport function double(value: number): number {\n  return value * 2;\n}\n",
+        ),
+    ]);
+
+    let mut child = std::process::Command::new(support::uf_path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--watch", "probe.test.js"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("uf starts");
+    let lines = lines_of(&mut child);
+    let mut transcript = String::new();
+
+    let watching = wait_for(
+        &lines,
+        "watching",
+        Duration::from_secs(120),
+        &mut transcript,
+    );
+    let rerun = watching && {
+        std::thread::sleep(Duration::from_millis(1_100));
+        project.write(
+            "double.js",
+            "// @flow\nexport function double(value: number): number {\n  return value * 3;\n}\n",
+        );
+        wait_for(
+            &lines,
+            "expected 63 to be 42",
+            Duration::from_secs(120),
+            &mut transcript,
+        )
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        watching,
+        "the session never started watching:\n{transcript}"
+    );
+    assert!(rerun, "the edit never reached a run:\n{transcript}");
+    let announced = transcript
+        .lines()
+        .find(|line| line.contains("watching"))
+        .unwrap_or_default();
+    assert!(
+        !announced.contains(" every "),
+        "an interval nobody chose was announced: {announced}"
+    );
+}

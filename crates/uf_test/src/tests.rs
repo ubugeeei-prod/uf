@@ -9,6 +9,7 @@
 mod bench;
 mod coverage;
 mod discovery;
+mod events;
 mod filtering;
 mod graph;
 mod junit;
