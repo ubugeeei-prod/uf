@@ -426,32 +426,116 @@ strong {
 }
 
 @media (min-width: 60rem) {
+  /* The sidebar is a box of its own at this width: its list scrolls inside it
+     and the count of what is below stays pinned under the list. */
   .manual-nav {
     align-self: start;
-    max-height: calc(100vh - 6rem);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    /* Short enough that the bottom edge — and the count that sits on it — is
+       on screen before the page has scrolled, while the masthead is still
+       above the sidebar, not only once the sidebar has stuck. */
+    max-height: calc(100vh - 8.5rem);
     position: sticky;
     top: 2rem;
   }
+
+  .manual-nav-list {
+    border-top: 1px solid transparent;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Scrolled: the top edge is where the list went under, so it gets the rule
+     the bottom edge has while there is more below. */
+  .manual-nav-list[data-scrolled] {
+    border-top-color: var(--doc-rule);
+  }
 }
 
-.manual-nav h2 {
+.manual-nav-section {
+  margin: 0;
+}
+
+.manual-nav-section + .manual-nav-section {
+  margin-top: 0.15rem;
+}
+
+/* A section heading: the section's name, how many pages are in it, and a
+   chevron that says it opens. The whole row is the control. */
+.manual-nav summary {
+  align-items: center;
+  background: var(--doc-paper);
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0.45rem 0.1rem 0.45rem 0;
+}
+
+.manual-nav summary::-webkit-details-marker {
+  display: none;
+}
+
+.manual-nav summary::after {
+  border-bottom: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
   color: var(--doc-ink-faint);
+  content: "";
+  flex: none;
+  height: 0.38rem;
+  margin: 0 0.2rem 0.15rem 0;
+  transform: rotate(-45deg);
+  width: 0.38rem;
+}
+
+.manual-nav details[open] > summary::after {
+  margin-bottom: 0.3rem;
+  transform: rotate(45deg);
+}
+
+/* The open section's heading stays at the top of the box while its pages
+   scroll under it, so a reader halfway down a twenty-page section still sees
+   which section it is. */
+.manual-nav details[open] > summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.manual-nav summary:focus-visible {
+  outline: 2px solid var(--uf-color-blue-500);
+  outline-offset: 1px;
+}
+
+.manual-nav summary:hover h2,
+.manual-nav details[open] > summary h2 {
+  color: var(--doc-ink);
+}
+
+.manual-nav summary h2 {
+  color: var(--doc-ink-muted);
+  flex: 1;
   font-family: var(--uf-font-mono);
   font-size: 0.7rem;
   font-weight: 500;
   letter-spacing: 0.14em;
-  margin: 1.9rem 0 0.6rem;
+  margin: 0;
   text-transform: uppercase;
 }
 
-.manual-nav h2:first-child {
-  margin-top: 0;
+.manual-nav-count {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .manual-nav ul {
   list-style: none;
-  margin: 0;
+  margin: 0.2rem 0 0.9rem;
   padding: 0;
 }
 
@@ -478,19 +562,53 @@ strong {
   font-weight: 560;
 }
 
-/* A section's heading is the link to its landing page. It keeps the heading's
-   type — small, mono, uppercase — rather than the page links' rule and indent,
-   so the list under it still reads as what the heading contains. */
-.manual-nav h2 a {
-  border-left: 0;
-  color: inherit;
-  display: inline;
-  padding: 0;
+/* What is below the fold, said in words across a hairline rather than faded
+   into: a count, and a button that scrolls to it. */
+.manual-nav-more {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--doc-rule);
+  color: var(--doc-ink-muted);
+  cursor: pointer;
+  flex: none;
+  font-family: var(--uf-font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  padding: 0.55rem 0 0.1rem;
+  text-align: left;
 }
 
-.manual-nav h2 a:hover,
-.manual-nav h2 a[aria-current="page"] {
+.manual-nav-more:hover {
   color: var(--doc-ink);
+}
+
+.manual-nav-more:focus-visible {
+  outline: 2px solid var(--uf-color-blue-500);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .manual-nav summary::after {
+    transition: transform 120ms ease-out;
+  }
+
+  .manual-nav a,
+  .manual-nav summary h2,
+  .manual-nav-more,
+  .manual-nav-list {
+    transition-duration: 120ms;
+    transition-property: color, border-color;
+    transition-timing-function: ease-out;
+  }
+}
+
+.visually-hidden {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 /* On this page. The right rail at a width with room for three columns, and
@@ -1178,6 +1296,11 @@ tbody tr:last-child :is(td, th) {
 
   .manual {
     padding-top: 1.75rem;
+  }
+
+  /* A section heading is a thumb's target here, not a pointer's. */
+  .manual-nav summary {
+    padding-block: 0.7rem;
   }
 
   .hero {

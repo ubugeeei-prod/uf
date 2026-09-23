@@ -564,6 +564,17 @@ export function currentHref(pathname: string): string | null {
   return best;
 }
 
+/**
+ * The section the sidebar opens for a pathname: the one the marked entry is
+ * listed in, so a page reached below a listed one — each package's API page
+ * under `API` — opens the section it is in rather than none. `null` for a page
+ * outside the manual, where every section starts closed.
+ */
+export function openSectionFor(pathname: string): Section | null {
+  const marked = currentHref(pathname);
+  return marked == null ? null : sectionFor(marked);
+}
+
 /** `true` when the sidebar marks the entry at `href` for `pathname`. */
 export function isCurrent(pathname: string, href: string): boolean {
   return currentHref(pathname) === href;

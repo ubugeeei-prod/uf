@@ -9,7 +9,8 @@
 import * as React from "@uniflowed/react";
 import { Link, useRoute } from "@uniflowed/router";
 
-import { isCurrent, sections } from "./nav.js";
+import { NavOverflow } from "./nav-overflow.js";
+import { currentHref, openSectionFor, sections } from "./nav.js";
 import type { Entry, Section } from "./nav.js";
 
 /**
@@ -40,46 +41,64 @@ export component Command(children: string) {
 /**
  * The manual's sidebar.
  *
- * A section's heading is the link to its landing page, and the list under it
- * is the section's pages in reading order. A section whose landing page is its
- * only page is a heading with nothing under it.
+ * Every section is a disclosure, and only the one the open page is in starts
+ * open. Listing all sixty-odd pages at once made a sidebar several screens
+ * tall whose bottom edge looked like its end; closed, the other sections are a
+ * heading and a page count each, so the whole manual's shape fits on one
+ * screen and the section a reader is in has the room. `<details>` rather than
+ * a script: it opens and closes before hydration, without JavaScript, and a
+ * screen reader already knows what it is.
+ *
+ * The section's landing page is the first link inside it, so opening a section
+ * and following a link are two different gestures rather than one heading
+ * that does either depending on where it is clicked.
  *
  * `aria-current="page"` is what marks the open page — the border colour is a
  * consequence of it, not the other way round, so the state survives with CSS
- * off and is announced by a screen reader.
+ * off and is announced by a screen reader. `NavOverflow` is the part that needs
+ * a script: it says how much of the list is below the fold, and scrolls the
+ * open page into view.
  */
 export component ManualNav() {
   const { pathname } = useRoute();
+  const marked = currentHref(pathname);
+  const open = openSectionFor(pathname);
 
   return (
     <nav className="manual-nav" id="manual-nav" aria-label="Documentation">
       <h2 className="manual-nav-title">All pages</h2>
-      {sections.map((section) => (
-        <React.Fragment key={section.title}>
-          <h2>
-            <Link
-              to={section.landing.href}
-              aria-current={isCurrent(pathname, section.landing.href) ? "page" : undefined}
+      <div className="manual-nav-list" id="manual-nav-list">
+        {sections.map((section) => {
+          const links = [section.landing, ...section.pages];
+          return (
+            <details
+              className="manual-nav-section"
+              key={section.title}
+              open={section === open ? true : undefined}
             >
-              {section.title}
-            </Link>
-          </h2>
-          {section.pages.length > 0 ? (
-            <ul>
-              {section.pages.map((page) => (
-                <li key={page.href}>
-                  <Link
-                    to={page.href}
-                    aria-current={isCurrent(pathname, page.href) ? "page" : undefined}
-                  >
-                    {page.title}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </React.Fragment>
-      ))}
+              <summary>
+                <h2>{section.title}</h2>
+                <span className="manual-nav-count">
+                  {links.length}
+                  <span className="visually-hidden">{links.length === 1 ? " page" : " pages"}</span>
+                </span>
+              </summary>
+              <ul>
+                {links.map((page) => (
+                  <li key={page.href}>
+                    <Link to={page.href} aria-current={page.href === marked ? "page" : undefined}>
+                      {page === section.landing && page.title === section.title
+                        ? "Overview"
+                        : page.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          );
+        })}
+      </div>
+      <NavOverflow path={pathname} />
     </nav>
   );
 }
