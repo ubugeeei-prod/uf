@@ -512,7 +512,7 @@ createNativeScreenRouter(routeTable, manifest.screens, {
 The `screen` is the mapped app-owned name. The `state` object keeps the uf route
 facts beside the params:
 
-```js
+```js fragment
 {
   params: { id: "42" },
   href: "/users/42?tab=posts",
@@ -526,7 +526,7 @@ facts beside the params:
 keeps only routes that have a page in the native bundle, and returns both a
 `screens` map for the router and an ordered `entries` list for registration:
 
-```js
+```js fragment
 {
   screens: {
     "/": "Home",
@@ -547,7 +547,7 @@ register a screen table whose last route silently wins.
 If a navigator needs the lower-level event instead, use `createNativeRouter()`.
 The event is the contract:
 
-```js
+```js fragment
 {
   kind: "push",
   href: "/users/42?tab=posts",

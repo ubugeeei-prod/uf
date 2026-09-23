@@ -1048,7 +1048,7 @@ layout-constraint problem and a different component.
 
 ### Progress
 
-```js
+```js fragment
 <Progress aria-label="Uploading" max={10} value={3} valueText="3 of 10 files" />
 <Progress aria-label="Uploading" />
 ```
@@ -1294,7 +1294,7 @@ wants `aria-hidden` on its fallback for the same reason its image wants `alt=""`
 
 ### Separator
 
-```js
+```js fragment
 <Separator />
 <Separator orientation="vertical" />
 <Separator decorative />
@@ -2155,7 +2155,7 @@ same component. Both render a focusable control with `aria-checked`, both take
 `checked` / `defaultChecked` / `onCheckedChange`, and both accept `render` when
 the app needs to put those semantics on its own element:
 
-```js
+```js fragment
 <Switch checked={notifications} onCheckedChange={setNotifications}>
   Notifications
 </Switch>

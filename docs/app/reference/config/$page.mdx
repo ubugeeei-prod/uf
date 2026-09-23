@@ -147,7 +147,7 @@ Wrangler; they are not valid `test.runtime` values.
 
 `next.config.js`'s `redirects()`, `rewrites()` and `headers()`, as three lists:
 
-```js
+```js fragment
 router: {
   redirects: [{ source: "/blog/:slug", destination: "/posts/:slug", permanent: true }],
   rewrites: [{ source: "/me", destination: "/users/me" }],
@@ -174,7 +174,7 @@ has the order they apply in and the table from `next.config.js`.
 
 `next.config.js`'s `basePath` and `trailingSlash`:
 
-```js
+```js fragment
 router: {
   basePath: "/docs",
   trailingSlash: "never",
@@ -540,7 +540,7 @@ served to whoever asks for it.
 | `robots.allow` | `[]` | `Allow:` lines |
 | `robots.disallow` | `[]` | `Disallow:` lines |
 
-```js
+```js fragment
 site: {
   url: "https://docs.uniflowed.dev",
 },

@@ -79,7 +79,7 @@ export const auth = createAuth({
 Each handler is a plain `Request` → `Response`, which is what a `$route.js`
 exports and what runs unchanged on Node, Bun, Deno and a worker:
 
-```js
+```js fragment
 // app/auth/authorize/$route.js
 export const GET = auth.authorize;
 

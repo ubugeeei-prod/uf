@@ -52,7 +52,7 @@ is told so directly rather than inferring it from a capital letter.
 
 ### The rules of hooks are a type error
 
-```js
+```js fragment
 hook useNow(interval: number): Date { … }
 ```
 
@@ -63,7 +63,7 @@ stops being a matter of discipline.
 
 ### A component can require its children
 
-```js
+```js fragment
 component Tab(label: string) renders React.Node { … }
 component Tabs(children: renders* Tab) { … }
 ```
