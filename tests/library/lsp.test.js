@@ -121,14 +121,15 @@ const framed = (message: Message): string => {
  * Run one conversation against `uf lsp` and parse everything it said.
  *
  * `cwd` matters: the server reads `uf.config.js` from its working directory,
- * once, at start-up.
+ * once, at start-up, unless `args` names another with `--cwd`.
  */
 const session = (
   messages: Array<Message>,
   cwd: string = process.cwd(),
   env: { [string]: string } = {},
+  args: Array<string> = [],
 ): Array<Wire> => {
-  const run = spawnSync(UF, ["lsp"], {
+  const run = spawnSync(UF, ["lsp", ...args], {
     input: messages.map(framed).join(""),
     cwd,
     env: { ...process.env, ...env },
@@ -383,6 +384,30 @@ describe("formatting", () => {
 
       expect(apply(source, inProject)).toContain("\n        return 1;");
       expect(apply(source, outside)).toContain("\n  return 1;");
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("formats to the uf.config.js in the directory --cwd names, wherever it was started", () => {
+    // What the Zed extension, `uf.vim` and the JetBrains template rely on:
+    // they name the project on the command line instead of, or as well as,
+    // starting the server in it.
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-flag-"));
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-none-"));
+    try {
+      fs.writeFileSync(
+        path.join(project, "uf.config.js"),
+        "// @flow\nexport default { fmt: { indentWidth: 8 } };\n",
+      );
+      const source = "// @flow\nfunction f() {\nreturn 1;\n}\n";
+      const named = listed(
+        session([didOpen(source), format(3), EXIT], elsewhere, {}, ["--cwd", project]),
+        3,
+      );
+
+      expect(apply(source, named)).toContain("\n        return 1;");
     } finally {
       fs.rmSync(project, { recursive: true, force: true });
       fs.rmSync(elsewhere, { recursive: true, force: true });

@@ -1,0 +1,154 @@
+---
+title: "Benchmarks · uf"
+description: "Every uf command timed beside Vite+, Next.js, Bun, Vitest, ESLint, Prettier, Biome, Flow and pnpm, with the machine and the versions."
+---
+
+import { Losses, Provenance, Results } from "./results.js";
+
+<p className="eyebrow">Why uf</p>
+
+# Benchmarks
+
+<div className="lede">
+Every uf command timed on one generated application, beside the tool a project
+would otherwise use for the same job, on one machine, in one run. Every number
+below is read from the file that run wrote; none is typed in by hand. The rows
+uf loses come first.
+</div>
+
+**What you will be able to do:** see where uf stands on each command, which
+gaps are the largest, and reproduce any number on this page with one command.
+
+**What you need first:** nothing. To reproduce the numbers: a checkout of this
+repository with `npm ci` run, and Bun on `PATH` for the Bun rows.
+
+## Where the numbers come from
+
+One command measured all of them:
+
+```sh
+$ npm ci --prefix tools/bench/toolchain/rivals   # the comparison tools, pinned
+$ uf run bench:toolchain -- --tools all --runs 7 --warmup 1
+```
+
+`uf run bench:toolchain` builds uf in release mode, writes the application
+under the system's temporary directory, times every stage, prints a table and
+writes a JSON file. `tools/bench/toolchain/report.js` documents that file. The
+run below is one the `Bench` workflow made on a GitHub Actions runner, committed
+as `tools/bench/toolchain/baseline.json`; this page renders that file when the
+site is built.
+
+A hosted runner is shared with other work, and a millisecond on it is not a
+millisecond on your laptop. Read the ratios between rows of the same table, which
+were measured minutes apart on the same machine, rather than the absolute
+numbers. The load average before and after the run is below so you can see how
+busy the machine was.
+
+<Provenance />
+
+## Where uf loses
+
+Every stage in which another tool's median is lower than uf's. The table is
+computed from the file, so it changes when the numbers do.
+
+<Losses />
+
+## What each tool is given
+
+Each tool runs on its own copy of the same application, written in the form a
+project using that tool would have. `tools/bench/toolchain/rivals.js` generates
+the copies; they share the preset's size, and the same modules and tests with
+the same values and assertions.
+
+| Copy | Written as | Tools |
+| --- | --- | --- |
+| the uf application | Flow, `component` syntax, `match`, Flow enums, `@uniflowed/test` | `uf` |
+| Vite | TypeScript and TSX, `index.html` and `src/main.tsx`, routes lazily imported, tests against `vite-plus/test` | `vp dev`, `vp build`, `vp test`, `vp lint`, `eslint .`, `biome lint .`, `tsc --noEmit` |
+| Next.js | App Router: `app/layout.tsx`, `app/rNNN/page.tsx`, the toggles marked `"use client"` | `next dev`, `next build` |
+| Vitest, Bun | the library modules and their tests against `vitest` and `bun:test` | `vitest run`, `bun test` |
+| one copy per formatter | the Vite copy, formatted by that formatter first | `vp fmt --check`, `prettier --check .`, `biome format .` |
+| Flow | the uf application with a `.flowconfig`, `mixed` spelled `unknown`, and `flow-typed` stubs for `@uniflowed/*` | `flow full-check` |
+| install | the pinned third-party dependencies of a scaffolded application | `uf install`, `pnpm install`, `bun install` |
+| many small test files | 50 files × 20 cases × 2 assertions, from `tools/bench/testing/suite.js` | `uf test`, `bun test`, `vitest run` |
+
+Where a row is not the same work, it says so here rather than in a footnote:
+
+- **`vp dev`'s first document is an empty HTML shell.** Vite serves
+  `index.html` and the browser requests the application afterwards; uf and
+  Next.js render the page on the server before answering. The row times what a
+  person waits for before the first byte, and it is not the same amount of work.
+- **`next dev` has no HMR rows.** Next.js pushes updates over a socket protocol
+  of its own, and the harness speaks Vite's. `vp dev`'s HMR is measured the way
+  uf's is: from the file write to the update message, and to the edited module
+  being served.
+- **`flow full-check` sees the `@uniflowed/*` packages as `any`**, through
+  stubs, the way a package with no library definition is seen. `uf check`
+  checks against their real types and runs uf's linter first, so it does more
+  work. `flow full-check` is the whole-project check without a server, which is
+  what `flow check` was before it became a question put to a server.
+- **`tsc --noEmit` is not in the issue's table**, and is here because it is
+  what the TypeScript copies would be type-checked with.
+- **ESLint** runs `@eslint/js` and `typescript-eslint`'s recommended rules, the
+  configuration `npm init @eslint/config` writes. Biome and Vite+ run with no
+  configuration of their own.
+- **Cold** removes a tool's own caches before every run: `.uf`, `dist` and
+  `node_modules/.vite` for uf, `.next` for Next.js, `node_modules/.vite` for Vite+
+  and Vitest. Prettier, ESLint, Biome and `tsc` keep no cache unless asked to,
+  so their cold and warm rows are the same command run twice. **Warm** keeps
+  what the previous run left behind.
+- **CPU** is the user and system time of the command and every process it
+  waited for. It is there because a runner that spreads the same work over more
+  cores finishes sooner but costs the same, and on a busy machine CPU is what
+  runs out. A dev server's CPU is not measured, because it has not exited when
+  the document is served.
+- **Installs** use the npm registry. They are measured over the network, with
+  an empty home directory for the cold rows, so they depend on the registry.
+
+## Every row
+
+A table per stage, fastest first. **Against uf** is the ratio of medians.
+
+<Results />
+
+## The regression gate
+
+The `Bench` workflow also runs the uf half on its own every night, and fails
+when a uf stage is more than **20% and 25 ms** slower than the same row of
+`tools/bench/toolchain/baseline.json`. Four rules keep the noise of a shared
+runner from failing it:
+
+1. Every row is the median of seven timed runs, after one run that is not
+   counted. A busy neighbour only ever slows a run down, and a median ignores
+   up to three slow runs out of seven.
+2. The line is a percentage *and* a number of milliseconds. The format and HMR
+   rows take a few tens of milliseconds, and 20% of that is less than the
+   variation in starting a process.
+3. A stage over the line is measured again in a new process, and the faster of
+   the two medians is compared. A busy neighbour rarely slows both runs; a
+   slower uf does.
+4. The baseline comes from the same kind of runner the check runs on, never
+   from a laptop. The check warns when the CPU model differs.
+
+Installs are measured but not gated, because the registry's speed on a given
+night is not something a change to uf can affect. `tools/bench/toolchain/regress.js`
+explains each rule.
+
+To refresh the baseline after a change that makes uf faster or intentionally
+slower, or after the runner changes: run the `Bench` workflow by hand, download
+its `bench-comparison` artifact, and commit its `results.json` as
+`tools/bench/toolchain/baseline.json`. This page is rebuilt from the new file.
+
+## What is not measured
+
+- **A browser.** The HMR rows stop when the edited module has been served. The
+  browser evaluating it and React re-rendering are not timed.
+- **The `large` preset in CI.** `--preset large` is ten times the routes and
+  modules and is run by hand. The nightly job runs `small`.
+- **Windows.** The harness times commands in process groups and reads CPU time
+  through a POSIX shell.
+- **`next dev` HMR and `vp dev` server rendering**, for the reasons above.
+
+## Where to go next
+
+[What uf does not do](/guide/scope) is next: what uf refuses on purpose, and
+every gap with its issue number.

@@ -8,8 +8,18 @@ the restart command, drifting apart one fix at a time.
 
 ## In place
 
-Install the Marketplace/Open VSX package when one is available, or build a
-`.vsix` from `editors/vscode` and install it:
+Cursor installs extensions from [Open VSX](https://open-vsx.org/extension/uniflowed/uf),
+where each uf release publishes the extension as `uniflowed.uf` (a pre-release
+while uf is in alpha; see `editors/vscode/README.md` for the version it
+carries). Search for **uf** in Cursor's Extensions view, or:
+
+```sh
+cursor --install-extension uniflowed.uf
+```
+
+Publishing needs the Open VSX token the repository owner creates. Until a
+release has gone out with it, or to run a build of your own, build a `.vsix` from
+`editors/vscode` and install that:
 
 ```sh
 cd editors/vscode
@@ -21,8 +31,6 @@ cursor --install-extension uf-0.0.0.vsix
 Or, to work on it, copy `editors/vscode` into `~/.cursor/extensions/uf/` and
 restart Cursor. Cursor reads `~/.cursor/extensions`, not `~/.vscode/extensions`,
 so an extension installed in VS Code is not automatically installed here.
-
-Nothing is published to any marketplace.
 
 ## What is shared, and what is not
 

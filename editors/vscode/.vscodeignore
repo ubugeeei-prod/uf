@@ -7,6 +7,8 @@
 # `node_modules` is deliberately absent: the extension is not bundled, so
 # `vscode-languageclient` has to be in the package for it to load at all.
 
+# The release's own tooling, run by CI rather than by VS Code.
+release/**
 .vscode/**
 .vscode-test/**
 .gitignore

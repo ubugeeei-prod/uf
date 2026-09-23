@@ -1,0 +1,159 @@
+# The toolchain benchmark, `uf run bench:toolchain`, on a schedule.
+#
+# Two jobs on one release build of `uf`:
+#
+# `Bench regression` times every uf stage on the small fixture and fails when
+# one is more than 20% (and 25 ms) slower than `tools/bench/toolchain/baseline.json`.
+# A stage over the line is measured a second time before the job fails, and the
+# better of the two medians is what counts: `tools/bench/toolchain/regress.js`
+# says why each of those rules is there, and why installs are measured but not
+# gated.
+#
+# `Bench comparison` times the same stages with every comparison tool beside
+# uf — Vite+, Next.js, Vitest, Bun, ESLint, Prettier, Biome, Flow, tsc and
+# pnpm — and uploads the result as `bench-comparison`. That file, committed
+# over `baseline.json`, is both the next baseline and what the manual's
+# benchmarks page renders; nothing commits it automatically, because a
+# baseline that moved on its own would let a regression through one night at a
+# time.
+#
+# Not in `CI`, and not required: a wall clock on a shared runner is noisy
+# enough that a pull request should not wait on it or be blocked by it. It runs
+# on a pull request only when the benchmark itself changes, so a change to the
+# harness is seen working before it merges.
+name: Bench
+
+on:
+  schedule:
+    # 03:41 UTC, a minute nobody else picked (see `links.yml`).
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tools/bench/toolchain/**"
+      - "tools/bench/testing/**"
+      - ".github/workflows/bench.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UF_CI_PREBUILT: "1"
+
+jobs:
+  build:
+    name: Bench build
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 45
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: bench-release
+      # The release profile, because that is the binary a person runs, and a
+      # number about an unoptimised or a differently linked uf would be a number
+      # about the build settings.
+      - run: cargo build --release --bin uf
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: uf-bench
+          path: target/release/uf
+          retention-days: 1
+
+  regression:
+    name: Bench regression
+    needs: build
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: uf-bench
+          path: target/release
+      - run: chmod +x target/release/uf
+      # Seven timed runs of every stage, the first thrown away. A stage over the
+      # line is measured again — `regress.js` exits 1 for a regression and 2
+      # when it could not compare at all, and only a 1 is worth a second look.
+      - name: Measure and compare with the baseline
+        run: |
+          out="$RUNNER_TEMP/bench"
+          mkdir -p "$out"
+          ./target/release/uf run bench:toolchain -- --runs 7 --warmup 1 \
+            --work-dir "$RUNNER_TEMP/uf-bench" --out "$out/first.json"
+          status=0
+          ./target/release/uf run bench:toolchain:regress -- \
+            --write-regressed "$out/regressed.txt" "$out/first.json" || status=$?
+          if [ "$status" -eq 1 ]; then
+            stages="$(cat "$out/regressed.txt")"
+            echo "Measuring $stages again before failing on it."
+            ./target/release/uf run bench:toolchain -- --runs 7 --warmup 1 --stages "$stages" \
+              --work-dir "$RUNNER_TEMP/uf-bench" --out "$out/second.json"
+            ./target/release/uf run bench:toolchain:regress -- "$out/first.json" "$out/second.json"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: bench-regression
+          path: ${{ runner.temp }}/bench/*.json
+          retention-days: 30
+
+  comparison:
+    name: Bench comparison
+    needs: build
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 120
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      # The comparison tools, at the versions `rivals/package-lock.json` pins.
+      - run: npm ci --no-audit --no-fund --prefix tools/bench/toolchain/rivals
+      # Bun is a runtime rather than a package, so it comes from its own
+      # installer, pinned to the release `ci.yml` tests uf's Bun support on.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: uf-bench
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: |
+          mkdir -p "$RUNNER_TEMP/bench"
+          ./target/release/uf run bench:toolchain -- --tools all --runs 7 --warmup 1 \
+            --work-dir "$RUNNER_TEMP/uf-bench" --out "$RUNNER_TEMP/bench/results.json"
+      # Informational: how this night's uf rows compare with the committed
+      # baseline, measured beside the other tools. The gate is the job above.
+      - run: ./target/release/uf run bench:toolchain:regress -- "$RUNNER_TEMP/bench/results.json" || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-comparison
+          path: ${{ runner.temp }}/bench/results.json
+          retention-days: 90

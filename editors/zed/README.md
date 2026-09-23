@@ -1,53 +1,95 @@
 # uf for Zed
 
 [`extension.toml`](extension.toml) declares the language server, and
-[`src/lib.rs`](src/lib.rs) is the Rust/WASM half Zed loads to start it.
+[`src/`](src) is the Rust/WebAssembly half Zed loads to start it.
 
-## The state of this integration
+## Why an extension
 
 Zed has no setting that adds an arbitrary language server. A server reaches Zed
 as an extension, and an extension that provides one is a Rust crate compiled to
-WebAssembly. This directory has both halves: the manifest Zed reads and the
-`zed_extension_api` implementation CI checks with `wasm32-wasip1`.
+WebAssembly against `zed_extension_api`. It does one thing here: when Zed opens
+a JavaScript file in a worktree, it tells Zed which `uf` to run, and with which
+arguments.
 
-The command it returns is intentionally small:
+The crate is its own Cargo workspace (the empty `[workspace]` in
+[`Cargo.toml`](Cargo.toml)), so it never joins the repository's workspace build.
 
-```rust
-fn language_server_command(
-    &mut self,
-    _: &zed::LanguageServerId,
-    worktree: &zed::Worktree,
-) -> zed::Result<zed::Command> {
-    Ok(zed::Command {
-        command: worktree
-            .which("uf")
-            .ok_or_else(|| "uf is not installed: https://uniflowed.dev".to_string())?,
-        args: vec!["lsp".to_string()],
-        env: worktree.shell_env(),
-    })
+## Install
+
+The extension is not in Zed's extension registry yet, so it is installed as a
+dev extension from a uf checkout. Zed compiles it itself; you need Rust
+installed through `rustup`, which is how Zed adds the `wasm32-wasip1` target.
+
+1. In Zed, open the command palette and run **zed: install dev extension**.
+2. Select the `editors/zed` directory.
+3. Open the folder that holds your project's `uf.config.js`.
+
+`uf` itself has to be installed, in the project or on `PATH`; the extension only
+starts it.
+
+## Which `uf`
+
+In this order, per worktree — the VS Code extension's order:
+
+1. `lsp.uf.binary.path` in Zed's settings, when set: absolute, relative to the
+   worktree, or starting with `~/`. It is used as written, never skipped in
+   favour of another `uf`.
+2. `node_modules/.bin/uf` in the worktree, the copy the project pinned.
+3. `uf` on the worktree shell's `PATH`.
+
+With none of them, Zed shows an error listing the places looked at.
+
+A Zed extension cannot ask whether a file exists, only read one as text. So
+step 2 finds the launcher script npm, pnpm and yarn write into
+`node_modules/.bin`, and not a native executable copied or linked there; name
+one of those with the setting. A wrong `binary.path` is reported by Zed when the
+spawn fails, naming the path.
+
+```jsonc
+// settings.json
+{
+  "lsp": {
+    "uf": {
+      "binary": {
+        "path": "node_modules/.bin/uf",
+        // Optional. Replaces the default `["lsp", "--cwd", <worktree>]`.
+        // "arguments": ["lsp"],
+        // Optional. Added to the shell's environment.
+        // "env": { "RUST_LOG": "debug" }
+      }
+    }
+  },
+  "languages": {
+    "JavaScript": {
+      // Format with uf rather than Prettier.
+      "formatter": { "language_server": { "name": "uf" } },
+      "format_on_save": "on"
+    }
+  }
 }
 ```
 
-Two things are load-bearing.
+## Which project
 
-`worktree.which` rather than a bare `"uf"`: it searches the worktree shell's
-`PATH`. Add `node_modules/.bin` to that path when using a project-pinned uf.
+The server is started as `uf lsp --cwd <worktree root>`. `uf lsp` reads
+`uf.config.js` once, at start-up, from the directory `--cwd` names, and that
+read is the only source of a project's `fmt` options and lint levels. So open
+the folder that holds `uf.config.js`; a uf project nested below the folder you
+opened is not picked up. Editing `uf.config.js` needs **editor: restart
+language server**.
 
-And the process must run **in the worktree root**. `uf lsp` reads `uf.config.js`
-from its working directory, once, at start-up, and that read is the only source
-of a project's `fmt` options and lint levels. `uf lsp --cwd <root>` would name
-the same directory; Zed starts a language server in the worktree root, so
-opening the project folder — the one with `uf.config.js` in it — is enough.
+Zed calls every `.js`, `.jsx`, `.mjs` and `.cjs` file JavaScript, so that is the
+one language the server is attached to. Zed's own JavaScript servers keep
+running beside it.
 
-## What it would give you
+## What it gives you
 
 `uf lsp` answers exactly this much, and `tests/library/lsp.test.js` drives the
 server and asserts each one:
 
 * **Diagnostics**, pushed on open and on every change, source `uf`, code the
   rule id.
-* **Formatting**, from the same `uf_fmt` that `uf fmt` calls. Set
-  `"formatter": "language_server"` for JavaScript in Zed's settings.
+* **Formatting**, from the same `uf_fmt` that `uf fmt` calls.
 * **Quick fixes** and a **fix-all** action (`source.fixAll.uf`).
 * **Hover**: the rule behind a diagnostic, what an import specifier names, what
   a rule id in a suppression comment means, and a key of `uf.config.js`; over
@@ -62,8 +104,13 @@ server and asserts each one:
 
 Not rename, references or signature help. `uf lsp` advertises none of them.
 
-## Install
+## What is tested, and what is not
 
-Run `cargo build --manifest-path editors/zed/Cargo.toml --release --target
-wasm32-wasip1`, then install this directory as a Zed dev extension. `uf` still
-has to be installed in the project or on `PATH`; the extension only starts it.
+The Editors workflow (`.github/workflows/editors.yml`) runs on every change
+here. It checks formatting, runs `cargo test` on the host — which binary is
+chosen and why, the arguments, the environment, and that the settings key and
+the language name agree with `extension.toml` — runs clippy for the host and
+for `wasm32-wasip1`, and builds the release `.wasm`.
+
+No Zed runs in CI. That Zed loads the extension, starts `uf lsp` for a uf
+project and shows its diagnostics has to be checked by a person with Zed open.

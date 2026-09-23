@@ -1204,8 +1204,20 @@ once, when it starts.
 | `textDocument/publishDiagnostics` | Pushed on open and on every change, from the linter `uf lint` runs |
 | `textDocument/formatting` | One edit over the whole document, from the printer `uf fmt` runs |
 | `textDocument/codeAction` | `quickfix` where a rule's fix is mechanical, and `source.fixAll.uf` for every such fix at once |
-| `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js` |
-| `textDocument/completion` | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec, the names its key takes and, after `@`, that tool's versions. `"` and `@` trigger it |
+| `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`; anywhere else in a Flow file, the inferred type under the cursor, printed as Flow |
+| `textDocument/definition` | Where the name under the cursor is declared: across files, into a package under `node_modules`, and into the project's `flow-typed/` |
+| `textDocument/typeDefinition` | Where the named types in the type under the cursor are declared |
+| `textDocument/completion` | In `uf.config.js`: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec, the names its key takes and, after `@`, that tool's versions. In any other Flow file: after `value.`, the members of `value`'s type with their types, and elsewhere the names in scope. `"`, `@` and `.` trigger it |
+
+Hover over an expression, both definitions and completion outside `uf.config.js`
+come from the checker `uf check` runs, over the same batch — every source, what
+it imports, the packages under `node_modules` it reaches, and `flow-typed/` —
+read in the background when the client says `initialized` and kept in memory.
+An edit re-infers the edited file, and the files that import it, when they are
+next asked about. A file that does not parse has no inference to ask, so hover
+and definitions answer `null` there; completion still answers after `value.`.
+A build without the checker advertises neither definition and completes
+`uf.config.js` alone.
 
 Completion is read from `@uniflowed/config`'s own Flow type — the declaration
 `defineConfig` checks the file against — compiled into the binary, so it needs
@@ -1228,8 +1240,8 @@ fetched on a thread of its own, so the versions appear as you type on; a list
 older than a day is offered as it is and refreshed behind the request.
 `UF_INDEX_CACHE` moves the cache, and `UF_TOOL_INDEX_BASE` the publishers.
 
-Not served: go-to-definition, rename, references, document symbols, the type at
-a position, organize imports, and completion in any other file.
+Not served: rename, references, document symbols, signature help, organize
+imports, and type errors as diagnostics.
 `tests/library/lsp.test.js` drives the binary and asserts both lists.
 
 ### uf mcp

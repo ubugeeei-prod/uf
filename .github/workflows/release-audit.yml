@@ -1,0 +1,47 @@
+# Every version on npm has a GitHub release carrying its binaries.
+#
+# `publish.yml` sends npm first and `release.yml` publishes the binaries after
+# it, so a release run that fails, is cancelled, or is never dispatched leaves a
+# version on npm with nothing behind `curl | sh` or `UF_VERSION=<version>`.
+# That has happened twice — alpha.9 (#464) and alpha.44 (#1328) — and both were
+# found days later, by a person reading the release page.
+#
+# `release.yml` checks the version it publishes, but only when it gets that
+# far. This asks from the outside, whichever path produced a version, so a gap
+# is reported within a day. A version npm accepted in the last three hours is
+# reported and not failed: its release may still be running. Versions that are
+# known to have no release are listed in `tools/release/release-gaps.txt`.
+#
+# It is `uf run release:published -- --all` on a laptop.
+name: Release audit
+
+on:
+  schedule:
+    # 05:43 UTC. Off the hour, for the reason `links.yml` gives.
+    - cron: "43 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read # Check out the script and the list of known gaps.
+
+concurrency:
+  group: release-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Every npm version is released
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Every npm version has a release with binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/release/verify-release.sh --all

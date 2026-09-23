@@ -1,8 +1,10 @@
 // @flow
 //
-// Every uf command, timed on an application of a stated size.
+// Every uf command, timed on an application of a stated size, and the tools it
+// is compared with timed on the same application.
 //
-//   uf run bench:toolchain                            # the small preset
+//   uf run bench:toolchain                            # uf alone, the small preset
+//   uf run bench:toolchain --tools all                # and every comparison tool
 //   uf run bench:toolchain --preset large --runs 10
 //   uf run bench:toolchain --preset all --require-quiet --out results.json
 //
@@ -11,19 +13,33 @@
 // ubugeeei-prod/uf#945. The manual quoted numbers from separate one-off runs,
 // each on its own input, with nothing anybody could run again — so a regression
 // went unnoticed, and nobody could say which gap to close next. This is one
-// command that produces every uf number from one generated fixture on one
-// machine under one set of rules, and writes the rules into the same file as
-// the numbers. `report.js` documents that file.
+// command that produces every number from generated fixtures on one machine
+// under one set of rules, and writes the rules into the same file as the
+// numbers. `report.js` documents that file, `regress.js` compares one with the
+// baseline in this directory, and `docs/app/guide/benchmarks` renders it.
 //
-// It is the uf half of #945. Vite+, Next.js, Bun and pnpm on the same stages
-// are the other half and will be rows in the same file, which is why a row is
-// keyed by tool as well as by stage.
+// # The tools
+//
+// `--tools` names them, `uf` alone unless it says otherwise, `all` for every
+// one. Besides uf: Vite+ (`vp`), Next.js, Vitest, Bun, ESLint, Prettier,
+// Biome, Flow, `tsc` and pnpm. `rivals.js` says what input each is given —
+// its own idiomatic copy of the same application — and where each is found.
+// A tool that is not installed is skipped by name, with the reason, in the
+// table and in the file. Nothing is timed in its place.
+//
+// A row is keyed by tool, stage and fixture, so `uf/build.cold/small` and
+// `next/build.cold/small` are the same stage of the same application measured
+// with two tools, and a reader compares those.
 //
 // # What one run of each stage is
 //
 // Wall clock from spawning the command to it exiting, read in this process —
 // never the total a command prints about itself, which starts after the binary
-// has loaded and stops before it exits.
+// has loaded and stops before it exits. And beside it, for every command that
+// runs to completion, the CPU time of the command and every process under it
+// (`measure.js` says how): a runner that spreads the same work over more cores
+// is quicker by the clock and no cheaper, and on a machine doing other work
+// the CPU is what there is less of.
 //
 //   fmt.cold, fmt.warm      `uf fmt --check`, on a tree `uf fmt` has formatted
 //   lint.cold, lint.warm    `uf lint`
@@ -41,11 +57,26 @@
 //   install.warm            `uf install` with the lockfile and the cache the
 //                           previous install left, and no `node_modules`
 //
-// *Cold* removes `.uf`, `dist` and `node_modules/.vite` from the fixture before
-// every run: a fresh clone with its dependencies installed. *Warm* leaves what
-// the run before it wrote: the second time you type the command. Both, because
-// they regress differently — a slower transform shows in cold, and a cache that
-// stopped hitting shows only in warm.
+// The other tools' rows are the same stages with their own commands: `vp fmt
+// --check`, `prettier --check .`, `eslint .`, `next build`, `bun test`, `pnpm
+// install` and the rest, each listed in `rivals.js`.
+//
+// *Cold* removes a tool's caches from its copy before every run: `.uf`, `dist`
+// and `node_modules/.vite` for uf; `.next` for Next.js; `node_modules/.vite`
+// for Vite+ and Vitest. A tool that keeps no cache by default — Prettier,
+// ESLint without `--cache`, Biome, `tsc` without `--incremental` — has nothing
+// removed, and its cold and warm rows are the same command twice. *Warm*
+// leaves what the run before it wrote: the second time you type the command.
+// Both, because they regress differently — a slower transform shows in cold,
+// and a cache that stopped hitting shows only in warm.
+//
+// # The test suite of many small files
+//
+// ubugeeei-prod/uf#944 measures a second shape of test suite, where the cost is
+// starting workers rather than running tests: 50 files of 20 cases of two
+// assertions. `tools/bench/testing/suite.js` writes it, once for each runner in
+// that runner's idiom, and its rows are the `test` stages of the fixture
+// called `suite`, for uf, Bun and Vitest.
 //
 // # Why the HMR stage has no browser in it
 //
@@ -58,7 +89,8 @@
 // Then it writes the file, waits for the `update` naming it, and fetches the
 // module at `<path>?t=<timestamp>`, which is the request `/@vite/client` makes
 // next. Left out is the browser evaluating that module and React re-rendering:
-// the browser's time, not the toolchain's.
+// the browser's time, not the toolchain's. `vp dev` is measured the same way;
+// `next dev` speaks a protocol of its own and has no HMR rows.
 //
 // # What makes a number publishable
 //
@@ -74,7 +106,9 @@
 // and `uf check --json` have to have looked at every module the fixture has and
 // found nothing wrong, and `uf test --json` has to have passed exactly the tests
 // the fixture was written with: a linter that silently looked at nothing is
-// fast, and a benchmark that timed it would be timing a bug.
+// fast, and a benchmark that timed it would be timing a bug. Every other test
+// runner has to report passing exactly the tests its copy was written with,
+// too, before it is timed.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -82,10 +116,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { GUIDE_PRESET, generateSuites } from "../testing/suite.js";
 import {
   HOT_FILE,
   HOT_MARKER,
   PRESETS,
+  fixtureFiles,
   generateFixture,
   installManifest,
   linkDependencies,
@@ -108,7 +144,24 @@ import {
 } from "./measure.js";
 import type { Environment, Finished, Quietness } from "./measure.js";
 import { formatTable, writeReport } from "./report.js";
-import type { InstallFixture, Machine, Report, Row } from "./report.js";
+import type { InstallFixture, Machine, Report, Row, Skipped } from "./report.js";
+import {
+  DEV_RIVALS,
+  INSTALL_RIVALS,
+  ONE_SHOT_RIVALS,
+  RIVALS_DIR,
+  RIVAL_TOOLS,
+  TOOL_NAMES,
+  flowFiles,
+  linkInto,
+  locateTool,
+  mirrorInto,
+  rivalFiles,
+  testsPassed,
+  versionIn,
+  writeFiles,
+} from "./rivals.js";
+import type { Copy, DevSpec, OneShotSpec } from "./rivals.js";
 
 /** The repository root: this file is `tools/bench/toolchain/bench.js`. */
 function repositoryRoot(): string {
@@ -126,6 +179,8 @@ const REPO = repositoryRoot();
 const USAGE = `usage: uf run bench:toolchain [options]
 
   --preset small|large|all   the fixture to measure (small)
+  --tools a,b|all            the tools to measure (uf); the others are
+                             ${RIVAL_TOOLS.map((tool) => tool.name).join(", ")}
   --runs N                   timed runs of every stage (5)
   --warmup N                 runs made and thrown away before those (1)
   --hmr-edits N              timed edits in the HMR stage (10)
@@ -136,17 +191,19 @@ const USAGE = `usage: uf run bench:toolchain [options]
   --require-quiet            wait for a quiet machine first, and fail without one
   --quiet-timeout MINUTES    how long to wait for it (15)
 
-UF_BINARY names the uf to measure; \`uf run bench:toolchain\` builds one and sets it.`;
+UF_BINARY names the uf to measure; \`uf run bench:toolchain\` builds one and sets it.
+The comparison tools are pinned in ${RIVALS_DIR}: \`npm ci --prefix ${RIVALS_DIR}\`.`;
 
 /** How long any one command may take before the run is abandoned. */
 const COMMAND_TIMEOUT_MS = 10 * 60_000;
-/** How long `uf dev` may take to serve its first document. */
+/** How long a dev server may take to serve its first document. */
 const DEV_TIMEOUT_MS = 2 * 60_000;
 /** How long an edit may take to arrive as an HMR update. */
 const HMR_TIMEOUT_MS = 15_000;
 
 type Options = {
   readonly presets: $ReadOnlyArray<Preset>,
+  readonly tools: $ReadOnlyArray<string>,
   readonly runs: number,
   readonly warmup: number,
   readonly hmrEdits: number,
@@ -174,8 +231,32 @@ function wholeNumber(flag: string, value: string, least: number): number {
   return parsed;
 }
 
+function list(value: string): $ReadOnlyArray<string> {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "");
+}
+
+function parseTools(value: string): $ReadOnlyArray<string> {
+  if (value === "all") {
+    return TOOL_NAMES;
+  }
+  const named = list(value);
+  for (const tool of named) {
+    if (!TOOL_NAMES.includes(tool)) {
+      throw new Error(
+        `--tools names ${tool}, which this benchmark does not know; the tools are ` +
+          `${TOOL_NAMES.join(", ")}, or all`,
+      );
+    }
+  }
+  return TOOL_NAMES.filter((tool) => named.includes(tool));
+}
+
 function parseOptions(argv: $ReadOnlyArray<string>): Options {
   let presets: $ReadOnlyArray<Preset> = [presetNamed("small")];
+  let tools: $ReadOnlyArray<string> = ["uf"];
   let runs = 5;
   let warmup = 1;
   let hmrEdits = 10;
@@ -196,6 +277,9 @@ function parseOptions(argv: $ReadOnlyArray<string>): Options {
       case "--preset":
         presets = value === "all" ? PRESETS : [presetNamed(value)];
         break;
+      case "--tools":
+        tools = parseTools(value);
+        break;
       case "--runs":
         runs = wholeNumber(flag, value, 1);
         break;
@@ -206,10 +290,7 @@ function parseOptions(argv: $ReadOnlyArray<string>): Options {
         hmrEdits = wholeNumber(flag, value, 1);
         break;
       case "--stages":
-        stages = value
-          .split(",")
-          .map((stage) => stage.trim())
-          .filter((stage) => stage !== "");
+        stages = list(value);
         break;
       case "--work-dir":
         workDir = path.resolve(value);
@@ -224,7 +305,18 @@ function parseOptions(argv: $ReadOnlyArray<string>): Options {
         throw new Error(`${flag} is not an option of this benchmark\n\n${USAGE}`);
     }
   }
-  return { presets, runs, warmup, hmrEdits, stages, workDir, out, requireQuiet, quietTimeoutMs };
+  return {
+    presets,
+    tools,
+    runs,
+    warmup,
+    hmrEdits,
+    stages,
+    workDir,
+    out,
+    requireQuiet,
+    quietTimeoutMs,
+  };
 }
 
 /**
@@ -238,7 +330,11 @@ function parseOptions(argv: $ReadOnlyArray<string>): Options {
  * And the Node running this harness goes first on `PATH`. uf finds `node` there
  * to host the dev server, the tests and the build, so this puts every row on
  * one Node — the one `versions.node` names — instead of whatever a lookup
- * finds, which on a machine with Bun on `PATH` and no Node is Bun.
+ * finds, which on a machine with Bun on `PATH` and no Node is Bun. Every other
+ * Node tool is started through the same lookup.
+ *
+ * Next.js's telemetry is off. It sends a request about the build during the
+ * build, and a row that timed a network request would be timing the network.
  */
 function childEnvironment(): Environment {
   const env: { [string]: string | void } = { ...process.env };
@@ -246,6 +342,7 @@ function childEnvironment(): Environment {
   delete env.UF_PROJECT_ROOT;
   delete env.NODE_OPTIONS;
   env.PATH = [path.dirname(process.execPath), process.env.PATH ?? ""].join(path.delimiter);
+  env.NEXT_TELEMETRY_DISABLED = "1";
   return env;
 }
 
@@ -284,26 +381,31 @@ function packageVersion(directory: string): string {
   return "unknown";
 }
 
+async function printed(
+  program: string,
+  args: $ReadOnlyArray<string>,
+  env: Environment,
+): Promise<string> {
+  try {
+    const finished = await run(program, args, { cwd: REPO, env, timeoutMs: 60_000 });
+    return finished.code === 0 ? `${finished.stdout}\n${finished.stderr}`.trim() : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function collectVersions(uf: string, env: Environment): Promise<{ [string]: string }> {
-  const output = async (program: string, args: $ReadOnlyArray<string>): Promise<string> => {
-    try {
-      const finished = await run(program, args, { cwd: REPO, env, timeoutMs: 60_000 });
-      return finished.code === 0 ? finished.stdout.trim() : "unknown";
-    } catch {
-      return "unknown";
-    }
-  };
   const relative = path.relative(REPO, uf);
   return {
     // `uf --version` prints `uf 0.0.0-alpha.32`, and the key is already the name.
-    uf: (await output(uf, ["--version"])).replace(/^uf\s+/, ""),
-    commit: await output("git", ["rev-parse", "HEAD"]),
+    uf: (await printed(uf, ["--version"], env)).replace(/^uf\s+/, ""),
+    commit: await printed("git", ["rev-parse", "HEAD"], env),
     // Where the binary came from: `target/release/uf` is a release build, and a
     // path outside the checkout is reported by name rather than leaking a home
     // directory into a file somebody may publish.
     binary: relative.startsWith("..") || path.isAbsolute(relative) ? path.basename(uf) : relative,
     node: process.version,
-    npm: await output(path.join(path.dirname(process.execPath), "npm"), ["--version"]),
+    npm: await printed(path.join(path.dirname(process.execPath), "npm"), ["--version"], env),
     vite: packageVersion(path.join(REPO, "node_modules", "vite")),
     react: packageVersion(path.join(REPO, "node_modules", "react")),
   };
@@ -329,29 +431,40 @@ function machine(before: Quietness, after: Quietness): Machine {
   };
 }
 
-/** What a cold run removes from the fixture before it starts. */
+/** What a cold run of a uf command removes from the fixture before it starts. */
 const CACHES = [".uf", "dist", path.join("node_modules", ".vite")];
-const COLD = "removes .uf, dist and node_modules/.vite before every run";
-const WARM = "keeps what the run before it wrote";
 
-function clearCaches(dir: string): void {
-  for (const cache of CACHES) {
+function clearCaches(dir: string, caches: $ReadOnlyArray<string>): void {
+  for (const cache of caches) {
     fs.rmSync(path.join(dir, cache), { recursive: true, force: true });
   }
 }
 
+function describeCache(caches: $ReadOnlyArray<string>, cold: boolean): string {
+  if (caches.length === 0) {
+    return "keeps no cache by default, so cold and warm are the same run";
+  }
+  if (!cold) {
+    return "keeps what the run before it wrote";
+  }
+  const named = caches.map((cache) => cache.split(path.sep).join("/"));
+  const last = named[named.length - 1];
+  const rest = named.slice(0, -1);
+  return `removes ${rest.length === 0 ? last : `${rest.join(", ")} and ${last}`} before every run`;
+}
+
 function expectSuccess(command: string, dir: string, finished: Finished): void {
-  const printed = tail(`${finished.stdout}\n${finished.stderr}`);
+  const output = tail(`${finished.stdout}\n${finished.stderr}`);
   if (finished.timedOut) {
     throw new Error(
       `\`${command}\` in ${dir} was still running after ` +
-        `${String(COMMAND_TIMEOUT_MS / 60_000)} minutes and was stopped:\n${printed}`,
+        `${String(COMMAND_TIMEOUT_MS / 60_000)} minutes and was stopped:\n${output}`,
     );
   }
   if (finished.code !== 0) {
     throw new Error(
       `\`${command}\` in ${dir} exited with ${String(finished.code ?? finished.signal)}, ` +
-        `so it has no time to report:\n${printed}`,
+        `so it has no time to report:\n${output}`,
     );
   }
 }
@@ -379,28 +492,41 @@ function numberIn(command: string, object: { readonly [string]: mixed }, key: st
 }
 
 type Context = {
-  readonly uf: string,
   readonly env: Environment,
   readonly options: Options,
-  readonly fixture: string,
-  readonly dir: string,
 };
 
 type RowFields = {
+  readonly tool: string,
   readonly stage: string,
+  readonly fixture: string,
   readonly title: string,
   readonly command: string,
   readonly cache: string,
   readonly warmup: number,
 };
 
-function makeRow(fixture: string, fields: RowFields, samples: $ReadOnlyArray<number>): Row {
+function makeRow(
+  fields: RowFields,
+  samples: $ReadOnlyArray<number>,
+  cpuSamples: $ReadOnlyArray<number | null> | null,
+): Row {
   const summary = summarise(samples);
+  const cpu: Array<number> = [];
+  for (const sample of cpuSamples ?? []) {
+    if (sample != null) {
+      cpu.push(sample);
+    }
+  }
+  const cpuSummary =
+    cpuSamples != null && cpu.length === cpuSamples.length && cpu.length > 0
+      ? summarise(cpu)
+      : null;
   return {
-    id: `uf/${fields.stage}/${fixture}`,
-    tool: "uf",
+    id: `${fields.tool}/${fields.stage}/${fields.fixture}`,
+    tool: fields.tool,
     stage: fields.stage,
-    fixture,
+    fixture: fields.fixture,
     title: fields.title,
     command: fields.command,
     cache: fields.cache,
@@ -413,6 +539,15 @@ function makeRow(fixture: string, fields: RowFields, samples: $ReadOnlyArray<num
     max: summary.max,
     mean: summary.mean,
     stddev: summary.stddev,
+    cpu:
+      cpuSummary == null
+        ? null
+        : {
+            samples: cpu.map((sample) => Number(sample.toFixed(1))),
+            median: cpuSummary.median,
+            min: cpuSummary.min,
+            max: cpuSummary.max,
+          },
   };
 }
 
@@ -421,15 +556,19 @@ function progress(line: string): void {
 }
 
 /**
- * Make the fixture what the stages assume, and prove it before timing anything.
+ * Make the uf fixture what the stages assume, and prove it before timing anything.
  *
  * `uf fmt` first, so `uf fmt --check` is timed on a tree it passes. Then the
  * linter and the checker have to have looked at every module and found
  * nothing, and the runner has to have passed exactly the tests that were
  * written. Returns the host `uf test` ran the suite on.
  */
-async function prepare(context: Context, summary: FixtureSummary): Promise<string> {
-  const { uf, env, dir } = context;
+async function prepare(
+  uf: string,
+  env: Environment,
+  dir: string,
+  summary: FixtureSummary,
+): Promise<string> {
   const options = { cwd: dir, env, timeoutMs: COMMAND_TIMEOUT_MS };
   // Every generated file but the manifest is a module.
   const modules = summary.files - 1;
@@ -451,19 +590,32 @@ async function prepare(context: Context, summary: FixtureSummary): Promise<strin
     }
   }
 
-  const tested = await run(uf, ["test", "--json"], options);
+  const host = await expectUfTests(uf, env, dir, summary.tests);
+  expectSuccess("uf fmt --check", dir, await run(uf, ["fmt", "--check"], options));
+  return host;
+}
+
+/** Run `uf test --json` in `dir`, require exactly `tests` passes, and return the host. */
+async function expectUfTests(
+  uf: string,
+  env: Environment,
+  dir: string,
+  tests: number,
+): Promise<string> {
+  const tested = await run(uf, ["test", "--json"], {
+    cwd: dir,
+    env,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+  });
   const results = jsonObject("uf test --json", tested);
   const passed = numberIn("uf test", results, "passed");
   const failed = numberIn("uf test", results, "failed");
-  if (failed !== 0 || passed !== summary.tests) {
+  if (failed !== 0 || passed !== tests) {
     throw new Error(
-      `\`uf test\` passed ${String(passed)} and failed ${String(failed)} of the ` +
-        `${String(summary.tests)} tests the fixture was written with:\n${tail(tested.stdout, 60)}`,
+      `\`uf test\` in ${dir} passed ${String(passed)} and failed ${String(failed)} of the ` +
+        `${String(tests)} tests the fixture was written with:\n${tail(tested.stdout, 60)}`,
     );
   }
-
-  expectSuccess("uf fmt --check", dir, await run(uf, ["fmt", "--check"], options));
-
   const host = results.host;
   if (host != null && typeof host === "object" && !Array.isArray(host)) {
     return typeof host.kind === "string" ? host.kind : "unknown";
@@ -471,65 +623,79 @@ async function prepare(context: Context, summary: FixtureSummary): Promise<strin
   return "unknown";
 }
 
-type OneShot = {
-  readonly name: string,
-  readonly args: $ReadOnlyArray<string>,
+/** A command that runs to completion, and everything needed to time it. */
+type Timed = {
+  readonly tool: string,
+  readonly stage: string,
+  readonly fixture: string,
   readonly title: string,
+  readonly program: string,
+  readonly args: $ReadOnlyArray<string>,
+  readonly command: string,
+  readonly dir: string,
+  readonly caches: $ReadOnlyArray<string>,
 };
 
-/** In the order they run, so each finds the fixture the way the last left it. */
-const ONE_SHOT: $ReadOnlyArray<OneShot> = [
-  { name: "fmt", args: ["fmt", "--check"], title: "format check" },
-  { name: "lint", args: ["lint"], title: "lint" },
-  { name: "check", args: ["check"], title: "lint and type check" },
-  { name: "test", args: ["test"], title: "test suite" },
-  { name: "build", args: ["build"], title: "production build" },
-];
-
-async function oneShot(context: Context, stage: OneShot, cold: boolean): Promise<Row> {
+async function oneShot(context: Context, timed: Timed, cold: boolean): Promise<Row> {
   const { options } = context;
-  const command = `uf ${stage.args.join(" ")}`;
   const samples = [];
+  const cpu = [];
   for (let at = 0; at < options.warmup + options.runs; at += 1) {
     if (cold) {
-      clearCaches(context.dir);
+      clearCaches(timed.dir, timed.caches);
     }
-    const finished = await run(context.uf, stage.args, {
-      cwd: context.dir,
+    const finished = await run(timed.program, timed.args, {
+      cwd: timed.dir,
       env: context.env,
       timeoutMs: COMMAND_TIMEOUT_MS,
+      cpu: true,
     });
-    expectSuccess(command, context.dir, finished);
+    expectSuccess(timed.command, timed.dir, finished);
     if (at >= options.warmup) {
       samples.push(finished.ms);
+      cpu.push(finished.cpuMs);
     }
   }
   const temperature = cold ? "cold" : "warm";
   return makeRow(
-    context.fixture,
     {
-      stage: `${stage.name}.${temperature}`,
-      title: `${stage.title}, ${temperature}`,
-      command,
-      cache: cold ? COLD : WARM,
+      tool: timed.tool,
+      stage: `${timed.stage}.${temperature}`,
+      fixture: timed.fixture,
+      title: `${timed.title}, ${temperature}`,
+      command: timed.command,
+      cache: describeCache(timed.caches, cold),
       warmup: options.warmup,
     },
     samples,
+    cpu,
   );
 }
 
-async function devStart(context: Context, cold: boolean): Promise<Row> {
+/** A dev server, and everything needed to start it. */
+type Served = {
+  readonly tool: string,
+  readonly fixture: string,
+  readonly program: string,
+  readonly args: (port: number) => $ReadOnlyArray<string>,
+  readonly command: string,
+  readonly dir: string,
+  readonly caches: $ReadOnlyArray<string>,
+};
+
+async function devStart(context: Context, served: Served, cold: boolean): Promise<Row> {
   const { options } = context;
   const samples = [];
   for (let at = 0; at < options.warmup + options.runs; at += 1) {
     if (cold) {
-      clearCaches(context.dir);
+      clearCaches(served.dir, served.caches);
     }
     const port = await freePort();
-    const server = startDevServer(context.uf, ["dev", "--port", String(port)], {
-      cwd: context.dir,
+    const server = startDevServer(served.program, served.args(port), {
+      cwd: served.dir,
       env: context.env,
       port,
+      label: served.command,
     });
     try {
       const first = await waitForDocument(server, DEV_TIMEOUT_MS);
@@ -542,65 +708,73 @@ async function devStart(context: Context, cold: boolean): Promise<Row> {
   }
   const temperature = cold ? "cold" : "warm";
   return makeRow(
-    context.fixture,
     {
+      tool: served.tool,
       stage: `dev.${temperature}`,
+      fixture: served.fixture,
       title: `dev server start to first document, ${temperature}`,
-      command: "uf dev",
-      cache: cold ? COLD : WARM,
+      command: served.command,
+      cache: describeCache(served.caches, cold),
       warmup: options.warmup,
     },
     samples,
+    null,
   );
 }
 
-async function hotUpdate(context: Context): Promise<$ReadOnlyArray<Row>> {
+async function hotUpdate(
+  context: Context,
+  served: Served,
+  hot: { readonly file: string, readonly urlPath: string },
+): Promise<$ReadOnlyArray<Row>> {
   const { options } = context;
   // At least one edit is thrown away whatever `--warmup` says, for the reason
   // every stage throws its first run away.
   const warmup = Math.max(1, options.warmup);
   const port = await freePort();
-  const server = startDevServer(context.uf, ["dev", "--port", String(port)], {
-    cwd: context.dir,
+  const server = startDevServer(served.program, served.args(port), {
+    cwd: served.dir,
     env: context.env,
     port,
+    label: served.command,
   });
   try {
     const first = await waitForDocument(server, DEV_TIMEOUT_MS);
     const samples = await measureHmr({
       port,
       document: first.body,
-      file: path.join(context.dir, HOT_FILE),
-      urlPath: `/${HOT_FILE}`,
+      file: path.join(served.dir, hot.file),
+      urlPath: hot.urlPath,
       marker: HOT_MARKER,
       edits: warmup + options.hmrEdits,
       timeoutMs: HMR_TIMEOUT_MS,
       settleMs: 250,
     });
     const kept = samples.slice(warmup);
-    const command = `uf dev; edit ${HOT_FILE}`;
+    const command = `${served.command}; edit ${hot.file}`;
     const cache = "one warm dev server; each edit rewrites one string literal";
+    const fields = { tool: served.tool, fixture: served.fixture, command, cache, warmup };
     return [
       makeRow(
-        context.fixture,
-        { stage: "hmr.message", title: "edit to HMR update message", command, cache, warmup },
+        { ...fields, stage: "hmr.message", title: "edit to HMR update message" },
         kept.map((sample) => sample.messageMs),
+        null,
       ),
       makeRow(
-        context.fixture,
-        { stage: "hmr.applied", title: "edit to updated module served", command, cache, warmup },
+        { ...fields, stage: "hmr.applied", title: "edit to updated module served" },
         kept.map((sample) => sample.appliedMs),
+        null,
       ),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${message}\n\n\`uf dev\` printed:\n${tail(server.log())}`);
+    throw new Error(`${message}\n\n\`${served.command}\` printed:\n${tail(server.log())}`);
   } finally {
     await server.stop();
   }
 }
 
-/** Every lockfile a manager uf drives could write, all removed for a cold install. */
+/** Every lockfile a manager could write, all removed for a cold install. */
 const LOCKFILES = [
   "package-lock.json",
   "npm-shrinkwrap.json",
@@ -653,43 +827,56 @@ function managerOf(project: string): string {
   return "unknown";
 }
 
+/**
+ * `<tool> install`, cold and then warm, on the install manifest.
+ *
+ * Each manager gets a project and a home of its own, so no manager starts warm
+ * from another's cache.
+ */
 async function install(
-  uf: string,
-  env: Environment,
-  options: Options,
-): Promise<{ readonly rows: $ReadOnlyArray<Row>, readonly fixture: InstallFixture }> {
-  const root = path.join(options.workDir, "install");
+  context: Context,
+  tool: string,
+  program: string,
+  manifest: string,
+): Promise<{ readonly rows: $ReadOnlyArray<Row>, readonly manager: string }> {
+  const { options } = context;
+  const root = path.join(options.workDir, `install-${tool}`);
   const project = path.join(root, "project");
   const home = path.join(root, "home");
   fs.rmSync(root, { recursive: true, force: true });
   fs.mkdirSync(project, { recursive: true });
-  const manifest = installManifest(REPO);
-  fs.writeFileSync(path.join(project, "package.json"), manifest.contents);
-  const installEnv = isolatedHome(env, home);
+  fs.writeFileSync(path.join(project, "package.json"), manifest);
+  const installEnv = isolatedHome(context.env, home);
+  const command = `${tool} install`;
 
-  const timed = async (reset: () => void): Promise<Array<number>> => {
+  const timed = async (
+    reset: () => void,
+  ): Promise<{ samples: Array<number>, cpu: Array<number | null> }> => {
     const samples = [];
+    const cpu = [];
     for (let at = 0; at < options.warmup + options.runs; at += 1) {
       reset();
-      const finished = await run(uf, ["install"], {
+      const finished = await run(program, ["install"], {
         cwd: project,
         env: installEnv,
         timeoutMs: COMMAND_TIMEOUT_MS,
+        cpu: true,
       });
-      expectSuccess("uf install", project, finished);
+      expectSuccess(command, project, finished);
       if (!fs.existsSync(path.join(project, "node_modules", "react", "package.json"))) {
         throw new Error(
-          `\`uf install\` exited 0 in ${project} and installed no react:\n${tail(finished.stdout)}`,
+          `\`${command}\` exited 0 in ${project} and installed no react:\n${tail(finished.stdout)}`,
         );
       }
       if (at >= options.warmup) {
         samples.push(finished.ms);
+        cpu.push(finished.cpuMs);
       }
     }
-    return samples;
+    return { samples, cpu };
   };
 
-  progress("install: install.cold");
+  progress(`install: ${tool} install.cold`);
   const cold = await timed(() => {
     for (const entry of ["node_modules", ".uf", ...LOCKFILES]) {
       fs.rmSync(path.join(project, entry), { recursive: true, force: true });
@@ -698,40 +885,54 @@ async function install(
     fs.mkdirSync(home, { recursive: true });
   });
   // Warm starts from what the last cold install left: its lockfile and its cache.
-  progress("install: install.warm");
+  progress(`install: ${tool} install.warm`);
   const warm = await timed(() => {
     fs.rmSync(path.join(project, "node_modules"), { recursive: true, force: true });
   });
+  const fields = { tool, fixture: "install", command, warmup: options.warmup };
   return {
     rows: [
       makeRow(
-        "install",
         {
+          ...fields,
           stage: "install.cold",
           title: "install, cold",
-          command: "uf install",
           cache:
             "no lockfile, no node_modules, and an empty home, so an empty package-manager cache",
-          warmup: options.warmup,
         },
-        cold,
+        cold.samples,
+        cold.cpu,
       ),
       makeRow(
-        "install",
         {
+          ...fields,
           stage: "install.warm",
           title: "install, warm",
-          command: "uf install",
           cache:
             "the lockfile and package-manager cache the install before it left; no node_modules",
-          warmup: options.warmup,
         },
-        warm,
+        warm.samples,
+        warm.cpu,
       ),
     ],
-    fixture: { dependencies: manifest.dependencies, manager: managerOf(project) },
+    manager: tool === "uf" ? managerOf(project) : tool,
   };
 }
+
+type OneShot = {
+  readonly name: string,
+  readonly args: $ReadOnlyArray<string>,
+  readonly title: string,
+};
+
+/** In the order they run, so each finds the fixture the way the last left it. */
+const ONE_SHOT: $ReadOnlyArray<OneShot> = [
+  { name: "fmt", args: ["fmt", "--check"], title: "format check" },
+  { name: "lint", args: ["lint"], title: "lint" },
+  { name: "check", args: ["check"], title: "lint and type check" },
+  { name: "test", args: ["test"], title: "test suite" },
+  { name: "build", args: ["build"], title: "production build" },
+];
 
 /** Every stage id, in the order they run. */
 const STAGES: $ReadOnlyArray<string> = [
@@ -743,6 +944,358 @@ const STAGES: $ReadOnlyArray<string> = [
   "install.cold",
   "install.warm",
 ];
+
+/** The tools this run measures, found: each one's program, or why it is skipped. */
+type Found = {
+  readonly programs: Map<string, string>,
+  readonly versions: { [string]: string },
+  readonly skipped: Array<Skipped>,
+};
+
+async function findTools(options: Options, env: Environment): Promise<Found> {
+  const programs: Map<string, string> = new Map();
+  const versions: { [string]: string } = {};
+  const skipped: Array<Skipped> = [];
+  for (const tool of RIVAL_TOOLS) {
+    if (!options.tools.includes(tool.name)) {
+      continue;
+    }
+    const located = locateTool(tool, REPO, env.PATH ?? "");
+    const program = located.program;
+    if (program == null) {
+      const reason = located.skipped ?? "not found";
+      skipped.push({ tool: tool.name, stage: null, reason });
+      progress(`${tool.name}: skipped, ${reason}`);
+      continue;
+    }
+    programs.set(tool.name, program);
+    versions[tool.name] = versionIn(await printed(program, ["--version"], env));
+  }
+  return { programs, versions, skipped };
+}
+
+/**
+ * The copies of `preset` the selected tools need, written on first use.
+ *
+ * Every copy but Next.js's links its `node_modules` into the pinned install;
+ * Next.js's is hard links (`mirrorInto` says why), without `flow-bin`, which
+ * is a third of the install and which Next.js never reads.
+ */
+function copies(workDir: string, preset: Preset, versions: Versions): (copy: Copy) => string {
+  const written: Set<Copy> = new Set();
+  const installed = path.join(REPO, RIVALS_DIR, "node_modules");
+  return (copy) => {
+    const dir = path.join(workDir, `${preset.name}-${copy}`);
+    if (written.has(copy)) {
+      return dir;
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+    if (copy === "flow") {
+      writeFiles(dir, flowFiles(fixtureFiles(preset, versions)));
+    } else {
+      const kind = copy.startsWith("fmt-") ? "vite" : copy;
+      if (kind !== "vite" && kind !== "next" && kind !== "vitest" && kind !== "bun") {
+        throw new Error(`there is no copy called ${copy}`);
+      }
+      writeFiles(dir, rivalFiles(preset, kind));
+      if (kind === "next") {
+        mirrorInto(dir, installed, ["flow-bin"]);
+      } else if (kind !== "bun") {
+        linkInto(dir, installed);
+      }
+    }
+    written.add(copy);
+    return dir;
+  };
+}
+
+/**
+ * Run a comparison once, untimed, and refuse it if it did not do the work.
+ *
+ * The formatter formats its copy first. Then the command itself has to exit
+ * 0, and a test runner has to report exactly the tests its copy has.
+ */
+async function prepareRival(
+  context: Context,
+  spec: OneShotSpec,
+  program: string,
+  dir: string,
+  tests: number,
+): Promise<void> {
+  const options = { cwd: dir, env: context.env, timeoutMs: COMMAND_TIMEOUT_MS };
+  const setup = spec.setup;
+  if (setup != null) {
+    expectSuccess(`${spec.tool} ${setup.join(" ")}`, dir, await run(program, setup, options));
+  }
+  const command = `${spec.tool} ${spec.args.join(" ")}`;
+  const finished = await run(program, spec.args, options);
+  expectSuccess(command, dir, finished);
+  if (spec.tests) {
+    const passed = testsPassed(`${finished.stdout}\n${finished.stderr}`);
+    if (passed !== tests) {
+      throw new Error(
+        `\`${command}\` in ${dir} reported ${String(passed ?? "no")} passing tests, and its copy ` +
+          `was written with ${String(tests)}:\n${tail(`${finished.stdout}\n${finished.stderr}`)}`,
+      );
+    }
+  }
+}
+
+/** The program for `tool` in `dir`: Next.js's own copy, for the reason `copies` gives. */
+function programIn(tool: string, program: string, dir: string): string {
+  return tool === "next" ? path.join(dir, "node_modules", ".bin", "next") : program;
+}
+
+async function measurePreset(
+  context: Context,
+  preset: Preset,
+  uf: string,
+  found: Found,
+  fixtureVersions: Versions,
+  selected: (stage: string) => boolean,
+  results: Array<Row>,
+): Promise<{ readonly summary: FixtureSummary, readonly host: string | null }> {
+  const { options, env } = context;
+  const measuring = (tool: string): boolean =>
+    tool === "uf" ? options.tools.includes("uf") : found.programs.has(tool);
+  let host = null;
+
+  const dir = path.join(options.workDir, preset.name);
+  fs.rmSync(dir, { recursive: true, force: true });
+  const summary = generateFixture(dir, preset, fixtureVersions);
+  linkDependencies(dir, REPO);
+
+  if (measuring("uf")) {
+    progress(`${preset.name}: checking the ${String(summary.files)} generated files first`);
+    host = await prepare(uf, env, dir, summary);
+    for (const stage of ONE_SHOT) {
+      for (const cold of [true, false]) {
+        const id = `${stage.name}.${cold ? "cold" : "warm"}`;
+        if (selected(id)) {
+          progress(`${preset.name}: uf ${id}`);
+          results.push(
+            await oneShot(
+              context,
+              {
+                tool: "uf",
+                stage: stage.name,
+                fixture: preset.name,
+                title: stage.title,
+                program: uf,
+                args: stage.args,
+                command: `uf ${stage.args.join(" ")}`,
+                dir,
+                caches: CACHES,
+              },
+              cold,
+            ),
+          );
+        }
+      }
+    }
+    const served = {
+      tool: "uf",
+      fixture: preset.name,
+      program: uf,
+      args: (port: number) => ["dev", "--port", String(port)],
+      command: "uf dev",
+      dir,
+      caches: CACHES,
+    };
+    for (const cold of [true, false]) {
+      const id = `dev.${cold ? "cold" : "warm"}`;
+      if (selected(id)) {
+        progress(`${preset.name}: uf ${id}`);
+        results.push(await devStart(context, served, cold));
+      }
+    }
+    if (selected("hmr.message") || selected("hmr.applied")) {
+      progress(`${preset.name}: uf hmr`);
+      for (const row of await hotUpdate(context, served, {
+        file: HOT_FILE,
+        urlPath: `/${HOT_FILE}`,
+      })) {
+        if (selected(row.stage)) {
+          results.push(row);
+        }
+      }
+    }
+  }
+
+  const copyOf = copies(options.workDir, preset, fixtureVersions);
+  for (const spec of ONE_SHOT_RIVALS) {
+    const program = found.programs.get(spec.tool);
+    if (program == null || !(selected(`${spec.stage}.cold`) || selected(`${spec.stage}.warm`))) {
+      continue;
+    }
+    const copyDir = copyOf(spec.copy);
+    const local = programIn(spec.tool, program, copyDir);
+    progress(`${preset.name}: ${spec.tool} ${spec.stage}, checking its copy first`);
+    await prepareRival(context, spec, local, copyDir, summary.tests);
+    for (const cold of [true, false]) {
+      const id = `${spec.stage}.${cold ? "cold" : "warm"}`;
+      if (selected(id)) {
+        progress(`${preset.name}: ${spec.tool} ${id}`);
+        results.push(
+          await oneShot(
+            context,
+            {
+              tool: spec.tool,
+              stage: spec.stage,
+              fixture: preset.name,
+              title: spec.title,
+              program: local,
+              args: spec.args,
+              command: `${spec.tool} ${spec.args.join(" ")}`,
+              dir: copyDir,
+              caches: spec.caches,
+            },
+            cold,
+          ),
+        );
+      }
+    }
+  }
+
+  for (const spec of DEV_RIVALS) {
+    const program = found.programs.get(spec.tool);
+    if (program == null) {
+      continue;
+    }
+    const copyDir = copyOf(spec.copy);
+    const served = servedRival(spec, program, copyDir, preset.name);
+    for (const cold of [true, false]) {
+      const id = `dev.${cold ? "cold" : "warm"}`;
+      if (selected(id)) {
+        progress(`${preset.name}: ${spec.tool} ${id}`);
+        results.push(await devStart(context, served, cold));
+      }
+    }
+    const hmr = spec.hmr;
+    if (!(selected("hmr.message") || selected("hmr.applied"))) {
+      continue;
+    }
+    if (hmr == null) {
+      const reason = spec.hmrSkipped ?? "no HMR stage";
+      if (!found.skipped.some((one) => one.tool === spec.tool && one.stage === "hmr")) {
+        found.skipped.push({ tool: spec.tool, stage: "hmr", reason });
+      }
+      progress(`${preset.name}: ${spec.tool} hmr skipped, ${reason}`);
+    } else {
+      progress(`${preset.name}: ${spec.tool} hmr`);
+      for (const row of await hotUpdate(context, served, hmr)) {
+        if (selected(row.stage)) {
+          results.push(row);
+        }
+      }
+    }
+  }
+  return { summary, host };
+}
+
+function servedRival(spec: DevSpec, program: string, dir: string, fixture: string): Served {
+  return {
+    tool: spec.tool,
+    fixture,
+    program: programIn(spec.tool, program, dir),
+    args: spec.args,
+    command: `${spec.tool} dev`,
+    dir,
+    caches: spec.caches,
+  };
+}
+
+/**
+ * The suite of many small files, for uf, Bun and Vitest — whichever are measured.
+ *
+ * `suite.js` writes the three copies and links uf's; Vitest's is linked into
+ * the pinned install here, and Bun's needs nothing.
+ */
+async function measureSuite(
+  context: Context,
+  uf: string,
+  found: Found,
+  selected: (stage: string) => boolean,
+  results: Array<Row>,
+): Promise<boolean> {
+  const { options, env } = context;
+  const runners: Array<{
+    readonly tool: string,
+    readonly program: string,
+    readonly args: $ReadOnlyArray<string>,
+  }> = [];
+  if (options.tools.includes("uf")) {
+    runners.push({ tool: "uf", program: uf, args: ["test"] });
+  }
+  const bun = found.programs.get("bun");
+  if (bun != null) {
+    runners.push({ tool: "bun", program: bun, args: ["test"] });
+  }
+  const vitest = found.programs.get("vitest");
+  if (vitest != null) {
+    runners.push({ tool: "vitest", program: vitest, args: ["run"] });
+  }
+  if (runners.length === 0 || !(selected("test.cold") || selected("test.warm"))) {
+    return false;
+  }
+  const root = path.join(options.workDir, "suite");
+  generateSuites(root, GUIDE_PRESET, REPO);
+  linkInto(path.join(root, "vitest"), path.join(REPO, RIVALS_DIR, "node_modules"));
+  const tests = GUIDE_PRESET.files * GUIDE_PRESET.cases;
+  for (const runner of runners) {
+    const dir = path.join(root, runner.tool);
+    progress(`suite: ${runner.tool} test, checking its copy first`);
+    if (runner.tool === "uf") {
+      await expectUfTests(uf, env, dir, tests);
+    } else {
+      await prepareRival(
+        context,
+        {
+          tool: runner.tool,
+          stage: "test",
+          title: "test suite",
+          copy: "vite",
+          args: runner.args,
+          caches: [],
+          setup: null,
+          tests: true,
+        },
+        runner.program,
+        dir,
+        tests,
+      );
+    }
+    for (const cold of [true, false]) {
+      const id = `test.${cold ? "cold" : "warm"}`;
+      if (selected(id)) {
+        progress(`suite: ${runner.tool} ${id}`);
+        results.push(
+          await oneShot(
+            context,
+            {
+              tool: runner.tool,
+              stage: "test",
+              fixture: "suite",
+              title: "many small test files",
+              program: runner.program,
+              args: runner.args,
+              command: `${runner.tool} ${runner.args.join(" ")}`,
+              dir,
+              caches:
+                runner.tool === "uf"
+                  ? CACHES
+                  : runner.tool === "vitest"
+                    ? [path.join("node_modules", ".vite")]
+                    : [],
+            },
+            cold,
+          ),
+        );
+      }
+    }
+  }
+  return true;
+}
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2).filter((given) => given !== "--");
@@ -768,6 +1321,8 @@ async function main(): Promise<void> {
   const startedAt = new Date().toISOString();
   const env = childEnvironment();
   const versions = await collectVersions(uf, env);
+  const found = await findTools(options, env);
+  const context = { env, options };
   const fixtureVersions: Versions = {
     uniflowed: packageVersion(path.join(REPO, "packages", "react")),
     react: versions.react,
@@ -780,50 +1335,57 @@ async function main(): Promise<void> {
 
   if (fixtureStages.some(selected)) {
     for (const preset of options.presets) {
-      const dir = path.join(options.workDir, preset.name);
-      fs.rmSync(dir, { recursive: true, force: true });
-      const summary = generateFixture(dir, preset, fixtureVersions);
-      linkDependencies(dir, REPO);
-      fixtures[preset.name] = summary;
-      const context = { uf, env, options, fixture: preset.name, dir };
-      progress(`${preset.name}: checking the ${String(summary.files)} generated files first`);
-      host = await prepare(context, summary);
-      for (const stage of ONE_SHOT) {
-        for (const cold of [true, false]) {
-          const id = `${stage.name}.${cold ? "cold" : "warm"}`;
-          if (selected(id)) {
-            progress(`${preset.name}: ${id}`);
-            results.push(await oneShot(context, stage, cold));
-          }
-        }
-      }
-      for (const cold of [true, false]) {
-        const id = `dev.${cold ? "cold" : "warm"}`;
-        if (selected(id)) {
-          progress(`${preset.name}: ${id}`);
-          results.push(await devStart(context, cold));
-        }
-      }
-      if (selected("hmr.message") || selected("hmr.applied")) {
-        progress(`${preset.name}: hmr`);
-        for (const row of await hotUpdate(context)) {
-          if (selected(row.stage)) {
-            results.push(row);
-          }
-        }
-      }
+      const measured = await measurePreset(
+        context,
+        preset,
+        uf,
+        found,
+        fixtureVersions,
+        selected,
+        results,
+      );
+      fixtures[preset.name] = measured.summary;
+      host = measured.host ?? host;
     }
   }
+  const suite = (await measureSuite(context, uf, found, selected, results))
+    ? {
+        files: GUIDE_PRESET.files,
+        cases: GUIDE_PRESET.cases,
+        tests: GUIDE_PRESET.files * GUIDE_PRESET.cases,
+        assertions: GUIDE_PRESET.files * GUIDE_PRESET.cases * 2,
+      }
+    : null;
 
-  let installed = null;
+  let installed: InstallFixture | null = null;
   if (selected("install.cold") || selected("install.warm")) {
-    const measured = await install(uf, env, options);
-    installed = measured.fixture;
-    for (const row of measured.rows) {
-      if (selected(row.stage)) {
-        results.push(row);
+    const manifest = installManifest(REPO);
+    let manager = null;
+    const installers = [
+      options.tools.includes("uf") ? { tool: "uf", program: uf } : null,
+      ...INSTALL_RIVALS.map((tool) => {
+        const program = found.programs.get(tool);
+        return program == null ? null : { tool, program };
+      }),
+    ];
+    for (const installer of installers) {
+      if (installer == null) {
+        continue;
+      }
+      const measured = await install(context, installer.tool, installer.program, manifest.contents);
+      if (installer.tool === "uf") {
+        manager = measured.manager;
+      }
+      for (const row of measured.rows) {
+        if (selected(row.stage)) {
+          results.push(row);
+        }
       }
     }
+    installed = {
+      dependencies: manifest.dependencies,
+      manager: manager ?? "not measured",
+    };
   }
 
   const report: Report = {
@@ -833,9 +1395,16 @@ async function main(): Promise<void> {
     finishedAt: new Date().toISOString(),
     provisional: !before.quiet,
     machine: machine(before, quietness()),
-    versions: { ...versions, host },
+    versions: Object.fromEntries([
+      ...Object.entries(versions),
+      ["host", host],
+      ...Object.entries(found.versions),
+    ]),
     settings: { runs: options.runs, warmup: options.warmup, hmrEdits: options.hmrEdits },
+    tools: options.tools,
+    skipped: found.skipped,
     fixtures,
+    suite,
     install: installed,
     results,
   };

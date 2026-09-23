@@ -133,20 +133,28 @@ directory `--cwd` names, or its working directory, walking up to the nearest
   its own `package.json` and no `uf.config.js` gets uf's defaults, not the root's
   configuration.
 
-Every integration starts the server in the project folder, which is correct
-however the directory is chosen. The READMEs under `editors/` say that
-`uf lsp --cwd` is ignored; it is honoured, and
-[#998](https://github.com/ubugeeei-prod/uf/issues/998) is correcting them.
+Every integration either starts the server in the project folder or names it
+with `uf lsp --cwd <dir>`; the two say the same thing.
 
 The project's `ignore` list does not reach the server either: a file you have
 opened is linted, even one `uf lint` would skip.
 
 ## VS Code and Cursor
 
-An extension in [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode).
-CI packages it on every editor change, and `uf@*` tags publish it to the
-Visual Studio Marketplace when `VSCE_PAT` is present and Open VSX when
-`OVSX_PAT` is present:
+An extension in [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode),
+published as `uniflowed.uf` to the Visual Studio Marketplace and Open VSX by
+each uf release:
+
+```sh
+code --install-extension uniflowed.uf      # VS Code
+cursor --install-extension uniflowed.uf    # Cursor, from Open VSX
+```
+
+While uf is in alpha each release is a pre-release, and its version is mapped
+onto one the Marketplace accepts: uf `0.0.0-alpha.46` is extension `0.0.46`.
+Publishing needs publisher tokens the repository owner creates, and a release
+made without one says by name which registry it skipped. Until a release has
+gone out with them, or to run your own build, package it from a checkout:
 
 ```sh
 cd editors/vscode
@@ -154,8 +162,6 @@ npm install
 npx @vscode/vsce package        # writes uf-0.0.0.vsix
 code --install-extension uf-0.0.0.vsix
 ```
-
-Cursor installs the same file with `cursor --install-extension uf-0.0.0.vsix`.
 
 It activates in a workspace containing `uf.config.js` and starts one server per
 workspace folder that has a `uf.config.js` at its root, in that folder. A folder
@@ -246,21 +252,34 @@ right directory. `uf-executable` names a different binary; restart with
 ## Zed
 
 [`editors/zed`](https://github.com/ubugeeei-prod/uf/tree/main/editors/zed)
-holds the extension manifest and the `zed_extension_api` Rust half that returns
-`uf lsp`. CI checks it for `wasm32-wasip1`, because a Zed language-server
-extension is WebAssembly.
+is a Zed extension: the manifest and the `zed_extension_api` Rust half, compiled
+to WebAssembly, that starts `uf lsp --cwd <worktree>`. It is not in Zed's
+extension registry yet, so install it from a checkout, with Rust installed
+through `rustup`: run **zed: install dev extension** and select `editors/zed`,
+then open the folder that holds `uf.config.js`.
 
-Install the directory as a Zed dev extension. It uses `worktree.which("uf")`,
-which searches the worktree shell's `PATH`. Add `node_modules/.bin` to that
-`PATH` to use a project-pinned executable.
+It finds `uf` the way the VS Code extension does: `lsp.uf.binary.path` in Zed's
+settings, then `node_modules/.bin/uf` in the worktree, then `PATH`. To format
+with uf:
+
+```jsonc
+"languages": {
+  "JavaScript": { "formatter": { "language_server": { "name": "uf" } } }
+}
+```
+
+CI tests the extension's decisions on the host and builds the `.wasm`; that Zed
+loads it and shows the diagnostics is checked by hand, not by CI.
 
 ## JetBrains
 
 [`editors/jetbrains`](https://github.com/ubugeeei-prod/uf/tree/main/editors/jetbrains)
-documents the LSP4IJ setup. There is no native JetBrains plugin here: LSP4IJ
-starts `uf lsp` in the project root and receives the same diagnostics,
-formatting, quick fixes, hover, definitions and completion as the other
-clients.
+holds an [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) template.
+Install LSP4IJ, open its *New Language Server* dialog, choose **Import from
+custom template…** and select `editors/jetbrains/lsp4ij-template`. It runs
+`uf lsp --cwd $PROJECT_DIR$` for `.js`, `.mjs`, `.cjs` and `.jsx` files, and the
+README has the same settings to type by hand. There is no native JetBrains
+plugin; no IDE runs in CI.
 
 ## Where to go next
 

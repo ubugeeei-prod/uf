@@ -266,10 +266,26 @@ merge. The command updates the PR with current `main` when needed.
 
 After merge, the command publishes and verifies npm packages, then publishes
 the tested native archives. The GitHub Release creates the tag only after the
-archives are ready. It then runs the editor packaging and publication workflow.
+archives are ready. It then runs the editor packaging and publication workflow,
+which publishes the VS Code extension as `uniflowed.uf`. That step needs two
+repository secrets: `VSCE_PAT`, an Azure DevOps token with the Marketplace
+**Manage** scope for the `uniflowed` publisher, and `OVSX_PAT`, an Open VSX
+token for the `uniflowed` namespace (created once with
+`npx ovsx create-namespace uniflowed -p <token>`). Without one, its step says
+by name which registry it skipped and the release carries on.
 The command never pushes a tag to start validation.
 Publication requires successful queue validation for that exact commit and
 checks the PR author's permissions again.
+
+npm is published before the GitHub Release, so a release run that stops
+partway leaves a version on npm with no binaries behind `curl | sh`. The
+release workflow reads the published release back and fails unless it carries
+every target (`uf run release:published -- <version>`). The `Release audit`
+workflow checks every version on npm the same way each day, whichever path
+produced it, and ignores versions published in the last three hours while
+their release may still be running. Versions that will never get a release are
+listed with their issue in `tools/release/release-gaps.txt`; the audit fails if
+a listed version gets a release, so remove it from the list then.
 
 If a PR check fails, fix it or rerun the failed check, then repeat the command.
 For a failed publication, repeating the command retries only the failed jobs. Progress is saved in the Git common directory, so it

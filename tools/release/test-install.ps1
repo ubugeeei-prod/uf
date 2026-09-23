@@ -12,7 +12,36 @@ function Fail($message) {
     }
     [Console]::Error.WriteLine("--------------------------")
   }
+  # And what the fixture server was asked, and what it answered. A request it
+  # answered 200 that the installer still refused is the installer's bug; one
+  # it never received is the fixture's. alpha.44's release check failed here
+  # with "no version at .../latest/VERSION" for a file this server had served,
+  # and nothing on the page could tell the two apart (#1328).
+  if ($script:server) {
+    if (-not $script:server.HasExited) {
+      Stop-Process -Id $script:server.Id -Force -ErrorAction SilentlyContinue
+      $script:server.WaitForExit()
+    }
+    if ($script:serverErr -and (Test-Path $script:serverErr)) {
+      [Console]::Error.WriteLine("--- the fixture server saw ---")
+      foreach ($line in Get-Content $script:serverErr -Tail 40) {
+        [Console]::Error.WriteLine($line)
+      }
+      [Console]::Error.WriteLine("------------------------------")
+    }
+  }
   exit 1
+}
+
+# VERSION decoded the way install.ps1's ReadVersion does: a generic file
+# server sends it as application/octet-stream, which PowerShell hands back as
+# byte[] rather than a string.
+function ServedText($url) {
+  $content = (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5).Content
+  if ($content -is [byte[]]) {
+    $content = [System.Text.Encoding]::UTF8.GetString($content)
+  }
+  return ([string]$content).Trim()
 }
 
 function Pass($message) {
@@ -64,35 +93,53 @@ New-Item -ItemType Directory -Path $versionDir, $latestDir | Out-Null
 Copy-Item (Join-Path $releaseDir $archive), (Join-Path $releaseDir "$archive.sha256"), (Join-Path $releaseDir "VERSION") $versionDir
 Copy-Item (Join-Path $versionDir "*") $latestDir
 
-$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
-$listener.Start()
-$port = $listener.LocalEndpoint.Port
-$listener.Stop()
-
-$serverOut = Join-Path $work "server.out"
-$serverErr = Join-Path $work "server.err"
-$server = Start-Process -FilePath $python `
-  -ArgumentList @("-m", "http.server", "$port", "--bind", "127.0.0.1", "--directory", (Join-Path $work "site")) `
-  -RedirectStandardOutput $serverOut `
-  -RedirectStandardError $serverErr `
-  -PassThru
+$server = $null
+$serverErr = $null
+$base = $null
 
 try {
-  $ready = $false
-  for ($i = 0; $i -lt 100; $i++) {
-    try {
-      Invoke-WebRequest -Uri "http://127.0.0.1:$port/uf/latest/VERSION" -UseBasicParsing | Out-Null
-      $ready = $true
+  # A free port is chosen, released, and handed to Python, and something else
+  # can take it in between. That shows as the server exiting, or as a server
+  # that does not answer with this release's VERSION; either is retried on a
+  # fresh port instead of being reported as an installer failure. Readiness is
+  # the content, not just an answer: the installer is only run against a
+  # mirror that has been seen serving what it will be asked for.
+  for ($attempt = 1; $attempt -le 3 -and -not $base; $attempt++) {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    $port = $listener.LocalEndpoint.Port
+    $listener.Stop()
+
+    $serverErr = Join-Path $work "server-$attempt.err"
+    $server = Start-Process -FilePath $python `
+      -ArgumentList @("-m", "http.server", "$port", "--bind", "127.0.0.1", "--directory", (Join-Path $work "site")) `
+      -RedirectStandardOutput (Join-Path $work "server-$attempt.out") `
+      -RedirectStandardError $serverErr `
+      -PassThru
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    while ([DateTime]::UtcNow -lt $deadline -and -not $server.HasExited) {
+      try {
+        $served = ServedText "http://127.0.0.1:$port/uf/latest/VERSION"
+      } catch {
+        Start-Sleep -Milliseconds 50
+        continue
+      }
+      if ($served -eq $version) {
+        $base = "http://127.0.0.1:$port/uf"
+      } else {
+        Write-Host "test-install.ps1: port $port answered '$served' for latest/VERSION, not $version; retrying"
+      }
       break
-    } catch {
-      Start-Sleep -Milliseconds 50
+    }
+    if (-not $base -and -not $server.HasExited) {
+      Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+      $server.WaitForExit()
     }
   }
-  if (-not $ready) {
-    Fail "fixture server never came up"
+  if (-not $base) {
+    Fail "the fixture server never served latest/VERSION as $version"
   }
-
-  $base = "http://127.0.0.1:$port/uf"
 
   function RunInstaller($caseName, $versionValue = $null) {
     $caseRoot = Join-Path $work $caseName

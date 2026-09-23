@@ -186,10 +186,14 @@ $version = $requestedVersion
 if ($releaseBase) {
   $channelUrl = "$releaseBase/$requestedVersion"
   if ($requestedVersion -eq "latest") {
+    # The reason goes in the message. Without it, alpha.44's release check
+    # reported this line for a VERSION the server had answered 200 with: the
+    # bytes came back as byte[], `.Trim()` threw, and the catch said the file
+    # was not there — which read as a flaky mirror rather than a bug (#1328).
     try {
       $version = ReadVersion "$channelUrl/VERSION"
     } catch {
-      Fail "no version at $channelUrl/VERSION" "set UF_VERSION to install a specific release"
+      Fail "no version at $channelUrl/VERSION ($($_.Exception.Message))" "set UF_VERSION to install a specific release"
     }
   }
 } elseif ($requestedVersion -eq "latest") {

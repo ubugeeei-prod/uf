@@ -150,6 +150,18 @@ jobs:
               --target "$RELEASE_COMMIT" --title "uf ${version}" --generate-notes "${release_kind_args[@]}" $assets
           fi
 
+      # What actually reached GitHub, read back from the API rather than
+      # assumed from the step above. npm is already published by now
+      # (`npm_run` is required), so a release that stops short of every target
+      # is a version on npm with nothing behind `curl | sh` — alpha.9 and
+      # alpha.44 (#464, #1328). `release-audit.yml` asks the same of every
+      # version daily, for the runs that never get this far.
+      - name: What actually reached GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: tools/release/verify-release.sh "$INPUT_VERSION"
+
 
   smoke:
     name: Install from the release

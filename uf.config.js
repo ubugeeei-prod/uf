@@ -614,9 +614,22 @@ export default defineConfig({
     // `node_modules` linked to this checkout's, so `npm ci` has to have run —
     // and it refuses a `--work-dir` inside it. Arguments after the name are the
     // benchmark's own: `uf run bench:toolchain --preset large --runs 10`.
+    //
+    // `--tools all` times Vite+, Next.js, Vitest, Bun, ESLint, Prettier,
+    // Biome, Flow, tsc and pnpm on the same stages, each on its own idiomatic
+    // copy of the application. They are pinned in `tools/bench/toolchain/rivals`
+    // (`npm ci --prefix tools/bench/toolchain/rivals`), Bun comes from `PATH`,
+    // and a tool that is not there is skipped by name. `.github/workflows/bench.yml`
+    // runs both nightly, and `bench:toolchain:regress` is its gate: a uf stage
+    // more than 20% slower than `tools/bench/toolchain/baseline.json` fails it.
     "bench:toolchain": {
       command:
         "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/toolchain/bench.js",
+      dependsOn: ["build"],
+    },
+    "bench:toolchain:regress": {
+      command:
+        "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/toolchain/regress.js",
       dependsOn: ["build"],
     },
 
@@ -671,6 +684,18 @@ export default defineConfig({
     // it after publishing, because `uf@0.0.0-alpha.2` had a tag, a GitHub
     // release and nothing on npm, and nothing noticed. See #142.
     "release:verify": "tools/release/verify-npm.sh",
+    // And the other direction: a version on npm has a GitHub release carrying
+    // its binaries. `uf@0.0.0-alpha.9` and `uf@0.0.0-alpha.44` are on npm with
+    // no release and nothing behind `curl | sh` (#464, #1328), because npm is
+    // published first and nothing read the result back. `release.yml` runs it
+    // for the version it publishes, and `release-audit.yml` runs `--all` daily.
+    "release:published": "tools/release/verify-release.sh",
+    "release:published:test": {
+      command: "tools/release/test-verify-release.sh",
+      // Stubs for `gh` and `npm`, fixtures in a temp directory. The real gaps
+      // list is not read: the test hands the script its own.
+      inputs: ["tools/release/verify-release.sh", "tools/release/test-verify-release.sh"],
+    },
     // The publish workflow cannot prove trusted-publisher bindings, but it can
     // refuse a package name that is not on npm before any earlier package is
     // sent. That keeps a missing bootstrap from becoming a half-sent release.
@@ -1071,6 +1096,7 @@ export default defineConfig({
         "ci:recipes",
         "ci:recipes:test",
         "release:publish-names:test",
+        "release:published:test",
         "release:closure",
         "publishable",
         "publishable:test",
