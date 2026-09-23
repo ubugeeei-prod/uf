@@ -113,6 +113,56 @@ fn binds_a_function(value: &str) -> bool {
             .any(|wrapper| value.starts_with(wrapper))
 }
 
+/// The name a line defines as a plain function, when it defines one in a
+/// shape `hook` syntax replaces.
+///
+/// `function useX(…)`, with or without `export` and `async` in front, and
+/// `const useX = (…) => …`, `const useX = function (…)`, and `const useX = x =>`
+/// with or without `export`. Those are the shapes a hook is written in when it
+/// is not written with `hook`. Only matching the bare `function useX` let the
+/// exported and arrow forms, which are the common ones, go unreported.
+///
+/// A `const` bound to anything else is left alone, even with a hook's name:
+/// `const useStore = create((set) => …)` is a hook *made* by a factory, and
+/// no `hook` declaration can say that.
+fn hook_defined_as_function(trimmed: &str) -> Option<&str> {
+    let rest = trimmed
+        .strip_prefix("export ")
+        .map_or(trimmed, str::trim_start);
+    let rest = rest.strip_prefix("default ").map_or(rest, str::trim_start);
+    let declared = rest.strip_prefix("async ").map_or(rest, str::trim_start);
+    if let Some(tail) = declared.strip_prefix("function ") {
+        return tail.trim_start().split(['(', '<', ' ']).next();
+    }
+    let tail = rest
+        .strip_prefix("const ")
+        .or_else(|| rest.strip_prefix("let "))?;
+    let at = binding_equals(tail)?;
+    let (name, value) = (&tail[..at], &tail[at + 1..]);
+    // `const useX: Type = …` names its type after a colon; the name is before.
+    let name = name.split(':').next().unwrap_or(name).trim();
+    let value = value.trim_start();
+    let value = value.strip_prefix("async ").map_or(value, str::trim_start);
+    let arrow_after_identifier = value.split_once("=>").is_some_and(|(parameter, _)| {
+        let parameter = parameter.trim();
+        !parameter.is_empty() && parameter.bytes().all(crate::scan::is_word_byte)
+    });
+    (value.starts_with("function") || value.starts_with('(') || arrow_after_identifier)
+        .then_some(name)
+}
+
+/// Where the `=` that binds a declaration is: the first one that is not part
+/// of `=>`, `==`, `<=`, `>=` or `!=`. A type annotation such as
+/// `const useX: () => number = …` holds an `=>` before it.
+fn binding_equals(tail: &str) -> Option<usize> {
+    let bytes = tail.as_bytes();
+    (0..bytes.len()).find(|&at| {
+        bytes[at] == b'='
+            && !matches!(bytes.get(at + 1), Some(b'>' | b'='))
+            && !(at > 0 && matches!(bytes[at - 1], b'=' | b'<' | b'>' | b'!'))
+    })
+}
+
 pub(crate) fn run_react_hook_syntax(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
@@ -126,10 +176,7 @@ pub(crate) fn run_react_hook_syntax(
         let code = line.code();
         let trimmed = code.trim_start();
         let leading = line.code_offset() + (code.len() - trimmed.len());
-        let Some(name) = trimmed
-            .strip_prefix("function ")
-            .and_then(|tail| tail.split(['(', '<']).next())
-        else {
+        let Some(name) = hook_defined_as_function(trimmed) else {
             continue;
         };
 
