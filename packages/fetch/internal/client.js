@@ -62,14 +62,15 @@ export class FetchError extends Error {
 
   /** Whether another attempt could plausibly settle this. */
   get retriable(): boolean {
-    return match (this.failure.kind) {
-      "network" => true,
-      "timeout" => true,
+    // Matched on the failure rather than its `kind`, so each arm sees the
+    // fields its kind has.
+    return match (this.failure) {
+      {kind: "network", ...} => true,
+      {kind: "timeout", ...} => true,
       // 408 is a timeout the server noticed, 429 is "slow down", and 5xx is
       // the server's problem rather than the request's. Nothing else is worth
       // sending again: a 400 will be a 400 next time too.
-      "http" =>
-        this.failure.status === 408 || this.failure.status === 429 || this.failure.status >= 500,
+      {kind: "http", const status, ...} => status === 408 || status === 429 || status >= 500,
       _ => false,
     };
   }
@@ -87,18 +88,22 @@ export class FetchError extends Error {
  * the failure at all.
  */
 function describe(url: string, failure: FetchFailure): string {
-  return match (failure.kind) {
-    "http" =>
-      failure.method === "QUERY" && (failure.status === 405 || failure.status === 501)
-        ? `${url} answered ${failure.status} ${failure.statusText} to a QUERY. That is usually ` +
+  // Matched on the failure rather than its `kind`, so each arm sees the fields
+  // its kind has.
+  return match (failure) {
+    {kind: "http", const status, const statusText, const method, ...} =>
+      method === "QUERY" && (status === 405 || status === 501)
+        ? `${url} answered ${status} ${statusText} to a QUERY. That is usually ` +
           "not the application: a proxy, CDN or firewall with a list of methods answers before " +
           "the request arrives. Check whether the origin saw it, and export POST beside QUERY " +
           "if it did not."
-        : `${url} answered ${failure.status} ${failure.statusText}`,
-    "network" => `${url} could not be reached: ${String(failure.cause)}`,
-    "timeout" => `${url} did not answer within ${failure.millis}ms`,
-    "parse" => `${url} did not return the body it said it would: ${String(failure.cause)}`,
-    "invalid" => `${url} returned ${failure.issues.length} value(s) the schema rejected`,
+        : `${url} answered ${status} ${statusText}`,
+    {kind: "network", const cause} => `${url} could not be reached: ${String(cause)}`,
+    {kind: "timeout", const millis} => `${url} did not answer within ${millis}ms`,
+    {kind: "parse", const cause} =>
+      `${url} did not return the body it said it would: ${String(cause)}`,
+    {kind: "invalid", const issues} =>
+      `${url} returned ${issues.length} value(s) the schema rejected`,
   };
 }
 
@@ -193,9 +198,30 @@ export function createFetch(config?: FetchConfig): FetchClient {
       createFetch({
         ...settings,
         ...extra,
-        headers: { ...(settings.headers ?? {}), ...(extra.headers ?? {}) },
+        headers: mergedHeaders(settings.headers, extra.headers),
       }),
   };
+}
+
+/**
+ * `base`'s headers with `extra`'s written over them, either of which may be
+ * absent.
+ *
+ * A loop rather than `{ ...(base ?? {}), ...(extra ?? {}) }`: each fallback
+ * makes its side a union, and Flow refuses to reason about the spread of two.
+ */
+function mergedHeaders(
+  base: ?{ readonly [string]: string },
+  extra: ?{ readonly [string]: string },
+): { [string]: string } {
+  const merged: { [string]: string } = {};
+  for (const source of [base, extra]) {
+    if (source == null) continue;
+    for (const name of Object.keys(source)) {
+      merged[name] = source[name];
+    }
+  }
+  return merged;
 }
 
 /** Send, with the timeout and the retry policy applied. */

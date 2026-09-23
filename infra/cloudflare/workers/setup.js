@@ -4,7 +4,20 @@
 const RELEASE_BASE_URL = "https://github.com/ubugeeei-prod/uf/releases/latest/download";
 const DOCS_INSTALL_URL = "https://docs.uniflowed.dev/install";
 
-function responseWithHeaders(response, headers) {
+// Types in comments, because this file is deployed as it is: Wrangler bundles
+// it with esbuild, which does not strip Flow, and `tools/ci` imports it into
+// Node. `uf check` reads the comments, and the runtime never sees them.
+/*::
+// The static-assets binding a Worker is given, as much of it as this uses.
+type Fetcher = { readonly fetch: (request: Request) => Promise<Response>, ... };
+// The bindings this Worker reads.
+type Env = { readonly ASSETS: Fetcher, ... };
+*/
+
+function responseWithHeaders(
+  response /*: Response */,
+  headers /*: { readonly [string]: string } */,
+) /*: Response */ {
   const nextHeaders = new Headers(response.headers);
   for (const [name, value] of Object.entries(headers)) {
     nextHeaders.set(name, value);
@@ -16,7 +29,11 @@ function responseWithHeaders(response, headers) {
   });
 }
 
-async function asset(pathname, request, env) {
+async function asset(
+  pathname /*: string */,
+  request /*: Request */,
+  env /*: Env */,
+) /*: Promise<Response> */ {
   const url = new URL(request.url);
   url.pathname = pathname;
   url.search = "";
@@ -24,7 +41,7 @@ async function asset(pathname, request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request /*: Request */, env /*: Env */) /*: Promise<Response> */ {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {

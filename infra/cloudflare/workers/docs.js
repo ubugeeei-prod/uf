@@ -75,7 +75,17 @@ const CONTENT_SECURITY_POLICY = [
   "upgrade-insecure-requests",
 ].join("; ");
 
-function withDocsHeaders(response) {
+// Types in comments, because this file is deployed as it is: Wrangler bundles
+// it with esbuild, which does not strip Flow, and `tools/ci` imports it into
+// Node. `uf check` reads the comments, and the runtime never sees them.
+/*::
+// The static-assets binding a Worker is given, as much of it as this uses.
+type Fetcher = { readonly fetch: (request: Request) => Promise<Response>, ... };
+// The bindings this Worker reads.
+type Env = { readonly ASSETS: Fetcher, ... };
+*/
+
+function withDocsHeaders(response /*: Response */) /*: Response */ {
   const headers = new Headers(response.headers);
   headers.set("content-security-policy", CONTENT_SECURITY_POLICY);
   headers.set("x-content-type-options", "nosniff");
@@ -94,7 +104,7 @@ export default {
   // it while adding a policy is that a reader checking whether the site sends
   // one would find two paths where it does not and no rule saying which paths
   // those are. One wrapper, every answer.
-  async fetch(request, env) {
+  async fetch(request /*: Request */, env /*: Env */) /*: Promise<Response> */ {
     const url = new URL(request.url);
 
     if (url.pathname === "/setup" || url.pathname === "/setup/") {

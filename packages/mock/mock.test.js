@@ -26,9 +26,14 @@ import {
   mock,
   passthrough,
 } from "@uniflowed/mock";
+import type { MockHandler, MockOptions, MockRegistry } from "@uniflowed/mock";
 
 /** Run `body` with a listening registry, closed however it ends. */
-async function withMock(handlers, options, body) {
+async function withMock(
+  handlers: $ReadOnlyArray<MockHandler>,
+  options: MockOptions | void,
+  body: (api: MockRegistry) => mixed,
+): Promise<void> {
   const api = mock(...handlers);
   api.listen(options);
   try {
@@ -44,19 +49,40 @@ async function withMock(handlers, options, body) {
  * Installed before `listen()` on purpose: the interceptor captures whatever
  * `fetch` it replaced, and that is the function a bypassed request reaches.
  */
-function withNetwork(answer) {
+function withNetwork(answer: () => Response | Promise<Response>): {|
+  readonly urls: Array<string>,
+  readonly restore: () => void,
+|} {
   const original = globalThis.fetch;
-  const urls = [];
-  globalThis.fetch = async (input) => {
+  const urls: Array<string> = [];
+  replaceGlobal(globalThis, "fetch", async (input: RequestInfo): Promise<Response> => {
     urls.push(input instanceof Request ? input.url : String(input));
     return answer();
-  };
+  });
   return {
     urls,
     restore() {
-      globalThis.fetch = original;
+      replaceGlobal(globalThis, "fetch", original);
     },
   };
+}
+
+/**
+ * Stand in for one of the platform's globals, the way an assignment would.
+ *
+ * Flow types `globalThis.fetch` and `console.warn` as read-only, and for an
+ * application that is right. A test that stands in for the network, or
+ * listens to a warning, is the exception, and says so here once rather than
+ * at every assignment.
+ */
+function replaceGlobal(target: interface {}, name: string, value: mixed): void {
+  const existing = Object.getOwnPropertyDescriptor(target, name);
+  Object.defineProperty(target, name, {
+    configurable: true,
+    enumerable: existing?.enumerable ?? true,
+    value,
+    writable: true,
+  });
 }
 
 describe("answering", () => {
@@ -599,15 +625,15 @@ describe("unhandled requests", () => {
     const network = withNetwork(() => new Response("from the network"));
     const warned = [];
     const warn = console.warn;
-    console.warn = (message) => {
+    replaceGlobal(console, "warn", (message: mixed) => {
       warned.push(String(message));
-    };
+    });
     try {
       await withMock([], { onUnhandledRequest: "warn" }, async () => {
         expect(await (await fetch("https://api.test/anything")).text()).toBe("from the network");
       });
     } finally {
-      console.warn = warn;
+      replaceGlobal(console, "warn", warn);
       network.restore();
     }
     expect(warned.length).toBe(1);
@@ -642,10 +668,10 @@ describe("passthrough", () => {
     let sawBody = "";
     let forwarded = "";
     const network = withNetwork(() => new Response("from the network"));
-    globalThis.fetch = async (input: $FlowFixMe) => {
+    replaceGlobal(globalThis, "fetch", async (input: Request): Promise<Response> => {
       forwarded = await input.text();
       return new Response("from the network");
-    };
+    });
     try {
       await withMock(
         [
