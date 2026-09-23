@@ -30,7 +30,8 @@
 //!   question — is this attribute real — of the generated ARIA table. No
 //!   `aria-` name appears in [`RENAMES`], so the two cannot both answer.
 //! * **`autocomplete`** belongs to `a11y/autocomplete-valid`, which reads that
-//!   attribute under its lowercase spelling. It is deliberately absent from
+//!   attribute under both React's `autoComplete` and the lowercase HTML
+//!   spelling. The lowercase one is deliberately absent from
 //!   [`RENAMES`]: adding it would put a second rule on an attribute a shipped
 //!   rule already answers. Pinned by a test.
 //! * **A namespaced attribute** (`xlink:href`) is not an [`jsx::attribute::Name::Identifier`],

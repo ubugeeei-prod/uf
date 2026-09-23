@@ -192,8 +192,9 @@ fn no_unknown_property_leaves_the_aria_attributes_to_aria_props() {
 
 /// `autocomplete` is left out of the rename table on purpose.
 ///
-/// The shipped `a11y/autocomplete-valid` reads that attribute under exactly
-/// this lowercase spelling, so adding it here would put two rules on one
+/// The shipped `a11y/autocomplete-valid` reads that attribute under this
+/// lowercase spelling as well as React's `autoComplete`, so adding it here
+/// would put two rules on one
 /// attribute for one line of markup. A change that starts reporting it twice
 /// fails here rather than in somebody's editor.
 #[test]
