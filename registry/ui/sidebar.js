@@ -210,7 +210,7 @@ export component Sidebar(
   className?: string,
 ) {
   return (
-    <Primitive.SidebarRoot
+    <Primitive.Sidebar.Root
       defaultOpen={defaultOpen}
       narrowQuery={narrowQuery}
       onOpenChange={onOpenChange}
@@ -220,7 +220,7 @@ export component Sidebar(
       <div className={classNames(props(styles.layout, xstyle).className, className)}>
         {children}
       </div>
-    </Primitive.SidebarRoot>
+    </Primitive.Sidebar.Root>
   );
 }
 
@@ -235,7 +235,7 @@ export component SidebarContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SidebarBody
+    <Primitive.Sidebar.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       label={label}
@@ -244,7 +244,7 @@ export component SidebarContent(
       }}
     >
       {children}
-    </Primitive.SidebarBody>
+    </Primitive.Sidebar.Body>
   );
 }
 
@@ -256,12 +256,12 @@ export component SidebarHeader(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SidebarHeader
+    <Primitive.Sidebar.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.SidebarHeader>
+    </Primitive.Sidebar.Header>
   );
 }
 
@@ -273,12 +273,12 @@ export component SidebarFooter(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SidebarFooter
+    <Primitive.Sidebar.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.SidebarFooter>
+    </Primitive.Sidebar.Footer>
   );
 }
 
@@ -299,7 +299,7 @@ export component SidebarItem(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SidebarItem
+    <Primitive.Sidebar.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       label={label}
@@ -314,7 +314,7 @@ export component SidebarItem(
         </span>
       )}
       <span {...props(styles.label)}>{children}</span>
-    </Primitive.SidebarItem>
+    </Primitive.Sidebar.Item>
   );
 }
 
@@ -326,7 +326,7 @@ export component SidebarTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SidebarTrigger
+    <Primitive.Sidebar.Trigger
       {...forwarded(rest)}
       aria-label={label}
       className={classNames(props(styles.trigger, xstyle).className, className)}
@@ -346,7 +346,7 @@ export component SidebarTrigger(
         <rect height="18" rx="2" width="18" x="3" y="3" />
         <path d="M9 3v18" />
       </svg>
-    </Primitive.SidebarTrigger>
+    </Primitive.Sidebar.Trigger>
   );
 }
 

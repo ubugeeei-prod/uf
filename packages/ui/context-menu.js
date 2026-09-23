@@ -91,7 +91,7 @@ function pointAt(x: number, y: number): Rect {
  * Renders no element of its own, for the reason `Menu.Root` gives: the trigger
  * and the body are siblings in whatever layout the caller wrote.
  */
-export component ContextMenuRoot(
+component ContextMenuRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -131,7 +131,7 @@ hook usePoint(part: string): PointState {
  * region of the page. The module header says why it is in the tab order and
  * when a caller should take it out again.
  */
-export component ContextMenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component ContextMenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const menu = useMenu("ContextMenu.Trigger");
   const { openAt } = usePoint("ContextMenu.Trigger");
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -213,3 +213,32 @@ export component ContextMenuTrigger(children: React.Node, render?: RenderProp, .
 }
 
 export type { MenuSelect } from "./menu.js";
+
+/**
+ * The parts, under the names the `ContextMenu` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as ContextMenu from "./context-menu.js"` —
+ * so a caller writes `<ContextMenu.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `ContextMenuRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { ContextMenuRoot as Root, ContextMenuTrigger as Trigger };
+
+/**
+ * The parts `ContextMenu` shares with `Menu`, re-exported so the `ContextMenu`
+ * namespace is complete on its own: `<ContextMenu.Body>` is `Menu`'s part,
+ * not a copy of it.
+ */
+export {
+  Body,
+  Item,
+  CheckboxItem,
+  RadioGroup,
+  RadioItem,
+  Separator,
+  Group,
+  Label,
+  Sub,
+  SubTrigger,
+} from "./menu.js";

@@ -116,7 +116,7 @@ export component Carousel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CarouselRoot
+    <Primitive.Carousel.Root
       {...forwarded(rest)}
       autoplay={autoplay}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -129,7 +129,7 @@ export component Carousel(
       orientation={orientation}
     >
       {children}
-    </Primitive.CarouselRoot>
+    </Primitive.Carousel.Root>
   );
 }
 
@@ -141,12 +141,12 @@ export component CarouselContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CarouselContent
+    <Primitive.Carousel.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.CarouselContent>
+    </Primitive.Carousel.Content>
   );
 }
 
@@ -159,13 +159,13 @@ export component CarouselItem(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CarouselItem
+    <Primitive.Carousel.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       index={index}
     >
       {children}
-    </Primitive.CarouselItem>
+    </Primitive.Carousel.Item>
   );
 }
 
@@ -190,13 +190,13 @@ export component CarouselPrevious(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CarouselPrevious
+    <Primitive.Carousel.Previous
       {...forwarded(rest)}
       className={classNames(props(styles.button, xstyle).className, className)}
       label={label}
     >
       <Chevron path="m15 18-6-6 6-6" />
-    </Primitive.CarouselPrevious>
+    </Primitive.Carousel.Previous>
   );
 }
 
@@ -208,13 +208,13 @@ export component CarouselNext(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CarouselNext
+    <Primitive.Carousel.Next
       {...forwarded(rest)}
       className={classNames(props(styles.button, xstyle).className, className)}
       label={label}
     >
       <Chevron path="m9 18 6-6-6-6" />
-    </Primitive.CarouselNext>
+    </Primitive.Carousel.Next>
   );
 }
 
@@ -227,7 +227,7 @@ export component CarouselPause(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CarouselPause
+    <Primitive.Carousel.Pause
       {...forwarded(rest)}
       className={classNames(props(styles.button, xstyle).className, className)}
       pauseLabel={pauseLabel}
@@ -255,7 +255,7 @@ export component CarouselPause(
       >
         <path d="M7 4v16l13-8z" />
       </svg>
-    </Primitive.CarouselPause>
+    </Primitive.Carousel.Pause>
   );
 }
 

@@ -23,12 +23,8 @@ import type { Edge } from "../../packages/ui/sheet.js";
 import type { InputOtpKind } from "../../packages/ui/input-otp.js";
 import type { Orientation } from "../../packages/ui/separator.js";
 import type { SidebarSide } from "../../packages/ui/sidebar.js";
-import { CarouselRoot } from "../../packages/ui/carousel.js";
-import { DialogBody } from "../../packages/ui/dialog.js";
-import { InputOtpRoot } from "../../packages/ui/input-otp.js";
+import { Carousel, Dialog, InputOtp, Sheet, Sidebar } from "../../packages/ui/index.js";
 import { Separator } from "../../packages/ui/separator.js";
-import { SheetBody, SheetRoot } from "../../packages/ui/sheet.js";
-import { SidebarBody, SidebarRoot } from "../../packages/ui/sidebar.js";
 
 // A modal announces itself as one of two things, and a typo is not a third.
 // expect: incompatible with DialogRole
@@ -64,34 +60,34 @@ export const misspelledKind: InputOtpKind = "numberic";
 export const misspelledOrientation: Orientation = "verticle";
 
 // The parts refuse the same strings, which is where a consumer meets them.
-// expect: Cannot create SheetRoot element
-export const sheet: mixed = <SheetRoot side="lft">Filters</SheetRoot>;
+// expect: Cannot create Sheet.Root element
+export const sheet: mixed = <Sheet.Root side="lft">Filters</Sheet.Root>;
 
-// expect: Cannot create SidebarRoot element
-export const sidebar: mixed = <SidebarRoot side="top">Main</SidebarRoot>;
+// expect: Cannot create Sidebar.Root element
+export const sidebar: mixed = <Sidebar.Root side="top">Main</Sidebar.Root>;
 
-// expect: Cannot create DialogBody element
-export const dialog: mixed = <DialogBody role="banner">Settings</DialogBody>;
+// expect: Cannot create Dialog.Body element
+export const dialog: mixed = <Dialog.Body role="banner">Settings</Dialog.Body>;
 
 export const otp: mixed = (
   // The marker is here rather than above the statement because the line it
   // names is the one the checker points at, which is the opening tag.
-  // expect: Cannot create InputOtpRoot element
-  <InputOtpRoot kind="numberic" label="One-time code" length={6}>
+  // expect: Cannot create InputOtp.Root element
+  <InputOtp.Root kind="numberic" label="One-time code" length={6}>
     slots
-  </InputOtpRoot>
+  </InputOtp.Root>
 );
 
 // A carousel that has not been told how many slides it holds cannot label one
 // "3 of 7", which is the only way a reader knows where they are.
-// expect: Cannot create CarouselRoot element
-export const carousel: mixed = <CarouselRoot label="Featured">slides</CarouselRoot>;
+// expect: Cannot create Carousel.Root element
+export const carousel: mixed = <Carousel.Root label="Featured">slides</Carousel.Root>;
 
 // A `<nav>` with no name is announced as "navigation", so the label is not
 // optional either — and a page with two of those has told the reader there are
 // two and left which is which to a guess.
-// expect: Cannot create SidebarBody element
-export const unnamed: mixed = <SidebarBody>Main</SidebarBody>;
+// expect: Cannot create Sidebar.Body element
+export const unnamed: mixed = <Sidebar.Body>Main</Sidebar.Body>;
 
 // expect: Cannot create Separator element
 export const rule: mixed = <Separator orientation="verticle" />;
@@ -104,7 +100,7 @@ export const kind: InputOtpKind = "alphanumeric";
 export const orientation: Orientation = "vertical";
 export const divider: mixed = <Separator decorative orientation="vertical" />;
 export const fine: mixed = (
-  <SheetRoot side="bottom">
-    <SheetBody>Filters</SheetBody>
-  </SheetRoot>
+  <Sheet.Root side="bottom">
+    <Sheet.Body>Filters</Sheet.Body>
+  </Sheet.Root>
 );

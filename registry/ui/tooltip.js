@@ -106,9 +106,9 @@ export component TooltipProvider(
   skipDelayDuration?: number,
 ) {
   return (
-    <Primitive.TooltipProvider delayDuration={delayDuration} skipDelayDuration={skipDelayDuration}>
+    <Primitive.Tooltip.Provider delayDuration={delayDuration} skipDelayDuration={skipDelayDuration}>
       {children}
-    </Primitive.TooltipProvider>
+    </Primitive.Tooltip.Provider>
   );
 }
 
@@ -122,7 +122,7 @@ export component Tooltip(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.TooltipRoot
+    <Primitive.Tooltip.Root
       closeDelay={closeDelay}
       defaultOpen={defaultOpen}
       onOpenChange={onOpenChange}
@@ -130,7 +130,7 @@ export component Tooltip(
       openDelay={openDelay}
     >
       {children}
-    </Primitive.TooltipRoot>
+    </Primitive.Tooltip.Root>
   );
 }
 
@@ -148,7 +148,7 @@ export component TooltipTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TooltipTrigger
+    <Primitive.Tooltip.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -164,7 +164,7 @@ export component TooltipTrigger(
       }
     >
       {children}
-    </Primitive.TooltipTrigger>
+    </Primitive.Tooltip.Trigger>
   );
 }
 
@@ -181,14 +181,14 @@ export component TooltipContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TooltipBody
+    <Primitive.Tooltip.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       collisionPadding={collisionPadding}
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.TooltipBody>
+    </Primitive.Tooltip.Body>
   );
 }
 

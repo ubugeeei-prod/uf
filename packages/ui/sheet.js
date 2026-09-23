@@ -46,15 +46,15 @@ import { createContext, useContext, useMemo } from "@uniflowed/react";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { forwarded } from "./internal/merge-props.js";
 import {
-  DialogBody,
-  DialogClose,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogRoot,
-  DialogTitle,
-  DialogTrigger,
+  Body as DialogBody,
+  Close as DialogClose,
+  Description as DialogDescription,
+  Footer as DialogFooter,
+  Header as DialogHeader,
+  Overlay as DialogOverlay,
+  Root as DialogRoot,
+  Title as DialogTitle,
+  Trigger as DialogTrigger,
 } from "./dialog.js";
 
 /**
@@ -91,7 +91,7 @@ hook useSheet(part: string): SheetState {
 }
 
 /** The sheet, open or closed. Uncontrolled unless `open` is given. */
-export component SheetRoot(
+component SheetRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   onOpenChange?: (open: boolean) => void,
@@ -110,7 +110,7 @@ export component SheetRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-export component SheetTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogTrigger {...forwarded(rest)} render={render}>
       {children}
@@ -122,7 +122,7 @@ export component SheetTrigger(children: React.Node, render?: RenderProp, ...rest
  * The backdrop, which knows the edge so a stylesheet does not have to be told
  * twice.
  */
-export component SheetOverlay(render?: RenderProp, ...rest: Rest) {
+component SheetOverlay(render?: RenderProp, ...rest: Rest) {
   const sheet = useSheet("Sheet.Overlay");
   return <DialogOverlay {...forwarded(rest)} data-side={sheet.side} render={render} />;
 }
@@ -133,7 +133,7 @@ export component SheetOverlay(render?: RenderProp, ...rest: Rest) {
  * Every modal promise `dialog.js` makes is made here, unchanged. This part adds
  * `data-side` and nothing else, which is the honest size of the difference.
  */
-export component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const sheet = useSheet("Sheet.Body");
 
   return (
@@ -144,7 +144,7 @@ export component SheetBody(children: React.Node, render?: RenderProp, ...rest: R
 }
 
 /** The top of the sheet. See `Dialog.Header` for why it is not a `<header>`. */
-export component SheetHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogHeader {...forwarded(rest)} render={render}>
       {children}
@@ -153,7 +153,7 @@ export component SheetHeader(children: React.Node, render?: RenderProp, ...rest:
 }
 
 /** The bottom of the sheet, where the actions go. */
-export component SheetFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogFooter {...forwarded(rest)} render={render}>
       {children}
@@ -162,7 +162,7 @@ export component SheetFooter(children: React.Node, render?: RenderProp, ...rest:
 }
 
 /** The sheet's accessible name. A modal without one is announced as "dialog". */
-export component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogTitle {...forwarded(rest)} render={render}>
       {children}
@@ -171,7 +171,7 @@ export component SheetTitle(children: React.Node, render?: RenderProp, ...rest: 
 }
 
 /** What the sheet is for, announced after its name. */
-export component SheetDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogDescription {...forwarded(rest)} render={render}>
       {children}
@@ -180,10 +180,31 @@ export component SheetDescription(children: React.Node, render?: RenderProp, ...
 }
 
 /** A button that closes the sheet. */
-export component SheetClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogClose {...forwarded(rest)} render={render}>
       {children}
     </DialogClose>
   );
 }
+
+/**
+ * The parts, under the names the `Sheet` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Sheet from "./sheet.js"` —
+ * so a caller writes `<Sheet.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `SheetRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  SheetRoot as Root,
+  SheetTrigger as Trigger,
+  SheetOverlay as Overlay,
+  SheetBody as Body,
+  SheetHeader as Header,
+  SheetFooter as Footer,
+  SheetTitle as Title,
+  SheetDescription as Description,
+  SheetClose as Close,
+};

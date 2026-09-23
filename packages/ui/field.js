@@ -187,7 +187,7 @@ hook useField(part: string): FieldState {
  * caller saying "and also mark it invalid", which is what `invalid || source`
  * means and what a server-side error arriving beside a client-side one needs.
  */
-export component FieldRoot(
+component FieldRoot(
   children: React.Node,
   invalid?: boolean = false,
   required?: boolean = false,
@@ -279,7 +279,7 @@ export component FieldRoot(
  * `<label for>` naming something that is not a form control is ignored by every
  * browser, and ignored silently. The module header says more.
  */
-export component FieldLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component FieldLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Label");
   // `rest` first: a caller `id` here would break the relationship the control
   // points at, and it would break it silently.
@@ -300,7 +300,7 @@ export component FieldLabel(children: React.Node, render?: RenderProp, ...rest: 
  * `ref` and handlers *and* the field's attributes from one spread instead of
  * two that overwrite each other.
  */
-export component FieldControl(render: RenderProp) {
+component FieldControl(render: RenderProp) {
   const field = useField("Field.Control");
   // A group already carries the name, the description and the validity, and a
   // control repeating them makes a reader hear the error once for the set and
@@ -319,7 +319,7 @@ export component FieldControl(render: RenderProp) {
 }
 
 /** Help text, which the control points at while it is rendered. */
-export component FieldDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component FieldDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Description");
   const register = field.registerDescription;
   useEffect(() => {
@@ -338,7 +338,7 @@ export component FieldDescription(children: React.Node, render?: RenderProp, ...
  * `Field.Error`, this part stays in the document even while it is empty; the
  * control points at it only while the caller rendered the part.
  */
-export component FieldStatus(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component FieldStatus(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Status");
   const register = field.registerStatus;
   useEffect(() => {
@@ -367,7 +367,7 @@ export component FieldStatus(children?: React.Node, render?: RenderProp, ...rest
  * store does not need the caller to reach back into `formState.errors` for a
  * string the source is already carrying.
  */
-export component FieldError(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component FieldError(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Error");
   const register = field.registerError;
   useEffect(() => {
@@ -385,3 +385,21 @@ export component FieldError(children?: React.Node, render?: RenderProp, ...rest:
   });
   return render != null ? render(props) : <p {...props} />;
 }
+
+/**
+ * The parts, under the names the `Field` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Field from "./field.js"` —
+ * so a caller writes `<Field.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `FieldRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  FieldRoot as Root,
+  FieldLabel as Label,
+  FieldControl as Control,
+  FieldDescription as Description,
+  FieldStatus as Status,
+  FieldError as Error,
+};

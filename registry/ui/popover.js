@@ -117,9 +117,9 @@ export component Popover(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.PopoverRoot defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Primitive.Popover.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.PopoverRoot>
+    </Primitive.Popover.Root>
   );
 }
 
@@ -137,7 +137,7 @@ export component PopoverTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.PopoverTrigger
+    <Primitive.Popover.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -153,7 +153,7 @@ export component PopoverTrigger(
       }
     >
       {children}
-    </Primitive.PopoverTrigger>
+    </Primitive.Popover.Trigger>
   );
 }
 
@@ -170,14 +170,14 @@ export component PopoverContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.PopoverBody
+    <Primitive.Popover.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       collisionPadding={collisionPadding}
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.PopoverBody>
+    </Primitive.Popover.Body>
   );
 }
 

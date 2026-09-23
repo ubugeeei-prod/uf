@@ -56,7 +56,7 @@ import { withProps } from "./internal/merge-props.js";
  * to translate; there is no case for leaving it off, which is why it is not
  * optional in the sense of being absent.
  */
-export component BreadcrumbRoot(
+component BreadcrumbRoot(
   children: React.Node,
   label?: string = "Breadcrumb",
   render?: RenderProp,
@@ -76,7 +76,7 @@ export component BreadcrumbRoot(
  * information: a reader is told how many levels there are before walking them,
  * and can skip the lot in one keystroke.
  */
-export component BreadcrumbList(
+component BreadcrumbList(
   children: renders* (BreadcrumbItem | BreadcrumbSeparator),
   render?: RenderProp,
   ...rest: Rest
@@ -89,7 +89,7 @@ export component BreadcrumbList(
 }
 
 /** One level of the trail. Holds a `Breadcrumb.Link` or a `Breadcrumb.Page`. */
-export component BreadcrumbItem(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component BreadcrumbItem(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   if (render != null) {
     return render(withProps(props, { role: "listitem" }));
@@ -98,7 +98,7 @@ export component BreadcrumbItem(children: React.Node, render?: RenderProp, ...re
 }
 
 /** A level you can go back to. */
-export component BreadcrumbLink(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component BreadcrumbLink(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   if (render != null) {
     return render(withProps(props, { role: "link" }));
@@ -114,7 +114,7 @@ export component BreadcrumbLink(children: React.Node, render?: RenderProp, ...re
  * a link by accident. See the module header for why announcing it as a disabled
  * link is worse than announcing it as text.
  */
-export component BreadcrumbPage(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component BreadcrumbPage(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-current": "page", children });
   if (render != null) {
     return render(props);
@@ -129,10 +129,28 @@ export component BreadcrumbPage(children: React.Node, render?: RenderProp, ...re
  * design decision and this package makes none. What is not the caller's is that
  * it is announced to nobody.
  */
-export component BreadcrumbSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component BreadcrumbSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children, role: "presentation" });
   if (render != null) {
     return render(props);
   }
   return <li {...props} />;
 }
+
+/**
+ * The parts, under the names the `Breadcrumb` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Breadcrumb from "./breadcrumb.js"` —
+ * so a caller writes `<Breadcrumb.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `BreadcrumbRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  BreadcrumbRoot as Root,
+  BreadcrumbList as List,
+  BreadcrumbItem as Item,
+  BreadcrumbLink as Link,
+  BreadcrumbPage as Page,
+  BreadcrumbSeparator as Separator,
+};

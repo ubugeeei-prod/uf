@@ -246,7 +246,7 @@ export component Select(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SelectRoot
+    <Primitive.Select.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultOpen={defaultOpen}
@@ -259,7 +259,7 @@ export component Select(
       value={value}
     >
       {children}
-    </Primitive.SelectRoot>
+    </Primitive.Select.Root>
   );
 }
 
@@ -271,12 +271,12 @@ export component SelectLabel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SelectLabel
+    <Primitive.Select.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.SelectLabel>
+    </Primitive.Select.Label>
   );
 }
 
@@ -288,13 +288,13 @@ export component SelectTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SelectTrigger
+    <Primitive.Select.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
       {children}
       <ChevronIcon />
-    </Primitive.SelectTrigger>
+    </Primitive.Select.Trigger>
   );
 }
 
@@ -307,13 +307,13 @@ export component SelectValue(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SelectValue
+    <Primitive.Select.Value
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
       placeholder={placeholder}
     >
       {children}
-    </Primitive.SelectValue>
+    </Primitive.Select.Value>
   );
 }
 
@@ -331,7 +331,7 @@ export component SelectList(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SelectList
+    <Primitive.Select.List
       {...forwarded(rest)}
       align={align}
       alignOffset={alignOffset}
@@ -342,7 +342,7 @@ export component SelectList(
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.SelectList>
+    </Primitive.Select.List>
   );
 }
 
@@ -355,10 +355,10 @@ export component SelectOption(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.SelectOption {
+) renders Primitive.Select.Option {
   const styled = props(styles.option, disabled && styles.optionDisabled, xstyle);
   return (
-    <Primitive.SelectOption
+    <Primitive.Select.Option
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
@@ -367,7 +367,7 @@ export component SelectOption(
     >
       <span {...props(styles.optionText)}>{children}</span>
       <CheckIcon />
-    </Primitive.SelectOption>
+    </Primitive.Select.Option>
   );
 }
 
@@ -377,14 +377,14 @@ export component SelectGroup(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.SelectGroup {
+) renders Primitive.Select.Group {
   return (
-    <Primitive.SelectGroup
+    <Primitive.Select.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.SelectGroup>
+    </Primitive.Select.Group>
   );
 }
 
@@ -394,14 +394,14 @@ export component SelectGroupLabel(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.SelectGroupLabel {
+) renders Primitive.Select.GroupLabel {
   return (
-    <Primitive.SelectGroupLabel
+    <Primitive.Select.GroupLabel
       {...forwarded(rest)}
       className={classNames(props(styles.groupLabel, xstyle).className, className)}
     >
       {children}
-    </Primitive.SelectGroupLabel>
+    </Primitive.Select.GroupLabel>
   );
 }
 
@@ -410,9 +410,9 @@ export component SelectSeparator(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.SelectSeparator {
+) renders Primitive.Select.Separator {
   return (
-    <Primitive.SelectSeparator
+    <Primitive.Select.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     />

@@ -15,16 +15,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, describe, expect, it } from "@uniflowed/test";
-import { parseAst } from "vite";
-
 import uniflowed from "./index.js";
-import {
-  NAMESPACE_QUERY,
-  barrelExports,
-  barrelImportsPlugin,
-  namespaceViewOf,
-  namespaceViewSource,
-} from "./internal/barrel-imports.js";
+import { barrelExports, barrelImportsPlugin } from "./internal/barrel-imports.js";
 
 /** This repository's barrel, the file a project's `@uniflowed/ui` resolves to. */
 const BARREL: string = fileURLToPath(new URL("../ui/index.js", import.meta.url));
@@ -32,11 +24,6 @@ const BARREL: string = fileURLToPath(new URL("../ui/index.js", import.meta.url))
 /** A file of the package, spelled the way a rewritten import names it. */
 function uiFile(name: string): string {
   return path.join(path.dirname(BARREL), name).split(path.sep).join("/");
-}
-
-/** The id of the view that serves one of the barrel's namespaces. */
-function viewOf(name: string): string {
-  return `${uiFile("index.js")}?${NAMESPACE_QUERY}=${name}`;
 }
 
 /** The barrel as the plugin reads it. */
@@ -97,14 +84,14 @@ describe("reading the barrel", () => {
         expect((await load(target.file))[target.name]).toBe(barrel[name]);
         continue;
       }
-      expect(target.parts.map((part) => part.key)).toEqual(Object.keys(barrel[name]));
-      for (const part of target.parts) {
-        expect((await load(part.file))[part.name]).toBe(barrel[name][part.key]);
-      }
+      // A namespace is the module's own namespace object: the same object the
+      // barrel re-exports, not an equal one.
+      expect(target.kind).toBe("module");
+      expect(await load(target.file)).toBe(barrel[name]);
     }
   });
 
-  it("names the module each component comes from, and both modules of a namespace that spans two", () => {
+  it("names the module each component and each namespace comes from", () => {
     const exports = reading();
 
     expect(exports.get("Switch")).toEqual({
@@ -118,10 +105,10 @@ describe("reading the barrel", () => {
       name: "toast",
     });
     expect(exports.get("usePress")?.file).toBe(uiFile("interactions.js"));
-    // `ContextMenu` is its own root and trigger over `Menu`'s parts, which is
-    // why a view of it imports two files.
-    const files = new Set(exports.get("ContextMenu").parts.map((part) => part.file));
-    expect([...files].sort()).toEqual([uiFile("context-menu.js"), uiFile("menu.js")]);
+    expect(exports.get("Dialog")).toEqual({ kind: "module", file: uiFile("dialog.js") });
+    // `ContextMenu` is its own root and trigger over `Menu`'s parts, and still
+    // one module: `context-menu.js` re-exports the parts it shares.
+    expect(exports.get("ContextMenu")).toEqual({ kind: "module", file: uiFile("context-menu.js") });
     // A type is no value, and nothing imports it at run time.
     expect(exports.has("AccordionType")).toBe(false);
   });
@@ -150,22 +137,24 @@ describe("a module that imports from the barrel", () => {
     expect(code).toContain(`import { toast } from ${JSON.stringify(uiFile("toast.js"))};`);
   });
 
-  it("imports a namespace from a view of the barrel", async () => {
+  it("imports a namespace as the module it is", async () => {
     const code = await rewritten(
-      'import { Dialog, ContextMenu as RowMenu } from "@uniflowed/ui";\n',
+      'import { Dialog, ContextMenu as RowMenu, Switch } from "@uniflowed/ui";\n',
     );
 
-    expect(code).toContain(`import { Dialog } from ${JSON.stringify(viewOf("Dialog"))};`);
+    expect(code).toContain(`import * as Dialog from ${JSON.stringify(uiFile("dialog.js"))};`);
     expect(code).toContain(
-      `import { ContextMenu as RowMenu } from ${JSON.stringify(viewOf("ContextMenu"))};`,
+      `import * as RowMenu from ${JSON.stringify(uiFile("context-menu.js"))};`,
     );
+    expect(code).toContain(`import { Switch } from ${JSON.stringify(uiFile("switch.js"))};`);
+    expect(code).not.toContain('"@uniflowed/ui"');
   });
 
   it("re-exports from the defining files too", async () => {
     const code = await rewritten('export { Switch, Dialog as Modal } from "@uniflowed/ui";\n');
 
     expect(code).toContain(`export { Switch } from ${JSON.stringify(uiFile("switch.js"))};`);
-    expect(code).toContain(`export { Dialog as Modal } from ${JSON.stringify(viewOf("Dialog"))};`);
+    expect(code).toContain(`export * as Modal from ${JSON.stringify(uiFile("dialog.js"))};`);
     expect(code).not.toContain('"@uniflowed/ui"');
   });
 
@@ -228,74 +217,26 @@ describe("a module that imports from the barrel", () => {
   });
 });
 
-describe("a view of a namespace", () => {
-  it("is the barrel's path with the namespace in its query, and nothing else is", () => {
-    expect(namespaceViewOf(viewOf("Dialog"))).toEqual({ file: uiFile("index.js"), name: "Dialog" });
-    expect(namespaceViewOf(`${viewOf("Dialog")}&v=0b1c2d3e`)?.name).toBe("Dialog");
-    expect(namespaceViewOf(BARREL)).toBe(null);
-    expect(namespaceViewOf(`${uiFile("switch.js")}?v=0b1c2d3e`)).toBe(null);
-    expect(namespaceViewOf(`\0${viewOf("Dialog")}`)).toBe(null);
-  });
-
-  it("imports its parts relative to the barrel, from each file they come from", () => {
-    const source = barrelImportsPlugin().load(viewOf("ContextMenu"));
-    const program = parseAst(source);
-
-    const sources = program.body
-      .filter((node) => node.type === "ImportDeclaration")
-      .map((node) => node.source.value)
-      .sort();
-    expect(sources).toEqual(["./context-menu.js", "./menu.js"]);
-    expect(source).toContain("export const ContextMenu = {");
-  });
-
-  it("evaluates to the object the barrel exports, for every namespace", async () => {
-    // Written beside nothing and imported, with its relative imports made
-    // absolute, so each part is the instance the barrel imports: the same
-    // object, not an equal one.
-    const barrel = await load(BARREL);
-    const exports = reading();
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-barrel-view-"));
+describe("a barrel that builds a namespace as an object", () => {
+  it("leaves that name on the barrel rather than guessing at the object", async () => {
+    // The form `@uniflowed/ui` used before #1453. Reading it is not attempted:
+    // an object literal is a value, and a rewrite that rebuilt it would be a
+    // second definition of it. Left on the barrel it is only larger.
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-barrel-object-"));
     directories.push(directory);
-
-    const namespaces = [...exports].filter(([, target]) => target.kind === "namespace");
-    expect(namespaces.length > 0).toBe(true);
-    for (const [name] of namespaces) {
-      const source = namespaceViewSource(exports, BARREL, name).replace(
-        /from "\.\/([^"]+)"/g,
-        (_, file) => `from ${JSON.stringify(pathToFileURL(uiFile(file)).href)}`,
-      );
-      const file = path.join(directory, `${name}.mjs`);
-      fs.writeFileSync(file, source);
-
-      const view = await load(file);
-
-      expect(Object.keys(view)).toEqual([name]);
-      expect(Object.keys(view[name])).toEqual(Object.keys(barrel[name]));
-      for (const key of Object.keys(barrel[name])) {
-        expect(view[name][key]).toBe(barrel[name][key]);
-      }
-    }
-  });
-
-  it("re-exports a name that is no namespace from the barrel itself", () => {
-    expect(namespaceViewSource(reading(), BARREL, "Switch")).toBe(
-      'export { Switch } from "./index.js";\n',
+    const barrel = path.join(directory, "index.js");
+    fs.writeFileSync(path.join(directory, "dialog.js"), "export const DialogRoot = 1;\n");
+    fs.writeFileSync(
+      barrel,
+      'import { DialogRoot } from "./dialog.js";\nexport const Dialog = { Root: DialogRoot };\n',
     );
-  });
 
-  it("is neither rewritten nor compiled as the barrel's Flow source", async () => {
-    const view = viewOf("Dialog");
-    expect(
-      await barrelImportsPlugin().transform.call(contextFor(), 'import "@uniflowed/ui";\n', view),
-    ).toBe(null);
-
-    const flow = uniflowed({ root: "/project", config: {} }).find(
-      (plugin) => plugin.name === "uf:flow",
+    expect(barrelExports(fs.readFileSync(barrel, "utf8"), barrel).get("Dialog")).toEqual({
+      kind: "opaque",
+    });
+    expect(await rewritten('import { Dialog } from "@uniflowed/ui";\n', contextFor(barrel))).toBe(
+      null,
     );
-    expect(
-      await flow.transform.call({ environment: { name: "client" } }, "export {};\n", view),
-    ).toBe(null);
   });
 });
 

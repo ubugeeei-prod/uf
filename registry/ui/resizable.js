@@ -136,7 +136,7 @@ export component ResizablePanelGroup(
   const vertical = orientation === "vertical";
   return (
     <OrientationContext.Provider value={orientation}>
-      <Primitive.ResizablePanelGroup
+      <Primitive.Resizable.PanelGroup
         {...forwarded(rest)}
         className={classNames(
           props(styles.group, vertical && styles.groupVertical, xstyle).className,
@@ -152,7 +152,7 @@ export component ResizablePanelGroup(
         value={value}
       >
         {children}
-      </Primitive.ResizablePanelGroup>
+      </Primitive.Resizable.PanelGroup>
     </OrientationContext.Provider>
   );
 }
@@ -166,13 +166,13 @@ export component ResizablePanel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ResizablePanel
+    <Primitive.Resizable.Panel
       {...forwarded(rest)}
       className={classNames(props(styles.panel, xstyle).className, className)}
       primary={primary}
     >
       {children}
-    </Primitive.ResizablePanel>
+    </Primitive.Resizable.Panel>
   );
 }
 
@@ -185,7 +185,7 @@ export component ResizableHandle(
 ) {
   const vertical = useContext(OrientationContext) === "vertical";
   return (
-    <Primitive.ResizableHandle
+    <Primitive.Resizable.Handle
       {...forwarded(rest)}
       className={classNames(
         props(styles.handle, vertical && styles.handleVertical, xstyle).className,

@@ -6,7 +6,7 @@ import * as React from "@uniflowed/react";
 import { callAction } from "../_shared/action-result.client.js";
 
 import { useActionState, useState } from "@uniflowed/react";
-import { FieldControl } from "@uniflowed/ui";
+import { Field } from "@uniflowed/ui";
 
 import { updateSettings } from "../_server/social-actions.js";
 import { FormField, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
@@ -65,7 +65,7 @@ export component SettingsClient(initial: Settings) {
         <p>Your name and bio are visible to the community.</p>
         <div className="form-grid">
           <FormField label="Display name" error={fieldError(state, "displayName")}>
-            <FieldControl
+            <Field.Control
               render={(props) => (
                 <input
                   {...props}
@@ -81,7 +81,7 @@ export component SettingsClient(initial: Settings) {
             />
           </FormField>
           <FormField label="Handle" error={fieldError(state, "handle")}>
-            <FieldControl
+            <Field.Control
               render={(props) => (
                 <input
                   {...props}
@@ -102,7 +102,7 @@ export component SettingsClient(initial: Settings) {
           </FormField>
         </div>
         <FormField label="Bio" error={fieldError(state, "bio")} hint="Up to 160 characters.">
-          <FieldControl
+          <Field.Control
             render={(props) => (
               <textarea
                 {...props}
@@ -121,7 +121,7 @@ export component SettingsClient(initial: Settings) {
         <h3>Account details</h3>
         <p>Your email is private.</p>
         <FormField label="Email address" error={fieldError(state, "email")}>
-          <FieldControl
+          <Field.Control
             render={(props) => (
               <input
                 {...props}

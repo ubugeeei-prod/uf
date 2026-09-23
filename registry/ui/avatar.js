@@ -100,9 +100,9 @@ export component Avatar(
     xstyle,
   );
   return (
-    <Primitive.AvatarRoot {...forwarded(rest)} className={classNames(styled.className, className)}>
+    <Primitive.Avatar.Root {...forwarded(rest)} className={classNames(styled.className, className)}>
       {children}
-    </Primitive.AvatarRoot>
+    </Primitive.Avatar.Root>
   );
 }
 
@@ -115,7 +115,7 @@ export component AvatarImage(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AvatarImage
+    <Primitive.Avatar.Image
       {...forwarded(rest)}
       alt={alt}
       className={classNames(props(styles.image, xstyle).className, className)}
@@ -133,13 +133,13 @@ export component AvatarFallback(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AvatarFallback
+    <Primitive.Avatar.Fallback
       {...forwarded(rest)}
       className={classNames(props(styles.fallback, xstyle).className, className)}
       delay={delay}
     >
       {children}
-    </Primitive.AvatarFallback>
+    </Primitive.Avatar.Fallback>
   );
 }
 

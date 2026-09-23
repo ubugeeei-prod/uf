@@ -63,71 +63,36 @@
 // children > the return value", which is the difference said out loud.
 
 import {
-  AccordionContent,
-  AccordionHeader,
-  AccordionItem,
-  AccordionRoot,
-  AccordionTrigger,
-} from "../../packages/ui/accordion.js";
-import {
-  ComboboxGroup,
-  ComboboxGroupLabel,
-  ComboboxList,
-  ComboboxOption,
-} from "../../packages/ui/combobox.js";
-import {
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "../../packages/ui/breadcrumb.js";
-import {
-  MenuBody,
-  MenuCheckboxItem,
-  MenuGroup,
-  MenuItem,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-} from "../../packages/ui/menu.js";
-import {
-  NavigationMenuBody,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuRoot,
-} from "../../packages/ui/navigation-menu.js";
-import { PaginationContent, PaginationItem, PaginationNext } from "../../packages/ui/pagination.js";
-import {
-  SelectGroup,
-  SelectGroupLabel,
-  SelectList,
-  SelectOption,
-  SelectSeparator,
-} from "../../packages/ui/select.js";
-import { TabsList, TabsTab } from "../../packages/ui/tabs.js";
-import { ToastRegion, ToastRoot, ToastTitle } from "../../packages/ui/toast.js";
-import { ToggleGroupItem, ToggleGroupRoot } from "../../packages/ui/toggle-group.js";
+  Accordion,
+  Breadcrumb,
+  Combobox,
+  Menu,
+  NavigationMenu,
+  Pagination,
+  Select,
+  Tabs,
+  Toast,
+  ToggleGroup,
+} from "../../packages/ui/index.js";
 
 // --- Tabs.List ---------------------------------------------------------------
 //
 // The one `index.js` names, so it goes first.
 
 export const tabs: mixed = (
-  <TabsList>
-    <TabsTab value="general">General</TabsTab>
-    <TabsTab value="billing">Billing</TabsTab>
-  </TabsList>
+  <Tabs.List>
+    <Tabs.Tab value="general">General</Tabs.Tab>
+    <Tabs.Tab value="billing">Billing</Tabs.Tab>
+  </Tabs.List>
 );
 
 export const buttonInATabList: mixed = (
-  <TabsList>
+  <Tabs.List>
     {
       // expect: does not render TabsTab
       <button type="button">General</button>
     }
-  </TabsList>
+  </Tabs.List>
 );
 
 // --- Menu.Body ---------------------------------------------------------------
@@ -137,38 +102,38 @@ export const buttonInATabList: mixed = (
 // submenus.
 
 export const menu: mixed = (
-  <MenuBody>
-    <MenuGroup>
-      <MenuItem>Open</MenuItem>
-    </MenuGroup>
-    <MenuSeparator />
-    <MenuItem>Save</MenuItem>
-    <MenuCheckboxItem>Show hidden files</MenuCheckboxItem>
-    <MenuRadioGroup defaultValue="name">
-      <MenuRadioItem value="name">Name</MenuRadioItem>
-    </MenuRadioGroup>
-  </MenuBody>
+  <Menu.Body>
+    <Menu.Group>
+      <Menu.Item>Open</Menu.Item>
+    </Menu.Group>
+    <Menu.Separator />
+    <Menu.Item>Save</Menu.Item>
+    <Menu.CheckboxItem>Show hidden files</Menu.CheckboxItem>
+    <Menu.RadioGroup defaultValue="name">
+      <Menu.RadioItem value="name">Name</Menu.RadioItem>
+    </Menu.RadioGroup>
+  </Menu.Body>
 );
 
 export const divInAMenu: mixed = (
-  <MenuBody>
+  <Menu.Body>
     {
       // expect: does not render union type
       <div>Open</div>
     }
-  </MenuBody>
+  </Menu.Body>
 );
 
 // Both of these are parts of this package, and an option is still not a menu
 // item. The report names every member of the union, which is what says what
 // should have been written instead.
 export const optionInAMenu: mixed = (
-  <MenuBody>
+  <Menu.Body>
     {
       // expect: Either SelectOption element does not render MenuCheckboxItem
-      <SelectOption value="GB">United Kingdom</SelectOption>
+      <Select.Option value="GB">United Kingdom</Select.Option>
     }
-  </MenuBody>
+  </Menu.Body>
 );
 
 // --- Combobox.List -----------------------------------------------------------
@@ -178,52 +143,52 @@ export const optionInAMenu: mixed = (
 // too, since ubugeeei-prod/uf#562.
 
 export const combobox: mixed = (
-  <ComboboxList>
-    <ComboboxOption value="GB">United Kingdom</ComboboxOption>
-    <ComboboxGroup>
-      <ComboboxGroupLabel>Europe</ComboboxGroupLabel>
-      <ComboboxOption value="FR">France</ComboboxOption>
-    </ComboboxGroup>
-  </ComboboxList>
+  <Combobox.List>
+    <Combobox.Option value="GB">United Kingdom</Combobox.Option>
+    <Combobox.Group>
+      <Combobox.GroupLabel>Europe</Combobox.GroupLabel>
+      <Combobox.Option value="FR">France</Combobox.Option>
+    </Combobox.Group>
+  </Combobox.List>
 );
 
 export const divInACombobox: mixed = (
-  <ComboboxList>
+  <Combobox.List>
     {
       // expect: does not render union type
       <div>United Kingdom</div>
     }
-  </ComboboxList>
+  </Combobox.List>
 );
 
 export const divInAComboboxGroup: mixed = (
-  <ComboboxGroup>
+  <Combobox.Group>
     {
       // expect: does not render union type
       <div>Europe</div>
     }
-  </ComboboxGroup>
+  </Combobox.Group>
 );
 
 // --- Select.List -------------------------------------------------------------
 
 export const select: mixed = (
-  <SelectList>
-    <SelectGroup>
-      <SelectOption value="FR">France</SelectOption>
-    </SelectGroup>
-    <SelectSeparator />
-    <SelectOption value="JP">Japan</SelectOption>
-  </SelectList>
+  <Select.List>
+    <Select.Group>
+      <Select.Option value="FR">France</Select.Option>
+    </Select.Group>
+    <Select.Separator />
+    <Select.Option value="JP">Japan</Select.Option>
+  </Select.List>
 );
 
 export const divInASelect: mixed = (
-  <SelectList>
+  <Select.List>
     {
       // expect: does not render union type
       <div>France</div>
     }
-  </SelectList>
+  </Select.List>
 );
 
 // --- Select.Group ------------------------------------------------------------
@@ -234,19 +199,19 @@ export const divInASelect: mixed = (
 // and a rule inside the group rather than between groups.
 
 export const selectGroup: mixed = (
-  <SelectGroup>
-    <SelectGroupLabel>Europe</SelectGroupLabel>
-    <SelectOption value="FR">France</SelectOption>
-  </SelectGroup>
+  <Select.Group>
+    <Select.GroupLabel>Europe</Select.GroupLabel>
+    <Select.Option value="FR">France</Select.Option>
+  </Select.Group>
 );
 
 export const divInASelectGroup: mixed = (
-  <SelectGroup>
+  <Select.Group>
     {
       // expect: does not render union type
       <div>Europe</div>
     }
-  </SelectGroup>
+  </Select.Group>
 );
 
 // A rule separates groups, so it belongs in the list beside them — where
@@ -258,12 +223,12 @@ export const divInASelectGroup: mixed = (
 // `optionInAMenu`'s reason above: the child is a component of this package, so
 // the checker has two named things to compare and says which two.
 export const separatorInASelectGroup: mixed = (
-  <SelectGroup>
+  <Select.Group>
     {
       // expect: Either SelectSeparator element does not render SelectGroupLabel
-      <SelectSeparator />
+      <Select.Separator />
     }
-  </SelectGroup>
+  </Select.Group>
 );
 
 // --- Toast.Region ------------------------------------------------------------
@@ -271,40 +236,40 @@ export const separatorInASelectGroup: mixed = (
 // The constraint that is about a return value rather than about a child.
 
 export const toast: mixed = (
-  <ToastRegion>
+  <Toast.Region>
     {(notification) => (
-      <ToastRoot>
-        <ToastTitle>{notification.content}</ToastTitle>
-      </ToastRoot>
+      <Toast.Root>
+        <Toast.Title>{notification.content}</Toast.Title>
+      </Toast.Root>
     )}
-  </ToastRegion>
+  </Toast.Region>
 );
 
 export const divFromAToastRegion: mixed = (
-  <ToastRegion>
+  <Toast.Region>
     {
       // expect: in property children > the return value
       () => <div />
     }
-  </ToastRegion>
+  </Toast.Region>
 );
 
 // --- Pagination.Content ------------------------------------------------------
 
 export const pagination: mixed = (
-  <PaginationContent>
-    <PaginationItem current>1</PaginationItem>
-    <PaginationNext />
-  </PaginationContent>
+  <Pagination.Content>
+    <Pagination.Item current>1</Pagination.Item>
+    <Pagination.Next />
+  </Pagination.Content>
 );
 
 export const divInAPagination: mixed = (
-  <PaginationContent>
+  <Pagination.Content>
     {
       // expect: does not render union type
       <div>1</div>
     }
-  </PaginationContent>
+  </Pagination.Content>
 );
 
 // --- Breadcrumb.List ---------------------------------------------------------
@@ -314,41 +279,41 @@ export const divInAPagination: mixed = (
 // `<li>`s too — hidden ones — because there is nowhere else for them to be.
 
 export const breadcrumb: mixed = (
-  <BreadcrumbList>
-    <BreadcrumbItem>
-      <BreadcrumbLink href="/">Home</BreadcrumbLink>
-    </BreadcrumbItem>
-    <BreadcrumbSeparator>/</BreadcrumbSeparator>
-    <BreadcrumbItem>
-      <BreadcrumbPage>Billing</BreadcrumbPage>
-    </BreadcrumbItem>
-  </BreadcrumbList>
+  <Breadcrumb.List>
+    <Breadcrumb.Item>
+      <Breadcrumb.Link href="/">Home</Breadcrumb.Link>
+    </Breadcrumb.Item>
+    <Breadcrumb.Separator>/</Breadcrumb.Separator>
+    <Breadcrumb.Item>
+      <Breadcrumb.Page>Billing</Breadcrumb.Page>
+    </Breadcrumb.Item>
+  </Breadcrumb.List>
 );
 
 export const divInABreadcrumb: mixed = (
-  <BreadcrumbList>
+  <Breadcrumb.List>
     {
       // expect: does not render union type
       <div>Home</div>
     }
-  </BreadcrumbList>
+  </Breadcrumb.List>
 );
 
 // --- ToggleGroup.Root --------------------------------------------------------
 
 export const toggleGroup: mixed = (
-  <ToggleGroupRoot>
-    <ToggleGroupItem value="bold">Bold</ToggleGroupItem>
-  </ToggleGroupRoot>
+  <ToggleGroup.Root>
+    <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+  </ToggleGroup.Root>
 );
 
 export const buttonInAToggleGroup: mixed = (
-  <ToggleGroupRoot>
+  <ToggleGroup.Root>
     {
       // expect: does not render ToggleGroupItem
       <button type="button">Bold</button>
     }
-  </ToggleGroupRoot>
+  </ToggleGroup.Root>
 );
 
 // --- NavigationMenu ----------------------------------------------------------
@@ -360,42 +325,42 @@ export const buttonInAToggleGroup: mixed = (
 // is that `Tab` reaches somewhere.
 
 export const navigationMenu: mixed = (
-  <NavigationMenuRoot>
-    <NavigationMenuList>
-      <NavigationMenuItem value="products">
-        <NavigationMenuBody>
-          <NavigationMenuLink href="/pricing">Pricing</NavigationMenuLink>
-        </NavigationMenuBody>
-      </NavigationMenuItem>
-    </NavigationMenuList>
-  </NavigationMenuRoot>
+  <NavigationMenu.Root>
+    <NavigationMenu.List>
+      <NavigationMenu.Item value="products">
+        <NavigationMenu.Body>
+          <NavigationMenu.Link href="/pricing">Pricing</NavigationMenu.Link>
+        </NavigationMenu.Body>
+      </NavigationMenu.Item>
+    </NavigationMenu.List>
+  </NavigationMenu.Root>
 );
 
 export const itemInANavigationMenuRoot: mixed = (
-  <NavigationMenuRoot>
+  <NavigationMenu.Root>
     {
       // expect: does not render NavigationMenuList
-      <NavigationMenuItem value="products">Products</NavigationMenuItem>
+      <NavigationMenu.Item value="products">Products</NavigationMenu.Item>
     }
-  </NavigationMenuRoot>
+  </NavigationMenu.Root>
 );
 
 export const divInANavigationMenuList: mixed = (
-  <NavigationMenuList>
+  <NavigationMenu.List>
     {
       // expect: does not render NavigationMenuItem
       <div>Products</div>
     }
-  </NavigationMenuList>
+  </NavigationMenu.List>
 );
 
 export const buttonInANavigationMenuBody: mixed = (
-  <NavigationMenuBody>
+  <NavigationMenu.Body>
     {
       // expect: does not render NavigationMenuLink
       <button type="button">Pricing</button>
     }
-  </NavigationMenuBody>
+  </NavigationMenu.Body>
 );
 
 // --- Accordion ---------------------------------------------------------------
@@ -405,41 +370,41 @@ export const buttonInANavigationMenuBody: mixed = (
 // buttons in it is a heading whose accessible name is both of them.
 
 export const accordion: mixed = (
-  <AccordionRoot>
-    <AccordionItem value="shipping">
-      <AccordionHeader>
-        <AccordionTrigger>Shipping</AccordionTrigger>
-      </AccordionHeader>
-      <AccordionContent>Two days.</AccordionContent>
-    </AccordionItem>
-  </AccordionRoot>
+  <Accordion.Root>
+    <Accordion.Item value="shipping">
+      <Accordion.Header>
+        <Accordion.Trigger>Shipping</Accordion.Trigger>
+      </Accordion.Header>
+      <Accordion.Content>Two days.</Accordion.Content>
+    </Accordion.Item>
+  </Accordion.Root>
 );
 
 export const headerInAnAccordionRoot: mixed = (
-  <AccordionRoot>
+  <Accordion.Root>
     {
       // expect: does not render AccordionItem
-      <AccordionHeader>
-        <AccordionTrigger>Shipping</AccordionTrigger>
-      </AccordionHeader>
+      <Accordion.Header>
+        <Accordion.Trigger>Shipping</Accordion.Trigger>
+      </Accordion.Header>
     }
-  </AccordionRoot>
+  </Accordion.Root>
 );
 
 export const divInAnAccordionItem: mixed = (
-  <AccordionItem value="shipping">
+  <Accordion.Item value="shipping">
     {
       // expect: does not render union type
       <div>Shipping</div>
     }
-  </AccordionItem>
+  </Accordion.Item>
 );
 
 export const divInAnAccordionHeader: mixed = (
-  <AccordionHeader>
+  <Accordion.Header>
     {
       // expect: does not render AccordionTrigger
       <div>Shipping</div>
     }
-  </AccordionHeader>
+  </Accordion.Header>
 );

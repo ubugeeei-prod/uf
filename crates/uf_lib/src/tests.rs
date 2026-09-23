@@ -362,9 +362,22 @@ fn read_exported_names(source: &str, include_types: bool) -> Result<Option<Expor
         // tree rather than from a line of text, because `export\n  * from` is
         // the same statement and a string match would call the module checked
         // and then compare its registry entry against nothing.
-        if let Some(statement::export_named_declaration::Specifier::ExportBatchSpecifier(_)) =
+        //
+        // `export * as Dialog from "./dialog.js"` is the other form of the
+        // same statement, and it is the opposite case: it binds exactly one
+        // name, the namespace, which is how `@uniflowed/ui`'s barrel exports
+        // every component with parts (ubugeeei-prod/uf#1453).
+        if let Some(statement::export_named_declaration::Specifier::ExportBatchSpecifier(batch)) =
             &inner.specifiers
         {
+            if let Some(namespace) = &batch.specifier {
+                if inner.export_kind == ExportKind::ExportType {
+                    exports.types.push(namespace.name.to_string());
+                } else {
+                    exports.values.push(namespace.name.to_string());
+                }
+                continue;
+            }
             // A type-only wildcard leaves the value namespace fully known.
             // Readers of both namespaces must still report the unknown types.
             if include_types || inner.export_kind != ExportKind::ExportType {
@@ -810,43 +823,41 @@ fn is_hook_name(name: &str) -> bool {
 
 /// The components `@uniflowed/ui` ships, and the parts each one exposes.
 ///
-/// Read from `packages/ui/index.js`, which is where the parts are: `tabs.js`
-/// exports `TabsList` and `TabsTab`, and only the barrel says those two are
-/// `Tabs.List` and `Tabs.Tab`. Two shapes, because the package has two.
+/// Read from `packages/ui/index.js` and the modules it names, because that is
+/// where the parts are. Two shapes, because the package has two:
 ///
-/// * A namespace object — `export const Tabs = { Root: TabsRoot, … }` — whose
-///   keys are the parts, in the order the module lists them.
+/// * A namespace — `export * as Tabs from "./tabs.js"` — whose parts are the
+///   capitalised values `tabs.js` exports: `Root`, `List`, `Tab`, `Panel`.
+///   A module declares each part under its full name and exports it under the
+///   short one (ubugeeei-prod/uf#1453), so the *exported* name is the part.
 /// * A bare value: `Checkbox`, `Progress`, `Separator`, `Switch` and `Toggle`
 ///   are one component each with nothing to compose, and the table spells that
 ///   `["Root"]` — the component itself is the part. It is not a special case
 ///   in the data; `Toggle`'s entry has said so in prose since it was written.
 ///
 /// `toast`, `dismissToast`, `dismissAllToasts` and `updateToast` are exported
-/// beside them and are not components. They are told apart the way React tells
-/// them apart, and the way JSX requires: a component's name is capitalised.
+/// beside them and are not components, and neither is a module's `parseColor`.
+/// They are told apart the way React tells them apart, and the way JSX
+/// requires: a component's name is capitalised.
 ///
 /// Parsed rather than matched, for
-/// [`the_registry_names_exactly_what_each_package_exports`]'s reasons — and for
-/// one more here. An object literal is nested, so a regular expression would
-/// have to decide where it ends, and the first component to hold a nested
-/// object in a namespace would silently contribute its inner keys as parts.
-fn ui_components_shipped(source: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
-    use uf_flow::ast::expression::{ExpressionInner, object};
-    use uf_flow::ast::pattern;
+/// [`the_registry_names_exactly_what_each_package_exports`]'s reasons: the
+/// same reader answers "what does this module export" for every package, and a
+/// second answer written as a regular expression would be a second thing to
+/// keep right.
+fn ui_components_shipped(package: &Path) -> Result<BTreeMap<String, Vec<String>>, String> {
     use uf_flow::ast::statement::{self, ExportKind};
 
-    let parsed = uf_flow::parse(source).map_err(|error| format!("{error:?}"))?;
+    let read = |file: &str| {
+        fs::read_to_string(package.join(file)).map_err(|error| format!("{file}: {error}"))
+    };
+    let source = read("index.js")?;
+    let parsed = uf_flow::parse(&source).map_err(|error| format!("{error:?}"))?;
     if !parsed.diagnostics.is_empty() {
         return Err(format!("{:?}", parsed.diagnostics));
     }
 
     let mut shipped = BTreeMap::new();
-    // The values the namespaces hold, and the capitalised names exported on
-    // their own. A name a namespace holds is a part the barrel also exports
-    // under its own name (`DialogRoot` is `Dialog.Root`); a name none holds is a
-    // component with nothing to compose.
-    let mut held = BTreeSet::new();
-    let mut alone = Vec::new();
     for node in parsed.program.statements.iter() {
         let statement::StatementInner::ExportNamedDeclaration { inner, .. } = &**node else {
             continue;
@@ -854,60 +865,39 @@ fn ui_components_shipped(source: &str) -> Result<BTreeMap<String, Vec<String>>, 
         if inner.export_kind == ExportKind::ExportType {
             continue;
         }
-
-        if let Some(declaration) = &inner.declaration
-            && let statement::StatementInner::VariableDeclaration { inner, .. } = &**declaration
-        {
-            for declarator in inner.declarations.iter() {
-                let pattern::Pattern::Identifier { inner, .. } = &declarator.id else {
+        match &inner.specifiers {
+            Some(statement::export_named_declaration::Specifier::ExportBatchSpecifier(batch)) => {
+                let Some(namespace) = &batch.specifier else {
                     continue;
                 };
-                let name = inner.name.name.to_string();
-                if !starts_capitalised(&name) {
-                    continue;
-                }
-                let Some(init) = &declarator.init else {
+                let Some((_, from)) = &inner.source else {
                     continue;
                 };
-                let ExpressionInner::Object { inner, .. } = &**init else {
-                    continue;
-                };
-                let mut parts = Vec::new();
-                for property in inner.properties.iter() {
-                    if let object::Property::NormalProperty(object::NormalProperty::Init {
-                        key: object::Key::Identifier(key),
-                        value,
-                        ..
-                    }) = property
-                    {
-                        parts.push(key.name.to_string());
-                        if let ExpressionInner::Identifier { inner, .. } = &**value {
-                            held.insert(inner.name.to_string());
-                        }
+                let file = from
+                    .value
+                    .strip_prefix("./")
+                    .ok_or_else(|| format!("{} is not a module of the package", from.value))?;
+                let values = exported_values(&read(file)?)?
+                    .ok_or_else(|| format!("{file} hands on another module's surface"))?;
+                let parts = values
+                    .into_iter()
+                    .filter(|name| starts_capitalised(name))
+                    .collect();
+                shipped.insert(namespace.name.to_string(), parts);
+            }
+            Some(statement::export_named_declaration::Specifier::ExportSpecifiers(specifiers)) => {
+                for specifier in specifiers {
+                    if specifier.export_kind == ExportKind::ExportType {
+                        continue;
+                    }
+                    let exported = specifier.exported.as_ref().unwrap_or(&specifier.local);
+                    let name = exported.name.to_string();
+                    if starts_capitalised(&name) {
+                        shipped.insert(name, vec!["Root".to_owned()]);
                     }
                 }
-                shipped.insert(name, parts);
             }
-        }
-
-        if let Some(statement::export_named_declaration::Specifier::ExportSpecifiers(specifiers)) =
-            &inner.specifiers
-        {
-            for specifier in specifiers {
-                if specifier.export_kind == ExportKind::ExportType {
-                    continue;
-                }
-                let exported = specifier.exported.as_ref().unwrap_or(&specifier.local);
-                let name = exported.name.to_string();
-                if starts_capitalised(&name) {
-                    alone.push(name);
-                }
-            }
-        }
-    }
-    for name in alone {
-        if !held.contains(&name) {
-            shipped.insert(name, vec!["Root".to_owned()]);
+            None => {}
         }
     }
     Ok(shipped)
@@ -916,6 +906,29 @@ fn ui_components_shipped(source: &str) -> Result<BTreeMap<String, Vec<String>>, 
 /// A component's name, in the one sense JSX enforces.
 fn starts_capitalised(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
+}
+
+/// Every `export * as Name from "./file.js"` in `packages/ui/index.js`, as
+/// `(Name, "file.js")`.
+///
+/// Read with the text of the statement rather than the parser because it is
+/// one line of one shape in a file this repository formats, and
+/// [`ui_components_shipped`] already holds the same statements through the
+/// parser: a namespace this reading missed would be a component with no parts
+/// there, which fails the table.
+fn ui_namespace_modules(package: &Path) -> Vec<(String, String)> {
+    let barrel = package.join("index.js");
+    let source = fs::read_to_string(&barrel)
+        .unwrap_or_else(|error| panic!("{} cannot be read: {error}", barrel.display()));
+    source
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("export * as ")?;
+            let (name, from) = rest.split_once(" from \"./")?;
+            let file = from.strip_suffix("\";")?;
+            Some((name.to_owned(), file.to_owned()))
+        })
+        .collect()
 }
 
 /// `AlertDialog` as `alert-dialog`: the module a component lives in.
@@ -976,11 +989,8 @@ fn module_of(name: &str) -> String {
 #[test]
 fn the_ui_table_names_exactly_what_the_package_ships() {
     let root = repository_root();
-    let barrel = root.join("packages/ui/index.js");
-    let source = fs::read_to_string(&barrel)
-        .unwrap_or_else(|error| panic!("{} cannot be read: {error}", barrel.display()));
-    let shipped = ui_components_shipped(&source)
-        .unwrap_or_else(|error| panic!("{} does not parse: {error}", barrel.display()));
+    let shipped = ui_components_shipped(&root.join("packages/ui"))
+        .unwrap_or_else(|error| panic!("packages/ui cannot be read: {error}"));
 
     // Every module beside the barrel, by name: `alert-dialog.js` is
     // `alert-dialog`. A test sits beside the module it tests and is not one.
@@ -1062,12 +1072,16 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
 /// cannot name. `@uniflowed/form` is such a caller: it takes `FieldSource` from
 /// here.
 ///
-/// One export is not for callers: `radioSet`, which `radio-group.js` and
-/// `toggle-group.js` share and which no page composes.
+/// A module the barrel re-exports whole — `export * as Dialog from
+/// "./dialog.js"` — has its parts reached through the namespace (`Dialog.Root`),
+/// so its capitalised values are not looked for flat. Everything else it
+/// exports is: the convention is that types, hooks and functions keep their
+/// names and are imported flat (`DialogRole`, `parseColor`, `toast`), and a
+/// module whose `parseColor` were reachable only as `ColorPicker.parseColor`
+/// would be the second spelling #1453 removed, the other way round. Nothing is
+/// exported between modules only: a namespace re-export would publish it.
 #[test]
 fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
-    const SHARED_BETWEEN_MODULES: &[&str] = &["radioSet"];
-
     let root = repository_root().join("packages/ui");
     let read = |file: &str| {
         let path = root.join(file);
@@ -1078,6 +1092,10 @@ fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
             .unwrap_or_else(|| panic!("{} hands on another module's surface", path.display()))
     };
     let barrel = read("index.js");
+    let namespaced: BTreeSet<String> = ui_namespace_modules(&root)
+        .into_iter()
+        .map(|(_, file)| file)
+        .collect();
 
     let mut missing = Vec::new();
     let mut modules = 0usize;
@@ -1092,8 +1110,12 @@ fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
         }
         modules += 1;
         let exports = read(&file);
+        let parts_are_members = namespaced.contains(&file);
         for value in &exports.values {
-            if !SHARED_BETWEEN_MODULES.contains(&value.as_str()) && !barrel.values.contains(value) {
+            if parts_are_members && starts_capitalised(value) {
+                continue;
+            }
+            if !barrel.values.contains(value) {
                 missing.push(format!("{file}: {value}"));
             }
         }
@@ -1170,11 +1192,8 @@ fn the_ui_hook_modules_export_hooks_and_no_component() {
 #[test]
 fn the_parts_of_an_implemented_component_are_the_ones_it_exports() {
     let root = repository_root();
-    let barrel = root.join("packages/ui/index.js");
-    let source = fs::read_to_string(&barrel)
-        .unwrap_or_else(|error| panic!("{} cannot be read: {error}", barrel.display()));
-    let shipped = ui_components_shipped(&source)
-        .unwrap_or_else(|error| panic!("{} does not parse: {error}", barrel.display()));
+    let shipped = ui_components_shipped(&root.join("packages/ui"))
+        .unwrap_or_else(|error| panic!("packages/ui cannot be read: {error}"));
 
     let mut drifted = Vec::new();
     let mut checked = 0usize;
@@ -1315,6 +1334,11 @@ fn the_export_reader_sees_every_shape_a_package_uses() {
     // text would call the second one checked and then compare the registry
     // against nothing.
     assert_eq!(exported_values("export * from \"react\";\n").unwrap(), None);
+    // A namespace re-export is not a wildcard: it names one thing, the module.
+    assert_eq!(
+        exported_values("export * as Dialog from \"./dialog.js\";\n").unwrap(),
+        Some(vec!["Dialog".to_owned()])
+    );
     assert_eq!(
         exported_values("export\n  * from \"react\";\n").unwrap(),
         None

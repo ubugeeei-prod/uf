@@ -87,13 +87,13 @@ export component Breadcrumb(
   ...rest: Rest
 ) {
   return (
-    <Primitive.BreadcrumbRoot
+    <Primitive.Breadcrumb.Root
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
       label={label}
     >
       {children}
-    </Primitive.BreadcrumbRoot>
+    </Primitive.Breadcrumb.Root>
   );
 }
 
@@ -105,12 +105,12 @@ export component BreadcrumbList(
   ...rest: Rest
 ) {
   return (
-    <Primitive.BreadcrumbList
+    <Primitive.Breadcrumb.List
       {...forwarded(rest)}
       className={classNames(props(styles.list, xstyle).className, className)}
     >
       {children}
-    </Primitive.BreadcrumbList>
+    </Primitive.Breadcrumb.List>
   );
 }
 
@@ -120,14 +120,14 @@ export component BreadcrumbItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.BreadcrumbItem {
+) renders Primitive.Breadcrumb.Item {
   return (
-    <Primitive.BreadcrumbItem
+    <Primitive.Breadcrumb.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
     >
       {children}
-    </Primitive.BreadcrumbItem>
+    </Primitive.Breadcrumb.Item>
   );
 }
 
@@ -140,13 +140,13 @@ export component BreadcrumbLink(
   ...rest: Rest
 ) {
   return (
-    <Primitive.BreadcrumbLink
+    <Primitive.Breadcrumb.Link
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       render={render}
     >
       {children}
-    </Primitive.BreadcrumbLink>
+    </Primitive.Breadcrumb.Link>
   );
 }
 
@@ -158,12 +158,12 @@ export component BreadcrumbPage(
   ...rest: Rest
 ) {
   return (
-    <Primitive.BreadcrumbPage
+    <Primitive.Breadcrumb.Page
       {...forwarded(rest)}
       className={classNames(props(styles.page, xstyle).className, className)}
     >
       {children}
-    </Primitive.BreadcrumbPage>
+    </Primitive.Breadcrumb.Page>
   );
 }
 
@@ -173,9 +173,9 @@ export component BreadcrumbSeparator(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.BreadcrumbSeparator {
+) renders Primitive.Breadcrumb.Separator {
   return (
-    <Primitive.BreadcrumbSeparator
+    <Primitive.Breadcrumb.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     >
@@ -194,7 +194,7 @@ export component BreadcrumbSeparator(
           <path d="m9 18 6-6-6-6" />
         </svg>
       )}
-    </Primitive.BreadcrumbSeparator>
+    </Primitive.Breadcrumb.Separator>
   );
 }
 

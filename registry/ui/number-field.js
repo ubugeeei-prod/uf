@@ -64,17 +64,17 @@ export component NumberField(
   ...rest: Rest
 ) {
   return (
-    <Primitive.NumberFieldRoot
+    <Primitive.NumberField.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children}
-    </Primitive.NumberFieldRoot>
+    </Primitive.NumberField.Root>
   );
 }
 export component NumberFieldInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.NumberFieldInput
+    <Primitive.NumberField.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
@@ -87,12 +87,12 @@ export component NumberFieldIncrement(
   ...rest: Rest
 ) {
   return (
-    <Primitive.NumberFieldIncrement
+    <Primitive.NumberField.Increment
       {...forwarded(rest)}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       {children}
-    </Primitive.NumberFieldIncrement>
+    </Primitive.NumberField.Increment>
   );
 }
 export component NumberFieldDecrement(
@@ -102,12 +102,12 @@ export component NumberFieldDecrement(
   ...rest: Rest
 ) {
   return (
-    <Primitive.NumberFieldDecrement
+    <Primitive.NumberField.Decrement
       {...forwarded(rest)}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       {children}
-    </Primitive.NumberFieldDecrement>
+    </Primitive.NumberField.Decrement>
   );
 }
 

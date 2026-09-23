@@ -241,12 +241,12 @@ export component Calendar(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CalendarRoot
+    <Primitive.Calendar.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children}
-    </Primitive.CalendarRoot>
+    </Primitive.Calendar.Root>
   );
 }
 
@@ -265,13 +265,13 @@ export component CalendarPrevious(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CalendarPrevious
+    <Primitive.Calendar.Previous
       {...forwarded(rest)}
       aria-label={label}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       <Chevron path="m15 18-6-6 6-6" />
-    </Primitive.CalendarPrevious>
+    </Primitive.Calendar.Previous>
   );
 }
 
@@ -283,13 +283,13 @@ export component CalendarNext(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CalendarNext
+    <Primitive.Calendar.Next
       {...forwarded(rest)}
       aria-label={label}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       <Chevron path="m9 18 6-6-6-6" />
-    </Primitive.CalendarNext>
+    </Primitive.Calendar.Next>
   );
 }
 
@@ -297,14 +297,14 @@ export component CalendarNext(
 export component CalendarMonth(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   const day = props(styles.day).className;
   return (
-    <Primitive.CalendarMonth
+    <Primitive.Calendar.Month
       {...forwarded(rest)}
       captionClassName={props(styles.caption).className}
       className={classNames(props(styles.month, xstyle).className, className)}
       columnHeaderClassName={props(styles.weekday).className}
     >
-      {(date) => <Primitive.CalendarDay className={day} date={date} />}
-    </Primitive.CalendarMonth>
+      {(date) => <Primitive.Calendar.Day className={day} date={date} />}
+    </Primitive.Calendar.Month>
   );
 }
 

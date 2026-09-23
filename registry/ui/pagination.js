@@ -105,7 +105,7 @@ export component Pagination(
   ...rest: Rest
 ) {
   return (
-    <Primitive.PaginationRoot
+    <Primitive.Pagination.Root
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
       label={label}
@@ -113,7 +113,7 @@ export component Pagination(
       pageCount={pageCount}
     >
       {children}
-    </Primitive.PaginationRoot>
+    </Primitive.Pagination.Root>
   );
 }
 
@@ -125,12 +125,12 @@ export component PaginationContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.PaginationContent
+    <Primitive.Pagination.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.PaginationContent>
+    </Primitive.Pagination.Content>
   );
 }
 
@@ -143,9 +143,9 @@ export component PaginationItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.PaginationItem {
+) renders Primitive.Pagination.Item {
   return (
-    <Primitive.PaginationItem
+    <Primitive.Pagination.Item
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       current={current}
@@ -153,7 +153,7 @@ export component PaginationItem(
       render={render}
     >
       {children}
-    </Primitive.PaginationItem>
+    </Primitive.Pagination.Item>
   );
 }
 
@@ -165,9 +165,9 @@ export component PaginationPrevious(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.PaginationPrevious {
+) renders Primitive.Pagination.Previous {
   return (
-    <Primitive.PaginationPrevious
+    <Primitive.Pagination.Previous
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       disabled={disabled}
@@ -188,7 +188,7 @@ export component PaginationPrevious(
       >
         <path d="m15 18-6-6 6-6" />
       </svg>
-    </Primitive.PaginationPrevious>
+    </Primitive.Pagination.Previous>
   );
 }
 
@@ -200,9 +200,9 @@ export component PaginationNext(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.PaginationNext {
+) renders Primitive.Pagination.Next {
   return (
-    <Primitive.PaginationNext
+    <Primitive.Pagination.Next
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       disabled={disabled}
@@ -223,7 +223,7 @@ export component PaginationNext(
       >
         <path d="m9 18 6-6-6-6" />
       </svg>
-    </Primitive.PaginationNext>
+    </Primitive.Pagination.Next>
   );
 }
 

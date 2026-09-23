@@ -26,7 +26,7 @@ hook useColor(): ColorState {
   if (color == null) throw new Error("ColorPicker parts must be inside ColorPicker.Root");
   return color;
 }
-export component ColorPickerRoot(
+component ColorPickerRoot(
   children: React.Node,
   value?: string,
   defaultValue?: string = "#000000",
@@ -53,7 +53,7 @@ export component ColorPickerRoot(
     </ColorContext.Provider>
   );
 }
-export component ColorPickerInput(render?: RenderProp, ...rest: Rest) {
+component ColorPickerInput(render?: RenderProp, ...rest: Rest) {
   const color = useColor();
   const props = withProps(rest, {
     type: "color",
@@ -65,7 +65,7 @@ export component ColorPickerInput(render?: RenderProp, ...rest: Rest) {
   });
   return render != null ? render(props) : <input {...props} />;
 }
-export component ColorPickerField(render?: RenderProp, ...rest: Rest) {
+component ColorPickerField(render?: RenderProp, ...rest: Rest) {
   const color = useColor();
   const [draft, setDraft] = useState<string | null>(null);
   const text = draft ?? color.value;
@@ -94,7 +94,7 @@ export component ColorPickerField(render?: RenderProp, ...rest: Rest) {
   });
   return render != null ? render(props) : <input {...props} />;
 }
-export component ColorPickerChannel(
+component ColorPickerChannel(
   channel: "red" | "green" | "blue" | "alpha",
   render?: RenderProp,
   ...rest: Rest
@@ -161,7 +161,7 @@ export component ColorPickerChannel(
   });
   return render != null ? render(props) : <input {...props} />;
 }
-export component ColorPickerSwatch(render?: RenderProp, ...rest: Rest) {
+component ColorPickerSwatch(render?: RenderProp, ...rest: Rest) {
   const color = useColor();
   const props = withProps(rest, {
     "aria-hidden": "true",
@@ -170,3 +170,20 @@ export component ColorPickerSwatch(render?: RenderProp, ...rest: Rest) {
   });
   return render != null ? render(props) : <span {...props} />;
 }
+
+/**
+ * The parts, under the names the `ColorPicker` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as ColorPicker from "./color-picker.js"` —
+ * so a caller writes `<ColorPicker.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `ColorPickerRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  ColorPickerRoot as Root,
+  ColorPickerInput as Input,
+  ColorPickerField as Field,
+  ColorPickerChannel as Channel,
+  ColorPickerSwatch as Swatch,
+};

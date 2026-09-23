@@ -121,7 +121,7 @@ hook useSlider(part: string): SliderState {
  * with two thumbs, and a `number | [number, number]` prop would make every
  * caller narrow a union to read their own value back.
  */
-export component SliderRoot(
+component SliderRoot(
   children: React.Node,
   value?: $ReadOnlyArray<number>,
   defaultValue?: $ReadOnlyArray<number> = [0],
@@ -209,7 +209,7 @@ export component SliderRoot(
  * wanders off the track — which every drag does — keeps arriving here instead
  * of being lost to whatever it wandered over.
  */
-export component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Track");
   const passed = withoutComposed(rest, ["onPointerDown", "onPointerMove", "onPointerUp", "ref"]);
   const dragging = useRef<number | null>(null);
@@ -291,7 +291,7 @@ export component SliderTrack(children: React.Node, render?: RenderProp, ...rest:
  * is told the value by the thumb and telling them again here would be telling
  * them twice.
  */
-export component SliderRange(render?: RenderProp, ...rest: Rest) {
+component SliderRange(render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Range");
   const passed = withoutComposed(rest, ["style"]);
   const ends = [...slider.values].sort((first, second) => first - second);
@@ -323,7 +323,7 @@ export component SliderRange(render?: RenderProp, ...rest: Rest) {
  * "Maximum" told apart is the whole difference between a control a reader can
  * operate and two identical "slider"s.
  */
-export component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
+component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Thumb");
   const passed = withoutComposed(rest, ["onKeyDown", "style"]);
   const value = slider.values[index] ?? slider.min;
@@ -409,3 +409,14 @@ function boundsOf(
   const above = index < values.length - 1 ? values[index + 1] : undefined;
   return [below ?? min, above ?? max];
 }
+
+/**
+ * The parts, under the names the `Slider` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Slider from "./slider.js"` —
+ * so a caller writes `<Slider.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `SliderRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { SliderRoot as Root, SliderTrack as Track, SliderRange as Range, SliderThumb as Thumb };

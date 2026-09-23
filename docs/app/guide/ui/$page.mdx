@@ -153,42 +153,63 @@ the suite fails if that table stops matching the files.
 [#303](https://github.com/ubugeeei-prod/uf/issues/303) is the argument, and
 `packages/ui/index.js`'s header is where the decision is recorded.
 
-Import from `@uniflowed/ui`, the one entry point the package has. Each family is
-a namespace there:
+## Importing: one name per component
+
+Import from `@uniflowed/ui`, the one entry point the package has. A component
+with parts is one name, a namespace, and its parts are members of it:
 
 ```js
-import {
-  AlertDialog,
-  Checkbox,
-  Combobox,
-  Dialog,
-  Field,
-  Menu,
-  Select,
-  Sheet,
-  Switch,
-  Tabs,
-  Toast,
-} from "@uniflowed/ui";
+import { Checkbox, Dialog, Field, Menu, Select, Tabs, toast } from "@uniflowed/ui";
+
+<Dialog.Root>
+  <Dialog.Trigger>Delete</Dialog.Trigger>
+  <Dialog.Body>
+    <Dialog.Title>Delete this project?</Dialog.Title>
+  </Dialog.Body>
+</Dialog.Root>;
 ```
 
-and every part is there under its own name as well — `DialogRoot`,
-`MenuSubTrigger` — so `Dialog.Root` and `DialogRoot` are the same component. The
-package exports no subpath, and `internal/` is not importable, on purpose: it
-holds the roving-focus reader, the controlled-state hook and the prop merger,
-and each of their headers says why publishing it would be a weaker promise than
-not.
+That is the only spelling. The rule has three cases:
 
-Use the namespace when a page composes several parts of one primitive; it keeps
-the JSX readable. Use the flat names when you are writing a small wrapper or
-preset around one primitive. Either way a bundler keeps the modules the names
-come from and drops the rest, because the package declares `sideEffects: false`,
-and uf's Server Component analysis sees through the barrel to the one module
-each name comes from:
+| What it is | How you import it | Examples |
+| --- | --- | --- |
+| A component with parts | One namespace; the parts are unprefixed members | `Dialog.Root`, `Tabs.Tab`, `Menu.SubTrigger` |
+| A component that is one element | Its own name | `Checkbox`, `Switch`, `Progress`, `ListBox` |
+| A type, hook or function | Its own name, flat | `DialogRole`, `Side`, `toast`, `usePress`, `parseColor` |
 
-```js
-import { Dialog, DialogRoot, DialogTrigger } from "@uniflowed/ui";
-```
+**Why namespaces.** Two names for one part means two things to search for and a
+review decision in every file. Earlier releases exported `DialogRoot` next
+to `Dialog.Root`, and the docs, the registry and the examples each picked a
+different one. Each namespace is a real ES module namespace:
+`packages/ui/index.js` says `export * as Dialog from "./dialog.js"`. It is not an
+object built at run time. That matters in three places:
+
+- **Tree-shaking.** A bundler treats `Dialog.Root` as a static reference to one
+  export of `dialog.js`, so a page that never renders `Dialog.Description`
+  does not ship it. An object literal would have to be kept whole.
+- **Flow.** `Dialog.Root` has exactly the type `dialog.js` declares, including its
+  `renders` constraints. Misspell it and Flow answers "did you mean `Root`?".
+- **Server Components and the client bundle.** uf rewrites
+  `import { Dialog } from "@uniflowed/ui"` to
+  `import * as Dialog from ".../dialog.js"` before bundling. The rsc graph and
+  the browser load that one module, not the package.
+
+Each part is still *declared* under its full name (`component DialogRoot`) and
+exported under the short one. React DevTools, component stacks and errors say
+`DialogRoot`, not one of forty `Root`s.
+
+**Moving from the prefixed names.** Run `uf codemod` after upgrading. It
+rewrites `import { DialogRoot, DialogTrigger } from "@uniflowed/ui"` to
+`import { Dialog } from "@uniflowed/ui"`, and every use to `Dialog.Root` and
+`Dialog.Trigger`, including JSX, `typeof`, `renders` and `ui.DialogRoot` on
+a namespace import. A file that already has its own `Dialog` binding gets the
+import as `UiDialog`. Anything it cannot rewrite safely is left alone and listed
+in `.uf/migration-report.json`.
+
+The package exports no subpath, and you cannot import `internal/`. That is on
+purpose. It holds the roving-focus reader, the controlled-state hook and the
+prop merger, and each file's header says why publishing it would be a weaker
+promise than keeping it internal.
 
 Every example on this page was rendered and asserted before it was published;
 the keyboard tables below cite the test in

@@ -760,6 +760,20 @@ fn shipped_modules_never_use_star_re_exports() {
             if !next.starts_with('*') {
                 continue;
             }
+            // `export * as Dialog from "./dialog.js"` binds one name, the
+            // module's namespace, and merges nothing into this module's own
+            // names, so there is nothing for it to collide with. It is how
+            // `@uniflowed/ui` exports every component with parts
+            // (ubugeeei-prod/uf#1453).
+            if next[1..].trim_start().starts_with("as")
+                && next[1..]
+                    .trim_start()
+                    .as_bytes()
+                    .get(2)
+                    .is_some_and(u8::is_ascii_whitespace)
+            {
+                continue;
+            }
             // A star is allowed where the package *is* the re-export.
             //
             // The ban is about uf's own barrels: several domains legitimately
@@ -1145,14 +1159,15 @@ fn every_shipped_module_is_reachable_through_exports() {
     }
 }
 
-/// `@uniflowed/ui` has one way in: `import { DialogRoot } from "@uniflowed/ui"`.
+/// `@uniflowed/ui` has one way in: `import { Dialog } from "@uniflowed/ui"`.
 ///
 /// The package once exported a subpath per component beside its barrel, and
 /// the code, the documentation and the examples mixed the two: two answers to
-/// the first question a reader asks. The barrel carries every part under its
-/// own name, `sideEffects: false` lets a bundler keep only the modules the names
-/// come from, and `uf_rsc` sees through it to the one module a name reaches, so
-/// a subpath buys nothing the barrel does not give.
+/// the first question a reader asks. The barrel carries every component under
+/// one name (`Dialog`, whose parts are `Dialog.Root` and the rest),
+/// `sideEffects: false` lets a bundler keep only the modules the names come
+/// from, and `uf_rsc` sees through it to the one module a name reaches, so a
+/// subpath buys nothing the barrel does not give.
 ///
 /// Two halves. The manifest exports `.` and nothing else, so a subpath does not
 /// resolve. And nothing a reader copies an import from spells one: the registry

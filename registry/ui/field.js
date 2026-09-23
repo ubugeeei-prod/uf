@@ -116,7 +116,7 @@ export component Field(
   ...rest: Rest
 ) {
   return (
-    <Primitive.FieldRoot
+    <Primitive.Field.Root
       {...forwarded(rest)}
       busy={busy}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -126,7 +126,7 @@ export component Field(
       required={required}
     >
       {children}
-    </Primitive.FieldRoot>
+    </Primitive.Field.Root>
   );
 }
 
@@ -138,12 +138,12 @@ export component FieldLabel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.FieldLabel
+    <Primitive.Field.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.FieldLabel>
+    </Primitive.Field.Label>
   );
 }
 
@@ -155,7 +155,7 @@ export component FieldInput(
   ...rest: Rest
 ) {
   return (
-    <Primitive.FieldControl
+    <Primitive.Field.Control
       render={(control) => (
         <input
           {...rest}
@@ -171,7 +171,7 @@ export component FieldInput(
 /** A text area, wired the same way as `FieldInput`. */
 export component FieldTextarea(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.FieldControl
+    <Primitive.Field.Control
       render={(control) => (
         <textarea
           {...rest}
@@ -194,12 +194,12 @@ export component FieldDescription(
   ...rest: Rest
 ) {
   return (
-    <Primitive.FieldDescription
+    <Primitive.Field.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.FieldDescription>
+    </Primitive.Field.Description>
   );
 }
 
@@ -211,12 +211,12 @@ export component FieldStatus(
   ...rest: Rest
 ) {
   return (
-    <Primitive.FieldStatus
+    <Primitive.Field.Status
       {...forwarded(rest)}
       className={classNames(props(styles.status, xstyle).className, className)}
     >
       {children}
-    </Primitive.FieldStatus>
+    </Primitive.Field.Status>
   );
 }
 
@@ -228,12 +228,12 @@ export component FieldError(
   ...rest: Rest
 ) {
   return (
-    <Primitive.FieldError
+    <Primitive.Field.Error
       {...forwarded(rest)}
       className={classNames(props(styles.error, xstyle).className, className)}
     >
       {children}
-    </Primitive.FieldError>
+    </Primitive.Field.Error>
   );
 }
 

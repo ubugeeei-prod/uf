@@ -66,9 +66,9 @@ export component ContextMenu(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.ContextMenuRoot defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Primitive.ContextMenu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.ContextMenuRoot>
+    </Primitive.ContextMenu.Root>
   );
 }
 
@@ -80,12 +80,12 @@ export component ContextMenuTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ContextMenuTrigger
+    <Primitive.ContextMenu.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.area, xstyle).className, className)}
     >
       {children}
-    </Primitive.ContextMenuTrigger>
+    </Primitive.ContextMenu.Trigger>
   );
 }
 

@@ -6,7 +6,7 @@ import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { useActionState, useState } from "@uniflowed/react";
-import { FieldControl } from "@uniflowed/ui";
+import { Field } from "@uniflowed/ui";
 
 import { callAction } from "../_shared/action-result.client.js";
 import { FormField, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
@@ -67,7 +67,7 @@ export component AuthClient(mode: "login" | "signup") {
           "signup" =>
             <>
               <FormField label="Name" error={fieldError(state, "name")}>
-                <FieldControl
+                <Field.Control
                   render={(props) => (
                     <input
                       {...props}
@@ -83,7 +83,7 @@ export component AuthClient(mode: "login" | "signup") {
                 />
               </FormField>
               <FormField label="Email address" error={fieldError(state, "email")}>
-                <FieldControl
+                <Field.Control
                   render={(props) => (
                     <input
                       {...props}
@@ -103,7 +103,7 @@ export component AuthClient(mode: "login" | "signup") {
         }
       }
       <FormField label="Handle" error={fieldError(state, "handle")}>
-        <FieldControl
+        <Field.Control
           render={(props) => (
             <input
               {...props}
@@ -128,7 +128,7 @@ export component AuthClient(mode: "login" | "signup") {
         error={fieldError(state, "password")}
         hint="At least 12 characters. Use a password just for this example."
       >
-        <FieldControl
+        <Field.Control
           render={(props) => (
             <input
               {...props}

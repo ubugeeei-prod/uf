@@ -1,5 +1,5 @@
 //! Versioned configuration migrations. No configuration code is executed.
-use super::{Plan, source};
+use super::{Plan, source, ui_namespaces};
 use anyhow::{Result, ensure};
 use camino::Utf8Path;
 use serde_json::{Value, json};
@@ -7,8 +7,27 @@ use serde_json::{Value, json};
 pub(super) const TOOL_DECLARATIONS: &str = "tool-declarations-940";
 /// The release that moved the tool declarations out of `env.toolchain`.
 const TOOL_DECLARATIONS_SINCE: Release = Release::alpha(41);
+/// The release whose `@uniflowed/ui` exports each component with parts as a
+/// namespace only, without the prefixed part names (ubugeeei-prod/uf#1453).
+pub(super) const UI_NAMESPACES_SINCE: Release = Release::minor(3);
 
+/// Every migration between two releases, planned against the project at
+/// `root`, for the uf binary running it.
 pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan> {
+    plan_for(root, from, to, env!("CARGO_PKG_VERSION"))
+}
+
+/// [`plan`], with the running binary's version given rather than read.
+///
+/// A migration is registered for the release that introduces it, which is
+/// newer than the binary on `main` until that release is cut. The tests plan a
+/// migration as the binary that will carry it would.
+pub(super) fn plan_for(
+    root: &Utf8Path,
+    from: Option<&str>,
+    to: &str,
+    binary: &str,
+) -> Result<Plan> {
     let installed = root.join("node_modules/@uniflowed/core/package.json");
     let installed: Option<Value> = std::fs::read_to_string(installed)
         .ok()
@@ -22,7 +41,7 @@ pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan
         "codemod does not downgrade a project"
     );
     ensure!(
-        to_number <= Release::parse(env!("CARGO_PKG_VERSION"))?,
+        to_number <= Release::parse(binary)?,
         "target is newer than this uf binary; install the target uf first"
     );
     let mut plan = Plan::new("codemod");
@@ -50,6 +69,11 @@ pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan
     if after != before {
         plan.write("uf.config.js", before, after);
     }
+    if from_number < UI_NAMESPACES_SINCE && to_number >= UI_NAMESPACES_SINCE {
+        ui_namespaces::plan_project(root, &mut plan)?;
+        plan.migrations
+            .push(ui_namespaces::UI_NAMESPACES.to_owned());
+    }
     Ok(plan)
 }
 
@@ -73,6 +97,14 @@ impl Release {
         Self {
             core: [0, 0, 0],
             stage: (0, number),
+        }
+    }
+
+    /// `0.<minor>.0`, the release itself rather than a prerelease of it.
+    const fn minor(minor: u64) -> Self {
+        Self {
+            core: [0, minor, 0],
+            stage: (3, 0),
         }
     }
 

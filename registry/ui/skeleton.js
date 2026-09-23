@@ -29,7 +29,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { SkeletonBox as BoxPart, SkeletonRoot as RootPart } from "@uniflowed/ui";
+import { Skeleton as UiSkeleton } from "@uniflowed/ui";
 
 /** The shape a box stands in for. */
 export type SkeletonShape = "line" | "block" | "circle";
@@ -75,7 +75,7 @@ export component Skeleton(
   ...rest: Rest
 ) {
   return (
-    <RootPart
+    <UiSkeleton.Root
       {...forwarded(rest)}
       busy={busy}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -83,7 +83,7 @@ export component Skeleton(
       label={label}
     >
       {children}
-    </RootPart>
+    </UiSkeleton.Root>
   );
 }
 
@@ -103,7 +103,9 @@ export component SkeletonBox(
     },
     xstyle,
   );
-  return <BoxPart {...forwarded(rest)} className={classNames(styled.className, className)} />;
+  return (
+    <UiSkeleton.Box {...forwarded(rest)} className={classNames(styled.className, className)} />
+  );
 }
 
 /**
