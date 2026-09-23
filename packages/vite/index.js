@@ -46,6 +46,7 @@
 
 import { instrumentationFile } from "./internal/instrumentation.js";
 
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { nativeWebPlugin } from "./internal/native-web.js";
 
@@ -79,6 +80,8 @@ import {
 import {
   RSC_MANIFEST_ENV,
   actionReferenceSource,
+  declaresDefaultExport,
+  serverActionSource,
   actionsModuleSource,
   clientRouteFilter,
   readRscManifest,
@@ -664,6 +667,23 @@ function flowPlugin({
       if (!isSsr(this, loadOptions) && this.environment?.name !== RSC_ENVIRONMENT) {
         const references = actionTables().modules.get(cleanId(id));
         if (references != null) return actionReferenceSource(references);
+        return null;
+      }
+      // And in the server graphs, the file itself behind a module that gives
+      // each callable export what React reads to write a form that posts before
+      // hydration. The file is imported under a query, so it is still one
+      // module; only the plain id is the wrapper. See `serverActionSource`.
+      if (!id.includes("?")) {
+        const exported = actionTables().modules.get(id);
+        if (exported != null) {
+          let source = "";
+          try {
+            source = readFileSync(id, "utf8");
+          } catch {
+            return null;
+          }
+          return serverActionSource(id, exported, declaresDefaultExport(source));
+        }
       }
       return null;
     },
@@ -1029,7 +1049,34 @@ function flowPlugin({
               // to sit at the URL it was posted to. The same two lines are in
               // `@uniflowed/server`'s `fetch.js`, which is what every
               // deployment runs.
-              const acted = await entry.callAction(asRequest);
+              //
+              // A form posted before its page hydrated is answered with the
+              // page, rendered with the action's result as the submitting
+              // `useActionState`'s state — the render below, given `formState`.
+              const acted = await entry.callAction(asRequest, {
+                postback: async (formState) => {
+                  const result = await entry.render(
+                    url,
+                    { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
+                    {
+                      onError: (error) => reportRenderError(devServer, url, error),
+                      transformHead: (head) =>
+                        devServer.transformIndexHtml(
+                          url,
+                          flightState == null
+                            ? head
+                            : linkStylesheets(head, devStylesheets(devServer)),
+                        ),
+                      formState,
+                    },
+                  );
+                  if (result.error != null) reportRenderError(devServer, url, result.error);
+                  return new Response(result.stream(), {
+                    status: result.status ?? 200,
+                    headers: { ...result.headers, "content-type": "text/html; charset=utf-8" },
+                  });
+                },
+              });
               if (acted != null) {
                 await send(response, acted);
                 return true;
