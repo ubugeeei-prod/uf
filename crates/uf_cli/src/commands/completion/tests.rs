@@ -85,7 +85,7 @@ fn a_parent_completes_to_its_subcommands() {
     assert_eq!(complete_line(&["routes", ""]), vec!["list", "add", "help"]);
     assert_eq!(
         complete_line(&["ui", ""]),
-        vec!["add", "list", "diff", "help"]
+        vec!["add", "list", "diff", "update", "help"]
     );
     assert_eq!(complete_line(&["pm", ""]), vec!["approve-builds", "help"]);
     assert_eq!(complete_line(&["catalog", ""]), vec!["set", "help"]);
@@ -95,7 +95,7 @@ fn a_parent_completes_to_its_subcommands() {
 /// offering them after the first, because `uf ui add button dialog` is one
 /// command.
 #[test]
-fn ui_add_and_diff_complete_to_the_registrys_components() {
+fn ui_add_diff_and_update_complete_to_the_registrys_components() {
     let registry = uf_ui::Registry::embedded().expect("the registry reads");
     let every: Vec<String> = registry
         .components()
@@ -106,6 +106,7 @@ fn ui_add_and_diff_complete_to_the_registrys_components() {
     assert_eq!(complete_line(&["ui", "add", ""]), every);
     assert_eq!(complete_line(&["ui", "add", "button", ""]), every);
     assert_eq!(complete_line(&["ui", "diff", "di"]), vec!["dialog"]);
+    assert_eq!(complete_line(&["ui", "update", "di"]), vec!["dialog"]);
     assert!(complete_line(&["ui", "list", ""]).is_empty());
 }
 

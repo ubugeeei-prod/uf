@@ -308,8 +308,8 @@ merge wrong. When no base is found, the copy is left alone and the command
 names the alternatives: `uf ui diff` to see both changes, or `uf ui add
 --overwrite` to take this uf's version.
 
-The merged copy is stamped against this uf's text. It then reads as "edited
-since uf <this>", with every remaining difference the project's own, so a
+The merged copy is stamped against this uf's text. It then reads as edited
+since this uf's version, with every remaining difference the project's own, so a
 later `uf ui add` still refuses to replace it. Edits that overlap are written
 with diff3 conflict markers, which show the text the copy began as between
 `|||||||` and `=======`. The run names each conflicted file and exits non-zero,
