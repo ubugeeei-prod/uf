@@ -28,7 +28,7 @@ import type { FlightRoot } from "./flight.js";
 import { requireServerComponentsReact } from "./react-version.js";
 
 /** A module namespace, as far as the hook looks into one. */
-type ModuleNamespace = { +[string]: mixed };
+type ModuleNamespace = { readonly [string]: mixed };
 
 /** The server copy of the client module at a browser chunk URL. */
 export type ClientModuleLoader = (url: string) => Promise<ModuleNamespace>;
@@ -64,11 +64,18 @@ export function installServerModules(load: ClientModuleLoader): void {
     throw new Error("@uniflowed/router: a payload asked for an import map, which uf never writes");
   };
   parcelRequire.meta = { publicUrl: "", devServer: null };
-  Object.defineProperty(globalThis, "parcelRequire", {
+  // `Reflect`, because Flow reads a property name given to
+  // `Object.defineProperty` as one the target must already declare, and
+  // `parcelRequire` is exactly the global nothing declares. `Object`'s throws
+  // where this answers `false`, so the throw is kept.
+  const defined = Reflect.defineProperty(globalThis, "parcelRequire", {
     value: parcelRequire,
     writable: true,
     configurable: true,
   });
+  if (!defined) {
+    throw new TypeError("@uniflowed/router: could not install parcelRequire on the global object");
+  }
 }
 
 /**
@@ -82,7 +89,7 @@ export function installServerModules(load: ClientModuleLoader): void {
  */
 export function readPayload(
   stream: ReadableStream<Uint8Array>,
-  options?: {| +partial?: boolean |},
+  options?: {| readonly partial?: boolean |},
 ): Promise<FlightRoot> {
   requireServerComponentsReact(ENTRY);
   return options?.partial === true

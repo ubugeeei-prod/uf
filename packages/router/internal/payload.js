@@ -241,8 +241,8 @@ function asThenable(value: mixed): Promise<mixed> | null {
   if (value == null || (typeof value !== "object" && typeof value !== "function")) {
     return null;
   }
-  const then: mixed = (value: $FlowFixMe).then;
-  return typeof then === "function" ? (value: $FlowFixMe) : null;
+  const then: mixed = (value as $FlowFixMe).then;
+  return typeof then === "function" ? (value as $FlowFixMe) : null;
 }
 
 /** Whether a string would be read as a reference and so has to be escaped. */
@@ -315,7 +315,7 @@ function needsEncoding(root: mixed, label: string): boolean {
       continue;
     }
     if (isPlainObject(value)) {
-      const source: { +[string]: mixed } = (value: $FlowFixMe);
+      const source: { readonly [string]: mixed } = value as $FlowFixMe;
       for (const key of Object.keys(source)) {
         stack.push({ value: source[key], path: `${path}.${key}`, depth: depth + 1 });
       }
@@ -381,7 +381,7 @@ export function encodePayload(root: mixed, label: string): EncodedPayload {
       continue;
     }
     if (Array.isArray(value)) {
-      const encoded: Array<mixed> = new Array(value.length).fill(null);
+      const encoded: Array<mixed> = new Array<mixed>(value.length).fill(null);
       emit(encoded);
       // Pushed in reverse so that popping visits index 0 first: the id a
       // promise is given has to follow the order the payload reads in.
@@ -403,7 +403,7 @@ export function encodePayload(root: mixed, label: string): EncodedPayload {
       emit(value);
       continue;
     }
-    const source: { +[string]: mixed } = (value: $FlowFixMe);
+    const source: { readonly [string]: mixed } = value as $FlowFixMe;
     const encoded: { [string]: mixed } = {};
     emit(encoded);
     const keys = Object.keys(source);
@@ -491,7 +491,7 @@ export function decodePayload(root: mixed, resolve: RowResolver, label: string):
       continue;
     }
     if (Array.isArray(value)) {
-      const rebuilt: Array<mixed> = new Array(value.length).fill(null);
+      const rebuilt: Array<mixed> = new Array<mixed>(value.length).fill(null);
       emit(rebuilt);
       for (let index = value.length - 1; index >= 0; index -= 1) {
         stack.push({
@@ -509,7 +509,7 @@ export function decodePayload(root: mixed, resolve: RowResolver, label: string):
       emit(value);
       continue;
     }
-    const source: { +[string]: mixed } = (value: $FlowFixMe);
+    const source: { readonly [string]: mixed } = value as $FlowFixMe;
     const rebuilt: { [string]: mixed } = {};
     emit(rebuilt);
     const keys = Object.keys(source);
@@ -553,7 +553,7 @@ function hasReference(root: mixed, label: string): boolean {
       continue;
     }
     if (isPlainObject(value)) {
-      const source: { +[string]: mixed } = (value: $FlowFixMe);
+      const source: { readonly [string]: mixed } = value as $FlowFixMe;
       for (const key of Object.keys(source)) {
         stack.push({ value: source[key], path: `${path}.${key}`, depth: depth + 1 });
       }
@@ -632,7 +632,13 @@ function parsePayloadRowId(digits: string): number | null {
  * only one of them.
  */
 export function payloadJson(value: mixed): string {
-  return JSON.stringify(value)
+  const text = JSON.stringify(value);
+  if (text === undefined) {
+    // `undefined`, a function or a symbol: nothing JSON can say. This threw
+    // before too, as a `TypeError` about `replace`; now it says what it is.
+    throw new TypeError("@uniflowed/router: a payload value has no JSON form");
+  }
+  return text
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
@@ -660,9 +666,9 @@ export function parseRowMessage(text: string, id: number): PayloadRowMessage {
   if (!isPlainObject(parsed)) {
     throw new PayloadValueError(label, "is not a row message");
   }
-  const message: { +[string]: mixed } = (parsed: $FlowFixMe);
-  const hasValue = Object.prototype.hasOwnProperty.call(message, "value");
-  const hasError = Object.prototype.hasOwnProperty.call(message, "error");
+  const message: { readonly [string]: mixed } = parsed as $FlowFixMe;
+  const hasValue = Object.hasOwn(message, "value");
+  const hasError = Object.hasOwn(message, "error");
   if (hasValue === hasError) {
     throw new PayloadValueError(label, "must carry exactly one of `value` and `error`");
   }

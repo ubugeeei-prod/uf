@@ -92,7 +92,7 @@ export function devtoolsProblem(win: HookWindow): {|
   // handed back. Anything else there is a hook uf did not install and DevTools
   // did not either, and guessing at its shape would report a problem that is
   // really this module not recognising one.
-  const renderers = (hook: $FlowFixMe).renderers;
+  const renderers = (hook as $FlowFixMe).renderers;
   const count = renderers instanceof Map ? renderers.size : null;
   if (count != null && count > 1) {
     return {

@@ -144,7 +144,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     assets: RenderAssets,
     settings?: RenderOptions,
   ): Promise<RenderResult> {
-    const report = settings?.onError ?? (() => {});
+    const report = settings?.onError ?? ((_error: mixed) => {});
     const send = settings?.onStream;
     const onStream = send == null ? undefined : streamReporter(url, send);
     const transformHead = settings?.transformHead;
@@ -248,7 +248,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     assets: RenderAssets,
     settings?: RenderOptions,
   ): Promise<PrerenderResult> {
-    const report = settings?.onError ?? (() => {});
+    const report = settings?.onError ?? ((_error: mixed) => {});
     const ledger = createErrorLedger();
     // A read of the request, while the build may leave it for the request, is
     // not an exception to report: it is how the build finds the holes. Its row
@@ -405,7 +405,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     shell: PrerenderedShell,
     settings?: RenderOptions,
   ): Promise<RenderResult> {
-    const report = settings?.onError ?? (() => {});
+    const report = settings?.onError ?? ((_error: mixed) => {});
     const ledger = createErrorLedger();
     const stop = new AbortController();
     const rendered = await renderFlight(url, {
@@ -610,7 +610,7 @@ function digestOf(error: mixed): string | null {
   if (error == null || typeof error !== "object") {
     return null;
   }
-  const tagged: { +digest?: mixed, ... } = (error: $FlowFixMe);
+  const tagged: { readonly digest?: mixed, ... } = error as $FlowFixMe;
   return typeof tagged.digest === "string" ? tagged.digest : null;
 }
 

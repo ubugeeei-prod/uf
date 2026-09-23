@@ -21,6 +21,7 @@ import path from "node:path";
 
 import * as React from "@uniflowed/react";
 import { notFound, resolveMatch, routerView } from "@uniflowed/router";
+import type { PageModule } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
@@ -347,7 +348,7 @@ describe("the framework's pages when a project declares no boundary", () => {
   }
 
   /** A one-route app whose only layout is the masthead, with both root records. */
-  function site(page: () => Promise<mixed>) {
+  function site(page: () => Promise<PageModule>) {
     return {
       App: routerView("./app"),
       routes: [

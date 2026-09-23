@@ -62,7 +62,7 @@ let staleTimeMs: number = 0;
 export function installStaleTime(seconds: number): void {
   staleTimeMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
   if (import.meta.hot != null) {
-    Object.defineProperty((globalThis: $FlowFixMe), "__UF_NAVIGATION_CACHE__", {
+    Object.defineProperty(globalThis as $FlowFixMe, "__UF_NAVIGATION_CACHE__", {
       configurable: true,
       value: inspectNavigationCache,
     });

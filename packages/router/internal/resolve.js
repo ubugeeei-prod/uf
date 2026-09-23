@@ -639,7 +639,7 @@ export function loadOnce<T>(load: () => Promise<T>): Promise<T> {
     pending = load();
     moduleCache.set(load, pending);
   }
-  // $FlowFixMe[incompatible-return] the cache is keyed by the loader, whose result type it stores.
+  // $FlowFixMe[incompatible-type] the cache is keyed by the loader, whose result type it stores.
   return pending;
 }
 
@@ -755,9 +755,12 @@ async function resolveRoute(
         "client JavaScript, so the browser navigates to it rather than rendering it",
     );
   }
-  const [page, ...layouts] = await Promise.all([
+  // A pair rather than one spread array, so that the page stays a
+  // `PageModule` and the layouts `LayoutModule`s: `Promise.all` of a mixed
+  // list answers with the union of the two.
+  const [page, layouts] = await Promise.all([
     loadOnce(load),
-    ...matched.route.layouts.map((layout) => loadOnce(layout)),
+    Promise.all(matched.route.layouts.map((layout) => loadOnce(layout))),
   ]);
   // Started here and awaited at the end: the boundary's module does not depend
   // on the loader, so importing it alongside costs a navigation nothing. It
@@ -1460,11 +1463,11 @@ async function resolveNotFound(
 ): Promise<ResolvedRoute> {
   const record = nearestBoundary(table.notFound, pathname);
   const load = record?.page;
-  const [page, ...layouts] = await Promise.all([
+  const [page, layouts] = await Promise.all([
     load == null
       ? Promise.resolve<PageModule>({ default: DefaultNotFound, metadata: { title: "Not found" } })
       : loadOnce(load),
-    ...(record?.layouts ?? []).map((layout) => loadOnce(layout)),
+    Promise.all((record?.layouts ?? []).map((layout) => loadOnce(layout))),
   ]);
   const metadata = await resolveMetadata(page, layouts, {
     params: {},
@@ -1527,11 +1530,14 @@ async function resolveMetadata(
   }
   if (page.frontmatter != null) {
     const { title, description } = page.frontmatter;
-    merged = {
-      ...merged,
-      ...(title != null ? { title } : {}),
-      ...(description != null ? { description } : {}),
-    };
+    // One field at a time: spreading two conditional objects is a union per
+    // spread, and Flow refuses to multiply them out.
+    if (title != null) {
+      merged = { ...merged, title };
+    }
+    if (description != null) {
+      merged = { ...merged, description };
+    }
   }
   if (page.metadata != null) {
     take(page.metadata);
@@ -1587,7 +1593,7 @@ export function errorTitle(error: RouteError): string {
   return match (error) {
     {kind: "unauthorized"} => "Sign in required",
     {kind: "forbidden"} => "Not allowed",
-    {kind: "thrown"} => "Something went wrong",
+    {kind: "thrown", ...} => "Something went wrong",
   };
 }
 

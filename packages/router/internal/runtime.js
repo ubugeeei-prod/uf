@@ -1861,6 +1861,28 @@ export hook useLinkStatus(): {| readonly pending: boolean |} {
 }
 
 /**
+ * The click a `Link` hands its `onClick`: React's synthetic mouse event, as
+ * much of it as a link reads.
+ *
+ * Flow's React library no longer declares `SyntheticMouseEvent`, so the name
+ * this prop used did not resolve and every handler passed to it was unchecked.
+ * Stated structurally, as `@uniflowed/ui`'s `PartEvent` is; the event React
+ * passes has every member below.
+ */
+export type LinkClickEvent = {
+  readonly defaultPrevented: boolean,
+  readonly button: number,
+  readonly altKey: boolean,
+  readonly ctrlKey: boolean,
+  readonly metaKey: boolean,
+  readonly shiftKey: boolean,
+  readonly currentTarget: mixed,
+  readonly preventDefault: () => mixed,
+  readonly stopPropagation: () => mixed,
+  ...
+};
+
+/**
  * A client-side navigation.
  *
  * Renders a real anchor, so the link works before hydration and for a right
@@ -1892,8 +1914,10 @@ export component Link(
   transition?: boolean = true,
   children?: React.Node,
   className?: string,
-  onClick?: (event: SyntheticMouseEvent<HTMLAnchorElement>) => mixed,
-  ...rest: { readonly [string]: mixed }
+  onClick?: (event: LinkClickEvent) => mixed,
+  // `key` named out of the indexer: React never hands a component its key, and
+  // the rest is spread onto the anchor, where a `mixed` key would not do.
+  ...rest: { readonly key?: empty, readonly [string]: mixed }
 ) {
   const { router, navigation } = useRouterState();
   const [linkPending, startLinkTransition] = useTransition();
@@ -1914,7 +1938,7 @@ export component Link(
     }
   });
 
-  const handleClick = (event: SyntheticMouseEvent<HTMLAnchorElement>) => {
+  const handleClick = (event: LinkClickEvent) => {
     if (onClick != null) {
       onClick(event);
     }

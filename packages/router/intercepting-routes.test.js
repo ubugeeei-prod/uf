@@ -285,7 +285,12 @@ describe("a document request for an intercepted URL", () => {
   it("renders the page the URL names, with nothing in the slot", async () => {
     // A reload, a shared link and a crawler: none of them was on the feed, so
     // none of them is intercepted. The server never reads `intercepts`.
-    const { prerender } = createRenderer({ App: routerView("./app"), ...table });
+    const { prerender } = createRenderer({
+      App: routerView("./app"),
+      routes: table.routes,
+      notFound: table.notFound,
+      errors: table.errors,
+    });
 
     const result = await prerender("/feed/photo/1", assets);
 

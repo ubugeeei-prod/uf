@@ -10,15 +10,16 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 import { createMiddlewareRunner, rewrite } from "@uniflowed/router/middleware";
+import type { MiddlewareModule, MiddlewareRecord } from "@uniflowed/router/middleware";
 import { beginRequest } from "@uniflowed/router/server";
 
-const record = (path: string, module: mixed) => ({
+const record = (path: string, module: MiddlewareModule): MiddlewareRecord => ({
   path,
   file: `app${path === "/" ? "" : path}/$middleware.js`,
   load: async () => module,
 });
 
-const get = (url: string, init?: mixed) => new Request(`http://localhost${url}`, init);
+const get = (url: string, init?: RequestOptions) => new Request(`http://localhost${url}`, init);
 
 const hosted =
   (runner: (request: Request) => Promise<Response | Request | null>) =>
@@ -199,8 +200,15 @@ describe("a payload rendered over another page", () => {
       }),
     );
 
-  const intercepted = (headers: { [string]: string }) =>
-    get("/photo/1/__uf.flight", { headers: { [FROM]: "/feed", ...headers } });
+  const intercepted = (headers: { [string]: string }) => {
+    // The interception header first and the test's own after it, so a test can
+    // override it.
+    const all: { [string]: string } = { [FROM]: "/feed" };
+    for (const name of Object.keys(headers)) {
+      all[name] = headers[name];
+    }
+    return get("/photo/1/__uf.flight", { headers: all });
+  };
 
   const carriedFrom = (answer: Response | Request | null, request: Request): string | null => {
     const carried = answer instanceof Request ? answer : answer == null ? request : null;

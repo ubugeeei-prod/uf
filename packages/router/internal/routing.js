@@ -150,7 +150,7 @@ export type RouteTable<
 type UnknownRouteRecord = RouteRecord<mixed, mixed, mixed, mixed, mixed>;
 
 /** A URL matched against a table. */
-export type RouteMatch<TRoute: { +path: string, ... } = UnknownRouteRecord> = {|
+export type RouteMatch<TRoute extends { readonly path: string, ... } = UnknownRouteRecord> = {|
   readonly route: TRoute,
   readonly params: RouteParams,
 |};
@@ -172,7 +172,7 @@ export function routeErrorStatus(error: RouteError): 401 | 403 | 500 {
   return match (error) {
     {kind: "unauthorized"} => 401,
     {kind: "forbidden"} => 403,
-    {kind: "thrown"} => 500,
+    {kind: "thrown", ...} => 500,
   };
 }
 
@@ -306,9 +306,9 @@ function specificity(segments: $ReadOnlyArray<Segment>): number {
   let score = 0;
   for (const segment of segments) {
     score += match (segment) {
-      {kind: "static"} => 3,
-      {kind: "param"} => 2,
-      {kind: "catchAll"} => 1,
+      {kind: "static", ...} => 3,
+      {kind: "param", ...} => 2,
+      {kind: "catchAll", ...} => 1,
     };
   }
   return score;
@@ -403,12 +403,12 @@ function decodeSegment(segment: string): string {
 }
 
 /** Whether this table can render the route in the browser. */
-export function hasClientPage(route: { +page?: mixed, ... }): boolean {
+export function hasClientPage(route: { readonly page?: mixed, ... }): boolean {
   return route.page != null;
 }
 
 /** Match a pathname against the table, preferring the most specific route. */
-export function matchRoute<TRoute: { +path: string, ... }>(
+export function matchRoute<TRoute extends { readonly path: string, ... }>(
   routes: $ReadOnlyArray<TRoute>,
   pathname: string,
 ): ?RouteMatch<TRoute> {
@@ -421,7 +421,7 @@ export function matchRoute<TRoute: { +path: string, ... }>(
  * A slot is a second table matched against the same URL, and it has to be
  * matched by this function rather than by one of its own.
  */
-export function matchIn<TRoute: { +path: string, ... }>(
+export function matchIn<TRoute extends { readonly path: string, ... }>(
   routes: $ReadOnlyArray<TRoute>,
   pathname: string,
 ): ?RouteMatch<TRoute> {
@@ -454,8 +454,8 @@ function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>
   for (const segment of segments) {
     const next = match (segment) {
       {kind: "static", value: const value} => parts[index] === value ? index + 1 : -1,
-      {kind: "param"} => index < parts.length ? index + 1 : -1,
-      {kind: "catchAll"} => parts.length,
+      {kind: "param", ...} => index < parts.length ? index + 1 : -1,
+      {kind: "catchAll", ...} => parts.length,
     };
     if (next === -1) {
       return false;
@@ -466,7 +466,7 @@ function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>
 }
 
 /** The nearest boundary above `pathname`, or `null` when none covers it. */
-export function nearestBoundary<TBoundary: { readonly path: string, ... }>(
+export function nearestBoundary<TBoundary extends { readonly path: string, ... }>(
   boundaries: $ReadOnlyArray<TBoundary>,
   pathname: string,
 ): ?TBoundary {

@@ -100,10 +100,23 @@ type NodeDestination = {
 };
 
 /** The controller a `ReadableStream` source is handed. */
-type StreamController = {
-  readonly enqueue: (chunk: Uint8Array) => mixed,
-  readonly close: () => mixed,
+/**
+ * What `renderToPipeableStream` hands back, as much of it as is used here.
+ *
+ * Stated because the callbacks passed to the call use its result, and Flow
+ * cannot type a value whose definition depends on itself without being told.
+ */
+type PipeableStream = {
+  readonly pipe: (destination: NodeDestination) => mixed,
+  readonly abort: (reason?: mixed) => void,
   ...
+};
+
+type StreamController = interface {
+  // Methods, as a `ReadableStreamDefaultController`'s are: a method cannot be
+  // read off its object as a function-valued property.
+  enqueue(chunk: Uint8Array): mixed,
+  close(): mixed,
 };
 
 /**
@@ -113,13 +126,13 @@ type StreamController = {
  * result and `react-dom/static`'s `prelude` — and neither is typed by anything
  * uf can import, so the shape it is used through is stated here.
  */
-type ByteSource = {
-  readonly getReader: () => {
-    readonly read: () => Promise<{ readonly done?: boolean, readonly value?: Uint8Array, ... }>,
-    readonly releaseLock: () => mixed,
-    ...
+type ByteSource = interface {
+  // Methods, as a `ReadableStream`'s are: a class instance is not a subtype of
+  // an object type with function-valued properties.
+  getReader(): interface {
+    read(): Promise<{ readonly done?: boolean, readonly value?: Uint8Array, ... }>,
+    releaseLock(): mixed,
   },
-  ...
 };
 
 /** How the document is assembled around the app's markup. */
@@ -732,7 +745,7 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
   const queue = new ChunkQueue();
   return new Promise((resolve, reject) => {
     if (typeof ReactDOMServer.renderToPipeableStream === "function") {
-      const { pipe, abort } = ReactDOMServer.renderToPipeableStream(node, {
+      const { pipe, abort }: PipeableStream = ReactDOMServer.renderToPipeableStream(node, {
         onShellReady() {
           pipe(queueDestination(queue));
           resolve(
@@ -1355,13 +1368,15 @@ function advanced(boundary: Boundary, html: string, rootDepth: number): Boundary
  *
  * `prerenderToNodeStream` hands back a Node `Readable` and `prerender` a web
  * `ReadableStream`, and which one a build has depends on which React entry
- * point exists — so the union is real rather than defensive, and `getReader`
- * is what tells them apart.
+ * point exists — so the union is real rather than defensive. Which one it is
+ * is asked of the class: a web stream is a `ReadableStream`, and a Node
+ * `Readable` is not. A test of a `getReader` property answered the same at run
+ * time, but a union of two structural types cannot be narrowed by one.
  */
 async function* preludeChunks(
-  prelude: ByteSource | AsyncIterable<string | Uint8Array>,
+  prelude: ReadableStream | AsyncIterable<string | Uint8Array>,
 ): AsyncGenerator<string, void, void> {
-  if (typeof prelude.getReader === "function") {
+  if (prelude instanceof ReadableStream) {
     yield* decoded(prelude);
     return;
   }

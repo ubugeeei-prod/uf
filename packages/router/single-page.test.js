@@ -27,6 +27,7 @@ import { afterEach, describe, expect, it } from "@uniflowed/test";
 
 import { installDom } from "../../packages/react-testing/internal/dom.js";
 import { installNavigation, redirect, routerView } from "./internal/runtime.js";
+import type { NotFoundBoundary, RouteRecord } from "./internal/runtime.js";
 import { clientModuleSource } from "../../packages/vite/internal/routes.js";
 
 // ---------------------------------------------------------------------------
@@ -73,9 +74,15 @@ const ASSETS = {
   preloads: [],
 };
 
-let built: mixed = null;
+/** The route table these tests render. */
+type Built = {|
+  readonly routes: $ReadOnlyArray<RouteRecord>,
+  readonly notFound: $ReadOnlyArray<NotFoundBoundary>,
+|};
 
-function tables() {
+let built: Built | null = null;
+
+function tables(): Built {
   if (built != null) {
     return built;
   }
@@ -137,9 +144,11 @@ function tables() {
 async function serveShell(url: string): Promise<string> {
   const { shellDocument } = await serverModule();
   const html = shellDocument(ASSETS);
-  globalThis.document.documentElement.innerHTML = html
-    .replace(/^[\s\S]*?<html[^>]*>/, "")
-    .replace(/<\/html>\s*$/, "");
+  const root = globalThis.document.documentElement;
+  if (root == null) {
+    throw new Error("the test document has no <html> to write the shell into");
+  }
+  root.innerHTML = html.replace(/^[\s\S]*?<html[^>]*>/, "").replace(/<\/html>\s*$/, "");
   globalThis.window.history.pushState(null, "", url);
   return html;
 }
@@ -161,7 +170,7 @@ afterEach(() => {
     return;
   }
   cleanup();
-  globalThis.document.body.replaceChildren();
+  globalThis.document.body?.replaceChildren();
   installNavigation("client");
 });
 

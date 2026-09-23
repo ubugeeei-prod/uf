@@ -39,7 +39,7 @@ import {
 import { requireServerComponentsReact } from "./react-version.js";
 
 /** A module namespace, as far as the loader looks into one. */
-type ModuleNamespace = { +[string]: mixed };
+type ModuleNamespace = { readonly [string]: mixed };
 
 /** The entry a refusal names: the one an application reaches this module through. */
 const ENTRY = "@uniflowed/router/rsc/client";
@@ -86,16 +86,24 @@ export function installBrowserModules(): void {
     throw new Error("@uniflowed/router: a payload asked for an import map, which uf never writes");
   };
   parcelRequire.meta = { publicUrl: "", devServer: null };
-  Object.defineProperty(globalThis, "parcelRequire", {
+  // `Reflect`, because Flow reads a property name given to
+  // `Object.defineProperty` as one the target must already declare, and
+  // `parcelRequire` is exactly the global nothing declares. `Object`'s throws
+  // where this answers `false`, so the throw is kept.
+  const defined = Reflect.defineProperty(globalThis, "parcelRequire", {
     value: parcelRequire,
     writable: true,
     configurable: true,
   });
+  if (!defined) {
+    throw new TypeError("@uniflowed/router: could not install parcelRequire on the global object");
+  }
 }
 
 /** The parts of a `Document` the reader uses. */
 type DocumentLike = interface {
-  readonly querySelectorAll: (selector: string) => Iterable<ElementLike>,
+  // A method, as a `Document`'s is: a method cannot be read off as a property.
+  querySelectorAll(selector: string): Iterable<ElementLike>,
   readonly documentElement: mixed,
 };
 

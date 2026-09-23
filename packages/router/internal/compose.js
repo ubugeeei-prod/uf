@@ -58,7 +58,7 @@ export type ComposeOptions = {|
 |};
 
 /** The route a slot renders inside, as much of it as a slot reads. */
-type SlotRoute = { +pathname: string, +searchParams: SearchParams, ... };
+type SlotRoute = { readonly pathname: string, readonly searchParams: SearchParams, ... };
 
 /**
  * Whether this bundle marks the boundaries it renders.
@@ -356,11 +356,11 @@ export function slotsAt(
   slots: $ReadOnlyArray<ResolvedSlot>,
   depth: number,
   route: SlotRoute,
-): { readonly [string]: React.Node } {
+): SlotProps {
   if (slots.length === 0) {
     return EMPTY_SLOTS;
   }
-  const props: { [string]: React.Node } = {};
+  const props: { key?: empty, [string]: React.Node } = {};
   for (const slot of slots) {
     if (slot.above === depth) {
       // `null` rather than an element that renders nothing, and the difference
@@ -376,8 +376,18 @@ export function slotsAt(
   return props;
 }
 
+/**
+ * A layout's slots, as the props they are spread into.
+ *
+ * `key` is named out of the indexer, the way `@uniflowed/ui`'s `Rest` names it:
+ * the object is spread onto an element, and a `React.Node` is not a key. No
+ * slot is called `key` — a slot is a prop the layout declares, and React
+ * never hands a component its key.
+ */
+export type SlotProps = { readonly key?: empty, readonly [string]: React.Node };
+
 /** One object for every layout on a project that declares no slot. */
-const EMPTY_SLOTS: { readonly [string]: React.Node } = Object.freeze({});
+const EMPTY_SLOTS: SlotProps = Object.freeze({});
 
 /**
  * One slot's tree: its page, inside the layouts declared under the slot, with

@@ -345,7 +345,11 @@ describe("the snapshot of the server's markup", () => {
   it("hides dev head artifacts before a document-root app hydrates", () => {
     render(<div />);
     const document = globalThis.document;
-    document.head.innerHTML =
+    const head = document.head;
+    if (head == null) {
+      throw new Error("the test document has no <head>");
+    }
+    head.innerHTML =
       "\n  " +
       '<script data-uf-dev-head-preamble="react-devtools">hook()</script>' +
       "\n  " +
@@ -359,17 +363,17 @@ describe("the snapshot of the server's markup", () => {
 
     const restore = prepareDevHeadForHydration(document);
 
-    expect(document.head.textContent).not.toContain("hook()");
-    expect(document.head.textContent).not.toContain("refresh()");
-    expect(document.head.querySelector('script[src="/@vite/client"]')).toBe(null);
-    expect(document.head.querySelector('script[src="/@id/__x00__virtual:uf/client"]')).toBe(null);
-    expect(document.head.querySelector("style[data-vite-dev-id]")).toBe(null);
-    expect(document.head.querySelector('script[src="/assets/client.js"]')).not.toBe(null);
-    expect(document.head.firstChild?.nodeType).not.toBe(3);
+    expect(head.textContent).not.toContain("hook()");
+    expect(head.textContent).not.toContain("refresh()");
+    expect(head.querySelector('script[src="/@vite/client"]')).toBe(null);
+    expect(head.querySelector('script[src="/@id/__x00__virtual:uf/client"]')).toBe(null);
+    expect(head.querySelector("style[data-vite-dev-id]")).toBe(null);
+    expect(head.querySelector('script[src="/assets/client.js"]')).not.toBe(null);
+    expect(head.firstChild?.nodeType).not.toBe(3);
 
     restore();
 
-    const style = document.head.querySelector("style[data-vite-dev-id]");
+    const style = head.querySelector("style[data-vite-dev-id]");
     expect(style?.textContent).toBe(".root{margin:0}");
   });
 

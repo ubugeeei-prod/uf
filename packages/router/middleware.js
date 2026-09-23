@@ -395,12 +395,28 @@ function withPathname(url: URL, pathname: string): URL {
 /**
  * `request` at another URL: same method, headers, signal and body.
  *
- * A `Request` is a valid `RequestInit`, so a streamed body is handed on rather
- * than read.
+ * Every member of `RequestInit` that a `Request` carries, named — what passing
+ * the request itself as the init would read, spelled out so that the checker
+ * can see it. A streamed body is handed on rather than read, which is why a
+ * body comes with `duplex: "half"`, the one mode a streamed request body has.
  */
 function requestAt(request: Request, url: URL): Request {
-  // $FlowFixMe[incompatible-call] - a `Request` is read as the `RequestInit` it satisfies.
-  return new Request(url.href, request);
+  const body = request.body;
+  return new Request(url.href, {
+    method: request.method,
+    headers: request.headers,
+    body,
+    ...(body == null ? {} : { duplex: "half" }),
+    signal: request.signal,
+    cache: request.cache,
+    credentials: request.credentials,
+    integrity: request.integrity,
+    keepalive: request.keepalive,
+    mode: request.mode,
+    redirect: request.redirect,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
+  });
 }
 
 /**

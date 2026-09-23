@@ -5,6 +5,7 @@ import { beginRequest } from "@uniflowed/server/host";
 import { createActionDispatcher } from "./server.js";
 import { createNativeActionClient, createRouteClient } from "./http-client.js";
 import { createDispatcher } from "./handler.js";
+import type { HandlerContext } from "./handler.js";
 
 const ID = "a".repeat(64);
 const dispatcher = createActionDispatcher({
@@ -18,16 +19,33 @@ const dispatcher = createActionDispatcher({
   ],
 });
 
+/** `base`, with `extra`'s headers over it. */
+function withExtra(
+  base: { readonly [string]: string },
+  extra: { readonly [string]: string },
+): { [string]: string } {
+  const headers: { [string]: string } = {};
+  for (const name of Object.keys(base)) {
+    headers[name] = base[name];
+  }
+  for (const name of Object.keys(extra)) {
+    headers[name] = extra[name];
+  }
+  return headers;
+}
+
 function request(extra: { readonly [string]: string } = {}) {
   return new Request("https://app.test/counter", {
     method: "POST",
-    headers: {
-      "uf-action": ID,
-      "uf-native-action": "bearer-v1",
-      authorization: "Bearer valid-token",
-      "content-type": "application/json",
-      ...extra,
-    },
+    headers: withExtra(
+      {
+        "uf-action": ID,
+        "uf-native-action": "bearer-v1",
+        authorization: "Bearer valid-token",
+        "content-type": "application/json",
+      },
+      extra,
+    ),
     body: '{"args":[41]}',
   });
 }
@@ -58,7 +76,7 @@ describe("native bearer actions", () => {
       fetch: async (url, options) => {
         expect(options.credentials).toBe("omit");
         expect(options.redirect).toBe("error");
-        return hosted(new Request(url, options));
+        return hosted(new Request(url, { ...options, headers: { ...options.headers } }));
       },
     });
     expect(await call(ID, [41], "/counter")).toBe(42);
@@ -122,7 +140,7 @@ describe("native route transport", () => {
           params: [{ name: "id", catchAll: false }],
           file: "app/api/users/[id]/$route.js",
           load: async () => ({
-            GET: (request, { params }) =>
+            GET: (request: Request, { params }: HandlerContext) =>
               Response.json({
                 id: params.id,
                 token: request.headers.get("authorization"),
@@ -135,7 +153,7 @@ describe("native route transport", () => {
       origin: "https://app.test",
       getToken: async () => "app-token",
       fetch: async (url, options) => {
-        const input = new Request(url, options);
+        const input = new Request(url, { ...options, headers: { ...options.headers } });
         const response = await beginRequest(input).run(() => dispatch(input));
         if (response == null) throw new Error("route not found");
         return response;

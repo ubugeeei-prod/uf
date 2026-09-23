@@ -378,10 +378,10 @@ describe("the marks a boundary renders", () => {
       </main>
     );
 
-    let loaded = (_: mixed) => {};
+    let loaded = (_: { readonly default: React.ComponentType<{}> }) => {};
     const Lazy = React.lazy(
       () =>
-        new Promise((resolve) => {
+        new Promise<{ readonly default: React.ComponentType<{}> }>((resolve) => {
           loaded = resolve;
         }),
     );
