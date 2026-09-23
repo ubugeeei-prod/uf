@@ -729,12 +729,17 @@ pub(crate) enum Commands {
         /// implies `-r`.
         #[arg(long, value_name = "SELECTOR")]
         filter: Vec<String>,
+        /// List the tasks this project defines, even at a terminal, where
+        /// `uf run` with no task offers them as a list to pick from.
+        #[arg(long, conflicts_with = "script")]
+        list: bool,
         /// The task to run, as named under `tasks` in `uf.config.js`.
-        /// Omit it to see what this project defines.
+        /// Omit it to pick one at a terminal, or to list them anywhere else.
         script: Option<String>,
-        /// Everything after the task name, handed to it untouched. A task
-        /// that takes an option `uf run` also has is reached past `--`.
-        #[arg(trailing_var_arg = true)]
+        /// The task's arguments: positionally, or `--name value` for one its
+        /// `args` declares. Anything else is handed to the task untouched. A
+        /// task that takes an option `uf run` also has is reached past `--`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
     /// Serve the production build, with no bundler in the process.
@@ -1525,6 +1530,7 @@ mod tests {
                 why: false,
                 recursive: false,
                 filter: Vec::new(),
+                list: false,
                 script: Some("build".to_string()),
                 args: Vec::new(),
             }
@@ -1538,6 +1544,7 @@ mod tests {
                 why: false,
                 recursive: false,
                 filter: Vec::new(),
+                list: false,
                 script: None,
                 args: Vec::new(),
             }

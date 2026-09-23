@@ -678,6 +678,30 @@ mod tests {
         let (_, items) = complete_at("export default defineConfig({ tasks: { build: { ‸ } } })");
         assert!(labels(&items).contains(&"command"), "{:?}", labels(&items));
         assert!(labels(&items).contains(&"dependsOn"));
+        assert!(labels(&items).contains(&"args"));
+    }
+
+    #[test]
+    fn a_task_argument_offers_its_keys_and_their_documentation() {
+        let (_, items) = complete_at(
+            "export default defineConfig({ tasks: { deploy: { command: \"x\", args: [{ ‸ }] } } })",
+        );
+        for key in ["name", "description", "choices", "default", "required"] {
+            assert!(labels(&items).contains(&key), "{key}: {:?}", labels(&items));
+        }
+        assert!(
+            item(&items, "choices")
+                .documentation
+                .as_deref()
+                .is_some_and(|text| text.contains("the list to pick from")),
+            "{:?}",
+            item(&items, "choices")
+        );
+
+        let (_, items) = complete_at(
+            "export default defineConfig({ tasks: { deploy: { args: [{ required: ‸ }] } } })",
+        );
+        assert_eq!(labels(&items), ["true", "false"]);
     }
 
     /// Red line 2: uf does not re-declare Vite's options, so it has none to

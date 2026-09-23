@@ -14,7 +14,9 @@ use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
 use uf_pm::{
     DetectionOptions, Operation, PackageManager, command_for, detect_package_manager_with,
 };
+use uf_task::arguments::Resolved;
 use uf_task::{Concurrency, Plan, PlanError, PlanPackage, RunOptions, ScheduledTask, TaskCache};
+use uf_term::prompt::{Choice, Outcome, Request, select};
 use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
 
 use crate::cli::CreateCommand;
@@ -23,6 +25,8 @@ use crate::commands::{create, pm, test};
 use crate::suggest::closest;
 use crate::support::{DEVELOPMENT, plural, project_env, project_label};
 use crate::ui::Ui;
+
+mod pick;
 
 /// What `uf run` was asked for beyond the task's name.
 #[derive(Debug, Clone, Default)]
@@ -38,6 +42,10 @@ pub(crate) struct RunArgs {
     /// Run it only in the members these select, which implies
     /// [`Self::recursive`].
     pub(crate) filter: Vec<String>,
+    /// The words after the task's name fill none of its declared `args`:
+    /// they are `uf prepare`'s staged files, appended as they are, and every
+    /// declared argument takes its default. See [`pick::undeclared`].
+    pub(crate) undeclared: bool,
 }
 
 /// One project a run can reach tasks in, loaded.
@@ -330,6 +338,10 @@ fn execute(
     args: &[String],
     options: &RunArgs,
 ) -> Result<()> {
+    // Every requested task's arguments, asked for if need be, before anything
+    // else is loaded or started.
+    let given = task_arguments(ui, packages, plan, args, options)?;
+
     // Each package's environment, loaded when its first task is scheduled. A
     // task is project code with a shell in front of it, so it reads its
     // project's `.env` files like everything else uf runs, with the runtime
@@ -366,9 +378,9 @@ fn execute(
         // them in the command text so that two runs with different arguments
         // are two cache keys rather than one.
         let mut command = definition.command().to_string();
-        if plan.requested().contains(&at) && !args.is_empty() {
+        if let Some(given) = given.get(&at).filter(|given| !given.is_empty()) {
             command.push(' ');
-            command.push_str(&args.join(" "));
+            command.push_str(&given.command_text());
         }
         let env = match envs.entry(node.package) {
             Entry::Occupied(slot) => slot.into_mut(),
@@ -407,9 +419,15 @@ fn execute(
         requested: plan
             .requested()
             .iter()
-            .map(|&at| (plan.nodes()[at].package, plan.nodes()[at].name.clone()))
+            .map(|&at| {
+                let words = given.get(&at).map(Resolved::words).unwrap_or_default();
+                (
+                    plan.nodes()[at].package,
+                    plan.nodes()[at].name.clone(),
+                    words,
+                )
+            })
             .collect(),
-        args,
     };
     let reporter = Reporter {
         // One task is the whole plan, so there is nothing to schedule and
@@ -494,6 +512,78 @@ fn execute(
         }
     }
     bail!(message)
+}
+
+/// The words each requested task runs with, by plan index: the caller's
+/// arguments sorted into what the task declares, with anything missing asked
+/// for at a terminal.
+///
+/// All of it before anything starts. A question in the middle of a run would
+/// sit under the output of whatever was already running, and an answer that
+/// turned out to be refused would leave half a plan run.
+fn task_arguments(
+    ui: &mut Ui,
+    packages: &[Package],
+    plan: &Plan,
+    args: &[String],
+    options: &RunArgs,
+) -> Result<BTreeMap<usize, Resolved>> {
+    let mut given = BTreeMap::new();
+    let mut answers = BTreeMap::new();
+    let mut asked = false;
+    for &at in plan.requested() {
+        let node = &plan.nodes()[at];
+        let package = &packages[node.package];
+        let declared = package
+            .resolved
+            .config
+            .tasks
+            .get(node.name.as_str())
+            .map_or(&[][..], TaskDefinition::args);
+        let resolved = if options.undeclared {
+            pick::undeclared(&node.label, declared, args)?
+        } else {
+            let (resolved, this) = pick::resolve(
+                &node.label,
+                declared,
+                args,
+                &mut pick::Terminal,
+                &mut answers,
+            )?;
+            asked |= this;
+            resolved
+        };
+        given.insert(at, resolved);
+    }
+
+    // A person who picked the values is shown what they add up to, and how to
+    // say it next time without being asked. Only then: a run whose arguments
+    // were all typed prints exactly what it always did.
+    if asked {
+        for (&at, resolved) in &given {
+            let node = &plan.nodes()[at];
+            let Some(definition) = packages[node.package]
+                .resolved
+                .config
+                .tasks
+                .get(node.name.as_str())
+            else {
+                continue;
+            };
+            let mut command = definition.command().to_string();
+            if !resolved.is_empty() {
+                command.push(' ');
+                command.push_str(&resolved.command_text());
+            }
+            let replay = pick::replay(&node.label, resolved);
+            ui.render_err(|renderer, out| {
+                renderer.status(out, Status::Info, &format!("{}: {command}", node.label));
+                let muted = renderer.theme().muted;
+                renderer.line(out, muted, &format!("  next time: {replay}"));
+            });
+        }
+    }
+    Ok(given)
 }
 
 /// With `--why`, a plan that spans packages is printed before it runs.
@@ -621,10 +711,9 @@ struct TaskSpawner<'a> {
     packages: &'a [Package],
     /// The environment of each package the plan runs a task in.
     envs: &'a BTreeMap<usize, ProjectEnv>,
-    /// The tasks that were asked for, by package and name: the only ones that
-    /// take the caller's arguments.
-    requested: Vec<(usize, CompactString)>,
-    args: &'a [String],
+    /// The tasks that were asked for, by package and name, with the words
+    /// each is run with: the only ones that take the caller's arguments.
+    requested: Vec<(usize, CompactString, Vec<String>)>,
 }
 
 impl uf_task::Spawn for TaskSpawner<'_> {
@@ -852,12 +941,14 @@ impl TaskSpawner<'_> {
         process.arg("run").arg(scheduled.name.as_str());
         // Only a task that was asked for takes the caller's arguments; a
         // dependency was not the thing they typed them after.
-        let asked = self
+        let words = self
             .requested
             .iter()
-            .any(|(at, name)| *at == scheduled.package && *name == scheduled.name);
-        if asked && !self.args.is_empty() {
-            process.arg("--").args(self.args);
+            .find(|(at, name, _)| *at == scheduled.package && *name == scheduled.name)
+            .map(|(_, _, words)| words.as_slice())
+            .unwrap_or_default();
+        if !words.is_empty() {
+            process.arg("--").args(words);
         }
         process.current_dir(package.resolved.root.as_std_path());
         process
@@ -944,14 +1035,56 @@ pub(crate) fn task_names(cwd: &Utf8Path) -> Vec<(String, String)> {
         .config
         .tasks
         .iter()
-        .map(|(name, task)| {
-            let command = match task {
-                TaskDefinition::Command(command) => command.to_string(),
-                TaskDefinition::Detailed(details) => details.command.to_string(),
-            };
-            (name.to_string(), elide(&command, MENU_COMMAND_WIDTH))
-        })
+        .map(|(name, task)| (name.to_string(), elide(&runs(task), MENU_COMMAND_WIDTH)))
         .collect()
+}
+
+/// What a task runs, as a list shows it: the command, then the arguments it
+/// declares — `node scripts/deploy.js <target> [region=eu]` — so a reader
+/// choosing it can see what they will be asked for.
+///
+/// A task with no command of its own is Vite Task's, and saying so is more
+/// useful than an empty cell.
+fn runs(task: &TaskDefinition) -> String {
+    let command = task.command().trim();
+    let mut runs = if command.is_empty() {
+        String::from("vite task")
+    } else {
+        command.to_owned()
+    };
+    if !task.args().is_empty() {
+        runs.push(' ');
+        runs.push_str(&pick::signature(task.args()));
+    }
+    runs
+}
+
+/// `uf run` with no task: pick one at a terminal, and list them anywhere else.
+///
+/// Picking flows straight into the task's own arguments — [`run_task`] asks
+/// for whatever it declares and was not given — so choosing `deploy` here and
+/// typing `uf run deploy` are the same run from that point on. Everything
+/// else, the flags included, is exactly what `uf run <task>` would have had.
+pub(crate) fn pick_task(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    mode: Option<&str>,
+    options: RunArgs,
+) -> Result<()> {
+    let tasks = task_names(cwd);
+    if tasks.is_empty() {
+        return list_tasks(cwd, ui);
+    }
+    let choices: Vec<Choice<'_>> = tasks
+        .iter()
+        .map(|(name, runs)| Choice::new(name, runs))
+        .collect();
+    match select(&Request::new("Which task?", &choices)) {
+        Outcome::Chose(choice) => run_task(cwd, ui, mode, choice.name, &[], options),
+        // No terminal: what `uf run` printed before there was a picker.
+        Outcome::NotInteractive => list_tasks(cwd, ui),
+        Outcome::Cancelled => Ok(()),
+    }
 }
 
 /// Widest a command is printed at in the task table.
@@ -998,26 +1131,13 @@ pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let rows = tasks
         .iter()
         .map(|(name, task)| {
-            let (command, after) = match task {
-                TaskDefinition::Command(command) => (command.to_string(), String::new()),
-                TaskDefinition::Detailed(details) => (
-                    details.command.to_string(),
-                    details
-                        .depends_on
-                        .iter()
-                        .map(compact_str::CompactString::as_str)
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                ),
-            };
-            // A task with no command of its own is Vite Task's, and saying so
-            // is more useful than an empty cell.
-            let runs = if command.trim().is_empty() {
-                String::from("vite task")
-            } else {
-                elide(&command, COMMAND_WIDTH)
-            };
-            (name.to_string(), runs, after)
+            let after = task
+                .depends_on()
+                .iter()
+                .map(compact_str::CompactString::as_str)
+                .collect::<Vec<_>>()
+                .join(", ");
+            (name.to_string(), elide(&runs(task), COMMAND_WIDTH), after)
         })
         .collect::<Vec<_>>();
 

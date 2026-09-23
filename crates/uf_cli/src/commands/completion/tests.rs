@@ -9,8 +9,12 @@ fn words(line: &[&str]) -> Vec<String> {
     line.iter().map(ToString::to_string).collect()
 }
 
+fn tasks() -> Vec<Task<'static>> {
+    TASKS.iter().map(|name| Task { name, args: &[] }).collect()
+}
+
 fn complete_line(line: &[&str]) -> Vec<String> {
-    candidates(&words(line), TASKS)
+    candidates(&words(line), &tasks())
 }
 
 #[test]
@@ -180,7 +184,7 @@ fn an_argument_nothing_is_known_about_completes_to_nothing() {
 
 #[test]
 fn an_empty_word_list_offers_the_subcommands() {
-    assert!(candidates(&[], TASKS).contains(&"build".to_string()));
+    assert!(candidates(&[], &tasks()).contains(&"build".to_string()));
 }
 
 /// Every parent, at every depth, offers exactly what the parser accepts under
@@ -272,4 +276,39 @@ fn every_shell_ships_a_script_that_calls_back_into_uf() {
             "{shell:?} does not say how to install it"
         );
     }
+}
+
+/// A task's declared arguments complete like `uf run` fills them.
+#[test]
+fn run_completes_a_tasks_declared_arguments() {
+    let mut target = TaskArgument::named("target");
+    target.choices = vec!["staging".into(), "production".into()];
+    let mut region = TaskArgument::named("region");
+    region.choices = vec!["us".into(), "eu".into()];
+    let args = [target, TaskArgument::named("tag"), region];
+    let tasks = [Task {
+        name: "deploy",
+        args: &args,
+    }];
+    let complete = |line: &[&str]| candidates(&words(line), &tasks);
+
+    assert_eq!(complete(&["run", "deploy", ""]), ["staging", "production"]);
+    assert_eq!(complete(&["run", "deploy", "p"]), ["production"]);
+    // The second argument takes any value, which completes to nothing.
+    assert!(complete(&["run", "deploy", "staging", ""]).is_empty());
+    assert_eq!(
+        complete(&["run", "deploy", "staging", "v1", ""]),
+        ["us", "eu"]
+    );
+    // By name: the value of the flag just written, then what is left.
+    assert_eq!(complete(&["run", "deploy", "--region", ""]), ["us", "eu"]);
+    assert_eq!(
+        complete(&["run", "deploy", "--target=staging", "--"]),
+        ["--tag", "--region"]
+    );
+    assert_eq!(
+        complete(&["run", "deploy", "--tag", "v1", ""]),
+        ["staging", "production"]
+    );
+    assert!(complete(&["run", "deploy", "staging", "v1", "eu", ""]).is_empty());
 }

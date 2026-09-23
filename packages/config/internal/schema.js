@@ -40,6 +40,29 @@
 
 export type RuleLevel = "off" | "warn" | "error" | 0 | 1 | 2 | boolean;
 
+/**
+ * One argument a task takes, filled by `uf run <task>`.
+ *
+ * Given after the task's name, in the order declared, or as `--name value`; the
+ * values are appended to `command` in that order either way. At a terminal, a
+ * required argument that was not given is picked from `choices`, or typed; in
+ * CI and pipelines it is an error that names it.
+ */
+export type TaskArgument = {
+  // What `--name` and the picker call it: letters, digits, `-` and `_`.
+  readonly name: string,
+  // One line saying what it is for, shown in the picker.
+  readonly description?: string,
+  // The only values it may take. Anything else is refused, and at a terminal
+  // these are the list to pick from.
+  readonly choices?: $ReadOnlyArray<string>,
+  // Used when it is not given. An argument with a default is never asked for.
+  readonly default?: string,
+  // Whether leaving it out is an error. Defaults to `true` unless there is a
+  // `default`; an optional argument with no default must come last.
+  readonly required?: boolean,
+};
+
 export type TaskDefinition =
   | string
   | {
@@ -56,6 +79,9 @@ export type TaskDefinition =
       readonly outputs?: $ReadOnlyArray<string>,
       // `false` keeps a task with declared inputs out of the cache.
       readonly cache?: boolean,
+      // The arguments `uf run` fills, in the order they are appended to
+      // `command`.
+      readonly args?: $ReadOnlyArray<TaskArgument>,
     };
 
 export type CapabilityJsHost = "node" | "deno" | "bun";

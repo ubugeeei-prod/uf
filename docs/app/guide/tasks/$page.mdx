@@ -51,11 +51,14 @@ export default defineConfig({
 | `env` | Environment variables for the task |
 | `cwd` | Working directory relative to the project root |
 | `cache` | Set to `false` to disable caching |
+| `args` | [Arguments](#declare-arguments) the task takes, with names, choices and defaults |
 
 Use task names that describe your workflow, such as `verify` or `bundle`.
 Built-in commands such as `uf fmt` and `uf lint` are available directly.
 
-Run `uf run` without a name to list tasks:
+Run `uf run` without a name to choose a task from a list. Type to filter, use
+the arrow keys to move, and press Enter to run it. Outside a terminal, or with
+`--list`, `uf run` prints the tasks instead:
 
 ```
 uf run · site
@@ -117,7 +120,104 @@ arguments: ["--loud","two","words"]
 ```
 
 Use `--` to separate task arguments from uf options such as `--why`, `--force`,
-`--mode` and `-j`.
+`--mode` and `-j`. Other options after the task name reach the task without it.
+
+## Declare arguments
+
+A task can declare the arguments it takes. Each one has a name, and optionally
+a description, a list of `choices`, a `default` and `required`:
+
+```js
+tasks: {
+  deploy: {
+    command: "node scripts/deploy.js",
+    args: [
+      {
+        name: "target",
+        description: "Where to deploy",
+        choices: ["staging", "production"],
+      },
+      { name: "tag", description: "The release tag" },
+      { name: "region", choices: ["us", "eu"], default: "eu" },
+    ],
+  },
+}
+```
+
+Pass values after the task name in the declared order, or by name as
+`--name value` or `--name=value`. The two forms can be mixed. uf appends the
+values to `command` in the declared order either way:
+
+```
+$ uf run deploy production v1.4.0
+$ uf run deploy --tag v1.4.0 --target production
+```
+
+Both commands run `node scripts/deploy.js production v1.4.0 eu`. Each value is
+one argument to the command, even if it contains spaces. Words that fill no
+declared argument, such as `--dry-run`, follow the declared values unchanged.
+
+A value outside `choices` is refused before anything runs:
+
+```
+$ uf run deploy prod v1.4.0
+error: task "deploy": <target> cannot be "prod"; it is one of: staging, production
+```
+
+An argument is required unless it has a `default` or sets `required: false`.
+If a required argument is missing and uf is running in a terminal, it asks for
+it. An argument with `choices` opens a list you can filter by typing. Any other
+argument opens a text prompt. uf then prints the full command and the
+equivalent `uf run` command line, then runs the task:
+
+```
+$ uf run deploy
+
+  deploy · target — Where to deploy
+  › type to filter
+
+  ❯ staging
+    production
+
+  ↑↓ move · ⏎ run · esc cancel
+```
+
+```
+› deploy: node scripts/deploy.js production v1.4.0 eu
+  next time: uf run deploy --target production --tag v1.4.0 --region eu
+```
+
+uf does not ask for arguments that have a default. Leave out the default if you
+want to choose the value every time. Choosing a task from `uf run` or `uf` with
+no arguments also asks for its missing arguments.
+
+uf never asks outside a terminal. This includes CI, pipes and redirected input.
+A missing argument is an error that names the argument and its choices:
+
+```
+$ uf run deploy
+error: task "deploy": missing <target>, <tag>
+  <target>  Where to deploy — one of: staging, production
+  <tag>  The release tag
+
+  pass them after the task's name, in this order — `uf run deploy <target> <tag> [region=eu]` — or by name, as in `uf run deploy --target <value>`. At a terminal, uf asks for them.
+```
+
+`uf run --list` shows each task's arguments after its command. Shell
+completion offers the choices of the next argument and the names of arguments
+that have not been given.
+
+Some combinations are refused before a task runs. These include a name that
+cannot be written as `--name`, a repeated name, and a default outside
+`choices`. An optional argument without a default must come after every
+argument that always has a value. Otherwise, leaving it out would shift later
+values into its position. An argument named after a `uf run` option, such as
+`mode`, can only be passed by name after `--`.
+
+The values are part of the command, so they are part of the
+[cache key](#cache-results). `uf prepare` does not fill declared arguments. It
+appends staged files after the arguments' defaults, and fails if an argument
+has no default.
 
 ## Cache results
 
@@ -302,6 +402,8 @@ name. A bare `--` after the name is removed; other arguments reach the binary.
 
 `uf run` has no JSON output, dry run, task timeout or remote cache. Cached
 outputs are not restored from storage; missing files trigger a new run.
+A declared argument is always appended in order. It cannot be placed in the
+middle of `command`, and it has no boolean or repeated form.
 
 ## Next steps
 

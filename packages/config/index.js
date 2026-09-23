@@ -15,6 +15,7 @@ export type {
   RuntimeEngine,
   RuntimeSpec,
   SizeBudget,
+  TaskArgument,
   TaskDefinition,
   TestRunnerSpec,
   UniflowedConfig,

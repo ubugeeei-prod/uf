@@ -25,6 +25,11 @@
 - [x] Start XDG-compliant uf runtime layout.
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
 - [x] Add `ufr` alias for `uf run`.
+- [x] Let a task declare its arguments (`args`: names, `choices`, defaults) and
+      pick a missing one from a list at a terminal; `uf run` with no task picks
+      the task the same way. Off a terminal a missing argument is an error that
+      names it. **Not done:** placing a value inside `command`, and boolean or
+      repeated arguments.
 - [x] Add `ufx` temporary execution command surface.
 - [x] Integrate the maintained Flow parser boundary through the `upstream/flow`
       submodule and Meta's official Flow Rust port.

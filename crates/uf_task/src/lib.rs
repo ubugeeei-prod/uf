@@ -35,10 +35,16 @@
 //!   there are, and which a run selects, is `uf run`'s business rather than
 //!   this crate's (ubugeeei-prod/uf#967).
 //!
+//! * **Arguments with names.** A task may declare the arguments it takes, and
+//!   [`arguments`] sorts the words after its name into them — by position or
+//!   by `--name`, checked against the values each one allows. Asking for the
+//!   ones still missing is the caller's business.
+//!
 //! What it is not is a build system. It does not restore artefacts, and it
 //! does not know what a task read that the task did not declare. The line it
 //! holds is that everything it *does* claim is something it checked.
 
+pub mod arguments;
 mod cache;
 mod command;
 mod digest;

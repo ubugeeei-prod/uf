@@ -7,8 +7,9 @@
 use crate::capability::{Capabilities, ColorChoice, GlyphSet, TerminalEnv, Tty};
 use crate::theme::Theme;
 
-use super::draw;
+use super::key::Key;
 use super::menu::{Choice, Menu, VISIBLE};
+use super::{Outcome, draw, run};
 
 const CHOICES: &[Choice<'static>] = &[
     Choice::new("build", "Build the project for production"),
@@ -401,4 +402,63 @@ fn a_group_heading_is_written_once_per_group() {
 
     assert_eq!(out.matches("commands").count(), 1, "{out}");
     assert_eq!(out.matches("tasks").count(), 1, "{out}");
+}
+
+/// Run the whole select loop over `keys`, as a terminal would feed it, and
+/// return the name chosen (or `None`) and everything written.
+fn drive(keys: &[Key]) -> (Option<&'static str>, String) {
+    let theme = Theme::default();
+    let frame = plain_frame(&theme);
+    let mut menu = Menu::new(CHOICES);
+    let mut keys = keys.iter().copied();
+    let mut written = Vec::new();
+    let outcome = run(
+        &mut menu,
+        &mut || Ok(keys.next()),
+        &mut |menu, out| draw::frame(menu, &frame, out),
+        &mut written,
+    );
+    let chosen = match outcome {
+        Outcome::Chose(choice) => Some(choice.name),
+        Outcome::Cancelled | Outcome::NotInteractive => None,
+    };
+    (chosen, String::from_utf8(written).unwrap())
+}
+
+#[test]
+fn typing_moving_and_enter_choose_through_the_key_loop() {
+    // `t` puts `test` first and `fmt` second (a name containing it), so one
+    // `Down` lands on `fmt`.
+    let (chosen, written) = drive(&[Key::Char('t'), Key::Down, Key::Enter]);
+    assert_eq!(chosen, Some("fmt"));
+    // One frame before each key is read, and an erase — not a frame — after.
+    assert_eq!(written.matches("What would you like to run?").count(), 3);
+    assert!(
+        written.ends_with("\x1b[J"),
+        "the block is erased: {written:?}"
+    );
+}
+
+#[test]
+fn enter_with_nothing_matching_is_not_a_choice() {
+    let (chosen, _) = drive(&[Key::Char('z'), Key::Char('z'), Key::Enter, Key::Escape]);
+    assert_eq!(chosen, None);
+    let (chosen, _) = drive(&[
+        Key::Char('z'),
+        Key::Enter,
+        Key::Backspace,
+        Key::Up,
+        Key::Enter,
+    ]);
+    assert_eq!(
+        chosen,
+        Some("test"),
+        "up from the top wraps to the last row"
+    );
+}
+
+#[test]
+fn escape_or_the_input_ending_cancels() {
+    assert_eq!(drive(&[Key::Down, Key::Escape]).0, None);
+    assert_eq!(drive(&[Key::Down]).0, None);
 }
