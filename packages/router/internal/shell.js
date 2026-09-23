@@ -13,6 +13,7 @@
 
 import type { PrerenderResult, RenderAssets, RenderResult } from "../server.js";
 import { addressOf } from "./base-path.js";
+import { DEPLOYMENT_META } from "./deployment.js";
 import { ROOT_ID } from "./document.js";
 import type { RedirectError } from "./routing.js";
 import { type DocumentShell, bodyOfText } from "./stream.js";
@@ -90,6 +91,15 @@ export function shellFor(assets: RenderAssets, nonce?: string | null): DocumentS
 
 function headTags(assets: RenderAssets, nonce?: string | null): string {
   let tags = "";
+  // Which build this document is, first, because everything after it is a URL
+  // that build wrote. The browser reads it once and names it on every action
+  // call and payload request, so a server on another build can refuse rather
+  // than answer with ids and chunks this page does not have. See
+  // `./deployment.js`.
+  const deployment = assets.deployment;
+  if (deployment != null && deployment !== "") {
+    tags += `<meta name="${DEPLOYMENT_META}" content="${escapeAttribute(deployment)}">`;
+  }
   for (const href of assets.styles) {
     tags += `<link rel="stylesheet" href="${escapeAttribute(href)}">`;
   }

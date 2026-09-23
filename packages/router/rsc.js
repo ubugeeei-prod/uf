@@ -152,6 +152,13 @@ export function createFlightRenderer(options: {|
   readonly routes: RouteTable["routes"],
   readonly notFound: RouteTable["notFound"],
   readonly errors: RouteTable["errors"],
+  /**
+   * The build's deployment id, written into every payload's root so that a
+   * page on another build can tell — including from a payload that was
+   * prerendered into a file. `null` under `uf dev`. See
+   * `./internal/deployment.js`.
+   */
+  readonly deployment?: string | null,
 |}): FlightRenderer {
   // Before anything else: on a React older than 19.3 nothing below can render,
   // and React's Flight renderer would only say so from inside a render.
@@ -201,7 +208,7 @@ export function createFlightRenderer(options: {|
         ) : null}
       </>
     );
-    const root: FlightRoot = { route: state, tree };
+    const root: FlightRoot = { route: state, tree, deployment: options.deployment ?? null };
     const failure = renderFailure(route);
     if (failure != null) reportRequestError(failure, "render");
     const report = (error) => {

@@ -73,6 +73,7 @@ import {
   buildIdentity,
   createPrerenderGate,
   createServeHandler,
+  deploymentIdFor,
   documentAssetsFor,
   forViteBase,
   loadBuild,
@@ -699,8 +700,14 @@ async function build() {
   if (graph != null) {
     inline.plugins = [...(inline.plugins ?? []), graph.plugin];
   }
+  // What this build is called, minted before anything is bundled: the rsc
+  // graph bakes the public half into every payload it renders, and the
+  // documents below carry it in their head. See `deploymentIdFor`.
+  const buildId = mintBuildId();
+  const deployment = deploymentIdFor(buildId);
   const rscDir = path.join(root, ".uf", "build", "rsc");
   if (flight != null) {
+    flight.deployment = deployment;
     emit("phase", { name: "rsc" });
     await buildRscGraph(vite, inline, flight, { outDir: rscDir, conditions: null });
   }
@@ -761,7 +768,7 @@ async function build() {
   // build's URLs with the previous build's documents. See
   // `packages/server/internal/cache-key.js`, which argues the whole of it, and
   // `internal/serve.js`'s `buildIdentity`, which is what reads this.
-  writeFileSync(path.join(serverDir, BUILD_ID_FILE), `${mintBuildId()}\n`);
+  writeFileSync(path.join(serverDir, BUILD_ID_FILE), `${buildId}\n`);
 
   // Every bundle is built by here, and the prerender below builds none.
   graph?.write(path.join(root, ".uf", "build", "meta", MODULE_GRAPH_FILE));
@@ -774,10 +781,15 @@ async function build() {
   //    arrives here as one word, and this is where it meets the route table.
   emit("phase", { name: "prerender" });
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
-  const assets =
-    flight == null
+  const assets = {
+    ...(flight == null
       ? assetsFromManifest(manifest, basePathOf(config))
-      : flightAssets(manifest, references, rscDir, outDir, basePathOf(config));
+      : flightAssets(manifest, references, rscDir, outDir, basePathOf(config))),
+    // Which build these URLs are. Every document names it, a browser sends it
+    // back, and a server on another build refuses rather than answering with
+    // ids and chunks the page does not have. See `deploymentIdFor`.
+    deployment,
+  };
   // Recorded beside the server bundle, because whatever serves this build
   // later cannot recompute them from the client manifest alone; see
   // `documentAssetsFor`.
@@ -1555,6 +1567,9 @@ async function deploy() {
   const flight = flightStateOf(inline);
   if (flight != null) {
     loadFlightBuild(flight, path.join(root, ".uf", "build", "rsc"));
+    // The id `build` recorded, and not a new one: a Worker's payloads have to
+    // name the same build its documents do.
+    flight.deployment = document.deployment ?? null;
     if (shape.conditions != null) {
       await buildRscGraph(vite, inline, flight, {
         outDir: path.join(work, "rsc"),

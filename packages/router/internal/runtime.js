@@ -86,6 +86,7 @@ import {
   routeState,
 } from "./flight.js";
 import { Head } from "./head.js";
+import { fromAnotherDeployment, isChunkLoadFailure, loadDocument } from "./deployment.js";
 import { addressOf, applicationPathOf, canonicalAddress } from "./base-path.js";
 import {
   clearNavigationCache,
@@ -727,6 +728,18 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       const nextResolved =
         (intercepting ? await resolveInterception(routeTable(), origin, next) : null) ??
         (await (routeNavigations.read(key) ?? keepRoute(key, resolveMatch(routeTable(), next))));
+      // A module that could not be fetched, rather than one that threw: the
+      // chunk is gone, which after a deploy means this page is a build the
+      // server no longer carries. The document is the live build's page for
+      // this URL, so that is what is loaded — an error boundary would be a page
+      // that works after a reload, reported as though it were broken. See
+      // `./deployment.js`.
+      const failed = nextResolved.error;
+      if (failed?.kind === "thrown" && isChunkLoadFailure(failed.error)) {
+        setPending(false);
+        loadDocument(target.href);
+        return;
+      }
       // An intercepted entry remembers where it was intercepted from, so back
       // and forward can put the page underneath under it again. Every other
       // entry is written the way it always was.
@@ -791,6 +804,14 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       return undefined;
     }
     const arrive = (nextResolved: ResolvedRoute) => {
+      // A chunk this page's build had and the server no longer does; the
+      // history entry has already moved, so reloading loads its document. See
+      // `navigateTo` above.
+      const failed = nextResolved.error;
+      if (failed?.kind === "thrown" && isChunkLoadFailure(failed.error)) {
+        window.location.reload();
+        return;
+      }
       // The back button is a navigation, and a navigation that animates in
       // one direction and cuts in the other would read as a bug in the
       // animation rather than as a decision.
@@ -1029,6 +1050,15 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       }
       const payload = fetched.root;
       const nextRoot = await payload;
+      // A payload another build rendered: a prerendered one, answered as a
+      // file by a host that runs nothing and so refused nothing. Its tree names
+      // that build's chunks, so it is not rendered here; the document is. See
+      // `./deployment.js`.
+      if (fromAnotherDeployment(nextRoot.deployment)) {
+        setPending(false);
+        loadDocument(target.href);
+        return;
+      }
       // The URL the payload came from, which is a redirect's target when the
       // route redirected: the history entry is where the visitor ended up.
       // In the trailing-slash policy's spelling: a payload URL names its
@@ -1065,6 +1095,13 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       }
     } catch (error) {
       setPending(false);
+      // A client module the payload named could not be fetched: after a
+      // deploy, a chunk the server no longer has. The document for the URL is
+      // the live build's, so it is what the reader gets.
+      if (isChunkLoadFailure(error)) {
+        loadDocument(target.href);
+        return;
+      }
       throw error;
     }
   };
@@ -1105,6 +1142,10 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
           const payload = fetched.root;
           payload.then(
             (nextRoot) => {
+              if (fromAnotherDeployment(nextRoot.deployment)) {
+                window.location.reload();
+                return;
+              }
               withViewTransition(nextRoot.route.viewTransition, () => {
                 show(payload, nextRoot);
               });
@@ -1177,6 +1218,10 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       }
       const payload = fetched.root;
       const nextRoot = await payload;
+      if (fromAnotherDeployment(nextRoot.deployment)) {
+        window.location.reload();
+        return;
+      }
       // No view transition: a refresh is the same URL rendered again. See
       // `ModuleRouter`'s refresh.
       startTransition(() => {

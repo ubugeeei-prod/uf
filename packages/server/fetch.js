@@ -89,10 +89,12 @@ import { END_OF_TIME, newScope, runInScope } from "./internal/cache-store.js";
 import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
+import { refuseOtherDeployment } from "./internal/deployment.js";
 import { flightResponse } from "./internal/flight.js";
 import { admit, headersFor, rewriteFor, wasAdmitted, withHeaders } from "./internal/routing.js";
 
 export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
+export { DEPLOYMENT_HEADER } from "./internal/deployment.js";
 
 export type {
   CapabilityDefaults,
@@ -256,6 +258,14 @@ export function createFetchHandler(
   const { app, cache, capabilities, document } = options;
 
   async function answer(arrived: Request): Promise<Response> {
+    // A browser on another build, before anything of this one runs. The files
+    // are the host's and were answered in front of this function, which is
+    // what keeps that browser's chunks loading; what it asks of the
+    // application — an action, a payload — is refused, and the router turns
+    // the refusal into a hard navigation. See `./internal/deployment.js`.
+    const stale = refuseOtherDeployment(arrived, document.deployment);
+    if (stale != null) return stale;
+
     // Before the guard, not after it. A route handler and a server action both
     // run inside `dispatch`, and `revalidateTag()` in one of them has to reach
     // the store that is answering this request — a mutation that invalidates
