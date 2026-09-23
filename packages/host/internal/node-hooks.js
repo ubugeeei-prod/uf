@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   environmentVariable,
+  isCompiledOutput,
   isFlowModule,
   sharedService,
   transformFlow,
@@ -38,8 +39,8 @@ import {
   cacheDirectoryFor,
   cacheEntryFor,
   compileOptions,
+  compiledOutputContext,
   framed,
-  isCompiledConfig,
   readCached,
   writeCached,
 } from "./flow-cache.js";
@@ -93,7 +94,9 @@ export async function resolve(specifier, context, nextResolve) {
 export async function load(url, context, nextLoad) {
   if (!url.startsWith("file:")) return nextLoad(url, context);
   const filename = fileURLToPath(url);
-  if (isCompiledConfig(filename)) return nextLoad(url, context);
+  if (isCompiledOutput(filename)) {
+    return nextLoad(url, compiledOutputContext(filename, context));
+  }
   if (!isFlowModule(filename)) return nextLoad(url, context);
 
   const source = readFileSync(filename, "utf8");

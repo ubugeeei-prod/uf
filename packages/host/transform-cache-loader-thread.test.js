@@ -24,6 +24,7 @@ import {
   identifiesTheBinaryAHostStartedByHandFindsOnPath,
   failsTheImportOfAModuleTheCompilerRefusedWithWhatTheCompilerSaid,
   leavesACommonjsModuleThatSomethingRequiresToNode,
+  leavesWhatUfBuildWroteToTheHost,
 } from "../../tests/library/transform-cache.js";
 
 describe("the transform cache, through the loader thread", () => {
@@ -65,5 +66,9 @@ describe("the transform cache, through the loader thread", () => {
 
   it("leaves a CommonJS module that something requires to Node", () => {
     leavesACommonjsModuleThatSomethingRequiresToNode(LOADER_THREAD);
+  });
+
+  it("leaves what uf build wrote to the host, as the ES module it is", () => {
+    leavesWhatUfBuildWroteToTheHost(LOADER_THREAD);
   });
 });

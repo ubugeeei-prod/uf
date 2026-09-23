@@ -272,7 +272,12 @@ const buildUf = (root: string, marker: string, when: number): string => {
  * in-thread loader holds a thread and a `uf transform` open after a cold
  * compile, which is exactly what must not keep a finished program running.
  */
-const run = (root: string, env: { [string]: string | void }, loader: Loader): Result => {
+const run = (
+  root: string,
+  env: { [string]: string | void },
+  loader: Loader,
+  entry: string = "main.js",
+): Result => {
   const environment = { ...process.env, UF_PROJECT_ROOT: root, ...env };
   for (const name of Object.keys(environment)) {
     if (environment[name] == null) delete environment[name];
@@ -287,7 +292,7 @@ const run = (root: string, env: { [string]: string | void }, loader: Loader): Re
     );
   const result = spawnSync(
     NODE,
-    ["--import", clear, "--import", loader.imports(root), path.join(root, "main.js")],
+    ["--import", clear, "--import", loader.imports(root), path.join(root, entry)],
     {
       cwd: root,
       env: environment,
@@ -488,6 +493,49 @@ export function leavesACommonjsModuleThatSomethingRequiresToNode(loader: Loader)
     expect(required.stdout).toBe(`first-build ${path.join("common", "js")}`);
     expect(required.stderr).not.toContain("legacy.cjs");
   }, projectThatRequires);
+}
+
+/**
+ * The two modules, and an entry that imports what `uf build` wrote.
+ *
+ * `.uf/build/server/server.js` is the bundle the prerender and `uf start`
+ * import, and it has every mark of project source: a `.js` file under the
+ * project root, outside `node_modules`. It carries the mark so a compile would
+ * show, and the project declares itself CommonJS so that a loader which hands
+ * the bundle on without its format is caught too.
+ */
+const projectThatImportsItsBuild = (): string => {
+  const root = project();
+  fs.writeFileSync(path.join(root, "package.json"), '{ "type": "commonjs" }\n');
+  const bundle = path.join(root, ".uf", "build", "server");
+  fs.mkdirSync(bundle, { recursive: true });
+  fs.writeFileSync(path.join(bundle, "server.js"), `export const builtBy = "${MARK}";\n`);
+  fs.writeFileSync(
+    path.join(root, "main.mjs"),
+    'import { builtBy } from "./.uf/build/server/server.js";\n' +
+      "process.stdout.write(builtBy);\n",
+  );
+  return root;
+};
+
+export function leavesWhatUfBuildWroteToTheHost(loader: Loader): void {
+  inAProject((root) => {
+    const binary = buildUf(root, "first-build", FIRST);
+    const imported = run(root, { UF_BINARY: binary }, loader, "main.mjs");
+
+    // The bundle is the transform's own output. Compiling it again was a
+    // quarter of a small application's build — the prerender's import of a
+    // 375 kB server bundle, in development mode, in series — and it ran the
+    // React Compiler a second time over components it had already compiled.
+    expect(imported.error).toBe(null);
+    expect(imported.stderr).not.toContain(path.join(".uf", "build"));
+    // And it is still an ES module in a project that says `.js` is CommonJS,
+    // which is what the loader used to guarantee by compiling it.
+    expect(imported.status).toBe(0);
+    expect(imported.stdout).toBe(MARK);
+    // The entry was compiled and kept; the bundle was neither.
+    expect(cached(root)).toHaveLength(1);
+  }, projectThatImportsItsBuild);
 }
 
 /** A non-React test project may not install React; a React app owns its runtime. */

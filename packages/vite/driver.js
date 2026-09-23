@@ -256,7 +256,8 @@ async function viteConfig(config, mode) {
     base: basePathOf(config) === "" ? "/" : `${basePathOf(config)}/`,
     clearScreen: false,
     customLogger: eventLogger(argument("--log-level") ?? "info"),
-    plugins: [uniflowed({ root, config, target: routeTarget })],
+    // One `uf transform` for every pass this process runs; see the option.
+    plugins: [uniflowed({ root, config, target: routeTarget, shareTransformAcrossBuilds: true })],
     server: {
       host,
       port,

@@ -46,6 +46,34 @@ export function isFlowModule(id) {
   return at === -1 || clean.slice(at).startsWith("/node_modules/@uniflowed/");
 }
 
+/**
+ * Whether `filename` is JavaScript uf itself compiled and wrote under `.uf/`:
+ * the compiled `uf.config.*` the config loader wrote, or anything `uf build`
+ * wrote under `.uf/build/` — the rsc graph, the server bundle, the compiled
+ * application.
+ *
+ * `isFlowModule` answers "is this path uf's to transform?" from the path's
+ * shape, and a bundle under the project root has the shape of project source.
+ * It is not source. It is the transform's own output, already through the Flow
+ * chain and the React Compiler, and handing it back meant compiling it twice:
+ * `uf build`'s server pass re-transformed the whole rsc bundle, and the
+ * prerender's `import()` of the server bundle re-transformed that — hundreds of
+ * kilobytes each, on every build, in series, and with the React Compiler run a
+ * second time over components it had already compiled.
+ *
+ * Deliberately a second question rather than a clause in `isFlowModule`: that
+ * function's answer is mirrored by `FLOW_MODULE_PATTERN` and by
+ * `uf_transform::is_flow_module`, and "already compiled" is a fact about where
+ * uf writes, which only a caller that is about to compile needs.
+ *
+ * @param {string} filename an absolute path, or a module id with a query
+ * @returns {boolean}
+ */
+export function isCompiledOutput(filename) {
+  const clean = normalizePathSeparators(stripQuery(filename));
+  return clean.includes("/.uf/build/") || clean.includes("/.uf/config/uf.config.");
+}
+
 function normalizePathSeparators(id) {
   return typeof process !== "undefined" && process.platform === "win32"
     ? id.replaceAll("\\", "/")
@@ -575,6 +603,18 @@ export class TransformService {
    */
   get identity() {
     return this.#identity;
+  }
+
+  /**
+   * Whether this service can still answer: `false` once its process has
+   * exited or could not be started, after which every request rejects with
+   * the reason. A caller that keeps a service across builds starts a new one
+   * rather than failing every build after the one that lost it.
+   *
+   * @returns {boolean}
+   */
+  get alive() {
+    return this.#failure == null;
   }
 
   /** Stop the process. Outstanding requests are rejected. */
