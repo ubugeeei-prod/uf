@@ -403,6 +403,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Every option, its default, and what reads it.",
       },
       {
+        href: "/reference/lint",
+        title: "Lint rules",
+        blurb: "Every rule uf lint runs, with an example it reports and one it accepts.",
+      },
+      {
         href: "/reference/api",
         title: "API",
         blurb:

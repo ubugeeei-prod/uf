@@ -28,6 +28,7 @@ mod react_jsx;
 mod react_native;
 mod react_tree;
 mod router;
+mod rule_docs;
 mod security;
 mod security_markup;
 mod server;
