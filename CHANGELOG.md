@@ -3,6 +3,7 @@
 ## Unreleased
 
 - No codemod (fix(test)!: give every test file its own copy of the project's modules): only tests that share state between files through a project module are affected, and moving that state to globalThis depends on what the files share.
+- No codemod (fix(test)!: record spy calls in Vitest's shape): the one mechanical rewrite, `.mock.calls[n].args` to `.mock.calls[n]`, is a search and replace, and the rest depends on how each test reads a call.
 
 ## uf@0.2.0
 
