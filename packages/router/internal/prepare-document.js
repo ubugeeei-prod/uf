@@ -12,7 +12,12 @@
 // modules, and `hydrateFlight` in `../rsc-client.js`, for one React Server
 // Components rendered — so the code lives here rather than in either entry.
 
+import { rememberDeployment } from "./deployment.js";
+
 export function prepareDocumentForHydration(document: Document): void {
+  // Before React touches the head: which build this document is, read off the
+  // document that arrived. See `./deployment.js`.
+  rememberDeployment(document);
   const head = document.head;
   const envelope = head.querySelector('meta[name="uf:render"]');
   if (envelope != null && head.firstChild !== envelope) {

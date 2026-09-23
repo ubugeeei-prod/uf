@@ -1,0 +1,316 @@
+# Every server adapter, deployed to the platform it is for, asked the parity
+# questions over the network.
+#
+# `crates/uf_cli/tests/vite.rs` builds each adapter's artefact and asks it the
+# served-app questions in-process, with each platform's contract standing in
+# for the platform: an `ASSETS` binding for Cloudflare, a payload format 2.0
+# event for Lambda. That proves the artefacts agree with one another. It cannot
+# prove that a Worker on Cloudflare or a function on Lambda answers the way the
+# artefact did on Node, and that is what ubugeeei-prod/uf#956 asks for. So this
+# deploys the same fixture three ways — a container host for `node`/`container`,
+# Cloudflare Workers for `edge`, AWS Lambda for `serverless` — starts
+# `uf start` over the same build on the runner, and runs
+# `tools/ci/deployed-parity.mjs` against both.
+#
+# # Credentials, and what happens without them
+#
+# Every platform job needs the repository's secrets for that platform, and a
+# run without them skips that job **by name**: the `Credentials` job says which
+# secret is missing in the run's summary, and the platform job reports
+# `skipped` with its own name on it rather than passing without having
+# deployed anything. The secrets and variables each family reads:
+#
+#   container (Fly.io)       secret FLY_API_TOKEN
+#                            variable UF_PARITY_FLY_APP (an app that exists)
+#   edge (Workers)           secrets CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+#                            variable UF_PARITY_WORKER_URL (its workers.dev URL)
+#   serverless (Lambda)      secrets AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#                            variables UF_PARITY_AWS_REGION, UF_PARITY_LAMBDA
+#                            (a Node 24 function, handler `lambda.handler`,
+#                            with a Function URL whose auth type is NONE)
+#
+# **None of the three platform jobs has run against a real platform yet.** The
+# repository had none of these credentials when this was written, so the deploy
+# steps are written to each platform's documented CLI and have never been
+# executed. The first scheduled run with credentials is their first run.
+#
+# # What runs without any credentials
+#
+# `Harness`: the same fixture, built with `--adapter node`, served by the
+# artefact's own `server.js` on the runner, and asked the same questions beside
+# `uf start`. It deploys nothing, and it is what proves the comparison itself —
+# the questions, the normalisation, the skew questions — so a platform job that
+# fails is failing about the platform. It is also the only job that runs on a
+# pull request, and only one that touches this file or the script.
+#
+# Never a required check. A platform outage is not something a pull request can
+# fix, which is the argument `links.yml` makes for running on a schedule.
+name: Deploy parity
+
+on:
+  schedule:
+    # 05:41 UTC on Mondays. Weekly, because each run deploys to three
+    # platforms; and a minute nobody else picked, for the reason `links.yml`
+    # gives.
+    - cron: "41 5 * * 1"
+  push:
+    tags:
+      - "uf@*"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/deploy-parity.yml
+      - tools/ci/deployed-parity.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per ref at a time: two runs deploying to the same Worker, app or
+  # function would each be asking the other's deployment.
+  group: deploy-parity-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FIXTURE: crates/uf_cli/tests/fixtures/served-app
+
+jobs:
+  credentials:
+    name: Credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      container: ${{ steps.have.outputs.container }}
+      edge: ${{ steps.have.outputs.edge }}
+      serverless: ${{ steps.have.outputs.serverless }}
+    steps:
+      # Presence only. Nothing here prints a value, and every platform job
+      # reads its own secrets again rather than receiving them from this one.
+      - id: have
+        env:
+          EVENT: ${{ github.event_name }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP: ${{ vars.UF_PARITY_FLY_APP }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_URL: ${{ vars.UF_PARITY_WORKER_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.UF_PARITY_AWS_REGION }}
+          LAMBDA: ${{ vars.UF_PARITY_LAMBDA }}
+        run: |
+          set -eu
+          decide() {
+            family="$1"
+            shift
+            missing=""
+            for name in "$@"; do
+              eval "value=\${$name:-}"
+              if [ -z "$value" ]; then
+                missing="$missing $name"
+              fi
+            done
+            if [ "$EVENT" = "pull_request" ]; then
+              echo "$family=false" >> "$GITHUB_OUTPUT"
+              echo "- **$family**: skipped — a pull request never deploys" >> "$GITHUB_STEP_SUMMARY"
+            elif [ -n "$missing" ]; then
+              echo "$family=false" >> "$GITHUB_OUTPUT"
+              echo "- **$family**: skipped — not set:$missing" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "$family=true" >> "$GITHUB_OUTPUT"
+              echo "- **$family**: deploying" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          echo "## Deploy parity" >> "$GITHUB_STEP_SUMMARY"
+          decide container FLY_API_TOKEN FLY_APP
+          decide edge CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID WORKER_URL
+          decide serverless AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION LAMBDA
+
+  harness:
+    name: Harness (node artefact on the runner)
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - run: cargo build --release --bin uf
+      - name: Build the fixture for the node adapter
+        run: ./target/release/uf --cwd "$FIXTURE" build --adapter node
+      - name: Ask the artefact what uf start answers
+        run: |
+          set -eu
+          ./target/release/uf --cwd "$FIXTURE" start --host 127.0.0.1 --port 3000 > reference.log 2>&1 &
+          PORT=3100 HOST=127.0.0.1 node "$FIXTURE/.uf/deploy/node/server.js" > deployed.log 2>&1 &
+          for port in 3000 3100; do
+            for _ in $(seq 1 120); do
+              curl -fsS -o /dev/null "http://127.0.0.1:$port/" && break
+              sleep 1
+            done
+          done
+          node tools/ci/deployed-parity.mjs \
+            --reference http://127.0.0.1:3000 \
+            --deployed http://127.0.0.1:3100 \
+            --label "node artefact"
+      - name: What the servers said
+        if: failure()
+        run: tail -n 100 reference.log deployed.log || true
+
+  container:
+    name: node/container on Fly.io
+    needs: credentials
+    if: needs.credentials.outputs.container == 'true'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - run: cargo build --release --bin uf
+      - name: Build the fixture for the container adapter
+        run: ./target/release/uf --cwd "$FIXTURE" build --adapter container
+      - name: Deploy the image uf wrote
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP: ${{ vars.UF_PARITY_FLY_APP }}
+        # The image listens on 3000 (`ENV PORT=3000` in the Dockerfile uf
+        # writes), and Fly's default internal port is 8080, so the one line of
+        # platform configuration this needs is written here rather than kept
+        # in the repository for a single app.
+        run: |
+          set -eu
+          dir="$FIXTURE/.uf/deploy/container"
+          printf 'app = "%s"\n\n[http_service]\n  internal_port = 3000\n  force_https = true\n' "$FLY_APP" > "$dir/fly.toml"
+          curl -fsSL https://fly.io/install.sh | sh
+          "$HOME/.fly/bin/flyctl" deploy "$dir" --config "$dir/fly.toml" --remote-only --ha=false --yes
+      - name: Ask the deployment what uf start answers
+        env:
+          FLY_APP: ${{ vars.UF_PARITY_FLY_APP }}
+        run: |
+          set -eu
+          ./target/release/uf --cwd "$FIXTURE" start --host 127.0.0.1 --port 3000 > reference.log 2>&1 &
+          for _ in $(seq 1 120); do
+            curl -fsS -o /dev/null http://127.0.0.1:3000/ && break
+            sleep 1
+          done
+          node tools/ci/deployed-parity.mjs \
+            --reference http://127.0.0.1:3000 \
+            --deployed "https://$FLY_APP.fly.dev" \
+            --label "container on Fly.io"
+
+  edge:
+    name: edge on Cloudflare Workers
+    needs: credentials
+    if: needs.credentials.outputs.edge == 'true'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - run: cargo build --release --bin uf
+      - name: Build the fixture for the edge adapter
+        run: ./target/release/uf --cwd "$FIXTURE" build --adapter edge
+      - name: Deploy the Worker uf wrote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # The Wrangler `tools/ci/edge-worker-smoke.sh` runs locally, pinned the
+        # same way, so the two ask one version of the platform's tooling.
+        run: |
+          set -eu
+          cd "$FIXTURE/.uf/deploy/edge"
+          npx --yes wrangler@4.128.0 deploy --config wrangler.json
+      - name: Ask the deployment what uf start answers
+        env:
+          WORKER_URL: ${{ vars.UF_PARITY_WORKER_URL }}
+        run: |
+          set -eu
+          ./target/release/uf --cwd "$FIXTURE" start --host 127.0.0.1 --port 3000 > reference.log 2>&1 &
+          for _ in $(seq 1 120); do
+            curl -fsS -o /dev/null http://127.0.0.1:3000/ && break
+            sleep 1
+          done
+          node tools/ci/deployed-parity.mjs \
+            --reference http://127.0.0.1:3000 \
+            --deployed "$WORKER_URL" \
+            --label "edge on Cloudflare Workers"
+
+  serverless:
+    name: serverless on AWS Lambda
+    needs: credentials
+    if: needs.credentials.outputs.serverless == 'true'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - run: cargo build --release --bin uf
+      - name: Build the fixture for the serverless adapter
+        run: ./target/release/uf --cwd "$FIXTURE" build --adapter serverless
+      - name: Deploy the package uf wrote
+        id: deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.UF_PARITY_AWS_REGION }}
+          LAMBDA: ${{ vars.UF_PARITY_LAMBDA }}
+        run: |
+          set -eu
+          package="$PWD/lambda.zip"
+          (cd "$FIXTURE/.uf/deploy/serverless" && zip -qr "$package" .)
+          aws lambda update-function-code --function-name "$LAMBDA" --zip-file "fileb://$package" > /dev/null
+          aws lambda wait function-updated-v2 --function-name "$LAMBDA"
+          url="$(aws lambda get-function-url-config --function-name "$LAMBDA" --query FunctionUrl --output text)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Ask the deployment what uf start answers
+        env:
+          FUNCTION_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -eu
+          ./target/release/uf --cwd "$FIXTURE" start --host 127.0.0.1 --port 3000 > reference.log 2>&1 &
+          for _ in $(seq 1 120); do
+            curl -fsS -o /dev/null http://127.0.0.1:3000/ && break
+            sleep 1
+          done
+          node tools/ci/deployed-parity.mjs \
+            --reference http://127.0.0.1:3000 \
+            --deployed "$FUNCTION_URL" \
+            --label "serverless on AWS Lambda"

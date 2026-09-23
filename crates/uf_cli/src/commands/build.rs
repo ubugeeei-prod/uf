@@ -63,6 +63,7 @@ mod library;
 mod native;
 mod native_links;
 mod nonce;
+mod previous_assets;
 mod request_state;
 mod site;
 mod spa;
@@ -454,6 +455,12 @@ pub(crate) fn build(
         }
     }
 
+    // The previous build's hashed files, set aside before the builder empties
+    // the output directory and put back after the size report — so a tab still
+    // on that build keeps finding its chunks for one more build. See
+    // [`previous_assets`].
+    let previous = previous_assets::stash(&resolved.root, &out_dir)?;
+
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
         let mut driver = Driver::spawn(
@@ -629,6 +636,14 @@ pub(crate) fn build(
         let path = write_report(&meta_dir, &report)?;
         Ok((report, path))
     })?;
+    // After the report, which measures what *this* build ships, and before
+    // `--compile` and `--adapter`, which copy the output directory and should
+    // carry the previous build's chunks with it.
+    // Always, so the record in `.uf/build/meta` is this build's even when
+    // there was nothing to keep.
+    let carried = timer.measure("previous assets", || {
+        previous_assets::restore(previous, &out_dir, &meta_dir)
+    })?;
     // `--analyze`: the graph the builder just wrote, attributed to routes.
     // After the size report, which it complements rather than repeats: that
     // says what each shipped file weighs, and this says why each module is in
@@ -739,6 +754,7 @@ pub(crate) fn build(
         .filter(|(pages, routes)| pages < routes)
         .map(|(pages, routes)| format!("{pages} of {routes}"));
     let action_count = rsc.callable_action_count().to_string();
+    let kept = (carried > 0).then(|| format!("{} (for one build)", plural(carried, "file")));
     // What the build decided, in the words a reader can act on. Named in the
     // summary rather than left to be inferred from a page count, because "the
     // build wrote no document for /posts/:slug" and "the build is broken" look
@@ -953,6 +969,15 @@ pub(crate) fn build(
             Tone::Number,
         ));
         summary_rows.push(KeyValue::new("rendering", rendering));
+        // Only when something was kept: a first build, or a fresh checkout,
+        // has no previous build and no row to report it.
+        if let Some(kept) = &kept {
+            summary_rows.push(KeyValue::toned(
+                "kept from the last build",
+                kept,
+                Tone::Muted,
+            ));
+        }
         if let Some(navigation) = navigation {
             summary_rows.push(KeyValue::new("navigation", navigation));
         }

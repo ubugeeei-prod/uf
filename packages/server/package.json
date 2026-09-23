@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./adapter": "./adapter.js",
     "./bun": "./bun.js",
     "./cache": "./cache.js",
     "./cache/filesystem": "./cache-filesystem.js",
@@ -35,6 +36,7 @@
     "./instrumentation": "./instrumentation.js"
   },
   "files": [
+    "adapter.js",
     "bun.js",
     "cache-filesystem.js",
     "cache-kv.js",

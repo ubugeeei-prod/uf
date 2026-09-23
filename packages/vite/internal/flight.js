@@ -247,6 +247,8 @@ export function createFlightState({ root }) {
     clientModules: new Set(),
     chunkUrls: new Map(),
     rscOutput: null,
+    // The build's public id, set by the driver before it builds the rsc graph.
+    deployment: null,
   };
 }
 
@@ -500,8 +502,14 @@ export function fsFileOf(pathname) {
   return /^[A-Za-z]:\//.test(rest) ? rest : `/${rest}`;
 }
 
-/** `virtual:uf/rsc`: the Flight renderer over the rsc graph's route table. */
-export function rscEntrySource(routesId, routing = {}) {
+/**
+ * `virtual:uf/rsc`: the Flight renderer over the rsc graph's route table.
+ *
+ * `deployment` is the build's public id, baked in so every payload says which
+ * build rendered it — a prerendered payload is a file, and nothing that serves
+ * a file can say so for it. `null` under `uf dev`.
+ */
+export function rscEntrySource(routesId, routing = {}, deployment = null) {
   const settings = {
     basePath: routing.basePath ?? "",
     trailingSlash: routing.trailingSlash ?? "ignore",
@@ -510,7 +518,9 @@ export function rscEntrySource(routesId, routing = {}) {
 import { routes, notFound, errors } from ${JSON.stringify(routesId)};
 installRouting(${JSON.stringify(settings)});
 export { routes, notFound, errors };
-export const renderFlight = createFlightRenderer({ routes, notFound, errors });
+export const renderFlight = createFlightRenderer({ routes, notFound, errors, deployment: ${JSON.stringify(
+    deployment ?? null,
+  )} });
 `;
 }
 

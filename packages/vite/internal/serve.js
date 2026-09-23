@@ -71,6 +71,7 @@
 // guard would run, the page would render, and every `cookies()` in it would
 // throw as though no host had run at all. See ubugeeei-prod/uf#389.
 
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -374,6 +375,24 @@ export async function buildIdentity(root, serverDir) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The id a build's documents publish, derived from the build id.
+ *
+ * A browser names it on every action call and payload request, and a front
+ * door on another build refuses rather than answering; see
+ * `@uniflowed/server`'s `internal/deployment.js`. It has to be public — it is
+ * in every document — and the build id must not be: it is the key the action
+ * ids are an HMAC under whenever `UF_BUILD_ID` names both. So this is a
+ * digest of it, under a label of its own, and sixteen hex characters of that:
+ * the same for two artefacts that are one build, different for any two that
+ * are not, and no help to anybody guessing the key.
+ *
+ * @param {string} buildId
+ */
+export function deploymentIdFor(buildId) {
+  return createHash("sha256").update("uf:deployment\0").update(buildId).digest("hex").slice(0, 16);
 }
 
 async function readable(file, message) {
