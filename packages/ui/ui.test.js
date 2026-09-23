@@ -5218,6 +5218,21 @@ describe("Calendar", () => {
     expect(danglingReferences()).toEqual([]);
   });
 
+  it("takes a class for the caption and the weekday headings it renders itself", () => {
+    // They are the part's own elements, so a stylesheet has no other way to
+    // reach them; the class changes nothing a reader is told.
+    render(
+      <Calendar.Root defaultValue="2026-10-14" locale="en-GB" today="2026-10-01" weekStartsOn={1}>
+        <Calendar.Month captionClassName="month-name" columnHeaderClassName="weekday" />
+      </Calendar.Root>,
+    );
+    const grid = screen.getByRole("grid");
+    expect(grid.querySelector("caption")?.className).toBe("month-name");
+    const columns = screen.getAllByRole("columnheader");
+    expect(columns.every((column) => column.className === "weekday")).toBe(true);
+    expect(accessibleName(grid)).toBe("October 2026");
+  });
+
   it("says which month it is showing, as the grid's own name", () => {
     render(<Booking />);
     expect(accessibleName(screen.getByRole("grid"))).toBe("October 2026");

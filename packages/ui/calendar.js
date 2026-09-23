@@ -353,7 +353,14 @@ export component CalendarRoot(
  * with a dot under it for an appointment is a `Calendar.Day` with a child, not a
  * fork of this component. Omitted, every day renders its own number.
  */
-export component CalendarMonth(children?: (date: PlainDate) => renders CalendarDay, ...rest: Rest) {
+export component CalendarMonth(
+  /** A class for the `<caption>`, which this part renders itself. */
+  captionClassName?: string,
+  children?: (date: PlainDate) => renders CalendarDay,
+  /** A class for each weekday heading, which this part renders itself. */
+  columnHeaderClassName?: string,
+  ...rest: Rest
+) {
   const calendar = useCalendar("Calendar.Month");
   const gridRef = useRef<HTMLElement | null>(null);
   const { focused, focusedDayRef, moveFocus, pendingFocusRef, weekStartsOn } = calendar;
@@ -416,7 +423,9 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
       })}
       role="grid"
     >
-      <caption id={`${calendar.base}-caption`}>{calendar.caption}</caption>
+      <caption className={captionClassName} id={`${calendar.base}-caption`}>
+        {calendar.caption}
+      </caption>
       <thead>
         <tr>
           {columns.map((day) => (
@@ -426,6 +435,7 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
               // header. `aria-label` wins over the contents for the announced
               // name, so a reader still hears "Wednesday" rather than "Wed".
               aria-label={day.toLocaleString(calendar.locale, COLUMN_FORMAT)}
+              className={columnHeaderClassName}
               key={day.dayOfWeek}
               scope="col"
             >
