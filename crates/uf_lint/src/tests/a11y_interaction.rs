@@ -118,7 +118,11 @@ fn mouse_events_have_key_events_accepts_the_documented_pass() {
 fn interactive_supports_focus_reports_the_documented_failure() {
     reports(
         "a11y/interactive-supports-focus",
-        &[r#"<div role="button" onClick={open}>Open</div>"#],
+        &[
+            r#"<div role="button" onClick={open}>Open</div>"#,
+            // A contextual role that is a control still needs focus.
+            r#"<div role="tab" onClick={open}>Open</div>"#,
+        ],
     );
 }
 
@@ -130,6 +134,9 @@ fn interactive_supports_focus_accepts_the_documented_pass() {
             r#"<div role="button" tabIndex={0} onClick={open}>Open</div>"#,
             // Not a widget role: there is no control here to reach.
             r#"<div role="article" onClick={open}>Open</div>"#,
+            // A role that only lives inside a structure is not a control
+            // either, so there is nothing to focus for.
+            r#"<div role="listitem" onClick={open}>Open</div>"#,
             // No handler, so nothing a keyboard is missing out on.
             r#"<div role="button">Open</div>"#,
             // The element is already the control, and HTML focuses it.

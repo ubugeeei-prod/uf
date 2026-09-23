@@ -174,6 +174,21 @@ impl Role {
                 .union(Flags::CONTEXTUAL),
         )
     }
+
+    /// Whether this role is a control: a widget, or one that manages widgets.
+    ///
+    /// Narrower than [`Self::is_widget`] by the roles that only exist inside a
+    /// structure, which are not controls: `listitem`, `cell`, `caption`,
+    /// `rowgroup`. `<button role="listitem">` is a control told it is a list
+    /// item, which is what `a11y/no-interactive-element-to-noninteractive-role`
+    /// reports, and `<h2 role="listitem">` is not an element handed an
+    /// interactive role. The rules that ask "is this interactive" ask this;
+    /// the one that asks "is a tag enough to say this" asks `is_widget`. This is
+    /// what eslint-plugin-jsx-a11y calls interactive: its roles are the widget
+    /// set.
+    pub(super) fn is_interactive(&self) -> bool {
+        self.flags.has(Flags::WIDGET.union(Flags::COMPOSITE))
+    }
 }
 
 /// An attribute an element must carry to have the role beside it.

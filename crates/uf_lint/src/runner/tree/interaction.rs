@@ -357,7 +357,7 @@ fn interactive_supports_focus(tree: &mut Tree<'_>, name: &str, opening: &jsx::Op
     let Some((written, aria::Written::Role(role))) = aria::written_role(tree.scope, opening) else {
         return;
     };
-    if !role.is_widget() || focusable(tree, name, opening) || has_tab_index(tree, opening) {
+    if !role.is_interactive() || focusable(tree, name, opening) || has_tab_index(tree, opening) {
         return;
     }
     tree.report(
