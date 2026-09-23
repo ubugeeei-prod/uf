@@ -40,8 +40,14 @@
 # artefact's own `server.js` on the runner, and asked the same questions beside
 # `uf start`. It deploys nothing, and it is what proves the comparison itself —
 # the questions, the normalisation, the skew questions — so a platform job that
-# fails is failing about the platform. It is also the only job that runs on a
-# pull request, and only one that touches this file or the script.
+# fails is failing about the platform.
+#
+# `Version skew`: the fixture that builds one project three times and asks
+# `uf start` what a tab on the first build would. It needs a socket, which is
+# why it is here as well as in the suite the release queue runs.
+#
+# Those two are the jobs a pull request runs, and only one that touches this
+# file, the script, or the skew code.
 #
 # Never a required check. A platform outage is not something a pull request can
 # fix, which is the argument `links.yml` makes for running on a schedule.
@@ -61,6 +67,9 @@ on:
     paths:
       - .github/workflows/deploy-parity.yml
       - tools/ci/deployed-parity.mjs
+      - packages/server/internal/deployment.js
+      - packages/router/internal/deployment.js
+      - crates/uf_cli/src/commands/build/previous_assets.rs
 
 permissions:
   contents: read
@@ -164,6 +173,30 @@ jobs:
       - name: What the servers said
         if: failure()
         run: tail -n 100 reference.log deployed.log || true
+
+  # The version-skew fixture, on a machine that can bind a socket. It is in
+  # `crates/uf_cli/tests/vite.rs` with the other served-app tests, and a pull
+  # request's `Test` job runs only the unit half of that suite — the full one
+  # runs when a release is queued. This is where it runs on every change to
+  # the skew code, and every week, rather than first on a release.
+  skew:
+    name: Version skew (three builds under uf start)
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - run: cargo test -p uf_cli --test vite -- a_tab_on_the_previous_build_keeps_working_or_loads_the_document_again two_builds_answer_alike_once_the_per_build_ids_are_blanked
 
   container:
     name: node/container on Fly.io
