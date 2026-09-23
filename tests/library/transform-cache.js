@@ -243,6 +243,49 @@ const inAProject = (body: (root: string) => void, make?: () => string): void => 
   }
 };
 
+/** The file [`buildUf`] links each project's `uf` to, made on first use. */
+let assessed: string | null = null;
+
+/** Where each process keeps its one executable, in a directory named by its pid. */
+const ASSESSED = path.join(os.tmpdir(), "uf-transform-cache-uf");
+
+/**
+ * One executable for this process.
+ *
+ * Every case deletes its project, and with it the project's link, but not this
+ * file: it stays for the next case to link to. A worker is usually ended with
+ * a signal rather than left to exit, so nothing here can count on running when
+ * it goes; instead each process, making its own, first removes those whose
+ * process has gone. What is left behind is one small file per worker that was
+ * running at the time.
+ */
+function assessedExecutable(): string {
+  if (assessed != null) return assessed;
+  fs.mkdirSync(ASSESSED, { recursive: true });
+  for (const name of fs.readdirSync(ASSESSED)) {
+    if (/^\d+$/.test(name) && !running(Number(name))) {
+      fs.rmSync(path.join(ASSESSED, name), { recursive: true, force: true });
+    }
+  }
+  const directory = path.join(ASSESSED, String(process.pid));
+  fs.mkdirSync(directory, { recursive: true });
+  const file = path.join(directory, "uf");
+  fs.writeFileSync(file, compiler("unused"));
+  fs.chmodSync(file, 0o755);
+  assessed = file;
+  return file;
+}
+
+/** Whether process `pid` still exists; one owned by someone else counts. */
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
 /**
  * Put a build of the stand-in compiler at `<root>/uf`, over whatever is there.
  *
@@ -251,9 +294,27 @@ const inAProject = (body: (root: string) => void, make?: () => string): void => 
  * two builds in one test can land in the same millisecond, and a filesystem
  * that records whole seconds would hand both the same one. `cargo build` is
  * never that quick and needs no such help.
+ *
+ * The file is a hard link to one this process made before, when there is one,
+ * rather than a new file. What is written into it, its mode and its time are
+ * the build's, exactly as before; only the inode is reused. That is for macOS,
+ * which assesses every executable the first time anything executes it — about
+ * 170 ms, one file at a time for the whole machine — and remembers the answer
+ * for that inode whatever is later written into it. A new file per build made
+ * each of the two dozen cases here pay that once or twice, queued behind every
+ * other worker's, and those two files were the longest in the suite for it.
+ * Elsewhere a link is simply a file.
  */
 const buildUf = (root: string, marker: string, when: number): string => {
   const binary = path.join(root, "uf");
+  if (!fs.existsSync(binary)) {
+    try {
+      fs.linkSync(assessedExecutable(), binary);
+    } catch {
+      // A temporary directory on another volume cannot be linked into; a new
+      // file is still a correct build, only a slower one.
+    }
+  }
   fs.writeFileSync(binary, compiler(marker));
   fs.chmodSync(binary, 0o755);
   fs.utimesSync(binary, new Date(when), new Date(when));
