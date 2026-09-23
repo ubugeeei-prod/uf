@@ -64,7 +64,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
@@ -84,7 +84,6 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
-    boxShadow: ufTokens.shadowPanel,
   },
 });
 

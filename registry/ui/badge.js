@@ -67,7 +67,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: "transparent",
-    borderRadius: ufTokens.radiusPill,
+    borderRadius: ufTokens.radiusSm,
   },
   neutral: {
     backgroundColor: ufTokens.sunken,

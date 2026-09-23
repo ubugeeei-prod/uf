@@ -61,7 +61,7 @@ const styles = stylex.create({
     color: { default: ufTokens.muted, ":hover": ufTokens.ink },
     textDecorationLine: { default: "none", ":hover": "underline" },
     textUnderlineOffset: "3px",
-    borderRadius: "2px",
+    borderRadius: ufTokens.radiusSm,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,

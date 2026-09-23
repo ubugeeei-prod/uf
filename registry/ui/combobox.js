@@ -71,7 +71,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: { default: ufTokens.border, ":is([aria-expanded=true])": ufTokens.accent },
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
@@ -98,7 +98,6 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
-    boxShadow: ufTokens.shadowPanel,
   },
   option: {
     // Read by the check inside, which cannot see this element's state.

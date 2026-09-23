@@ -76,7 +76,6 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
-    boxShadow: ufTokens.shadowPanel,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,

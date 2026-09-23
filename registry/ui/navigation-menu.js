@@ -114,7 +114,6 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
-    boxShadow: ufTokens.shadowPanel,
   },
   link: {
     display: "block",

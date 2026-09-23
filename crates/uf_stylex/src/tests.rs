@@ -1,5 +1,6 @@
 //! Tests for the StyleX pass, one file per topic.
 
+mod defaults;
 mod extract;
 mod idempotency;
 mod ordering;

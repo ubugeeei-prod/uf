@@ -88,8 +88,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusXl,
-    boxShadow: ufTokens.shadowPanel,
+    borderRadius: ufTokens.radiusLg,
     // The panel takes focus itself when it holds nothing focusable, so it is
     // drawn like anything else that can.
     outlineWidth: { default: "0", ":focus-visible": "2px" },

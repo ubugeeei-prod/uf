@@ -67,7 +67,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: { default: ufTokens.border, ":is([aria-invalid=true])": ufTokens.danger },
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     cursor: { default: "text", ":disabled": "not-allowed" },
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",

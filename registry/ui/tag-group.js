@@ -20,7 +20,7 @@ const styles = stylex.create({
     fontSize: ufTokens.textSm,
     color: ufTokens.ink,
     backgroundColor: ufTokens.surface,
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     minWidth: "12rem",
     padding: ufTokens.space1,
     borderWidth: "1px",

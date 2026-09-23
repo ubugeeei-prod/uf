@@ -65,7 +65,6 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusLg,
-    boxShadow: ufTokens.shadowCard,
   },
   header: {
     display: "grid",

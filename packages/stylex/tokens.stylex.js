@@ -18,11 +18,24 @@
 //
 // The values are uf's identity, and `@uniflowed/brand` is where that identity
 // is decided: `accent`, `ink`, `canvas` and `muted` are brand's Indigo, Ink,
-// Mist and Slate, and the type, spacing and radius steps are brand's scales.
+// Mist and Slate, and the type and spacing steps are brand's scales. The
+// corners are not: brand's radius scale is for the logo and the marketing
+// surfaces, and an interface built from it looks soft and generic, so the
+// radii below are this module's own and much smaller.
 // Brand cannot hold the token module itself — a StyleX token's name is computed
 // by the compiler, and `defineVars` takes literals, not an imported array — so
 // this module is brand's projection into the semantic roles a design system
 // needs and an identity does not have.
+//
+// # No shadows, no gradients
+//
+// The defaults draw depth with a rule and a change of surface, and nothing
+// else. A shadow is the first thing a theme has to fight when the product's
+// look is flat, and a gradient is a decision about a brand this module does
+// not have, so neither is a token and neither appears in a default style.
+// `crates/uf_stylex/src/tests/defaults.rs` compiles every default style —
+// this module, `preset.js`, `theme.js` and every file in `registry/ui/` — and
+// fails on a `box-shadow`, a `text-shadow`, a `drop-shadow()` or a gradient.
 //
 // # What is not a token
 //
@@ -95,19 +108,23 @@ export const ufTokens = stylex.defineVars({
   space8: "32px",
   space12: "48px",
 
-  // Shape.
-  radiusSm: "8px",
-  radiusMd: "12px",
-  radiusLg: "16px",
-  radiusXl: "24px",
+  // Shape. Three small steps and a pill, and nothing rounder: a control is
+  // 2px, a button, field group or popover 4px, and the largest surface — a
+  // card, a dialog — 6px. `radiusPill` is for the few things that are round
+  // by what they are, such as a switch's track or a radio's dot, and not a
+  // way to soften a rectangle.
+  radiusSm: "2px",
+  radiusMd: "4px",
+  radiusLg: "6px",
   radiusPill: "999px",
 
   // The size of a control a finger or a pointer aims at.
   sizeControl: "18px",
 
-  // Elevation and motion.
-  shadowCard: "0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.10)",
-  shadowPanel: "0 16px 48px rgba(15, 23, 42, 0.24)",
+  // Motion. There is no elevation: a surface in front of another is told
+  // apart by a 1px `border` and its own background, never by a shadow, and
+  // `crates/uf_stylex/src/tests/defaults.rs` fails a default style that
+  // casts one or paints a gradient.
   durationFast: "120ms",
   durationBase: "200ms",
   easing: "cubic-bezier(0.2, 0, 0, 1)",

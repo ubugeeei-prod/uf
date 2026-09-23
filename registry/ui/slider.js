@@ -77,7 +77,7 @@ const styles = stylex.create({
     position: "relative",
     flexGrow: 1,
     height: "4px",
-    borderRadius: "9999px",
+    borderRadius: ufTokens.radiusPill,
     backgroundColor: ufTokens.border,
   },
   railVertical: {

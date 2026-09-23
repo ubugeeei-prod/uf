@@ -70,7 +70,7 @@ silently doing nothing.
 
 ### The tokens
 
-`@uniflowed/stylex/tokens.stylex.js` exports `ufTokens`, 48 custom properties
+`@uniflowed/stylex/tokens.stylex.js` exports `ufTokens`, 45 custom properties
 the build declares on `:root`. They are named for what they are *for*, never for
 what they look like — `accent` is the colour a primary action wears, and it can
 become green without a rule in the preset changing.
@@ -84,8 +84,8 @@ become green without a rule in the preset changing.
 | State | `focus`, `scrim` |
 | Type | `fontSans`, `fontMono`, `textXs` … `text2Xl`, `leadingTight`, `leadingBase`, `weightRegular`, `weightMedium`, `weightBold` |
 | Space | `space1` … `space12` |
-| Shape | `radiusSm` … `radiusXl`, `radiusPill`, `sizeControl` |
-| Motion and depth | `shadowCard`, `shadowPanel`, `durationFast`, `durationBase`, `easing` |
+| Shape | `radiusSm` (2px), `radiusMd` (4px), `radiusLg` (6px), `radiusPill`, `sizeControl` |
+| Motion | `durationFast`, `durationBase`, `easing`. There are no shadow tokens: surfaces are separated by a 1px `border` and a change of background |
 
 What is deliberately *not* a token is geometry exactly one control uses. A
 switch's track is 36 by 20 because that is what a switch is; promoting it to a

@@ -91,7 +91,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: { default: ufTokens.border, ":is([data-active=true])": ufTokens.accent },
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     outlineWidth: { default: "0", ":is([data-active=true])": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
@@ -104,7 +104,7 @@ const styles = stylex.create({
   separator: {
     width: "10px",
     height: "2px",
-    borderRadius: "1px",
+    borderRadius: ufTokens.radiusSm,
     backgroundColor: ufTokens.muted,
   },
 });
