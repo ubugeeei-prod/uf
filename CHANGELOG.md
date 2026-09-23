@@ -1,5 +1,12 @@
 # Changelog
 
+## uf@0.0.0-alpha.48
+
+- feat(cli): a compact lint summary, a doctor about the project, and one modern look across commands (#1347) (33504c47)
+- docs(test): make the testing guide example one consistent run (#1346) (372d08d6)
+- feat(run): declare task arguments and pick them from a list (#1345) (ac4e7cca)
+- feat(test): stream results as each file finishes (#1344) (be464a28)
+
 ## uf@0.0.0-alpha.47
 
 - fix(router): read a missing chunk off a resolution in one helper, back under the lint budget (#1343) (72187f8b)
