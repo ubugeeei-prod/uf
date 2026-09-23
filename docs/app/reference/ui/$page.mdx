@@ -182,11 +182,37 @@ A `children(item, state)` render function supplies the visible row content.
 custom rows can draw keyboard focus without tracking it separately.
 `selectionMode` is `single`, `multiple` or `none`; controlled `selectedKeys`
 and `onSelectionChange` have `defaultSelectedKeys` counterparts. Disabled rows
-are skipped. Arrow keys, Home/End, collator-backed typeahead, Shift ranges,
-Space/Enter and Ctrl/Cmd+A operate on enabled rows. Trees additionally accept
-`expandedKeys`, `defaultExpandedKeys` and `onExpandedChange`; horizontal arrows
-expand/collapse and follow the text direction. Tag groups use `onRemove(key)`
-for their remove buttons and Delete/Backspace commands.
+are skipped. Arrow keys, Home/End, PageUp/PageDown, collator-backed typeahead,
+Space/Enter and Ctrl/Cmd+A operate on enabled rows; Shift with any movement key
+or a click extends the selection from its anchor, and a second Shift movement
+back towards the anchor shrinks the range rather than growing it.
+
+The selection model is React Aria's:
+
+- `selectionBehavior="toggle"` (the default) flips a row on click or Space.
+  `"replace"` is the file-manager model: a click or an arrow key makes that row
+  the whole selection, Ctrl/Cmd+click and Ctrl/Cmd+Space add or remove one row,
+  and Ctrl/Cmd+arrows move without selecting. A touch or a screen reader's
+  activation toggles under either, because neither has a modifier to hold.
+- `disallowEmptySelection` refuses the gesture that would leave nothing
+  selected. Without it, choosing the selected row of a single-select collection
+  clears it.
+- Escape clears the selection. It is only claimed when it cleared something, so
+  the same key still closes a surrounding popover; `escapeKeyBehavior="none"`
+  turns it off.
+- `onAction(key)` opens a row instead of selecting it: Enter runs it (Space still
+  selects), a click runs it when `selectionMode` is `none`, and a double click
+  runs it under `selectionBehavior="replace"`.
+
+`onSelectionChange` receives keys in collection order, followed by any selected
+key the collection is not showing — a collapsed tree child or a filtered-out
+row stays selected rather than disappearing unseen.
+
+Trees additionally accept `expandedKeys`, `defaultExpandedKeys` and
+`onExpandedChange`; horizontal arrows expand/collapse and follow the text
+direction, and `*` expands every sibling of the active row. Tag groups move with
+the horizontal arrows (mirrored right to left) as well as the vertical ones,
+and use `onRemove(key)` for their remove buttons and Delete/Backspace commands.
 
 The application owns item order, removal and loading. `loading` exposes busy
 state; `onLoadMore` fires at the scroll boundary or End. Set `virtualized`,
