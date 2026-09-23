@@ -61,16 +61,52 @@ fn claims_only_the_features_the_package_implements() {
 fn exposes_the_components_that_exist_and_no_others() {
     let contract = contract();
 
-    assert_eq!(contract.components.len(), 4);
-    assert!(contract.has_component("Box"));
-    assert!(contract.has_component("Text"));
-    assert!(contract.has_component("Input"));
-    assert!(contract.has_component("ScrollBox"));
+    assert_eq!(contract.components.len(), 7);
+    for name in [
+        "Box",
+        "Text",
+        "Input",
+        "ScrollBox",
+        "Select",
+        "TabSelect",
+        "Textarea",
+    ] {
+        assert!(contract.has_component(name), "{name} is exported");
+    }
 
-    assert!(!contract.has_component("Select"));
-    assert!(!contract.has_component("ScrollBar"));
-    assert!(!contract.has_component("FrameBuffer"));
-    assert!(!contract.has_component("EmbeddedTerminal"));
+    // The rest of OpenTUI's components, which the package does not have.
+    // Adding one to the list above means deleting it from this one.
+    for name in [
+        "Slider",
+        "ScrollBar",
+        "Code",
+        "Markdown",
+        "LineNumbers",
+        "Diff",
+        "TextTable",
+        "AsciiFont",
+        "FrameBuffer",
+        "Image",
+        "QrCode",
+        "EmbeddedTerminal",
+    ] {
+        assert!(
+            !contract.has_component(name),
+            "{name} is not implemented and must not be listed"
+        );
+    }
+
+    // Item selection is a keyboard component, and not the text selection
+    // `TuiFeature::Selection` names.
+    for name in ["Select", "TabSelect"] {
+        let component = contract.component(name).unwrap();
+        assert_eq!(component.kind, TuiComponentKind::Selection);
+        assert_eq!(component.feature, TuiFeature::Keyboard);
+        assert!(component.interactive);
+    }
+    let textarea = contract.component("Textarea").unwrap();
+    assert_eq!(textarea.kind, TuiComponentKind::Input);
+    assert!(!textarea.server_component_safe);
 
     // `Box` and `Text` describe a frame and can be produced anywhere; `Input`
     // needs somebody at a keyboard.

@@ -25,6 +25,10 @@
 //!   which of its icons you used.
 //! - [`og`] draws an Open Graph card from a declared template. It is
 //!   deliberately not a renderer; read its documentation before expecting JSX.
+//! - [`variant`] is the other schedule: one width of one remote image, encoded
+//!   while a request waits, as AVIF for a browser that accepts it. It is what
+//!   `@uniflowed/server/image` hands a fetched source to under `uf start` and
+//!   `uf preview`.
 //! - [`name`] is the one place a name is minted, so a file's name changes
 //!   exactly when its bytes do.
 //! - [`cache`] is what stops the second build doing any of it again.
@@ -43,8 +47,9 @@
 //! # What this crate cannot do
 //!
 //! Stated here because a pipeline that quietly does less than it claims is
-//! worse than no pipeline: **no AVIF**, **no lossy WebP**, **no subsetting of
-//! a CFF font or a WOFF2**, and **no image from JSX**. [`image`], [`subset`]
+//! worse than no pipeline: **no AVIF at build time** (only [`variant`], at
+//! request time, writes one), **no lossy WebP**, **no subsetting of a CFF font
+//! or a WOFF2**, and **no image from JSX**. [`image`], [`subset`]
 //! and [`og`] each say why in their own documentation, and none of them
 //! pretends otherwise at runtime — a format that was encoded and rejected is
 //! reported as [`image::Declined`], a file that could not be decoded carries
@@ -61,10 +66,12 @@ pub mod image;
 pub mod name;
 pub mod og;
 pub mod subset;
+pub mod variant;
 
 pub use cache::{Cached, cache_key};
 pub use config::{
     DEFAULT_QUALITY, DEFAULT_WIDTHS, FontsConfig, IconsConfig, ImagesConfig, OgConfig,
+    RemotePattern, check_remote_pattern,
 };
 pub use font::{
     EmittedFace, FallbackFace, FontAsset, FontContainer, FontError, FontMetrics, FontRequest,
@@ -78,6 +85,10 @@ pub use image::{
 pub use name::{NAME_DIGITS, hashed_name, hashed_name_with_suffix};
 pub use og::{OG_EXTENSION, OgAsset, OgError, OgRequest, OgTemplate, draw};
 pub use subset::{SubsetFace, SubsetMode, SubsetPlan};
+pub use variant::{
+    AVIF_SPEED, EncodedVariant, MAX_VARIANT_PIXELS, MAX_VARIANT_SOURCE_BYTES, MAX_VARIANT_WIDTH,
+    VariantError, VariantFormat, VariantRequest, variant,
+};
 
 mod testfont;
 #[cfg(test)]

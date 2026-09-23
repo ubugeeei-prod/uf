@@ -106,9 +106,20 @@ fn inspect_reports_zero_config_defaults() {
         .iter()
         .map(|component| component["name"].as_str().unwrap())
         .collect();
-    // Four, and the list is the package's: `uf inspect` is where somebody
+    // Seven, and the list is the package's: `uf inspect` is where somebody
     // reads which components exist before importing one.
-    assert_eq!(components, ["Box", "Text", "Input", "ScrollBox"]);
+    assert_eq!(
+        components,
+        [
+            "Box",
+            "Text",
+            "Input",
+            "ScrollBox",
+            "Select",
+            "TabSelect",
+            "Textarea"
+        ]
+    );
     assert!(
         value["stdModules"]
             .as_array()

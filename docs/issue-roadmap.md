@@ -62,6 +62,14 @@
       whole scan, so one `chmod 000` directory made `uf fmt`, `uf lint`,
       `uf check` and `uf test` do nothing for the rest of the project.
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.
+- [ ] Time every uf command beside Vite+, Next.js, Bun, Vitest, ESLint, Prettier,
+      Biome, Flow and pnpm in one reproducible run, gate uf's half nightly, and
+      publish it ([#945](https://github.com/ubugeeei-prod/uf/issues/945)).
+      `uf run bench:toolchain --tools all` measures every tool on its own
+      idiomatic copy of one generated application, with CPU time beside wall
+      clock; `.github/workflows/bench.yml` fails a uf stage more than 20% and
+      25 ms slower than `tools/bench/toolchain/baseline.json`; `/guide/benchmarks`
+      renders that file with the rows uf loses first.
 - [ ] Ban `String`, `format!`, and allocation-heavy std helpers in parser/lint/router/test hot paths.
 - [ ] Audit hot paths for unnecessary `.clone()` calls and replace them with borrowed or arena-backed flows.
 - [x] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.
@@ -92,19 +100,26 @@
       reads it once. Cursor installs the same extension rather than a copy.
       Neovim, Vim, Helix and Emacs each get one configuration file:
       `vim.lsp.start`, vim-lsp, `languages.toml` and Eglot. Zed has both the
-      manifest and the `zed_extension_api` Rust/WASM half that starts `uf lsp`,
-      and CI checks it for `wasm32-wasip1`. JetBrains uses LSP4IJ, documented
-      in `editors/jetbrains`.
+      manifest and the `zed_extension_api` Rust/WASM half that starts
+      `uf lsp --cwd <worktree>`, finding `uf` in the `lsp.uf.binary.path`
+      setting, then `node_modules/.bin`, then `PATH`; the Editors workflow
+      tests those decisions on the host and builds the `.wasm`, and it is
+      installed as a dev extension, not from Zed's registry. JetBrains uses an
+      LSP4IJ template in `editors/jetbrains`. Each release publishes the VS Code
+      extension as `uniflowed.uf` to the Visual Studio Marketplace and Open VSX
+      (#977), mapping uf's version onto one the Marketplace accepts
+      (`0.0.0-alpha.46` is the pre-release `0.0.46`); that needs the owner's
+      `VSCE_PAT` and `OVSX_PAT`, and no release has gone out with them yet.
+      Nobody has yet confirmed in Zed or a JetBrains IDE that the server starts
+      and shows diagnostics.
       `tests/library/vscode-extension.test.js` covers the extension's own
       decisions without an editor host, and `tests/library/lsp.test.js` drives
       the real `uf lsp` over framed messages and asserts every capability the
       READMEs claim — and that the ones they disclaim are absent. Both run under
       `uf test`, so both are in `uf run ci`.
-      One server bug found and not fixed here: `uf lsp --cwd <dir>` is accepted
-      by the command line and ignored by the command, which reads `.` instead,
-      so the flag silently gives a project uf's default `fmt` options and lint
-      levels. Every client works around it by setting the child process's own
-      working directory.
+      `uf lsp --cwd <dir>` reads the configuration from `<dir>`, and
+      `lsp.test.js` asserts it; the clients either pass it or start the server
+      in the project.
 - [x] Use uf task definitions in `uf.config.js`.
 - [x] Ban npm scripts from generated project templates and lint defaults.
 
@@ -151,12 +166,16 @@
 - [ ] Map host-provided IO capabilities for Node.js, Deno, and Bun.
 - [x] Support a deploy-anywhere adapter for Node.js: `uf build --adapter node` writes a directory that runs on a host with a JavaScript runtime and nothing else.
 - [x] Support the edge, serverless and container deploy targets against the same `@uniflowed/server/fetch` handler: Cloudflare Workers with a `wrangler.json`, AWS Lambda payload format 2.0, and `node` with a `Dockerfile` ([#391](https://github.com/ubugeeei-prod/uf/issues/391)). None has been deployed to a real platform.
+- [x] Survive a deploy with the previous build open in a tab: every document, action call and payload names its build, a front door on another build answers `409` before any application code runs, the router turns that into a hard navigation, and `uf build` keeps the previous build's hashed assets for one build ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
+- [x] Write the adapter contract down as `@uniflowed/server/adapter` and the deploy guide, so a platform can implement an adapter outside this repository ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
+- [ ] Prove the `node`/`container`, `edge` and `serverless` outputs on their real platforms: `.github/workflows/deploy-parity.yml` is written and skips each platform by name until the repository has its credentials; it has not run against any of them ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
 - [x] Support the static deploy target: `uf build --adapter static` copies the build and refuses, by name, a project whose route handlers, middleware, unprerendered routes or server actions a static host cannot answer ([#335](https://github.com/ubugeeei-prod/uf/issues/335)).
 - [ ] Support the Deno and Bun deploy targets, once a benchmark shows a native server beating `node:http` under the same handler ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - [ ] Assume React 19, Suspense, `use`, and Async React.
 - [ ] Bundle GraphQL Relay primitives.
 - [ ] Provide explicit fetch clients without global fetch override.
 - [x] Start Nuxt-like web primitives: Font, Image, Link, Page, Layout, Time, Announcer, and Picture.
+- [ ] Optimise remote images at request time behind an allow-list ([#958](https://github.com/ubugeeei-prod/uf/issues/958)). `/__uf/image` answers under `uf dev`, `uf preview`, `uf start` and every `--adapter` that runs code, only for hosts `app.builtins.images.remotePatterns` lists, and `Image` writes its `srcset` for a remote `src`. AVIF comes from `uf` itself (`uf_assets::variant`, `rav1e`) on the three doors uf runs and from Cloudflare's Images binding on `edge`; **not done** is an encoder of uf's own inside a deployed `node`, `bun`, `deno`, `container` or `serverless` directory, which encodes with the module `app.builtins.images.transformer` names and is refused at build without one, and any endpoint in a `--compile` binary, which is refused while remote patterns are listed.
 - [ ] Generate an Open Graph image from JSX (`OgImage`), which needs a text-shaping and rasterising path ([#269](https://github.com/ubugeeei-prod/uf/issues/269)).
 - [x] Write the metadata files a site is asked for: `sitemap.xml` from the documents the prerender wrote, and `robots.txt` when it would say something, both from `site.url` in `uf.config.js` ([#269](https://github.com/ubugeeei-prod/uf/issues/269)). A web app manifest and `opensearch.xml` are not written; the manifest overlaps `@uniflowed/pwa` and which package owns it is undecided.
 - [x] Start typed `useCookie`, `useHead`, `useRoute`, `useRouter`, and navigation guard contracts.
@@ -217,9 +236,14 @@
       through Kitty keyboard reports when the terminal supports them, and
       legacy terminals continue to send key presses. `useClipboard()` can now
       write selected text through OSC 52 on interactive terminals and refuses
-      explicitly when there is no terminal transport. The repeated-press
-      gestures that widen a selection to a word or a line, item selection, and
-      rich content remain ubugeeei-prod/uf#314.
+      explicitly when there is no terminal transport. `Select`, `TabSelect`
+      and `Textarea` are in with OpenTUI's keys and events, drawn after layout
+      because what they show depends on their size, and layout now wraps
+      (`flexWrap`, `alignContent`) and positions (`position: "absolute"`,
+      offsets, `zIndex`) as well as taking `auto` margins. The repeated-press
+      gestures that widen a selection to a word or a line, `Slider`,
+      `ScrollBar`, the rich-content and media components, `aspectRatio`, and
+      notifications, audio and `Timeline` remain ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
@@ -333,7 +357,11 @@
 - [ ] Implement host detection and adaptation in `@uniflowed/rm`.
 - [x] Publish `curl -fsSL https://setup.uniflowed.dev | sh` and
       `irm https://setup.uniflowed.dev/install.ps1 | iex` installers, with
-      release-workflow verification against the packaged archives.
+      verification against the packaged archives before a release PR merges,
+      a check after publication that the GitHub release carries every target,
+      and a daily audit that every version on npm has a release with binaries
+      ([#1328](https://github.com/ubugeeei-prod/uf/issues/1328)). alpha.9 and
+      alpha.44 have none and are recorded as known gaps.
 - [x] Support sh, bash, zsh, Windows x86-64, macOS, and Linux installer targets.
 - [x] Start napi-rs-style native target package generation contracts.
 - [x] Start generated TypeScript declaration to Flow declaration conversion.

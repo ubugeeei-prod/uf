@@ -54,6 +54,9 @@ production-server row still belongs to Next.js.
 
 [What uf does not do](/guide/scope) is the complete version of that list,
 sorted into refusals and gaps.
+[Benchmarks](/guide/benchmarks) is the measured version: every uf command timed
+beside Vite+, Next.js, Bun and the others on one machine, with the stages uf
+loses listed first.
 
 ## Against `create-react-app`
 
@@ -130,7 +133,7 @@ therefore separates "there is code" from "this is mature".
 | ISR, caching, revalidation | yes | route and fetch caches, opt-in, with time-based and on-demand revalidation; a prerendered page that states a lifetime is served from the build and regenerated in the background once it passes (`isr`), kept on disk, in Workers KV, or in a provider you name. A page that reads the request inside a `<Suspense>` boundary is prerendered as a static shell and its boundary streamed per request (`ppr`) on every adapter that streams. Data and action caches are refused ([Caching](/guide/cache), [`rendering.modes`](/reference/config#renderingmodes)) |
 | Middleware | yes | request middleware runs before route resolution on server targets; static output cannot run it and is refused when it would be required ([Commands](/reference/cli#static)) |
 | HTTP `QUERY` | no: a [route handler](https://nextjs.org/docs/app/api-reference/file-conventions/route) exports `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` and `OPTIONS` | a route handler exports `QUERY` and `@uniflowed/fetch` sends one; a proxy with its own list of verbs can still refuse it ([Routing](/guide/routing/requests#query-the-get-whose-parameters-did-not-fit-in-a-url)) |
-| Image optimisation | yes, plus a request-time optimizer | build time only: an imported image is resized to the declared widths and gets a real `srcset`, `sizes`, intrinsic dimensions and a blur placeholder. **No AVIF and no lossy WebP** — neither has a pure-Rust encoder uf ships — and no request-time endpoint ([Images, fonts, icons and cards](/guide/assets#what-this-does-not-do)) |
+| Image optimisation | yes, plus a request-time optimizer | an imported image is resized at build time to the declared widths and gets a real `srcset`, `sizes`, intrinsic dimensions and a blur placeholder; a remote image goes through `/__uf/image`, behind `remotePatterns`, and comes back as AVIF where the browser takes it. **No AVIF at build time and no lossy WebP**, and a deployed `node`-family directory encodes with a module you name ([Images, fonts, icons and cards](/guide/assets#a-remote-image)) |
 | Font self-hosting | yes, downloaded and subsetted at build time | an imported font is self-hosted, content-hashed, declared with `font-display` and paired with a `size-adjust` fallback computed from its own metrics, and `app.builtins.fonts.subset: "ranges"` splits it by script with exact `unicode-range`s. **Not downloaded from a provider**, written as WOFF rather than WOFF2 when it is split, and not cut down to the text a page uses ([Images, fonts, icons and cards](/guide/assets#a-font)) |
 | Error boundaries | yes | `$error.js`, resolved by the nearest ancestor the way `$not-found.js` is; `unauthorized()`, `forbidden()` and a thrown error reach it as one `RouteError`, answered 401, 403 and 500 ([Routing](/guide/routing#when-a-page-throws)) |
 | Deployment adapters | many | `node`, `bun`, `deno`, `container`, `edge`, `serverless`, `static`, plus `--compile`; server adapters are tested for identical answers, not proven by real deployments ([Commands](/reference/cli#uf-build---adapter-target)) |

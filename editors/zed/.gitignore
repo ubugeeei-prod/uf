@@ -1,0 +1,3 @@
+# What `cargo build` and Zed's dev-extension install write here.
+/target/
+/extension.wasm

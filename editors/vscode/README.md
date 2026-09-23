@@ -5,11 +5,32 @@ window, and everything it shows — diagnostics, formatting, quick fixes, hover,
 completion in `uf.config.js` — is answered by that server, from the same crates
 `uf lint`, `uf fmt` and `uf inspect` call.
 
-CI packages the extension on every editor change. `uf@*` tags publish the same
-VSIX to the Visual Studio Marketplace when `VSCE_PAT` is present, and to Open
-VSX when `OVSX_PAT` is present; a missing token is reported as a named skip.
-
 ## Install
+
+The extension is `uniflowed.uf`, published with each uf release to the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=uniflowed.uf)
+and to [Open VSX](https://open-vsx.org/extension/uniflowed/uf), the registry
+Cursor, VSCodium and other VS Code forks install from:
+
+```sh
+code --install-extension uniflowed.uf
+```
+
+or search for **uf** in the Extensions view. While uf is in alpha, every release
+of the extension is a **pre-release**: VS Code installs it as one (the
+Extensions view offers "Install Pre-Release"), and keeps it updated from later
+ones.
+
+The extension's version is not uf's, because the Marketplace takes no semver
+prerelease: uf `0.0.0-alpha.46` is extension `0.0.46`. `release/version.js` has
+the mapping; it keeps the order of uf's versions, a release after its
+prereleases. The extension starts whichever `uf` it finds (below), not a copy of
+its own, so the two need not match.
+
+Publishing needs the publisher tokens the repository owner creates; a release
+made without them packages the extension and says by name which registry it
+skipped. Until a release has gone out with them, or to run a build of your own,
+package it from a uf checkout:
 
 ```sh
 cd editors/vscode
@@ -17,6 +38,9 @@ npm install                     # vscode-languageclient, the only dependency
 npx @vscode/vsce package        # writes uf-0.0.0.vsix locally
 code --install-extension uf-0.0.0.vsix
 ```
+
+Every run of the Editors workflow also uploads the packaged `.vsix` as an
+artifact.
 
 To work on it instead, open `editors/vscode` in VS Code and press F5, which
 launches an Extension Development Host with it loaded.
@@ -171,6 +195,7 @@ src/binary.js      finding `uf`: the setting, node_modules/.bin, PATH
 src/project.js     what counts as a uf project, and which files it claims
 src/client.js      the process to start, and reading the settings
 src/extension.js   the glue: VS Code and vscode-languageclient
+release/version.js the version a uf release is published as; not packaged
 ```
 
 The first three are pure and have no `require("vscode")` in them, which is what

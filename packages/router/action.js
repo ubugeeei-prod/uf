@@ -87,6 +87,16 @@
 // all and falls through to the route handlers. The `415` answers a request
 // that claims to be an action, which is the only kind that reaches it.
 //
+// # After a deploy
+//
+// A reference carries its build's id, and a new build mints new ids, so a tab
+// left open across a deploy holds ids the live server has never heard of. The
+// call names the page's build in `uf-deployment`; a server on another build
+// answers `409` without running anything; and the reference then loads the
+// page's document again — a hard navigation onto the live build — instead of
+// throwing. The promise it returned never settles, because the page it was
+// returned to is being replaced. See `./internal/deployment.js`.
+//
 // # What Flow checks, and where
 //
 // Flow reads `app/_actions/clicks.js`, not the reference the bundler
@@ -111,6 +121,7 @@ import {
   decodeActionResult,
   encodeActionArguments,
 } from "./internal/action-wire.js";
+import { loadDocument, refusedAsAnotherDeployment, withDeployment } from "./internal/deployment.js";
 import { clearNavigationCache } from "./internal/navigation-cache.js";
 
 export type { ActionArgument, ActionValue } from "./internal/action-wire.js";
@@ -251,6 +262,9 @@ export function createServerReference(id: string, name: string): ServerActionFun
     // declines to track.
     const headers: { [string]: string } = { "content-type": ACTION_CONTENT_TYPE };
     headers[ACTION_HEADER] = id;
+    // Which build this page is, so a server on another build refuses the call
+    // rather than looking this id up in a table it was never in.
+    withDeployment(headers);
     const response = await fetch(currentUrl(), {
       method: "POST",
       // Stated rather than left to the default, because the default is what a
@@ -270,6 +284,15 @@ export function createServerReference(id: string, name: string): ServerActionFun
     // again. Whatever the status: an action that failed part-way may have
     // written before it failed. See `./internal/navigation-cache.js`.
     clearNavigationCache();
+    // The server is on another build: nothing ran, and nothing on this page
+    // can be called correctly any more. Load the page again, from the build
+    // that is live, and never settle — a rejection here would reach an error
+    // boundary for the moment before the document is replaced, and a result
+    // would be a lie. See `./internal/deployment.js`.
+    if (refusedAsAnotherDeployment(response)) {
+      loadDocument(currentUrl());
+      return new Promise<ActionValue | void>(() => {});
+    }
     if (!response.ok) {
       throw new ServerActionError(name, response.status);
     }

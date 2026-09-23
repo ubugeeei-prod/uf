@@ -24,8 +24,8 @@
 //
 // So this implements the subset a terminal uses, in whole cells. What it does
 // *not* implement is written down at the bottom of this file rather than
-// discovered: no wrapping, no absolute positioning, no aspect ratio. Those are
-// ubugeeei-prod/uf#314.
+// discovered: no aspect ratio, and no wrapping or positioning inside a
+// scrolling box. Those are ubugeeei-prod/uf#314.
 //
 // # Whole cells, and where the remainder goes
 //
@@ -67,6 +67,36 @@ export type AlignItems = "flex-start" | "center" | "flex-end" | "stretch";
 export type AlignSelf = "auto" | AlignItems;
 
 /**
+ * Whether children that do not fit on one line go on to another.
+ *
+ * `"no-wrap"` — the default, OpenTUI's and Yoga's — keeps them on one and
+ * shrinks them. `"wrap"` starts a new line below (or, in a column, to the
+ * right), and `"wrap-reverse"` stacks the lines from the other side.
+ */
+export type FlexWrap = "no-wrap" | "wrap" | "wrap-reverse";
+
+/** Where the lines of a wrapping box go in the space they leave over. */
+export type AlignContent =
+  | "flex-start"
+  | "center"
+  | "flex-end"
+  | "stretch"
+  | "space-between"
+  | "space-around"
+  | "space-evenly";
+
+/**
+ * Whether a node takes part in its parent's flex line.
+ *
+ * `"relative"` — the default, as it is in OpenTUI and Yoga — does, and its
+ * `top`/`right`/`bottom`/`left` then nudge where it is drawn without moving
+ * anything around it. `"absolute"` does not: its parent lays out as if it
+ * were not there, and it is placed against the inside of its parent's border
+ * by those four offsets.
+ */
+export type Position = "relative" | "absolute";
+
+/**
  * What happens to content larger than its box.
  *
  * `"scroll"` is `"hidden"` plus an offset: the children are stacked at their
@@ -86,8 +116,10 @@ export type Overflow = "visible" | "hidden" | "scroll";
  */
 export type LayoutStyle = {
   readonly flexDirection?: FlexDirection,
+  readonly flexWrap?: FlexWrap,
   readonly justifyContent?: JustifyContent,
   readonly alignItems?: AlignItems,
+  readonly alignContent?: AlignContent,
   readonly alignSelf?: AlignSelf,
   readonly flexGrow?: number,
   readonly flexShrink?: number,
@@ -112,6 +144,12 @@ export type LayoutStyle = {
   readonly rowGap?: number,
   readonly columnGap?: number,
   readonly overflow?: Overflow,
+  readonly position?: Position,
+  /** Offsets: cells, or a percentage of the parent's inside. Negative is allowed. */
+  readonly top?: Dimension,
+  readonly right?: Dimension,
+  readonly bottom?: Dimension,
+  readonly left?: Dimension,
   /**
    * The first content row a scrolling box shows.
    *
@@ -265,6 +303,40 @@ function resolve(value: Dimension | void, basis: number): number | null {
   return null;
 }
 
+/**
+ * Resolve an offset, which unlike a length may be negative.
+ *
+ * `top: -1` on a badge is how it sits on its parent's border, so the clamp
+ * {@link resolve} applies to a size would move it back inside.
+ */
+function resolveOffset(value: Dimension | void, basis: number): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.round(value) : null;
+  }
+  if (typeof value === "string" && value.endsWith("%")) {
+    const percent = Number.parseFloat(value.slice(0, -1));
+    return Number.isFinite(percent) ? Math.round((basis * percent) / 100) : null;
+  }
+  return null;
+}
+
+/** Whether a child is out of its parent's flex line. */
+const isAbsolute = (node: LayoutNode): boolean => node.style.position === "absolute";
+
+/**
+ * How far a relatively positioned child is drawn from where the line put it.
+ *
+ * `left` wins over `right` and `top` over `bottom` when both are given, which
+ * is CSS's rule for a box whose width is already decided.
+ */
+function relativeShift(style: LayoutStyle, width: number, height: number): [number, number] {
+  const left = resolveOffset(style.left, width);
+  const right = resolveOffset(style.right, width);
+  const top = resolveOffset(style.top, height);
+  const bottom = resolveOffset(style.bottom, height);
+  return [left ?? (right != null ? -right : 0), top ?? (bottom != null ? -bottom : 0)];
+}
+
 /** Padding on each edge, with the shorthand applied first. */
 function padding(style: LayoutStyle): Edges<number> {
   const all = style.padding ?? 0;
@@ -404,6 +476,16 @@ function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHei
       fixedHeight != null
         ? 0
         : scrollStack(node, innerAvailableWidth, innerAvailableHeight).content;
+  } else if (wraps(style)) {
+    const size = wrappedSize(
+      node,
+      fixedWidth != null ? Math.max(0, fixedWidth - insetLeft - insetRight) : innerAvailableWidth,
+      fixedHeight != null
+        ? Math.max(0, fixedHeight - insetTop - insetBottom)
+        : innerAvailableHeight,
+    );
+    contentWidth = size.width;
+    contentHeight = size.height;
   } else {
     const row = isRow(direction(node.style));
     const gap = gapOf(style, row);
@@ -411,6 +493,11 @@ function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHei
     let cross = 0;
     let counted = 0;
     for (const child of node.children) {
+      // A child out of the line takes no room in it, so it cannot make its
+      // parent any larger — which is the whole of what `absolute` means.
+      if (isAbsolute(child)) {
+        continue;
+      }
       const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(child.style));
       const size = intrinsicSize(
         child,
@@ -434,6 +521,55 @@ function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHei
     width: clampDimension(width, style.minWidth, style.maxWidth, availableWidth),
     height: clampDimension(height, style.minHeight, style.maxHeight, availableHeight),
   };
+}
+
+/**
+ * The content size of a box that wraps, in the space it is offered.
+ *
+ * The lines it would break into there, each as long as its children and as
+ * deep as its deepest, stacked with the gap between lines. Which is why a
+ * wrapping row offered forty columns can come back narrower than forty and
+ * taller than one line: it is as wide as its widest line.
+ */
+function wrappedSize(node: LayoutNode, width: number, height: number): Size {
+  const row = isRow(direction(node.style));
+  const gap = gapOf(node.style, row);
+  const outer: Array<{ main: number, cross: number }> = [];
+  for (const child of node.children) {
+    if (isAbsolute(child)) {
+      continue;
+    }
+    const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(child.style));
+    const size = intrinsicSize(
+      child,
+      Math.max(0, width - marginLeft - marginRight),
+      Math.max(0, height - marginTop - marginBottom),
+    );
+    const outerWidth = size.width + marginLeft + marginRight;
+    const outerHeight = size.height + marginTop + marginBottom;
+    outer.push(
+      row ? { main: outerWidth, cross: outerHeight } : { main: outerHeight, cross: outerWidth },
+    );
+  }
+  const lines = breakLines(
+    outer.map((each) => each.main),
+    row ? width : height,
+    gap,
+  );
+  let main = 0;
+  let cross = 0;
+  for (const line of lines) {
+    let length = Math.max(0, line.length - 1) * gap;
+    let depth = 0;
+    for (const index of line) {
+      length += outer[index].main;
+      depth = Math.max(depth, outer[index].cross);
+    }
+    main = Math.max(main, length);
+    cross += depth;
+  }
+  cross += Math.max(0, lines.length - 1) * gapOf(node.style, !row);
+  return row ? { width: main, height: cross } : { width: cross, height: main };
 }
 
 /** Apply `min*`/`max*` to a resolved length. */
@@ -470,6 +606,78 @@ function distribute(total: number, weights: $ReadOnlyArray<number>): Array<numbe
     handed = next;
   }
   return out;
+}
+
+/** Whether a box breaks its children onto more than one line. */
+const wraps = (style: LayoutStyle): boolean =>
+  style.flexWrap === "wrap" || style.flexWrap === "wrap-reverse";
+
+/**
+ * Break children, given as their outer main sizes, into lines of `space`.
+ *
+ * Greedy, which is what flexbox specifies: a line takes children until the
+ * next would overflow it. A child larger than a whole line still starts one,
+ * so no child is ever left without a line to be on.
+ */
+function breakLines(
+  sizes: $ReadOnlyArray<number>,
+  space: number,
+  gap: number,
+): Array<Array<number>> {
+  const lines: Array<Array<number>> = [];
+  let line: Array<number> = [];
+  let used = 0;
+  for (let index = 0; index < sizes.length; index += 1) {
+    const size = sizes[index];
+    if (line.length > 0 && used + gap + size > space) {
+      lines.push(line);
+      line = [];
+      used = 0;
+    }
+    used += (line.length > 0 ? gap : 0) + size;
+    line.push(index);
+  }
+  if (line.length > 0) {
+    lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * Where `alignContent` puts the lines of a wrapping box, given the cross-axis
+ * space they leave: the first line's offset, the extra space between two
+ * lines, and the space `"stretch"` hands out to the lines themselves.
+ *
+ * `"flex-start"` is the default, which is Yoga's and so OpenTUI's; CSS's is
+ * `"stretch"`, and a box copied from a stylesheet with no `alignContent` will
+ * pack its lines at the top here where a browser would spread them.
+ */
+function alignLines(
+  alignment: AlignContent | void,
+  spare: number,
+  count: number,
+): [number, number, number] {
+  const free = Math.max(0, spare);
+  switch (alignment) {
+    case "center":
+      return [Math.floor(free / 2), 0, 0];
+    case "flex-end":
+      return [free, 0, 0];
+    case "stretch":
+      return [0, 0, free];
+    case "space-between":
+      return count > 1 ? [0, Math.floor(free / (count - 1)), 0] : [0, 0, 0];
+    case "space-around": {
+      const each = count > 0 ? Math.floor(free / count) : 0;
+      return [Math.floor(each / 2), each, 0];
+    }
+    case "space-evenly": {
+      const each = Math.floor(free / (count + 1));
+      return [each, each, 0];
+    }
+    default:
+      return [0, 0, 0];
+  }
 }
 
 /**
@@ -522,7 +730,13 @@ export function layout(
   const mainSpace = row ? contentWidth : contentHeight;
   const crossSpace = row ? contentHeight : contentWidth;
   const gap = gapOf(style, row);
-  const children = node.children;
+  // The flex line is the children that are in it. The filter is skipped when
+  // there is nothing to filter, which is every box that has no absolutely
+  // positioned child: a list rebuilt per frame per box would be the cost of a
+  // feature most trees do not use.
+  const children = node.children.some(isAbsolute)
+    ? node.children.filter((child) => !isAbsolute(child))
+    : node.children;
 
   // Pass one: every child's base main size, and the outer margins around it.
   const margins = children.map((child) => margin(child.style));
@@ -548,152 +762,330 @@ export function layout(
     return bases[index] + (row ? marginLeft + marginRight : marginTop + marginBottom);
   };
 
-  const used =
-    children.reduce((total, _, index) => total + outerMain(index), 0) +
-    Math.max(0, children.length - 1) * gap;
-  const free = mainSpace - used;
+  const justify = style.justifyContent ?? "flex-start";
+  const parentAlign = style.alignItems ?? "stretch";
 
-  // Pass two: grow into the space left over, or shrink to fit into what there
-  // is. Shrinking is weighted by the base size as CSS specifies, so a wide
-  // child gives up more columns than a narrow one with the same `flexShrink`.
-  const mainSizes = bases.slice();
-  if (free > 0) {
-    const grow = children.map((child) => Math.max(0, child.style.flexGrow ?? 0));
-    const shares = distribute(free, grow);
-    for (let i = 0; i < children.length; i += 1) {
-      mainSizes[i] += shares[i];
+  // Lay one flex line out: grow or shrink it into the main axis, distribute
+  // what is left, and align each child within the line's share of the cross
+  // axis, which starts `crossOrigin` cells in and is `lineCross` deep. A box
+  // that does not wrap has one line, all of it.
+  const placeLine = (line: $ReadOnlyArray<number>, crossOrigin: number, lineCross: number) => {
+    const used =
+      line.reduce((total, index) => total + outerMain(index), 0) +
+      Math.max(0, line.length - 1) * gap;
+    const free = mainSpace - used;
+
+    // Pass two: grow into the space left over, or shrink to fit into what there
+    // is. Shrinking is weighted by the base size as CSS specifies, so a wide
+    // child gives up more columns than a narrow one with the same `flexShrink`.
+    const mainSizes = bases.slice();
+    if (free > 0) {
+      const grow = line.map((index) => Math.max(0, children[index].style.flexGrow ?? 0));
+      const shares = distribute(free, grow);
+      for (let i = 0; i < line.length; i += 1) {
+        mainSizes[line[i]] += shares[i];
+      }
+    } else if (free < 0) {
+      const weights = line.map((index) => shrinkOf(children[index].style, row) * bases[index]);
+      const shares = distribute(-free, weights);
+      for (let i = 0; i < line.length; i += 1) {
+        mainSizes[line[i]] = Math.max(0, mainSizes[line[i]] - shares[i]);
+      }
     }
-  } else if (free < 0) {
-    const weights = children.map((child, index) => shrinkOf(child.style, row) * bases[index]);
-    const shares = distribute(-free, weights);
-    for (let i = 0; i < children.length; i += 1) {
-      mainSizes[i] = Math.max(0, mainSizes[i] - shares[i]);
+
+    // Whatever main-axis space the children did not take, `justifyContent`
+    // decides what to do with.
+    const consumed =
+      line.reduce(
+        (total, index) =>
+          total +
+          mainSizes[index] +
+          (row
+            ? resolvedMargins[index][3] + resolvedMargins[index][1]
+            : resolvedMargins[index][0] + resolvedMargins[index][2]),
+        0,
+      ) +
+      Math.max(0, line.length - 1) * gap;
+    const slack = Math.max(0, mainSpace - consumed);
+
+    const placed = resolvedMargins.map((edges) => edges.slice());
+    const autoMain: Array<[number, number]> = [];
+    if (slack > 0) {
+      for (const index of line) {
+        const edges = margins[index];
+        if (row) {
+          if (edges[3] === "auto") autoMain.push([index, 3]);
+          if (edges[1] === "auto") autoMain.push([index, 1]);
+        } else {
+          if (edges[0] === "auto") autoMain.push([index, 0]);
+          if (edges[2] === "auto") autoMain.push([index, 2]);
+        }
+      }
+    }
+    const justifySlack = autoMain.length === 0 ? slack : 0;
+    const autoMainShares = distribute(
+      slack,
+      autoMain.map(() => 1),
+    );
+    for (let index = 0; index < autoMain.length; index += 1) {
+      const [childIndex, edge] = autoMain[index];
+      placed[childIndex][edge] += autoMainShares[index];
+    }
+
+    let cursor = 0;
+    let between = gap;
+    if (justify === "center") {
+      cursor = Math.floor(justifySlack / 2);
+    } else if (justify === "flex-end") {
+      cursor = justifySlack;
+    } else if (justify === "space-between" && line.length > 1) {
+      between = gap + Math.floor(justifySlack / (line.length - 1));
+    } else if (justify === "space-around" && line.length > 0) {
+      const each = Math.floor(justifySlack / line.length);
+      cursor = Math.floor(each / 2);
+      between = gap + each;
+    } else if (justify === "space-evenly" && line.length > 0) {
+      const each = Math.floor(justifySlack / (line.length + 1));
+      cursor = each;
+      between = gap + each;
+    }
+
+    const order = reverse ? line.slice().reverse() : line;
+
+    for (const index of order) {
+      const child = children[index];
+      const [marginTop, marginRight, marginBottom, marginLeft] = placed[index];
+      const mainMarginStart = row ? marginLeft : marginTop;
+      const mainMarginEnd = row ? marginRight : marginBottom;
+      const crossMarginStart = row ? marginTop : marginLeft;
+      const crossMarginEnd = row ? marginBottom : marginRight;
+      const crossStartEdge = row ? 0 : 3;
+      const crossEndEdge = row ? 2 : 1;
+      const autoCrossStart = margins[index][crossStartEdge] === "auto";
+      const autoCrossEnd = margins[index][crossEndEdge] === "auto";
+      const hasAutoCross = autoCrossStart || autoCrossEnd;
+
+      const align = (() => {
+        const own = child.style.alignSelf ?? "auto";
+        return own === "auto" ? parentAlign : own;
+      })();
+
+      const crossAvailable = Math.max(0, lineCross - crossMarginStart - crossMarginEnd);
+      const fixedCross = resolve(row ? child.style.height : child.style.width, crossSpace);
+      let crossSize: number;
+      if (fixedCross != null) {
+        crossSize = fixedCross;
+      } else if (align === "stretch" && !hasAutoCross) {
+        crossSize = crossAvailable;
+      } else {
+        const size = intrinsicSize(
+          child,
+          row ? mainSizes[index] : crossAvailable,
+          row ? crossAvailable : mainSizes[index],
+        );
+        crossSize = row ? size.height : size.width;
+      }
+      crossSize = Math.min(crossSize, crossAvailable);
+
+      let crossOffset = crossOrigin + crossMarginStart;
+      if (hasAutoCross) {
+        const remaining = Math.max(0, lineCross - crossSize - crossMarginStart - crossMarginEnd);
+        const autoCrossShares = distribute(remaining, [
+          autoCrossStart ? 1 : 0,
+          autoCrossEnd ? 1 : 0,
+        ]);
+        crossOffset += autoCrossShares[0];
+      } else if (align === "center") {
+        crossOffset += Math.floor((crossAvailable - crossSize) / 2);
+      } else if (align === "flex-end") {
+        crossOffset += crossAvailable - crossSize;
+      }
+
+      const mainStart = cursor + mainMarginStart;
+      const childWidth = row ? mainSizes[index] : crossSize;
+      const childHeight = row ? crossSize : mainSizes[index];
+      const [shiftX, shiftY] = relativeShift(child.style, contentWidth, contentHeight);
+      const childX = (row ? contentX + mainStart : contentX + crossOffset) + shiftX;
+      const childY = (row ? contentY + crossOffset : contentY + mainStart) + shiftY;
+
+      layout(
+        child,
+        childX,
+        childY,
+        clampDimension(childWidth, child.style.minWidth, child.style.maxWidth, contentWidth),
+        clampDimension(childHeight, child.style.minHeight, child.style.maxHeight, contentHeight),
+      );
+
+      cursor = mainStart + mainSizes[index] + mainMarginEnd + between;
+    }
+  };
+
+  if (!wraps(style)) {
+    placeLine(
+      children.map((_, index) => index),
+      0,
+      crossSpace,
+    );
+  } else {
+    // Lines are filled in order until the next child's outer size would not
+    // fit, and a child wider than the whole line gets a line of its own
+    // rather than none. Each line is as deep as its deepest child asks to be,
+    // measured at the main size it started with.
+    const lines = breakLines(
+      bases.map((_, index) => outerMain(index)),
+      mainSpace,
+      gap,
+    );
+    const depths = lines.map((line) =>
+      line.reduce((deepest, index) => {
+        const child = children[index];
+        const [marginTop, marginRight, marginBottom, marginLeft] = resolvedMargins[index];
+        const fixedCross = resolve(row ? child.style.height : child.style.width, crossSpace);
+        const cross =
+          fixedCross ??
+          (row
+            ? intrinsicSize(child, bases[index], Math.max(0, crossSpace - marginTop - marginBottom))
+                .height
+            : intrinsicSize(child, Math.max(0, crossSpace - marginLeft - marginRight), bases[index])
+                .width);
+        return Math.max(
+          deepest,
+          cross + (row ? marginTop + marginBottom : marginLeft + marginRight),
+        );
+      }, 0),
+    );
+    const lineGap = gapOf(style, !row);
+    const spare =
+      crossSpace -
+      depths.reduce((total, depth) => total + depth, 0) -
+      Math.max(0, lines.length - 1) * lineGap;
+    const [first, between, stretch] = alignLines(style.alignContent, spare, lines.length);
+    const extra = distribute(
+      stretch,
+      lines.map(() => 1),
+    );
+    let origin = first;
+    for (let index = 0; index < lines.length; index += 1) {
+      const depth = depths[index] + (extra[index] ?? 0);
+      // `wrap-reverse` stacks the lines from the far edge of the cross axis,
+      // and keeps each line's own contents the right way round.
+      const at = style.flexWrap === "wrap-reverse" ? crossSpace - origin - depth : origin;
+      placeLine(lines[index], at, depth);
+      origin += depth + lineGap + between;
     }
   }
 
-  // Whatever main-axis space the children did not take, `justifyContent`
-  // decides what to do with.
-  const consumed =
-    mainSizes.reduce(
-      (total, size, index) =>
-        total +
-        size +
-        (row
-          ? resolvedMargins[index][3] + resolvedMargins[index][1]
-          : resolvedMargins[index][0] + resolvedMargins[index][2]),
-      0,
-    ) +
-    Math.max(0, children.length - 1) * gap;
-  const slack = Math.max(0, mainSpace - consumed);
-
-  const placed = resolvedMargins.map((edges) => edges.slice());
-  const autoMain: Array<[number, number]> = [];
-  if (slack > 0) {
-    for (let index = 0; index < margins.length; index += 1) {
-      const edges = margins[index];
-      if (row) {
-        if (edges[3] === "auto") autoMain.push([index, 3]);
-        if (edges[1] === "auto") autoMain.push([index, 1]);
-      } else {
-        if (edges[0] === "auto") autoMain.push([index, 0]);
-        if (edges[2] === "auto") autoMain.push([index, 2]);
+  if (children !== node.children) {
+    for (const child of node.children) {
+      if (isAbsolute(child)) {
+        layoutAbsolute(node, child, x, y, width, height);
       }
     }
   }
-  const justifySlack = autoMain.length === 0 ? slack : 0;
-  const autoMainShares = distribute(
-    slack,
-    autoMain.map(() => 1),
-  );
-  for (let index = 0; index < autoMain.length; index += 1) {
-    const [childIndex, edge] = autoMain[index];
-    placed[childIndex][edge] += autoMainShares[index];
+}
+
+/**
+ * Place a child that is out of its parent's line.
+ *
+ * Its containing block is its parent's *padding* box — inside the border, not
+ * inside the padding — which is CSS's rule and Yoga's, and the reason `top: 0`
+ * puts it on the first row inside a frame rather than on the frame. The
+ * parent is always the containing block, as it is in OpenTUI: every node is
+ * positioned there, so there is no further ancestor to look for.
+ *
+ * Each axis is decided the same way. A size given is that size. Otherwise both
+ * offsets on an axis stretch it between them, and one or none leaves it the
+ * size of its content. The start offset places it, or failing that the end
+ * one; with neither, it goes where its parent's `justifyContent` and
+ * `alignItems` would have put a lone child — Yoga's static position — and not
+ * at the corner, which is what makes `position: "absolute"` with no offsets
+ * an overlay centred by the same props that centre anything else.
+ */
+function layoutAbsolute(
+  parent: LayoutNode,
+  child: LayoutNode,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const border = parent.borderWidth;
+  const boxX = x + border;
+  const boxY = y + border;
+  const boxWidth = Math.max(0, width - border * 2);
+  const boxHeight = Math.max(0, height - border * 2);
+  const style = child.style;
+  const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(style));
+  const left = resolveOffset(style.left, boxWidth);
+  const right = resolveOffset(style.right, boxWidth);
+  const top = resolveOffset(style.top, boxHeight);
+  const bottom = resolveOffset(style.bottom, boxHeight);
+
+  const spanWidth = Math.max(0, boxWidth - (left ?? 0) - (right ?? 0) - marginLeft - marginRight);
+  const spanHeight = Math.max(0, boxHeight - (top ?? 0) - (bottom ?? 0) - marginTop - marginBottom);
+  let childWidth = resolve(style.width, boxWidth);
+  let childHeight = resolve(style.height, boxHeight);
+  if (childWidth == null && left != null && right != null) {
+    childWidth = spanWidth;
   }
-
-  const justify = style.justifyContent ?? "flex-start";
-  let cursor = 0;
-  let between = gap;
-  if (justify === "center") {
-    cursor = Math.floor(justifySlack / 2);
-  } else if (justify === "flex-end") {
-    cursor = justifySlack;
-  } else if (justify === "space-between" && children.length > 1) {
-    between = gap + Math.floor(justifySlack / (children.length - 1));
-  } else if (justify === "space-around" && children.length > 0) {
-    const each = Math.floor(justifySlack / children.length);
-    cursor = Math.floor(each / 2);
-    between = gap + each;
-  } else if (justify === "space-evenly" && children.length > 0) {
-    const each = Math.floor(justifySlack / (children.length + 1));
-    cursor = each;
-    between = gap + each;
+  if (childHeight == null && top != null && bottom != null) {
+    childHeight = spanHeight;
   }
+  if (childWidth == null || childHeight == null) {
+    const size = intrinsicSize(child, childWidth ?? spanWidth, childHeight ?? spanHeight);
+    childWidth = childWidth ?? Math.min(size.width, spanWidth);
+    childHeight = childHeight ?? size.height;
+  }
+  childWidth = clampDimension(childWidth, style.minWidth, style.maxWidth, boxWidth);
+  childHeight = clampDimension(childHeight, style.minHeight, style.maxHeight, boxHeight);
 
-  const order = reverse ? children.map((_, i) => i).reverse() : children.map((_, i) => i);
-  const parentAlign = style.alignItems ?? "stretch";
-
-  for (const index of order) {
-    const child = children[index];
-    const [marginTop, marginRight, marginBottom, marginLeft] = placed[index];
-    const mainMarginStart = row ? marginLeft : marginTop;
-    const mainMarginEnd = row ? marginRight : marginBottom;
-    const crossMarginStart = row ? marginTop : marginLeft;
-    const crossMarginEnd = row ? marginBottom : marginRight;
-    const crossStartEdge = row ? 0 : 3;
-    const crossEndEdge = row ? 2 : 1;
-    const autoCrossStart = margins[index][crossStartEdge] === "auto";
-    const autoCrossEnd = margins[index][crossEndEdge] === "auto";
-    const hasAutoCross = autoCrossStart || autoCrossEnd;
-
-    const align = (() => {
-      const own = child.style.alignSelf ?? "auto";
-      return own === "auto" ? parentAlign : own;
-    })();
-
-    const crossAvailable = Math.max(0, crossSpace - crossMarginStart - crossMarginEnd);
-    const fixedCross = resolve(row ? child.style.height : child.style.width, crossSpace);
-    let crossSize: number;
-    if (fixedCross != null) {
-      crossSize = fixedCross;
-    } else if (align === "stretch" && !hasAutoCross) {
-      crossSize = crossAvailable;
-    } else {
-      const size = intrinsicSize(
-        child,
-        row ? mainSizes[index] : crossAvailable,
-        row ? crossAvailable : mainSizes[index],
-      );
-      crossSize = row ? size.height : size.width;
+  // The static position, for an axis with no offset on it: where the parent's
+  // own alignment would put a child of this size inside its padding.
+  const [padTop, padRight, padBottom, padLeft] = padding(parent.style);
+  const flexDirection = direction(parent.style);
+  const row = isRow(flexDirection);
+  const reverse = flexDirection === "row-reverse" || flexDirection === "column-reverse";
+  const place = (
+    alignment: string,
+    flipped: boolean,
+    start: number,
+    space: number,
+    size: number,
+    marginStart: number,
+    marginEnd: number,
+  ): number => {
+    const free = space - size - marginStart - marginEnd;
+    const toEnd = alignment === "flex-end" ? !flipped : alignment !== "center" && flipped;
+    if (alignment === "center") {
+      return start + marginStart + Math.floor(free / 2);
     }
-    crossSize = Math.min(crossSize, crossAvailable);
+    return toEnd ? start + marginStart + free : start + marginStart;
+  };
+  const justify = parent.style.justifyContent ?? "flex-start";
+  const ownAlign = style.alignSelf ?? "auto";
+  const align = ownAlign === "auto" ? (parent.style.alignItems ?? "stretch") : ownAlign;
+  const innerWidth = Math.max(0, boxWidth - padLeft - padRight);
+  const innerHeight = Math.max(0, boxHeight - padTop - padBottom);
+  const staticX = row
+    ? place(justify, reverse, boxX + padLeft, innerWidth, childWidth, marginLeft, marginRight)
+    : place(align, false, boxX + padLeft, innerWidth, childWidth, marginLeft, marginRight);
+  const staticY = row
+    ? place(align, false, boxY + padTop, innerHeight, childHeight, marginTop, marginBottom)
+    : place(justify, reverse, boxY + padTop, innerHeight, childHeight, marginTop, marginBottom);
 
-    let crossOffset = crossMarginStart;
-    if (hasAutoCross) {
-      const remaining = Math.max(0, crossSpace - crossSize - crossMarginStart - crossMarginEnd);
-      const autoCrossShares = distribute(remaining, [autoCrossStart ? 1 : 0, autoCrossEnd ? 1 : 0]);
-      crossOffset += autoCrossShares[0];
-    } else if (align === "center") {
-      crossOffset += Math.floor((crossAvailable - crossSize) / 2);
-    } else if (align === "flex-end") {
-      crossOffset += crossAvailable - crossSize;
-    }
-
-    const mainStart = cursor + mainMarginStart;
-    const childWidth = row ? mainSizes[index] : crossSize;
-    const childHeight = row ? crossSize : mainSizes[index];
-    const childX = row ? contentX + mainStart : contentX + crossOffset;
-    const childY = row ? contentY + crossOffset : contentY + mainStart;
-
-    layout(
-      child,
-      childX,
-      childY,
-      clampDimension(childWidth, child.style.minWidth, child.style.maxWidth, contentWidth),
-      clampDimension(childHeight, child.style.minHeight, child.style.maxHeight, contentHeight),
-    );
-
-    cursor = mainStart + mainSizes[index] + mainMarginEnd + between;
+  let childX = staticX;
+  if (left != null) {
+    childX = boxX + left + marginLeft;
+  } else if (right != null) {
+    childX = boxX + boxWidth - right - marginRight - childWidth;
   }
+  let childY = staticY;
+  if (top != null) {
+    childY = boxY + top + marginTop;
+  } else if (bottom != null) {
+    childY = boxY + boxHeight - bottom - marginBottom - childHeight;
+  }
+  layout(child, childX, childY, childWidth, childHeight);
 }
 
 /**
@@ -878,13 +1270,12 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
 
 // Not implemented here, on purpose, and tracked rather than discovered:
 //
-// - `flexWrap`. OpenTUI's default is `"no-wrap"` and a terminal layout that
-//   wraps its flex line is rare enough that guessing at the semantics would be
-//   worse than not having them.
-// - `position: "absolute"`. It needs a containing-block concept that nothing
-//   in this package has yet, and every use of it so far has been better served
-//   by a box that grows.
 // - `aspectRatio`. A terminal resolves whole cells, and nothing here has a
 //   fractional layout pass to lean on.
+// - `position` and `flexWrap` inside a scrolling box. Its children are one
+//   column whose heights are kept between frames (see {@link ScrollIndex}),
+//   and a child that is out of it, drawn somewhere other than where it says,
+//   or sharing a row with another, is a second answer to "which rows are in
+//   the window". Both are read there as if they were not given.
 //
-// All three are ubugeeei-prod/uf#314.
+// Both are ubugeeei-prod/uf#314.

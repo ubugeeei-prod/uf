@@ -770,6 +770,11 @@ jobs:
       # it starts sending anything. Stubbed, so this needs no npm session and no
       # network.
       - run: ./target/release/uf run release:publish-names:test
+      # And the check from the other side: a version on npm has a GitHub
+      # release carrying its binaries. alpha.9 and alpha.44 reached npm with
+      # none (#464, #1328). `release.yml` runs it after publishing and a
+      # schedule runs it daily; this runs it against `gh` and `npm` stubs.
+      - run: ./target/release/uf run release:published:test
       # And that the set that goes to npm is closed under its own dependencies.
       # `@uniflowed/stylex` depends on `@uniflowed/core`, so a release that
       # sends one without the other publishes a package that resolves to

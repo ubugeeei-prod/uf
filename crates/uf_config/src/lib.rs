@@ -5,7 +5,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
-pub use uf_assets::{FontsConfig, IconsConfig, ImagesConfig, OgConfig};
+pub use uf_assets::{FontsConfig, IconsConfig, ImagesConfig, OgConfig, RemotePattern};
 pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
 pub use uf_runtime::{Permission, PermissionError, Permissions, ToolchainAccess};
 
@@ -2079,6 +2079,18 @@ pub enum ConfigError {
         written: String,
         reason: String,
     },
+    /// An `app.builtins.images` setting the request-time endpoint would read
+    /// wider, or narrower, than it is written.
+    ///
+    /// `key` is the whole path under `images`, index included, so the reader
+    /// goes straight to the entry. `uf_assets::check_remote_pattern` writes
+    /// the reason for a pattern.
+    #[error("{path}: `app.builtins.images.{key}` {reason}")]
+    ImagesRemote {
+        path: Utf8PathBuf,
+        key: String,
+        reason: String,
+    },
 }
 
 pub fn load_config(start: impl AsRef<Utf8Path>) -> Result<ResolvedConfig, ConfigError> {
@@ -2217,6 +2229,40 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
     // host matches them with. See ubugeeei-prod/uf#959.
     router_rules::check(path, config)?;
     native_links::check(path, &config.app.router)?;
+    // And the request-time image endpoint's allow-list, which is a security
+    // boundary: a pattern read wider than it is written admits a host nobody
+    // listed. See ubugeeei-prod/uf#958.
+    check_remote_images(path, &config.app.builtins.images)?;
+    Ok(())
+}
+
+/// Refuse a remote image setting the endpoint would not read as written.
+fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), ConfigError> {
+    let refuse = |key: String, reason: String| ConfigError::ImagesRemote {
+        path: path.to_path_buf(),
+        key,
+        reason,
+    };
+    for (index, pattern) in images.remote_patterns.iter().enumerate() {
+        uf_assets::check_remote_pattern(pattern)
+            .map_err(|reason| refuse(format!("remotePatterns[{index}]"), reason))?;
+    }
+    for (index, quality) in images.qualities.iter().enumerate() {
+        if !(1..=100).contains(quality) {
+            return Err(refuse(
+                format!("qualities[{index}]"),
+                format!("is {quality}, and a quality is 1 to 100"),
+            ));
+        }
+    }
+    if images.transformer.as_deref() == Some("") {
+        return Err(refuse(
+            String::from("transformer"),
+            String::from(
+                "is empty; name a module exporting `createImageTransformer`, or drop the key",
+            ),
+        ));
+    }
     Ok(())
 }
 

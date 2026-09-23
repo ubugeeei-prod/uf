@@ -26,6 +26,8 @@ import {
   relative,
 } from "@uniflowed/web";
 
+import { remoteSources } from "./internal/remote-image.js";
+
 // Loaded the way `hooks-ssr.test.js` loads it: through a synchronous require, so
 // that importing this file costs nothing until a test asks for server markup.
 // `renderToStaticMarkup` is what a prerender writes, and it reads no document —
@@ -69,6 +71,46 @@ describe("Image", () => {
     render(<Image src="/hero.png" alt="hero" width={1} height={1} loading="eager" />);
 
     expect(screen.getByRole("img").getAttribute("loading")).toBe("eager");
+  });
+
+  it("leaves a remote src as written when the project has no image endpoint", () => {
+    // Outside a uf build, and in a project that lists no remote hosts, there is
+    // no `/__uf/image` to send it to — so the URL is the author's.
+    render(<Image src="https://images.example.com/a.jpg" alt="a" width={800} height={600} />);
+    const image = screen.getByRole("img");
+
+    expect(image.getAttribute("src")).toBe("https://images.example.com/a.jpg");
+    expect(image.getAttribute("srcset")).toBe(null);
+  });
+});
+
+describe("a remote Image, through the endpoint", () => {
+  const endpoint = { path: "/__uf/image", widths: [1200, 640, 828], quality: 75 };
+  const source = "https://images.example.com/a.jpg?v=2";
+  const at = (width: number, quality: number = 75) =>
+    `/__uf/image?url=${encodeURIComponent(source)}&w=${width}&q=${quality}`;
+
+  it("writes one rung per accepted width below the image, and one that covers it", () => {
+    // 800px wide: 640 is narrower, 828 is the narrowest that covers it and
+    // comes back at 800 — the endpoint never upscales, so the descriptor says
+    // 800 rather than promising pixels that do not exist.
+    expect(remoteSources(endpoint, source, 800, 75)).toEqual({
+      src: at(828),
+      srcSet: `${at(640)} 640w, ${at(828)} 800w`,
+    });
+  });
+
+  it("asks for the widest width there is for an image wider than all of them", () => {
+    expect(remoteSources(endpoint, source, 4000, 60)).toEqual({
+      src: at(1200, 60),
+      srcSet: `${at(640, 60)} 640w, ${at(828, 60)} 828w, ${at(1200, 60)} 1200w`,
+    });
+  });
+
+  it("is nothing for a relative URL, another scheme, or a project with no endpoint", () => {
+    expect(remoteSources(endpoint, "/a.jpg", 800, 75)).toBe(null);
+    expect(remoteSources(endpoint, "data:image/png;base64,AAAA", 800, 75)).toBe(null);
+    expect(remoteSources({ ...endpoint, path: null }, source, 800, 75)).toBe(null);
   });
 });
 

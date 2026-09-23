@@ -132,13 +132,19 @@ in `uf`.
   are; `uf:icon/…` turns an SVG into a `<symbol>` and `uf:icon-sprite` is one
   sprite holding the icons the build actually reached; a `*.og.json` template
   is drawn to a card. Every manifest is cached under a digest of its inputs, so
-  a warm build does none of it again. **Not done**: AVIF and lossy WebP, which
-  need encoders uf does not ship; a WOFF2 *encoder*, so a subsetted face is
-  emitted as WOFF 1.0; subsetting a CFF font or a WOFF2 source, both refused
-  with the file to use instead; an import syntax for `text` subsetting, which
-  the `uf assets` protocol carries and no `.js` file can express without a
-  query; and a request-time endpoint for remote and user-supplied images, which
-  needs `remotePatterns` in the same commit (`docs/security.md`).
+  a warm build does none of it again. A remote image is resized on request by
+  `/__uf/image`, behind `app.builtins.images.remotePatterns`, which arrived in
+  the same commit (`docs/security.md`): AVIF for a browser that takes it,
+  encoded by `uf` under `uf dev`, `uf preview` and `uf start`, by Cloudflare's
+  Images binding under `--adapter edge`, and by a module the project names on
+  the other adapters. **Not done**: AVIF at build time, which is linked for the
+  endpoint and not yet a build candidate; lossy WebP, which needs an encoder uf
+  does not ship; an encoder of uf's own inside a deployed `node`, `bun`,
+  `deno`, `container` or `serverless` directory; a WOFF2 *encoder*, so a
+  subsetted face is emitted as WOFF 1.0; subsetting a CFF font or a WOFF2
+  source, both refused with the file to use instead; and an import syntax for
+  `text` subsetting, which the `uf assets` protocol carries and no `.js` file
+  can express without a query.
 - Fully type-safe `useRoute`, `useRouter`, navigation guards, Remix-style
   loaders/actions, Next-style metadata/static params, and React Router-style
   route modules.

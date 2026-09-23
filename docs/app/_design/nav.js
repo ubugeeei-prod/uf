@@ -119,6 +119,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Where uf sits next to the toolchain it will be compared to.",
       },
       {
+        href: "/guide/benchmarks",
+        title: "Benchmarks",
+        blurb:
+          "Every uf command timed beside Vite+, Next.js, Bun, Vitest, ESLint, Prettier, Biome, Flow and pnpm, with the machine and the versions.",
+      },
+      {
         href: "/guide/scope",
         title: "What uf does not do",
         blurb: "The refusals, and the gaps — the second list with issue numbers.",
@@ -210,7 +216,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/assets",
         title: "Images, fonts, icons and cards",
         blurb:
-          "Resized, self-hosted, subsetted and drawn at build time — and what that stops short of.",
+          "Resized, self-hosted, subsetted and drawn at build time, remote images on request — and what that stops short of.",
       },
       {
         href: "/guide/cache",

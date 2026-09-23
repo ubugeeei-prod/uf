@@ -22,6 +22,8 @@
 //! {"kind": "icon",  "id": "/abs/icons/star.svg", "outDir": "…", "name": "star"}
 //! {"kind": "og",    "id": "/abs/app/card.og.json", "outDir": "…"}
 //! {"kind": "sprite", "id": "uf:icon-sprite", "outDir": "…", "icons": [ … ]}
+//! {"kind": "variant", "id": "/tmp/source", "outDir": "…", "width": 640,
+//!  "quality": 75, "avif": true}
 //! ```
 //!
 //! Everything but `kind`, `id` and `outDir` is optional and falls back to the
@@ -37,6 +39,7 @@
 //! {"id": "…", "icon":  {"id": "uf-icon-star-…", "viewBox": "0 0 24 24", … }}
 //! {"id": "…", "og":    {"file": "…", "width": 1200, "height": 630, … }}
 //! {"id": "…", "sprite": {"file": "…", "markup": "<svg …>", "symbols": 7}}
+//! {"id": "…", "variant": {"file": "…", "format": "avif", "mime": "image/avif", … }}
 //! {"id": "…", "error": "…"}
 //! ```
 //!
@@ -62,13 +65,29 @@
 //! icons is not an error — it is an empty sprite, which is the correct answer
 //! for a project that imported none.
 //!
+//! # `variant`, which is not an import
+//!
+//! The one request that does not come from the Vite plugin. `@uniflowed/server`
+//! answers `/__uf/image` under `uf start` and `uf preview` by fetching a remote
+//! image, bounding it, writing it to a file, and asking this service for one
+//! width of it — so `id` is that file rather than a module, and the reply is
+//! one encoded file rather than a manifest. `width` and `quality` are required
+//! here and never fall back to the project's: the endpoint has already checked
+//! them against `app.builtins.images`, and a request that reached this far
+//! without them is a caller's bug to report, not a default to supply.
+//!
 //! # Caching
 //!
-//! Every reply goes through [`uf_assets::cache`], keyed on the source bytes
-//! and every parameter that reached the pipeline. A second build of an
-//! unchanged project reads one small JSON document per asset and decodes,
-//! resizes, subsets and rasterises nothing. The key is the whole of the
-//! invalidation; see that module for why there is no other step.
+//! Every reply but a `variant` goes through [`uf_assets::cache`], keyed on the
+//! source bytes and every parameter that reached the pipeline. A second build
+//! of an unchanged project reads one small JSON document per asset and
+//! decodes, resizes, subsets and rasterises nothing. The key is the whole of
+//! the invalidation; see that module for why there is no other step.
+//!
+//! A variant is cached by the server that asked for it, through the provider
+//! `rendering.cache.store` names, because that is the cache every deploy target
+//! shares; a second copy here would be a second place for a stale answer to
+//! live.
 
 use std::io::{BufRead, BufReader, Read, Write};
 
@@ -93,6 +112,12 @@ struct Request {
     /// Image: whether this import wants a blur placeholder.
     #[serde(default)]
     blur: Option<bool>,
+    /// Variant: the one width to encode.
+    #[serde(default)]
+    width: Option<u32>,
+    /// Variant: whether the browser accepts AVIF.
+    #[serde(default)]
+    avif: Option<bool>,
     /// Font: the family the face is declared under.
     #[serde(default)]
     family: Option<String>,
@@ -143,6 +168,7 @@ enum Kind {
     Icon,
     Og,
     Sprite,
+    Variant,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -159,12 +185,27 @@ struct Reply {
     #[serde(skip_serializing_if = "Option::is_none")]
     sprite: Option<uf_assets::Sprite>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    variant: Option<VariantReply>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     /// Whether the answer came out of the cache rather than being produced.
     ///
     /// Always present, because a build that cannot tell a warm pass from a
     /// cold one cannot report what its asset stage cost.
     cached: bool,
+}
+
+/// One encoded width of a remote image, as written to `outDir`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VariantReply {
+    /// The file's name under `outDir`.
+    file: String,
+    format: uf_assets::VariantFormat,
+    mime: &'static str,
+    width: u32,
+    height: u32,
+    bytes: u64,
 }
 
 /// What the project's config says about every asset.
@@ -241,6 +282,71 @@ fn handle(request: &Request, project: &ProjectAssets) -> Reply {
         Kind::Icon => icon(request, project, source),
         Kind::Og => og(request, project, source),
         Kind::Sprite => sprite(request),
+        Kind::Variant => variant(request, source),
+    }
+}
+
+/// One width of a fetched remote image; see the module documentation.
+fn variant(request: &Request, source: &Utf8Path) -> Reply {
+    let (Some(width), Some(quality)) = (request.width, request.quality) else {
+        return failed(&request.id, "a variant request needs `width` and `quality`");
+    };
+    // Bounded before it is read, so a caller that did not bound the file is
+    // still refused before the allocation rather than after it.
+    match std::fs::metadata(source) {
+        Ok(metadata) if metadata.len() > uf_assets::MAX_VARIANT_SOURCE_BYTES => {
+            return failed(
+                &request.id,
+                uf_assets::VariantError::TooLarge {
+                    bytes: metadata.len(),
+                },
+            );
+        }
+        Ok(_) => {}
+        Err(error) => return failed(&request.id, format!("failed to read {source}: {error}")),
+    }
+    let bytes = match source_digest(source) {
+        Ok(bytes) => bytes,
+        Err(error) => return failed(&request.id, error),
+    };
+    let encoded = match uf_assets::variant(&uf_assets::VariantRequest {
+        bytes: &bytes,
+        width,
+        quality,
+        avif: request.avif.unwrap_or(false),
+    }) {
+        Ok(encoded) => encoded,
+        Err(error) => return failed(&request.id, error),
+    };
+    let file = uf_assets::hashed_name(
+        "variant",
+        &bytes,
+        &[
+            &width.to_le_bytes(),
+            &[quality],
+            encoded.format.extension().as_bytes(),
+        ],
+        encoded.format.extension(),
+    );
+    if let Err(error) = std::fs::create_dir_all(&request.out_dir)
+        .and_then(|()| std::fs::write(request.out_dir.join(&file), &encoded.bytes))
+    {
+        return failed(
+            &request.id,
+            format!("failed to write {}: {error}", request.out_dir.join(&file)),
+        );
+    }
+    Reply {
+        id: request.id.clone(),
+        variant: Some(VariantReply {
+            file,
+            format: encoded.format,
+            mime: encoded.format.mime(),
+            width: encoded.width,
+            height: encoded.height,
+            bytes: encoded.bytes.len() as u64,
+        }),
+        ..Reply::default()
     }
 }
 
@@ -577,6 +683,49 @@ mod tests {
         image::DynamicImage::ImageRgba8(buffer)
             .save_with_format(path, image::ImageFormat::Png)
             .unwrap();
+    }
+
+    #[test]
+    fn a_variant_is_one_width_in_the_format_the_browser_accepts() {
+        let (_guard, dir) = temp();
+        let source = dir.join("fetched");
+        graphic(&dir.join("fetched.png"), 64, 32);
+        std::fs::rename(dir.join("fetched.png"), &source).unwrap();
+        let out = dir.join("out");
+
+        let avif = serde_json::json!({
+            "kind": "variant", "id": source, "outDir": out,
+            "width": 32, "quality": 60, "avif": true,
+        });
+        let fallback = serde_json::json!({
+            "kind": "variant", "id": source, "outDir": out,
+            "width": 32, "quality": 60, "avif": false,
+        });
+        let missing = serde_json::json!({
+            "kind": "variant", "id": source, "outDir": out, "avif": true,
+        });
+        let replies = replies(&format!("{avif}\n{fallback}\n{missing}\n"));
+
+        let first = &replies[0]["variant"];
+        assert_eq!(first["format"], "avif", "{}", replies[0]);
+        assert_eq!(first["mime"], "image/avif");
+        assert_eq!(
+            (first["width"].as_u64(), first["height"].as_u64()),
+            (Some(32), Some(16))
+        );
+        let written = std::fs::read(out.join(first["file"].as_str().unwrap())).unwrap();
+        assert_eq!(written.len() as u64, first["bytes"].as_u64().unwrap());
+        assert_eq!(&written[4..12], b"ftypavif");
+
+        assert_eq!(replies[1]["variant"]["format"], "png", "{}", replies[1]);
+        assert!(
+            replies[2]["error"]
+                .as_str()
+                .unwrap()
+                .contains("`width` and `quality`"),
+            "{}",
+            replies[2]
+        );
     }
 
     #[test]
