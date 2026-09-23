@@ -541,7 +541,7 @@ uf test · shop
          │                                    ^
         expected  3
         received  4
-⠹ 3/9 files · 1 failed · 4 running · 0.2s
+⠹ 3/4 files · 1 failed · 1 running · 0.2s
 ```
 
 </figure>
@@ -573,23 +573,26 @@ failed
 ✗ src/format.test.js:22  format > wraps long lines
 
 slowest files
-file                    duration
-app/TopicTabs.test.js      1.38s
-app/AddArticle.test.js     1.38s
-app/articles.test.js       267ms
+file                  duration
+src/search.test.js       312ms
+src/router.test.js        11ms
+src/cart.test.js         4.1ms
+src/format.test.js       3.2ms
 
-run   ························ 1.39s
-total ························ 1.39s
+run   ························ 318.4ms
+total ························ 352.9ms
 
-passed    7
-failed    0
-skipped   1
+passed    59
+failed    1
+skipped   0
 todo      0
-files     3
-workers   8
-schedule  2 recorded, 1 by size
+files     4
+workers   4
+schedule  4 recorded, 0 by size
 timings   .uf/test-timings.json
 host      node
+
+✗ 59 passed, 1 failed in 352.9ms
 ```
 
 `run` is the suite itself. `total` includes the surrounding work: reading the
