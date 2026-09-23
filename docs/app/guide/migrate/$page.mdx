@@ -548,8 +548,12 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
   ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot is not
   a request boundary, so it holds no `$not-found.js`, `$route.js` or
   `$middleware.js`.
-- **The rest of ISR.** A `--compile` binary carries no cache and the `ppr` mode
-  name selects nothing yet. Function caching uses explicit
+- **The rest of ISR and PPR.** A `--compile` binary carries no cache and
+  renders a partially prerendered page whole, per request; `serverless` refuses
+  a partially prerendered page; and there is no `experimental_ppr` export or
+  `cacheComponents` switch — a page is a shell with holes when it reads the
+  request inside a `<Suspense>` boundary and `ppr` is allowed
+  ([Rendering](/guide/rendering)). Function caching uses explicit
   [`cacheFunction`](/guide/cache), with a name, arguments and lifetime;
   the `"use cache"` directive is not supported.
 - **Middleware and request APIs.** A rewrite changes the path and never the

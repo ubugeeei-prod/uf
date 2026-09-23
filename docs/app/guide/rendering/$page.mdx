@@ -66,6 +66,7 @@ can and reports the rest:
 | parameters, exports `generateStaticParams` | each returned set is prerendered | each returned set is prerendered | rendered per request; the function is not called | browser route in the shell |
 | parameters, no `generateStaticParams` | listed under `answered by a server` | build error, naming the route | rendered per request | browser route in the shell |
 | `export const dynamic = "force-dynamic"` | listed under `answered by a server` | build error, naming the route | rendered per request | browser route in the shell |
+| no parameters, reads the request inside `<Suspense>` | a static shell, its boundary rendered per request ([`ppr`](#ppr-a-static-shell-with-holes)) | build error, naming the route | rendered per request | browser route in the shell |
 | `$route.js` | listed under `answered by a server` | build error | request handler | build error: a handler needs a server |
 | `$middleware.js` | listed by the path it guards | build error | runs per request | build error: middleware needs a server |
 | callable server action reached by the browser | endpoint in the server build | build error unless an adapter or compiled server is also emitted | endpoint in the server build | build error: the endpoint has nowhere to run |
@@ -84,9 +85,12 @@ plan and is refused by a static-only plan.
 
 A page that needs `force-dynamic` and does not say so is refused rather than
 prerendered. When a prerendered route's render reaches `cookies()`, `headers()`
-or `draftMode()`, `uf build` fails, naming the route, the function, and the
-chain of imports that reaches it. A route cache that states a lifetime keeps
-[the same rule](/guide/cache#what-is-never-cached).
+or `draftMode()` and `modes` does not allow `ppr`, `uf build` fails, naming the
+route, the function, and the chain of imports that reaches it. When it allows
+`ppr`, as the default does, a read inside a `<Suspense>` boundary is what
+[`ppr`](#ppr-a-static-shell-with-holes) is for, and a read outside every
+boundary fails the build, naming the route and what it read. A route cache that
+states a lifetime keeps [the same rule](/guide/cache#what-is-never-cached).
 
 The only other value uf accepts is
 `"auto"`; Next.js's `"force-static"` and `"error"` are constraints uf does not
@@ -155,6 +159,129 @@ each process's memory, and a restart starts every page from the build's copy
 again. [Caching](/guide/cache#regenerating-prerendered-pages) has how the store
 treats a regenerated page, and why Workers KV rather than the Cache API.
 
+## `ppr`: a static shell with holes
+
+Most of a page that reads the request usually does not depend on it. The
+heading, the article and the navigation are the same for everybody; the line
+that says who is signed in is not. Partial prerendering prerenders the first
+part and leaves the second to the request:
+
+```js
+// @flow
+import * as React from "@uniflowed/react";
+import { cookies } from "@uniflowed/server";
+
+async function Session(): Promise<React.Node> {
+  const session = await loadSession(cookies().get("session"));
+  return <p>{`signed in as ${session.name}`}</p>;
+}
+
+export default component Account() {
+  return (
+    <article>
+      <h1>Your account</h1>
+      <React.Suspense fallback={<p>checking who you are</p>}>
+        <Session />
+      </React.Suspense>
+      <AccountHelp />
+    </article>
+  );
+}
+```
+
+When `app.rendering.modes` allows `ppr` (the default list does), the build
+leaves a server behind, and routes render as Server Components (`app.rsc`, on by
+default), `uf build` writes such a page as a **static shell**:
+
+- The build renders the page without a request. `cookies()`, `headers()` and
+  `draftMode()` do not answer there, and each `<Suspense>` boundary whose
+  content read one of them is left as a hole, with its fallback in the shell.
+  Everything else the page renders — including what it awaits — is rendered
+  once, by the build.
+- The shell is recorded beside the server bundle, in
+  `.uf/build/server/partial-prerender.json`, with React's record of where the
+  holes are. Nothing is written at the page's URL under `dist/`, neither a
+  document nor a payload: a shell on its own is a page whose holes never fill,
+  so a file server must not answer the page.
+- A request for the page is answered with the shell as the first bytes of the
+  response, before anything is rendered for it. The server then renders the
+  route for the request and React's `resume` streams the holes into the same
+  response, rendered from the request's cookies and headers. The browser
+  hydrates from the request's payload, written into the document after the
+  shell, the way it hydrates every streamed page.
+
+A page that reads nothing is prerendered whole, which is why `ppr` allows what
+`ssg` does. A read *outside* every `<Suspense>` boundary leaves no shell to
+write, and the build fails naming the route and what it read:
+
+```text
+/account reads cookies() outside any <Suspense> boundary, so it has no static
+shell to prerender. Move the part of the page that reads it inside a <Suspense>
+boundary, which leaves that part for the request, or export
+`dynamic = "force-dynamic"` from the page to render all of it per request.
+```
+
+Without `ppr` in the list, the same page is refused before Vite runs, by the
+import-graph check above, because nothing else could prerender it.
+
+### Where it works
+
+| Where the build runs | What answers a page with a static shell |
+| --- | --- |
+| `uf start`, `uf preview` | the server: the shell first, then the holes |
+| `--adapter node`, `bun`, `deno`, `container` | `handler.js`, which carries the shells: the shell first, then the holes |
+| `--adapter edge` | the Worker, the same way; nothing for the page is in its static assets |
+| `--adapter serverless` | nothing: the build is refused, naming the pages, because a Lambda's response is buffered whole, so the shell would arrive with its holes rather than before them |
+| `--adapter static` | nothing: the adapter refuses the page by name, because a static host has no server to fill a hole |
+| `build.staticBuild`, or `modes` without `ppr` | nothing: no page is written as a shell, and a prerendered page that reads the request fails the build |
+| `uf build --compile` | the binary renders the page whole, per request, and streams it like any page rendered per request |
+| `uf dev` | the page is rendered per request, as every page is in development |
+
+### What it measured
+
+On the `ppr-app` test fixture — a page with a heading, 24 paragraphs, a client
+component, and one boundary that reads a cookie and then waits 400 ms — asking
+the `--adapter node` artefact's `handler.js` in process (Node 24, no socket, 30
+requests after 5 to warm up, median):
+
+| | first byte | first chunk | whole response |
+| --- | --- | --- | --- |
+| the same page with `dynamic = "force-dynamic"` | 2.1 ms | 4,287 B | 18,407 B, 402 ms |
+| static shell | 1.4 ms | 5,482 B (the whole shell) | 17,484 B, 402 ms |
+| the page also awaiting 100 ms of static data, `force-dynamic` | 102.7 ms | 4,287 B | 18,594 B, 402 ms |
+| the same, static shell | 0.9 ms | 5,524 B (the whole shell) | 17,671 B, 402 ms |
+
+The last byte is the hole's, and it arrives when the hole is ready either way.
+What moves is the first: a page rendered per request cannot send its shell until
+everything outside its boundaries has rendered, and a static shell was rendered
+by the build. Over a network the difference is the same number of milliseconds
+before the round trip, not a fraction of it.
+
+### What it does not do
+
+- **A read inside a component that catches errors is not a hole.** During the
+  build the three reads throw, which is how the build finds the holes; a
+  `try`/`catch` around one renders whatever the `catch` does into a shell every
+  request is sent.
+- **`nonce()` and `requestId()` are not left for the request.** Both name one
+  response, and both still fail the build when a prerender reaches them.
+- **The shell carries no nonce**, like every prerendered document: under a
+  nonce-based Content-Security-Policy its script tags need hashes instead. The
+  scripts that fill the holes carry the request's nonce.
+- **A draft request is rendered whole.** The shell is an answer from before the
+  draft existed, so a request in draft mode renders the page per request.
+- **Search parameters are the request's in the holes and the build's in the
+  shell.** The shell was rendered for the path alone.
+- **The render's instant and seed are the build's.** The client reads them from
+  the shell, so a client component inside a hole that renders `useRenderedAt()`
+  or `useRandom()` can differ from what the browser renders, and React reports
+  the mismatch.
+- **The build decides what is static by rendering.** It stops once everything
+  that is not waiting on the request has rendered; a part that is still loading
+  then is a hole, which is slower for the request and never wrong.
+- **`app.rsc: false` has no shells.** A route rendered from its modules is
+  prerendered whole or not at all.
+
 ## Reading the build
 
 The summary says the plan in words:
@@ -200,7 +327,7 @@ deployment.
 | --- | --- | --- |
 | A docs, blog or marketing site that is only files | `build.staticBuild: true`, or `app.rendering.modes: ["ssg"]` | Every parameterized page exports `generateStaticParams`; there are no route handlers, middleware, callable actions, or `app.router` redirects, rewrites and headers |
 | A static site whose links behave like ordinary web pages | `modes: ["ssg"]`, `navigation: "document"` | Same static checks, plus client state is not expected to survive a navigation |
-| A server app with cached documents where possible | the default `["ppr", "ssr", "ssg", "isr"]` | The `answered by a server` list is deployed with a Node, Bun, Deno, edge, serverless or container adapter |
+| A server app with cached documents where possible | the default `["ppr", "ssr", "ssg", "isr"]` | The `answered by a server` list is deployed with a Node, Bun, Deno, edge, serverless or container adapter; a page with a static shell, with any of them but serverless |
 | A server app that must never prerender | `app.rendering.modes: ["ssr"]` | `generateStaticParams` will not run during the build; route data is read at request time |
 | A single-page application behind an SPA rewrite | `app.rendering.modes: ["csr"]` | The app has no route handlers, middleware, callable actions, `app.router` rules, or reachable server-only modules |
 
