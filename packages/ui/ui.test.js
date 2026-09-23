@@ -9550,7 +9550,24 @@ describe("the escape hatch: which part hands its element to the caller", () => {
   ];
 
   /** The parts `packages/ui/index.js` names, and the component behind each. */
+  // Both are read once. `sourceOf` is asked for every part in four tables, and
+  // reading and splitting every module of the package for each answer was a
+  // quarter of this file's time — the file the whole suite waits on last.
+  let barrel: Map<string, string> | null = null;
+  let components: Map<string, string> | null = null;
+
   function partsOfTheBarrel(): Map<string, string> {
+    barrel ??= readPartsOfTheBarrel();
+    return barrel;
+  }
+
+  /** Every `export component`'s source text, by component name. */
+  function componentSources(): Map<string, string> {
+    components ??= readComponentSources();
+    return components;
+  }
+
+  function readPartsOfTheBarrel(): Map<string, string> {
     const source = fs.readFileSync(path.join(repository, "packages", "ui", "index.js"), "utf8");
     const parts = new Map<string, string>();
     for (const namespace of source.matchAll(/^export const (\w+) = \{\n([\s\S]*?)^\};$/gm)) {
@@ -9581,8 +9598,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     return parts;
   }
 
-  /** Every `export component`'s source text, by component name. */
-  function componentSources(): Map<string, string> {
+  function readComponentSources(): Map<string, string> {
     const directory = path.join(repository, "packages", "ui");
     const sources = new Map<string, string>();
     for (const file of fs.readdirSync(directory)) {
