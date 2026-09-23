@@ -88,8 +88,11 @@ export class QueryCache {
    * entry — with its observers, its data and its request — because an old
    * timer said so.
    */
-  remove(query: Query<mixed>): void {
-    if (this.queries.get(query.hash) === query) {
+  remove<T>(query: Query<T>): void {
+    // Compared as `mixed`: an entry is held as `Query<mixed>` and the caller's
+    // is a `Query<T>`, and the question is only whether they are one object.
+    const held: mixed = this.queries.get(query.hash);
+    if (held === query) {
       this.queries.delete(query.hash);
     }
     query.destroy();

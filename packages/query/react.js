@@ -166,9 +166,7 @@ export function useInfiniteQuery<TPage, TParam, TSelected = InfiniteData<TPage, 
     [observer, client, plan],
   );
 
-  // The paged observer's snapshot is the ordinary one with the page controls
-  // added; `readResult` is inherited, so the widening is stated here.
-  const read = () => observer.readResult(client, resolved) as InfiniteQueryResult<TSelected>;
+  const read = () => observer.readPagedResult(client, resolved);
   return useSyncExternalStore(subscribe, read, read);
 }
 

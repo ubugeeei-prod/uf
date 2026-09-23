@@ -83,7 +83,7 @@ export type FetchDirection = "forward" | "backward";
  * component that displays "updated 2 minutes ago" stay still while the cache
  * quietly keeps itself fresh underneath.
  */
-export type QueryState<T> = {|
+export type QueryState<out T> = {|
   readonly status: QueryStatus,
   readonly fetchStatus: FetchStatus,
   readonly data: T | void,
@@ -231,7 +231,10 @@ export class Query<T> {
       failureReason: null,
     });
 
-    const promise = this.run(id, controller, fetcher, options);
+    const promise = this.run(id, controller, fetcher, {
+      retry: options.retry,
+      retryDelay: options.retryDelay,
+    });
     this.pending = promise;
     return promise;
   }
@@ -430,7 +433,9 @@ export class Query<T> {
     // observer usually leaves a removed one. Scheduling its collection would
     // leave a timer holding a dead entry for the whole `gcTime`, to collect
     // something the cache stopped answering for long ago.
-    if (this.cache.get(this.hash) === this) {
+    // `mixed` for the same reason as `QueryCache.remove`: identity, not type.
+    const held: mixed = this.cache.get(this.hash);
+    if (held === this) {
       this.scheduleGc();
     }
   }
@@ -476,8 +481,8 @@ export class Query<T> {
   }
 
   /** Replace the state and tell everybody. */
-  setState(patch: { +[string]: mixed }): void {
-    this.state = { ...this.state, ...patch } as $FlowFixMe;
+  setState(patch: Partial<QueryState<T>>): void {
+    this.state = { ...this.state, ...patch };
     this.notify();
   }
 

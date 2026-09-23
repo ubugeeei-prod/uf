@@ -89,11 +89,22 @@ export type FetchQueryOptions<TData> = {|
  * new one lands. Applications that know better should say so — `staleTime` is
  * the single most valuable option on this object.
  */
-const QUERY_DEFAULTS = {
+/** Every query option a client has a default for, filled in. */
+type ResolvedQueryDefaults = {|
+  readonly staleTime: number,
+  readonly gcTime: number,
+  readonly retry: RetryPolicy,
+  readonly retryDelay: RetryDelay,
+  readonly refetchInterval: number | null,
+  readonly refetchOnWindowFocus: boolean,
+  readonly refetchOnReconnect: boolean,
+|};
+
+const QUERY_DEFAULTS: ResolvedQueryDefaults = {
   staleTime: 0,
   gcTime: DEFAULT_GC_TIME,
-  retry: (3: RetryPolicy),
-  retryDelay: (backoffDelay: RetryDelay),
+  retry: 3,
+  retryDelay: backoffDelay,
   refetchInterval: null,
   refetchOnWindowFocus: true,
   refetchOnReconnect: true,
@@ -107,9 +118,9 @@ const QUERY_DEFAULTS = {
  * and repeating it creates the second invoice. Retrying a mutation is a
  * decision about idempotency that only the caller can make.
  */
-const MUTATION_DEFAULTS = {
-  retry: (false: RetryPolicy),
-  retryDelay: (backoffDelay: RetryDelay),
+const MUTATION_DEFAULTS: {| readonly retry: RetryPolicy, readonly retryDelay: RetryDelay |} = {
+  retry: false,
+  retryDelay: backoffDelay,
 };
 
 export class QueryClient {
@@ -120,8 +131,24 @@ export class QueryClient {
 
   constructor(options?: QueryClientOptions) {
     this.presence = options?.presence ?? new Presence();
-    this.queryDefaults = { ...QUERY_DEFAULTS, ...stripUndefined(options?.queries) };
-    this.mutationDefaults = { ...MUTATION_DEFAULTS, ...stripUndefined(options?.mutations) };
+    const queries = options?.queries;
+    this.queryDefaults = {
+      staleTime: given(queries?.staleTime, QUERY_DEFAULTS.staleTime),
+      gcTime: given(queries?.gcTime, QUERY_DEFAULTS.gcTime),
+      retry: given(queries?.retry, QUERY_DEFAULTS.retry),
+      retryDelay: given(queries?.retryDelay, QUERY_DEFAULTS.retryDelay),
+      refetchInterval: given(queries?.refetchInterval, QUERY_DEFAULTS.refetchInterval),
+      refetchOnWindowFocus: given(
+        queries?.refetchOnWindowFocus,
+        QUERY_DEFAULTS.refetchOnWindowFocus,
+      ),
+      refetchOnReconnect: given(queries?.refetchOnReconnect, QUERY_DEFAULTS.refetchOnReconnect),
+    };
+    const mutations = options?.mutations;
+    this.mutationDefaults = {
+      retry: given(mutations?.retry, MUTATION_DEFAULTS.retry),
+      retryDelay: given(mutations?.retryDelay, MUTATION_DEFAULTS.retryDelay),
+    };
   }
 
   /** The options with this client's defaults filled in. A pure function. */
@@ -273,17 +300,16 @@ export class QueryClient {
   }
 }
 
-function stripUndefined<T: { +[string]: mixed }>(source: T | void): { [string]: mixed } {
-  const out: { [string]: mixed } = {};
-  if (source == null) {
-    return out;
-  }
-  for (const name of Object.keys(source)) {
-    if (source[name] !== undefined) {
-      out[name] = source[name];
-    }
-  }
-  return out;
+/**
+ * An option the caller gave, or the default when they did not.
+ *
+ * `undefined` and nothing else means "not given": `{ staleTime: undefined }`
+ * is how a spread of partial options says nothing, and it must not replace a
+ * default with `undefined`. `null` is a value — `refetchInterval: null` turns
+ * polling off — so `??` would be the wrong test.
+ */
+function given<T>(value: T | void, fallback: T): T {
+  return value === undefined ? fallback : value;
 }
 
 function ignore(): void {}

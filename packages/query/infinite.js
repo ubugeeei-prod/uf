@@ -56,9 +56,11 @@
 // do today.
 
 import type { QueryKey } from "./key.js";
+import type { QueryClient } from "./client.js";
 import { QueryObserver } from "./observer.js";
 import type { QueryResult, ResolvedQueryOptions } from "./observer.js";
-import type { FetchContext, FetchDirection, Fetcher, Query, QueryState } from "./query.js";
+import type { FetchContext, FetchDirection, Fetcher } from "./query.js";
+import { shallowEqual } from "./structural.js";
 
 /** The value a paged entry holds. */
 export type InfiniteData<TPage, TParam> = {|
@@ -214,6 +216,8 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
 > {
   readonly fetchNextPage: () => Promise<void>;
   readonly fetchPreviousPage: () => Promise<void>;
+  /** The last snapshot [`readPagedResult`] handed out. */
+  pagedResult: InfiniteQueryResult<TSelected> | null = null;
 
   constructor(
     client: $FlowFixMe,
@@ -243,30 +247,42 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
     return infinitePages(this.pageOptions(), direction);
   }
 
-  // $FlowFixMe[incompatible-extend] the paged snapshot is the base snapshot plus
-  // the page controls. Flow has no way to state "the same exact object with
-  // more fields" for an override, and widening the base result to an inexact
-  // type to allow it would stop catching typos in every ordinary query.
-  buildResult(
-    query: Query<InfiniteData<TPage, TParam>> | void,
-    state: QueryState<InfiniteData<TPage, TParam>>,
+  /**
+   * The paged snapshot for this render: the ordinary one with the page
+   * controls added.
+   *
+   * A method of its own rather than an override of `buildResult`, because an
+   * override has to return what the base does, and an exact `QueryResult`
+   * with six more fields is not one. The base snapshot is memoised by
+   * `readResult`; this memoises the paged one the same way, so a render that
+   * changed nothing hands `useSyncExternalStore` the object it had.
+   */
+  readPagedResult(
+    client: QueryClient,
     options: ResolvedQueryOptions<InfiniteData<TPage, TParam>, TSelected>,
   ): InfiniteQueryResult<TSelected> {
-    const base = super.buildResult(query, state, options);
+    const base = this.readResult(client, options);
+    const state = this.entryFor(client, options)?.state;
     const pages = this.pageOptions();
     // Asked of the raw pages rather than of `base.data`, which may have been
     // narrowed by `select` into something with no pages in it at all.
-    const data = state.data;
-    const isFetching = state.fetchStatus === "fetching";
-    return {
+    const data = state?.data;
+    const isFetching = state?.fetchStatus === "fetching";
+    const candidate = {
       ...base,
       hasNextPage: hasMore(pages, data, "forward"),
       hasPreviousPage: hasMore(pages, data, "backward"),
-      isFetchingNextPage: isFetching && state.direction === "forward",
-      isFetchingPreviousPage: isFetching && state.direction === "backward",
+      isFetchingNextPage: isFetching && state?.direction === "forward",
+      isFetchingPreviousPage: isFetching && state?.direction === "backward",
       fetchNextPage: this.fetchNextPage,
       fetchPreviousPage: this.fetchPreviousPage,
     };
+    const previous = this.pagedResult;
+    if (previous != null && shallowEqual(previous, candidate)) {
+      return previous;
+    }
+    this.pagedResult = candidate;
+    return candidate;
   }
 }
 

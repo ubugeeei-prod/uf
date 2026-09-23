@@ -35,6 +35,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@uniflowed/query";
+import type { FetchContext } from "@uniflowed/query";
 
 const deferred = () => {
   let settle = (value: mixed) => {};
@@ -598,13 +599,8 @@ describe("useQuery", () => {
   it("does not resubscribe when the caller passes a new closure each render", async () => {
     const client = new QueryClient();
     const query = client.cache.build(["thing"]);
-    let subscriptions = 0;
-    const original = query.addObserver.bind(query);
-    // $FlowFixMe[cannot-write] counting subscriptions is the point of the test.
-    query.addObserver = (watcher, gcTime) => {
-      subscriptions += 1;
-      return original(watcher, gcTime);
-    };
+    // Counting subscriptions is the point of the test; the spy calls through.
+    const addObserver = uft.spyOn(query, "addObserver");
 
     component Rerendering() {
       const [count, setCount] = useState(0);
@@ -630,7 +626,7 @@ describe("useQuery", () => {
 
     // The query function is something to call, not something to react to: a
     // new closure must not tear the subscription down and set it up again.
-    expect(subscriptions).toBe(1);
+    expect(addObserver).toHaveBeenCalledTimes(1);
   });
 
   it("re-renders the observers of the key that changed and no others", async () => {
@@ -721,7 +717,7 @@ describe("useQuery", () => {
         staleTime: Number.POSITIVE_INFINITY,
         // Written inline, so its identity changes every render — which must
         // not be enough to defeat the memo.
-        select: (user) => user.name,
+        select: (user: { readonly name: string, readonly visits: number }) => user.name,
       });
       return <output>{data ?? "nobody"}</output>;
     }
@@ -750,7 +746,7 @@ describe("useQuery", () => {
     const client = new QueryClient();
     const held = deferred();
     const signals: Array<AbortSignal> = [];
-    const queryFn = fn((context) => {
+    const queryFn = fn((context: FetchContext<string>) => {
       signals.push(context.signal);
       return context.queryKey[1] === "a" ? held.promise : Promise.resolve("b");
     });
@@ -1073,7 +1069,7 @@ describe("useMutation", () => {
         staleTime: Number.POSITIVE_INFINITY,
       });
       const create = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (_name: string): Promise<void> => {
           throw new Error("rejected");
         },
         onMutate: async (name: string) => {
@@ -1202,7 +1198,7 @@ describe("useMutation", () => {
 
     component Failing() {
       const mutation = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (_: void): Promise<void> => {
           throw new Error("rejected");
         },
       });
@@ -1262,7 +1258,7 @@ describe("a mutation whose error callback throws", () => {
     // A listener that throws is the caller's bug. A mutation left `pending`
     // for ever because of it would be this package's, and a component showing
     // a spinner has no way back from that.
-    const mutation = new Mutation();
+    const mutation = new Mutation<void, void, void>();
 
     let raised = "";
     try {
@@ -1413,7 +1409,7 @@ describe("useInfiniteQuery", () => {
     await waitFor(() => {
       expect(screen.getByRole("button").textContent).toBe("1");
     });
-    const firstPage: $FlowFixMe = (client.getQueryData(["feed"]): $FlowFixMe).pages[0];
+    const firstPage: $FlowFixMe = (client.getQueryData(["feed"]) as $FlowFixMe).pages[0];
 
     await userEvent.click(screen.getByRole("button"));
     await waitFor(() => {
@@ -1422,7 +1418,7 @@ describe("useInfiniteQuery", () => {
 
     // Appending a page must not give every row already on screen a new
     // identity, or the whole list re-renders for one more page.
-    expect((client.getQueryData(["feed"]): $FlowFixMe).pages[0]).toBe(firstPage);
+    expect((client.getQueryData(["feed"]) as $FlowFixMe).pages[0]).toBe(firstPage);
   });
 });
 
@@ -1481,7 +1477,9 @@ describe("presence", () => {
   it("announces a change and nothing else", () => {
     const presence = new Presence();
     const seen: Array<string> = [];
-    const stop = presence.subscribe((event) => seen.push(event));
+    const stop = presence.subscribe((event) => {
+      seen.push(event);
+    });
 
     presence.setFocused(true);
     presence.setFocused(false);
