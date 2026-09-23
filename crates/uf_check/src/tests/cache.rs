@@ -809,7 +809,10 @@ fn a_batch_answered_entirely_from_the_cache_never_asks_for_the_builtins() {
         &chain_with("alone.js", "// @flow\nexport const one: number = 2;\n"),
     );
 
-    assert!(first.builtins.needed, "a cold batch infers, and inference needs them");
+    assert!(
+        first.builtins.needed,
+        "a cold batch infers, and inference needs them"
+    );
     assert_eq!(second.files_from_cache, CHAIN.len());
     assert!(
         !second.builtins.needed,
@@ -875,9 +878,15 @@ fn a_walk_backed_by_the_cache_reads_a_checked_file_instead_of_merging_the_builti
     // record per file saying what it imports and what the libdefs declare.
     check(&cache, &limits(), &WALKED);
 
-    let backed = walk(&WALKED, &mut crate::ModuleRequires::backed_by(cache.clone()));
+    let backed = walk(
+        &WALKED,
+        &mut crate::ModuleRequires::backed_by(cache.clone()),
+    );
     assert_eq!(backed.0, paths, "the same modules are reached");
-    assert_eq!(backed.1, unresolved, "and the same specifiers are left over");
+    assert_eq!(
+        backed.1, unresolved,
+        "and the same specifiers are left over"
+    );
     assert_eq!(unresolved, ["left-pad in app.js"]);
     assert!(
         !backed.2,
@@ -905,8 +914,10 @@ fn a_walk_backed_by_the_cache_reads_an_edit_rather_than_the_record() {
         WALKED[1],
         WALKED[2],
     ];
-    let (paths, unresolved, _) =
-        walk(&edited, &mut crate::ModuleRequires::backed_by(cache.clone()));
+    let (paths, unresolved, _) = walk(
+        &edited,
+        &mut crate::ModuleRequires::backed_by(cache.clone()),
+    );
     assert_eq!(paths, ["app.js", "c.js"]);
     assert!(unresolved.is_empty());
 }
