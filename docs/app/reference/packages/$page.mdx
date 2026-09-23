@@ -13,6 +13,17 @@ are plain Flow — no native bindings — so what runs in the browser is what yo
 can read.
 </div>
 
+*Released* says whether a release sends the package to npm. **On npm** is in
+every release. **Not yet** is implemented and tested, but the release workflow
+does not send it until it is bound to npm's trusted publishing
+([#1314](https://github.com/ubugeeei-prod/uf/issues/1314)), so npm may have no
+version of it, or an older one than this manual describes. **In this
+repository only** is a package uf uses itself, or one whose functions still
+need the native runtime, and is not meant to be installed on its own. The
+column is checked against `tools/release/published-packages.txt`,
+`pending-packages.txt` and each package's `private` flag, so it cannot drift
+from what a release sends.
+
 Three rules hold across all of them, and `uf_lib` has tests that enforce each:
 no `export *` unless the package is a peer facade for React, Relay or React
 Native; no side effects at import time, so a bundler can drop what you do not
@@ -20,26 +31,27 @@ use; and a `// @flow` pragma on every file.
 
 ## Core
 
-| Package | What it is |
-| --- | --- |
-| `@uniflowed/core` | The pieces every other package builds on |
-| `@uniflowed/react` | React, re-exported by name, with Flow's own types |
-| `@uniflowed/jsx-runtime` | The JSX runtime uf compiles to |
-| `@uniflowed/react-compiler` | The official React Compiler, wired for uf |
-| `@uniflowed/runtime` | Host capabilities, resolved at run time |
-| `@uniflowed/std` | [The standard library](/reference/std): the parts of Go's that JavaScript does not have |
+| Package | What it is | Released |
+| --- | --- | --- |
+| `@uniflowed/core` | The pieces every other package builds on | On npm |
+| `@uniflowed/react` | React, re-exported by name, with Flow's own types | On npm |
+| `@uniflowed/jsx-runtime` | The JSX runtime uf compiles to | In this repository only |
+| `@uniflowed/react-compiler` | The official React Compiler, wired for uf | In this repository only |
+| `@uniflowed/runtime` | Host capabilities, resolved at run time | In this repository only |
+| `@uniflowed/std` | [The standard library](/reference/std): the parts of Go's that JavaScript does not have | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 
 ## Application
 
-| Package | What it is |
-| --- | --- |
-| `@uniflowed/router` | The file-system router: matching, layouts, loaders, `Link` |
-| `@uniflowed/server` | The server adapter |
-| `@uniflowed/config` | `defineConfig`, and the config's Flow types |
-| `@uniflowed/vite` | The Vite plugin, the driver, and the host Flow loaders |
-| `@uniflowed/loader` | Module loading on each host |
-| `@uniflowed/markdown` | Markdown and MDX |
-| `@uniflowed/web` | Web platform bindings, and [web vitals](/guide/vitals) |
+| Package | What it is | Released |
+| --- | --- | --- |
+| `@uniflowed/router` | The file-system router: matching, layouts, loaders, `Link` | On npm |
+| `@uniflowed/server` | The server adapter | On npm |
+| `@uniflowed/config` | `defineConfig`, and the config's Flow types | On npm |
+| `@uniflowed/vite` | The Vite plugin, the driver, and the host Flow loaders | On npm |
+| `@uniflowed/host` | Running Flow on Node.js, Deno or Bun with no bundler: `node --import @uniflowed/host/register app.js` | On npm |
+| `@uniflowed/loader` | Module loading on each host | In this repository only |
+| `@uniflowed/markdown` | Markdown and MDX | In this repository only |
+| `@uniflowed/web` | Web platform bindings, and [web vitals](/guide/vitals) | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 
 A React app that keeps its own Vite config and only borrows uf's Flow
 transform should import `uniflowedPackages` from `@uniflowed/host/transform`
@@ -49,53 +61,56 @@ handles application files.
 
 ## Data
 
-| Package | What it is |
-| --- | --- |
-| `@uniflowed/fetch` | Typed HTTP — [Data in the browser](/guide/data) |
-| `@uniflowed/query` | Caching, revalidation, request de-duplication — [Data in the browser](/guide/data) |
-| `@uniflowed/effect` | [Typed effects](/reference/effect): failures in the type, not in a `catch` |
-| `@uniflowed/state` | Atomic state — [the guide](/guide/state) |
-| `@uniflowed/form` | Forms: uncontrolled inputs, typed values, narrow subscriptions — [the guide](/guide/form) |
-| `@uniflowed/immer` | Immutable updates written as mutations of a draft: `produce`, `produceWithPatches` and `applyPatches`, with results frozen unless `setAutoFreeze(false)` |
-| `@uniflowed/cell` | Fine-grained reactivity: `state` and `derived` — [the layer below](/guide/state#the-layer-below) |
-| `@uniflowed/validator` | Schemas that parse rather than assert — [Validating input](/guide/validation) |
-| `@uniflowed/i18n` | [MessageFormat 2](/reference/i18n), with a message's arguments in the type |
-| `@uniflowed/graphql`, `@uniflowed/relay` | GraphQL |
-| `@uniflowed/temporal` | Temporal, on every host. The implementation is `@uniflowed/core/temporal`, which is what installs today; this name adds the calendar surface that needs the binary |
+| Package | What it is | Released |
+| --- | --- | --- |
+| `@uniflowed/fetch` | Typed HTTP — [Data in the browser](/guide/data) | On npm |
+| `@uniflowed/query` | Caching, revalidation, request de-duplication — [Data in the browser](/guide/data) | On npm |
+| `@uniflowed/effect` | [Typed effects](/reference/effect): failures in the type, not in a `catch` | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
+| `@uniflowed/state` | Atomic state — [the guide](/guide/state) | On npm |
+| `@uniflowed/form` | Forms: uncontrolled inputs, typed values, narrow subscriptions — [the guide](/guide/form) | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
+| `@uniflowed/immer` | Immutable updates written as mutations of a draft: `produce`, `produceWithPatches` and `applyPatches`, with results frozen unless `setAutoFreeze(false)` | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
+| `@uniflowed/cell` | Fine-grained reactivity: `state` and `derived` — [the layer below](/guide/state#the-layer-below) | On npm |
+| `@uniflowed/validator` | Schemas that parse rather than assert — [Validating input](/guide/validation) | On npm |
+| `@uniflowed/orm` | Declarations for the database layer. Its functions need the native runtime and throw without it | In this repository only |
+| `@uniflowed/i18n` | [MessageFormat 2](/reference/i18n), with a message's arguments in the type | On npm |
+| `@uniflowed/graphql`, `@uniflowed/relay` | GraphQL | On npm |
+| `@uniflowed/temporal` | Temporal, on every host. The implementation is `@uniflowed/core/temporal`, which is what installs today; this name adds the calendar surface that needs the binary | On npm |
 
 ## Interface
 
-| Package | What it is |
-| --- | --- |
-| `@uniflowed/ui` | [Components you own](/reference/ui), built on the render types |
-| `@uniflowed/hooks` | The hook library — the [browser half](/reference/hooks) has a server answer for every one |
-| `@uniflowed/motion` | Animation |
-| `@uniflowed/stylex` | Static styles |
-| `@uniflowed/react-native` | React Native, re-exported as the app's peer runtime, plus `@uniflowed/react-native/metro` for Metro config |
-| `@uniflowed/tui` | Terminal interfaces — see [the guide](/guide/tui) |
+| Package | What it is | Released |
+| --- | --- | --- |
+| `@uniflowed/ui` | [Components you own](/reference/ui), built on the render types | On npm |
+| `@uniflowed/hooks` | The hook library — the [browser half](/reference/hooks) has a server answer for every one | On npm |
+| `@uniflowed/motion` | Animation | In this repository only |
+| `@uniflowed/stylex` | Static styles | On npm |
+| `@uniflowed/react-native` | React Native, re-exported as the app's peer runtime, plus `@uniflowed/react-native/metro` for Metro config | On npm |
+| `@uniflowed/tui` | Terminal interfaces — see [the guide](/guide/tui) | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 
 ## Testing
 
-| Package | What it is |
-| --- | --- |
-| `@uniflowed/test` | `describe`, `it`, `expect`, the hooks, and the worker `uf test` spawns |
-| `@uniflowed/testing` | The same API under its other name |
-| `@uniflowed/react-testing` | React Testing Library's surface, over a happy-dom window it installs on the first render |
-| `@uniflowed/react-native-testing` | React Native test-tree queries. Rendering still waits for the native host config |
-| `@uniflowed/mock` | Mocking |
-| `@uniflowed/browser` | Browser automation |
-| `@uniflowed/story`, `@uniflowed/vrt` | Stories and visual regression |
+| Package | What it is | Released |
+| --- | --- | --- |
+| `@uniflowed/test` | `describe`, `it`, `expect`, the hooks, and the worker `uf test` spawns | On npm |
+| `@uniflowed/testing` | The same API under its other name | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
+| `@uniflowed/react-testing` | React Testing Library's surface, over a happy-dom window it installs on the first render | On npm |
+| `@uniflowed/react-native-testing` | React Native test-tree queries. Rendering still waits for the native host config | On npm |
+| `@uniflowed/mock` | Request mocking at the level MSW works at | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
+| `@uniflowed/browser` | Browser automation | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
+| `@uniflowed/story` | Stories | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
+| `@uniflowed/vrt` | Visual regression | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 
 ## Tooling
 
-| Package | What it is |
-| --- | --- |
-| `@uniflowed/cli` | The CLI's JavaScript half |
-| `@uniflowed/lint` | Lint rule types |
-| `@uniflowed/lib` | The registry every package is declared in |
-| `@uniflowed/pm`, `@uniflowed/rm` | Package and runtime management |
-| `@uniflowed/prepare`, `@uniflowed/pwa` | Build preparation, progressive web apps |
-| `@uniflowed/brand` | The design tokens this site is built from |
+| Package | What it is | Released |
+| --- | --- | --- |
+| `@uniflowed/cli` | The CLI's JavaScript half | In this repository only |
+| `@uniflowed/lint` | Lint rule types | In this repository only |
+| `@uniflowed/lib` | The registry every package is declared in | In this repository only |
+| `@uniflowed/pm`, `@uniflowed/rm` | Package and runtime management | In this repository only |
+| `@uniflowed/prepare`, `@uniflowed/pwa` | Build preparation, progressive web apps | In this repository only |
+| `@uniflowed/hmr` | Declarations for the hot-update client the dev server uses | In this repository only |
+| `@uniflowed/brand` | The design tokens this site is built from | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 
 ## What `@uniflowed/ui` ships today
 
