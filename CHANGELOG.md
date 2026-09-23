@@ -2,6 +2,8 @@
 
 ## uf@0.0.0-alpha.47
 
+- fix(server): spell the adapter contract's fields `readonly` (#1342) (8e30e4f6)
+- ci(bench): commit the first CI baseline and fix the gate and the comparison on a runner (#1339) (2c45e91c)
 - ci(deploy-parity): run the version-skew fixture where a socket can be bound (#1340) (8010f8d1)
 - feat: prerender a static shell and stream its holes per request (PPR) (#1337) (32acd930)
 - feat(lsp): answer hover, definitions and completion from Flow inference (#1334) (a1af6df5)
