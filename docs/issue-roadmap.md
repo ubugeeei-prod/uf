@@ -328,7 +328,11 @@
 - [ ] Implement host detection and adaptation in `@uniflowed/rm`.
 - [x] Publish `curl -fsSL https://setup.uniflowed.dev | sh` and
       `irm https://setup.uniflowed.dev/install.ps1 | iex` installers, with
-      release-workflow verification against the packaged archives.
+      verification against the packaged archives before a release PR merges,
+      a check after publication that the GitHub release carries every target,
+      and a daily audit that every version on npm has a release with binaries
+      ([#1328](https://github.com/ubugeeei-prod/uf/issues/1328)). alpha.9 and
+      alpha.44 have none and are recorded as known gaps.
 - [x] Support sh, bash, zsh, Windows x86-64, macOS, and Linux installer targets.
 - [x] Start napi-rs-style native target package generation contracts.
 - [x] Start generated TypeScript declaration to Flow declaration conversion.
