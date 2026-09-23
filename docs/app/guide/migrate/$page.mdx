@@ -542,12 +542,14 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
 - **Server functions.** A server function passed to a client component as a
   prop, an inline `"use server"` closure, a file upload, and a form that submits
   before its page hydrates do not work; an action's arguments are JSON data plus
-  at most one form ([What is not here](/guide/server-actions#what-is-not-here)).
-- **Intercepting routes under Server Components.** An intercepted URL is an
-  ordinary navigation to the page it names
-  ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot is not
-  a request boundary, so it holds no `$not-found.js`, `$route.js` or
-  `$middleware.js`.
+  at most one form ([What is not here](/guide/server-actions#what-is-not-here),
+  [uf and Next.js](/guide/nextjs#server-actions)).
+- **A slot is not a request boundary.** It holds no `$not-found.js`,
+  `$route.js` or `$middleware.js`, and an interception is always shown in a
+  slot rather than replacing `children`.
+- **Optional catch-alls.** `[[...slug]]` is not a route segment yet; write
+  `[...slug]` and a page at the parent path
+  ([#1361](https://github.com/ubugeeei-prod/uf/issues/1361)).
 - **The rest of ISR and PPR.** A `--compile` binary carries no cache and
   renders a partially prerendered page whole, per request; `serverless` refuses
   a partially prerendered page; and there is no `experimental_ppr` export or

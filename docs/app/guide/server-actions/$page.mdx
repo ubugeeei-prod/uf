@@ -391,7 +391,7 @@ imports the action already has its type.
   `action="javascript:throw …"` as it does for any client action, and a submit
   before hydration throws in the page rather than posting anywhere. Nothing
   reaches a server that was not meant to; what is missing is the submit working
-  at all. No open issue tracks it.
+  at all ([#1358](https://github.com/ubugeeei-prod/uf/issues/1358)).
 - **Uploads.** A `File` entry is refused by name at the call site. Multipart
   parsing is its own attack surface and is deliberately absent; use a route
   handler.
@@ -401,8 +401,10 @@ imports the action already has its type.
   client bundle and no row in the server's table, and nothing can call it. The
   Flight payload routes render with could carry a reference to one, but Flight
   server references are not wired, so a server function cannot be handed to a
-  client component as a prop either. No open issue tracks either; write a module
-  export, and import it from the client component.
+  client component as a prop either
+  ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359),
+  [#1360](https://github.com/ubugeeei-prod/uf/issues/1360)). Until then, write a
+  module export and import it from the client component.
 - **A reference format.** Nothing in an action's arguments can name a function,
   a module, a class, a prototype, a React element or a reference, and this
   grammar is not where one grows quietly. The Flight payload a route renders
