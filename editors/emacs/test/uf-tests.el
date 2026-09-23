@@ -11,6 +11,10 @@
 ;;; Code:
 
 (require 'ert)
+;; Loaded first so `eglot-server-programs' is a special variable everywhere:
+;; the tests bind it with `let', and a lexical binding of it would be
+;; invisible to `uf-eglot-contact'.
+(require 'eglot)
 (require 'uf)
 
 (defun uf-tests--project (with-config)
@@ -65,7 +69,6 @@
       (should (equal (uf-eglot-contact t) '("rass" "ts" "i"))))))
 
 (ert-deftest uf-eglot-is-registered-first ()
-  (require 'eglot)
   (should (eq (cdr (car eglot-server-programs)) #'uf-eglot-contact)))
 
 (ert-deftest uf-lsp-mode-activates-only-in-a-uf-project ()
