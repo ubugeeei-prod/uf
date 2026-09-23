@@ -81,6 +81,89 @@ describe("announce", () => {
     expect(messages("assertive")).toEqual([]);
   });
 
+  /** A fresh announcer, so the next message waits `SETTLE_MS` on a timer. */
+  function freshAnnouncer(): void {
+    document.querySelector("[data-uf-live-announcer]")?.remove();
+  }
+
+  /**
+   * Run `during` with the `document` global gone, as a test worker leaves it
+   * between files (ubugeeei-prod/uf#1379 fired a timer into exactly that).
+   */
+  function withoutDocumentGlobal(during: () => void): void {
+    const descriptor = Reflect.getOwnPropertyDescriptor(globalThis, "document");
+    if (descriptor == null) throw new Error("expected a document global");
+    Reflect.deleteProperty(globalThis, "document");
+    try {
+      during();
+    } finally {
+      Reflect.defineProperty(globalThis, "document", descriptor);
+    }
+  }
+
+  it("never touches a document that went away before its message arrived", () => {
+    withDocument();
+    uft.useFakeTimers();
+    freshAnnouncer();
+    announce("3 results");
+    announce("Could not save", { politeness: "assertive" });
+    const polite = regionFor("polite");
+    withoutDocumentGlobal(() => {
+      expect(typeof document).toBe("undefined");
+      // It used to throw `ReferenceError: document is not defined` here, from
+      // the timer, into whichever test the worker was running by then.
+      expect(() => uft.advanceTimersByTime(60_000)).not.toThrow();
+    });
+    expect(polite.children.length).toBe(0);
+    expect(uft.getTimerCount()).toBe(0);
+  });
+
+  it("drops a message whose regions were taken out of the document", () => {
+    withDocument();
+    uft.useFakeTimers();
+    freshAnnouncer();
+    announce("Saved");
+    const polite = regionFor("polite");
+    // `cleanup()`, or an app replacing `<body>`, detaches the regions.
+    document.querySelector("[data-uf-live-announcer]")?.remove();
+    expect(() => uft.advanceTimersByTime(100)).not.toThrow();
+    expect(polite.children.length).toBe(0);
+    expect(uft.getTimerCount()).toBe(0);
+  });
+
+  it("removes a delivered message without the document global", () => {
+    withDocument();
+    uft.useFakeTimers();
+    freshAnnouncer();
+    announce("Saved");
+    uft.advanceTimersByTime(100);
+    expect(messages("polite")).toEqual(["Saved"]);
+    const polite = regionFor("polite");
+    withoutDocumentGlobal(() => {
+      expect(() => uft.advanceTimersByTime(7000)).not.toThrow();
+    });
+    expect(polite.children.length).toBe(0);
+  });
+
+  it("cancels pending messages on clearAnnouncements, per politeness", () => {
+    withDocument();
+    uft.useFakeTimers();
+    freshAnnouncer();
+    announce("Loading");
+    announce("Failed", { politeness: "assertive" });
+    expect(uft.getTimerCount()).toBe(2);
+    clearAnnouncements("polite");
+    expect(uft.getTimerCount()).toBe(1);
+    uft.advanceTimersByTime(100);
+    expect(messages("polite")).toEqual([]);
+    expect(messages("assertive")).toEqual(["Failed"]);
+    // The delivered message's removal timer is pending work too.
+    expect(uft.getTimerCount()).toBe(1);
+    clearAnnouncements();
+    expect(uft.getTimerCount()).toBe(0);
+    expect(messages("assertive")).toEqual([]);
+  });
+
   it("stays readable while a modal dialog hides the rest of the page", () => {
     withDocument();
     announce("Ready");
