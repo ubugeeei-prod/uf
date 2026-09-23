@@ -22,6 +22,11 @@ concurrently; and know what Flow cannot express that Effect-TS can.
 Effect-TS is not assumed; [Coming from Effect-TS](#coming-from-effect-ts), near
 the end, is where the two part company.
 
+This page is the walk-through. The [Effect reference](/reference/effect) is the
+contract: every runner, fork, schedule, layer and stream, and the reason behind
+each absence. Where a topic below ends in a link, the rest of it is there and
+not repeated here.
+
 ## The three channels
 
 An `Effect<A, E, R>` is a description of work that has not run: `A` is what it
@@ -34,33 +39,46 @@ import { runPromise, runSync, succeed } from "@uniflowed/effect";
 runSync(succeed(3)); // 3
 ```
 
-`runSync` returns the value or raises; `runPromise` is the asynchronous form;
-`runSyncExit` and `runPromiseExit` hand back an `Exit` instead of raising; and
-`runFork` starts one and gives you a fiber.
+`runSync` returns the value or raises and `runPromise` is the asynchronous form;
+[Running](/reference/effect#running) lists all five runners, and why `runSync`
+refuses an effect that has to wait rather than handing back a promise.
 
-Failure is three things, not one, and the distinction runs through every
-combinator:
+Failure is three things, not one — a typed `fail`, a `die` that is a bug, and
+an interruption that is a decision somebody already took — and only the first
+is recovered or retried.
+[Failure is not the same as a defect](/reference/effect#failure-is-not-the-same-as-a-defect)
+has the table.
 
-| | What it is | What acts on it |
-| --- | --- | --- |
-| `fail(e)` | The typed failure the signature promised | `catchAll`, `catchTag`, `either`, `orElse`, `retry` |
-| `die(x)` | A bug in the program | Nothing recovers it by design; it reaches `Exit` |
-| Interruption | A decision somebody already took | Neither of the above; it is not a failure |
+## Failures you expect
 
-So a `throw` inside `sync`, `promise` or `call` becomes a **defect**, not a
-typed failure. `trySync` and `tryPromise` name a failure through an explicit
-error mapper:
+A `throw` inside `sync`, `promise` or `call` becomes a **defect**, not a typed
+failure. `trySync` and `tryPromise` name a failure through an explicit error
+mapper:
 
 ```js
+import { tryPromise, trySync } from "@uniflowed/effect";
+
 const fetched = tryPromise({
   try: () => fetch(url).then((response) => response.json()),
   catch: (cause) => ({ kind: "network", cause }),
+});
+
+const decoded = trySync({
+  try: () => JSON.parse(source),
+  catch: () => ({ kind: "invalid-json", message: "Enter a JSON document." }),
 });
 ```
 
 That is deliberate: a `catch (e)` that turns every throw into a typed error is
 how a null-pointer bug ends up being retried three times and reported to a user
 as "the network is busy".
+
+The mapper is handed the original thrown value, and a mapper that throws is
+itself a defect. Both callbacks run only when the effect executes, and
+`trySync` works under `runSync` as well as `runPromise`. Compose it with
+`ensuring` when the operation owns cleanup, such as rolling back a synchronous
+database transaction: the cleanup runs before the original typed failure is
+returned to the caller.
 
 ## Composing
 
@@ -97,6 +115,8 @@ filterOrFail(request, ok, (value) => ({ kind: "rejected", value }));
 timeout(request, 2000); // adds TimeoutError to the error channel
 ```
 
+`orElse` is the other recovery that acts on a typed failure.
+
 `catchTag` reads `kind` first and then `tag`, so it works with uf's own
 discriminant and with an error ported from Effect-TS. **It does not narrow**:
 `recover` still sees the whole `E`, because Flow cannot narrow a type variable by
@@ -123,19 +143,13 @@ result carries all of their causes. The cost is stated: a loser is interrupted
 and not awaited, so a loser with side effects has to survive running a little
 past the point `race` returned.
 
-```js
-const fiber = await runPromise(fork(work));
-await runPromise(join(fiber));
-await runPromise(interrupt(fiber)); // the Exit, so you can tell in time from too late
-```
-
-`fork` is **detached** — Effect-TS's `forkDaemon`, not its `fork`. Cancelling
-the parent does not cancel the child. Work that should die with its parent is
-what `all`, `race` and `timeout` open a child fiber for.
-
-Interruption is cooperative and checkpointed *between* steps: an effect that has
-started runs to its own end, and interruption decides whether the next one
-starts.
+For work you start yourself, `fork` hands back a fiber that `join` waits for and
+`interrupt` stops. A forked child dies with the fiber that forked it;
+`forkDaemon` outlives it and `forkScoped` lives as long as the enclosing scope.
+[Fibers, and what a fiber owns](/reference/effect#fibers-and-what-a-fiber-owns)
+is the whole rule, and
+[What two fibers can share](/reference/effect#what-two-fibers-can-share) covers
+`Ref`, `Deferred`, `Semaphore`, `Queue` and `PubSub`.
 
 ## Resources
 
@@ -151,11 +165,8 @@ runPromise(scoped(flatMap(handle, read)));
 `acquireRelease` needs a scope, and `scoped` is what provides one. Without it
 the effect **dies** with a message telling you to wrap it — a skipped release is
 a leak that only shows up in production, so it is not something to be silently
-tolerant of.
-
-Finalizers run detached from the interrupted fiber, so a scope closing *because*
-its fiber was interrupted still releases what it took. `ensuring` is the
-unconditional form.
+tolerant of. `ensuring` is the unconditional form without a scope;
+[Resources](/reference/effect#resources) has the guarantees.
 
 ## Retrying
 
@@ -171,20 +182,14 @@ written as `150` survives a round trip through a JSON config file without
 becoming `1.4999999999999998` — the same reason the whole type is data rather
 than a builder.
 
-`scheduleStep(schedule, state, input, now)` from `@uniflowed/effect/schedule` is
-the whole runtime: given what has happened, it answers "go again after this long"
-or "stop", with the number the schedule reached. It reads no clock and no random
-source — both are arguments — so a policy is a pure function you can test across
-its whole behaviour without waiting for any of it.
-
-The input is the error for `retry` and the value for `repeat`, which is what
-makes one type serve both and lets a policy decide on *what* rather than only on
-*how many*: `{ kind: "untilInput", schedule, predicate }` is "poll until the job
-reports finished".
-
 `retry` counts retries, so `{ kind: "recurs", times: 2 }` runs the effect three
 times — measured, not assumed. It retries a typed failure only: a defect is a
-bug, and running a bug again is not a strategy.
+bug, and running a bug again is not a strategy. `repeat` takes the same
+schedules and runs again on success, which is how a poll is written.
+
+[Retrying](/reference/effect#retrying) has every schedule, `scheduleStep` for
+testing a policy without a clock, and the `while`/`until` condition a call site
+can add.
 
 ## Services
 
@@ -198,16 +203,16 @@ runPromise(provide(program, layerSucceed(Clock, { now: () => 42 })));
 ```
 
 A `Tag` is itself an `Effect`, so `yield* Clock` works inside a generator.
-`layerSucceed`, `layerEffect` and `layerMerge` build layers; `provide` applies
-one.
+`provideService` satisfies one requirement with a value; `provide` applies a
+layer.
 
-This is the part marked **experimental**, and for a specific reason. Flow has no
-type-level set difference, so requirement subtraction is typed as
-`(Effect<A, E, R | Out>, Layer<Out, …>) => Effect<A, E, R>` and the checker
-solves for `R` from the union. That works when the provided service is a
-distinct member of the union, and silently leaves it in `R` when it is not. A
-service that is missing at run time is a **defect**, not a failure — the type
-was meant to have made it impossible.
+This is the part marked **experimental**: Flow has no type-level set
+difference, so the provided service is solved out of a union and can silently
+stay in `R`. A service that is missing at run time is a **defect**, not a
+failure — the type was meant to have made it impossible.
+[Services](/reference/effect#services) has the typing, the layer combinators,
+one build per `provide`, and `managedRuntime` for an application that builds
+its layers once.
 
 ## Coming from Effect-TS
 
@@ -221,49 +226,18 @@ was meant to have made it impossible.
 | `race` takes the first to settle | `race` takes the first to succeed | "Whichever settles first" is not what a caller wants when the fastest answer is an error |
 | Heterogeneous `all` keeping tuple types | One array type in, one out | No variadic tuple inference to build it from |
 | `"inherit"` concurrency | Absent | Nothing tracks an enclosing limit |
+| `Context` module | `tag`, `provideService` and `provide` | The context they thread is internal |
 
-**Not implemented**, quoting the package: STM; `Channel`, `Sink`, `GroupBy` and
-`Chunk`, which `./stream.js` explains being without rather than pending; a fiber
-scheduler of its own — this runs on the host's microtask queue and its `sleep` is
-`setTimeout`; tracing, spans, metrics and the logging layer; and a typed defect
-channel.
-
-There is no `Context` module either: `tag`, `provideService` and `provide` are
-the whole surface, and the context they thread is internal.
-
-One more thing that will catch you: `runSync` on an effect that has to wait —
-`sleep`, `promise`, `race`, `timeout`, `retry`, `fork`, anything scoped — is a
-**defect**, not a promise. A silently unawaited promise is how a
-synchronous-looking call ends up returning `undefined`, so the synchronous
-runtime refuses rather than degrading.
+What is not implemented at all — STM, `Channel`, `Sink`, a scheduler of its
+own, tracing — is listed once, in
+[What is not here](/reference/effect#what-is-not-here).
 
 The package has **no dependencies at all**, and every snippet on this page was
 run before it was published. `packages/effect/effect.test.js` is where the
-behaviour above is pinned — `uf test packages/effect/effect.test.js`.
-
-
-## Synchronous operations that can fail
-
-Use `trySync` when a synchronous API throws an expected input error. It preserves
-its original value for the error mapper and works with both `runSync` and
-`runPromise`; `sync` treats throws as defects. A mapper that throws is also a
-defect. Both callbacks run only when the effect executes.
-
-```js
-import { trySync } from "@uniflowed/effect";
-
-const decoded = trySync({
-  try: () => JSON.parse(source),
-  catch: () => ({ kind: "invalid-json", message: "Enter a JSON document." }),
-});
-```
-
-Compose this with `ensuring` when the operation owns cleanup, such as rolling back
-a synchronous database transaction. Cleanup runs before the original typed
-failure is returned to the caller.
+behaviour is pinned — `uf test packages/effect/effect.test.js`.
 
 ## Where to go next
 
 [Headless components](/guide/ui) is next: keyboard maps, ARIA and composition,
-with no styles attached. [Effects](/reference/effect), in the reference, has
-every export.
+with no styles attached. The [Effect reference](/reference/effect) has every
+export.
