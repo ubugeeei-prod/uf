@@ -36,12 +36,59 @@ fn a_tree_nests_deeply_without_losing_its_trunk() {
     );
 }
 
+/// Code-point order at every level, files and directories interleaved, the
+/// way `LC_ALL=C ls` lists them: `$` sorts before `(`, `.`, `@`, digits and
+/// letters, uppercase before lowercase, and `app` before `app.js`.
 #[test]
-fn a_tree_puts_directories_before_files() {
-    let tree = Tree::from_paths("root", ["z.js", "a/b.js"]);
+fn a_tree_sorts_every_level_by_code_point() {
+    let tree = Tree::from_paths(
+        "root",
+        [
+            "uf.config.js",
+            "app/useCounter.js",
+            "app/Counter.js",
+            "app/$page.test.js",
+            "app/$page.js",
+            "app/settings/$page.js",
+            "app/(group)/$page.js",
+            "app/@slot/$default.js",
+            "app/$layout.js",
+            "app.js",
+            "AGENTS.md",
+            ".gitignore",
+        ],
+    );
+    fn labels<'a>(node: &Tree<'a>) -> Vec<&'a str> {
+        node.children().iter().map(Tree::label).collect()
+    }
+
+    assert_eq!(
+        labels(&tree),
+        [".gitignore", "AGENTS.md", "app", "app.js", "uf.config.js"]
+    );
+    assert_eq!(
+        labels(&tree.children()[2]),
+        [
+            "$layout.js",
+            "$page.js",
+            "$page.test.js",
+            "(group)",
+            "@slot",
+            "Counter.js",
+            "settings",
+            "useCounter.js",
+        ]
+    );
+}
+
+/// The regression the order above replaced: a directory is not lifted above
+/// a file that sorts before it.
+#[test]
+fn a_tree_does_not_put_directories_before_files() {
+    let tree = Tree::from_paths("app", ["settings/$page.js", "$layout.js"]);
     let labels: Vec<_> = tree.children().iter().map(Tree::label).collect();
 
-    assert_eq!(labels, ["a", "z.js"]);
+    assert_eq!(labels, ["$layout.js", "settings"]);
 }
 
 #[test]
