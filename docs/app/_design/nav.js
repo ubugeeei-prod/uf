@@ -328,6 +328,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "A Rust runner, host workers, and where it stands against Bun.",
       },
       {
+        href: "/guide/mocks",
+        title: "Mocks and stories",
+        blurb:
+          "Answer the request instead of stubbing the client, and give a component's states names a test and a baseline share.",
+      },
+      {
         href: "/guide/dependencies",
         title: "Dependencies",
         blurb:

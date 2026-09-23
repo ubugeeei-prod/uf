@@ -1,0 +1,1000 @@
+---
+title: "Mocks and stories · uf"
+description: "Answer the request instead of stubbing the client, and give a component's states names a test and a baseline share."
+---
+
+<p className="eyebrow">The toolchain</p>
+
+# Mocks and stories
+
+<div className="lede">
+`@uniflowed/mock` answers the requests your code makes, at the level MSW works
+at, so a test never has to know which client made them. `@uniflowed/story`
+gives a component's states names — `button--pending` — that a person, a test
+and a visual baseline can all ask for. Both are plain Flow over the platform's
+own `fetch` and `@uniflowed/react-testing`'s DOM, and both say plainly what
+they do not do yet.
+</div>
+
+**What you will be able to do:** answer a component's requests with handlers,
+override one for a single test, assert on what was sent, make an unexpected
+request fail at the line that made it, declare a component's stories with
+their mocks and play functions, run those stories as tests, and file a
+screenshot under a story's id.
+
+**What you need first:** a project whose tests already run —
+[Testing](/guide/testing). This page builds on `uf test`,
+`@uniflowed/test` and `@uniflowed/react-testing` and does not repeat them.
+
+## Mock the request, not the client
+
+There are two things a test can replace when the code under test talks to a
+server, and uf has a tool for each.
+
+[Replacing a module](/guide/testing#replacing-a-module) — `uft.mock` — swaps
+what an `import` resolves to. That is the right tool when the dependency is a
+module with no network behind it, or when the seam you want really is the
+module boundary. Used on an API client, though, it proves less than it seems
+to: the stand-in's `getUser` returns what the test told it to, so the test
+shows that the stub agrees with the test and nothing about the URL, the verb,
+the body or the status the real client would have sent.
+
+`@uniflowed/mock` replaces nothing in your code. It answers the *request*: the
+client, the query library and the component all run as written, the request
+leaves them exactly as it will in production, and a handler decides what comes
+back. If somebody changes the endpoint's path or the body's shape, the test
+breaks, which is the reason to have it. The two are independent, and a suite
+may use both.
+
+## A first mock
+
+Here is a module that talks to an API with `fetch`:
+
+```js
+// @flow
+export type User = {| readonly id: string, readonly name: string |};
+
+const BASE = "https://api.example.test";
+
+export async function loadUser(id: string): Promise<User> {
+  const response = await fetch(`${BASE}/users/${id}`);
+  if (!response.ok) {
+    throw new Error(`could not load user ${id}: ${response.status}`);
+  }
+  const body = await response.json();
+  return { id: String(body.id), name: String(body.name) };
+}
+
+export async function renameUser(id: string, name: string): Promise<User> {
+  const response = await fetch(`${BASE}/users/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    throw new Error(`could not rename user ${id}: ${response.status}`);
+  }
+  const body = await response.json();
+  return { id: String(body.id), name: String(body.name) };
+}
+```
+
+And its test, in `users.test.js` beside it:
+
+```js
+// @flow
+import { HttpResponse, http, mock } from "@uniflowed/mock";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "@uniflowed/test";
+
+import { loadUser, renameUser } from "./users.js";
+
+const api = mock(
+  http.get("https://api.example.test/users/:id", ({ params }) =>
+    HttpResponse.json({ id: params.id, name: "Ada" }),
+  ),
+  http.patch("https://api.example.test/users/:id", async ({ params, request }) => {
+    const body = await request.json();
+    return HttpResponse.json({ id: params.id, name: body.name });
+  }),
+);
+
+beforeAll(() => {
+  api.listen();
+});
+afterEach(() => {
+  api.resetHandlers();
+  api.clearRequests();
+});
+afterAll(() => {
+  api.close();
+});
+
+describe("loadUser", () => {
+  it("reads the user the endpoint returns", async () => {
+    expect(await loadUser("42")).toEqual({ id: "42", name: "Ada" });
+    expect(api.requests.map((request) => `${request.method} ${request.pathname}`)).toEqual([
+      "GET /users/42",
+    ]);
+  });
+
+  it("reports a user that is not there", async () => {
+    api.use(
+      http.get("https://api.example.test/users/:id", () =>
+        HttpResponse.json({ title: "not found" }, { status: 404 }),
+      ),
+    );
+
+    await expect(loadUser("7")).rejects.toThrow("could not load user 7: 404");
+  });
+
+  it("is back to the declared handler in the next test", async () => {
+    expect((await loadUser("7")).name).toBe("Ada");
+  });
+});
+
+describe("renameUser", () => {
+  it("sends the new name as JSON", async () => {
+    expect(await renameUser("42", "Grace")).toEqual({ id: "42", name: "Grace" });
+
+    const [sent] = api.requests;
+    expect(sent.method).toBe("PATCH");
+    expect(sent.headers["content-type"]).toBe("application/json");
+    expect(sent.json()).toEqual({ name: "Grace" });
+  });
+});
+```
+
+`mock(...handlers)` builds a registry and intercepts nothing. A handler is an
+inert value, so declaring one touches no global, and the same array can be
+handed to two suites or kept in a file of its own. These calls are the whole
+lifetime, and the hooks around them are written out rather than installed for
+you:
+
+| Call | What it does |
+| --- | --- |
+| `api.listen(options?)` | Replace `globalThis.fetch` with the interceptor. Throws if another registry is already listening |
+| `api.use(...handlers)` | Add handlers that win over the declared set until the next reset |
+| `api.resetHandlers()` | Drop every `use`, and make spent `once` handlers whole again |
+| `api.resetHandlers(...handlers)` | Replace the declared set itself — for the rest of the registry's life, not just this test |
+| `api.clearRequests()` | Empty the request log, in place |
+| `api.close()` | Put the platform's `fetch` back. Safe when nothing is listening |
+
+Nothing hooks itself into `beforeAll` and `afterEach` because
+`@uniflowed/mock` does not import `@uniflowed/test` at all. A mocking library
+that reached into the runner to install hooks could not honestly call itself
+runtime-agnostic, and four lines you can read are cheaper than a hook you
+cannot see. The `afterEach` is what keeps one test's override out of the
+next — the third test above is there to prove it — and the `afterAll` is what
+puts the platform's `fetch` back.
+
+## Handlers
+
+`http.get`, `http.post`, `http.put`, `http.patch`, `http.delete`, `http.head`
+and `http.options` each match one method; `http.all` matches any. A `GET`
+handler never answers a `POST`, because a handler quietly answering the wrong
+verb is a test that passes for the wrong reason. The namespace is there so
+that `get` at a call site is obviously the HTTP one, and so a suite ported from
+MSW reads unchanged.
+
+The path is the grammar every router in the repository uses:
+
+| Pattern | Matches | Captures |
+| --- | --- | --- |
+| `/users/:id` | one segment | `params.id`, percent-decoded |
+| `/files/*` | the rest of the path, including nothing | `params["*"]`, and `params["0"]` as MSW names it |
+| `/*/users` | exactly one segment in that position | nothing |
+| `https://api.example.test/users/:id` | that path on that origin only | `params.id` |
+| `/users/:id` with no origin | that path on any origin | `params.id` |
+
+A trailing slash is not significant on either side, and a query string in a
+pattern is ignored rather than matched — a handler that stopped matching when a
+caller added a tracking parameter would be the worst kind of failure. The
+request's own query arrives parsed, as `query`.
+
+A resolver is handed `request` (a real `Request`, body unread), `params` and
+`query`. It returns a `Response`, or `null` or nothing to mean "not this one
+after all", in which case the next matching handler is asked. Handlers passed
+to `mock` are asked in the order they were written.
+
+```js
+// @flow
+import type { MockHandler, MockRegistry } from "@uniflowed/mock";
+import { HttpResponse, http, mock } from "@uniflowed/mock";
+import { expect, it } from "@uniflowed/test";
+
+import { loadUser } from "./users.js";
+
+/** Listen with `handlers` for the length of `body`, and stop however it ends. */
+async function withHandlers(
+  handlers: $ReadOnlyArray<MockHandler>,
+  body: (api: MockRegistry) => Promise<void>,
+): Promise<void> {
+  const api = mock(...handlers);
+  api.listen();
+  try {
+    await body(api);
+  } finally {
+    api.close();
+  }
+}
+
+it("captures parameters, the rest of a path, and the query", async () => {
+  await withHandlers(
+    [
+      http.get("/orgs/:org/repos/:repo", ({ params }) => HttpResponse.json(params)),
+      http.get("/files/*", ({ params }) => HttpResponse.text(params["*"])),
+      http.get("/search", ({ query }) => HttpResponse.text(query.get("q") ?? "")),
+    ],
+    async () => {
+      const repo = await fetch("https://api.example.test/orgs/uf%20labs/repos/mock");
+      expect(await repo.json()).toEqual({ org: "uf labs", repo: "mock" });
+
+      const file = await fetch("https://api.example.test/files/a/b/c.txt");
+      expect(await file.text()).toBe("a/b/c.txt");
+
+      const search = await fetch("https://api.example.test/search?q=flow");
+      expect(await search.text()).toBe("flow");
+    },
+  );
+});
+
+it("lets a resolver decline, so the next handler is asked", async () => {
+  await withHandlers(
+    [
+      http.post("https://api.example.test/users", async ({ request }) => {
+        const body = await request.json();
+        return body.name === ""
+          ? HttpResponse.json({ title: "name required" }, { status: 422 })
+          : null;
+      }),
+      http.post("https://api.example.test/users", () =>
+        HttpResponse.json({ id: "1" }, { status: 201 }),
+      ),
+    ],
+    async () => {
+      const post = (name: string) =>
+        fetch("https://api.example.test/users", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        });
+
+      expect((await post("")).status).toBe(422);
+      expect((await post("Ada")).status).toBe(201);
+    },
+  );
+});
+
+it("fails once, then answers", async () => {
+  await withHandlers(
+    [
+      http.get(
+        "https://api.example.test/users/:id",
+        () => HttpResponse.text("try again", { status: 503 }),
+        { once: true },
+      ),
+      http.get("https://api.example.test/users/:id", ({ params }) =>
+        HttpResponse.json({ id: params.id, name: "Ada" }),
+      ),
+    ],
+    async () => {
+      await expect(loadUser("42")).rejects.toThrow("503");
+      expect((await loadUser("42")).name).toBe("Ada");
+    },
+  );
+});
+
+it("tells a network error from an HTTP one", async () => {
+  await withHandlers(
+    [http.get("https://api.example.test/users/:id", () => HttpResponse.error())],
+    async () => {
+      await expect(loadUser("42")).rejects.toBeInstanceOf(TypeError);
+    },
+  );
+});
+```
+
+Declining is how a handler decides on the *body* rather than the path. Reading
+it is safe: the resolver is handed a copy, and the log reads a copy of its own,
+so the resolver, the log and a `passthrough()` each get the whole body.
+
+`{ once: true }` answers one request and steps aside, which is how a suite says
+"it retries" without a counter in a closure. The handler is spent before its
+resolver is awaited, so two requests in flight at once cannot both get the
+answer written to be given once, and a `once` handler that declines is put back
+unspent.
+
+## Responses
+
+`HttpResponse` is a subclass of `Response`, not a look-alike, so the code under
+test can `clone()` it, stream it and check `instanceof Response` exactly as it
+would in production.
+
+| Write | For |
+| --- | --- |
+| `HttpResponse.json(body, init?)` | A JSON body with `content-type` set — unless `init.headers` already names one |
+| `HttpResponse.text(body, init?)` | A plain-text body |
+| `HttpResponse.error()` | A *network* error: the caller's `fetch` rejects with a `TypeError`, as it does when a connection fails. A 500 is a response; this is not |
+| `new HttpResponse(body, init)` | Any other body `Response` accepts — form data, bytes, XML |
+| `await delay(ms)` | Wait before answering. Reads `globalThis.setTimeout` when called, so `uft.useFakeTimers()` reaches it |
+| `await delay("infinite")` | Never answer, so a loading state can be asserted. Nothing is scheduled, so it holds nothing open |
+| `passthrough()` | Send this request on to the real network after all. Different from returning nothing, which asks the next handler |
+
+`init` takes `status`, `statusText` and `headers`.
+
+## Overrides for one test
+
+`api.use(...)` layers handlers over the declared set, and the most recent `use`
+wins — so a `use` inside a test beats one in a `beforeEach`, which beats the
+suite's default. `resetHandlers()` in an `afterEach` takes every layer away,
+so an override disappears at the end of its test rather than at the end of the
+file.
+
+When one `use` call is given two handlers that match the same request, the
+*last* of them is asked first — the opposite of the order `mock(...)` asks its
+declared handlers in. Until that settles, give a `once` handler and its
+fallback to `mock(...)` in the order you want them asked, as the retry example
+above does, or pass them to separate `use` calls, fallback first.
+
+## What was asked
+
+`api.requests` is every request the registry saw since the last
+`clearRequests()`, in the order they were made — even when a slow handler
+answers after a faster one that came later. Each entry is a
+`RecordedRequest`:
+
+| Field | Holds |
+| --- | --- |
+| `method` | `"GET"`, `"PATCH"`, … |
+| `url` | The absolute URL, after a relative one was resolved |
+| `pathname` | The path alone, which is usually what an assertion wants |
+| `headers` | Header names lower-cased, as the platform gives them |
+| `body` | The body as text, `""` for `GET` and `HEAD` |
+| `json()` | The body parsed; throws when it is not JSON |
+| `handled` | `false` for a request no handler answered |
+
+`clearRequests()` empties the same array rather than replacing it, so a test
+that held on to `api.requests` is still looking at the live log.
+
+## A request nobody answered
+
+By default a request no handler claims **fails**: the caller's `fetch` rejects
+with an `UnhandledRequestError` that names the method, the URL and every
+handler that was in force.
+
+```js
+// @flow
+import { HttpResponse, UnhandledRequestError, http, mock } from "@uniflowed/mock";
+import { expect, it } from "@uniflowed/test";
+
+import { renameUser } from "./users.js";
+
+it("rejects a request no handler claimed", async () => {
+  const api = mock(
+    http.get("https://api.example.test/users/:id", () => HttpResponse.json({ id: "1" })),
+  );
+  api.listen();
+  try {
+    let raised = null;
+    try {
+      await renameUser("1", "Grace");
+    } catch (error) {
+      raised = error;
+    }
+
+    expect(raised instanceof UnhandledRequestError).toBe(true);
+    if (raised instanceof UnhandledRequestError) {
+      expect(raised.method).toBe("PATCH");
+      expect(raised.url).toBe("https://api.example.test/users/1");
+      expect(raised.message).toContain("GET https://api.example.test/users/:id");
+    }
+    expect(api.requests[0].handled).toBe(false);
+  } finally {
+    api.close();
+  }
+});
+```
+
+MSW warns by default; uf does not, on purpose. `uf test` runs files in
+parallel workers and interleaves their output, so a warning is a line nobody
+reads on a green run — and the failure it leads to lands somewhere else, as an
+error state rendered by a component or an assertion about a value that never
+arrived. An unhandled request is a mistake in the test's own setup, and it
+should fail where the setup is.
+
+The other policies are there for when reaching the network is the point, and
+you ask for them by name:
+
+| `listen({ onUnhandledRequest })` | What an unclaimed request does |
+| --- | --- |
+| `"error"` (the default) | Rejects with `UnhandledRequestError` |
+| `"warn"` | Prints the same message with `console.warn` — once per request — and goes to the network |
+| `"bypass"` | Goes to the network silently — for a suite that mocks one host and talks to a local server for the rest |
+
+Either way the request is in the log with `handled: false`.
+
+## What it intercepts
+
+**`globalThis.fetch`, and nothing else.** `uf test` runs on Node, Bun and Deno,
+and `fetch` is the one request API all three share; anything lower is
+different on each. So these are *not* intercepted:
+
+- `XMLHttpRequest`, and so any client built on it;
+- `node:http` and `node:https`, and so axios's Node adapter, `node-fetch` and
+  `got`;
+- `WebSocket`, `EventSource` and `navigator.sendBeacon`.
+
+A request through one of those is not answered, not recorded and not reported
+as unhandled — it is invisible to the registry. That is the one place this
+package is silent, and it is why the list is here rather than left to be
+found.
+
+Two more things follow from replacing a global. A module that copied `fetch`
+into a `const` before `listen()` ran holds the platform's function and is not
+intercepted. And only one registry can listen at a time: a second `listen()`
+throws rather than nesting, because the inner `close()` would otherwise put
+back the outer interceptor as if it were the platform's.
+
+**Relative URLs are experimental.** Because the interceptor *is* `fetch`, it
+can resolve `fetch("/api/users")` itself — against `location.origin` when a
+DOM is installed, and `http://localhost` otherwise. `@uniflowed/react-testing`'s
+document reports `http://localhost` as its origin, so under `uf test` both
+routes currently end in the same place. That default is a guess about the host
+and may change; a suite that relies on it should say
+`api.listen({ origin: "https://app.example.test" })`.
+
+**Browser mode.** Every sample on this page runs in Node mode. Under
+`uf test --browser` the test file runs in a page, and that page's runner sends
+its results back to `uf` with `fetch` — to relative `/uf-test/…` URLs a
+listening registry would see and, under the default policy, reject. Keep
+request-mocked files on the Node host until that interaction has been worked
+out.
+
+## With a rendered component
+
+The point of mocking the request is that nothing above it changes. This
+component calls `loadUser` from an effect:
+
+```js
+// @flow
+import { useEffect, useState } from "react";
+
+import { loadUser } from "./users.js";
+
+export component Profile(id: string) {
+  const [name, setName] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    loadUser(id).then(
+      (user) => {
+        if (live) setName(user.name);
+      },
+      () => {
+        if (live) setFailed(true);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [id]);
+
+  if (failed) {
+    return <p role="alert">Could not load this profile.</p>;
+  }
+  return <h2>{name ?? "Loading…"}</h2>;
+}
+```
+
+The test renders it with `@uniflowed/react-testing` and changes only what the
+endpoint says:
+
+```js
+// @flow
+import { HttpResponse, delay, http, mock } from "@uniflowed/mock";
+import { render, screen } from "@uniflowed/react-testing";
+import { afterAll, afterEach, beforeAll, expect, it } from "@uniflowed/test";
+
+import { Profile } from "./Profile.js";
+
+const api = mock(
+  http.get("https://api.example.test/users/:id", ({ params }) =>
+    HttpResponse.json({ id: params.id, name: "Ada Lovelace" }),
+  ),
+);
+
+beforeAll(() => {
+  api.listen();
+});
+afterEach(() => {
+  api.resetHandlers();
+  api.clearRequests();
+});
+afterAll(() => {
+  api.close();
+});
+
+it("shows the user once the request answers", async () => {
+  render(<Profile id="42" />);
+
+  expect(await screen.findByRole("heading", { name: "Ada Lovelace" })).toBeTruthy();
+  expect(api.requests.map((request) => request.pathname)).toEqual(["/users/42"]);
+});
+
+it("shows a loading state while the request is in flight", () => {
+  api.use(
+    http.get("https://api.example.test/users/:id", async () => {
+      await delay("infinite");
+      return HttpResponse.json({});
+    }),
+  );
+
+  render(<Profile id="42" />);
+
+  expect(screen.getByRole("heading", { name: "Loading…" })).toBeTruthy();
+});
+
+it("says so when the network fails", async () => {
+  api.use(http.get("https://api.example.test/users/:id", () => HttpResponse.error()));
+
+  render(<Profile id="42" />);
+
+  expect(await screen.findByRole("alert")).toBeTruthy();
+});
+```
+
+`render` flushes effects before it returns, so the request has already been
+made by the time the next line runs; `findBy…` waits for the answer. The
+registry must therefore be listening *before* the render, which the
+`beforeAll` sees to.
+
+## Stories
+
+A test can already render a component in any state it likes — a `render`
+call with the right props was always possible. What a story adds is that the
+state has a **name outside the file that produced it**. `button--pending` is something a
+CI job can print, a visual baseline can be filed under, a URL can carry and a
+reviewer can ask for. The props and the setup that state needs — its mocks,
+its wrappers, what a person does to reach it — are declared once, as data,
+beside the name, instead of being rebuilt in every test that wants it.
+
+Here is the component the rest of this page describes. It saves a draft with a
+`PUT`:
+
+```js
+// @flow
+import { useState } from "react";
+
+export component SaveButton(draftId: string, label: string, pending: boolean = false) {
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "failed">(
+    pending ? "saving" : "idle",
+  );
+
+  const save = async () => {
+    setState("saving");
+    const response = await fetch(`https://api.example.test/drafts/${draftId}`, {
+      method: "PUT",
+    }).catch(() => null);
+    setState(response?.ok === true ? "saved" : "failed");
+  };
+
+  return (
+    <div>
+      <button type="button" disabled={state === "saving"} onClick={save}>
+        {state === "saving" ? "Saving…" : label}
+      </button>
+      {state === "saved" && <output>Saved</output>}
+      {state === "failed" && <p role="alert">Could not save.</p>}
+    </div>
+  );
+}
+```
+
+And its stories, in a file called `$story.js` beside it:
+
+```js
+// @flow
+import { HttpResponse, http } from "@uniflowed/mock";
+import { defineStories } from "@uniflowed/story";
+
+import { SaveButton } from "./SaveButton.js";
+
+export const buttonStories = defineStories({
+  title: "Button",
+  component: SaveButton,
+  props: { draftId: "d1", label: "Save", pending: false },
+  mocks: [http.put("https://api.example.test/drafts/:id", () => HttpResponse.json({ ok: true }))],
+  stories: {
+    Idle: {},
+    Pending: { props: { pending: true } },
+    Saved: {
+      play: async ({ canvas, user }) => {
+        await user.click(canvas.getByRole("button", { name: "Save" }));
+        const status = await canvas.findByRole("status");
+        if (status.textContent !== "Saved") {
+          throw new Error(`the button reported ${String(status.textContent)}`);
+        }
+      },
+    },
+    Failed: {
+      name: "Server error",
+      mocks: [
+        http.put("https://api.example.test/drafts/:id", () =>
+          HttpResponse.json({ title: "unavailable" }, { status: 503 }),
+        ),
+      ],
+      play: async ({ canvas, user, step }) => {
+        await step("presses save", async () => {
+          await user.click(canvas.getByRole("button", { name: "Save" }));
+        });
+        await step("sees the failure", async () => {
+          await canvas.findByRole("alert");
+        });
+      },
+    },
+  },
+});
+```
+
+That one file is three things: the catalogue entry a person browses, the
+fixture a test mounts, and — for `Saved` and `Server error` — a test in its
+own right. `defineStories` resolves everything when it is called and returns
+inert data, so importing a story file runs nothing, mounts nothing and needs no
+DOM. A set with no stories throws, because an empty story file is one somebody
+meant to finish.
+
+### Props: complete on the set, a delta on the story
+
+The set's `props` must be complete for the component, and each story's `props`
+is a partial override on top. That is the whole inheritance rule, and it makes
+"every story in this set renders" true by construction: a story cannot be
+missing a prop, because the set already supplied it. They are called `props`
+rather than `args` because they are spread onto a React component and that is
+what they are.
+
+The checking happens where the set is declared. Leave `draftId` out of the
+set's `props` and `uf check` says so on that line:
+
+```text
+error[incompatible-type]: Cannot call defineStories with object literal bound to
+config because in property component: property draftId is missing in object
+literal [1] but exists in props of component SaveButton [2].
+```
+
+One consequence is easy to trip over. The props type is inferred from the
+set's `props` object, so **a prop any story overrides must appear in the set's
+props**, even when the component makes it optional. That is why the set above
+spells out `pending: false`: without it, `Pending: { props: { pending: true } }`
+is rejected as an extra property.
+
+### Names and ids
+
+A story's name defaults to the key it was declared under; `name` overrides it.
+Its id is `<title>--<name>`, lower-cased with every run of anything else turned
+into one dash:
+
+| Key | Name | Id |
+| --- | --- | --- |
+| `Idle` | `Idle` | `button--idle` |
+| `Pending` | `Pending` | `button--pending` |
+| `Failed` | `Server error` | `button--server-error` |
+
+A title of `"Forms/Text Field"` groups the set and slugs to
+`forms-text-field`. `storyId(title, name)` is exported so a report, a URL and a
+baseline can all compute the same id rather than each writing its own. Slugging
+loses information — `"A/B"` and `"A B"` are one slug — which is why two
+stories with one id are an error when they are collected, naming both files.
+
+`findStory(set, keyOrName)` looks a story up by key first and name second, and
+throws — listing what the set does hold — rather than handing a test
+`undefined` for a story that was renamed.
+
+### Mocks
+
+A story's `mocks` are offered before the set's, so the `Server error` story's
+`PUT` handler wins over the set's for the same route. When a story is mounted
+its handlers start listening *before* React renders — so a request from the
+first effect is answered — and stop when it is unmounted, which puts
+`globalThis.fetch` back.
+
+A story that declares no handlers gets **no** interception at all, not an empty
+registry that rejects everything: it reaches the network as the application
+would. A story that does declare handlers gets `@uniflowed/mock`'s default, so
+having said what it talks to, a request to anything else fails.
+
+### Play functions
+
+`play` is what turns a picture into a test. It is handed the mounted story and
+drives it the way a person would:
+
+| Field | What it is |
+| --- | --- |
+| `canvas` | Queries scoped to this story's container — not the whole document, so a story cannot pass by finding another story's button |
+| `user` | `@uniflowed/react-testing`'s `userEvent` |
+| `step(name, body)` | Names a stretch of the play, so a failure says where it was |
+| `props` | The props this story was rendered with, at the set's type |
+| `container` | The element the story was mounted into |
+
+A failure inside a play function is rethrown as a `StoryPlayError` carrying
+the story id and the step path in front of the original message, with the
+original error as `cause`:
+
+```text
+button--server-error > sees the failure: findByRole "alert": found nothing
+```
+
+A play function asserts with whatever its file imports. The story file above
+throws an `Error` of its own instead of importing `expect`, which keeps it
+loadable by a tool that has no test runner in it; importing `expect` from
+`@uniflowed/test` works too. A `play` declared on the set runs for every story
+that does not declare its own.
+
+### Decorators
+
+`decorators` wrap a story before it mounts — a theme, a router context, a
+fixed-width frame. Each takes the node and returns a node:
+
+```js fragment
+decorators: [
+  (children) => <main data-theme="light">{children}</main>,
+  (children) => <div style={{ width: 320 }}>{children}</div>,
+],
+```
+
+The set's decorators go outside the story's, and within a list the first is
+outermost, so this reads as it renders: theme outside frame. There are no
+global decorators and no project-wide `preview.js`: a story's setup is
+declared in the story's own file, where it can be read.
+
+## Running stories as tests
+
+`@uniflowed/story/runner` is the one module in the package that imports
+`@uniflowed/test`, which is why it is a separate entry point. Everything else
+works without a test runner in the process.
+
+```js
+// @flow
+import { findStory, mountStory, renderStoryToHtml } from "@uniflowed/story";
+import { describeStories, storyTest } from "@uniflowed/story/runner";
+import { expect, it } from "@uniflowed/test";
+
+import { buttonStories } from "./$story.js";
+
+it("disables the button while a save is pending", () => {
+  const mounted = mountStory(findStory(buttonStories, "Pending"));
+  try {
+    expect(mounted.story.id).toBe("button--pending");
+    expect(mounted.canvas.getByRole("button")).toBeDisabled();
+  } finally {
+    mounted.unmount();
+  }
+});
+
+it("asks for the draft it was given, once", async () => {
+  const mounted = mountStory(findStory(buttonStories, "Saved"));
+  try {
+    await mounted.play();
+    expect(mounted.requests.map((request) => `${request.method} ${request.pathname}`)).toEqual([
+      "PUT /drafts/d1",
+    ]);
+  } finally {
+    mounted.unmount();
+  }
+});
+
+it("renders the idle state as markup", async () => {
+  expect(await renderStoryToHtml(findStory(buttonStories, "Idle"))).toBe(
+    '<div><button type="button">Save</button></div>',
+  );
+});
+
+it("button--server-error", storyTest(findStory(buttonStories, "Server error")));
+
+describeStories(buttonStories);
+```
+
+Four ways in, from the most control to the least:
+
+- **`mountStory(story)`** mounts it into `@uniflowed/react-testing`'s DOM and
+  hands back `canvas`, `container`, `requests` (this story's live request log,
+  empty when it has no mocks), `play()`, `html()` and `unmount()`. It is
+  synchronous, as `render` is. Mounting a second story takes the first one
+  down, mocks included, so a test that forgets `unmount` does not break the
+  next one.
+- **`renderStoryToHtml(story, { play })`** is the same mount, serialised and
+  taken down: the markup a static page or a review artefact needs.
+  `play: true` runs the play function first. Text snapshots work on the string
+  it returns.
+- **`storyTest(story)`** returns a test body: mount, play, unmount in a
+  `finally`. It is the recommended way to get one test per story, because the
+  test's name is a literal you wrote, so `uf test --list` shows it and `-t`
+  selects it.
+- **`describeStories(set)`** registers a `describe` named after the set's title
+  with one `it` per story — here `Button > Idle`, `Button > Pending`,
+  `Button > Saved` and `Button > Server error`. It is **experimental**.
+
+A story with no play function is still a test when it runs this way: it fails
+if the component throws while mounting. A request its mocks do not cover
+rejects the component's `fetch`; what that does to the test depends on the
+component — `SaveButton` catches it and shows its failed state, which is
+something a play function can assert on.
+
+**Why `describeStories` is experimental.** `uf test` decides which files to
+run by reading the source for `it(` and `test(` with a string-literal name,
+before any module is imported. The cases `describeStories` registers are named
+from the set at run time, so a file whose only content is a `describeStories`
+call is not run at all — `uf test` reports zero files and exits 0. Wrapping it
+in a literal `describe` does not help, since discovery counts only `it` and
+`test`. Once one literal `it` is in the file, as above, the file is run and
+every case `describeStories` registered is run and reported with it: the file
+above reports 8 passed. This is a property of `uf test`'s discovery, not of the
+package, and it is the reason `storyTest` exists.
+
+## Finding every story
+
+A story file is called `$story.js` and sits beside the component it describes.
+**The name is experimental.** It follows uf's reserved-file grammar,
+`$<role>[.<variant>].js`, and uses the router's variants: `$story.native.js`
+is recognised and skipped, because there is no React Native story renderer.
+`uf lint` accepts `$story.js` today, but the package's own readiness notes
+still list the name as experimental, and so does this page.
+
+```js
+// @flow
+import { fileURLToPath } from "node:url";
+
+import { collectStories } from "@uniflowed/story";
+import { expect, it } from "@uniflowed/test";
+
+it("finds every story under this directory", async () => {
+  const index = await collectStories(fileURLToPath(new URL(".", import.meta.url).href));
+
+  expect(index.stories.map((story) => story.id)).toEqual([
+    "button--idle",
+    "button--pending",
+    "button--saved",
+    "button--server-error",
+  ]);
+  expect(index.get("button--pending")?.props).toEqual({
+    draftId: "d1",
+    label: "Save",
+    pending: true,
+  });
+});
+```
+
+`collectStories(root)` is `findStoryFiles` followed by `indexStories`:
+
+- **`findStoryFiles(root, { ignore, maxDepth })`** walks the tree by name alone
+  — no file is read — in a sorted, stable order. It skips `node_modules`,
+  `.git`, `.uf`, `dist`, `build`, `target` and `coverage`, does not follow
+  symbolic links, and stops 32 directories down unless told otherwise.
+- **`loadStoryFile(file)`** imports one file and returns *every* story set it
+  exports, not a default export: a file may hold two components' stories. A
+  `$story.js` that exports none is an error, because the name is a claim.
+- **`indexStories(files)`** builds the index — `files`, `sets`, `stories` and
+  `get(id)` — and refuses two stories with one id, naming both files.
+
+The walk uses `node:fs`, so it is a Node-mode tool. It is in JavaScript because
+there is no `uf story` command yet to own it natively; the loader and the index
+are separate from the walk so that replacing it will not touch them.
+
+## Visual baselines
+
+A story's id is already a file-safe name, so it is the natural key for a
+screenshot. `@uniflowed/story` does not talk to the screenshot machinery
+itself; putting the two together is a few lines with
+[`createBrowser`](/guide/testing#trusted-input-and-visual-comparisons):
+
+```js
+// @flow
+import { renderStoryToHtml } from "@uniflowed/story";
+import { expect, it } from "@uniflowed/test";
+import { createBrowser } from "@uniflowed/test/browser";
+
+import { buttonStories } from "./$story.js";
+
+it(
+  "matches the baseline of every Button story",
+  async () => {
+    const page = await createBrowser();
+    try {
+      await page.viewport({ width: 320, height: 120 });
+      for (const story of buttonStories.stories) {
+        await page.setContent(await renderStoryToHtml(story, { play: true }));
+        const result = await page.screenshot(story.id);
+        expect(result.differentPixels).toBe(0);
+      }
+    } finally {
+      await page.close();
+    }
+  },
+  { timeout: 60000 },
+);
+```
+
+Each story is rendered and played in the Node worker's DOM, with its own mocks,
+and its markup is handed to a Chromium page with `setContent`; the screenshot
+is compared with `<vrt.baselines>/<story id>.png`. Everything else — missing
+baselines failing, `uf test -u` recording them, `vrt.threshold`, the
+`.actual.png` and `.diff.png` written on a mismatch, and needing `UF_BROWSER`
+in a Node worker — is as [Testing](/guide/testing#trusted-input-and-visual-comparisons)
+describes.
+
+Know what this picture is: the story's **markup**, in a page with no
+stylesheet and no JavaScript. A decorator can put the styles a component
+needs into the markup; a picture of the running application needs a page that
+serves the story, which nothing here provides yet. The workspace-only
+`@uniflowed/vrt` package plans snapshots the same way — one per story id and
+viewport, and a callback that turns each into a ready page — and infers no
+story renderer either.
+
+## What it does not do yet
+
+From `@uniflowed/mock`'s readiness notes:
+
+- **Transports other than `globalThis.fetch`**, listed under
+  [What it intercepts](#what-it-intercepts). Requests through them are invisible
+  rather than failing, the one gap in the package's own rule about silence.
+- **Relative URLs** and the wording of the `TypeError` behind
+  `HttpResponse.error()` are experimental; the second is the host's own message
+  and differs between hosts.
+- No GraphQL handlers, no browser service worker (`setupWorker`), no lifecycle
+  events (`requests` is what there is), no cookie store, and no
+  `HttpResponse.formData`, `.arrayBuffer` or `.xml` — the `HttpResponse`
+  constructor takes any body and covers them.
+- No automatic hook wiring.
+
+From `@uniflowed/story`'s:
+
+- **Experimental:** the `$story.js` name and `describeStories`, for the reasons
+  above.
+- No `uf story` command, development server, browser canvas or static story
+  site. The package produces the index and the markup those would need, and
+  nothing renders them for a person yet beyond a string.
+- No Storybook CSF compatibility, no `argTypes`, controls or knobs, no MDX or
+  autodocs, no addons, no global decorators or `preview.js`, and no
+  composition of remote catalogues.
+- No story-level snapshot testing; text snapshots work on
+  `renderStoryToHtml`'s string.
+- Only the default variant is rendered, on the client. Nothing renders a
+  story through Server Components or server rendering.
+- Nothing in the package drives a browser or files a baseline itself; the
+  section above is the wiring you write.
+
+## Coming from MSW or Storybook
+
+| MSW | Here | Why |
+| --- | --- | --- |
+| `setupServer(...handlers)` | `mock(...handlers)` | Nothing is set up and there is no server; `http` and `HttpResponse` keep MSW's names because they describe |
+| `onUnhandledRequest: "warn"` by default | `"error"` by default | A warning in interleaved parallel output is a line nobody reads |
+| `server.events` | `api.requests` | A log with the body already captured is what an assertion wants |
+| `@mswjs/interceptors` patches XHR, `node:http`, WebSocket | `globalThis.fetch` only | The one request API Node, Bun and Deno share |
+| `graphql.query`, `setupWorker` | Not provided | Not implemented yet |
+| `params[0]` for a wildcard | `params["*"]`, and `params["0"]` too | So ported handlers read unchanged |
+
+| Storybook | Here | Why |
+| --- | --- | --- |
+| `*.stories.js`, CSF default export | `$story.js`, every exported `defineStories` set | uf's reserved-file grammar, and a file may hold two components' stories |
+| Partial `args` at both levels | Complete `props` on the set, partial per story | A missing prop is a type error at the declaration, not a render-time surprise |
+| `args` | `props` | They are spread onto a React component |
+| `preview.js`, global decorators | Per-set and per-story `decorators` | A story's setup is in the story's own file |
+| Controls, `argTypes`, a browser canvas | Not provided | There is no canvas yet for a control panel to drive |
+
+Every snippet on this page was checked before it was published. The `js`
+fences are the files of a scratch project, verbatim: `uf test` ran the mock
+tests, the component test and the story tests on Node — 21 passed — and
+`uf check` type-checked all eleven files with no errors. The fence marked
+`fragment` is part of a `defineStories` call and was run inside one. The type
+error under *Props* is what `uf check` printed, and the message under *Play
+functions* is what `uf test` printed. The visual-baseline test needs a
+Chromium, which could not be started where these were checked, so it was
+type-checked and not run; and nothing on this page was run under
+`uf test --browser`. `packages/mock/mock.test.js` and
+`packages/story/story.test.js` are where the behaviour above is pinned —
+`uf test packages/mock packages/story`.
+
+## Where to go next
+
+[Dependencies](/guide/dependencies) is next: `uf install` and the rest, and the
+lockfile CI holds a project to.
