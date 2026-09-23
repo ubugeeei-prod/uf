@@ -212,9 +212,14 @@
       through Kitty keyboard reports when the terminal supports them, and
       legacy terminals continue to send key presses. `useClipboard()` can now
       write selected text through OSC 52 on interactive terminals and refuses
-      explicitly when there is no terminal transport. The repeated-press
-      gestures that widen a selection to a word or a line, item selection, and
-      rich content remain ubugeeei-prod/uf#314.
+      explicitly when there is no terminal transport. `Select`, `TabSelect`
+      and `Textarea` are in with OpenTUI's keys and events, drawn after layout
+      because what they show depends on their size, and layout now wraps
+      (`flexWrap`, `alignContent`) and positions (`position: "absolute"`,
+      offsets, `zIndex`) as well as taking `auto` margins. The repeated-press
+      gestures that widen a selection to a word or a line, `Slider`,
+      `ScrollBar`, the rich-content and media components, `aspectRatio`, and
+      notifications, audio and `Timeline` remain ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
