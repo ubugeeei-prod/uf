@@ -173,8 +173,8 @@ export class ZipWriter {
   }
 
   bytes(): Uint8Array {
-    const local = [];
-    const central = [];
+    const local: Array<Uint8Array> = [];
+    const central: Array<Uint8Array> = [];
     let offset = 0;
     for (const record of this._records) {
       const name = ENCODER.encode(record.entry.path);
@@ -204,7 +204,7 @@ async function transformBytes(
 
 async function readStream(stream: ReadableStreamLike): Promise<Uint8Array> {
   const reader = stream.getReader();
-  const chunks = [];
+  const chunks: Array<Uint8Array> = [];
   for (;;) {
     const next = await reader.read();
     if (next.done === true) {
@@ -220,7 +220,7 @@ async function readStream(stream: ReadableStreamLike): Promise<Uint8Array> {
 
 function readCentralDirectory(bytes: Uint8Array, data: DataView): Array<ZipRecord> {
   const end = findEnd(bytes, data);
-  const records = [];
+  const records: Array<ZipRecord> = [];
   let offset = end.centralOffset;
   for (let index = 0; index < end.entries; index += 1) {
     need(bytes, offset, 46, "central directory header");

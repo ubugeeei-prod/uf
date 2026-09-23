@@ -10,7 +10,7 @@
 // HTTP adapters can build on the parsed block rather than re-learning line
 // folding and repeated header values.
 
-export type HeaderMap = { +[string]: $ReadOnlyArray<string> };
+export type HeaderMap = { readonly [string]: $ReadOnlyArray<string> };
 
 export type HeaderBlock = {
   readonly headers: HeaderMap,
@@ -215,7 +215,7 @@ function freezeHeaders(headers: MutableHeaderMap): HeaderMap {
   return frozen;
 }
 
-function without(headers: HeaderMap, key: string): HeaderMap {
+function without(headers: HeaderMap, key: string): HeaderMapBuilder {
   const next = emptyHeaderMap();
   for (const existing of Object.keys(headers)) {
     if (canonicalHeaderKey(existing) !== key) {
@@ -225,16 +225,25 @@ function without(headers: HeaderMap, key: string): HeaderMap {
   return next;
 }
 
+/**
+ * An empty map with no prototype, so a header named `__proto__` is a key and
+ * not a prototype. `Object.setPrototypeOf` rather than `Object.create(null)`,
+ * because Flow types the second as an object with no room for an indexer and
+ * keeps the first's annotation.
+ */
 function emptyMutableHeaders(): MutableHeaderMap {
-  return (Object.create(null): MutableHeaderMap);
+  const map: MutableHeaderMap = {};
+  return Object.setPrototypeOf(map, null);
 }
 
+/** As `emptyMutableHeaders`, for a map being built for return. */
 function emptyHeaderMap(): HeaderMapBuilder {
-  return (Object.create(null): HeaderMapBuilder);
+  const map: HeaderMapBuilder = {};
+  return Object.setPrototypeOf(map, null);
 }
 
 function hasHeader(headers: HeaderMap | MutableHeaderMap, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(headers, key);
+  return Object.hasOwn(headers, key);
 }
 
 function trimHeaderValue(value: string): string {
