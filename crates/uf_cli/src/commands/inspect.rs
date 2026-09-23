@@ -128,7 +128,6 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf inspect", Some(project_label(&resolved.root)));
-        renderer.blank(out);
 
         renderer.heading(out, 2, "project");
         renderer.key_values(

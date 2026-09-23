@@ -99,7 +99,6 @@ pub(crate) fn approve_builds(
         let attested = attestations(&resolved.config, &waiting);
         ui.render(|renderer, out| {
             renderer.banner(out, "uf pm approve-builds", Some(&project));
-            renderer.blank(out);
             render(
                 renderer,
                 out,
@@ -160,7 +159,6 @@ pub(crate) fn approve_builds(
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf pm approve-builds", Some(&project));
-        renderer.blank(out);
         if nothing {
             renderer.status(out, Status::Success, "already approved; nothing to write");
             return;

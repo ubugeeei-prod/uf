@@ -64,6 +64,7 @@ mod image;
 mod progress;
 pub mod prompt;
 mod render;
+mod spacing;
 mod style;
 mod table;
 mod text;
@@ -80,6 +81,7 @@ pub use crate::glyph::{ASCII_GLYPHS, Glyphs, Status, UNICODE_GLYPHS};
 pub use crate::image::{ImageEnv, ImageProtocol, Placement, inline_image};
 pub use crate::progress::{DEFAULT_TICK, LIVE_WIDTH, Live, Progress};
 pub use crate::render::{KeyValue, Renderer, StatusRow};
+pub use crate::spacing::{RuleSpacing, blank_after_rule, is_rule_line};
 pub use crate::style::{Attributes, Color, Style};
 pub use crate::table::{Cell, Column, Table};
 pub use crate::text::{

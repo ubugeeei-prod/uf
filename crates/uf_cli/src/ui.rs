@@ -8,11 +8,15 @@
 //! * **Streams have jobs.** Human output goes to stdout; errors and progress go
 //!   to stderr, so redirecting stdout never loses an error and never captures a
 //!   spinner.
+//! * **A rule is never followed by a blank line.** Every rendered block passes
+//!   through a [`RuleSpacing`] per stream, so a banner's rule sits directly on
+//!   top of the report under it, whatever the command's own code writes next.
 
 use std::io::{self, Write};
 
 use uf_term::{
-    Capabilities, ColorChoice, Live, Progress, Renderer, TerminalEnv, display_width, push_spaces,
+    Capabilities, ColorChoice, Live, Progress, Renderer, RuleSpacing, TerminalEnv, display_width,
+    push_spaces,
 };
 
 /// Whether a command is rendering for a person or emitting machine JSON.
@@ -30,6 +34,12 @@ pub(crate) struct Ui {
     stderr: Renderer,
     mode: OutputMode,
     buffer: String,
+    /// What reaches a stream after [`RuleSpacing`] has been applied.
+    spaced: String,
+    /// The rule-spacing state of stdout.
+    stdout_spacing: RuleSpacing,
+    /// The rule-spacing state of stderr.
+    stderr_spacing: RuleSpacing,
     /// Where stdout goes, when it is not going to stdout.
     ///
     /// `None` for every command a person runs. `Some` for a caller that has to
@@ -52,6 +62,9 @@ impl Ui {
             stderr: Renderer::new(Capabilities::for_stderr(choice, &env)),
             mode,
             buffer: String::with_capacity(8 * 1024),
+            spaced: String::with_capacity(8 * 1024),
+            stdout_spacing: RuleSpacing::new(),
+            stderr_spacing: RuleSpacing::new(),
             captured: None,
         }
     }
@@ -69,6 +82,9 @@ impl Ui {
             stderr: Renderer::new(Capabilities::plain()),
             mode,
             buffer: String::with_capacity(8 * 1024),
+            spaced: String::with_capacity(8 * 1024),
+            stdout_spacing: RuleSpacing::new(),
+            stderr_spacing: RuleSpacing::new(),
             captured: Some(String::new()),
         }
     }
@@ -104,11 +120,13 @@ impl Ui {
         }
         self.buffer.clear();
         body(&self.stdout, &mut self.buffer);
+        self.spaced.clear();
+        self.stdout_spacing.apply(&self.buffer, &mut self.spaced);
         // Lent out and put back, so the reusable allocation survives a write
         // that needs `&mut self` while the text it writes lives in `self`.
-        let rendered = std::mem::take(&mut self.buffer);
+        let rendered = std::mem::take(&mut self.spaced);
         self.write_out(&rendered);
-        self.buffer = rendered;
+        self.spaced = rendered;
     }
 
     /// Render a block to stderr. Always rendered, including in JSON mode,
@@ -116,7 +134,9 @@ impl Ui {
     pub(crate) fn render_err(&mut self, body: impl FnOnce(&Renderer, &mut String)) {
         self.buffer.clear();
         body(&self.stderr, &mut self.buffer);
-        write_all(&mut io::stderr().lock(), &self.buffer);
+        self.spaced.clear();
+        self.stderr_spacing.apply(&self.buffer, &mut self.spaced);
+        write_all(&mut io::stderr().lock(), &self.spaced);
     }
 
     /// Write text to stdout exactly as given, with no styling and no framing.
@@ -129,6 +149,7 @@ impl Ui {
     /// the silence [`Ui::render`] would give it, since both commands are in
     /// JSON mode precisely because they own stdout.
     pub(crate) fn plain(&mut self, text: &str) {
+        self.stdout_spacing.interrupt();
         self.write_out(text);
     }
 
@@ -141,6 +162,7 @@ impl Ui {
     /// stream the manager chose. A warning npm wrote to stderr belongs on
     /// stderr.
     pub(crate) fn plain_err(&mut self, text: &str) {
+        self.stderr_spacing.interrupt();
         write_all(&mut io::stderr().lock(), text);
     }
 
@@ -148,6 +170,7 @@ impl Ui {
     pub(crate) fn json(&mut self, value: &serde_json::Value) -> serde_json::Result<()> {
         let mut rendered = serde_json::to_string_pretty(value)?;
         rendered.push('\n');
+        self.stdout_spacing.interrupt();
         self.write_out(&rendered);
         Ok(())
     }
@@ -273,6 +296,28 @@ mod tests {
     fn an_ordinary_ui_captures_nothing() {
         let mut ui = Ui::new(ColorChoice::Never, OutputMode::Json);
         assert_eq!(ui.take_captured(), "");
+    }
+
+    /// Asked for by the user: across the CLI, no blank line under a rule.
+    /// The banner and the report are two renders here, as they are in most
+    /// commands, and the second one starts with the blank line every command
+    /// used to write.
+    #[test]
+    fn a_rule_is_never_followed_by_a_blank_line() {
+        let mut ui = Ui::capturing(OutputMode::Human);
+        ui.render(|renderer, out| {
+            renderer.banner(out, "uf lint", Some("app"));
+            renderer.blank(out);
+        });
+        ui.render(|renderer, out| {
+            renderer.blank(out);
+            out.push_str("src/a.js\n\n");
+            renderer.status(out, uf_term::Status::Success, "clean");
+        });
+
+        let written = ui.take_captured();
+        assert_eq!(uf_term::blank_after_rule(&written), None, "{written}");
+        assert_eq!(written, "uf lint  app\n------------\nsrc/a.js\n\n+ clean\n");
     }
 
     #[test]

@@ -947,7 +947,6 @@ pub(crate) fn install_hooks(cwd: &camino::Utf8Path, ui: &mut Ui) -> Result<()> {
     );
     ui.render(|renderer, out| {
         renderer.banner(out, "uf prepare", Some(project_label(&resolved.root)));
-        renderer.blank(out);
         renderer.status(out, Status::Success, &file);
         renderer.status(out, Status::Success, &setting);
         renderer.status(out, Status::Info, &next);
@@ -1042,7 +1041,6 @@ fn render(
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf prepare", Some(project_label(&resolved.root)));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,

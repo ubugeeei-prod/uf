@@ -87,7 +87,6 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
     if removed.is_empty() {
         ui.render(|renderer, out| {
             renderer.banner(out, "uf clean", Some(&project));
-            renderer.blank(out);
             renderer.status(out, Status::Success, "nothing to remove");
         });
         return Ok(());
@@ -128,7 +127,6 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
     let dry = dry_run;
     ui.render(|renderer, out| {
         renderer.banner(out, "uf clean", Some(&project));
-        renderer.blank(out);
         let mut table = Table::new(vec![
             Column::left("directory"),
             Column::right("files"),

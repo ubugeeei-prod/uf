@@ -442,7 +442,6 @@ fn render(ui: &mut Ui, root: &Utf8Path, findings: &[Finding], places: &Places, v
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf env doctor", Some(project_label(root)));
-        renderer.blank(out);
         let rows: Vec<StatusRow<'_>> = findings
             .iter()
             .zip(&details)

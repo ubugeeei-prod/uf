@@ -255,7 +255,6 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool, prod: bool) -> 
         brand::render_product_card(renderer, out, "uf install");
         renderer.blank(out);
         renderer.banner(out, heading, Some(&project));
-        renderer.blank(out);
         if let Some(line) = &unrun {
             renderer.status(out, Status::Info, line);
             renderer.blank(out);

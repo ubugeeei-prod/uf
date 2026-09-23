@@ -267,7 +267,6 @@ fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan) {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf ui add", Some(&label));
-        renderer.blank(out);
         let mut table = Table::new(vec![
             Column::left("file"),
             Column::left("component"),
@@ -354,7 +353,6 @@ fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf ui list", Some(&label));
-        renderer.blank(out);
         let mut table = Table::new(vec![
             Column::left("component"),
             Column::left("in this project"),
@@ -490,7 +488,6 @@ fn diff(cwd: &Utf8Path, ui: &mut Ui, names: &[String], as_json: bool) -> Result<
     let directory = place.relative(&place.directory);
     ui.render(|renderer, out| {
         renderer.banner(out, "uf ui diff", Some(&label));
-        renderer.blank(out);
         if compared.is_empty() {
             renderer.status(
                 out,
@@ -917,7 +914,6 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
 
     ui.render(|renderer, out| {
         renderer.banner(out, title, Some(&label));
-        renderer.blank(out);
         if rows.is_empty() {
             renderer.status(
                 out,

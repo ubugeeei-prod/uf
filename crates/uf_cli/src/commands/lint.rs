@@ -446,7 +446,6 @@ fn render_lint_report(
 
     ui.render(|renderer, out| {
         renderer.banner(out, command.title(), Some(project));
-        renderer.blank(out);
     });
 
     // Each file's findings under its own header, and nothing after them that

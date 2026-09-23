@@ -343,7 +343,6 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
     }
     ui.render(|renderer, out| {
         renderer.banner(out, "uf use", Some(&runtime_label));
-        renderer.blank(out);
         renderer.key_values(out, 2, &rows);
         renderer.blank(out);
         renderer.heading(out, 2, "steps");
@@ -412,7 +411,6 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
         let binary = store.binary(&version).to_string();
         ui.render(|renderer, out| {
             renderer.banner(out, "uf self-update", Some(&runtime_label));
-            renderer.blank(out);
             renderer.key_values(
                 out,
                 2,
@@ -462,7 +460,6 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
     }
     ui.render(|renderer, out| {
         renderer.banner(out, "uf self-update", Some(&runtime_label));
-        renderer.blank(out);
         renderer.key_values(out, 2, &rows);
         renderer.blank(out);
         renderer.status(out, Status::Success, &format!("now using {runtime_label}"));
@@ -515,7 +512,6 @@ fn check(ui: &mut Ui, store: &Store) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf self-update --check", None);
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,
@@ -583,7 +579,6 @@ fn roll_back(ui: &mut Ui, store: &Store) -> Result<()> {
     }
     ui.render(|renderer, out| {
         renderer.banner(out, "uf self-update --rollback", Some(&runtime_label));
-        renderer.blank(out);
         renderer.key_values(out, 2, &rows);
         renderer.blank(out);
         renderer.status(

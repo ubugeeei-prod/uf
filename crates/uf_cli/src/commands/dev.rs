@@ -223,7 +223,6 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let env_files = env_file_list(&root, &env);
     ui.render(|renderer, out| {
         renderer.banner(out, "uf dev", Some(&project));
-        renderer.blank(out);
         let mut rows = vec![
             KeyValue::new("engine", "vite"),
             KeyValue::toned("host", host_name, Tone::Muted),

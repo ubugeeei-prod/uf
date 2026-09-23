@@ -314,7 +314,6 @@ fn render(cwd: &Utf8Path, ui: &mut Ui, created: &Created<'_>) -> Result<()> {
         brand::render_mark(renderer, out, created.spelling);
         renderer.blank(out);
         renderer.banner(out, created.spelling, Some(&created.label));
-        renderer.blank(out);
         renderer.tree(out, 2, &Tree::from_paths(&root, paths.iter().copied()));
         renderer.blank(out);
         renderer.heading(out, 2, "next steps");

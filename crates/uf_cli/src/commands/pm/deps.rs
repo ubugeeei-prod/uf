@@ -313,7 +313,6 @@ fn dedupe_check(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let project = project_label(&root).to_string();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf dedupe --check", Some(&project));
-        renderer.blank(out);
     });
 
     let run =
@@ -595,7 +594,6 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
     let project = project_label(&root).to_string();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf unlink", Some(&project));
-        renderer.blank(out);
     });
     let mut report = UnlinkReport {
         manager: manager.to_string(),
@@ -1318,7 +1316,6 @@ pub(crate) fn query(
     let title = title.to_owned();
     ui.render(|renderer, out| {
         renderer.banner(out, &title, Some(&project));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,
@@ -1419,7 +1416,6 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     let command = invocation.to_string();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf why", Some(&project));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,
@@ -1537,6 +1533,8 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         if !announced {
             renderer.banner(out, request.heading, Some(&project));
         }
+        // Dropped under the banner by the rule spacing; without one, it
+        // separates what the manager prints from what came before.
         renderer.blank(out);
     });
 

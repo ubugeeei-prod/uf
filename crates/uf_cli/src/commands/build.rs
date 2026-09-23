@@ -950,7 +950,6 @@ pub(crate) fn build(
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf build", Some(&project));
-        renderer.blank(out);
         renderer.timings(out, 2, &phases, Some(total));
         renderer.blank(out);
         let mut summary_rows = vec![
