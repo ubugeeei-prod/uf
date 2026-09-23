@@ -37,7 +37,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import { entryFor, nextAfter, pages, sections } from "../../docs/app/_design/nav.js";
+import { entryFor, nextAfter, pages, sections, sourceFor } from "../../docs/app/_design/nav.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = path.join(REPO, "docs/app");
@@ -180,5 +180,16 @@ describe("the manual's navigation", () => {
     expect(sections.map((section) => section.title).length).toBe(
       new Set(sections.map((section) => section.title)).size,
     );
+  });
+
+  it("names the file each page is written in, for its edit link", () => {
+    // `sourceFor` builds the path from the route alone, so it is only right
+    // while every listed page is `$page.mdx`. A page written as `$page.js`
+    // would get an edit link to a file that does not exist.
+    const wrong = pages
+      .filter((page) => sourceFor(page.href) !== path.relative(REPO, pageFile(page.href) ?? ""))
+      .map((page) => page.href);
+    expect(wrong).toEqual([]);
+    expect(sourceFor("/")).toBe(null);
   });
 });

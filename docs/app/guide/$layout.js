@@ -9,12 +9,14 @@
 import * as React from "@uniflowed/react";
 import { useRoute } from "@uniflowed/router";
 
-import { ManualNav, NextPage } from "../_design/parts.js";
-import { nextAfter } from "../_design/nav.js";
+import { Outline } from "../_design/outline.js";
+import { ManualNav, NextPage, PageSource } from "../_design/parts.js";
+import { nextAfter, sourceFor } from "../_design/nav.js";
 
 export component Layout(children: React.Node) {
   const { pathname } = useRoute();
   const next = nextAfter(pathname);
+  const source = sourceFor(pathname);
 
   return (
     <div className="manual">
@@ -29,8 +31,15 @@ export component Layout(children: React.Node) {
       <main className="prose seam" id="content">
         {children}
         {next != null ? <NextPage href={next.href} title={next.title} /> : null}
+        {source != null ? <PageSource file={source} /> : null}
       </main>
       <ManualNav />
+      {/*
+        Third in the document, so a phone reaches the article and then the
+        manual's contents before this page's; on a wide screen it is the right
+        rail, and below that it is not shown at all.
+      */}
+      <Outline path={pathname} />
     </div>
   );
 }

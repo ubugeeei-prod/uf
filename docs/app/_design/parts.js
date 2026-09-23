@@ -160,3 +160,22 @@ export component NextPage(href: string, title: string) {
     </p>
   );
 }
+
+/** Where the repository is browsed, for a link to the file a page is written in. */
+const SOURCE_BASE = "https://github.com/ubugeeei-prod/uf/blob/main/";
+
+/**
+ * The foot of a manual page: the file it is written in, as a link to edit it.
+ *
+ * A reader who found something wrong is one click from the file, and the path
+ * is printed as well as linked — a contributor with the repository open wants
+ * the path, not a web page.
+ */
+export component PageSource(file: string) {
+  return (
+    <p className="page-source">
+      <a href={`${SOURCE_BASE}${file}`}>Edit this page</a>
+      <code>{file}</code>
+    </p>
+  );
+}
