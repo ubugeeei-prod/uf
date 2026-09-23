@@ -331,6 +331,7 @@ went wrong:
 | `404` | No row has that id — malformed, well-formed but unknown, or not callable |
 | `405` | Not a `POST`. Carries `Allow: POST` |
 | `413` | The body is larger than an action accepts |
+| `409` | The call names a different build from the one answering, as a tab left open across a deploy does. It is refused in front of the endpoint, with a plain-text body of its own. Nothing runs, and the reference loads the page again rather than throwing ([Deploy](/guide/deploy#a-tab-opened-before-the-deploy)) |
 | `415` | The content type is not exactly `application/json` |
 | `500` | The action threw, or its result cannot cross |
 
