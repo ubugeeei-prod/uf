@@ -1033,7 +1033,7 @@ export default defineConfig({
   tasks: {
     // A string is a command and nothing else.
     lint: "uf lint",
-    // The long form takes five more fields, all optional.
+    // The long form takes seven more fields, all optional.
     check: {
       command: "uf check",
       cwd: "packages/core",
@@ -1043,6 +1043,13 @@ export default defineConfig({
       outputs: ["packages/core/dist/**"],
     },
     ci: { command: "echo ok", dependsOn: ["check", "test"] },
+    deploy: {
+      command: "node scripts/deploy.js",
+      args: [
+        { name: "target", choices: ["staging", "production"] },
+        { name: "region", description: "Where it runs", default: "eu" },
+      ],
+    },
   },
   plugins: [svgr()],
 });
@@ -1075,6 +1082,19 @@ task that has not said is a task uf will not guess about. `cache: false` opts
 a task that does declare them back out; `cache: true` is that default said out
 loud, and is an error on a task with no `inputs` rather than a request uf
 quietly ignores.
+
+`args` declares the arguments `uf run` fills, in the order they are appended to
+`command`. Each is `{ name, description?, choices?, default?, required? }`:
+`name` is letters, digits, `-` and `_`, and is also `--name` on the command
+line; a value outside `choices` is refused; `default` is used when the argument
+is not given; `required` defaults to `true` unless there is a `default`, and an
+argument that may be left out with no default must come after all the others.
+`uf run deploy staging` and `uf run deploy --target staging` both run
+`node scripts/deploy.js staging eu`. A required argument that is missing is
+picked from `choices` — or typed — at a terminal, and is an error that names it
+everywhere else; see [the task guide](/guide/tasks#declare-arguments). `args`
+is read by `uf run` only: a `build.hooks` entry that declares it runs its
+command as written.
 
 `outputs` is checked rather than restored: a cached result is replayed only
 while the files it produced are still on disk with the contents it produced,

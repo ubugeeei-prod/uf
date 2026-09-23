@@ -476,6 +476,30 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             ),
         },
     ];
+    // Only when a task declares any, so a project without them is explained
+    // exactly as it was.
+    let declaring: Vec<&str> = resolved
+        .config
+        .tasks
+        .iter()
+        .filter(|(_, task)| !task.args().is_empty())
+        .map(|(name, _)| name.as_str())
+        .collect();
+    if !declaring.is_empty() {
+        stages.insert(
+            2,
+            Stage {
+                name: "arguments",
+                provider: "uf".to_string(),
+                detail: format!(
+                    "declared by {} — given in order or as `--name value` and checked against \
+                     `choices`; one that is required and missing is picked from a list at a \
+                     terminal, and is an error anywhere else",
+                    declaring.join(", ")
+                ),
+            },
+        );
+    }
     // The cross-package graph, when there is one: a run that spans a workspace
     // is orchestration like any other, and the order its members run in is
     // the part a reader cannot see from any one `uf.config.js`.

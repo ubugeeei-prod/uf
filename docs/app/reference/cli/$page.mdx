@@ -889,7 +889,26 @@ Runs a task from `uf.config.js`, and everything its `dependsOn` reaches,
 forwarding everything after the script name. The task has the project's `.env`
 values in it, as every command uf runs does; `--mode MODE`, before the script
 name, chooses which files those came from. An option `uf run` also has is
-reached past `--`.
+reached past `--`; any other option after the script name is the task's.
+
+With no script, `uf run` offers the project's tasks as a list to pick from —
+type to filter, arrows to move, Enter to run — when stdin and stderr are a
+terminal and `CI` is unset. Everywhere else, and with `--list`, it prints them
+as a table, each with the arguments it declares.
+
+**Declared arguments.** A task whose [`args`](/reference/config#tasks-and-plugins)
+declare its arguments takes them after the script name in that order, or as
+`--name value` / `--name=value` in any order; the values are appended to the
+command in declaration order, one word each, followed by anything the
+declaration does not name. A value outside an argument's `choices` is refused
+by name before anything runs, and an argument that is not given takes its
+`default`. One that is required and still missing is asked for at a terminal —
+a filterable list for an argument with `choices`, a line to type into for one
+without — after which uf prints the command it resolved to and the `uf run`
+line that runs it without asking. Anywhere a picker is not offered, it is an
+error naming every missing argument and its choices, exit status 1. `uf prepare`
+appends its staged files without filling declared arguments, so each takes its
+default.
 
 **uf starts the command itself when it can.** A command that is a program and
 its arguments — with the quoting, escaping and word splitting a POSIX shell

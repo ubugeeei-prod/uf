@@ -428,8 +428,14 @@ impl Run<'_> {
                 .collect();
             for task in &staged_run.tasks {
                 ran += 1;
-                if let Err(error) = run_task(&root, ui, None, task, &arguments, RunArgs::default())
-                {
+                // The staged files are appended as they are and fill none of
+                // the task's declared arguments, which take their defaults: a
+                // commit hook is no place to be asked for one.
+                let options = RunArgs {
+                    undeclared: true,
+                    ..RunArgs::default()
+                };
+                if let Err(error) = run_task(&root, ui, None, task, &arguments, options) {
                     let said = error.to_string();
                     failures.push(format!(
                         "{task}, for {}: {}",
