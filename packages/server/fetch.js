@@ -90,7 +90,7 @@ import type {
   CacheOutcome,
   CacheResult,
 } from "./internal/cache-store.js";
-import { END_OF_TIME, newScope, runInScope } from "./internal/cache-store.js";
+import { END_OF_TIME, currentScope, newScope, runInScope } from "./internal/cache-store.js";
 import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
@@ -504,6 +504,23 @@ export function createFetchHandler(
  * A render that states no lifetime is refused by the store itself, which is
  * where "no lifetime, no entry" belongs: it is a property of the cache, not of
  * documents.
+ *
+ * # The request that fills streams
+ *
+ * The store needs the whole document before it can decide and keep it, and
+ * until ubugeeei-prod/uf#1493 this request waited for that too: with
+ * `route` on — which `isr` needs — every page rendered per request arrived in
+ * one piece, a `$loading.js` fallback together with the page it stood in
+ * for, whether or not the page was ever going to be kept. So the render is
+ * teed. The request that owns the fill answers with one branch as it is
+ * produced; the other is drained into the entry the store decides about when
+ * the document ends, exactly as before. A request that joins an in-flight
+ * fill, or finds an entry, is answered from the entry as it always was.
+ *
+ * The fill outlives the response it streamed, so it is handed to the request's
+ * deferred work: `settle()` — after the body on Node, `waitUntil` on a
+ * Worker, before the invocation returns on a Lambda — waits for the entry to
+ * be kept, and for its durable write.
  */
 async function cachedDocument(
   app: Application,
@@ -514,11 +531,37 @@ async function cachedDocument(
   document: DocumentAssets,
   onError: (error: mixed) => void,
 ): Promise<Response> {
-  const result = await cache.store.resolve(
+  let streamFill: (response: Response) => void = () => {};
+  const filling: Promise<Response> = new Promise((resolve) => {
+    streamFill = resolve;
+  });
+  const resolving = cache.store.resolve(
     { key: ["route", "GET", url.pathname, url.search], path: url.pathname },
-    () => renderForCache(app, context, target, document, onError),
+    () => renderForCache(app, context, target, document, onError, streamFill),
   );
-  return cachedResponse(result);
+  // Whichever comes first: this request's own fill has a stream to answer
+  // with, or the store answered without one (a hit, a stale entry, a join, a
+  // durable read — or a render that failed before its shell).
+  const first = await Promise.race([
+    filling.then((response) => ({ streamed: response, result: null })),
+    resolving.then((result) => ({ streamed: null, result })),
+  ]);
+  if (first.streamed == null) {
+    return cachedResponse(first.result ?? (await resolving));
+  }
+  const kept = resolving.then(
+    () => cache.store.settled(),
+    // The render failed after its shell went out. The stream the reader holds
+    // fails with it; the error was reported through `onError` by the render,
+    // and there is no entry to keep.
+    () => undefined,
+  );
+  if (context != null) {
+    context.deferred.push(() => kept);
+  } else {
+    void kept;
+  }
+  return first.streamed;
 }
 
 /**
@@ -666,12 +709,19 @@ async function renderForCache(
   target: string,
   document: DocumentAssets,
   onError: (error: mixed) => void,
+  stream?: (response: Response) => void,
 ): Promise<CachedDocument> {
   const before = context?.requestStateReads ?? 0;
   const rendered = await app.render(target, document, { onError });
-  const body = await drain(rendered.stream());
   const status = rendered.status ?? 200;
   const headers: { [string]: string } = { ...(rendered.headers ?? {}) };
+  let source = rendered.stream();
+  if (stream != null) {
+    const [reader, keep] = source.tee();
+    source = keep;
+    stream(streamedFill(reader, status, headers, context, before));
+  }
+  const body = await drain(source);
 
   if (status !== 200) {
     noStore(`the render answered ${status}`);
@@ -693,6 +743,40 @@ async function renderForCache(
     noStore("the render carried a CSP nonce");
   }
   return { status, headers, body };
+}
+
+/**
+ * The response a filling request answers with while its document is drained
+ * into the store behind it.
+ *
+ * `x-uf-cache` has to be written before the document ends, so it says what is
+ * known when the shell is ready: `BYPASS` when the render has already ruled
+ * itself out — a status other than 200, a cookie set, the request read, a
+ * nonce, a `noStore`, or no lifetime stated yet — and `MISS` otherwise. For a
+ * page that does not suspend that is the final answer, because the shell is
+ * the document. For one that does, a boundary that resolves later can still
+ * state a lifetime or read the request; the store decides on the whole
+ * document either way, and the header is what the shell said.
+ */
+function streamedFill(
+  body: ReadableStream<Uint8Array>,
+  status: number,
+  rendered: { +[string]: string },
+  context: RequestContext | null,
+  before: number,
+): Response {
+  const scope = currentScope();
+  const ruledOut =
+    status !== 200 ||
+    Object.keys(rendered).some((name) => name.toLowerCase() === "set-cookie") ||
+    (context?.requestStateReads ?? 0) > before ||
+    context?.nonce != null ||
+    scope?.denied != null ||
+    scope?.lifetime == null;
+  const headers = new Headers(rendered);
+  headers.set("content-type", "text/html; charset=utf-8");
+  headers.set("x-uf-cache", ruledOut ? "BYPASS" : "MISS");
+  return new Response(body, { status, headers });
 }
 
 /** A document the cache answered with, as a response that says how. */

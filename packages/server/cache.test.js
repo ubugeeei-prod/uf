@@ -118,6 +118,8 @@ function appWith(options: {
   status?: number,
   headers?: { [string]: string },
   renders?: Array<string>,
+  /** Text sent after the document's first chunk, once this resolves: a boundary. */
+  later?: Promise<string>,
 }) {
   const renders = options.renders ?? [];
   return {
@@ -144,9 +146,12 @@ function appWith(options: {
         },
         stream: () =>
           new ReadableStream({
-            start(controller: StreamController) {
+            async start(controller: StreamController) {
               controller.enqueue(new TextEncoder().encode(html));
               if (options.tail) options.tail();
+              if (options.later != null) {
+                controller.enqueue(new TextEncoder().encode(await options.later));
+              }
               controller.close();
             },
           }),
@@ -641,6 +646,56 @@ describe("what cacheLife and cacheTag mean outside a fill", () => {
 });
 
 describe("the route cache", () => {
+  it("streams the request that fills, and keeps the whole document", async () => {
+    // With `route` on — which `isr` needs — a page rendered per request used
+    // to arrive in one piece: the fill drained the render before answering, so
+    // a `$loading.js` fallback came with the page it stood in for. Found by the
+    // deploy matrix (#1478, #1493).
+    let resolveBoundary = (_text: string) => {};
+    const boundary: Promise<string> = new Promise((resolve) => {
+      resolveBoundary = resolve;
+    });
+    const { app, handle } = servingWith({
+      render: () => {
+        cacheLife({ revalidate: 60 });
+      },
+      later: boundary,
+    });
+
+    const asRequest = request("/posts");
+    const lifecycle = app.beginRequest(asRequest);
+    const first = await lifecycle.run(() => handle(asRequest));
+    expect(first.headers.get("x-uf-cache")).toBe("MISS");
+
+    // The shell is readable while the boundary is still pending.
+    const reader = first.body?.getReader();
+    const shell = await reader?.read();
+    expect(new TextDecoder().decode(shell?.value)).toBe("<!doctype html><p>/posts</p><b>1</b>");
+
+    resolveBoundary("<i>boundary</i>");
+    const rest = await reader?.read();
+    expect(new TextDecoder().decode(rest?.value)).toBe("<i>boundary</i>");
+    expect((await reader?.read())?.done).toBe(true);
+    await lifecycle.settle();
+
+    // And the entry is the whole document, not the shell.
+    const second = await serve(handle, app, "/posts");
+    expect(second.headers.get("x-uf-cache")).toBe("HIT");
+    expect(await second.text()).toBe("<!doctype html><p>/posts</p><b>1</b><i>boundary</i>");
+    expect(app.renders.length).toBe(1);
+  });
+
+  it("streams a page it will not keep, and says BYPASS", async () => {
+    // No lifetime stated by the time the shell is ready: the header can say
+    // so before the document ends, and nothing is stored.
+    const { app, handle, store } = servingWith({ later: Promise.resolve("<i>late</i>") });
+
+    const first = await serve(handle, app, "/posts");
+    expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
+    expect(await first.text()).toBe("<!doctype html><p>/posts</p><b>1</b><i>late</i>");
+    expect(store.size()).toBe(0);
+  });
+
   it("renders once for two requests, and says so in a header", async () => {
     const { app, handle } = servingWith({
       render: () => {
