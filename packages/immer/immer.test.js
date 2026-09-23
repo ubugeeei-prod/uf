@@ -177,7 +177,11 @@ describe("freeze", () => {
   });
 
   it("closes a Map and a Set, which Object.freeze does not", () => {
-    const next = produce({ byId: new Map([["a", 1]]), tags: new Set(["x"]) }, (draft) => {
+    const base: { byId: Map<string, number>, tags: Set<string> } = {
+      byId: new Map([["a", 1]]),
+      tags: new Set(["x"]),
+    };
+    const next = produce(base, (draft) => {
       draft.byId.set("b", 2);
       draft.tags.add("y");
     });
@@ -256,7 +260,8 @@ describe("the draft lifecycle", () => {
   it("refuses defineProperty, which cannot be recorded as an assignment", () => {
     expect(() =>
       produce(board(), (draft) => {
-        Object.defineProperty(draft, "extra", { value: 1 });
+        // A property the draft already has: the trap refuses any key.
+        Object.defineProperty(draft, "rows", { value: draft.rows });
       }),
     ).toThrow(/defineProperty/);
   });

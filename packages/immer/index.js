@@ -101,9 +101,16 @@ export type Recipe<T> = (draft: Draft<T>, ...rest: $ReadOnlyArray<mixed>) => voi
  *
  * Flow picks the first arm whose parameters match, so the two-argument form is
  * written first and the curried form only applies when there is no base.
+ *
+ * The curried arm carries the extra arguments' types through as `Args`, so a
+ * reducer's `(draft, by: number)` is a function of `(base, by: number)`. With
+ * `Recipe<T>`'s `$ReadOnlyArray<mixed>` rest, a recipe that named its extra
+ * argument's type could not be passed at all.
  */
 type Produce = (<T>(base: T, recipe: Recipe<T>) => T) &
-  (<T>(recipe: Recipe<T>) => (base: T, ...rest: $ReadOnlyArray<mixed>) => T);
+  (<T, Args extends $ReadOnlyArray<mixed>>(
+    recipe: (draft: Draft<T>, ...args: Args) => void | T,
+  ) => (base: T, ...args: Args) => T);
 
 /** The patch buffers one `produce` call fills, or `null` when nobody asked. */
 type Recorder = {| readonly patches: Array<Patch>, readonly inverse: Array<Patch> |};

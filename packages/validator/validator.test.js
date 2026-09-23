@@ -457,7 +457,7 @@ describe("what the review found", () => {
     }
     // An own property, and the prototype untouched — `out[key] = …` would have
     // run the legacy setter and changed the prototype instead.
-    expect(Object.prototype.hasOwnProperty.call(result.value, "__proto__")).toBe(true);
+    expect(Object.hasOwn(result.value, "__proto__")).toBe(true);
     expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
     expect(Object.getPrototypeOf({})).toBe(Object.prototype);
   });
@@ -608,7 +608,12 @@ describe("nullish and defaults", () => {
 describe("cross-field checks", () => {
   const passwords = pipe(
     object({ password: string(), confirm: string() }),
-    check((form) => form.password === form.confirm, "Passwords must match", ["confirm"]),
+    check(
+      (form: { readonly password: string, readonly confirm: string, ... }) =>
+        form.password === form.confirm,
+      "Passwords must match",
+      ["confirm"],
+    ),
   );
 
   it("reports on the field the user has to change", () => {
@@ -638,7 +643,7 @@ describe("flatten", () => {
   it("groups issues the way a form renders them", () => {
     const schema = pipe(
       object({ name: string(), age: number() }),
-      check(() => false, "This account is not allowed"),
+      check<mixed>(() => false, "This account is not allowed"),
     );
     const failed = safeParse(schema, { name: 1, age: "x" });
     expect(failed.ok).toBe(false);
@@ -756,7 +761,7 @@ describe("asynchronous schemas", () => {
     const after = (ms: number, name: string) =>
       pipe(
         string(),
-        checkAsync(async () => {
+        checkAsync<string>(async () => {
           await delay(ms);
           order.push(name);
           return true;
@@ -800,7 +805,7 @@ describe("asynchronous schemas", () => {
     const branch = (name: string, accept: boolean) =>
       pipe(
         string(),
-        checkAsync(async () => {
+        checkAsync<string>(async () => {
           await delay(1);
           tried.push(name);
           return accept;
@@ -855,7 +860,7 @@ describe("the rest of the actions", () => {
     expect(parse(pipe(string(), length(3)), "abc")).toBe("abc");
     expect(safeParse(pipe(string(), length(3)), "ab").ok).toBe(false);
 
-    const few = pipe(array(number()), minItems(1), maxItems(2));
+    const few = pipe(array(number()), minItems<number>(1), maxItems<number>(2));
     expect(parse(few, [1, 2])).toEqual([1, 2]);
     expect(safeParse(few, []).ok).toBe(false);
     expect(safeParse(few, [1, 2, 3]).ok).toBe(false);
@@ -959,7 +964,12 @@ describe("json schema", () => {
   });
 
   it("keeps a constraint that comes before the transform", () => {
-    const age = pipe(string(), minLength(2), transform(Number), min(18));
+    const age = pipe(
+      string(),
+      minLength(2),
+      transform((text: string) => Number(text)),
+      min(18),
+    );
     expect(toJsonSchema(age).schema).toEqual({
       $schema: DIALECT,
       type: "string",
@@ -1043,7 +1053,7 @@ describe("as a form's resolver", () => {
   });
 
   it("answers synchronously for a synchronous schema", () => {
-    const resolve = validatorResolver(account);
+    const resolve = validatorResolver<{ email: string, age: string }, _>(account);
     const answer = resolve({ email: "ada@example.com", age: "36" }, undefined);
     // Not a promise: a form in `onChange` mode runs this on every keystroke.
     expect(answer instanceof Promise).toBe(false);
@@ -1066,7 +1076,7 @@ describe("as a form's resolver", () => {
         checkAsync(async (name: string) => !taken.has(name), "That handle is taken"),
       ),
     });
-    const resolve = validatorResolver(schema);
+    const resolve = validatorResolver<{ handle: string }, _>(schema);
 
     const accepted = await resolve({ handle: "grace" }, undefined);
     expect(accepted).toEqual({ values: { handle: "grace" } });

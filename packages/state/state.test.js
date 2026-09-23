@@ -56,6 +56,7 @@ import {
   writableSelector,
   write,
 } from "@uniflowed/state";
+import type { Getter, SetAction } from "@uniflowed/state";
 
 /**
  * A `StringStorage` backed by a map, so the tests need no browser.
@@ -72,7 +73,10 @@ function memoryStorage(seed?: { [string]: string }): {
   entries: Map<string, string>,
   reads: () => number,
 } {
-  const entries: Map<string, string> = new Map(Object.entries(seed ?? {}));
+  const initial: { readonly [string]: string } = seed ?? {};
+  const entries: Map<string, string> = new Map(
+    Object.keys(initial).map((key) => [key, initial[key]]),
+  );
   let reads = 0;
   return {
     entries,
@@ -147,7 +151,10 @@ function controlledStorage(seed?: { [string]: string }): {
   settle: () => void,
   fail: (error: mixed) => void,
 } {
-  const entries: Map<string, string> = new Map(Object.entries(seed ?? {}));
+  const initial: { readonly [string]: string } = seed ?? {};
+  const entries: Map<string, string> = new Map(
+    Object.keys(initial).map((key) => [key, initial[key]]),
+  );
   const signals: Array<AbortSignal> = [];
   let waiting: Array<{
     key: string,
@@ -277,7 +284,7 @@ describe("selector", () => {
     const source = atom(1);
     const left = selector((get) => get(source) + 1);
     const right = selector((get) => get(source) * 10);
-    const join = fn((get) => `${get(left)}/${get(right)}`);
+    const join = fn((get: Getter) => `${get(left)}/${get(right)}`);
     const joined = selector((get) => String(join(get)));
     const listener = fn();
     subscribe(joined, listener);
@@ -296,7 +303,7 @@ describe("selector", () => {
     const showAll = atom(true);
     const all = atom("all");
     const some = atom("some");
-    const derive = fn((get) => (get(showAll) ? get(all) : get(some)));
+    const derive = fn((get: Getter) => (get(showAll) ? get(all) : get(some)));
     const shown = selector((get) => String(derive(get)));
     subscribe(shown, () => {});
 
@@ -316,7 +323,7 @@ describe("selector", () => {
 
   it("stops recomputing once nothing is subscribed", () => {
     const source = atom(0);
-    const derive = fn((get) => get(source));
+    const derive = fn((get: Getter) => get(source));
     const mirror = selector((get) => Number(derive(get)));
     const stop = subscribe(mirror, () => {});
     write(source, 1);
@@ -334,7 +341,7 @@ describe("selector", () => {
   it("refuses a write", () => {
     const source = atom(1);
     const doubled = selector((get) => get(source) * 2);
-    // $FlowExpectedError[incompatible-call] a selector is not writable.
+    // $FlowExpectedError[incompatible-type] a selector is not writable.
     expect(() => write(doubled, 4)).toThrow("read-only");
   });
 });
@@ -385,7 +392,7 @@ describe("writableSelector", () => {
   it("does not depend on what its write read", () => {
     const audit = atom(0);
     const source = atom(1);
-    const derive = fn((get) => get(source));
+    const derive = fn((get: Getter) => get(source));
     const mirror = writableSelector<number, number>(
       (get) => Number(derive(get)),
       (get, set, next) => {
@@ -710,7 +717,7 @@ describe("atomWithDefault", () => {
 
   it("stops depending on the default once a value is written", () => {
     const base = atom(1);
-    const compute = fn((get) => get(base) * 2);
+    const compute = fn((get: Getter) => get(base) * 2);
     const doubled = atomWithDefault((get) => Number(compute(get)));
     subscribe(doubled, () => {});
 
@@ -1150,7 +1157,7 @@ describe("atomWithStorage", () => {
   it("degrades to an unpersisted atom where there is no storage at all", () => {
     // An edge runtime has no `localStorage`, so the identifier itself is not
     // defined and evaluating it throws rather than answering `undefined`.
-    const missing = createJSONStorage(() => {
+    const missing = createJSONStorage<string>(() => {
       throw ReferenceError("localStorage is not defined");
     });
     const theme = atomWithStorage("theme", "light", missing);
@@ -1164,7 +1171,7 @@ describe("atomWithStorage", () => {
 
   it("degrades to an unpersisted atom where storage refuses to be written", () => {
     // Safari in private mode, and a browser with site data blocked.
-    const refuses = createJSONStorage(() => ({
+    const refuses = createJSONStorage<string>(() => ({
       getItem: () => null,
       setItem: () => {
         throw Error("QuotaExceededError");
@@ -1496,7 +1503,9 @@ describe("onMount", () => {
     const source = atom(0, {
       onMount: (mount) => {
         events.push("start");
-        return () => events.push("stop");
+        return () => {
+          events.push("stop");
+        };
       },
     });
     const store = createStore();
@@ -1517,7 +1526,9 @@ describe("onMount", () => {
     const source = atom(1, {
       onMount: () => {
         events.push("start");
-        return () => events.push("stop");
+        return () => {
+          events.push("stop");
+        };
       },
     });
     const doubled = selector((get) => get(source) * 2);
@@ -1587,13 +1598,18 @@ describe("the React binding, rendered to markup", () => {
 
   it("accepts a reducer through the setter", () => {
     const count = atom(10);
-    let setter = null;
+    let setter: null | ((argument: SetAction<number>) => void) = null;
     component Count() {
       setter = useSetAtom(count);
       return null;
     }
     renderToStaticMarkup(<Count />);
-    setter((current: number) => current + 5);
+    // Read once: the checker cannot see that rendering assigned it.
+    const set = setter;
+    if (set == null) {
+      throw new Error("Count did not render");
+    }
+    set((current: number) => current + 5);
     expect(read(count)).toBe(15);
   });
 });
@@ -1890,7 +1906,7 @@ describe("the React binding, in a DOM", () => {
           {
             match (settled) {
               {state: "hasData", data: const data} => data,
-              {state: "hasError"} => "failed",
+              {state: "hasError", ...} => "failed",
               _ => "loading",
             }
           }
@@ -1981,7 +1997,7 @@ describe("useAtomCallback", () => {
 
     component Submit() {
       renders += 1;
-      const submit = useAtomCallback((get) => {
+      const submit = useAtomCallback<[], void>((get) => {
         seen.push(get(draft));
       });
       return (
@@ -2036,7 +2052,7 @@ describe("useAtomCallback", () => {
     const seen: Array<number> = [];
 
     component Peek() {
-      const peek = useAtomCallback((get) => {
+      const peek = useAtomCallback<[], void>((get) => {
         seen.push(get(count));
       });
       return (

@@ -79,8 +79,13 @@ export type AtomSetter = <V, A>(target: AtomRecord<V, A>, arg: A) => void;
  * of `AtomRecord<T, empty>`: a writable atom is accepted anywhere a readable
  * one is, and the argument type stays exact at the call site rather than
  * widening to `mixed` the moment an atom is passed somewhere general.
+ *
+ * `in A` says so to the checker. `A` appears only as the write's argument, so
+ * it is contravariant, but Flow compares two applications of an alias by the
+ * variance written on its parameters. Without the annotation, `get(value)` on
+ * a primitive was "SetAction<T> is incompatible with empty".
  */
-export type AtomRecord<T, A> = {
+export type AtomRecord<T, in A> = {
   readonly kind: "primitive" | "derived" | "async",
   /** For diagnostics only. Never load-bearing. */
   readonly label: string,
