@@ -28,7 +28,7 @@ import {
   presetNamed,
   refuseInsideRepository,
 } from "./fixture.js";
-import { parseTimes, summarise } from "./measure.js";
+import { clientReferences, parseTimes, summarise } from "./measure.js";
 import { compare, failures } from "./regress.js";
 import { formatDuration } from "./report.js";
 import { flowFiles, rivalFiles, testsPassed, versionIn } from "./rivals.js";
@@ -173,6 +173,18 @@ describe("the comparison tools' copies of the fixture", () => {
 });
 
 describe("what the harness reads from other tools' output", () => {
+  it("finds the client modules a page's inline Flight payload names", () => {
+    const rows =
+      '0:["$","main",null,{"children":"$L1"}]\n1:I["/components/HotCounter.js",["/components/HotCounter.js"],"HotCounter"]\n';
+    const element = JSON.stringify(rows).replace(/</g, "\\u003c");
+    expect(clientReferences(element)).toEqual([
+      "/components/HotCounter.js",
+      "/components/HotCounter.js",
+    ]);
+    expect(clientReferences(JSON.stringify({ bytes: "AAEC" }))).toEqual([]);
+    expect(clientReferences("null")).toEqual([]);
+  });
+
   it("reads CPU time from the second line of `times`, in bash's and dash's spelling", () => {
     expect(parseTimes("0m0.010s 0m0.020s\n0m1.250s 0m0.300s\n")).toBe(1550);
     expect(parseTimes("0m0.010000s 0m0.020000s\n1m0.500000s 0m0.250000s\n")).toBe(60750);
