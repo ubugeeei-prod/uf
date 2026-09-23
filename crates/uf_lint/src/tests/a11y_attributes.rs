@@ -183,6 +183,11 @@ fn autocomplete_valid_reports_the_documented_failure() {
         &[
             r#"<input autocomplete="birthday" />"#,
             r#"<input autocomplete="shipping nope" />"#,
+            // React's own spelling, which is the one a React codebase writes.
+            // The rule read only the lowercase attribute before, so every one
+            // of these passed unread.
+            r#"<input autoComplete="birthday" />"#,
+            r#"<select autoComplete="shipping nope"></select>"#,
             // `on` and `off` are the whole value or nothing.
             r#"<input autocomplete="off name" />"#,
         ],
@@ -206,6 +211,8 @@ fn autocomplete_valid_accepts_the_documented_pass() {
             r#"<input autocomplete="username webauthn" />"#,
             // Tokens are matched the way HTML matches keywords.
             r#"<input autocomplete="GIVEN-NAME" />"#,
+            r#"<input autoComplete="email" />"#,
+            r#"<textarea autoComplete="street-address"></textarea>"#,
             // A value the module does not hold is never wrong.
             "<input autocomplete={hint} />",
             // Not a control this attribute belongs to.

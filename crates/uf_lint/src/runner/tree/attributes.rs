@@ -317,6 +317,12 @@ fn well_formed_language_tag(tag: &str) -> bool {
 /// somebody for whom typing an address again is the hard part. A token it does
 /// not recognise fills nothing, and nothing in the page says so.
 ///
+/// **Both spellings are read.** React's prop is `autoComplete`, and it is the
+/// one a React codebase writes; `autocomplete` is the HTML attribute, which
+/// React passes through with a warning. Reading only the lowercase name left
+/// every correctly spelled React field unchecked. When both are written,
+/// `autoComplete` is the one React sends, so it is the one judged.
+///
 /// **Only the certainly-wrong shape is reported.** The grammar allows a
 /// `section-*` name, a `shipping`/`billing` group, a recipient type and a
 /// trailing `webauthn` around the field token, and uf does not police the
@@ -326,7 +332,9 @@ fn autocomplete_valid(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Lo
     if !matches!(name, "input" | "select" | "textarea") {
         return;
     }
-    let Some(written) = attribute(opening, "autocomplete") else {
+    let Some(written) =
+        attribute(opening, "autoComplete").or_else(|| attribute(opening, "autocomplete"))
+    else {
         return;
     };
     let Value::Text(text) = tree.scope.value(written) else {
