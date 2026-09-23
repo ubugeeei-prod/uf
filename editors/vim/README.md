@@ -36,17 +36,18 @@ server and asserts each of these.
 | Formatting | `:LspDocumentFormat`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `:LspCodeAction` on a diagnostic. |
 | Fix all | `:LspCodeAction`, then pick "Fix all uf lint problems in this file". |
-| Hover | `:LspHover`, including over a key of `uf.config.js`. |
-| Completion | In `uf.config.js`: `<C-x><C-o>` with `setlocal omnifunc=lsp#complete`, or asyncomplete.vim and asyncomplete-lsp.vim to have it as you type. The keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
+| Hover | `:LspHover`, including over a key of `uf.config.js`; over anything else in a Flow file, the type as Flow infers it. |
+| Definition | `:LspDefinition`: across files, into `node_modules` and into `flow-typed/`. |
+| Type definition | `:LspTypeDefinition`: the declaration of the named types in the type under the cursor. |
+| Completion | `<C-x><C-o>` with `setlocal omnifunc=lsp#complete`, or asyncomplete.vim and asyncomplete-lsp.vim to have it as you type. In `uf.config.js`, the keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file, after `.` the members of the value's type with their types, and elsewhere the names in scope. |
 
 Format on save is off; the one-line autocommand is at the bottom of `uf.vim`.
 
 ## What you do not get
 
-`:LspDefinition`, `:LspRename` and `:LspReferences` have no server behind them —
-`uf lsp` advertises none of those providers — and completion answers in
-`uf.config.js` only. `:LspHover` over a plain expression answers nothing,
-because uf has no positional type query yet.
+`:LspRename` and `:LspReferences` have no server behind them — `uf lsp`
+advertises neither provider. `:LspHover` and `:LspDefinition` answer nothing
+while the file does not parse, since there is no inference to ask.
 
 ## Working directory
 

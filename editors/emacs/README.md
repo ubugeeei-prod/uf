@@ -42,18 +42,19 @@ server and asserts each of these.
 | Formatting | `M-x eglot-format-buffer`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `M-x eglot-code-actions` on a diagnostic. |
 | Fix all | `(eglot-code-actions (point-min) (point-max) "source.fixAll" t)`, which applies every mechanical fix in the file at once. `M-x eglot-code-actions` also lists it. |
-| Hover | `M-x eldoc`, or `eldoc-mode` in the echo area, including over a key of `uf.config.js`. |
-| Completion | In `uf.config.js`: `completion-at-point` (`C-M-i`), which Eglot feeds from the server, or Company or Corfu on top of it. The keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
+| Hover | `M-x eldoc`, or `eldoc-mode` in the echo area, including over a key of `uf.config.js`; over anything else in a Flow file, the type as Flow infers it. |
+| Definition | `M-.` (`xref-find-definitions`): across files, into `node_modules` and into `flow-typed/`. |
+| Type definition | `M-x eglot-find-typeDefinition`: the declaration of the named types in the type at point. |
+| Completion | `completion-at-point` (`C-M-i`), which Eglot feeds from the server, or Company or Corfu on top of it. In `uf.config.js`, the keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file, after `.` the members of the value's type with their types, and elsewhere the names in scope. |
 
 Format on save is off. The hook to add is written out in `uf.el`.
 
 ## What you do not get
 
-`xref-find-definitions`, `eglot-rename` and `xref-find-references` have nothing
-behind them: `uf lsp` advertises no definition, rename or references provider,
-and Eglot reports that the server does not support the request. Completion
-answers in `uf.config.js` only. ElDoc over a plain expression says nothing
-rather than showing an empty popup — uf has no positional type query yet.
+`eglot-rename` and `xref-find-references` have nothing behind them: `uf lsp`
+advertises no rename or references provider, and Eglot reports that the server
+does not support the request. ElDoc and `M-.` say nothing while the file does
+not parse, since there is no inference to ask.
 
 ## Working directory
 

@@ -34,20 +34,22 @@ server and asserts each of these.
 | Formatting | `:format`, and on write, because `auto-format = true`. |
 | Quick fixes | `Space + a` on a diagnostic. |
 | Fix all | `Space + a` offers "Fix all uf lint problems in this file" as a separate action; Helix has no dedicated fix-all binding. |
-| Hover | `Space + k`, including over a key of `uf.config.js`. |
-| Completion | In `uf.config.js`, as you type and after `"`; `Ctrl + x` in insert mode asks for it. The keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
+| Hover | `Space + k`, including over a key of `uf.config.js`; over anything else in a Flow file, the type as Flow infers it. |
+| Definition | `gd`, across files, into `node_modules` and into `flow-typed/`. |
+| Type definition | `gy`: the declaration of the named types in the type under the cursor. |
+| Completion | As you type, after `"` and after `.`; `Ctrl + x` in insert mode asks for it. In `uf.config.js`, the keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file, after `.` the members of the value's type with their types, and elsewhere the names in scope. |
 
 ## What you do not get
 
-`gd`, `gr` and rename have no server behind them — `uf lsp` advertises none of
-them, and Helix will say the language server does not support the request.
-Completion answers in `uf.config.js` only. Hover over a plain expression
-answers nothing: uf has no positional type query yet.
+`gr`, rename and signature help have no server behind them — `uf lsp`
+advertises none of them, and Helix will say the language server does not
+support the request. Hover and `gd` answer nothing while the file does not
+parse, since there is no inference to ask.
 
 The `language-servers = ["uf"]` lines **replace** Helix's defaults for
-JavaScript and JSX. If you want `typescript-language-server` alongside uf for
-completion in your own modules, list both — and expect them to disagree about
-formatting, since only one of them reads your `uf.config.js`.
+JavaScript and JSX. If you want `typescript-language-server` alongside uf,
+list both — and expect them to disagree about formatting and types, since only
+one of them reads your `uf.config.js` and only one of them is Flow.
 
 ## Working directory
 

@@ -2,8 +2,8 @@
 
 A language client for `uf lsp`. It starts one server per uf project in the
 window, and everything it shows — diagnostics, formatting, quick fixes, hover,
-completion in `uf.config.js` — is answered by that server, from the same crates
-`uf lint`, `uf fmt` and `uf inspect` call.
+go to definition, completion — is answered by that server, from the same crates
+`uf lint`, `uf fmt`, `uf inspect` and `uf check` call.
 
 CI packages the extension on every editor change. `uf@*` tags publish the same
 VSIX to the Visual Studio Marketplace when `VSCE_PAT` is present, and to Open
@@ -36,8 +36,10 @@ they are in `uf run ci`.
 | **Formatting** | `uf_fmt`, the same `format_source` `uf fmt` calls | Format Document, or `uf.formatOnSave`. |
 | **Quick fixes** | `textDocument/codeAction`, kind `quickfix` | The lightbulb on a diagnostic. |
 | **Fix all** | kind `source.fixAll.uf` | `editor.codeActionsOnSave`, or the lightbulb. |
-| **Hover** | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`. |
-| **Completion** | `textDocument/completion`, in `uf.config.js` | The keys valid where you are typing, each with its documentation and type; after `"`, the values of a key whose type is a fixed set (`quotes: "single" \| "double"`); `true` and `false` for a boolean; in a tool spec (`runtime: "node@26"`), the names its key takes and, after `@`, that tool's versions, newest first. |
+| **Hover** | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`. Anywhere else in a Flow file, the type under the cursor as Flow infers it, printed as Flow (`const greeting: string`). |
+| **Go to Definition** | `textDocument/definition`, from Flow's inference | F12. Across files, into a package under `node_modules`, and into the project's `flow-typed/`. |
+| **Go to Type Definition** | `textDocument/typeDefinition`, from Flow's inference | The declaration of the named types in the type under the cursor: for `const user: User`, `type User`. |
+| **Completion** | `textDocument/completion` | In `uf.config.js`: the keys valid where you are typing, each with its documentation and type; after `"`, the values of a key whose type is a fixed set (`quotes: "single" \| "double"`); `true` and `false` for a boolean; in a tool spec (`runtime: "node@26"`), the names its key takes and, after `@`, that tool's versions, newest first. In any other Flow file, from Flow's inference: after `value.`, the members of `value`'s type with their types, and elsewhere the names in scope. |
 
 Completion reads `@uniflowed/config`'s own Flow type — the declaration
 `defineConfig` checks the file against — compiled into `uf`, so it needs nothing
@@ -74,17 +76,19 @@ hierarchical, and asking for the parent selects uf's child kind.
 
 ## What does not work, and will not until the server serves it
 
-`uf lsp` advertises no definition, rename, references or document symbol
-provider, so **go to definition, rename and find references do nothing** for
-Flow files, and **completion answers only in `uf.config.js`** — in your own
-modules the suggestions you see are VS Code's. This extension does not add
-them; a language client cannot invent what the server does not answer.
+`uf lsp` advertises no rename, references, document symbol or signature help
+provider, so **rename and find references do nothing** for Flow files. This
+extension does not add them; a language client cannot invent what the server
+does not answer.
 
-**Hover does not show the type at a position.** It answers a diagnostic, an
-import specifier or a rule id, and nothing for a plain expression — deliberately
-nothing rather than an empty popup, which reads as a confident "no type".
-`crates/uf_cli/src/commands/dev/hover.rs` says exactly what `uf_check` would
-have to expose for that to change.
+**Types need the file to parse.** Hover and go to definition answer nothing
+while the file has a syntax error, because there is no inference to ask;
+completion still answers after `value.`. Type errors are not pushed as
+diagnostics — `uf check` in the terminal reports them.
+
+**The first type answer waits for the project to be read.** The server reads
+the whole project, as `uf check` does, in the background when it starts; a
+hover that arrives first waits for that.
 
 **Organize imports is not offered.** uf has no import-order opinion to organise
 them by, so the server does not advertise `source.organizeImports`.

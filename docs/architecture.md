@@ -1440,7 +1440,16 @@ generation and diagnostics. None of the integrations implements a language
 feature — each one is a client, and what it may offer is exactly what
 `initialize` advertises:
 diagnostics, `textDocument/formatting`, `textDocument/codeAction` (`quickfix`
-and `source.fixAll.uf`) and `textDocument/hover`, and nothing else.
+and `source.fixAll.uf`), `textDocument/hover`, `textDocument/definition`,
+`textDocument/typeDefinition` and `textDocument/completion`, and nothing else.
+
+The type answers — hover over an expression, both definitions, and completion
+outside `uf.config.js` — come from `uf_check::Session`: the batch `uf check`
+would check, kept in memory on one worker thread with the checker's stack, and
+asked through the port's own services (`type_at_pos_type`, `get_def`, the
+autocomplete service) rather than anything uf reimplements. An edit tears down
+the edited file's merged dependents and nothing else, so the next question
+re-infers one file against dependencies that are still merged.
 
 VS Code is a package, and Cursor installs that same package because it is the
 same extension format. Zed is also a package: the manifest names the language
