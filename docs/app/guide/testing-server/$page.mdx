@@ -1,0 +1,486 @@
+---
+title: "Testing Server Components and actions · uf"
+description: "A server action through its real endpoint, a component calling one over the wire, and a production build answering in the test's own process."
+---
+
+<p className="eyebrow">Build an app</p>
+
+# Testing Server Components and actions
+
+<div className="lede">
+A Server Component, a server action and the client component that calls it
+each cross a boundary, and each boundary does real work. Arguments are encoded,
+requests are scoped, origins are compared, and a tree is serialised into
+Flight. A test that skips the boundary can pass while production fails.
+`@uniflowed/router/testing` gives a test each boundary for real: a request
+scope, the action endpoint, and a production build that answers requests in
+the test's own process, with no port.
+</div>
+
+**What you will be able to do:** test a server action's validation,
+authorization and invalidation through the endpoint a browser calls; test a
+Server Component's decisions inside a request; test a client component whose
+action goes over the wire; and test a route's HTML, Flight payload, boundaries
+and pre-hydration form against a real `uf build`.
+
+**What you need first:** [Server Components](/guide/server-components) and
+[Server actions](/guide/server-actions), for what is being tested, and
+[Testing](/guide/testing), for `uf test` itself.
+
+## Four levels, and what each proves
+
+| Level | Helper | Runs | Proves | Does not prove |
+| --- | --- | --- | --- | --- |
+| A server function or a Server Component's decisions | `withRequest` | in the test, inside a real request scope | what it reads from `cookies()` and `headers()`, what it throws (`notFound()`, `forbidden()`), what `after()` does | how the tree renders or serialises |
+| A server action | `callAction` | the action endpoint every host runs, in the test | argument encoding, the endpoint's refusals, the action's result as JSON carried it, what it invalidated | that a client component calls it |
+| A client component calling an action | `serverReferences` with `uft.mock` | React in happy-dom; each call through the endpoint | the component's behaviour on the action's real answers, including refusals | layout, hydration, a real browser |
+| A route | `buildApp` / `openBuild` | a `uf build --adapter node` output, in the test's process | HTML and Flight from the real renderer, Suspense, not-found and error boundaries, a form posted before hydration | hydration and client interaction; see [In a browser](#in-a-browser) |
+
+Every example below is a file in
+`crates/uf_cli/tests/fixtures/rsc-test-app`, a small notes application. CI's
+"RSC and browser testing" job type-checks it and runs its tests. Each sample on
+this page is checked to be a verbatim excerpt of the file it names
+(`tests/library/docs-sources.test.js`), so the page cannot drift from what
+passes.
+
+## The action under test
+
+```js source=crates/uf_cli/tests/fixtures/rsc-test-app/app/notes/_actions/notes.js
+"use server";
+// @flow
+import { cookies } from "@uniflowed/server";
+import { revalidateTag } from "@uniflowed/server/cache";
+import { forbidden, notFound } from "@uniflowed/router";
+import { maxLength, minLength, object, pipe, safeParse, string, trim } from "@uniflowed/validator";
+
+import { findNote, insertNote, removeNote } from "../_data/notes.server.js";
+
+/** What `useActionState` holds between submits. */
+export type NoteState = {| readonly saved: string | null, readonly problem: string | null |};
+
+const NoteInput = object({ text: pipe(string(), trim(), minLength(1), maxLength(80)) });
+
+/** Save a note for whoever is signed in. A refusal is a state, not an exception. */
+export async function saveNote(previous: NoteState, form: FormData): Promise<NoteState> {
+  // The action authorizes itself: a guard on the page's path is not a boundary.
+  const author = cookies().get("session");
+  if (author == null) {
+    return { saved: previous.saved, problem: "sign in to write a note" };
+  }
+  const parsed = safeParse(NoteInput, { text: form.get("text") });
+  if (!parsed.ok) {
+    return { saved: previous.saved, problem: "a note is 1 to 80 characters" };
+  }
+  const note = await insertNote(parsed.value.text, author);
+  revalidateTag("notes");
+  return { saved: note.id, problem: null };
+}
+
+/** Delete a note. Only its author may; anyone else is refused outright. */
+export async function deleteNote(id: string): Promise<void> {
+  const note = await findNote(id);
+  if (note == null) {
+    throw notFound();
+  }
+  if (note.author !== cookies().get("session")) {
+    throw forbidden();
+  }
+  await removeNote(note.id);
+  revalidateTag("notes");
+}
+```
+
+`saveNote` refuses as a *value*, so a form can show the refusal.
+`deleteNote` refuses by *throwing*, so the caller learns nothing. Both
+authorize themselves. The middleware on the page's path is not a boundary,
+because the caller chooses the URL
+([Server actions](/guide/server-actions#an-action-authorizes-itself)).
+
+## A server action through its endpoint
+
+<div className="command"><code>callAction(action, args, init)</code></div>
+
+```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-actions.test.js
+// @flow
+import { beforeEach, describe, expect, it } from "@uniflowed/test";
+import { createCacheStore } from "@uniflowed/server/cache";
+import { callAction } from "@uniflowed/router/testing";
+
+import { deleteNote, saveNote } from "../app/notes/_actions/notes.js";
+import { listNotes, resetNotes } from "../app/notes/_data/notes.server.js";
+
+const NOTHING_YET = { saved: null, problem: null };
+
+function note(text: string): FormData {
+  const form = new FormData();
+  form.set("text", text);
+  return form;
+}
+
+beforeEach(() => resetNotes());
+
+describe("saveNote", () => {
+  it("saves a note for the signed-in author and invalidates the list", async () => {
+    const outcome = await callAction(saveNote, [NOTHING_YET, note("  Flight is a wire  ")], {
+      cookies: { session: "grace" },
+      cache: createCacheStore(),
+    });
+    const saved = match (outcome) {
+      {kind: "returned", const value, ...} => value,
+      _ => outcome.kind,
+    };
+    expect(saved).toEqual({ saved: "2", problem: null });
+    expect(outcome.revalidated.tags).toEqual(["notes"]);
+    expect((await listNotes()).map((saved) => saved.text)).toContain("Flight is a wire");
+  });
+
+  it("answers a validation problem as state, keeping what was saved before", async () => {
+    const outcome = await callAction(saveNote, [{ saved: "1", problem: null }, note("   ")], {
+      cookies: { session: "grace" },
+    });
+    expect(outcome.kind === "returned" ? outcome.value : null).toEqual({
+      saved: "1",
+      problem: "a note is 1 to 80 characters",
+    });
+  });
+
+  it("authorizes itself, whatever page the call came from", async () => {
+    const outcome = await callAction(saveNote, [NOTHING_YET, note("hello")], { url: "/notes" });
+    expect(outcome.kind === "returned" ? outcome.value.problem : null).toBe(
+      "sign in to write a note",
+    );
+    expect(await listNotes()).toHaveLength(1);
+  });
+```
+
+`callAction` does what a browser's reference does, in the same order:
+
+1. **Encodes the arguments** with the encoder the browser uses. An argument
+   that cannot cross (a `Date`, a function, a `File`, a cycle) rejects the call
+   with an `ActionValueError` naming it, before anything is sent. A test that
+   passes a `Date` fails where the browser would.
+2. **Posts to the dispatcher every uf host runs.** The request is `POST`, with
+   `uf-action` and `application/json`, and carries the page's own `Origin` and
+   `Host`, the test's `cookies` and `headers`, and `url` as the page the call
+   is made from. The action runs inside that request, so `cookies()` answers
+   about it.
+3. **Decodes the answer** with the browser's decoder. A returned value is
+   what JSON carried back, not the object the action built.
+
+The function is filed under a fixed test id (`TEST_ACTION_ID`) in a one-row
+table, because only a build can mint a real id. That is the only
+substitution: the lookup, the guards and every refusal are the endpoint's own.
+The request has been settled by the time `callAction` resolves, so everything
+`after()` deferred has run.
+
+### What an outcome says
+
+`kind` is what the *action* did. `response` is what the endpoint answered, which
+is what a browser gets. They are kept apart because they differ:
+
+| `kind` | The action | `response` through `"fetch"` |
+| --- | --- | --- |
+| `"returned"` | returned `value` | `200` |
+| `"redirect"` | called `redirect()`; `to` and `permanent` | `500`, see below |
+| `"not-found"`, `"unauthorized"`, `"forbidden"` | threw the router's error | `500` |
+| `"threw"` | threw anything else, as `error` | `500`, with a fixed body |
+| `"unsendable"` | returned a value the wire refuses, such as `undefined` inside an object or a `Map`; `error` names where | `500` |
+| `"refused"` | never ran: a guard the test overrode, such as `headers: { origin: … }` | `403`, `413`, … |
+
+Every outcome also carries `revalidated`, the tags and paths the call expired.
+
+**A hydrated call cannot redirect yet.** A form posted *before* hydration
+answers `redirect()` with a `303`. Once the page has hydrated, the same action
+is called through the JSON door, and that door answers every routing error with
+the fixed `500`. `callAction` reports both halves, `kind: "redirect"` and
+`response.status === 500`, so a test documents the gap rather than hiding it
+([#1470](https://github.com/ubugeeei-prod/uf/issues/1470)). Pass
+`door: "form"` to send the call the way a browser does before hydration. The
+last argument is then the `FormData`, the ones before it are the arguments the
+form carries bound, and the answer is the `303`.
+
+### The cache the action invalidates
+
+`revalidateTag` and `revalidatePath` need the cache a host installs for the
+request. A project without `app.rendering.cache` has none, and the call throws.
+`callAction` installs none unless `cache` says so, so a test fails exactly where
+production would. This fixture turns `rendering.cache.data` on, so its tests
+pass a store: `cache: createCacheStore()`. `revalidated` then says what the
+action expired. The store's own methods are put back after the call.
+
+## A Server Component's decisions
+
+<div className="command"><code>withRequest(request, body)</code></div>
+
+```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/note-page.test.js
+// @flow
+import { describe, expect, it } from "@uniflowed/test";
+import { NotFoundError } from "@uniflowed/router";
+import { withRequest } from "@uniflowed/router/testing";
+
+import { Page as NotePage } from "../app/notes/[id]/$page.js";
+
+// The page's decisions, without rendering it: which note, missing or malformed.
+// What the rendered answer looks like is `notes-app.test.js`, over a real build.
+describe("the note page's decisions", () => {
+  it("asks for the not-found boundary when the note does not exist", async () => {
+    await expect(
+      withRequest({ url: "/notes/404" }, () => NotePage({ params: { id: "404" } })),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("throws for a malformed id, which the error boundary answers", async () => {
+    await expect(
+      withRequest({ url: "/notes/x" }, () => NotePage({ params: { id: "x" } })),
+    ).rejects.toThrow("note ids are numbers");
+  });
+});
+```
+
+`withRequest` begins a request the way every host does and runs `body` inside
+it. A value or a rejection is passed through unchanged, and the request is
+settled after `body`, so an `after()` callback has run by the time it resolves.
+It takes a `Request`, or the same description `callAction` takes: `url`,
+`method`, `headers`, `cookies`, `body`, `cache`.
+
+This is the *decisions* of a Server Component and no more. Calling an async
+component as a function runs its body. It does not render its children,
+serialise its tree, or check that what it hands a client component can
+cross. **Rendering is the build's job**, which is the fourth level.
+
+## A client component that calls an action
+
+<div className="command"><code>serverReferences(module, init)</code></div>
+
+Under `uf test` nothing replaces a `"use server"` module with references,
+because no bundler runs. A client component under test calls the action
+function *directly*: outside any request, so `cookies()` throws, with arguments
+nothing encoded, and with none of the endpoint's refusals. Give `uft.mock` the
+module's references instead:
+
+```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/note-form.test.js
+// @flow
+import * as React from "@uniflowed/react";
+import typeof * as NoteActions from "../app/notes/_actions/notes.js";
+import { afterEach, beforeEach, describe, expect, it, uft } from "@uniflowed/test";
+import { cleanup, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
+import { createCacheStore } from "@uniflowed/server/cache";
+import { serverReferences } from "@uniflowed/router/testing";
+
+import { listNotes, resetNotes } from "../app/notes/_data/notes.server.js";
+
+const ACTIONS = "../app/notes/_actions/notes.js";
+
+/** The form, with its actions reached through the wire as `session` would reach them. */
+async function renderForm(session: string | null) {
+  await uft.mock<NoteActions>(ACTIONS, async () =>
+    serverReferences(await uft.importActual<NoteActions>(ACTIONS), {
+      url: "/notes",
+      cookies: session == null ? {} : { session },
+      // `app.rendering.cache` is on in this project, so the host installs a store.
+      cache: createCacheStore(),
+    }),
+  );
+  const { NoteForm } = await import("../app/notes/_components/NoteForm.js");
+  render(<NoteForm />);
+}
+
+beforeEach(() => resetNotes());
+afterEach(() => {
+  cleanup();
+  uft.unmock(ACTIONS);
+});
+
+describe("NoteForm", () => {
+  it("saves through the real action and shows what it answered", async () => {
+    await renderForm("grace");
+    await userEvent.type(screen.getByLabelText("Note"), "Tested through the wire");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("saved note 2"));
+    expect((await listNotes()).map((note) => note.text)).toContain("Tested through the wire");
+  });
+
+  it("shows the action's refusal when nobody is signed in", async () => {
+    await renderForm(null);
+    await userEvent.type(screen.getByLabelText("Note"), "Anonymous");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe("sign in to write a note"),
+    );
+    expect(await listNotes()).toHaveLength(1);
+  });
+});
+```
+
+Each reference is what the browser's is. It goes through `callAction`,
+answers with the decoded value, and rejects with the `ServerActionError` a
+browser's reference throws when the endpoint does not answer `200`. `init` can
+be a function, read on every call, so a test can sign somebody in between two
+calls. A reference also carries `$$FORM_ACTION`, like the real one.
+
+**Mocking the action instead** is still right when the component is the
+subject and the action is an input: `uft.mock` with a `uft.fn` that resolves
+to a state. Use `serverReferences` when the test's claim spans both, for
+example "the form shows the action's refusal".
+
+Two things about the host:
+
+- `uft.mock` needs Node or Deno 2.8+. On Bun it raises `UnsupportedError`
+  ([Testing](/guide/testing#which-hosts)). `callAction` itself runs on all
+  three.
+- happy-dom resets an `<output>` to empty when React resets the form after an
+  action, where a browser keeps its text
+  ([capricorn86/happy-dom#2441](https://github.com/capricorn86/happy-dom/issues/2441)).
+  The fixture shows its result in a `<p role="status">`.
+
+## A route, built
+
+<div className="command"><code>buildApp({ root })</code></div>
+
+```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
+// @flow
+import { beforeAll, describe, expect, it } from "@uniflowed/test";
+import { type BuiltApp, buildApp } from "@uniflowed/router/testing";
+
+let app: BuiltApp;
+
+// One production build for the whole file: `uf build --adapter node`, then the
+// handler it wrote, answering in this process.
+beforeAll(
+  async () => {
+    app = await buildApp({ root: new URL("../", import.meta.url) });
+  },
+  { timeout: 120_000 },
+);
+
+describe("the notes route, built", () => {
+  it("streams a document with the Suspense boundary resolved inside it", async () => {
+    const response = await app.render("/notes");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    const html = await response.text();
+    expect(html).toContain("Server Components fetch their own data");
+    expect(html).toContain("1 notes");
+  });
+
+  it("sends a navigation the Flight payload, naming the client component, not its code", async () => {
+    const payload = await (await app.flight("/notes")).text();
+    expect(payload).toContain("Server Components fetch their own data");
+    expect(payload).toContain('"NoteForm"');
+    expect(payload).not.toContain("useActionState");
+  });
+
+  it("answers a note that does not exist with the nearest not-found page", async () => {
+    const response = await app.render("/notes/404");
+    expect(response.status).toBe(404);
+    expect(await response.text()).toContain("No such note.");
+  });
+```
+
+`buildApp` runs `uf build --adapter node` for the project at `root`. A build
+that fails, such as an RSC contract violation, rejects with the build's own
+output. It then loads the `handler.js` the adapter wrote and answers requests
+the way `@uniflowed/server/node` does: `app.router`'s redirects and headers
+first, then a file under `static/`, then the application, all inside the
+handler's own request lifecycle. Nothing listens, so it works where a test
+may not open a socket. `openBuild(directory)` does the same for a directory
+that is already built.
+
+- `render(path)` asks for a document the way a navigation does. The HTML
+  streams, and a `<Suspense>` boundary's content arrives later in the same
+  body, so `text()` holds both the shell and what resolved.
+- `flight(path)` fetches the route's Flight payload from
+  `<path>/__uf.flight`, where a client navigation fetches it. It names each
+  client component by export and chunk, and none of its code.
+- `fetch(path, init)` sends anything else: a route handler, a static file, a
+  `POST`.
+- `settled()` waits for every answered request's `after()` work. A request
+  settles once its body has been read or cancelled.
+
+### Boundaries and a form before hydration
+
+```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
+  it("saves a note from a form posted before hydration, and says so on the page", async () => {
+    const page = await app.submit(
+      "/notes",
+      { text: "Built, then submitted" },
+      {
+        cookies: { session: "grace" },
+      },
+    );
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("saved note 2");
+  });
+
+  it.skipBecause(
+    "lists a note saved by the action on the next render",
+    "#1469: the action and the page run two copies of notes.server.js, so the page never sees the write",
+    async () => {
+      await app.submit("/notes", { text: "Seen by the page" }, { cookies: { session: "grace" } });
+      expect(await (await app.render("/notes")).text()).toContain("Seen by the page");
+    },
+  );
+
+  it("refuses a note from nobody, as state the page renders", async () => {
+    const page = await (await app.submit("/notes", { text: "anonymous" })).text();
+    expect(page).toContain("sign in to write a note");
+  });
+
+  it("answers a page that throws with the error boundary, a 500 and none of the message", async () => {
+    const response = await app.render("/notes/not-a-number");
+    expect(response.status).toBe(500);
+    const html = await response.text();
+    expect(html).toContain("This note did not load.");
+    expect(html).not.toContain("note ids are numbers");
+  });
+
+  it("renders an existing note's page", async () => {
+    expect(await (await app.render("/notes/1")).text()).toContain("by ada");
+  });
+```
+
+`submit(path, fields)` renders the page and reads the form's hidden fields:
+the action id the build minted, its bound arguments and the `useActionState`
+key. It then posts them with `fields`, as a browser without JavaScript does,
+through the endpoint's second door. A `useActionState` form comes back as the
+page rendered with the action's result.
+
+**One case is skipped, and it is a bug.** In a built application, the server
+actions run in a different module graph from the pages. A module both import,
+like this fixture's in-memory store, is evaluated twice, so the page never sees
+the action's write
+([#1469](https://github.com/ubugeeei-prod/uf/issues/1469)). The case is in the
+file with `it.skipBecause` naming the issue, and it passes once that is fixed.
+An application whose state lives outside the process, such as a database or an
+upstream service, is not affected.
+
+A build takes seconds. Build once per file in `beforeAll`, and keep one
+project's build tests in one file: two files building the same project at once
+write the same directory.
+
+## In a browser
+
+Hydration, client interaction after hydration, and anything that needs layout
+are a browser's. `createTestApp` from `@uniflowed/test/app` starts the
+application under `uf dev` and `createBrowser` drives Chromium against it.
+[Testing Server Components in the testing guide](/guide/testing#testing-server-components)
+has the example, which is this fixture's `rsc.test.js`. It needs a port and a
+Chromium, which is why the four levels above do not.
+
+## Where it stands
+
+| | Status |
+| --- | --- |
+| `withRequest`, `callAction` (both doors), `serverReferences`, `buildApp`, `openBuild` | **Experimental.** Implemented and tested (`packages/router/testing.test.js`); the names may still change |
+| A route's HTML, Flight payload, not-found and error boundaries through a real build | **Implemented** |
+| A form posted before hydration, `useActionState` postback included | **Implemented** |
+| Hydration and client interaction | **Implemented** through `createTestApp` and a Chromium |
+| An action and the page it changes sharing module state | **Bug**, [#1469](https://github.com/ubugeeei-prod/uf/issues/1469) |
+| `redirect()` and the other routing errors from a hydrated action call | **Bug**, [#1470](https://github.com/ubugeeei-prod/uf/issues/1470); a `500` today |
+| Rendering one Server Component to Flight in the test's own process | **Planned.** React's Flight renderer needs the `react-server` build of React, which a test worker does not resolve; a render that faked it would pass what Flight refuses |
+| `buildApp` on Bun and Deno test hosts, and over the `edge` adapter | **Not verified yet.** CI runs it on Node, over the `node` adapter |
+
+## Where to go next
+
+[Data in the browser](/guide/data) is next: the query cache for what client
+components fetch once the page has arrived.

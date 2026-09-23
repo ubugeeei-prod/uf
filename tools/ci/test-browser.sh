@@ -15,7 +15,9 @@ rm -rf "$scratch/rsc/.uf" "$scratch/rsc/node_modules" "$scratch/browser/.uf" "$s
 ln -s "$root/node_modules" "$scratch/rsc/node_modules"
 
 "$uf" --cwd "$scratch/rsc" check
-"$uf" --cwd "$scratch/rsc" test
+# One worker: `tests/notes-app.test.js` runs `uf build` in the project while
+# `rsc.test.js` runs `uf dev` there, and both write `.uf/rsc`.
+"$uf" --cwd "$scratch/rsc" test -j 1
 ln -s "$root/node_modules" "$scratch/mcp/node_modules"
 "$uf" --cwd "$scratch/mcp" test
 "$uf" --cwd "$scratch/browser" test --browser interaction.test.js

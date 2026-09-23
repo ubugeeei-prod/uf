@@ -249,6 +249,12 @@ export const sections: $ReadOnlyArray<Section> = [
           "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself.",
       },
       {
+        href: "/guide/testing-server",
+        title: "Testing Server Components and actions",
+        blurb:
+          "A server action through its real endpoint, a component calling one over the wire, and a production build answering in the test's own process.",
+      },
+      {
         href: "/guide/data",
         title: "Data in the browser",
         blurb:

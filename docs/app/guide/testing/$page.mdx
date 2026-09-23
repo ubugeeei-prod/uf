@@ -1042,9 +1042,15 @@ port. The harness stays in its own page while the pages a test creates navigate.
 
 ### Testing Server Components
 
+[Testing Server Components and actions](/guide/testing-server) is the whole
+story: a server action through its endpoint, a client component calling one
+over the wire, and a production build answering in the test's own process,
+none of which needs a port or a browser. This section is the level above
+those, for hydration and client interaction.
+
 An async Server Component can fetch data during rendering; it needs no loader.
-To test its React Flight stream and its client boundaries, start the real
-application with `createTestApp`. This uses the same configuration, RSC analysis,
+To test its React Flight stream and its client boundaries in a browser, start
+the real application with `createTestApp`. This uses the same configuration, RSC analysis,
 Vite environments and request scope as `uf dev`.
 
 ```js
