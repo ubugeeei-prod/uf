@@ -107,10 +107,13 @@ flate2 = { version = "1.1.10", default-features = false, features = ["rust_backe
 globset = "0.4.20"
 # Decoding, resizing and re-encoding images, for `uf_assets`. `default-features
 # = false` is the whole point of the line: the default set drags in codecs uf
-# does not emit, and the three named here are pure Rust with no C toolchain and
+# does not emit, and the four named here are pure Rust with no C toolchain and
 # no native library to find at build time. See `crates/uf_assets/src/image.rs`
-# for what each one can and cannot do.
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+# for what each one can and cannot do. `avif` is the encoder only — `ravif`
+# over `rav1e`, with `image`'s `nasm` feature left off so no assembler is
+# needed — and only the request-time endpoint uses it; see
+# `crates/uf_assets/src/variant.rs` for why it is AVIF and not lossy WebP.
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "avif"] }
 ignore = "0.4.25"
 indexmap = "2"
 json5 = "1.3.1"
@@ -177,6 +180,12 @@ incremental = false
 
 [profile.dev.package."*"]
 debug = false
+
+# The AV1 encoder behind `uf_assets::variant`. Unoptimised, `rav1e` takes
+# seconds over an image a test or `uf start` from a debug build encodes in
+# milliseconds optimised, and it is a dependency nobody steps through.
+[profile.dev.package.rav1e]
+opt-level = 3
 
 # Build scripts and proc macros are compile-time only: nothing steps through
 # them, and there are a great many of them in the vendored tree.

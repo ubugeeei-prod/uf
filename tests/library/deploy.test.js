@@ -101,7 +101,14 @@ import { createHandler as createStandaloneHandler } from "@uniflowed/server/stan
 // the bundler's copy of a question that is now answered in `@uniflowed/server`.
 import { createServeHandler as createViteServeHandler } from "../../packages/vite/internal/serve.js";
 
-const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
+// With a deployment id, as every document `uf build` records has one, so the
+// doors are compared on the skew check as well as on everything else.
+const assets = {
+  scripts: ["/assets/client.js"],
+  styles: [],
+  preloads: [],
+  deployment: "build-n1",
+};
 
 const request = (url: string, init?: mixed) => new Request(`http://localhost${url}`, init);
 
@@ -744,11 +751,16 @@ describe("the front doors", () => {
         const response = nodeResponse();
         const method = String(init?.method ?? "GET");
         const body = String(init?.body ?? "");
+        // As an `IncomingMessage` carries them: lower-cased, one object.
+        const sent: { [string]: string } = {};
+        for (const [name, value] of new Headers((init?.headers: $FlowFixMe))) {
+          sent[name] = value;
+        }
         await compiled(
           {
             method,
             url,
-            headers: { host: "localhost" },
+            headers: { host: "localhost", ...sent },
             // The handler hands a non-`GET` body straight to `Request`, so what
             // stands in for the socket has to be async-iterable the way an
             // `IncomingMessage` is. A `GET` carries none, and passing one would
@@ -775,9 +787,23 @@ describe("the front doors", () => {
       ["/posts/hello", undefined],
       ["/definitely-not-a-page", undefined],
       ["/../uf-deploy-secret", undefined],
+      // A tab on the previous build. Its file is still a file — a chunk
+      // request carries no header and must keep loading — and everything it
+      // asks of the application is refused with the same `409` at every door,
+      // before a handler, a middleware or a render runs.
+      ["/", { headers: { "uf-deployment": "build-n" } }],
+      ["/api/health", { method: "POST", body: "{}", headers: { "uf-deployment": "build-n" } }],
+      ["/posts/hello", { headers: { "uf-deployment": "build-n" } }],
+      // And the same tab's request once it names the build that is live.
+      ["/posts/hello", { headers: { "uf-deployment": "build-n1" } }],
     ]) {
       const said = `${String(init?.method ?? "GET")} ${String(url)}`;
       const reference = await doors["uf start"](String(url), init);
+      // The reference itself, for the previous build's questions: the file is
+      // served, and the application is refused.
+      if (new Headers((init?.headers: $FlowFixMe)).get("uf-deployment") === "build-n") {
+        expect(`${said}: ${reference.slice(0, 3)}`).toBe(`${said}: ${url === "/" ? "200" : "409"}`);
+      }
       for (const name of [
         "adapter node",
         "adapter edge",

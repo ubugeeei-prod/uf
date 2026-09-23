@@ -919,8 +919,8 @@ fn transform_stage() -> Stage {
 /// What happens to an imported image or font, and what does not.
 ///
 /// Red line 7, in the form that matters most for this stage: uf will not emit
-/// AVIF or a lossy WebP, and a reader who does not know that will conclude the
-/// pipeline is broken rather than bounded. The detail line says what the
+/// a lossy WebP, nor AVIF at build time, and a reader who does not know that
+/// will conclude the pipeline is broken rather than bounded. The detail line says what the
 /// project asked for and `uf explain` is where somebody looks when the output
 /// surprised them, so the limit belongs in it rather than only in the
 /// documentation.
@@ -942,11 +942,27 @@ fn assets_stage(resolved: &ResolvedConfig) -> Stage {
             let mut detail = String::new();
             if images_on {
                 detail.push_str(&format!(
-                    "images: {} widths at quality {}, png/jpeg and webp-when-smaller \
-                     (no avif, no lossy webp — neither encoder is in this binary)",
+                    "images: {} widths at quality {}, png/jpeg and webp-when-smaller at build \
+                     time (no avif there, and no lossy webp — that encoder is not in this binary)",
                     images.widths.len(),
                     images.quality,
                 ));
+                // The request-time endpoint, which is off until a host is
+                // listed — and says so, because a remote `Image` that is not
+                // resized is otherwise indistinguishable from one that failed.
+                let hosts = images.remote_patterns.len();
+                if hosts == 0 {
+                    detail.push_str(
+                        "; remote images: no /__uf/image (app.builtins.images.remotePatterns is \
+                         empty)",
+                    );
+                } else {
+                    detail.push_str(&format!(
+                        "; remote images: /__uf/image for {hosts} {}, avif where the browser \
+                         takes it",
+                        if hosts == 1 { "pattern" } else { "patterns" },
+                    ));
+                }
             }
             if images_on && fonts_on {
                 detail.push_str("; ");

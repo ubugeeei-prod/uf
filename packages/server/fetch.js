@@ -89,10 +89,12 @@ import { END_OF_TIME, newScope, runInScope } from "./internal/cache-store.js";
 import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
+import { refuseOtherDeployment } from "./internal/deployment.js";
 import { flightResponse } from "./internal/flight.js";
 import { admit, headersFor, rewriteFor, wasAdmitted, withHeaders } from "./internal/routing.js";
 
 export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
+export { DEPLOYMENT_HEADER } from "./internal/deployment.js";
 
 export type {
   CapabilityDefaults,
@@ -144,6 +146,14 @@ export type FetchHandlerOptions = {|
    * prerendered pages stated no lifetime and no tag. See [`Regeneration`].
    */
   readonly regeneration?: Regeneration,
+  /**
+   * `/__uf/image`, from `@uniflowed/server/image`'s `createImageEndpoint`.
+   *
+   * Absent unless `app.builtins.images.remotePatterns` lists something, and
+   * absent is no endpoint: the path is an ordinary 404 like any other. Asked
+   * before the middleware, for the reason given where it is asked.
+   */
+  readonly images?: (request: Request) => Promise<Response | null>,
 |};
 
 /**
@@ -253,9 +263,17 @@ type CachedDocument = {|
 export function createFetchHandler(
   options: FetchHandlerOptions,
 ): (request: Request) => Promise<Response> {
-  const { app, cache, capabilities, document } = options;
+  const { app, cache, capabilities, document, images } = options;
 
   async function answer(arrived: Request): Promise<Response> {
+    // A browser on another build, before anything of this one runs. The files
+    // are the host's and were answered in front of this function, which is
+    // what keeps that browser's chunks loading; what it asks of the
+    // application — an action, a payload — is refused, and the router turns
+    // the refusal into a hard navigation. See `./internal/deployment.js`.
+    const stale = refuseOtherDeployment(arrived, document.deployment);
+    if (stale != null) return stale;
+
     // Before the guard, not after it. A route handler and a server action both
     // run inside `dispatch`, and `revalidateTag()` in one of them has to reach
     // the store that is answering this request — a mutation that invalidates
@@ -279,6 +297,16 @@ export function createFetchHandler(
     // what it can do is a fact about the host rather than about the route.
     if (context != null && capabilities != null) {
       context.capabilities = capabilities;
+    }
+
+    // The image endpoint, before anything of the application's. It is uf's,
+    // like the action endpoint, and it reads nothing from the request but its
+    // query and its `Accept`; a project's middleware guarding `/` would
+    // otherwise refuse every image on a signed-out page, and a rewrite could
+    // move the one path uf reserves. It declines every other path.
+    if (images != null) {
+      const imaged = await images(arrived);
+      if (imaged != null) return imaged;
     }
 
     // `app.router.rewrites` first, where the application begins: after the

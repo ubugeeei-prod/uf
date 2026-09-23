@@ -25,6 +25,7 @@
 
 import { createFromFetch, createFromReadableStream } from "react-server-dom-parcel/client.browser";
 
+import { withDeployment } from "./deployment.js";
 import { FLIGHT_CHUNK_ATTRIBUTE, flightChunkBytes } from "./flight-chunks.js";
 import {
   FLIGHT_CONTENT_TYPE,
@@ -196,7 +197,10 @@ export async function fetchFlight(
   // document load: too old a React is not a network failure, and a navigation
   // that quietly reloaded the page would hide it.
   requireServerComponentsReact(ENTRY);
-  const headers = new Headers({ accept: FLIGHT_CONTENT_TYPE });
+  // With the page's build, so a server on another one refuses the request
+  // rather than answering with a payload that names chunks this page does not
+  // have. The refusal is not a payload, so it becomes a document load below.
+  const headers = new Headers(withDeployment({ accept: FLIGHT_CONTENT_TYPE }));
   const interceptedFrom = options?.interceptedFrom;
   if (interceptedFrom != null) {
     headers.set(INTERCEPTED_FROM_HEADER, interceptedFrom);

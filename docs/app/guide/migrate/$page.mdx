@@ -555,10 +555,13 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
 - **Middleware and request APIs.** A rewrite changes the path and never the
   request's headers, neither a middleware's nor a config rule's proxies to
   another origin, and `cookies()` reads without writing.
-- **Images and fonts.** Resized at build time only, with no AVIF or lossy WebP
-  ([#997](https://github.com/ubugeeei-prod/uf/issues/997)), no remote images and
-  no request-time optimizer; a font is self-hosted from a file you import rather
-  than downloaded from a provider.
+- **Images and fonts.** An imported image is resized at build time, with no
+  AVIF or lossy WebP there ([#997](https://github.com/ubugeeei-prod/uf/issues/997)).
+  `images.remotePatterns` carries over as `app.builtins.images.remotePatterns`
+  with the same keys, and `next/image`'s remote `src` becomes `Image` through
+  `/__uf/image`; a deployed `node`, `container` or `serverless` directory needs
+  `app.builtins.images.transformer` to encode there. A font is self-hosted from
+  a file you import rather than downloaded from a provider.
 - **Files with no counterpart:** `global-error.tsx`, `instrumentation.ts`, and
   the `icon` and `manifest` conventions.
 

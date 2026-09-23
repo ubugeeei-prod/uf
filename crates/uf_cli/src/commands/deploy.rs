@@ -544,7 +544,12 @@ fn platform_files(
     match adapter {
         DeployAdapter::Edge => vec![(
             directory.join("wrangler.json"),
-            wrangler_config(root, schedules, links_kv_cache(&root.join(WORK_DIR))),
+            wrangler_config(
+                root,
+                schedules,
+                links_kv_cache(&root.join(WORK_DIR)),
+                links_image_binding(&root.join(WORK_DIR)),
+            ),
         )],
         DeployAdapter::Container => vec![
             (directory.join("Dockerfile"), DOCKERFILE.to_owned()),
@@ -599,6 +604,7 @@ fn wrangler_config(
     root: &Utf8Path,
     schedules: &[schedules::DeclaredSchedule],
     kv_cache: bool,
+    image_binding: bool,
 ) -> String {
     let mut config = json!({
         "name": worker_name(root),
@@ -620,6 +626,12 @@ fn wrangler_config(
     // than the build.
     if kv_cache {
         config["kv_namespaces"] = json!([{ "binding": KV_BINDING }]);
+    }
+    // The Images binding `/__uf/image` encodes through, for a project that
+    // lists remote image hosts — and only then, for the same reason as the
+    // namespace above: it follows what the handler linked. ubugeeei-prod/uf#958.
+    if image_binding {
+        config["images"] = json!({ "binding": IMAGES_BINDING });
     }
     // Cloudflare's own scheduler, told what to fire — and the `worker.js`
     // written beside this now exports a `scheduled()` for it to call, which is
@@ -659,6 +671,21 @@ const KV_PROVIDER: &str = "@uniflowed/server/cache/kv";
 fn links_kv_cache(work: &Utf8Path) -> bool {
     fs::read_to_string(work.join("handler.js").as_std_path())
         .is_ok_and(|source| source.contains(KV_PROVIDER))
+}
+
+/// The binding `@uniflowed/server/image/edge` encodes through.
+const IMAGES_BINDING: &str = "IMAGES";
+
+/// The module a generated `handler.js` imports when it answers `/__uf/image`
+/// on a Worker.
+const EDGE_IMAGE_MODULE: &str = "@uniflowed/server/image/edge";
+
+/// Whether the `handler.js` the driver generated in `work` encodes images
+/// through Cloudflare's Images binding. Read from the source, as
+/// [`links_kv_cache`] is and for its reason.
+fn links_image_binding(work: &Utf8Path) -> bool {
+    fs::read_to_string(work.join("handler.js").as_std_path())
+        .is_ok_and(|source| source.contains(EDGE_IMAGE_MODULE))
 }
 
 /// The project's directory name, as a name Cloudflare accepts.
@@ -904,7 +931,7 @@ mod tests {
 
     #[test]
     fn the_wrangler_config_asks_for_what_the_bundle_needs() {
-        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[], false);
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[], false, false);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(config["name"], "served-app");
         assert_eq!(config["main"], "./worker.js");
@@ -939,7 +966,7 @@ mod tests {
                 cron: "0 6 * * 1".to_owned(),
             },
         ];
-        let written = wrangler_config(Utf8Path::new("/src/served-app"), &declared, false);
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &declared, false, false);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(config["triggers"]["crons"][0], "*/15 * * * *");
         assert_eq!(config["triggers"]["crons"][1], "0 6 * * 1");
@@ -950,7 +977,7 @@ mod tests {
     /// interpret, and a project with no schedules said nothing.
     #[test]
     fn no_schedules_writes_no_triggers_key() {
-        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[], false);
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[], false, false);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert!(config.get("triggers").is_none(), "{written}");
     }
@@ -959,16 +986,29 @@ mod tests {
     /// provider reads, and one that does not is bound to no namespace at all.
     #[test]
     fn a_kv_cache_is_bound_only_where_the_handler_uses_one() {
-        let bound = wrangler_config(Utf8Path::new("/src/isr-app"), &[], true);
+        let bound = wrangler_config(Utf8Path::new("/src/isr-app"), &[], true, false);
         let config: serde_json::Value = serde_json::from_str(&bound).unwrap();
         assert_eq!(config["kv_namespaces"][0]["binding"], KV_BINDING);
         // No `id`: `wrangler dev` makes a local namespace for the binding, and
         // a deploy provisions one.
         assert!(config["kv_namespaces"][0].get("id").is_none(), "{bound}");
 
-        let unbound = wrangler_config(Utf8Path::new("/src/served-app"), &[], false);
+        let unbound = wrangler_config(Utf8Path::new("/src/served-app"), &[], false, false);
         let config: serde_json::Value = serde_json::from_str(&unbound).unwrap();
         assert!(config.get("kv_namespaces").is_none(), "{unbound}");
+    }
+
+    /// A Worker that answers `/__uf/image` is bound to the Images binding it
+    /// encodes through, and one that does not is bound to none.
+    #[test]
+    fn the_images_binding_is_declared_only_where_the_handler_uses_it() {
+        let bound = wrangler_config(Utf8Path::new("/src/photos"), &[], false, true);
+        let config: serde_json::Value = serde_json::from_str(&bound).unwrap();
+        assert_eq!(config["images"]["binding"], IMAGES_BINDING);
+
+        let unbound = wrangler_config(Utf8Path::new("/src/photos"), &[], false, false);
+        let config: serde_json::Value = serde_json::from_str(&unbound).unwrap();
+        assert!(config.get("images").is_none(), "{unbound}");
     }
 
     /// Whether the binding is needed is read off the generated handler, which is

@@ -68,6 +68,7 @@ import { pinHeaders, reportMalformedRequests, send } from "./node.js";
 
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
+import { refuseOtherDeployment } from "./internal/deployment.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
 import { flightResponse } from "./internal/flight.js";
 import type { RoutingRules } from "./internal/routing.js";
@@ -139,6 +140,8 @@ export type DocumentAssets = {|
   readonly scripts: $ReadOnlyArray<string>,
   readonly styles: $ReadOnlyArray<string>,
   readonly preloads: $ReadOnlyArray<string>,
+  /** The build these URLs belong to; see `./internal/application.js`. */
+  readonly deployment?: string,
 |};
 
 /** What the project's server bundle exports; see `virtual:uf/server`. */
@@ -444,6 +447,15 @@ export function createHandler(
         sendBytes(response, method, 200, page.type, DOCUMENT_CACHE_CONTROL, page.bytes());
         return;
       }
+    }
+
+    // A browser on another build: after the files, which is what keeps its
+    // chunks loading, and before any application code, as `./fetch.js` does
+    // for every other front door. See `./internal/deployment.js`.
+    const stale = refuseOtherDeployment(addressed, document.deployment);
+    if (stale != null) {
+      await sendUnlessHead(response, method, stale);
+      return;
     }
 
     // The request begins here rather than at the top of the handler, and the

@@ -38,6 +38,17 @@ export type DocumentAssets = {|
   readonly scripts: $ReadOnlyArray<string>,
   readonly styles: $ReadOnlyArray<string>,
   readonly preloads: $ReadOnlyArray<string>,
+  /**
+   * The build these URLs belong to, as the document publishes it.
+   *
+   * Written by `uf build` and absent everywhere else — `uf dev`, and a build
+   * recorded before it existed — which means "no skew check". A document
+   * carries it as `<meta name="uf:deployment">`, the browser sends it back on
+   * every action call and payload request, and a front door answers one that
+   * names another build with a `409` rather than running anything. See
+   * `./deployment.js`.
+   */
+  readonly deployment?: string,
 |};
 
 /**

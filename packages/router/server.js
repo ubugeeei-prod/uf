@@ -54,6 +54,12 @@ export type RenderAssets = {|
   readonly scripts: $ReadOnlyArray<string>,
   readonly styles: $ReadOnlyArray<string>,
   readonly preloads: $ReadOnlyArray<string>,
+  /**
+   * The build the document belongs to, written into its head as
+   * `<meta name="uf:deployment">`. Absent under `uf dev`, where there is no
+   * other build to be skewed against. See `./internal/deployment.js`.
+   */
+  readonly deployment?: string,
 |};
 
 /**

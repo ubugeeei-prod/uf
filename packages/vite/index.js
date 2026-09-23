@@ -610,7 +610,8 @@ function flowPlugin({
             );
       }
       if (flightState != null) {
-        if (id === resolved(FLIGHT_VIRTUAL.entry)) return rscEntrySource(VIRTUAL.routes, routing);
+        if (id === resolved(FLIGHT_VIRTUAL.entry))
+          return rscEntrySource(VIRTUAL.routes, routing, flightState.deployment);
         if (id === resolved(FLIGHT_VIRTUAL.compilerRuntime)) return compilerRuntimeSource();
         if (id === resolved(FLIGHT_VIRTUAL.bridge)) {
           if (server != null) return devBridgeSource();

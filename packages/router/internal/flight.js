@@ -59,6 +59,15 @@ export type RouteState = {|
 export type FlightRoot = {|
   readonly route: RouteState,
   readonly tree: Node,
+  /**
+   * The build that rendered it, when the build has an id.
+   *
+   * In the payload rather than only in a response header, because the payload
+   * of a prerendered route is a file and a host that serves files runs nothing
+   * that could set one. A page on another build loads the document instead of
+   * rendering this; see `./deployment.js`.
+   */
+  readonly deployment?: string | null,
 |};
 
 /** The intercepted URL a Flight payload rendered, and the page it rendered over. */

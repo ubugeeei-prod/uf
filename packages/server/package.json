@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./adapter": "./adapter.js",
     "./bun": "./bun.js",
     "./cache": "./cache.js",
     "./cache/filesystem": "./cache-filesystem.js",
@@ -21,6 +22,9 @@
     "./events": "./events.js",
     "./fetch": "./fetch.js",
     "./host": "./host.js",
+    "./image": "./image.js",
+    "./image/edge": "./image-edge.js",
+    "./image/node": "./image-node.js",
     "./lambda": "./lambda.js",
     "./log": "./log.js",
     "./node": "./node.js",
@@ -32,6 +36,7 @@
     "./instrumentation": "./instrumentation.js"
   },
   "files": [
+    "adapter.js",
     "bun.js",
     "cache-filesystem.js",
     "cache-kv.js",
@@ -41,6 +46,9 @@
     "events.js",
     "fetch.js",
     "host.js",
+    "image-edge.js",
+    "image-node.js",
+    "image.js",
     "index.js",
     "instrumentation.js",
     "lambda.js",
