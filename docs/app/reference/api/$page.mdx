@@ -1,0 +1,26 @@
+---
+title: "API · uf"
+description: "Every export of every published package: its signature, its doc comment, and the specifier it is imported from."
+---
+
+import { ApiIndex } from "../../_design/api.js";
+
+<p className="eyebrow">Reference</p>
+
+# API
+
+<div className="lede">
+Every export of every `@uniflowed/*` package, as the package declares it: the
+signature, the comment above it, and the specifier a program imports it from.
+</div>
+
+These pages are written from the source when the site is built, by
+[`uf doc`](/reference/cli#uf-doc) and the packages' `exports`, so a signature
+here is the signature in the code. What they do not have is the argument —
+why a package is shaped the way it is — which is what the guides are for.
+
+An export with no doc comment is listed under *Without a doc comment* on its
+package's page, with a link to where it is declared, rather than left out. The
+last column below counts the ones that have one.
+
+<ApiIndex />

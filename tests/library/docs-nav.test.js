@@ -64,6 +64,12 @@ function routesOnDisk(): Array<string> {
       }
       const child = path.join(dir, item.name);
       const href = `/${path.relative(APP, child)}`;
+      // A segment in brackets is a parameter: its pages are the ones its
+      // `generateStaticParams` names, reached from the page above it, and
+      // no single entry in the sidebar could stand for them.
+      if (String(item.name).startsWith("[")) {
+        continue;
+      }
       if (pageFile(href) != null) {
         found.push(href);
       }

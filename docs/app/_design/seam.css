@@ -1418,3 +1418,96 @@ tbody tr:last-child :is(td, th) {
   max-height: 32rem;
   overflow: auto;
 }
+
+/* ------------------------------------------------------------------ *
+ * API reference
+ * ------------------------------------------------------------------ */
+
+.api-meta {
+  color: var(--doc-ink-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  gap: 0.4rem 1.25rem;
+}
+
+.api-meta span:first-child {
+  font-family: var(--uf-font-mono);
+}
+
+.api-note {
+  color: var(--doc-ink-muted);
+  font-size: 0.9rem;
+}
+
+.api-module > h2 code,
+.api-entry h3 code {
+  background: none;
+  font-size: inherit;
+  padding: 0;
+}
+
+.api-entry {
+  border-top: 1px solid var(--doc-rule);
+  margin-top: 2.2rem;
+  padding-top: 1.1rem;
+}
+
+/* The kind is the running head of an entry, as the eyebrow is of a page. */
+.prose .api-kind {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  margin: 0 0 0.3rem;
+  text-transform: uppercase;
+}
+
+.api-entry h3 {
+  margin-top: 0;
+}
+
+.api-signature {
+  font-size: 0.82rem;
+  white-space: pre;
+}
+
+.prose .api-bare-title {
+  font-family: var(--uf-font-display);
+  font-weight: 600;
+  margin: 2.2rem 0 0.4rem;
+}
+
+.api-bare {
+  list-style: none;
+  padding: 0;
+}
+
+.api-bare li {
+  align-items: baseline;
+  border-bottom: 1px solid var(--doc-rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin: 0;
+  padding: 0.35rem 0;
+}
+
+.api-bare .api-kind {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.api-bare a {
+  font-family: var(--uf-font-mono);
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+.api-index .api-count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

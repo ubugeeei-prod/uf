@@ -52,6 +52,8 @@ infra/cloudflare/.wrangler/
 *.log
 *.tmp
 /docs/public/
+# The API reference `tools/docs/api.js` writes before the site is built.
+/docs/.generated/
 
 # The Flow that `module-mock.test.js` hands to `uf check`: a module, a correct
 # mock of it, and a deliberately wrong one. Written in place rather than in a
