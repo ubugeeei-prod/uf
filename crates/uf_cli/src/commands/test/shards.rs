@@ -215,6 +215,9 @@ pub(crate) fn merge(cwd: &Utf8Path, ui: &mut Ui, directory: &str, args: &TestArg
             timing_note.as_deref(),
             recorded.as_deref(),
             section.as_ref(),
+            // A merge ran nothing, so nothing was drawn as it went: the files
+            // are drawn here, in path order, from the shards' records.
+            false,
         );
     }
     finish(

@@ -527,34 +527,51 @@ second host.
 <figure className="terminal">
 
 ```
- PASS  src/cart.test.js       12 tests   4ms
- PASS  src/router.test.js     31 tests  11ms
- FAIL  src/format.test.js      8 tests   3ms
+uf test · shop
+──────────────
 
-  format > wraps long lines
-    src/format.test.js:24
-
-    22 |   it("wraps long lines", () => {
-    23 |     const out = format(input, { width: 40 });
-  > 24 |     expect(out.split("\n").length).toBe(3);
-       |                                    ^
-    25 |   });
-
-    expected  3
-    received  4
-
- 51 tests, 50 passed, 1 failed   in 0.21s
+  ✓ src/router.test.js     11ms  31 passed
+  ✓ src/cart.test.js      4.1ms  12 passed
+  ✗ src/format.test.js    3.2ms  7 passed · 1 failed
+    ✗ format > wraps long lines
+      error: expected 4 to be 3
+        --> src/format.test.js:24:36
+         │
+      24 │     expect(out.split("\n").length).toBe(3);
+         │                                    ^
+        expected  3
+        received  4
+⠹ 3/9 files · 1 failed · 4 running · 0.2s
 ```
 
 </figure>
+
+Each file is reported the moment it finishes, not when the run does: its mark,
+how long it took, and its counts. A passing test is counted on its file's line
+rather than given one of its own — `uf test --json` names every test — so what
+is left to read is what went wrong. A failure is drawn under its file with a
+code frame at the assertion, what the matcher expected and received, and
+anything the test printed, while the rest of the suite is still running.
 
 The frame points at the Flow source: the transform emits a source map, the
 worker runs with source maps on, and the runner's own stack frames are trimmed
 out so the top frame is yours.
 
-The summary is meant to be read after the run, not decoded:
+The last line is the progress line: files finished out of the total, how many
+failed, how many are running, and how long the run has taken. It is redrawn in
+place on stderr and taken away before the summary, and it is only drawn on an
+interactive terminal with neither `CI` nor `NO_COLOR` set. A pipe or a CI log
+gets the same per-file lines as they finish, as plain text, and nothing is
+redrawn; `--json` gets one document at the end and nothing else.
+
+Once the run is over, the failures are named again — `file:line  name`, so the
+last screen says what broke without scrolling back — followed by what passing
+tests printed, the slowest files, and the summary:
 
 ```text
+failed
+✗ src/format.test.js:22  format > wraps long lines
+
 slowest files
 file                    duration
 app/TopicTabs.test.js      1.38s

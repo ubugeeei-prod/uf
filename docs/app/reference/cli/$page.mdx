@@ -1130,6 +1130,14 @@ Runs the test suite. A PATH argument keeps only files whose path contains it.
 | `--reporter junit` | Write the results as JUnit XML. Needs `--reporter-outfile` |
 | `--reporter-outfile FILE` | Where `--reporter` writes |
 
+Each file is reported on stdout as it finishes — its mark, duration and
+counts, and under it any failure with its code frame — and the summary follows
+once the run is over, naming the failures again. On an interactive terminal a
+progress line on stderr (files done of the total, failures, running workers,
+elapsed time) is redrawn in place and removed before the summary; with `CI` or
+`NO_COLOR` set, or on a pipe, the per-file lines still stream and nothing is
+redrawn. `--json` prints one document at the end and nothing while it runs.
+
 Coverage is reported against the Flow source, mapped back through the
 transform's own source map, and a threshold in `uf.config.js` that is not
 reached fails the run. `--watch` and `--coverage` cannot be combined.

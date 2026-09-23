@@ -962,6 +962,171 @@ fn the_summary_names_the_slowest_files_and_the_host() {
     );
 }
 
+/// A fast file and a slow one, where the slow one cannot finish until the
+/// fast one's result has been read off `uf test`'s stdout.
+///
+/// The slow file waits for a file named `go` beside it, which the test writes
+/// only once it has *read* the fast file's line through a pipe. A runner that
+/// printed nothing until the run was over would never let it be written, and
+/// the slow file would fail — so a green run is itself the proof that the line
+/// arrived while the run was still going, with no sleep deciding it.
+const FAST_AND_SLOW: [(&str, &str); 2] = [
+    (
+        "src/a-fast.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"is quick\", () => {\n  expect(1).toBe(1);\n});\n",
+    ),
+    (
+        "src/b-slow.test.js",
+        r#"// @flow
+// Padded, so that a cold schedule — longest expected first, by size — starts
+// this file before the quick one rather than leaving it to the tie-break.
+import { existsSync } from "node:fs";
+import { expect, it } from "@uniflowed/test";
+
+it("waits until the quick file has been reported", async () => {
+  const go = new URL("./go", import.meta.url);
+  const deadline = Date.now() + 50_000;
+  while (!existsSync(go) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  expect(existsSync(go)).toBe(true);
+}, { timeout: 60_000 });
+"#,
+    ),
+];
+
+#[test]
+fn each_file_is_reported_on_a_pipe_as_soon_as_it_finishes() {
+    use std::io::BufRead as _;
+
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&FAST_AND_SLOW);
+
+    // Two workers, so both files are running at once; `CI` and `NO_COLOR`
+    // set, so this is the plain form a CI log gets.
+    // A plain `Command` rather than `uf()`, because the output has to be read
+    // while the process is still running rather than collected at its end.
+    let mut child = std::process::Command::new(support::uf_path())
+        .env("CI", "1")
+        .env("NO_COLOR", "1")
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "-j", "2"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = std::io::BufReader::new(child.stdout.take().unwrap());
+    let (lines, received) = std::sync::mpsc::channel::<String>();
+    let reader = std::thread::spawn(move || {
+        for line in stdout.lines().map_while(Result::ok) {
+            if lines.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut seen = Vec::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(90);
+    let mut released = false;
+    while let Ok(line) =
+        received.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+    {
+        if !released && line.contains("src/a-fast.test.js") {
+            // The quick file's line is here and the slow file is still
+            // waiting: let it go.
+            project.write("src/go", "");
+            released = true;
+        }
+        seen.push(line);
+    }
+    let output = child.wait_with_output().unwrap();
+    reader.join().unwrap();
+    let stdout = seen.join("\n");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        released,
+        "the quick file was never reported:\n{stdout}\n{stderr}"
+    );
+    assert!(
+        output.status.success(),
+        "the slow file only passes if the quick one was reported while it ran:\n{stdout}\n{stderr}"
+    );
+    assert_plain(&stdout);
+    assert!(
+        !stderr.contains('\r'),
+        "a CI log is never redrawn: {stderr:?}"
+    );
+    let at = |needle: &str| {
+        seen.iter()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle} is not in:\n{stdout}"))
+    };
+    // Each file has its line, in the order they finished, and the summary
+    // comes after both. The mark is `✓` or `+` by locale, so it is the counts
+    // that are looked for.
+    assert!(
+        at("src/a-fast.test.js") < at("src/b-slow.test.js"),
+        "{stdout}"
+    );
+    assert!(
+        seen[at("src/b-slow.test.js")].contains("1 passed"),
+        "{stdout}"
+    );
+    assert!(at("src/b-slow.test.js") < at("slowest files"), "{stdout}");
+    assert!(stdout.contains("2 passed, 0 failed"), "{stdout}");
+}
+
+/// A failure is drawn with its frame under its own file's line, as that file
+/// finishes, and named again at the end so the last screen says what broke.
+#[test]
+fn a_failure_is_drawn_under_its_file_and_named_again_in_the_summary() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&MIXED);
+
+    let (success, stdout, _) = run(project.path(), &[]);
+
+    assert!(!success);
+    let lines: Vec<&str> = stdout.lines().collect();
+    let at = |needle: &str| {
+        lines
+            .iter()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle} is not in:\n{stdout}"))
+    };
+    // The marks and the separator between counts are `✗`/`·` or `x`/`,` by
+    // locale, so the words are what is looked for.
+    let file = at("src/math.test.js ");
+    for count in ["1 passed", "1 failed", "1 skipped", "1 todo"] {
+        assert!(lines[file].contains(count), "{count}: {stdout}");
+    }
+    assert!(
+        lines[file + 1].trim_end().ends_with(" math > fails"),
+        "{stdout}"
+    );
+    assert!(
+        at("expected \"flow\" to be \"typescript\"") > file,
+        "{stdout}"
+    );
+    assert!(
+        lines[at("src/ui/button.test.js ")].contains("1 passed"),
+        "{stdout}"
+    );
+    // A passing test is counted on its file's line rather than given one.
+    assert!(!stdout.contains("math > adds"), "{stdout}");
+    let recap = at("src/math.test.js:11  math > fails");
+    assert!(
+        recap > at("expected \"flow\" to be \"typescript\""),
+        "{stdout}"
+    );
+    assert!(recap < at("slowest files"), "{stdout}");
+}
+
 #[test]
 fn list_reports_what_each_declaration_would_do() {
     let project = Project::new(&MIXED);

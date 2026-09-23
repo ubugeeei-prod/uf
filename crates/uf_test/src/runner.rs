@@ -104,11 +104,27 @@ struct SelectedFile<'a> {
     plan: Cow<'a, TestPlan>,
 }
 
-/// Notified as each file finishes, so a caller can draw a progress line.
+/// Notified as the run starts, as each file starts, and as each file
+/// finishes, so a caller can report a file the moment it is done rather than
+/// when the whole run is.
 ///
 /// Called from worker threads, hence [`Sync`]; implementations are expected to
-/// be cheap and to do their own locking.
+/// be cheap and to do their own locking. Only [`RunObserver::file_finished`]
+/// is required: the other two default to doing nothing, because a caller that
+/// only draws results has no use for them.
 pub trait RunObserver: Sync {
+    /// The pool is about to start: `files` will run on `workers` processes.
+    ///
+    /// Not called for a run with nothing to run, and not called when the host
+    /// would not start, which is a [`RunError`] instead.
+    fn run_started(&self, _files: usize, _workers: usize) {}
+
+    /// A worker has been handed `file` and is about to run it.
+    ///
+    /// Not called for a file the run bailed before, which never starts, nor
+    /// again for a retry, which is part of the file's one run.
+    fn file_started(&self, _file: &str) {}
+
     /// One file finished. `completed` counts finished files including this one.
     fn file_finished(&self, completed: usize, total: usize, report: &FileReport);
 }
@@ -271,6 +287,7 @@ impl TestRunner {
         // spot, which was a whole host process started and thrown away on
         // every run, before any worker that did work had been started.
         let first = Worker::spawn(host)?;
+        observer.run_started(schedule.len(), workers);
 
         let state = RunState {
             next: AtomicUsize::new(0),
@@ -392,6 +409,10 @@ impl TestRunner {
                 continue;
             };
             let file = selected.file;
+            // Before the worker is found, so a file whose worker will not
+            // start is still one that started and finished: a caller counting
+            // what is running never sees a finish it did not see begin.
+            observer.file_started(&file.relative);
 
             if worker.is_none() {
                 worker = state.take_first();

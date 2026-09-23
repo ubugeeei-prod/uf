@@ -1,22 +1,29 @@
 //! What `uf test` puts on the screen, and what it puts on a pipe.
 //!
-//! Two audiences, two rules. A person gets a status line per test, a code frame
-//! under each failure pointing at the assertion that broke, whatever the tests
-//! printed, the slowest files, and a summary. A program gets JSON with no
-//! styling, no progress, and no field whose value depends on anything but the
-//! suite — every duration is grouped into its own key so a caller can diff two
-//! runs by ignoring them.
+//! Two audiences, two rules. A person gets a line per file as that file
+//! finishes — its mark, its duration and its counts — with a code frame under
+//! each failure pointing at the assertion that broke, and then, once the run
+//! is over, the failures again by name, whatever the tests printed, the
+//! slowest files, and a summary. A program gets JSON with no styling, no
+//! progress, and no field whose value depends on anything but the suite —
+//! every duration is grouped into its own key so a caller can diff two runs by
+//! ignoring them.
+//!
+//! The per-file lines are drawn by [`render_file`], which the stream calls as
+//! each file finishes (see [`super::stream`]) and [`render_report`] calls for a
+//! report nobody watched being made — `uf test --merge-shards`, which ran
+//! nothing itself.
 
 use anyhow::Result;
 use camino::Utf8Path;
 use uf_project::ProjectFile;
 use uf_term::{
     Align, Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Phase, Status, Table, Tone,
-    format_duration, push_padded, push_spaces,
+    display_width, format_duration, push_padded, push_spaces,
 };
 use uf_test::{
-    FileStatus, OutputChunk, OutputStream, SkipReason, TestFilter, TestRecord, TestRunReport,
-    TestStatus, discover_tests, merge_plans,
+    FileReport, FileStatus, OutputChunk, OutputStream, SkipReason, TestFilter, TestRecord,
+    TestRunReport, TestStatus, discover_tests, merge_plans,
 };
 
 use super::coverage::CoverageSection;
@@ -145,6 +152,11 @@ fn selection_label(selection: uf_test::Selection) -> String {
 }
 
 /// Everything one run produced, rendered for a person.
+///
+/// `streamed` says whether the files were already drawn one by one as they
+/// finished, with the banner above them. When they were, this draws only what
+/// can be said once the run is over; when they were not — a merge of shards —
+/// it draws the banner and every file first, in path order.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_report(
     ui: &mut Ui,
@@ -158,6 +170,7 @@ pub(super) fn render_report(
     timing_note: Option<&str>,
     record_note: Option<&str>,
     coverage: Option<&CoverageSection>,
+    streamed: bool,
 ) {
     let label = project_label(root).to_string();
     // The browser is named, not just labelled. Every other host answers to one
@@ -187,7 +200,8 @@ pub(super) fn render_report(
     let counts = counts(report);
     let phases = phases.to_vec();
 
-    let file_width = widest(report.records().map(|record| record.file.as_str()));
+    let path_width = path_column(report.files.iter().map(|file| file.file.as_str()));
+    let failed_tests = failed_tests(report);
     let (output_groups, output_hidden) = other_output(report);
     let output_note = (output_hidden > 0).then(|| {
         format!(
@@ -214,18 +228,26 @@ pub(super) fn render_report(
         .collect();
 
     ui.render(|renderer, out| {
-        renderer.banner(out, "uf test", Some(&label));
-        renderer.blank(out);
+        if !streamed {
+            render_banner(renderer, out, &label);
+            for file in &report.files {
+                let source = files
+                    .iter()
+                    .find(|project| project.relative_path == file.file)
+                    .map(|project| project.source.as_str());
+                render_file(renderer, out, source, file, path_width);
+            }
+        }
 
-        let mut line = String::new();
-        for file in &report.files {
-            for record in &file.records {
-                line.clear();
-                push_padded(&mut line, &record.file, file_width + 2, Align::Left);
-                line.push_str(&record.name);
+        // Once more by name, and only when the files scrolled past as they
+        // finished: the frames are up there, but the end of a long run is
+        // where a reader looks, and "which ones" should not need a search.
+        if streamed && !failed_tests.is_empty() {
+            renderer.blank(out);
+            renderer.heading(out, 2, "failed");
+            for failed in &failed_tests {
                 push_spaces(out, 2);
-                renderer.status(out, status_of(&record.status), &line);
-                render_details(renderer, out, files, record);
+                renderer.status(out, Status::Error, failed);
             }
         }
 
@@ -354,6 +376,194 @@ pub(super) fn render_report(
             &summary_line,
         );
     });
+}
+
+/// The banner a run opens with, and the blank line under it.
+pub(super) fn render_banner(renderer: &uf_term::Renderer, out: &mut String, label: &str) {
+    renderer.banner(out, "uf test", Some(label));
+    renderer.blank(out);
+}
+
+/// The widest a file line pads its path to.
+///
+/// A path column exists so the durations after it line up. One deeply nested
+/// file should not push every other line's duration off the right edge of an
+/// eighty-column terminal, so past this the long path simply runs on and its
+/// own line is the only one out of step.
+const PATH_COLUMN_MAX: usize = 56;
+
+/// How wide the duration column on a file line is: `999.9ms` and `12.34s`
+/// both fit, so the counts after it start in one column.
+const DURATION_COLUMN: usize = 7;
+
+/// The column a file line pads its path to, for these paths.
+///
+/// Worked out from every file the run *will* report rather than the ones
+/// finished so far, so the first line drawn is already aligned with the last.
+pub(super) fn path_column<'a>(paths: impl IntoIterator<Item = &'a str>) -> usize {
+    widest(paths).min(PATH_COLUMN_MAX)
+}
+
+/// The mark a file line carries.
+///
+/// Red when anything in the file failed or the file itself did not complete;
+/// green when something passed and nothing failed; the skip mark for a file in
+/// which nothing ran at all, because every case was skipped or left to do.
+pub(super) fn file_status(file: &FileReport) -> Status {
+    let failed = file.status != FileStatus::Completed
+        || file.records.iter().any(|record| record.status.is_failed());
+    if failed {
+        Status::Error
+    } else if file.records.iter().any(|record| record.status.is_passed()) {
+        Status::Success
+    } else {
+        Status::Skip
+    }
+}
+
+/// One finished file: a line saying how it went, and under it only what a
+/// reader needs to act on — each failure with its code frame and what it
+/// printed, why a file did not complete, a skip that gave a reason, and a
+/// test that only passed on a retry.
+///
+/// A passing test is not given a line of its own. It is counted on the file's
+/// line, and `uf test --json` names every one; a suite of six hundred tests
+/// drawn a line each is a screen of green that pushes the one red line out of
+/// sight.
+///
+/// `source` is the file's text, for the code frames; a frame without it still
+/// names the line.
+pub(super) fn render_file(
+    renderer: &uf_term::Renderer,
+    out: &mut String,
+    source: Option<&str>,
+    file: &FileReport,
+    path_width: usize,
+) {
+    let color = renderer.color();
+    let theme = renderer.theme();
+    let status = file_status(file);
+
+    push_spaces(out, 2);
+    renderer
+        .status_style(status)
+        .paint(color, status.glyph(renderer.glyph_set()), out);
+    out.push(' ');
+    theme.path.paint(color, &file.file, out);
+    push_spaces(
+        out,
+        path_width.saturating_sub(display_width(&file.file)) + 2,
+    );
+    let mut cell = String::new();
+    // A file that never ran took no time, and `0ns` would read as a claim that
+    // it did, very quickly.
+    if file.duration_micros > 0 {
+        push_padded(
+            &mut cell,
+            &format_duration(file.duration()),
+            DURATION_COLUMN,
+            Align::Right,
+        );
+    } else {
+        push_spaces(&mut cell, DURATION_COLUMN);
+    }
+    theme.muted.paint(color, &cell, out);
+    out.push_str("  ");
+    push_counts(renderer, out, file);
+    out.push('\n');
+
+    if file.status != FileStatus::Completed {
+        push_spaces(out, 4);
+        renderer.status(out, Status::Error, &file.status.describe());
+        if let FileStatus::LoadFailed {
+            stack: Some(stack), ..
+        } = &file.status
+        {
+            for line in stack.lines().take(STACK_LINES_SHOWN) {
+                push_spaces(out, 6);
+                renderer.line(out, theme.muted, &printable(line.trim_end()));
+            }
+        }
+    }
+
+    for record in &file.records {
+        match &record.status {
+            TestStatus::Failed { .. } => {
+                push_spaces(out, 4);
+                renderer.status(out, Status::Error, &record.name);
+                render_details(renderer, out, source, record);
+            }
+            TestStatus::Skipped {
+                message: Some(_), ..
+            } => {
+                push_spaces(out, 4);
+                renderer.status(out, Status::Skip, &record.name);
+                render_details(renderer, out, source, record);
+            }
+            TestStatus::Passed if record.attempts > 1 => {
+                push_spaces(out, 4);
+                renderer.status(
+                    out,
+                    Status::Warn,
+                    &format!("{}  passed on attempt {}", record.name, record.attempts),
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+/// How many lines of a load failure's stack a file line shows.
+///
+/// The top of the stack is where the module threw; below that it is the
+/// loader importing it, which is the same for every file. `--json` has it all.
+const STACK_LINES_SHOWN: usize = 8;
+
+/// `3 passed · 1 failed · 1 skipped`, each count in its own colour, and only
+/// the counts that are not zero.
+fn push_counts(renderer: &uf_term::Renderer, out: &mut String, file: &FileReport) {
+    let (mut passed, mut failed, mut skipped, mut todo) = (0usize, 0usize, 0usize, 0usize);
+    for record in &file.records {
+        match record.status {
+            TestStatus::Passed => passed += 1,
+            TestStatus::Failed { .. } => failed += 1,
+            TestStatus::Skipped { .. } => skipped += 1,
+            TestStatus::Todo => todo += 1,
+        }
+    }
+    let color = renderer.color();
+    let theme = renderer.theme();
+    let separator = match renderer.glyph_set() {
+        uf_term::GlyphSet::Unicode => " · ",
+        uf_term::GlyphSet::Ascii => ", ",
+    };
+    let mut first = true;
+    for (count, word, style) in [
+        (passed, "passed", theme.success),
+        (failed, "failed", theme.error),
+        (skipped, "skipped", theme.muted),
+        (todo, "todo", theme.muted),
+    ] {
+        if count == 0 {
+            continue;
+        }
+        if !first {
+            theme.muted.paint(color, separator, out);
+        }
+        first = false;
+        style.paint(color, &format!("{count} {word}"), out);
+    }
+    if first {
+        theme.muted.paint(color, "no tests", out);
+    }
+}
+
+/// Every failing test, as `file:line  name`, in report order.
+fn failed_tests(report: &TestRunReport) -> Vec<String> {
+    report
+        .failures()
+        .map(|record| format!("{}:{}  {}", record.file, record.line, record.name))
+        .collect()
 }
 
 /// How many lines of output the run's `output` section shows.
@@ -486,14 +696,6 @@ fn other_output(report: &TestRunReport) -> (Vec<OutputGroup>, usize) {
     (groups, hidden)
 }
 
-fn status_of(status: &TestStatus) -> Status {
-    match status {
-        TestStatus::Passed => Status::Success,
-        TestStatus::Failed { .. } => Status::Error,
-        TestStatus::Skipped { .. } | TestStatus::Todo => Status::Skip,
-    }
-}
-
 /// Draw a code frame, and what the matcher said, under a failing test.
 ///
 /// The frame points at the assertion rather than at the `it(` line, because
@@ -504,7 +706,7 @@ fn status_of(status: &TestStatus) -> Status {
 fn render_details(
     renderer: &uf_term::Renderer,
     out: &mut String,
-    files: &[ProjectFile],
+    source: Option<&str>,
     record: &TestRecord,
 ) {
     if let TestStatus::Skipped {
@@ -515,11 +717,6 @@ fn render_details(
         push_spaces(out, 8);
         renderer.status(out, Status::Skip, message);
     }
-
-    let source = files
-        .iter()
-        .find(|file| file.relative_path == record.file)
-        .map(|file| file.source.as_str());
 
     for failure in record.status.failures() {
         let frame = CodeFrame {
