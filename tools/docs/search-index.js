@@ -13,7 +13,8 @@
 // pipeline actually rendered, so a result cannot land on an anchor that does
 // not exist, and a page written as JavaScript is indexed by what it printed.
 //
-// The pages indexed are the ones `nav.js` lists — the manual, and nothing else.
+// The pages indexed are the ones `nav.js` lists — the manual — and the API
+// reference's page for each package.
 // A listed page the build did not write is an error rather than a gap in the
 // index: `tests/library/docs-nav.test.js` already says every listed page has a
 // source, so a missing document is the build disagreeing with itself.
@@ -146,6 +147,20 @@ export function buildIndex(site: string): SearchIndex {
     }
     const html = fs.readFileSync(file, "utf8");
     entries.push(...entriesFromHtml(html, listed.href, sectionFor(listed.href)?.title ?? ""));
+  }
+  // The API reference has a page per package, prerendered from its parameter
+  // rather than listed one by one in `nav.js`, and an export's name is the
+  // thing a reader most often types into a search box.
+  const api = path.join(site, "reference", "api");
+  if (fs.existsSync(api)) {
+    for (const name of fs.readdirSync(api).sort()) {
+      const file = path.join(api, name, "index.html");
+      if (fs.existsSync(file)) {
+        entries.push(
+          ...entriesFromHtml(fs.readFileSync(file, "utf8"), `/reference/api/${name}`, "API"),
+        );
+      }
+    }
   }
   return { version: INDEX_VERSION, entries };
 }

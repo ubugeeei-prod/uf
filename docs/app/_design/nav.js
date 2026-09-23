@@ -404,6 +404,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "What each @uniflowed/* package is for.",
       },
       {
+        href: "/reference/api",
+        title: "API",
+        blurb:
+          "Every export of every published package: its signature, its doc comment, and the specifier it is imported from.",
+      },
+      {
         href: "/reference/ui",
         title: "Components",
         blurb: "The headless primitives, their parts, and the keys each one owns.",

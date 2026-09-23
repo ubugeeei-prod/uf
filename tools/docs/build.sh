@@ -38,6 +38,18 @@ done
   if [ ! -d node_modules ]; then
     npm ci --no-audit --no-fund
   fi
+  # The uf that builds the site, and that everything below runs through.
+  # `UF_BIN` is set by anything that has already built the toolchain; without
+  # it, the one `cargo` builds here.
+  if [ -z "${UF_BIN:-}" ]; then
+    cargo build --release --package uf_cli --bin uf
+  fi
+  uf_bin="${UF_BIN:-$repo_root/target/release/uf}"
+  # The API reference is read from the packages by `uf doc` before the site is
+  # built, because the pages that render it are prerendered from what it
+  # wrote. `tools/docs/api.js` says what it keeps.
+  UF_BIN="$uf_bin" UF_BINARY="$uf_bin" UF_PROJECT_ROOT=. \
+    node --import @uniflowed/host/register tools/docs/api.js
   # `UF_BIN` is set by anything that has already built the toolchain — CI
   # builds it once and shares it, and rebuilding here would cost minutes for
   # a binary that is already on disk.
@@ -53,6 +65,6 @@ done
   # build and writes beside it. `docs/app/_design/search.js` says what is in it.
   # The Flow loader compiles through `uf transform`, so it is told which uf:
   # the one that just built the site, not whichever is first on `PATH`.
-  UF_BINARY="${UF_BIN:-$repo_root/target/release/uf}" UF_PROJECT_ROOT=. \
+  UF_BINARY="$uf_bin" UF_PROJECT_ROOT=. \
     node --import @uniflowed/host/register tools/docs/search-index.js docs/dist/docs
 )

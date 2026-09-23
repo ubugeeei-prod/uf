@@ -17,7 +17,12 @@ import { SearchDialog } from "./_design/search-dialog.js";
 import { themeBootstrap } from "./_design/theme-static.js";
 import { ThemeToggle } from "./_design/theme.js";
 
-const VERSION = "0.0.0-alpha";
+// The version of the packages this site was built beside, rather than a string
+// somebody has to remember to change: it read "0.0.0-alpha" through 0.1.0.
+import reactManifest from "@uniflowed/react/package.json";
+
+const VERSION: string =
+  typeof reactManifest.version === "string" ? reactManifest.version : "unreleased";
 
 /**
  * What every page shares, and what a page overrides by declaring its own.
