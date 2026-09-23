@@ -16,12 +16,20 @@
 [language-server.uf]
 command = "uf"
 args = ["lsp"]
+# Start only where the workspace root has a `uf.config.js`. In a project's
+# own `.helix/languages.toml` that is always true; merged into the global
+# file, it is what keeps uf from starting for a JavaScript file anywhere else.
+required-root-patterns = ["uf.config.js"]
 
 [[language]]
 name = "javascript"
 roots = ["uf.config.js"]
-# Replaces Helix's default list for JavaScript. Add the others back by name if
-# you want them alongside — they will disagree with uf about formatting.
+# Replaces Helix's default list for JavaScript, which is
+# `typescript-language-server` alone. That server reads a Flow file as
+# TypeScript and reports `component`, `hook`, `match` and every annotation
+# as errors, so it is left out rather than listed beside uf. Put it in a
+# project's `.helix/languages.toml`, not the global file: there it replaces the
+# list for this project only, and a TypeScript project keeps its server.
 language-servers = ["uf"]
 # No `formatter` line: `uf fmt` writes files rather than reading a buffer on
 # stdin, so the language server is the only thing that can format what is on
