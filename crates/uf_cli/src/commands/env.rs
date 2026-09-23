@@ -7,24 +7,17 @@ use camino::Utf8Path;
 use uf_config::env_files::{self, PROFILE_FILE};
 use uf_config::{discover_root, load_config};
 use uf_env::toolchain::{Declared, Lookup, Publishers, Resolution, Toolchain};
-use uf_term::{Align, KeyValue, Status, Tone, push_padded, push_spaces};
+use uf_term::{KeyValue, Status, Tone};
 
 use crate::cli::EnvCommand;
-use crate::support::{command_output, plural, project_label, relative_to};
+use crate::support::{plural, project_label, relative_to};
 use crate::ui::Ui;
 
-/// The tools `uf env doctor` looks for, and the flag that reports a version.
-const TOOLS: [(&str, &str); 5] = [
-    ("rustc", "--version"),
-    ("cargo", "--version"),
-    ("nix", "--version"),
-    ("git", "--version"),
-    ("bun", "--version"),
-];
+mod doctor;
 
 pub(crate) fn env(cwd: &Utf8Path, ui: &mut Ui, command: EnvCommand) -> Result<()> {
     match command {
-        EnvCommand::Doctor => doctor(cwd, ui),
+        EnvCommand::Doctor { json, verbose } => doctor::doctor(cwd, ui, json, verbose),
         EnvCommand::Use { name } => use_environment(cwd, ui, &name),
         EnvCommand::Install => install(cwd, ui),
         EnvCommand::List => list(cwd, ui),
@@ -415,49 +408,6 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn doctor(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
-    let tools = TOOLS
-        .into_iter()
-        .map(|(name, arg)| (name, command_output(name, arg)))
-        .collect::<Vec<_>>();
-    let missing = tools.iter().filter(|(_, result)| result.is_err()).count();
-    let name_width = TOOLS.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
-    let root = cwd.as_str().to_string();
-    let summary = format!(
-        "{} of {} tools available",
-        tools.len() - missing,
-        tools.len()
-    );
-
-    ui.render(|renderer, out| {
-        renderer.banner(out, "uf env doctor", Some(&root));
-        renderer.blank(out);
-        let mut line = String::new();
-        for (name, result) in &tools {
-            let (status, detail) = match result {
-                Ok(version) => (Status::Success, version.as_str()),
-                Err(_) => (Status::Error, "not found"),
-            };
-            line.clear();
-            push_padded(&mut line, name, name_width + 2, Align::Left);
-            line.push_str(detail);
-            push_spaces(out, 2);
-            renderer.status(out, status, &line);
-        }
-        renderer.blank(out);
-        renderer.status(
-            out,
-            if missing == 0 {
-                Status::Success
-            } else {
-                Status::Warn
-            },
-            &summary,
-        );
-    });
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,13 +500,5 @@ mod tests {
 
         assert!(error.to_string().contains("is not a mode"), "{error}");
         assert!(!root.join(PROFILE_FILE).exists());
-    }
-
-    #[test]
-    fn every_probed_tool_reports_a_version_flag() {
-        for (name, arg) in TOOLS {
-            assert!(!name.is_empty());
-            assert!(arg.starts_with("--"));
-        }
     }
 }

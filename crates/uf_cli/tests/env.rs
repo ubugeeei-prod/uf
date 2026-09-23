@@ -495,3 +495,105 @@ fn fake_pnpm_in_store(root: &std::path::Path, version: &str) -> std::path::PathB
     fs::set_permissions(bin.join("pnpm"), fs::Permissions::from_mode(0o755)).unwrap();
     marks
 }
+
+/// `uf env doctor` is about the project it is run in: the tools that project
+/// declares, and whether this machine has them. uf's own build tools are not
+/// on it.
+#[test]
+fn doctor_reports_the_declared_tools_and_what_to_do_about_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let (store, roots) = project(dir.path(), r#"{ node: "24.14.0" }"#);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["env", "doctor"])
+        .env("UF_STORE", &store)
+        .env("UF_ROOTS", &roots)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    assert!(stdout.contains("node@24.14.0"), "{stdout}");
+    assert!(stdout.contains("24.14.0 not installed"), "{stdout}");
+    assert!(stdout.contains("uf env install"), "{stdout}");
+    for internal in ["rustc", "cargo", "nix "] {
+        assert!(!stdout.contains(internal), "{internal} in {stdout}");
+    }
+    // Where things live is `--verbose`'s, not the default view's.
+    assert!(!stdout.contains(store.to_str().unwrap()), "{stdout}");
+
+    let verbose = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["env", "doctor", "--verbose"])
+        .env("UF_STORE", &store)
+        .env("UF_ROOTS", &roots)
+        .output()
+        .unwrap();
+    let verbose = String::from_utf8(verbose.stdout).unwrap();
+    assert!(verbose.contains(store.to_str().unwrap()), "{verbose}");
+    assert!(verbose.contains("env.toolchain.node"), "{verbose}");
+}
+
+/// `--json` carries everything, including what the default view leaves out.
+#[test]
+fn doctor_json_is_complete_and_pure() {
+    let dir = tempfile::tempdir().unwrap();
+    let (store, roots) = project(dir.path(), r#"{ node: "24.14.0" }"#);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["--color", "always", "env", "doctor", "--json"])
+        .env("UF_STORE", &store)
+        .env("UF_ROOTS", &roots)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(value["command"], "uf env doctor");
+    assert_eq!(value["store"], store.to_str().unwrap());
+    let node = value["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "node@24.14.0")
+        .unwrap_or_else(|| panic!("no node row: {value}"));
+    assert_eq!(node["status"], "warn");
+    assert_eq!(
+        node["declaredBy"],
+        serde_json::json!(["env.toolchain.node"])
+    );
+}
+
+/// A config it cannot read is a finding, not a failure: the doctor is what
+/// somebody runs when the project is the thing that is broken.
+#[test]
+fn doctor_reports_a_config_it_cannot_read_and_still_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("package.json"), "{}\n").unwrap();
+    fs::write(dir.path().join("uf.config.js"), "export default {{{\n").unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["env", "doctor", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["tools"][0]["name"], "uf.config.js");
+    assert_eq!(value["tools"][0]["status"], "error");
+}

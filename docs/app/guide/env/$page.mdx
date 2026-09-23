@@ -164,6 +164,29 @@ lists every tool at once:
     builder          vite (uf's default)
 ```
 
+<div className="command"><code>uf env doctor</code></div>
+
+```
+uf env doctor · my-app
+──────────────────────
+
+  ✓ node@24  24.21.0              runtime
+  ✓ node@26  26.8.2               build runtime
+  ! bun@1.4  1.4.2 not installed  test runtime
+    › `uf env install` installs what is missing now; otherwise the first command that needs a tool installs it
+  ✓ pnpm@10  10.34.5              package manager
+
+! 1 tool not installed yet · 4 tools checked
+```
+
+`uf env doctor` asks whether this machine has what the project runs on, and
+answers per tool. A release the store lacks is a warning — the first command
+that needs it installs it — and a tool written without a version that is not on
+`PATH` is an error, with what to do about it underneath. A project that declares
+nothing is told about the runtime and package manager uf falls back to.
+`--verbose` adds where each tool is and where the store and the links are;
+`--json` has all of it.
+
 ## Installing ahead of time
 
 <div className="command"><code>uf env install</code></div>
