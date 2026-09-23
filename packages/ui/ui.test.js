@@ -9549,7 +9549,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Toast.Title",
   ];
 
-  /** The parts `packages/ui/index.js` names, and the component behind each. */
+  /** The parts `packages/ui/index.js` names, as `Dialog.Root`, and the component declared behind each. */
   // Both are read once. `sourceOf` is asked for every part in four tables, and
   // reading and splitting every module of the package for each answer was a
   // quarter of this file's time — the file the whole suite waits on last.
@@ -9561,18 +9561,47 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     return barrel;
   }
 
-  /** Every `export component`'s source text, by component name. */
+  /** Every top-level `component`'s source text, by the name it is declared under. */
   function componentSources(): Map<string, string> {
     components ??= readComponentSources();
     return components;
   }
 
+  /**
+   * What each module's export lists say: the exported name, and the component
+   * declared behind it. `export { DialogRoot as Root }` is `Root` →
+   * `DialogRoot`, and `export { Body } from "./menu.js"` is followed into
+   * `menu.js`, which is how `ContextMenu.Body` is `Menu`'s `MenuBody`.
+   */
+  function exportsOf(file: string): Map<string, string> {
+    const directory = path.join(repository, "packages", "ui");
+    const source = fs.readFileSync(path.join(directory, file), "utf8");
+    const exported = new Map<string, string>();
+    // One line or one entry per line, whichever the formatter chose.
+    for (const list of source.matchAll(/^export \{([^}]*)\}(?: from "\.\/([\w-]+\.js)")?;$/gm)) {
+      const from = list[2] == null ? null : exportsOf(list[2]);
+      for (const entry of list[1].split(",")) {
+        const words = /^\s*(\w+)(?:\s+as\s+(\w+))?\s*$/.exec(entry);
+        if (words == null) {
+          continue;
+        }
+        const [local, name] = [words[1], words[2] ?? words[1]];
+        exported.set(name, from == null ? local : (from.get(local) ?? local));
+      }
+    }
+    return exported;
+  }
+
   function readPartsOfTheBarrel(): Map<string, string> {
     const source = fs.readFileSync(path.join(repository, "packages", "ui", "index.js"), "utf8");
     const parts = new Map<string, string>();
-    for (const namespace of source.matchAll(/^export const (\w+) = \{\n([\s\S]*?)^\};$/gm)) {
-      for (const part of namespace[2].matchAll(/^ {2}(\w+): (\w+),$/gm)) {
-        parts.set(`${namespace[1]}.${part[1]}`, part[2]);
+    // `export * as Dialog from "./dialog.js"`: the namespace is the module, and
+    // its parts are the components the module exports (ubugeeei-prod/uf#1453).
+    for (const namespace of source.matchAll(/^export \* as (\w+) from "\.\/([\w-]+\.js)";$/gm)) {
+      for (const [part, component] of exportsOf(namespace[2])) {
+        if (/^[A-Z]/.test(part)) {
+          parts.set(`${namespace[1]}.${part}`, component);
+        }
       }
     }
     // The five that are one component rather than a namespace of parts. They
@@ -9607,7 +9636,10 @@ describe("the escape hatch: which part hands its element to the caller", () => {
       }
       const lines = fs.readFileSync(path.join(directory, file), "utf8").split("\n");
       for (let at = 0; at < lines.length; at += 1) {
-        const declared = /^export component (\w+)\(/.exec(lines[at]);
+        // A part is declared unexported and exported under its short name in a
+        // list at the end of its module, so the declaration is read with or
+        // without the keyword.
+        const declared = /^(?:export )?component (\w+)\(/.exec(lines[at]);
         if (declared == null) {
           continue;
         }

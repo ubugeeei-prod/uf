@@ -18,8 +18,9 @@
 //! and the tests below hold each one to `packages/ui`, so the count is produced
 //! rather than remembered.
 //!
-//! * **Implemented** — `packages/ui` exports it, and `parts` is exactly what
-//!   its namespace object in `packages/ui/index.js` holds. Two tests in
+//! * **Implemented** — `packages/ui` exports it, and `parts` is exactly the
+//!   components its module exports, which `packages/ui/index.js` re-exports as
+//!   its namespace (`export * as Dialog from "./dialog.js"`). Two tests in
 //!   `crates/uf_lib/src/tests.rs` read the package and fail naming both
 //!   directions.
 //! * **Planned** — nobody has written it yet. The parts are the shape it is

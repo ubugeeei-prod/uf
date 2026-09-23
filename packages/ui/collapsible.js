@@ -91,7 +91,7 @@ hook useCollapsible(part: string): CollapsibleState {
  * them that the caller then has to style around. `Menu.Root` makes the same
  * choice for the same reason.
  */
-export component CollapsibleRoot(
+component CollapsibleRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -111,7 +111,7 @@ export component CollapsibleRoot(
 }
 
 /** The control that shows and hides the content. */
-export component CollapsibleTrigger(
+component CollapsibleTrigger(
   children: React.Node,
   disabled?: boolean = false,
   render?: RenderProp,
@@ -146,7 +146,7 @@ export component CollapsibleTrigger(
  * the module header, and `internal/disclosure.js` for what `hidden` is upgraded
  * to and why that takes an effect.
  */
-export component CollapsibleContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component CollapsibleContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const collapsible = useCollapsible("Collapsible.Content");
   const contentRef = useRef<HTMLElement | null>(null);
   usePresence(collapsible.registerContent);
@@ -169,3 +169,14 @@ export component CollapsibleContent(children: React.Node, render?: RenderProp, .
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `Collapsible` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Collapsible from "./collapsible.js"` —
+ * so a caller writes `<Collapsible.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `CollapsibleRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { CollapsibleRoot as Root, CollapsibleTrigger as Trigger, CollapsibleContent as Content };

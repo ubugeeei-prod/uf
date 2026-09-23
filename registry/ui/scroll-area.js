@@ -109,31 +109,31 @@ export component ScrollArea(
   const down = orientation !== "horizontal";
   const across = orientation !== "vertical";
   return (
-    <Primitive.ScrollAreaRoot
+    <Primitive.ScrollArea.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       label={label}
     >
-      <Primitive.ScrollAreaViewport className={props(styles.viewport).className}>
+      <Primitive.ScrollArea.Viewport className={props(styles.viewport).className}>
         {children}
-      </Primitive.ScrollAreaViewport>
+      </Primitive.ScrollArea.Viewport>
       {down ? (
-        <Primitive.ScrollAreaScrollbar
+        <Primitive.ScrollArea.Scrollbar
           className={props(styles.scrollbar, styles.scrollbarVertical).className}
           orientation="vertical"
         >
           <div {...props(styles.thumb, styles.thumbVertical)} />
-        </Primitive.ScrollAreaScrollbar>
+        </Primitive.ScrollArea.Scrollbar>
       ) : null}
       {across ? (
-        <Primitive.ScrollAreaScrollbar
+        <Primitive.ScrollArea.Scrollbar
           className={props(styles.scrollbar, styles.scrollbarHorizontal).className}
           orientation="horizontal"
         >
           <div {...props(styles.thumb, styles.thumbHorizontal)} />
-        </Primitive.ScrollAreaScrollbar>
+        </Primitive.ScrollArea.Scrollbar>
       ) : null}
-    </Primitive.ScrollAreaRoot>
+    </Primitive.ScrollArea.Root>
   );
 }
 

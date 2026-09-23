@@ -87,7 +87,7 @@ hook useTabs(part: string): TabsState {
  * distinction every one of these components needs: a form library owns the
  * value, and a page that just wants tabs does not.
  */
-export component TabsRoot(
+component TabsRoot(
   children: React.Node,
   defaultValue: string,
   value?: string,
@@ -145,7 +145,7 @@ export component TabsRoot(
  * tabs push themselves into as they mount answers with mount order, which stops
  * being document order the first time a tab is conditional.
  */
-export component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Rest) {
+component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Rest) {
   const tabs = useTabs("Tabs.List");
   const props = withProps(withoutComposed(rest, ["onKeyDown"]), {
     // A screen reader announces the axis, and it is also what tells a reader
@@ -186,7 +186,7 @@ export component TabsList(children: renders* TabsTab, render?: RenderProp, ...re
  * the section exists and is unavailable, where a native `disabled` would leave a
  * gap they cannot ask about. The keyboard steps over it either way.
  */
-export component TabsTab(
+component TabsTab(
   value: string,
   children: React.Node,
   disabled?: boolean = false,
@@ -249,12 +249,7 @@ export component TabsTab(
  * subscription rather than "the selected value equals mine", because a caller
  * may render a subset of panels, or none at all until data arrives.
  */
-export component TabsPanel(
-  value: string,
-  children: React.Node,
-  render?: RenderProp,
-  ...rest: Rest
-) {
+component TabsPanel(value: string, children: React.Node, render?: RenderProp, ...rest: Rest) {
   const tabs = useTabs("Tabs.Panel");
   const register = tabs.registerPanel;
   const selected = tabs.selected === value;
@@ -287,3 +282,14 @@ export component TabsPanel(
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `Tabs` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Tabs from "./tabs.js"` —
+ * so a caller writes `<Tabs.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `TabsRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { TabsRoot as Root, TabsList as List, TabsTab as Tab, TabsPanel as Panel };

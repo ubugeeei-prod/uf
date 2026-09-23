@@ -402,13 +402,11 @@ fn a_name_imported_from_the_ui_barrel_is_a_boundary_at_the_module_that_exports_i
 }
 
 /// Several names reach the union of their modules and no others. `ContextMenu`
-/// is a namespace that carries `Menu`'s parts, so it reaches both; `AlertRoot`
-/// is a Server Component's part and reaches nothing.
+/// is a namespace that carries `Menu`'s parts, so it reaches both; `Alert` is
+/// a Server Component's namespace and reaches nothing.
 #[test]
 fn each_name_from_the_barrel_reaches_only_the_modules_it_comes_from() {
-    let graph = page_importing(
-        "import { AlertRoot, ContextMenu, TabsList, TabsTab } from \"@uniflowed/ui\";",
-    );
+    let graph = page_importing("import { Alert, ContextMenu, Tabs } from \"@uniflowed/ui\";");
     assert_eq!(
         package_targets(&graph),
         [
@@ -423,7 +421,7 @@ fn each_name_from_the_barrel_reaches_only_the_modules_it_comes_from() {
 fn a_barrel_import_that_names_nothing_client_is_no_boundary() {
     for import in [
         "import type { Sort } from \"@uniflowed/ui\";",
-        "import { AlertRoot, Separator } from \"@uniflowed/ui\";",
+        "import { Alert, Separator } from \"@uniflowed/ui\";",
         "import \"@uniflowed/ui\";",
     ] {
         let graph = page_importing(import);

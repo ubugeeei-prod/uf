@@ -92,7 +92,7 @@ import { withProps } from "./internal/merge-props.js";
  * beside it, mounted by this component, because that timing is the accessibility
  * contract rather than markup the caller can safely recreate by sight.
  */
-export component SkeletonRoot(
+component SkeletonRoot(
   children: React.Node,
   busy?: boolean = true,
   label?: string = "Loading…",
@@ -153,10 +153,21 @@ export component SkeletonRoot(
  * `render` changes the placeholder element, not the fact that it is hidden
  * from the accessibility tree.
  */
-export component SkeletonBox(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component SkeletonBox(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children });
   if (render != null) {
     return render(props);
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `Skeleton` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Skeleton from "./skeleton.js"` —
+ * so a caller writes `<Skeleton.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `SkeletonRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { SkeletonRoot as Root, SkeletonBox as Box };

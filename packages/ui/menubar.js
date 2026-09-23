@@ -128,7 +128,7 @@ hook useMenubar(part: string): MenubarState {
  * a page with an application menubar and a formatting toolbar has two, and
  * "menu bar" twice tells a reader nothing about which is which.
  */
-export component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp, ...rest: Rest) {
+component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp, ...rest: Rest) {
   const barRef = useRef<HTMLElement | null>(null);
   const [open, setOpenValue] = useState<string | null>(null);
   const [active, setActive] = useState<string | null>(null);
@@ -208,7 +208,7 @@ export component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp
  * Renders no element of its own, for the reason `Menu.Root` gives: a trigger and
  * its body are siblings in whatever layout the caller wrote.
  */
-export component MenubarMenu(children: React.Node, value: string) {
+component MenubarMenu(children: React.Node, value: string) {
   const bar = useMenubar("Menubar.Menu");
   const setOpen = bar.setOpen;
   const onOpenChange = useCallback(
@@ -237,7 +237,7 @@ export component MenubarMenu(children: React.Node, value: string) {
  * menubar — a reader is told "File, menu item, has popup, 1 of 3" — and it is
  * what makes the bar's arrow keys agree with what they were told is in it.
  */
-export component MenubarTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component MenubarTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const bar = useMenubar("Menubar.Trigger");
   const menu = useMenu("Menubar.Trigger");
   const value = useContext(MenubarMenuContext);
@@ -291,3 +291,32 @@ export component MenubarTrigger(children: React.Node, render?: RenderProp, ...re
   }
   return <button {...props} type="button" />;
 }
+
+/**
+ * The parts, under the names the `Menubar` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Menubar from "./menubar.js"` —
+ * so a caller writes `<Menubar.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `MenubarRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { MenubarRoot as Root, MenubarMenu as Menu, MenubarTrigger as Trigger };
+
+/**
+ * The parts `Menubar` shares with `Menu`, re-exported so the `Menubar`
+ * namespace is complete on its own: `<Menubar.Body>` is `Menu`'s part,
+ * not a copy of it.
+ */
+export {
+  Body,
+  Item,
+  CheckboxItem,
+  RadioGroup,
+  RadioItem,
+  Separator,
+  Group,
+  Label,
+  Sub,
+  SubTrigger,
+} from "./menu.js";

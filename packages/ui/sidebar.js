@@ -57,8 +57,13 @@ import { useMediaQuery } from "@uniflowed/hooks/browser";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeHandlers, forwarded, withProps, withoutComposed } from "./internal/merge-props.js";
-import { SheetBody, SheetOverlay, SheetRoot, SheetTrigger } from "./sheet.js";
-import { TooltipBody, TooltipRoot, TooltipTrigger } from "./tooltip.js";
+import {
+  Body as SheetBody,
+  Overlay as SheetOverlay,
+  Root as SheetRoot,
+  Trigger as SheetTrigger,
+} from "./sheet.js";
+import { Body as TooltipBody, Root as TooltipRoot, Trigger as TooltipTrigger } from "./tooltip.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /**
@@ -115,7 +120,7 @@ hook useSidebar(part: string): SidebarState {
  * is the sheet's trigger and focus goes back to it — which is the half of the
  * transition a wrapper around only the navigation could not do.
  */
-export component SidebarRoot(
+component SidebarRoot(
   children: React.Node,
   defaultOpen?: boolean = true,
   narrowQuery?: string = NARROW,
@@ -167,7 +172,7 @@ export component SidebarRoot(
  * id nothing has tells a reader there is somewhere to go and has nowhere to
  * send them.
  */
-export component SidebarTrigger(children: React.Node, ...rest: Rest) {
+component SidebarTrigger(children: React.Node, ...rest: Rest) {
   const sidebar = useSidebar("Sidebar.Trigger");
   const passed = withoutComposed(rest, ["onClick"]);
   const named = sidebar.present ? `${sidebar.base}-nav` : undefined;
@@ -208,12 +213,7 @@ export component SidebarTrigger(children: React.Node, ...rest: Rest) {
  * announced as "navigation" — and a page with two of those has told the reader
  * there are two and which is which is a guess.
  */
-export component SidebarBody(
-  children: React.Node,
-  label: string,
-  sheetProps?: Rest,
-  ...rest: Rest
-) {
+component SidebarBody(children: React.Node, label: string, sheetProps?: Rest, ...rest: Rest) {
   const sidebar = useSidebar("Sidebar.Body");
   const nav = (
     <nav
@@ -243,12 +243,12 @@ export component SidebarBody(
 }
 
 /** The top of the sidebar, as a place to put styles. See `Dialog.Header`. */
-export component SidebarHeader(children: React.Node, ...rest: Rest) {
+component SidebarHeader(children: React.Node, ...rest: Rest) {
   return <div {...rest}>{children}</div>;
 }
 
 /** The bottom of the sidebar. See `Sidebar.Header`. */
-export component SidebarFooter(children: React.Node, ...rest: Rest) {
+component SidebarFooter(children: React.Node, ...rest: Rest) {
   return <div {...rest}>{children}</div>;
 }
 
@@ -267,7 +267,7 @@ export component SidebarFooter(children: React.Node, ...rest: Rest) {
  * `navigation-menu.js`, which is the same argument at the scale of a whole
  * menu.
  */
-export component SidebarItem(
+component SidebarItem(
   children: React.Node,
   label: string,
   render?: RenderProp,
@@ -315,3 +315,21 @@ export component SidebarItem(
     </TooltipRoot>
   );
 }
+
+/**
+ * The parts, under the names the `Sidebar` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Sidebar from "./sidebar.js"` —
+ * so a caller writes `<Sidebar.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `SidebarRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  SidebarRoot as Root,
+  SidebarTrigger as Trigger,
+  SidebarHeader as Header,
+  SidebarBody as Body,
+  SidebarFooter as Footer,
+  SidebarItem as Item,
+};

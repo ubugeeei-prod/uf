@@ -133,7 +133,7 @@ hook useDialog(part: string): DialogState {
 }
 
 /** The dialog, open or closed. Uncontrolled unless `open` is given. */
-export component DialogRoot(
+component DialogRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -170,7 +170,7 @@ export component DialogRoot(
  * else, which is what keeps "focus comes back here" true of whatever the
  * caller rendered.
  */
-export component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Trigger");
   const props = withProps(withoutComposed(rest, ["onClick", "ref"]), {
     // Only while it is open. An `aria-controls` naming an element that is not
@@ -203,7 +203,7 @@ export component DialogTrigger(children: React.Node, render?: RenderProp, ...res
  * their own backdrop or omits one entirely must still get it. That lives on
  * `Dialog.Body`, which is the part that knows where "outside" is.
  */
-export component DialogOverlay(render?: RenderProp, ...rest: Rest) {
+component DialogOverlay(render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Overlay");
   if (!dialog.open) {
     return null;
@@ -222,7 +222,7 @@ export component DialogOverlay(render?: RenderProp, ...rest: Rest) {
  * which is the half of "modal" that CSS cannot express; `inert` on everything
  * outside is the half the browser enforces.
  */
-export component DialogBody(
+component DialogBody(
   children: React.Node,
   dismissOnOutsidePress?: boolean = true,
   initialFocus?: { current: HTMLElement | null },
@@ -381,7 +381,7 @@ export component DialogBody(
  * rendered — a conditional title that is absent used to leave the dialog
  * pointing at an id nothing had.
  */
-export component DialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Title");
   const register = dialog.registerTitle;
   useEffect(() => {
@@ -407,7 +407,7 @@ export component DialogTitle(children: React.Node, render?: RenderProp, ...rest:
  * the one moment the reader has to decide whether they care — so this is where
  * "this cannot be undone" belongs, not in body text further down.
  */
-export component DialogDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DialogDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Description");
   const register = dialog.registerDescription;
   useEffect(() => {
@@ -431,7 +431,7 @@ export component DialogDescription(children: React.Node, render?: RenderProp, ..
  * styling layer has a name to attach to, and contributes no semantics because
  * it has none to contribute.
  */
-export component DialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   if (render != null) {
     return render(props);
@@ -440,7 +440,7 @@ export component DialogHeader(children: React.Node, render?: RenderProp, ...rest
 }
 
 /** The bottom of the dialog, where the actions go. See `Dialog.Header`. */
-export component DialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   if (render != null) {
     return render(props);
@@ -449,7 +449,7 @@ export component DialogFooter(children: React.Node, render?: RenderProp, ...rest
 }
 
 /** A button that closes the dialog. */
-export component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Close");
   const props = withProps(withoutComposed(rest, ["onClick"]), {
     children,
@@ -525,3 +525,24 @@ function concealOutside(element: HTMLElement): () => void {
     }
   };
 }
+
+/**
+ * The parts, under the names the `Dialog` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Dialog from "./dialog.js"` —
+ * so a caller writes `<Dialog.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `DialogRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  DialogRoot as Root,
+  DialogTrigger as Trigger,
+  DialogOverlay as Overlay,
+  DialogBody as Body,
+  DialogHeader as Header,
+  DialogFooter as Footer,
+  DialogTitle as Title,
+  DialogDescription as Description,
+  DialogClose as Close,
+};

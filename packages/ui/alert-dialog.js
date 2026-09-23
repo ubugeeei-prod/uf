@@ -49,15 +49,15 @@ import { createContext, useContext, useEffect, useMemo, useRef } from "@uniflowe
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeRefs, forwarded, withoutComposed } from "./internal/merge-props.js";
 import {
-  DialogBody,
-  DialogClose,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogRoot,
-  DialogTitle,
-  DialogTrigger,
+  Body as DialogBody,
+  Close as DialogClose,
+  Description as DialogDescription,
+  Footer as DialogFooter,
+  Header as DialogHeader,
+  Overlay as DialogOverlay,
+  Root as DialogRoot,
+  Title as DialogTitle,
+  Trigger as DialogTrigger,
 } from "./dialog.js";
 
 type AlertDialogState = {|
@@ -98,7 +98,7 @@ hook useAlertDialog(part: string): AlertDialogState {
 }
 
 /** The alert dialog, open or closed. Uncontrolled unless `open` is given. */
-export component AlertDialogRoot(
+component AlertDialogRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -118,7 +118,7 @@ export component AlertDialogRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-export component AlertDialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogTrigger {...forwarded(rest)} render={render}>
       {children}
@@ -127,7 +127,7 @@ export component AlertDialogTrigger(children: React.Node, render?: RenderProp, .
 }
 
 /** The backdrop. See `Dialog.Overlay`: it is decoration and says so. */
-export component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) {
+component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) {
   return <DialogOverlay {...forwarded(rest)} render={render} />;
 }
 
@@ -140,7 +140,7 @@ export component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) {
  * who set two of them would have an alert dialog that is wrong in the third
  * without anything saying so.
  */
-export component AlertDialogBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const alert = useAlertDialog("AlertDialog.Body");
 
   return (
@@ -189,7 +189,7 @@ component RequireDescription() {
 }
 
 /** The top of the alert dialog. See `Dialog.Header` for why it is a `div`. */
-export component AlertDialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogHeader {...forwarded(rest)} render={render}>
       {children}
@@ -198,7 +198,7 @@ export component AlertDialogHeader(children: React.Node, render?: RenderProp, ..
 }
 
 /** The bottom, where `Action` and `Cancel` go. */
-export component AlertDialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogFooter {...forwarded(rest)} render={render}>
       {children}
@@ -207,7 +207,7 @@ export component AlertDialogFooter(children: React.Node, render?: RenderProp, ..
 }
 
 /** The question, which is the alert dialog's accessible name. */
-export component AlertDialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogTitle {...forwarded(rest)} render={render}>
       {children}
@@ -222,7 +222,7 @@ export component AlertDialogTitle(children: React.Node, render?: RenderProp, ...
  * exists to deliver, and the only moment the reader has to decide whether they
  * care is before they have pressed anything.
  */
-export component AlertDialogDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const alert = useAlertDialog("AlertDialog.Description");
   const describedBy = alert.describedBy;
 
@@ -250,7 +250,7 @@ export component AlertDialogDescription(children: React.Node, render?: RenderPro
  * are made of, so the composition rule about a caller's `onClick` has one
  * implementation rather than a second copy here.
  */
-export component AlertDialogAction(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogAction(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <DialogClose {...forwarded(rest)} render={render}>
       {children}
@@ -265,7 +265,7 @@ export component AlertDialogAction(children: React.Node, render?: RenderProp, ..
  * without the caller wiring a ref: the least destructive action is a fact about
  * which part this is, not a decision to be repeated at every call.
  */
-export component AlertDialogCancel(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogCancel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const alert = useAlertDialog("AlertDialog.Cancel");
   const cancelRef = alert.cancelRef;
   const passed = withoutComposed(rest, ["ref"]);
@@ -282,3 +282,25 @@ export component AlertDialogCancel(children: React.Node, render?: RenderProp, ..
     </DialogClose>
   );
 }
+
+/**
+ * The parts, under the names the `AlertDialog` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as AlertDialog from "./alert-dialog.js"` —
+ * so a caller writes `<AlertDialog.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `AlertDialogRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  AlertDialogRoot as Root,
+  AlertDialogTrigger as Trigger,
+  AlertDialogOverlay as Overlay,
+  AlertDialogBody as Body,
+  AlertDialogHeader as Header,
+  AlertDialogFooter as Footer,
+  AlertDialogTitle as Title,
+  AlertDialogDescription as Description,
+  AlertDialogAction as Action,
+  AlertDialogCancel as Cancel,
+};

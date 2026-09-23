@@ -127,7 +127,7 @@ hook useAvatar(part: string): AvatarState {
  * in a table cell, in a paragraph, inside a button's label — and a block
  * element is invalid in half of those.
  */
-export component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const [seen, setSeen] = useState<Seen>(START);
   const [hasImage, setHasImage] = useState(false);
 
@@ -181,12 +181,7 @@ export component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: 
  * stylesheet: `hidden` loses to any `display` the caller sets, and a caller who
  * has not written that rule yet would see both.
  */
-export component AvatarImage(
-  alt?: string = "",
-  src?: string | null,
-  render?: RenderProp,
-  ...rest: Rest
-) {
+component AvatarImage(alt?: string = "", src?: string | null, render?: RenderProp, ...rest: Rest) {
   const avatar = useAvatar("Avatar.Image");
   const element = useRef<HTMLImageElement | null>(null);
   const report = avatar.report;
@@ -249,7 +244,7 @@ export component AvatarImage(
  * avatar with no `Avatar.Image` at all are both answers rather than waits, and
  * the fallback for either is immediate.
  */
-export component AvatarFallback(
+component AvatarFallback(
   children: React.Node,
   delay?: number = 300,
   render?: RenderProp,
@@ -278,3 +273,14 @@ export component AvatarFallback(
   }
   return <span {...props} />;
 }
+
+/**
+ * The parts, under the names the `Avatar` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Avatar from "./avatar.js"` —
+ * so a caller writes `<Avatar.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `AvatarRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { AvatarRoot as Root, AvatarImage as Image, AvatarFallback as Fallback };

@@ -151,7 +151,7 @@ export component Table(
 ) {
   return (
     <div {...props(styles.frame)}>
-      <Primitive.TableRoot
+      <Primitive.Table.Root
         {...forwarded(rest)}
         announceSort={announceSort}
         className={classNames(props(styles.table, xstyle).className, className)}
@@ -162,7 +162,7 @@ export component Table(
         sort={sort}
       >
         {children}
-      </Primitive.TableRoot>
+      </Primitive.Table.Root>
     </div>
   );
 }
@@ -175,12 +175,12 @@ export component TableCaption(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TableCaption
+    <Primitive.Table.Caption
       {...forwarded(rest)}
       className={classNames(props(styles.caption, xstyle).className, className)}
     >
       {children}
-    </Primitive.TableCaption>
+    </Primitive.Table.Caption>
   );
 }
 
@@ -192,12 +192,12 @@ export component TableHeader(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TableHeader
+    <Primitive.Table.Header
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
     >
       {children}
-    </Primitive.TableHeader>
+    </Primitive.Table.Header>
   );
 }
 
@@ -209,12 +209,12 @@ export component TableBody(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TableBody
+    <Primitive.Table.Body
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
     >
       {children}
-    </Primitive.TableBody>
+    </Primitive.Table.Body>
   );
 }
 
@@ -227,13 +227,13 @@ export component TableRow(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TableRow
+    <Primitive.Table.Row
       {...forwarded(rest)}
       className={classNames(props(styles.row, xstyle).className, className)}
       index={index}
     >
       {children}
-    </Primitive.TableRow>
+    </Primitive.Table.Row>
   );
 }
 
@@ -251,13 +251,13 @@ export component TableHead(
   const classes = classNames(props(styles.head, xstyle).className, className);
   if (column == null) {
     return (
-      <Primitive.TableHead {...forwarded(rest)} className={classes}>
+      <Primitive.Table.Head {...forwarded(rest)} className={classes}>
         {children}
-      </Primitive.TableHead>
+      </Primitive.Table.Head>
     );
   }
   return (
-    <Primitive.TableHead
+    <Primitive.Table.Head
       {...forwarded(rest)}
       className={classes}
       column={column}
@@ -279,7 +279,7 @@ export component TableHead(
       >
         <path d="m6 15 6-6 6 6" />
       </svg>
-    </Primitive.TableHead>
+    </Primitive.Table.Head>
   );
 }
 
@@ -291,12 +291,12 @@ export component TableCell(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TableCell
+    <Primitive.Table.Cell
       {...forwarded(rest)}
       className={classNames(props(styles.cell, xstyle).className, className)}
     >
       {children}
-    </Primitive.TableCell>
+    </Primitive.Table.Cell>
   );
 }
 
@@ -308,12 +308,12 @@ export component TableRowHeader(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TableRowHeader
+    <Primitive.Table.RowHeader
       {...forwarded(rest)}
       className={classNames(props(styles.rowHeader, xstyle).className, className)}
     >
       {children}
-    </Primitive.TableRowHeader>
+    </Primitive.Table.RowHeader>
   );
 }
 

@@ -82,7 +82,7 @@ hook useNumber(): NumberState {
   return state;
 }
 
-export component NumberFieldRoot(
+component NumberFieldRoot(
   children: React.Node,
   value?: number | null,
   defaultValue?: number | null = null,
@@ -189,7 +189,7 @@ export component NumberFieldRoot(
 }
 
 /** Field.Control may render this input to supply the label, description and error ids. */
-export component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
+component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
   const state = useNumber();
   const props = withProps(rest, {
     type: "text",
@@ -225,11 +225,7 @@ export component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
   return render != null ? render(props) : <input {...props} />;
 }
 
-export component NumberFieldIncrement(
-  children?: React.Node = "+",
-  render?: RenderProp,
-  ...rest: Rest
-) {
+component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp, ...rest: Rest) {
   const state = useNumber();
   const props = withProps(rest, {
     children,
@@ -243,11 +239,7 @@ export component NumberFieldIncrement(
   });
   return render != null ? render(props) : <button {...props} />;
 }
-export component NumberFieldDecrement(
-  children?: React.Node = "−",
-  render?: RenderProp,
-  ...rest: Rest
-) {
+component NumberFieldDecrement(children?: React.Node = "−", render?: RenderProp, ...rest: Rest) {
   const state = useNumber();
   const props = withProps(rest, {
     children,
@@ -261,3 +253,19 @@ export component NumberFieldDecrement(
   });
   return render != null ? render(props) : <button {...props} />;
 }
+
+/**
+ * The parts, under the names the `NumberField` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as NumberField from "./number-field.js"` —
+ * so a caller writes `<NumberField.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `NumberFieldRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  NumberFieldRoot as Root,
+  NumberFieldInput as Input,
+  NumberFieldIncrement as Increment,
+  NumberFieldDecrement as Decrement,
+};

@@ -62,15 +62,15 @@ import {
   withoutComposed,
 } from "./internal/merge-props.js";
 import {
-  SheetBody,
-  SheetClose,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetRoot,
-  SheetTitle,
-  SheetTrigger,
+  Body as SheetBody,
+  Close as SheetClose,
+  Description as SheetDescription,
+  Footer as SheetFooter,
+  Header as SheetHeader,
+  Overlay as SheetOverlay,
+  Root as SheetRoot,
+  Title as SheetTitle,
+  Trigger as SheetTrigger,
 } from "./sheet.js";
 import { useControlled } from "./internal/controlled-state.js";
 
@@ -132,7 +132,7 @@ hook useDrawer(part: string): DrawerState {
  * `onOpenChange` behave exactly as they do everywhere else in this package,
  * because `internal/controlled-state.js` is what answers here too.
  */
-export component DrawerRoot(
+component DrawerRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   defaultSnapPoint?: number = 0,
@@ -173,7 +173,7 @@ export component DrawerRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-export component DrawerTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <SheetTrigger {...forwarded(rest)} render={render}>
       {children}
@@ -182,7 +182,7 @@ export component DrawerTrigger(children: React.Node, render?: RenderProp, ...res
 }
 
 /** The backdrop. It carries the edge, the same as a sheet's. */
-export component DrawerOverlay(render?: RenderProp, ...rest: Rest) {
+component DrawerOverlay(render?: RenderProp, ...rest: Rest) {
   return <SheetOverlay {...forwarded(rest)} render={render} />;
 }
 
@@ -194,7 +194,7 @@ export component DrawerOverlay(render?: RenderProp, ...rest: Rest) {
  * no drag to provide an alternative to — and a drawer with a handle and no
  * `Drawer.Close` has a gesture that is the only way out.
  */
-export component DrawerBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const drawer = useDrawer("Drawer.Body");
   const { bodyRef, snapIndex, snapPoints } = drawer;
   const reducedMotion = usePrefersReducedMotion();
@@ -260,7 +260,7 @@ component RequireCloseForTheDrag() {
 }
 
 /** The top of the drawer, where the handle usually goes. */
-export component DrawerHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <SheetHeader {...forwarded(rest)} render={render}>
       {children}
@@ -269,7 +269,7 @@ export component DrawerHeader(children: React.Node, render?: RenderProp, ...rest
 }
 
 /** The bottom of the drawer, where the actions go. */
-export component DrawerFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <SheetFooter {...forwarded(rest)} render={render}>
       {children}
@@ -278,7 +278,7 @@ export component DrawerFooter(children: React.Node, render?: RenderProp, ...rest
 }
 
 /** The drawer's accessible name. */
-export component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <SheetTitle {...forwarded(rest)} render={render}>
       {children}
@@ -287,7 +287,7 @@ export component DrawerTitle(children: React.Node, render?: RenderProp, ...rest:
 }
 
 /** What the drawer is for, announced after its name. */
-export component DrawerDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   return (
     <SheetDescription {...forwarded(rest)} render={render}>
       {children}
@@ -301,7 +301,7 @@ export component DrawerDescription(children: React.Node, render?: RenderProp, ..
  *
  * It registers itself so `Drawer.Body` can tell whether the gesture has one.
  */
-export component DrawerClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const drawer = useDrawer("Drawer.Close");
   const closeCountRef = drawer.closeCountRef;
 
@@ -336,11 +336,7 @@ export component DrawerClose(children: React.Node, render?: RenderProp, ...rest:
  * `label` because a slider with no accessible name is announced as "slider",
  * which is the same failure `Resizable.Handle` names.
  */
-export component DrawerHandle(
-  label?: string = "Resize the drawer",
-  render?: RenderProp,
-  ...rest: Rest
-) {
+component DrawerHandle(label?: string = "Resize the drawer", render?: RenderProp, ...rest: Rest) {
   const drawer = useDrawer("Drawer.Handle");
   const { bodyRef, close, handleCountRef, setSnapIndex, side, snapIndex, snapPoints } = drawer;
   const passed = withoutComposed(rest, [
@@ -496,4 +492,26 @@ const CLOSES_WITH: { readonly [Edge]: string } = {
   left: "ArrowLeft",
   right: "ArrowRight",
   top: "ArrowUp",
+};
+
+/**
+ * The parts, under the names the `Drawer` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Drawer from "./drawer.js"` —
+ * so a caller writes `<Drawer.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `DrawerRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  DrawerRoot as Root,
+  DrawerTrigger as Trigger,
+  DrawerOverlay as Overlay,
+  DrawerBody as Body,
+  DrawerHandle as Handle,
+  DrawerHeader as Header,
+  DrawerFooter as Footer,
+  DrawerTitle as Title,
+  DrawerDescription as Description,
+  DrawerClose as Close,
 };

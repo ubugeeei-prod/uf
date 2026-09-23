@@ -116,7 +116,7 @@ const styles = stylex.create({
 
 /** The date picker. Every prop of `DatePicker.Root` passes through. */
 export component DatePicker(children: React.Node, ...rest: Rest) {
-  return <Primitive.DatePickerRoot {...forwarded(rest)}>{children}</Primitive.DatePickerRoot>;
+  return <Primitive.DatePicker.Root {...forwarded(rest)}>{children}</Primitive.DatePicker.Root>;
 }
 
 /** The field and its button, side by side. */
@@ -129,7 +129,7 @@ export component DatePickerGroup(children: React.Node, xstyle?: StyleArgument, c
 /** The text field the date is typed into. Give it an `id` a `<label>` points at. */
 export component DatePickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.DatePickerInput
+    <Primitive.DatePicker.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
@@ -146,7 +146,7 @@ export component DatePickerTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DatePickerTrigger
+    <Primitive.DatePicker.Trigger
       {...forwarded(rest)}
       aria-label={label}
       render={(trigger: Rest) => (
@@ -174,7 +174,7 @@ export component DatePickerTrigger(
         <rect height="18" rx="2" width="18" x="3" y="4" />
         <path d="M16 2v4M8 2v4M3 10h18" />
       </svg>
-    </Primitive.DatePickerTrigger>
+    </Primitive.DatePicker.Trigger>
   );
 }
 
@@ -190,7 +190,7 @@ export component DatePickerContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DatePickerCalendar
+    <Primitive.DatePicker.Calendar
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       sideOffset={sideOffset}
@@ -204,7 +204,7 @@ export component DatePickerContent(
           <CalendarMonth />
         </>
       )}
-    </Primitive.DatePickerCalendar>
+    </Primitive.DatePicker.Calendar>
   );
 }
 

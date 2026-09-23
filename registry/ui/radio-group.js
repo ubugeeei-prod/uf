@@ -129,7 +129,7 @@ export component RadioGroup(
   ...rest: Rest
 ) {
   return (
-    <Primitive.RadioGroupRoot
+    <Primitive.RadioGroup.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultValue={defaultValue}
@@ -139,7 +139,7 @@ export component RadioGroup(
       value={value}
     >
       {children}
-    </Primitive.RadioGroupRoot>
+    </Primitive.RadioGroup.Root>
   );
 }
 
@@ -153,7 +153,7 @@ export component RadioGroupItem(
   ...rest: Rest
 ) {
   return (
-    <Primitive.RadioGroupItem
+    <Primitive.RadioGroup.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       disabled={disabled}
@@ -163,7 +163,7 @@ export component RadioGroupItem(
         <span {...props(styles.dot)} />
       </span>
       {children}
-    </Primitive.RadioGroupItem>
+    </Primitive.RadioGroup.Item>
   );
 }
 

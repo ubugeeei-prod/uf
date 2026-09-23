@@ -156,7 +156,7 @@ export component NavigationMenu(
   ...rest: Rest
 ) {
   return (
-    <Primitive.NavigationMenuRoot
+    <Primitive.NavigationMenu.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultValue={defaultValue}
@@ -164,7 +164,7 @@ export component NavigationMenu(
       value={value}
     >
       {children}
-    </Primitive.NavigationMenuRoot>
+    </Primitive.NavigationMenu.Root>
   );
 }
 
@@ -174,14 +174,14 @@ export component NavigationMenuList(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.NavigationMenuList {
+) renders Primitive.NavigationMenu.List {
   return (
-    <Primitive.NavigationMenuList
+    <Primitive.NavigationMenu.List
       {...forwarded(rest)}
       className={classNames(props(styles.list, xstyle).className, className)}
     >
       {children}
-    </Primitive.NavigationMenuList>
+    </Primitive.NavigationMenu.List>
   );
 }
 
@@ -195,15 +195,15 @@ export component NavigationMenuItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.NavigationMenuItem {
+) renders Primitive.NavigationMenu.Item {
   return (
-    <Primitive.NavigationMenuItem
+    <Primitive.NavigationMenu.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       value={value}
     >
       {children}
-    </Primitive.NavigationMenuItem>
+    </Primitive.NavigationMenu.Item>
   );
 }
 
@@ -215,7 +215,7 @@ export component NavigationMenuTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.NavigationMenuTrigger
+    <Primitive.NavigationMenu.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
@@ -235,7 +235,7 @@ export component NavigationMenuTrigger(
       >
         <path d="m6 9 6 6 6-6" />
       </svg>
-    </Primitive.NavigationMenuTrigger>
+    </Primitive.NavigationMenu.Trigger>
   );
 }
 
@@ -247,12 +247,12 @@ export component NavigationMenuContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.NavigationMenuBody
+    <Primitive.NavigationMenu.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.NavigationMenuBody>
+    </Primitive.NavigationMenu.Body>
   );
 }
 
@@ -262,14 +262,14 @@ export component NavigationMenuLink(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.NavigationMenuLink {
+) renders Primitive.NavigationMenu.Link {
   return (
-    <Primitive.NavigationMenuLink
+    <Primitive.NavigationMenu.Link
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
     >
       {children}
-    </Primitive.NavigationMenuLink>
+    </Primitive.NavigationMenu.Link>
   );
 }
 

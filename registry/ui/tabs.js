@@ -187,7 +187,7 @@ export component Tabs(
   const styled = props(styles.root, orientation === "vertical" && styles.rootVertical, xstyle);
   return (
     <OrientationContext.Provider value={orientation}>
-      <Primitive.TabsRoot
+      <Primitive.Tabs.Root
         {...forwarded(rest)}
         activationMode={activationMode}
         className={classNames(styled.className, className)}
@@ -197,7 +197,7 @@ export component Tabs(
         value={value}
       >
         {children}
-      </Primitive.TabsRoot>
+      </Primitive.Tabs.Root>
     </OrientationContext.Provider>
   );
 }
@@ -212,9 +212,9 @@ export component TabsList(
   const orientation = useContext(OrientationContext);
   const styled = props(styles.list, orientation === "vertical" && styles.listVertical, xstyle);
   return (
-    <Primitive.TabsList {...forwarded(rest)} className={classNames(styled.className, className)}>
+    <Primitive.Tabs.List {...forwarded(rest)} className={classNames(styled.className, className)}>
       {children}
-    </Primitive.TabsList>
+    </Primitive.Tabs.List>
   );
 }
 
@@ -226,18 +226,18 @@ export component TabsTab(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.TabsTab {
+) renders Primitive.Tabs.Tab {
   const orientation = useContext(OrientationContext);
   const styled = props(styles.tab, orientation === "vertical" && styles.tabVertical, xstyle);
   return (
-    <Primitive.TabsTab
+    <Primitive.Tabs.Tab
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
       value={value}
     >
       {children}
-    </Primitive.TabsTab>
+    </Primitive.Tabs.Tab>
   );
 }
 
@@ -250,13 +250,13 @@ export component TabsPanel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TabsPanel
+    <Primitive.Tabs.Panel
       {...forwarded(rest)}
       className={classNames(props(styles.panel, xstyle).className, className)}
       value={value}
     >
       {children}
-    </Primitive.TabsPanel>
+    </Primitive.Tabs.Panel>
   );
 }
 

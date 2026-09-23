@@ -117,7 +117,7 @@ export component HoverCard(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.HoverCardRoot
+    <Primitive.HoverCard.Root
       closeDelay={closeDelay}
       defaultOpen={defaultOpen}
       onOpenChange={onOpenChange}
@@ -125,7 +125,7 @@ export component HoverCard(
       openDelay={openDelay}
     >
       {children}
-    </Primitive.HoverCardRoot>
+    </Primitive.HoverCard.Root>
   );
 }
 
@@ -142,7 +142,7 @@ export component HoverCardTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.HoverCardTrigger
+    <Primitive.HoverCard.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -156,7 +156,7 @@ export component HoverCardTrigger(
       }
     >
       {children}
-    </Primitive.HoverCardTrigger>
+    </Primitive.HoverCard.Trigger>
   );
 }
 
@@ -173,14 +173,14 @@ export component HoverCardContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.HoverCardBody
+    <Primitive.HoverCard.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       collisionPadding={collisionPadding}
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.HoverCardBody>
+    </Primitive.HoverCard.Body>
   );
 }
 

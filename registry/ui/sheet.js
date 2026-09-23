@@ -206,14 +206,14 @@ export component Sheet(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.SheetRoot
+    <Primitive.Sheet.Root
       defaultOpen={defaultOpen}
       onOpenChange={onOpenChange}
       open={open}
       side={side}
     >
       {children}
-    </Primitive.SheetRoot>
+    </Primitive.Sheet.Root>
   );
 }
 
@@ -228,7 +228,7 @@ export component SheetTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SheetTrigger
+    <Primitive.Sheet.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -244,7 +244,7 @@ export component SheetTrigger(
       }
     >
       {children}
-    </Primitive.SheetTrigger>
+    </Primitive.Sheet.Trigger>
   );
 }
 
@@ -262,18 +262,18 @@ export component SheetContent(
 ) {
   return (
     <>
-      <Primitive.SheetOverlay className={props(styles.overlay).className} />
-      <Primitive.SheetBody
+      <Primitive.Sheet.Overlay className={props(styles.overlay).className} />
+      <Primitive.Sheet.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
         {hideClose ? null : (
-          <Primitive.SheetClose aria-label={closeLabel} className={props(styles.close).className}>
+          <Primitive.Sheet.Close aria-label={closeLabel} className={props(styles.close).className}>
             <CloseIcon />
-          </Primitive.SheetClose>
+          </Primitive.Sheet.Close>
         )}
-      </Primitive.SheetBody>
+      </Primitive.Sheet.Body>
     </>
   );
 }
@@ -286,12 +286,12 @@ export component SheetHeader(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SheetHeader
+    <Primitive.Sheet.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.SheetHeader>
+    </Primitive.Sheet.Header>
   );
 }
 
@@ -303,12 +303,12 @@ export component SheetFooter(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SheetFooter
+    <Primitive.Sheet.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.SheetFooter>
+    </Primitive.Sheet.Footer>
   );
 }
 
@@ -320,12 +320,12 @@ export component SheetTitle(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SheetTitle
+    <Primitive.Sheet.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.SheetTitle>
+    </Primitive.Sheet.Title>
   );
 }
 
@@ -337,12 +337,12 @@ export component SheetDescription(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SheetDescription
+    <Primitive.Sheet.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.SheetDescription>
+    </Primitive.Sheet.Description>
   );
 }
 
@@ -357,7 +357,7 @@ export component SheetClose(
   ...rest: Rest
 ) {
   return (
-    <Primitive.SheetClose
+    <Primitive.Sheet.Close
       {...forwarded(rest)}
       render={
         render ??
@@ -373,7 +373,7 @@ export component SheetClose(
       }
     >
       {children}
-    </Primitive.SheetClose>
+    </Primitive.Sheet.Close>
   );
 }
 

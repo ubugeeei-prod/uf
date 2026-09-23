@@ -51,7 +51,7 @@ import type { PlainDate } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
 
 import type { DateValue } from "./calendar.js";
-import { CalendarRoot } from "./calendar.js";
+import { Root as CalendarRoot } from "./calendar.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
@@ -61,7 +61,7 @@ import {
   forwarded,
   withoutComposed,
 } from "./internal/merge-props.js";
-import { PopoverBody, PopoverRoot, PopoverTrigger } from "./popover.js";
+import { Body as PopoverBody, Root as PopoverRoot, Trigger as PopoverTrigger } from "./popover.js";
 
 type DatePickerState = {|
   /** The text in the field, which is the draft while one is being typed. */
@@ -118,7 +118,7 @@ function isoParse(text: string): PlainDate | null {
  * siblings in whatever layout the caller wrote, and a wrapper would put a
  * `<div>` between them that they then have to style around.
  */
-export component DatePickerRoot(
+component DatePickerRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   defaultValue?: DateValue | null = null,
@@ -251,7 +251,7 @@ const CalendarSettings: React.Context<CalendarSettingsValue> = createContext({
  * does not open the popover, the button beside it does, and telling a reader the
  * field expands something would be a promise the field does not keep.
  */
-export component DatePickerInput(...rest: Rest) {
+component DatePickerInput(...rest: Rest) {
   const picker = useDatePicker("DatePicker.Input");
   // `rest` filtering is render-time props work; ref objects are only passed through later.
   // uf-lint-disable-next-line react-compiler/refs
@@ -295,7 +295,7 @@ export component DatePickerInput(...rest: Rest) {
 }
 
 /** The button that opens the calendar. */
-export component DatePickerTrigger(children: React.Node, ...rest: Rest) {
+component DatePickerTrigger(children: React.Node, ...rest: Rest) {
   // `forwarded`, because this part renders another part rather than an
   // intrinsic; `internal/merge-props.js` says what that costs and why.
   return <PopoverTrigger {...forwarded(rest)}>{children}</PopoverTrigger>;
@@ -308,7 +308,7 @@ export component DatePickerTrigger(children: React.Node, ...rest: Rest) {
  * `Calendar.Month` — because where those sit is a design decision and there is
  * no arrangement of them this module could impose that would suit every one.
  */
-export component DatePickerCalendar(
+component DatePickerCalendar(
   children: React.Node,
   align?: Align = "start",
   side?: LogicalSide = "bottom",
@@ -355,3 +355,19 @@ export component DatePickerCalendar(
     </PopoverBody>
   );
 }
+
+/**
+ * The parts, under the names the `DatePicker` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as DatePicker from "./date-picker.js"` —
+ * so a caller writes `<DatePicker.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `DatePickerRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  DatePickerRoot as Root,
+  DatePickerInput as Input,
+  DatePickerTrigger as Trigger,
+  DatePickerCalendar as Calendar,
+};

@@ -103,7 +103,7 @@ hook useScrollArea(part: string): ScrollAreaState {
  * lands them in it, and a scroll area that has to be scrolled to be read and is
  * announced as "region" has told them nothing.
  */
-export component ScrollAreaRoot(children: React.Node, label: string, ...rest: Rest) {
+component ScrollAreaRoot(children: React.Node, label: string, ...rest: Rest) {
   const base = useId();
   const viewportRef = useRef<HTMLElement | null>(null);
   const rememberedRef = useRef<Offset>({ x: 0, y: 0 });
@@ -143,7 +143,7 @@ export component ScrollAreaRoot(children: React.Node, label: string, ...rest: Re
  * scrolls a native overflow container scrolls this one because it is one, and
  * the component's contribution is the tab stop that lets those keys arrive.
  */
-export component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
+component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
   const area = useScrollArea("ScrollArea.Viewport");
   const { rememberedRef, report, viewportRef } = area;
   const passed = withoutComposed(rest, ["ref"]);
@@ -207,7 +207,7 @@ export component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
  * measure nothing. `aria-hidden`, because the region it belongs to is already
  * the thing a reader operates.
  */
-export component ScrollAreaScrollbar(
+component ScrollAreaScrollbar(
   children?: React.Node,
   orientation?: Orientation = "vertical",
   ...rest: Rest
@@ -281,3 +281,14 @@ function fraction(part: number, whole: number): number {
   }
   return Math.min(1, Math.max(0, part / whole));
 }
+
+/**
+ * The parts, under the names the `ScrollArea` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as ScrollArea from "./scroll-area.js"` —
+ * so a caller writes `<ScrollArea.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `ScrollAreaRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { ScrollAreaRoot as Root, ScrollAreaViewport as Viewport, ScrollAreaScrollbar as Scrollbar };

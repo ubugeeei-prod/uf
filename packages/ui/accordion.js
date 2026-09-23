@@ -173,7 +173,7 @@ hook useAccordionItem(part: string): AccordionItemState {
  * one, and keeping that invariant is the component's job rather than the
  * caller's to remember.
  */
-export component AccordionRoot(
+component AccordionRoot(
   children: renders* AccordionItem,
   type?: AccordionType = "single",
   collapsible?: boolean = true,
@@ -235,7 +235,7 @@ export component AccordionRoot(
  * a panel inside its own heading would be part of the heading's accessible
  * name.
  */
-export component AccordionItem(
+component AccordionItem(
   value: string,
   children: renders* (AccordionHeader | AccordionContent),
   disabled?: boolean = false,
@@ -280,11 +280,7 @@ export component AccordionItem(
  * a level outside that range is clamped rather than rendered — a tag nobody
  * recognises is announced as nothing at all, which loses the heading entirely.
  */
-export component AccordionHeader(
-  children: renders AccordionTrigger,
-  level?: number = 3,
-  ...rest: Rest
-) {
+component AccordionHeader(children: renders AccordionTrigger, level?: number = 3, ...rest: Rest) {
   const clamped = Math.min(6, Math.max(1, Math.trunc(level)));
   const Heading = `h${String(clamped)}`;
 
@@ -297,7 +293,7 @@ export component AccordionHeader(
  * It carries no `tabIndex` of its own on purpose: every header stays in the
  * page's tab order, which is what makes this an accordion and not a tab list.
  */
-export component AccordionTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AccordionTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const item = useAccordionItem("Accordion.Trigger");
   // Locked and disabled are two different sentences a reader hears the same
   // way, and both are `aria-disabled` rather than `disabled` so the header
@@ -333,7 +329,7 @@ export component AccordionTrigger(children: React.Node, render?: RenderProp, ...
  * `internal/disclosure.js` explains what "stays in the document" is worth and
  * what `hidden` is upgraded to for it.
  */
-export component AccordionContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AccordionContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const accordion = useAccordion("Accordion.Content");
   const item = useAccordionItem("Accordion.Content");
   const contentRef = useRef<HTMLElement | null>(null);
@@ -360,3 +356,20 @@ export component AccordionContent(children: React.Node, render?: RenderProp, ...
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `Accordion` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Accordion from "./accordion.js"` —
+ * so a caller writes `<Accordion.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `AccordionRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  AccordionRoot as Root,
+  AccordionItem as Item,
+  AccordionHeader as Header,
+  AccordionTrigger as Trigger,
+  AccordionContent as Content,
+};

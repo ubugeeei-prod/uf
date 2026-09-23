@@ -124,7 +124,7 @@ export component ToggleGroup(
 ) {
   return (
     <OrientationContext.Provider value={orientation}>
-      <Primitive.ToggleGroupRoot
+      <Primitive.ToggleGroup.Root
         {...forwarded(rest)}
         className={classNames(props(styles.root, xstyle).className, className)}
         defaultValue={defaultValue}
@@ -134,7 +134,7 @@ export component ToggleGroup(
         value={value}
       >
         {children}
-      </Primitive.ToggleGroupRoot>
+      </Primitive.ToggleGroup.Root>
     </OrientationContext.Provider>
   );
 }
@@ -147,7 +147,7 @@ export component ToggleGroupItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.ToggleGroupItem {
+) renders Primitive.ToggleGroup.Item {
   const orientation = useContext(OrientationContext);
   const styled = props(
     styles.item,
@@ -155,14 +155,14 @@ export component ToggleGroupItem(
     xstyle,
   );
   return (
-    <Primitive.ToggleGroupItem
+    <Primitive.ToggleGroup.Item
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
       value={value}
     >
       {children}
-    </Primitive.ToggleGroupItem>
+    </Primitive.ToggleGroup.Item>
   );
 }
 

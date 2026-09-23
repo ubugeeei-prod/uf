@@ -123,7 +123,7 @@ export component Accordion(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AccordionRoot
+    <Primitive.Accordion.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       collapsible={collapsible}
@@ -133,7 +133,7 @@ export component Accordion(
       value={value}
     >
       {children}
-    </Primitive.AccordionRoot>
+    </Primitive.Accordion.Root>
   );
 }
 
@@ -145,16 +145,16 @@ export component AccordionItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.AccordionItem {
+) renders Primitive.Accordion.Item {
   return (
-    <Primitive.AccordionItem
+    <Primitive.Accordion.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       disabled={disabled}
       value={value}
     >
       {children}
-    </Primitive.AccordionItem>
+    </Primitive.Accordion.Item>
   );
 }
 
@@ -165,10 +165,10 @@ export component AccordionTrigger(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.AccordionHeader {
+) renders Primitive.Accordion.Header {
   return (
-    <Primitive.AccordionHeader className={props(styles.heading).className} level={level}>
-      <Primitive.AccordionTrigger
+    <Primitive.Accordion.Header className={props(styles.heading).className} level={level}>
+      <Primitive.Accordion.Trigger
         {...forwarded(rest)}
         className={classNames(props(styles.trigger, xstyle).className, className)}
       >
@@ -188,8 +188,8 @@ export component AccordionTrigger(
         >
           <path d="m6 9 6 6 6-6" />
         </svg>
-      </Primitive.AccordionTrigger>
-    </Primitive.AccordionHeader>
+      </Primitive.Accordion.Trigger>
+    </Primitive.Accordion.Header>
   );
 }
 
@@ -199,14 +199,14 @@ export component AccordionContent(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.AccordionContent {
+) renders Primitive.Accordion.Content {
   return (
-    <Primitive.AccordionContent
+    <Primitive.Accordion.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.AccordionContent>
+    </Primitive.Accordion.Content>
   );
 }
 

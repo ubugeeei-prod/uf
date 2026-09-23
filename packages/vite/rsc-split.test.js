@@ -411,8 +411,8 @@ describe("the client route table", () => {
   it("ships a page that imports one component from the barrel, as that component's module", () => {
     // `crates/uf_rsc` writes this manifest for the three files `splitProject`
     // creates, with `app/$page.js` importing `{ Switch }` from `@uniflowed/ui`
-    // and `app/counter/$page.js` importing only `AlertRoot`, a Server
-    // Component part. `the_ui_barrel_manifest_the_vite_split_reads_matches_its_snapshot`
+    // and `app/counter/$page.js` importing only `Alert`, a Server
+    // Component's namespace. `the_ui_barrel_manifest_the_vite_split_reads_matches_its_snapshot`
     // holds the file to what `uf build` writes, so this reads the contract
     // rather than a description of it.
     const written = JSON.parse(

@@ -96,7 +96,7 @@ import { useControlled } from "./internal/controlled-state.js";
  * have to reach it. `ToggleGroup type="single"` renders through here and is the
  * reason that matters in practice rather than in principle.
  */
-export function radioSet(orientation: Orientation): RovingSet {
+function radioSet(orientation: Orientation): RovingSet {
   return {
     item: '[role="radio"]',
     owner: '[role="radiogroup"]',
@@ -144,7 +144,7 @@ hook useRadioGroup(part: string): RadioGroupState {
  * `name` puts the answer where a form can submit it; see the hidden input
  * below.
  */
-export component RadioGroupRoot(
+component RadioGroupRoot(
   children: React.Node,
   defaultValue?: string | null = null,
   value?: string | null,
@@ -232,7 +232,7 @@ export component RadioGroupRoot(
  * `disabled` leaves a gap they cannot ask about. The arrow keys step over it
  * either way, and so does the search for the item that holds the tab stop.
  */
-export component RadioGroupItem(
+component RadioGroupItem(
   value: string,
   children?: React.Node,
   disabled?: boolean = false,
@@ -291,7 +291,7 @@ export component RadioGroupItem(
  * `[aria-checked="true"] > *`, and so the "only while chosen" part is not
  * something each caller reimplements.
  */
-export component RadioGroupIndicator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component RadioGroupIndicator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const item = useContext(RadioItemContext);
   if (item == null) {
     throw new Error("RadioGroup.Indicator must be rendered inside a RadioGroup.Item");
@@ -302,3 +302,14 @@ export component RadioGroupIndicator(children?: React.Node, render?: RenderProp,
   const props = withProps(rest, { "aria-hidden": "true", children });
   return render == null ? <span {...props} /> : render(props);
 }
+
+/**
+ * The parts, under the names the `RadioGroup` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as RadioGroup from "./radio-group.js"` —
+ * so a caller writes `<RadioGroup.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `RadioGroupRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { RadioGroupRoot as Root, RadioGroupItem as Item, RadioGroupIndicator as Indicator };
