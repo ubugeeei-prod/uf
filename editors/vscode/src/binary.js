@@ -37,29 +37,29 @@ const path = require("node:path");
 export type Probe = {
   // Whether a path exists and can be executed. Injected so this module can be
   // tested without a file system.
-  +exists: (candidate: string) => boolean,
-  +env: { +[name: string]: string | void, ... },
+  readonly exists: (candidate: string) => boolean,
+  readonly env: { readonly [name: string]: string | void, ... },
   // `process.platform`.
-  +platform: string,
+  readonly platform: string,
 };
 
 export type Source = "setting" | "workspace" | "path";
 
 export type Resolution =
   | {
-      +kind: "found",
+      readonly kind: "found",
       // The program to spawn.
-      +command: string,
+      readonly command: string,
       // Which of the three rules above produced it.
-      +source: Source,
+      readonly source: Source,
     }
   | {
-      +kind: "missing",
+      readonly kind: "missing",
       // Every place that was looked at, in order, for the message.
-      +tried: $ReadOnlyArray<string>,
+      readonly tried: $ReadOnlyArray<string>,
       // Set when the user named a path and it was not there: the message for
       // that case is a different message.
-      +setting: string | null,
+      readonly setting: string | null,
     };
 */
 
