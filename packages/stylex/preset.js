@@ -133,7 +133,10 @@ const buttons = stylex.create({
     borderColor: "transparent",
     cursor: "pointer",
     transitionProperty: "background-color, border-color, color",
-    transitionDuration: ufTokens.durationFast,
+    transitionDuration: {
+      default: ufTokens.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
     transitionTimingFunction: ufTokens.easing,
     // The ring is drawn only for a keyboard focus, which is the whole reason
     // `:focus-visible` exists: a mouse click should not light the control up.
@@ -317,7 +320,10 @@ const controls = stylex.create({
     color: ufTokens.accentInk,
     cursor: "pointer",
     transitionProperty: "background-color, border-color",
-    transitionDuration: ufTokens.durationFast,
+    transitionDuration: {
+      default: ufTokens.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
     transitionTimingFunction: ufTokens.easing,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
