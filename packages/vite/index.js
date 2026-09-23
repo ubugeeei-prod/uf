@@ -63,6 +63,7 @@ import {
 } from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
 import { barrelImportsPlugin, namespaceViewOf } from "./internal/barrel-imports.js";
+import { refuseServerErrorBoundaries } from "./internal/error-boundaries.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
@@ -579,6 +580,11 @@ function flowPlugin({
         // `react-server` for nothing. The ssr graph gets exactly those two,
         // because every route it renders reaches it as a payload.
         if (flightState != null && this.environment?.name === RSC_ENVIRONMENT) {
+          // The graph that renders routes is where a boundary has to be a
+          // client reference, so this is where one that is not fails — the
+          // build, and `uf dev`'s table — rather than the first page that
+          // throws in production. See `./internal/error-boundaries.js`.
+          refuseServerErrorBoundaries(table, root);
           return routesModuleSource({ ...table, handlers: [], middleware: [] });
         }
         if (flightState != null && isSsr(this, loadOptions)) {
