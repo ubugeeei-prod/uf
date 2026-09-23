@@ -64,7 +64,7 @@
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 
-import { pinHeaders, reportMalformedRequests, send } from "./node.js";
+import { copyHeaders, pinHeaders, reportMalformedRequests, send } from "./node.js";
 
 import type { FormState } from "./internal/application.js";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
@@ -106,7 +106,7 @@ type NodeRequest = {
 
 type NodeResponse = {
   statusCode: number,
-  setHeader(name: string, value: string): mixed,
+  setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed,
   write(chunk: Uint8Array | string): mixed,
   end(chunk?: Uint8Array | string): mixed,
   // Required rather than optional, because the one case it exists for is the
@@ -721,9 +721,7 @@ async function sendUnlessHead(
 ): Promise<void> {
   if (method === "HEAD") {
     outgoing.statusCode = result.status;
-    for (const [name, value] of result.headers) {
-      outgoing.setHeader(name, value);
-    }
+    copyHeaders(outgoing, result.headers);
     outgoing.end();
     return;
   }
