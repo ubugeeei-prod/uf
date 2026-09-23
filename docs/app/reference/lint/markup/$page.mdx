@@ -1,0 +1,92 @@
+---
+title: "Markup lint rules · uf"
+description: "HTML the browser's parser would rewrite or ignore."
+---
+
+{/* Generated from crates/uf_lint/rules/markup by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# Markup
+
+<div className="lede">
+HTML the browser's parser would rewrite or ignore.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## markup/no-invalid-nesting
+
+Default: `error`. Nest elements the HTML parser will leave where you wrote them.
+
+The HTML parser moves elements it does not allow where they were written: a `div` inside a `p` closes the paragraph, an `a` inside an `a` closes the outer link. The server's HTML then no longer matches the tree React built, and hydration fails or patches the page.
+
+### Bad
+
+```js
+// @flow
+export component Note() {
+  return (
+    <p>
+      <div>Saved.</div>
+    </p>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:7 `<div>` inside `<p>` is not markup a browser keeps: the parser closes the `<p>` before it. React renders one tree and the parser builds another, which is a hydration mismatch rather than a matter of taste
+```
+
+### Good
+
+```js
+// @flow
+export component Note() {
+  return (
+    <div>
+      <p>Saved.</p>
+    </div>
+  );
+}
+```
+
+## markup/no-invalid-rel
+
+Default: `warn`. A `rel` keyword has to be one this element takes.
+
+Each `rel` keyword is defined for particular elements: `stylesheet` for `link`, `nofollow` for `a` and `area`. A keyword the element does not take is ignored, so the behaviour it was written for, such as `noopener`, silently does not happen.
+
+### Bad
+
+```js
+// @flow
+export component Styles() {
+  return (
+    <a href="/theme.css" rel="stylesheet">
+      Theme
+    </a>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:26 `stylesheet` is a link type, but not one a `<a>` takes, so the browser ignores it and this element carries the relationship it was meant to declare nowhere. Drop it, or put it on the element the keyword belongs to
+```
+
+### Good
+
+```js
+// @flow
+export component Styles() {
+  return (
+    <link href="/theme.css" rel="stylesheet" />
+  );
+}
+```

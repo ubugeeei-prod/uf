@@ -1,0 +1,1041 @@
+---
+title: "Flow lint rules · uf"
+description: "Flow's own lints and the parse check, configured beside uf's rules."
+---
+
+{/* Generated from crates/uf_lint/rules/flow by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# Flow
+
+<div className="lede">
+Flow's own lints and the parse check, configured beside uf's rules.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## flow/ambiguous-object-type
+
+Default: `off`. Object type annotations must state exactness explicitly.
+
+An object type written as `{ id: string }` means exact or inexact depending on the project's `exact_by_default` setting, so the same annotation reads differently in two projects. Say which one you mean: `{| id: string |}` for exact, or `{ id: string, ... }` for inexact. Off by default, because Modern Flow makes objects exact by default.
+
+### Bad
+
+```js
+// @flow
+export type Props = { id: string };
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:21 object type is neither exact (`{| |}`) nor explicitly inexact (`...`)
+```
+
+### Good
+
+```js
+// @flow
+export type Exact = {| id: string |};
+export type Open = { id: string, ... };
+```
+
+## flow/default-import-access
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not read named exports off a default import.
+
+Reading a named export off a default import, as in `React.useState` where `React` is the default export, only works when the default export happens to be an object that also carries that property. Import the named export itself.
+
+### Bad
+
+```js
+// @flow
+import React from "react";
+
+export hook useCount(): number {
+  const [count] = React.useState(0);
+  return count;
+}
+```
+
+### Good
+
+```js
+// @flow
+import { useState } from "react";
+
+export hook useCount(): number {
+  const [count] = useState(0);
+  return count;
+}
+```
+
+## flow/deprecated-type
+
+Default: `error`. The `bool` type alias is deprecated; write `boolean`.
+
+`bool` is a deprecated alias Flow still accepts. Write `boolean`, the name Flow and every other type system use.
+
+### Bad
+
+```js
+// @flow
+export type Toggle = { readonly on: bool };
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:37 the `bool` type alias is deprecated; write `boolean`
+```
+
+### Good
+
+```js
+// @flow
+export type Toggle = { readonly on: boolean };
+```
+
+## flow/export-renamed-default
+
+Default: `warn`. Avoid `export { value as default }`; use an explicit default export.
+
+`export { value as default }` makes a default export that is easy to miss when reading the module's exports. Write `export default` where the value is declared.
+
+### Bad
+
+```js
+// @flow
+const page = { title: "Home" };
+export { page as default };
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:15 renaming an export to `default` hides the real name; export it directly
+```
+
+### Good
+
+```js
+// @flow
+const page = { title: "Home" };
+export default page;
+```
+
+## flow/internal-type
+
+Default: `error`. Do not reference Flow's internal types directly.
+
+Names like `React$Node` and `$TEMPORARY$object` are internal to Flow's library definitions and can change between Flow releases without notice. Import the public type instead.
+
+### Bad
+
+```js
+// @flow
+export type Slot = React$Node;
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:20 this is a Flow-internal type; use the public equivalent
+```
+
+### Good
+
+```js
+// @flow
+import type { Node } from "react";
+
+export type Slot = Node;
+```
+
+## flow/invalid-import-star-use
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Namespace imports may only be used for member access.
+
+A namespace import (`import * as ns`) is a module object that Flow can only check when you read members off it. Passing the namespace around as a value loses those checks.
+
+### Bad
+
+```js
+// @flow
+import * as math from "./math.js";
+
+export const helpers = math;
+```
+
+### Good
+
+```js
+// @flow
+import * as math from "./math.js";
+
+export const total: number = math.sum([1, 2, 3]);
+```
+
+## flow/invalid-this-arg
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not rebind a method to an incompatible receiver.
+
+Calling a method through `.call`, `.apply` or `.bind` with a receiver of the wrong type runs the method with a `this` it was never written for.
+
+### Bad
+
+```js
+// @flow
+class Counter {
+  count: number = 0;
+  increment(): void {
+    this.count += 1;
+  }
+}
+
+const counter = new Counter();
+counter.increment.call({ total: 0 });
+```
+
+### Good
+
+```js
+// @flow
+class Counter {
+  count: number = 0;
+  increment(): void {
+    this.count += 1;
+  }
+}
+
+const counter = new Counter();
+counter.increment.call(counter);
+```
+
+## flow/libdef-override
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Library definitions must not override built-in declarations.
+
+A library definition that redeclares something Flow's built-in libraries already define, such as `Array` or `Promise`, silently replaces the real type for the whole project.
+
+### Bad
+
+```js
+// @flow
+// flow-typed/overrides.js
+declare class Promise<+R> {
+  then(onFulfill: (value: R) => mixed): Promise<mixed>;
+}
+```
+
+### Good
+
+```js
+// @flow
+// flow-typed/my-sdk.js
+declare module "my-sdk" {
+  declare export function connect(url: string): Promise<void>;
+}
+```
+
+## flow/mixed-import-and-require
+
+Default: `error`. Do not mix `import` and `require` in one module.
+
+A module that uses both `import` and `require` runs through two module systems, with different loading order and interop rules. Keep an ES module on `import`. When a CommonJS-only file has to be loaded, use the `createRequire` bridge that Node documents.
+
+### Bad
+
+```js
+// @flow
+import { readFile } from "node:fs/promises";
+const path = require("node:path");
+
+export async function read(name: string): Promise<string> {
+  return readFile(path.join("data", name), "utf8");
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:14 this module already uses `import`; do not mix in `require`
+```
+
+### Good
+
+```js
+// @flow
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+export async function read(name: string): Promise<string> {
+  return readFile(path.join("data", name), "utf8");
+}
+```
+
+## flow/nested-component
+
+Default: `error`. Do not declare a component inside another component or hook.
+
+A component declared inside another component or hook is a new component on every render, so React unmounts and remounts it each time and its state is lost. Declare components at the top level of a module.
+
+### Bad
+
+```js
+// @flow
+export component List(items: $ReadOnlyArray<string>) {
+  component Row(label: string) {
+    return <li>{label}</li>;
+  }
+  return <ul>{items.map((item) => <Row key={item} label={item} />)}</ul>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:3 declare this component at module scope; nesting it remounts its subtree every render
+```
+
+### Good
+
+```js
+// @flow
+component Row(label: string) {
+  return <li>{label}</li>;
+}
+
+export component List(items: $ReadOnlyArray<string>) {
+  return <ul>{items.map((item) => <Row key={item} label={item} />)}</ul>;
+}
+```
+
+## flow/nested-hook
+
+Default: `error`. Do not declare a hook inside another component or hook.
+
+A hook declared inside a component or another hook is a new function on every render, and the Rules of Hooks cannot be checked across it. Declare hooks at the top level of a module.
+
+### Bad
+
+```js
+// @flow
+import { useState } from "react";
+
+export component Counter() {
+  hook useCount(): number {
+    const [count] = useState(0);
+    return count;
+  }
+  return <output>{useCount()}</output>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:3 declare this hook at module scope; a nested hook gets a new identity every render
+```
+
+### Good
+
+```js
+// @flow
+import { useState } from "react";
+
+hook useCount(): number {
+  const [count] = useState(0);
+  return count;
+}
+
+export component Counter() {
+  return <output>{useCount()}</output>;
+}
+```
+
+## flow/non-const-var-export
+
+Default: `error`. Exported bindings must be `const`.
+
+An exported `let` or `var` can be reassigned by the module after other modules have imported it, and the importers see the change through a live binding. Export a `const`, and export a function when callers need to change the value.
+
+### Bad
+
+```js
+// @flow
+export let count = 0;
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:8 exported bindings must be `const`; a mutable export is a live binding
+```
+
+### Good
+
+```js
+// @flow
+let count = 0;
+
+export const initial = 0;
+
+export function increment(): number {
+  count += 1;
+  return count;
+}
+```
+
+## flow/nonstrict-import
+
+Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. `@flow strict` modules may only import other strict modules.
+
+A `@flow strict` module promises that everything it touches is checked strictly. Importing a module that is not strict breaks that promise at the import.
+
+### Bad
+
+```js
+// @flow strict
+import { format } from "./legacy-format.js"; // a `@flow` module, not strict
+
+export const label: string = format(3);
+```
+
+### Good
+
+```js
+// @flow strict
+import { format } from "./format.js"; // also `@flow strict`
+
+export const label: string = format(3);
+```
+
+## flow/react-intrinsic-overlap
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. A value used as a component must not overlap a JSX intrinsic.
+
+A value used as a JSX component whose type overlaps an intrinsic element's name, such as a string `"div"`, renders a DOM element where you meant a component. Give JSX a component, not a string that may be a tag.
+
+### Bad
+
+```js
+// @flow
+export component Box(as: string) {
+  const Tag = as;
+  return <Tag />;
+}
+```
+
+### Good
+
+```js
+// @flow
+export component Box(as: "section" | "article") {
+  return as === "section" ? <section /> : <article />;
+}
+```
+
+## flow/require-explicit-enum-checks
+
+Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Compare Flow enum values explicitly instead of testing truthiness.
+
+Testing a Flow enum value for truthiness hides which members you meant, and a member added later passes silently. Compare against the members explicitly.
+
+### Bad
+
+```js
+// @flow
+enum Status {
+  Active,
+  Paused,
+}
+
+export function isOn(status: ?Status): boolean {
+  return status ? true : false;
+}
+```
+
+### Good
+
+```js
+// @flow
+enum Status {
+  Active,
+  Paused,
+}
+
+export function isOn(status: ?Status): boolean {
+  return status === Status.Active;
+}
+```
+
+## flow/require-explicit-enum-switch-cases
+
+Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. List Flow enum switch cases explicitly instead of relying on `default`.
+
+A `default` branch in a `switch` over a Flow enum catches members added later without anyone deciding what they should do. List every member, so that adding one is a type error until it is handled. `match` gives the same exhaustiveness check.
+
+### Bad
+
+```js
+// @flow
+enum Status {
+  Active,
+  Paused,
+  Closed,
+}
+
+export function label(status: Status): string {
+  switch (status) {
+    case Status.Active:
+      return "active";
+    default:
+      return "inactive";
+  }
+}
+```
+
+### Good
+
+```js
+// @flow
+enum Status {
+  Active,
+  Paused,
+  Closed,
+}
+
+export function label(status: Status): string {
+  return match (status) {
+    Status.Active => "active",
+    Status.Paused => "paused",
+    Status.Closed => "closed",
+  };
+}
+```
+
+## flow/sketchy-null
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a value that may be both nullish and falsey.
+
+An existence check such as `if (value)` on a `?number` is false both when the value is missing and when it is `0`, and the code usually meant only one of them. Compare with `null` explicitly. This rule covers every such type; the `sketchy-null-*` rules name one type each.
+
+### Bad
+
+```js
+// @flow
+export function describe(value: ?number): string {
+  if (value) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+### Good
+
+```js
+// @flow
+export function describe(value: ?number): string {
+  if (value != null) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+## flow/sketchy-null-bigint
+
+Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?bigint` (covered by `flow/sketchy-null`).
+
+An existence check such as `if (value)` on a `?bigint` is false both when the value is missing and when it is `0n`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
+
+### Bad
+
+```js
+// @flow
+export function describe(value: ?bigint): string {
+  if (value) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+### Good
+
+```js
+// @flow
+export function describe(value: ?bigint): string {
+  if (value != null) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+## flow/sketchy-null-bool
+
+Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?boolean` (covered by `flow/sketchy-null`).
+
+An existence check such as `if (value)` on a `?boolean` is false both when the value is missing and when it is `false`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
+
+### Bad
+
+```js
+// @flow
+export function describe(value: ?boolean): string {
+  if (value) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+### Good
+
+```js
+// @flow
+export function describe(value: ?boolean): string {
+  if (value != null) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+## flow/sketchy-null-mixed
+
+Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `mixed` value (covered by `flow/sketchy-null`).
+
+An existence check such as `if (value)` on a `mixed` value is false for `null` and `undefined`, and also for `0`, `""` and `false`, which the code usually did not mean to reject. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
+
+### Bad
+
+```js
+// @flow
+export function present(value: mixed): boolean {
+  if (value) {
+    return true;
+  }
+  return false;
+}
+```
+
+### Good
+
+```js
+// @flow
+export function present(value: mixed): boolean {
+  return value != null;
+}
+```
+
+## flow/sketchy-null-number
+
+Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?number` (covered by `flow/sketchy-null`).
+
+An existence check such as `if (value)` on a `?number` is false both when the value is missing and when it is `0`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
+
+### Bad
+
+```js
+// @flow
+export function describe(value: ?number): string {
+  if (value) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+### Good
+
+```js
+// @flow
+export function describe(value: ?number): string {
+  if (value != null) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+## flow/sketchy-null-string
+
+Default: `off` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Existence check on a `?string` (covered by `flow/sketchy-null`).
+
+An existence check such as `if (value)` on a `?string` is false both when the value is missing and when it is `""`, and the code usually meant only one of them. Compare with `null` explicitly. Off by default: `flow/sketchy-null` covers it.
+
+### Bad
+
+```js
+// @flow
+export function describe(value: ?string): string {
+  if (value) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+### Good
+
+```js
+// @flow
+export function describe(value: ?string): string {
+  if (value != null) {
+    return "set";
+  }
+  return "missing";
+}
+```
+
+## flow/sketchy-number
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. A number in a boolean position renders or branches on `0`.
+
+A number on the left of `&&` in JSX renders `0` when it is zero, instead of rendering nothing. Turn it into a boolean first.
+
+### Bad
+
+```js
+// @flow
+export component Unread(count: number) {
+  return <p>{count && <span>{count} new</span>}</p>;
+}
+```
+
+### Good
+
+```js
+// @flow
+export component Unread(count: number) {
+  return <p>{count > 0 && <span>{count} new</span>}</p>;
+}
+```
+
+## flow/syntax
+
+Default: `error`. The file must parse with the official Flow parser.
+
+The file must parse with the official Flow parser, the parser uf compiles with. When it does not, nothing else about the file can be checked, so this finding comes first.
+
+### Bad
+
+```text
+// @flow
+export const total = 1 +;
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:25 Unexpected token `;`
+```
+
+### Good
+
+```js
+// @flow
+export type Row = { id: string };
+```
+
+## flow/this-in-exported-function
+
+Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Avoid `this` inside an exported standalone function.
+
+`this` in an exported standalone function depends on how each caller happens to call it, and it is `undefined` in a plain call from another module. Take the value as a parameter.
+
+### Bad
+
+```js
+// @flow
+export function fullName(): string {
+  return `${this.first} ${this.last}`;
+}
+```
+
+### Good
+
+```js
+// @flow
+export function fullName(person: { readonly first: string, readonly last: string }): string {
+  return `${person.first} ${person.last}`;
+}
+```
+
+## flow/unclear-type
+
+Default: `error`. Avoid `any`, `Object`, and `Function` type annotations.
+
+`any`, `Object` and `Function` switch Flow off for whatever they touch: a value typed `any` accepts every operation, and so does everything it flows into. Say what the value is instead: `mixed` when it could be anything, an object or function type when you know its shape.
+
+### Bad
+
+```js
+// @flow
+export type Props = { value: any };
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:30 avoid `any`; use `mixed`, opaque types, or generated router/action types
+```
+
+### Good
+
+```js
+// @flow
+export type Props = { value: mixed };
+```
+
+## flow/uninitialized-instance-property
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not read an instance property before the constructor initializes it.
+
+Reading an instance property in the constructor before it has been assigned reads `undefined`, whatever its declared type says.
+
+### Bad
+
+```js
+// @flow
+export class Cache {
+  size: number;
+  entries: Map<string, string>;
+
+  constructor() {
+    this.size = this.entries.size;
+    this.entries = new Map();
+  }
+}
+```
+
+### Good
+
+```js
+// @flow
+export class Cache {
+  entries: Map<string, string>;
+  size: number;
+
+  constructor() {
+    this.entries = new Map();
+    this.size = this.entries.size;
+  }
+}
+```
+
+## flow/unnecessary-invariant
+
+Default: `warn` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. `invariant` on a condition already known to be truthy.
+
+An `invariant` whose condition Flow already knows is true checks nothing, and suggests to a reader that the value could be missing when it cannot.
+
+### Bad
+
+```js
+// @flow
+import invariant from "invariant";
+
+export function first(items: [string, string]): string {
+  const head = items[0];
+  invariant(head, "a pair has a first item");
+  return head;
+}
+```
+
+### Good
+
+```js
+// @flow
+import invariant from "invariant";
+
+export function first(items: $ReadOnlyArray<string>): string {
+  const head = items[0];
+  invariant(head != null, "the list is not empty");
+  return head;
+}
+```
+
+## flow/unnecessary-optional-chain
+
+Default: `warn`. `?.` applied to a base that can never be nullish.
+
+`?.` on a value that can never be `null` or `undefined`, such as `this`, suggests to a reader that it can be. Use a plain `.`.
+
+### Bad
+
+```js
+// @flow
+export class Timer {
+  elapsed: number = 0;
+  read(): number {
+    return this?.elapsed;
+  }
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:12 `this` is never nullish; drop the `?.`
+```
+
+### Good
+
+```js
+// @flow
+export class Timer {
+  elapsed: number = 0;
+  read(): number {
+    return this.elapsed;
+  }
+}
+```
+
+## flow/unsafe-getters-setters
+
+Default: `warn`. Avoid getters and setters; they hide side effects behind property access.
+
+A getter or setter runs code when a property is read or written, where a reader expects a plain field. Flow also cannot track what the side effect changes. Use a method, so the call is visible.
+
+### Bad
+
+```js
+// @flow
+export class Temperature {
+  celsius: number = 0;
+  get fahrenheit(): number {
+    return this.celsius * 1.8 + 32;
+  }
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:3 avoid getters and setters; they hide side effects behind property access
+```
+
+### Good
+
+```js
+// @flow
+export class Temperature {
+  celsius: number = 0;
+  fahrenheit(): number {
+    return this.celsius * 1.8 + 32;
+  }
+}
+```
+
+## flow/unsafe-object-assign
+
+Default: `error`. Prefer object spread over `Object.assign`.
+
+`Object.assign` mutates its first argument, and Flow types the merge less precisely than an object spread. Spread into a new object.
+
+### Bad
+
+```js
+// @flow
+export function withDefaults(options: { readonly size?: number }): { readonly size?: number } {
+  return Object.assign({}, { size: 10 }, options);
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:10 prefer object spread over `Object.assign`, which mutates its target
+```
+
+### Good
+
+```js
+// @flow
+export function withDefaults(options: { readonly size?: number }): { readonly size?: number } {
+  return { size: 10, ...options };
+}
+```
+
+## flow/untyped-import
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Importing from an untyped module produces `any`.
+
+Importing a value from a module Flow has no types for gives you `any`, which switches off checking for everything that value flows into. Add types for the module, or import from one that has them.
+
+### Bad
+
+```js
+// @flow
+import leftPad from "left-pad"; // no types, no library definition
+
+export const padded: string = leftPad("7", 3, "0");
+```
+
+### Good
+
+```js
+// @flow
+export const padded: string = "7".padStart(3, "0");
+```
+
+## flow/untyped-type-import
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Importing a type from an untyped module produces an `any` alias.
+
+Importing a type from a module Flow has no types for gives you an `any` alias, which checks nothing wherever you use it. Add types for the module, or declare the type yourself.
+
+### Bad
+
+```js
+// @flow
+import type { Options } from "legacy-widget"; // no types, no library definition
+
+export const defaults: Options = { size: 10 };
+```
+
+### Good
+
+```js
+// @flow
+export type Options = { readonly size: number };
+
+export const defaults: Options = { size: 10 };
+```
+
+## flow/unused-promise
+
+Default: `error` · needs Flow type inference, which uf does not implement yet, so the rule does not run and the examples below are not checked. Do not ignore a `Promise`; await it or handle its rejection.
+
+A `Promise` that nobody awaits or handles fails silently: its rejection becomes an unhandled rejection, and whatever comes next runs before it has settled. Await it, return it, or attach a handler.
+
+### Bad
+
+```js
+// @flow
+declare function save(value: string): Promise<void>;
+
+export async function submit(value: string): Promise<void> {
+  save(value);
+}
+```
+
+### Good
+
+```js
+// @flow
+declare function save(value: string): Promise<void>;
+
+export async function submit(value: string): Promise<void> {
+  await save(value);
+}
+```

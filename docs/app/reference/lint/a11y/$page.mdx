@@ -1,0 +1,1423 @@
+---
+title: "Accessibility lint rules · uf"
+description: "JSX that a screen reader, a keyboard or a switch cannot use."
+---
+
+{/* Generated from crates/uf_lint/rules/a11y by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# Accessibility
+
+<div className="lede">
+JSX that a screen reader, a keyboard or a switch cannot use.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## a11y/alt-text
+
+Default: `error`. `img`, `area` and `input type="image"` need an `alt`.
+
+An image with no `alt` is announced by its file name, or not at all, so a screen reader user loses whatever the image says (WCAG 1.1.1). Give `img`, `area` and `input type="image"` an `alt` with the words the image carries, or `alt=""` when it is decoration.
+
+### Bad
+
+```js
+// @flow
+export component Avatar() {
+  return (
+    <img src="/avatars/ada.png" />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 `<img>` has no `alt`, so a screen reader announces its URL or nothing at all; give it the words the image is carrying, or `alt=""` when it carries none and the page already says them
+```
+
+### Good
+
+```js
+// @flow
+export component Avatar() {
+  return (
+    <img src="/avatars/ada.png" alt="Ada Lovelace" />
+  );
+}
+```
+
+## a11y/anchor-ambiguous-text
+
+Default: `warn`. Link text says where the link goes, not "click here".
+
+Screen reader users skim a page through its list of links, where each link is heard without the sentence around it. "Click here" or "read more" says nothing in that list (WCAG 2.4.4). Make the link text say where it goes.
+
+### Bad
+
+```js
+// @flow
+export component Pricing() {
+  return (
+    <p>
+      Plans start at $5. <a href="/pricing">Click here</a>
+    </p>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:26 link text "click here" does not say where the link goes, and a screen reader's list of links reads it with nothing around it (WCAG 2.4.4); name the destination instead, such as `<a>read the pricing guide</a>`
+```
+
+### Good
+
+```js
+// @flow
+export component Pricing() {
+  return (
+    <p>
+      Plans start at $5. <a href="/pricing">See every plan</a>
+    </p>
+  );
+}
+```
+
+## a11y/anchor-has-content
+
+Default: `error`. An `a` needs text or a label a screen reader can announce.
+
+A link with no text and no label is announced as "link" and nothing more, so nobody using a screen reader can tell where it goes (WCAG 2.4.4, 4.1.2).
+
+### Bad
+
+```js
+// @flow
+export component Home() {
+  return (
+    <a href="/" />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 this `<a>` is empty, so a screen reader reads it as "link" and nothing more, and WAI-ARIA requires a link to have a name; put the words in it, or name it with `aria-label` when it holds only an icon
+```
+
+### Good
+
+```js
+// @flow
+export component Home() {
+  return (
+    <a href="/">Home</a>
+  );
+}
+```
+
+## a11y/anchor-is-valid
+
+Default: `error`. An `a` needs a real `href`; an action belongs on a `button`.
+
+An `a` without a real `href` is not a link. It is not in the tab order, it opens nothing in a new tab, and it is announced as something it is not. Something that performs an action is a `button`.
+
+### Bad
+
+```js
+// @flow
+export component Menu(onOpen: () => void) {
+  return (
+    <a href="#" onClick={onOpen}>
+      Open menu
+    </a>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:8 `href="#"` jumps to the top of the page, so with an `onClick` this `<a>` is a button that a screen reader calls a link, and Space, the key that presses a button, scrolls the page instead; make it a `<button type="button">`, or give it a real destination
+```
+
+### Good
+
+```js
+// @flow
+export component Menu(onOpen: () => void) {
+  return (
+    <button type="button" onClick={onOpen}>
+      Open menu
+    </button>
+  );
+}
+```
+
+## a11y/aria-activedescendant-has-tabindex
+
+Default: `error`. `aria-activedescendant` needs an element that can take focus.
+
+`aria-activedescendant` tells assistive technology which option is current while focus stays on the container. That only works when the container can take focus, so an element that is not focusable by default needs a `tabIndex`.
+
+### Bad
+
+```js
+// @flow
+export component Options() {
+  return (
+    <div role="listbox" aria-activedescendant="option-1">
+      <div id="option-1" role="option" aria-selected="true">
+        One
+      </div>
+    </div>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:25 `aria-activedescendant` says which element focus is standing in for, and `<div>` cannot take focus, so nothing ever reads it; give it `tabIndex={0}`
+```
+
+### Good
+
+```js
+// @flow
+export component Options() {
+  return (
+    <div role="listbox" aria-activedescendant="option-1" tabIndex={0}>
+      <div id="option-1" role="option" aria-selected="true">
+        One
+      </div>
+    </div>
+  );
+}
+```
+
+## a11y/aria-props
+
+Default: `error`. An `aria-*` attribute must be one ARIA defines.
+
+An `aria-*` attribute that ARIA does not define is ignored by every browser, so the state or name it was meant to carry never reaches assistive technology. It is usually a typo.
+
+### Bad
+
+```js
+// @flow
+export component Close() {
+  return (
+    <button type="button" aria-lable="Close">
+      ×
+    </button>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:27 `aria-lable` is not an ARIA attribute, so nothing reads it: the browser keeps it, no assistive technology looks at it, and the element stays unlabelled with no symptom to notice; did you mean `aria-label`?
+```
+
+### Good
+
+```js
+// @flow
+export component Close() {
+  return (
+    <button type="button" aria-label="Close">
+      ×
+    </button>
+  );
+}
+```
+
+## a11y/aria-proptypes
+
+Default: `error`. An `aria-*` value must be one its attribute takes.
+
+Each `aria-*` attribute takes a fixed kind of value: `true` or `false`, a token from a list, an id. A value outside that set is ignored, so the state a screen reader should announce is lost.
+
+### Bad
+
+```js
+// @flow
+export component Nav() {
+  return (
+    <a href="/docs" aria-current="yes">
+      Docs
+    </a>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:21 `aria-current` takes one of `page`, `step`, `location`, `date`, `time`, `true`, `false`, and `yes` is not one, so the attribute is dropped and the state it was written for is never announced (WCAG 4.1.2)
+```
+
+### Good
+
+```js
+// @flow
+export component Nav() {
+  return (
+    <a href="/docs" aria-current="page">
+      Docs
+    </a>
+  );
+}
+```
+
+## a11y/aria-role
+
+Default: `error`. A `role` must be a real, non-abstract ARIA role.
+
+A `role` that is not an ARIA role, or is one of the abstract roles ARIA uses only to organise its own taxonomy, is ignored, and the element is announced as whatever it was before.
+
+### Bad
+
+```js
+// @flow
+export component Toolbar() {
+  return (
+    <div role="toolbox">
+      <button type="button">Bold</button>
+    </div>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:10 `toolbox` is not an ARIA role, so nothing reads it: the browser keeps the attribute, no assistive technology looks at it, and the element is announced as whatever HTML made it (WCAG 4.1.2); did you mean `toolbar`?
+```
+
+### Good
+
+```js
+// @flow
+export component Toolbar() {
+  return (
+    <div role="toolbar">
+      <button type="button">Bold</button>
+    </div>
+  );
+}
+```
+
+## a11y/aria-unsupported-elements
+
+Default: `error`. The elements ARIA reserves take no `role` and no `aria-*`.
+
+Elements such as `meta`, `script`, `style` and `html` are never rendered as content, so ARIA has nothing to describe on them. A `role` or `aria-*` there does nothing and suggests it does.
+
+### Bad
+
+```js
+// @flow
+export component Head() {
+  return (
+    <meta charSet="utf-8" aria-hidden="true" />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:27 `<meta>` is one of the elements ARIA reserves: it is never rendered, so it is not in the accessibility tree and `aria-hidden` on it is read by nothing (WCAG 4.1.2); put it on the element a reader actually reaches
+```
+
+### Good
+
+```js
+// @flow
+export component Head() {
+  return (
+    <meta charSet="utf-8" />
+  );
+}
+```
+
+## a11y/autocomplete-valid
+
+Default: `error`. An autofill token the browser knows is what fills the field.
+
+Browsers and password managers fill a field from its `autoComplete` token, and assistive tools use it to show a familiar icon (WCAG 1.3.5). A token the HTML standard does not define fills nothing.
+
+### Bad
+
+```js
+// @flow
+export component Email() {
+  return (
+    <input type="email" name="email" autoComplete="mail" />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:38 `mail` is not an autofill token, so the browser cannot tell what this field is for and fills nothing — which WCAG 1.3.5 asks for, and which matters most to somebody for whom typing an address again is the hard part; use a token from the HTML autofill list, such as `name`, `email`, `street-address` or `cc-number`, or `off` on its own
+```
+
+### Good
+
+```js
+// @flow
+export component Email() {
+  return (
+    <input type="email" name="email" autoComplete="email" />
+  );
+}
+```
+
+## a11y/click-events-have-key-events
+
+Default: `error`. An element with a `role` and an `onClick` needs a key handler too.
+
+An element with a `role` and an `onClick` is announced as a control, so keyboard users will try Enter or Space on it. Without a key handler nothing happens (WCAG 2.1.1).
+
+### Bad
+
+```js
+// @flow
+export component Toggle(onToggle: () => void) {
+  return (
+    <div role="button" tabIndex={0} onClick={onToggle}>
+      Toggle
+    </div>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:37 `<div role="button">` answers a click and no key press, so a keyboard can reach it and still not use it; add an `onKeyDown` that runs the same handler
+```
+
+### Good
+
+A real `button` gets Enter, Space and focus from the browser.
+
+```js
+// @flow
+export component Toggle(onToggle: () => void) {
+  return (
+    <button type="button" onClick={onToggle}>
+      Toggle
+    </button>
+  );
+}
+```
+
+## a11y/control-has-associated-label
+
+Default: `warn`. A control needs a name a screen reader can announce.
+
+A button, input or other control with no text, no label and no `aria-label` is announced only by its role: "button". Nobody can tell what it does (WCAG 4.1.2).
+
+### Bad
+
+```js
+// @flow
+export component Search(onSearch: () => void) {
+  return (
+    <button type="button" onClick={onSearch} />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 this `<button>` has no name and no `id` for a `<label>` to point at, so a screen reader announces only what kind of control it is; give it an `aria-label`, put the words inside it, or give it an `id` and point a `<label htmlFor>` at that
+```
+
+### Good
+
+```js
+// @flow
+export component Search(onSearch: () => void) {
+  return (
+    <button type="button" aria-label="Search" onClick={onSearch} />
+  );
+}
+```
+
+## a11y/heading-has-content
+
+Default: `error`. A heading needs text or a label a screen reader can announce.
+
+An empty heading still shows up in a screen reader's list of headings, as a heading with nothing in it. Readers navigate by those headings (WCAG 2.4.6).
+
+### Bad
+
+```js
+// @flow
+export component Section() {
+  return (
+    <section>
+      <h2 />
+      <p>Nothing here yet.</p>
+    </section>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:7 this `<h2>` has nothing a screen reader can announce, so a reader moving through the page by its headings lands on it and hears nothing; put the heading's words in it, or remove it
+```
+
+### Good
+
+```js
+// @flow
+export component Section() {
+  return (
+    <section>
+      <h2>Drafts</h2>
+      <p>Nothing here yet.</p>
+    </section>
+  );
+}
+```
+
+## a11y/heading-order
+
+Default: `warn`. Heading levels go down one at a time.
+
+Headings are the outline a screen reader user navigates by. Jumping from `h2` to `h4` suggests a missing section, and readers go looking for it (WCAG 1.3.1).
+
+### Bad
+
+```js
+// @flow
+export component Article() {
+  return (
+    <article>
+      <h2>Setup</h2>
+      <h4>Install</h4>
+    </article>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:6:7 heading level jumps from `<h2>` to `<h4>`, and a reader navigating by heading reads the gap as a section that is missing; use `<h3>` and give it the size you wanted with CSS
+```
+
+### Good
+
+```js
+// @flow
+export component Article() {
+  return (
+    <article>
+      <h2>Setup</h2>
+      <h3>Install</h3>
+    </article>
+  );
+}
+```
+
+## a11y/html-has-lang
+
+Default: `error`. `html` needs a `lang`.
+
+Without a `lang` on `html`, a screen reader reads the page in the user's default voice and pronunciation, which garbles text in any other language (WCAG 3.1.1).
+
+### Bad
+
+```js
+// @flow
+import * as React from "react";
+
+export component Document(children: React.Node) {
+  return (
+    <html>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:6:5 `<html>` names no language, so a screen reader reads the page with the voice and pronunciation of its user's own (WCAG 3.1.1); set `lang` to the language the page is written in, such as `lang="en"`
+```
+
+### Good
+
+```js
+// @flow
+import * as React from "react";
+
+export component Document(children: React.Node) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+## a11y/iframe-has-title
+
+Default: `error`. An `iframe` needs a `title` that says what it holds.
+
+A screen reader announces an `iframe` by its `title`. Without one, the reader hears "frame" and has to go in to find out what it holds (WCAG 4.1.2).
+
+### Bad
+
+```js
+// @flow
+export component Map() {
+  return (
+    <iframe src="https://maps.example.com/embed?q=office" />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 this `<iframe>` has no `title`, so a screen reader announces a frame with no name and a reader has to go inside to learn what it holds (WCAG 4.1.2); give it a `title` that says, such as `title="Map of the venue"`
+```
+
+### Good
+
+```js
+// @flow
+export component Map() {
+  return (
+    <iframe src="https://maps.example.com/embed?q=office" title="Map of our office" />
+  );
+}
+```
+
+## a11y/img-redundant-alt
+
+Default: `warn`. `alt` text does not call the image an image, photo or picture.
+
+A screen reader already says "image" before an image's `alt`. Alt text that starts "image of" or "photo of" makes it say so twice, and adds nothing.
+
+### Bad
+
+```js
+// @flow
+export component Team() {
+  return (
+    <img src="/team.jpg" alt="Photo of the team at the offsite" />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:26 this `alt` says "photo", but a screen reader already announces an `<img>` as an image, so a reader hears it twice; describe what the image shows, such as `alt="Ada at the summit"` rather than `alt="Photo of Ada at the summit"`
+```
+
+### Good
+
+```js
+// @flow
+export component Team() {
+  return (
+    <img src="/team.jpg" alt="The team at the offsite" />
+  );
+}
+```
+
+## a11y/interactive-supports-focus
+
+Default: `error`. A widget role has to be reachable by keyboard.
+
+An element given a widget role, such as `button`, `checkbox` or `tab`, is announced as a control, but a `div` or `span` is not in the tab order. Keyboard users hear about a control they cannot reach (WCAG 2.1.1).
+
+### Bad
+
+```js
+// @flow
+export component Star(onStar: () => void) {
+  return (
+    <span role="button" onClick={onStar} onKeyDown={onStar}>
+      ★
+    </span>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:11 `role="button"` is a widget and `<span>` cannot take focus, so a keyboard never reaches the handler on it; give it `tabIndex={0}`, or use the element that is already this role
+```
+
+### Good
+
+```js
+// @flow
+export component Star(onStar: () => void) {
+  return (
+    <span role="button" tabIndex={0} onClick={onStar} onKeyDown={onStar}>
+      ★
+    </span>
+  );
+}
+```
+
+## a11y/label-has-associated-control
+
+Default: `error`. A `label` must name a control, by `htmlFor` or by holding it.
+
+A `label` that points at no control gives nothing its name: the field is announced without one, and clicking the label does not focus it (WCAG 1.3.1, 4.1.2). Point it at the control with `htmlFor`, or put the control inside it.
+
+### Bad
+
+```js
+// @flow
+export component Name() {
+  return (
+    <div>
+      <label>Name</label>
+      <input id="name" type="text" />
+    </div>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:7 this `<label>` is attached to no control, so clicking it does nothing and the field it describes has no accessible name; point `htmlFor` at the control's `id`, or put the control inside the label
+```
+
+### Good
+
+```js
+// @flow
+export component Name() {
+  return (
+    <div>
+      <label htmlFor="name">Name</label>
+      <input id="name" type="text" />
+    </div>
+  );
+}
+```
+
+## a11y/lang
+
+Default: `error`. The `lang` on `html` has to be a language tag.
+
+The `lang` on `html` decides the voice and pronunciation a screen reader uses. A value that is not a BCP 47 language tag is ignored, which is the same as having none (WCAG 3.1.1).
+
+### Bad
+
+```js
+// @flow
+import * as React from "react";
+
+export component Document(children: React.Node) {
+  return (
+    <html lang="en_GB">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:6:11 `lang="en_GB"` is not a language tag, so a screen reader cannot tell what to pronounce this page as and carries on in whatever voice it was already using; write a BCP 47 tag such as `en`, `en-GB` or `ja`
+```
+
+### Good
+
+```js
+// @flow
+import * as React from "react";
+
+export component Document(children: React.Node) {
+  return (
+    <html lang="en-GB">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+## a11y/media-has-caption
+
+Default: `warn`. `audio` and `video` need a captions `track`.
+
+Deaf and hard-of-hearing viewers rely on captions for anything a video or recording says (WCAG 1.2.2). Give `audio` and `video` a `track` of kind `captions`.
+
+### Bad
+
+```js
+// @flow
+export component Intro() {
+  return (
+    <video src="/intro.mp4" controls />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 this `<video>` has no `<track kind="captions">`, so whoever cannot hear it misses what is said (WCAG 1.2.2); add a captions track, or `muted` if it has no sound to caption
+```
+
+### Good
+
+```js
+// @flow
+export component Intro() {
+  return (
+    <video src="/intro.mp4" controls>
+      <track kind="captions" src="/intro.en.vtt" srcLang="en" />
+    </video>
+  );
+}
+```
+
+## a11y/mouse-events-have-key-events
+
+Default: `error`. `onMouseOver` and `onMouseOut` need `onFocus` and `onBlur` beside them.
+
+Something that happens on hover has to happen on focus too, or keyboard users never see it (WCAG 2.1.1). `onMouseOver` needs `onFocus` and `onMouseOut` needs `onBlur`.
+
+### Bad
+
+```js
+// @flow
+export component Hint(onShow: () => void, onHide: () => void) {
+  return (
+    <button type="button" onMouseOver={onShow} onMouseOut={onHide}>
+      ?
+    </button>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:27 `onMouseOver` fires for a pointer and nothing else, so whatever it does never happens for a keyboard; add `onFocus`, which is the same moment for somebody tabbing through
+app/example.js:4:48 `onMouseOut` fires for a pointer and nothing else, so whatever it does never happens for a keyboard; add `onBlur`, which is the same moment for somebody tabbing through
+```
+
+### Good
+
+```js
+// @flow
+export component Hint(onShow: () => void, onHide: () => void) {
+  return (
+    <button
+      type="button"
+      onMouseOver={onShow}
+      onMouseOut={onHide}
+      onFocus={onShow}
+      onBlur={onHide}
+    >
+      ?
+    </button>
+  );
+}
+```
+
+## a11y/no-access-key
+
+Default: `error`. `accessKey` asks for a shortcut the browser has already given out.
+
+`accessKey` claims a keyboard shortcut that the browser, the operating system or a screen reader has usually already taken, and it is not announced anywhere a user would find it.
+
+### Bad
+
+```js
+// @flow
+export component Save() {
+  return (
+    <button type="submit" accessKey="s">
+      Save
+    </button>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:27 `accessKey` asks for a keyboard shortcut the browser and the screen reader have already given out, and the modifier that reaches it differs per browser, per platform and per assistive technology; it either does nothing or takes a shortcut away from somebody relying on it, so drop it and give the control a visible, documented way in
+```
+
+### Good
+
+```js
+// @flow
+export component Save() {
+  return (
+    <button type="submit">Save</button>
+  );
+}
+```
+
+## a11y/no-aria-hidden-on-focusable
+
+Default: `error`. `aria-hidden` does not belong on an element that takes focus.
+
+`aria-hidden` removes an element from what a screen reader announces, but not from the tab order. A focusable element hidden that way takes focus and is announced as nothing (WCAG 4.1.2).
+
+### Bad
+
+```js
+// @flow
+export component Close(onClose: () => void) {
+  return (
+    <button type="button" aria-hidden="true" onClick={onClose}>
+      ×
+    </button>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:27 `<button>` is hidden from assistive technology but still takes focus, so a keyboard lands on an element a screen reader cannot announce; drop the `aria-hidden`, or take it out of the tab order with `tabIndex={-1}`
+```
+
+### Good
+
+Hide the decorative glyph, not the control.
+
+```js
+// @flow
+export component Close(onClose: () => void) {
+  return (
+    <button type="button" aria-label="Close" onClick={onClose}>
+      <span aria-hidden="true">×</span>
+    </button>
+  );
+}
+```
+
+## a11y/no-autofocus
+
+Default: `error`. `autoFocus` moves focus before the reader knows where they are.
+
+`autoFocus` moves focus as the page loads, before the user knows where they are. A screen reader starts reading from the middle of the page and skips everything above the field (WCAG 3.2.1).
+
+### Bad
+
+```js
+// @flow
+export component Search() {
+  return (
+    <input type="search" aria-label="Search" autoFocus />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:46 `autoFocus` moves focus before the reader has been told where they are: a screen reader begins at this control instead of the top of the page, so the heading that says what the page is never gets read, and somebody using magnification is moved somewhere they did not ask to go; focus it from an event the reader caused instead
+```
+
+### Good
+
+```js
+// @flow
+export component Search() {
+  return (
+    <input type="search" aria-label="Search" />
+  );
+}
+```
+
+## a11y/no-distracting-elements
+
+Default: `error`. `marquee` and `blink` move with no way for the reader to stop them.
+
+`marquee` and `blink` move or flash with no way to pause them, which makes the page hard to read and can be harmful (WCAG 2.2.2).
+
+### Bad
+
+```js
+// @flow
+export component Banner() {
+  return (
+    <marquee>Sale ends tonight</marquee>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 `<marquee>` animates on its own and gives the reader no way to stop it, which WCAG 2.2.2 requires for anything that moves for more than five seconds; HTML removed the element and browsers still render it, so this keeps working and keeps being a problem — drop it, or animate with CSS the reader can turn off through `prefers-reduced-motion`
+```
+
+### Good
+
+```js
+// @flow
+export component Banner() {
+  return (
+    <p>Sale ends tonight</p>
+  );
+}
+```
+
+## a11y/no-interactive-element-to-noninteractive-role
+
+Default: `error`. A control keeps its behaviour, so it must keep its announcement.
+
+A `button` or a link keeps its keyboard behaviour whatever `role` it is given. Relabel it as something inert, such as `presentation`, and it still takes focus and still acts, but a screen reader no longer announces it as a control.
+
+### Bad
+
+```js
+// @flow
+export component RemoveTag(onRemove: () => void) {
+  return (
+    <button type="button" role="presentation" onClick={onRemove}>
+      ×
+    </button>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:27 `<button>` is a control a keyboard reaches and `role="presentation"` is not, so it keeps the behaviour and loses the announcement: focus lands on something a screen reader calls presentation; drop the role, or use an element that is one
+```
+
+### Good
+
+```js
+// @flow
+export component RemoveTag(onRemove: () => void) {
+  return (
+    <button type="button" aria-label="Remove tag" onClick={onRemove}>
+      ×
+    </button>
+  );
+}
+```
+
+## a11y/no-noninteractive-element-interactions
+
+Default: `error`. Handlers belong on something announced as a control.
+
+Handlers on an element announced as content, such as an `article` or a paragraph, are never announced as anything to act on: a screen reader user has no reason to press a key there. Put the behaviour on a control.
+
+### Bad
+
+```js
+// @flow
+export component Story(onOpen: () => void) {
+  return (
+    <article onClick={onOpen} onKeyDown={onOpen}>
+      Quarterly report
+    </article>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 `<article>` has the role `article` and is not a control, so handlers on it are reachable but never announced as anything to act on; move them to a `<button>`, or give the element a role that says what it does
+```
+
+### Good
+
+```js
+// @flow
+export component Story(onOpen: () => void) {
+  return (
+    <article>
+      <button type="button" onClick={onOpen}>
+        Quarterly report
+      </button>
+    </article>
+  );
+}
+```
+
+## a11y/no-noninteractive-element-to-interactive-role
+
+Default: `error`. An element with its own semantics is not a control to relabel.
+
+Elements such as `h2`, `ul` or `article` already mean something to a screen reader. Giving one a control role such as `button` tells the reader one thing while the markup is another, and the control still needs every behaviour a real one has. Put the control element inside it.
+
+### Bad
+
+```js
+// @flow
+export component SectionToggle(onToggle: () => void) {
+  return (
+    <h2 role="button" tabIndex={0} onClick={onToggle} onKeyDown={onToggle}>
+      Shipping
+    </h2>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:9 `<h2>` already has the role `heading` and `role="button"` says it is a control, so a screen reader is told one thing and the markup does another; build the control out of an element that has no semantics of its own, or use the element whose own role is `button`
+```
+
+### Good
+
+```js
+// @flow
+export component SectionToggle(open: boolean, onToggle: () => void) {
+  return (
+    <h2>
+      <button type="button" aria-expanded={open} onClick={onToggle}>
+        Shipping
+      </button>
+    </h2>
+  );
+}
+```
+
+## a11y/no-noninteractive-tabindex
+
+Default: `warn`. A `tabIndex` belongs on a control, not on what is only read.
+
+A `tabIndex` on content that does nothing adds a stop to the tab order that leads nowhere, and keyboard users have to walk through it on every pass.
+
+### Bad
+
+```js
+// @flow
+export component Notice() {
+  return (
+    <p tabIndex={0}>Your changes were saved.</p>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:8 `<p>` is not a control, so this `tabIndex` adds a stop with nothing to do at it; drop it, or use `tabIndex={-1}` if something focuses this element itself
+```
+
+### Good
+
+If the text must be announced, make it a live region instead of a tab stop.
+
+```js
+// @flow
+export component Notice() {
+  return (
+    <p role="status">Your changes were saved.</p>
+  );
+}
+```
+
+## a11y/no-redundant-roles
+
+Default: `error`. A `role` the element already has says nothing twice.
+
+A `role` the element already has, such as `role="button"` on a `button`, changes nothing and makes the reader of the code wonder what it was for.
+
+### Bad
+
+```js
+// @flow
+export component Save() {
+  return (
+    <button type="submit" role="button">
+      Save
+    </button>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:27 a `<button>` is already a `button`, so `role="button"` tells the browser what it told the browser: ARIA's first rule is to use the element and not to repeat it, and the copy is one more thing to keep true when the markup changes; drop the attribute
+```
+
+### Good
+
+```js
+// @flow
+export component Save() {
+  return (
+    <button type="submit">Save</button>
+  );
+}
+```
+
+## a11y/no-static-element-interactions
+
+Default: `error`. An `onClick` needs an element a keyboard can reach.
+
+A `div` or `span` with an `onClick` cannot be reached with the keyboard and is announced as nothing in particular, so the action it performs is available only to a mouse (WCAG 2.1.1).
+
+### Bad
+
+```js
+// @flow
+export component Card(onOpen: () => void) {
+  return (
+    <div onClick={onOpen}>Open the report</div>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:5 `<div>` has an `onClick` but no `role` and no key handler, so nothing but a mouse can reach it; make it a `<button>`, or give it a `role` and an `onKeyDown`
+```
+
+### Good
+
+```js
+// @flow
+export component Card(onOpen: () => void) {
+  return (
+    <button type="button" onClick={onOpen}>
+      Open the report
+    </button>
+  );
+}
+```
+
+## a11y/prefer-tag-over-role
+
+Default: `warn`. An element that is the role beats a `role` that says it.
+
+An element that is the role, such as `button`, `nav` or `h2`, comes with the keyboard behaviour and the semantics the role only promises. A `div` with a `role` needs all of that written by hand.
+
+### Bad
+
+```js
+// @flow
+export component Links() {
+  return (
+    <div role="navigation">
+      <a href="/docs">Docs</a>
+    </div>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:10 `role="navigation"` names what `<nav>` already is: the element carries the role without being told, keeps it when somebody moves or copies the markup, and brings the rest of its behaviour with it; write `<nav>` instead of a `<div>` with a role
+```
+
+### Good
+
+```js
+// @flow
+export component Links() {
+  return (
+    <nav>
+      <a href="/docs">Docs</a>
+    </nav>
+  );
+}
+```
+
+## a11y/role-has-required-aria-props
+
+Default: `error`. A role must be given the `aria-*` state it is announced by.
+
+Some roles are announced by their state: a `checkbox` by whether it is checked, a `slider` by its value. Without the attribute that carries that state, the reader hears the role and nothing else.
+
+### Bad
+
+```js
+// @flow
+export component Remember(onToggle: () => void) {
+  return (
+    <span role="checkbox" tabIndex={0} onClick={onToggle} onKeyDown={onToggle}>
+      Remember me
+    </span>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:11 `role="checkbox"` tells a screen reader this is a checkbox, and `aria-checked` is the state a checkbox is announced by: without it the control is read out with nothing to say whether it is on, off or anywhere in between (WCAG 4.1.2); add it, or drop the role and use the HTML element that carries the state itself
+```
+
+### Good
+
+```js
+// @flow
+export component Remember(checked: boolean, onToggle: () => void) {
+  return (
+    <span
+      role="checkbox"
+      aria-checked={checked}
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={onToggle}
+    >
+      Remember me
+    </span>
+  );
+}
+```
+
+## a11y/role-supports-aria-props
+
+Default: `error`. An element carries only the `aria-*` its role takes.
+
+Each role takes a fixed set of `aria-*` states. One its role does not take, such as `aria-checked` on a `link`, is ignored, so whatever state it was meant to carry is never announced.
+
+### Bad
+
+```js
+// @flow
+export component Nav() {
+  return (
+    <a href="/inbox" aria-checked="true">
+      Inbox
+    </a>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:22 a `<a>` is a `link`, and ARIA gives `link` no `aria-checked`, so the attribute sits in the DOM with nothing to read it and the state it describes is never announced (WCAG 4.1.2); remove it, or give the element the role this state belongs to
+```
+
+### Good
+
+```js
+// @flow
+export component Nav() {
+  return (
+    <a href="/inbox" aria-current="page">
+      Inbox
+    </a>
+  );
+}
+```
+
+## a11y/scope
+
+Default: `error`. `scope` belongs on a `th` and is ignored anywhere else.
+
+`scope` tells a screen reader which cells a header labels. It means that only on `th`; anywhere else it is ignored (WCAG 1.3.1).
+
+### Bad
+
+```js
+// @flow
+export component Prices() {
+  return (
+    <table>
+      <tbody>
+        <tr>
+          <td scope="row">Basic</td>
+          <td>$5</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:7:15 HTML defines `scope` on `<th>` and nowhere else, so on a `<td>` it is ignored and the header it was meant to describe is not announced as a header at all; make this a `<th scope="col">` or `<th scope="row">`, which is what lets a screen reader read a data table cell by cell
+```
+
+### Good
+
+```js
+// @flow
+export component Prices() {
+  return (
+    <table>
+      <tbody>
+        <tr>
+          <th scope="row">Basic</th>
+          <td>$5</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+```
+
+## a11y/tabindex-no-positive
+
+Default: `error`. A `tabIndex` above zero reorders the whole page.
+
+A `tabIndex` above zero moves the element ahead of everything else in the tab order, across the whole page. Keyboard users then jump around the page in an order that matches nothing they see (WCAG 2.4.3).
+
+### Bad
+
+```js
+// @flow
+export component Login() {
+  return (
+    <input type="email" aria-label="Email" tabIndex={1} />
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:44 a `tabIndex` of 1 puts this element ahead of everything the document orders itself, so the tab order stops matching the reading order; give it `tabIndex={0}` and let its position in the markup decide
+```
+
+### Good
+
+```js
+// @flow
+export component Login() {
+  return (
+    <input type="email" aria-label="Email" />
+  );
+}
+```

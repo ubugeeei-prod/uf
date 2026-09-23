@@ -1,0 +1,137 @@
+---
+title: "House rules lint rules · uf"
+description: "Whitespace, tasks and the suppression comments themselves."
+---
+
+{/* Generated from crates/uf_lint/rules/uniflowed by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# House rules
+
+<div className="lede">
+Whitespace, tasks and the suppression comments themselves.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## uniflowed/no-npm-script-invocation
+
+Default: `error`. Shell out to uf tasks, not `npm run`/`yarn`/`pnpm`/`bunx`.
+
+A uf project declares its tasks in `uf.config.js`, where `uf run` caches them, orders their dependencies and runs them the same way in CI. Shelling out to `npm run`, `yarn`, `pnpm` or `npx` from source goes around all of that and ties the code to one package manager. Declare a task and run it with `uf run`.
+
+### Bad
+
+```js
+// @flow
+import { execSync } from "node:child_process";
+
+execSync("npm run build");
+execSync("pnpm install");
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:11 declare the task in uf.config.js; uf projects do not shell out to npm/yarn/pnpm/bunx
+app/example.js:5:11 declare the task in uf.config.js; uf projects do not shell out to npm/yarn/pnpm/bunx
+```
+
+### Good
+
+```js
+// @flow
+import { execSync } from "node:child_process";
+
+execSync("uf run build");
+```
+
+## uniflowed/no-tabs
+
+Default: `error`. Indent with spaces, never tabs.
+
+A tab is as wide as each editor, terminal and code review tool decides, so tab-indented code lines up differently for every reader. uf formats with spaces, and `uf fmt` fixes this. A tab inside a string is part of the string and is left alone.
+
+### Bad
+
+```js
+// @flow
+export function total(prices: $ReadOnlyArray<number>): number {
+	return prices.reduce((sum, price) => sum + price, 0);
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:1 replace tabs with spaces
+```
+
+### Good
+
+```js
+// @flow
+export function total(prices: $ReadOnlyArray<number>): number {
+  return prices.reduce((sum, price) => sum + price, 0);
+}
+
+export const columns = "name\tprice";
+```
+
+## uniflowed/no-trailing-whitespace
+
+Default: `error`. Lines must not end in whitespace.
+
+Whitespace at the end of a line is invisible in the editor and noisy in every diff that touches the line. `uf fmt` removes it. Spaces at the end of a line inside a template literal are part of the string and are left alone.
+
+### Bad
+
+```js
+// @flow
+export const greeting = "hello";   
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:33 remove trailing whitespace
+```
+
+### Good
+
+```js
+// @flow
+export const greeting = "hello";
+```
+
+## uniflowed/unknown-lint-suppression
+
+Default: `error`. `uf-lint-disable` comments must name a rule this linter knows.
+
+A `uf-lint-disable` comment that names a rule uf does not know suppresses nothing, but it looks like it works. A typo such as `flow/unclear-typo` leaves the finding reported, or worse, leaves a later reader believing the line was reviewed. uf reports the unknown name, so a suppression either works or fails loudly.
+
+### Bad
+
+```js
+// @flow
+// uf-lint-disable-next-line flow/unclear-typo
+export type Payload = { data: mixed };
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:30 unknown lint rule `flow/unclear-typo` in suppression comment
+```
+
+### Good
+
+```js
+// @flow
+// The payload is validated by the caller, and Flow cannot express its shape.
+// uf-lint-disable-next-line flow/unclear-type
+export type Payload = { data: any };
+```

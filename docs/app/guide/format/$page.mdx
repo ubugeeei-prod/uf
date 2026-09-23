@@ -153,6 +153,10 @@ rather than "is it on by default", and `--json` prints the same list for a
 script. Read it rather than a list on this page — a rule name or a count written
 into a guide goes stale the day a rule is added, and the command cannot.
 
+The [lint rule reference](/reference/lint) shows each rule with an example it
+reports and an example it accepts. Both are run by uf's test suite, so the
+findings printed under an example are the ones `uf lint` gives for it.
+
 ### React rules come from the React Compiler
 
 The `react-compiler/*` rules are the official React Compiler's own diagnostics,

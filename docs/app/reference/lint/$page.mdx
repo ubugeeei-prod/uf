@@ -1,0 +1,261 @@
+---
+title: "Lint rules · uf"
+description: "Every rule uf lint runs, with an example it reports and one it accepts."
+---
+
+{/* Generated from crates/uf_lint/rules by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Reference</p>
+
+# Lint rules
+
+<div className="lede">
+Every rule `uf lint` knows, with an example it reports and an example it
+accepts. Each example is run by uf's test suite, and the findings shown
+under a Bad example are the findings `uf lint` prints for it.
+</div>
+
+The level is the default. `uf lint --rules` prints the level each rule runs
+at in your project, and whether a fix applies. Rules marked *needs type
+inference* are listed but do not run yet: uf reports them as unavailable,
+and their examples show what they will check.
+
+## [Flow](/reference/lint/flow)
+
+Flow's own lints and the parse check, configured beside uf's rules.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`flow/ambiguous-object-type`](/reference/lint/flow#flowambiguous-object-type) | `off` | object type annotations must state exactness explicitly |
+| [`flow/default-import-access`](/reference/lint/flow#flowdefault-import-access) | `error` · needs type inference | do not read named exports off a default import |
+| [`flow/deprecated-type`](/reference/lint/flow#flowdeprecated-type) | `error` | the `bool` type alias is deprecated; write `boolean` |
+| [`flow/export-renamed-default`](/reference/lint/flow#flowexport-renamed-default) | `warn` | avoid `export { value as default }`; use an explicit default export |
+| [`flow/internal-type`](/reference/lint/flow#flowinternal-type) | `error` | do not reference Flow's internal types directly |
+| [`flow/invalid-import-star-use`](/reference/lint/flow#flowinvalid-import-star-use) | `error` · needs type inference | namespace imports may only be used for member access |
+| [`flow/invalid-this-arg`](/reference/lint/flow#flowinvalid-this-arg) | `error` · needs type inference | do not rebind a method to an incompatible receiver |
+| [`flow/libdef-override`](/reference/lint/flow#flowlibdef-override) | `error` · needs type inference | library definitions must not override built-in declarations |
+| [`flow/mixed-import-and-require`](/reference/lint/flow#flowmixed-import-and-require) | `error` | do not mix `import` and `require` in one module |
+| [`flow/nested-component`](/reference/lint/flow#flownested-component) | `error` | do not declare a component inside another component or hook |
+| [`flow/nested-hook`](/reference/lint/flow#flownested-hook) | `error` | do not declare a hook inside another component or hook |
+| [`flow/non-const-var-export`](/reference/lint/flow#flownon-const-var-export) | `error` | exported bindings must be `const` |
+| [`flow/nonstrict-import`](/reference/lint/flow#flownonstrict-import) | `warn` · needs type inference | `@flow strict` modules may only import other strict modules |
+| [`flow/react-intrinsic-overlap`](/reference/lint/flow#flowreact-intrinsic-overlap) | `error` · needs type inference | a value used as a component must not overlap a JSX intrinsic |
+| [`flow/require-explicit-enum-checks`](/reference/lint/flow#flowrequire-explicit-enum-checks) | `warn` · needs type inference | compare Flow enum values explicitly instead of testing truthiness |
+| [`flow/require-explicit-enum-switch-cases`](/reference/lint/flow#flowrequire-explicit-enum-switch-cases) | `warn` · needs type inference | list Flow enum switch cases explicitly instead of relying on `default` |
+| [`flow/sketchy-null`](/reference/lint/flow#flowsketchy-null) | `error` · needs type inference | existence check on a value that may be both nullish and falsey |
+| [`flow/sketchy-null-bigint`](/reference/lint/flow#flowsketchy-null-bigint) | `off` · needs type inference | existence check on a `?bigint` (covered by `flow/sketchy-null`) |
+| [`flow/sketchy-null-bool`](/reference/lint/flow#flowsketchy-null-bool) | `off` · needs type inference | existence check on a `?boolean` (covered by `flow/sketchy-null`) |
+| [`flow/sketchy-null-mixed`](/reference/lint/flow#flowsketchy-null-mixed) | `off` · needs type inference | existence check on a `mixed` value (covered by `flow/sketchy-null`) |
+| [`flow/sketchy-null-number`](/reference/lint/flow#flowsketchy-null-number) | `off` · needs type inference | existence check on a `?number` (covered by `flow/sketchy-null`) |
+| [`flow/sketchy-null-string`](/reference/lint/flow#flowsketchy-null-string) | `off` · needs type inference | existence check on a `?string` (covered by `flow/sketchy-null`) |
+| [`flow/sketchy-number`](/reference/lint/flow#flowsketchy-number) | `error` · needs type inference | a number in a boolean position renders or branches on `0` |
+| [`flow/syntax`](/reference/lint/flow#flowsyntax) | `error` | the file must parse with the official Flow parser |
+| [`flow/this-in-exported-function`](/reference/lint/flow#flowthis-in-exported-function) | `warn` · needs type inference | avoid `this` inside an exported standalone function |
+| [`flow/unclear-type`](/reference/lint/flow#flowunclear-type) | `error` | avoid `any`, `Object`, and `Function` type annotations |
+| [`flow/uninitialized-instance-property`](/reference/lint/flow#flowuninitialized-instance-property) | `error` · needs type inference | do not read an instance property before the constructor initializes it |
+| [`flow/unnecessary-invariant`](/reference/lint/flow#flowunnecessary-invariant) | `warn` · needs type inference | `invariant` on a condition already known to be truthy |
+| [`flow/unnecessary-optional-chain`](/reference/lint/flow#flowunnecessary-optional-chain) | `warn` | `?.` applied to a base that can never be nullish |
+| [`flow/unsafe-getters-setters`](/reference/lint/flow#flowunsafe-getters-setters) | `warn` | avoid getters and setters; they hide side effects behind property access |
+| [`flow/unsafe-object-assign`](/reference/lint/flow#flowunsafe-object-assign) | `error` | prefer object spread over `Object.assign` |
+| [`flow/untyped-import`](/reference/lint/flow#flowuntyped-import) | `error` · needs type inference | importing from an untyped module produces `any` |
+| [`flow/untyped-type-import`](/reference/lint/flow#flowuntyped-type-import) | `error` · needs type inference | importing a type from an untyped module produces an `any` alias |
+| [`flow/unused-promise`](/reference/lint/flow#flowunused-promise) | `error` · needs type inference | do not ignore a `Promise`; await it or handle its rejection |
+
+## [React](/reference/lint/react)
+
+Component and hook syntax, JSX shape, and memoization the compiler already does.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`react/button-has-type`](/reference/lint/react#reactbutton-has-type) | `warn` | a `button` defaults to `submit`, so say which kind it is |
+| [`react/checked-requires-onchange-or-readonly`](/reference/lint/react#reactchecked-requires-onchange-or-readonly) | `error` | a `checked` input needs an `onChange` or a `readOnly` |
+| [`react/component-syntax`](/reference/lint/react#reactcomponent-syntax) | `warn` | declare React components with Flow `component` syntax |
+| [`react/hook-syntax`](/reference/lint/react#reacthook-syntax) | `warn` | declare React hooks with Flow `hook` syntax |
+| [`react/jsx-key`](/reference/lint/react#reactjsx-key) | `error` | an element built in an array or by `map` needs a `key` |
+| [`react/jsx-no-comment-textnodes`](/reference/lint/react#reactjsx-no-comment-textnodes) | `error` | `//` and `/*` between JSX tags are text on the page, not comments |
+| [`react/jsx-no-duplicate-props`](/reference/lint/react#reactjsx-no-duplicate-props) | `error` | give each prop once; a repeated one silently replaces the first |
+| [`react/no-array-index-key`](/reference/lint/react#reactno-array-index-key) | `warn` | key a list item by what it is, not by where it stands |
+| [`react/no-children-prop`](/reference/lint/react#reactno-children-prop) | `warn` | write `children` between the tags, not as a prop |
+| [`react/no-default-export-component`](/reference/lint/react#reactno-default-export-component) | `warn` | modules that declare components must use named exports |
+| [`react/no-namespace`](/reference/lint/react#reactno-namespace) | `error` | React has no way to render a namespaced element name |
+| [`react/no-redundant-memo`](/reference/lint/react#reactno-redundant-memo) | `warn` | drop a `useMemo`/`useCallback` the React Compiler already did |
+| [`react/no-this-in-sfc`](/reference/lint/react#reactno-this-in-sfc) | `error` | `this` names nothing inside a `component` or `hook` |
+| [`react/no-unescaped-entities`](/reference/lint/react#reactno-unescaped-entities) | `warn` | a `>` or `}` left in JSX text is usually a mistyped tag |
+| [`react/no-unknown-property`](/reference/lint/react#reactno-unknown-property) | `error` | write the prop React spells, not the HTML attribute name |
+| [`react/no-unused-prop-types`](/reference/lint/react#reactno-unused-prop-types) | `off` | a prop a `component` declares should be read by its body |
+| [`react/style-prop-object`](/reference/lint/react#reactstyle-prop-object) | `error` | `style` takes an object; React throws on anything else |
+| [`react/void-dom-elements-no-children`](/reference/lint/react#reactvoid-dom-elements-no-children) | `error` | void elements such as `img` and `br` take no children |
+
+## [React Compiler](/reference/lint/react-compiler)
+
+The official React Compiler's diagnostics, one rule per category.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`react-compiler/capitalized-calls`](/reference/lint/react-compiler#react-compilercapitalized-calls) | `off` | the React Compiler's `CapitalizedCalls` diagnostics: a capitalized function called instead of rendered with JSX |
+| [`react-compiler/error-boundaries`](/reference/lint/react-compiler#react-compilererror-boundaries) | `error` | the React Compiler's `ErrorBoundaries` diagnostics: JSX built inside `try`/`catch` instead of under an error boundary |
+| [`react-compiler/exhaustive-effect-dependencies`](/reference/lint/react-compiler#react-compilerexhaustive-effect-dependencies) | `off` | the React Compiler's `EffectExhaustiveDependencies` diagnostics: an effect's dependency array missing or adding a value |
+| [`react-compiler/fbt`](/reference/lint/react-compiler#react-compilerfbt) | `off` | the React Compiler's `FBT` diagnostics, about Meta's `fbt` internationalization library |
+| [`react-compiler/globals`](/reference/lint/react-compiler#react-compilerglobals) | `error` | the React Compiler's `Globals` diagnostics: a variable from outside a component or hook changed during render |
+| [`react-compiler/hooks`](/reference/lint/react-compiler#react-compilerhooks) | `error` | the React Compiler's `Hooks` diagnostics: the Rules of Hooks |
+| [`react-compiler/immutability`](/reference/lint/react-compiler#react-compilerimmutability) | `error` | the React Compiler's `Immutability` diagnostics: props, state or another value React treats as immutable, mutated |
+| [`react-compiler/incompatible-library`](/reference/lint/react-compiler#react-compilerincompatible-library) | `warn` | the React Compiler's `IncompatibleLibrary` diagnostics: an API known to break memoization |
+| [`react-compiler/invariant`](/reference/lint/react-compiler#react-compilerinvariant) | `off` | the React Compiler's `Invariant` diagnostics: an internal assumption of the compiler that did not hold |
+| [`react-compiler/memo-dependencies`](/reference/lint/react-compiler#react-compilermemo-dependencies) | `warn` | the React Compiler's `MemoDependencies` diagnostics: a `useMemo` or `useCallback` dependency array missing or adding a value |
+| [`react-compiler/no-deriving-state-in-effects`](/reference/lint/react-compiler#react-compilerno-deriving-state-in-effects) | `off` | the React Compiler's `EffectDerivationsOfState` diagnostics: a value derived from props or state, computed in an effect |
+| [`react-compiler/preserve-manual-memoization`](/reference/lint/react-compiler#react-compilerpreserve-manual-memoization) | `error` | the React Compiler's `PreserveManualMemo` diagnostics: a `useMemo` or `useCallback` the compiler cannot preserve |
+| [`react-compiler/purity`](/reference/lint/react-compiler#react-compilerpurity) | `error` | the React Compiler's `Purity` diagnostics: a known-impure function called during render |
+| [`react-compiler/refs`](/reference/lint/react-compiler#react-compilerrefs) | `error` | the React Compiler's `Refs` diagnostics: a ref read or written during render |
+| [`react-compiler/set-state-in-effect`](/reference/lint/react-compiler#react-compilerset-state-in-effect) | `error` | the React Compiler's `EffectSetState` diagnostics: `setState` called synchronously in an effect |
+| [`react-compiler/set-state-in-render`](/reference/lint/react-compiler#react-compilerset-state-in-render) | `error` | the React Compiler's `RenderSetState` diagnostics: `setState` called during render |
+| [`react-compiler/static-components`](/reference/lint/react-compiler#react-compilerstatic-components) | `error` | the React Compiler's `StaticComponents` diagnostics: a component created during render |
+| [`react-compiler/syntax`](/reference/lint/react-compiler#react-compilersyntax) | `off` | the React Compiler's `Syntax` diagnostics: code the compiler rejects as invalid syntax |
+| [`react-compiler/todo`](/reference/lint/react-compiler#react-compilertodo) | `off` | the React Compiler's `Todo` diagnostics: code the compiler does not compile yet |
+| [`react-compiler/unsupported-syntax`](/reference/lint/react-compiler#react-compilerunsupported-syntax) | `warn` | the React Compiler's `UnsupportedSyntax` diagnostics: syntax the compiler does not support |
+| [`react-compiler/use-memo`](/reference/lint/react-compiler#react-compileruse-memo) | `error` | the React Compiler's `UseMemo` diagnostics: a `useMemo` callback that is async, a generator, or takes parameters |
+| [`react-compiler/void-use-memo`](/reference/lint/react-compiler#react-compilervoid-use-memo) | `error` | the React Compiler's `VoidUseMemo` diagnostics: a `useMemo` callback that returns nothing |
+
+## [Accessibility](/reference/lint/a11y)
+
+JSX that a screen reader, a keyboard or a switch cannot use.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`a11y/alt-text`](/reference/lint/a11y#a11yalt-text) | `error` | `img`, `area` and `input type="image"` need an `alt` |
+| [`a11y/anchor-ambiguous-text`](/reference/lint/a11y#a11yanchor-ambiguous-text) | `warn` | link text says where the link goes, not "click here" |
+| [`a11y/anchor-has-content`](/reference/lint/a11y#a11yanchor-has-content) | `error` | an `a` needs text or a label a screen reader can announce |
+| [`a11y/anchor-is-valid`](/reference/lint/a11y#a11yanchor-is-valid) | `error` | an `a` needs a real `href`; an action belongs on a `button` |
+| [`a11y/aria-activedescendant-has-tabindex`](/reference/lint/a11y#a11yaria-activedescendant-has-tabindex) | `error` | `aria-activedescendant` needs an element that can take focus |
+| [`a11y/aria-props`](/reference/lint/a11y#a11yaria-props) | `error` | an `aria-*` attribute must be one ARIA defines |
+| [`a11y/aria-proptypes`](/reference/lint/a11y#a11yaria-proptypes) | `error` | an `aria-*` value must be one its attribute takes |
+| [`a11y/aria-role`](/reference/lint/a11y#a11yaria-role) | `error` | a `role` must be a real, non-abstract ARIA role |
+| [`a11y/aria-unsupported-elements`](/reference/lint/a11y#a11yaria-unsupported-elements) | `error` | the elements ARIA reserves take no `role` and no `aria-*` |
+| [`a11y/autocomplete-valid`](/reference/lint/a11y#a11yautocomplete-valid) | `error` | an autofill token the browser knows is what fills the field |
+| [`a11y/click-events-have-key-events`](/reference/lint/a11y#a11yclick-events-have-key-events) | `error` | an element with a `role` and an `onClick` needs a key handler too |
+| [`a11y/control-has-associated-label`](/reference/lint/a11y#a11ycontrol-has-associated-label) | `warn` | a control needs a name a screen reader can announce |
+| [`a11y/heading-has-content`](/reference/lint/a11y#a11yheading-has-content) | `error` | a heading needs text or a label a screen reader can announce |
+| [`a11y/heading-order`](/reference/lint/a11y#a11yheading-order) | `warn` | heading levels go down one at a time |
+| [`a11y/html-has-lang`](/reference/lint/a11y#a11yhtml-has-lang) | `error` | `html` needs a `lang` |
+| [`a11y/iframe-has-title`](/reference/lint/a11y#a11yiframe-has-title) | `error` | an `iframe` needs a `title` that says what it holds |
+| [`a11y/img-redundant-alt`](/reference/lint/a11y#a11yimg-redundant-alt) | `warn` | `alt` text does not call the image an image, photo or picture |
+| [`a11y/interactive-supports-focus`](/reference/lint/a11y#a11yinteractive-supports-focus) | `error` | a widget role has to be reachable by keyboard |
+| [`a11y/label-has-associated-control`](/reference/lint/a11y#a11ylabel-has-associated-control) | `error` | a `label` must name a control, by `htmlFor` or by holding it |
+| [`a11y/lang`](/reference/lint/a11y#a11ylang) | `error` | the `lang` on `html` has to be a language tag |
+| [`a11y/media-has-caption`](/reference/lint/a11y#a11ymedia-has-caption) | `warn` | `audio` and `video` need a captions `track` |
+| [`a11y/mouse-events-have-key-events`](/reference/lint/a11y#a11ymouse-events-have-key-events) | `error` | `onMouseOver` and `onMouseOut` need `onFocus` and `onBlur` beside them |
+| [`a11y/no-access-key`](/reference/lint/a11y#a11yno-access-key) | `error` | `accessKey` asks for a shortcut the browser has already given out |
+| [`a11y/no-aria-hidden-on-focusable`](/reference/lint/a11y#a11yno-aria-hidden-on-focusable) | `error` | `aria-hidden` does not belong on an element that takes focus |
+| [`a11y/no-autofocus`](/reference/lint/a11y#a11yno-autofocus) | `error` | `autoFocus` moves focus before the reader knows where they are |
+| [`a11y/no-distracting-elements`](/reference/lint/a11y#a11yno-distracting-elements) | `error` | `marquee` and `blink` move with no way for the reader to stop them |
+| [`a11y/no-interactive-element-to-noninteractive-role`](/reference/lint/a11y#a11yno-interactive-element-to-noninteractive-role) | `error` | a control keeps its behaviour, so it must keep its announcement |
+| [`a11y/no-noninteractive-element-interactions`](/reference/lint/a11y#a11yno-noninteractive-element-interactions) | `error` | handlers belong on something announced as a control |
+| [`a11y/no-noninteractive-element-to-interactive-role`](/reference/lint/a11y#a11yno-noninteractive-element-to-interactive-role) | `error` | an element with its own semantics is not a control to relabel |
+| [`a11y/no-noninteractive-tabindex`](/reference/lint/a11y#a11yno-noninteractive-tabindex) | `warn` | a `tabIndex` belongs on a control, not on what is only read |
+| [`a11y/no-redundant-roles`](/reference/lint/a11y#a11yno-redundant-roles) | `error` | a `role` the element already has says nothing twice |
+| [`a11y/no-static-element-interactions`](/reference/lint/a11y#a11yno-static-element-interactions) | `error` | an `onClick` needs an element a keyboard can reach |
+| [`a11y/prefer-tag-over-role`](/reference/lint/a11y#a11yprefer-tag-over-role) | `warn` | an element that is the role beats a `role` that says it |
+| [`a11y/role-has-required-aria-props`](/reference/lint/a11y#a11yrole-has-required-aria-props) | `error` | a role must be given the `aria-*` state it is announced by |
+| [`a11y/role-supports-aria-props`](/reference/lint/a11y#a11yrole-supports-aria-props) | `error` | an element carries only the `aria-*` its role takes |
+| [`a11y/scope`](/reference/lint/a11y#a11yscope) | `error` | `scope` belongs on a `th` and is ignored anywhere else |
+| [`a11y/tabindex-no-positive`](/reference/lint/a11y#a11ytabindex-no-positive) | `error` | a `tabIndex` above zero reorders the whole page |
+
+## [Markup](/reference/lint/markup)
+
+HTML the browser's parser would rewrite or ignore.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`markup/no-invalid-nesting`](/reference/lint/markup#markupno-invalid-nesting) | `error` | nest elements the HTML parser will leave where you wrote them |
+| [`markup/no-invalid-rel`](/reference/lint/markup#markupno-invalid-rel) | `warn` | a `rel` keyword has to be one this element takes |
+
+## [Imports](/reference/lint/import)
+
+The static import graph: cycles, undeclared packages and paths.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`import/no-absolute-path`](/reference/lint/import#importno-absolute-path) | `error` | imports must name packages or project-relative paths, not filesystem roots |
+| [`import/no-cycle`](/reference/lint/import#importno-cycle) | `error` | relative import graphs must not cycle back to the importing module |
+| [`import/no-deprecated`](/reference/lint/import#importno-deprecated) | `error` | relative value imports must not use exports marked @deprecated |
+| [`import/no-duplicates`](/reference/lint/import#importno-duplicates) | `error` | mergeable static imports from the same module belong together |
+| [`import/no-extraneous-dependencies`](/reference/lint/import#importno-extraneous-dependencies) | `error` | bare package imports must be declared by the nearest package.json |
+| [`import/no-named-as-default`](/reference/lint/import#importno-named-as-default) | `error` | a default import must not be named like one of the module's named exports |
+| [`import/no-relative-packages`](/reference/lint/import#importno-relative-packages) | `error` | workspace packages should import each other by package name |
+| [`import/no-self-import`](/reference/lint/import#importno-self-import) | `error` | a module must not import itself |
+| [`import/no-unused-modules`](/reference/lint/import#importno-unused-modules) | `off` | relative modules and value exports should be imported somewhere |
+| [`import/no-useless-path-segments`](/reference/lint/import#importno-useless-path-segments) | `error` | relative imports should name the shortest equivalent path |
+
+## [Server](/reference/lint/server)
+
+Server components, server actions and the client boundary.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`server/no-client-secret`](/reference/lint/server#serverno-client-secret) | `error` | client modules must not read server secrets |
+| [`server/no-server-only-import-in-client`](/reference/lint/server#serverno-server-only-import-in-client) | `error` | client modules must not import server-only modules |
+| [`server/use-client-directive-position`](/reference/lint/server#serveruse-client-directive-position) | `error` | `use client`/`use server` must be the module's first statement |
+| [`server/use-server-actions`](/reference/lint/server#serveruse-server-actions) | `error` | server action modules must open with `"use server";` |
+
+## [Router](/reference/lint/router)
+
+File-system routes the router would not serve.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`router/reserved-files`](/reference/lint/router#routerreserved-files) | `error` | `$*` file names are reserved for layout, page, and middleware |
+| [`router/unsupported-segment`](/reference/lint/router#routerunsupported-segment) | `error` | `(.)segment` directories must be interceptions uf reads, inside a `@slot` |
+
+## [Security](/reference/lint/security)
+
+Known vulnerability classes kept out of the code.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`security/iframe-has-sandbox`](/reference/lint/security#securityiframe-has-sandbox) | `error` | an `iframe` needs a `sandbox` to bound what the page inside it may do |
+| [`security/no-dangerously-set-inner-html`](/reference/lint/security#securityno-dangerously-set-inner-html) | `error` | render HTML only through a sanitizing `@uniflowed/markdown` helper |
+| [`security/no-eval`](/reference/lint/security#securityno-eval) | `error` | never turn strings into code via `eval`, `new Function`, or timer strings |
+| [`security/no-script-url`](/reference/lint/security#securityno-script-url) | `error` | a `javascript:` URL is a program in a prop the browser navigates to |
+| [`security/no-target-blank`](/reference/lint/security#securityno-target-blank) | `error` | `target="_blank"` carries the page's URL on unless `rel` stops it |
+
+## [Fetch](/reference/lint/fetch)
+
+The instrumented `fetch` the toolchain is built around.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`fetch/no-global-override`](/reference/lint/fetch#fetchno-global-override) | `error` | do not monkey-patch global `fetch` |
+
+## [React Native](/reference/lint/react-native)
+
+Platform-specific modules.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`react-native/platform-split`](/reference/lint/react-native#react-nativeplatform-split) | `warn` | prefer platform-specific files over `Platform.OS` branches |
+
+## [Vite](/reference/lint/vite)
+
+`@uniflowed/vite` configuration.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`vite/hot-needs-optional-chaining`](/reference/lint/vite#vitehot-needs-optional-chaining) | `error` | reach `import.meta.hot` through `?.`; `if` does not refine it |
+
+## [package.json](/reference/lint/package)
+
+Manifests that shell out instead of declaring tasks.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`package/no-npm-scripts`](/reference/lint/package#packageno-npm-scripts) | `error` | refuse install-time lifecycle scripts unless explicitly allowed |
+
+## [House rules](/reference/lint/uniflowed)
+
+Whitespace, tasks and the suppression comments themselves.
+
+| Rule | Default | What it checks |
+| --- | --- | --- |
+| [`uniflowed/no-npm-script-invocation`](/reference/lint/uniflowed#uniflowedno-npm-script-invocation) | `error` | shell out to uf tasks, not `npm run`/`yarn`/`pnpm`/`bunx` |
+| [`uniflowed/no-tabs`](/reference/lint/uniflowed#uniflowedno-tabs) | `error` | indent with spaces, never tabs |
+| [`uniflowed/no-trailing-whitespace`](/reference/lint/uniflowed#uniflowedno-trailing-whitespace) | `error` | lines must not end in whitespace |
+| [`uniflowed/unknown-lint-suppression`](/reference/lint/uniflowed#uniflowedunknown-lint-suppression) | `error` | `uf-lint-disable` comments must name a rule this linter knows |

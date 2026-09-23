@@ -1,0 +1,48 @@
+---
+title: "package.json lint rules · uf"
+description: "Manifests that shell out instead of declaring tasks."
+---
+
+{/* Generated from crates/uf_lint/rules/package by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# package.json
+
+<div className="lede">
+Manifests that shell out instead of declaring tasks.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## package/no-npm-scripts
+
+Default: `error`. Refuse install-time lifecycle scripts unless explicitly allowed.
+
+Install-time lifecycle scripts (`preinstall`, `install`, `postinstall`, `prepare`) run arbitrary code on every machine that installs the package, which is how most npm supply-chain attacks spread. uf refuses them unless you allow them explicitly. Named scripts that only run when someone asks for them are fine.
+
+### Bad
+
+```json
+{
+  "name": "shop",
+  "scripts": { "postinstall": "node scripts/setup.js" }
+}
+```
+
+`uf lint` reports:
+
+```text
+package.json:3:3 install-time lifecycle scripts (postinstall) are disabled; move the automation to uf tasks or explicitly allow lifecycle scripts
+```
+
+### Good
+
+```json
+{
+  "name": "shop",
+  "scripts": { "ios": "expo start --ios", "start": "expo start" }
+}
+```

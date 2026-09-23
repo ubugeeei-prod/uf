@@ -1,0 +1,192 @@
+---
+title: "Security lint rules · uf"
+description: "Known vulnerability classes kept out of the code."
+---
+
+{/* Generated from crates/uf_lint/rules/security by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# Security
+
+<div className="lede">
+Known vulnerability classes kept out of the code.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## security/iframe-has-sandbox
+
+Default: `error`. An `iframe` needs a `sandbox` to bound what the page inside it may do.
+
+An `iframe` without `sandbox` gives the embedded page everything a top-level page can do: run scripts, submit forms, open pop-ups and navigate your page away. Add `sandbox` and grant back only what the embed needs; an empty `sandbox` grants nothing.
+
+### Bad
+
+```js
+// @flow
+export component Map() {
+  return <iframe src="https://maps.example/embed" title="Store location" />;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:10 this `<iframe>` has no `sandbox`, so the document inside it runs with everything a document gets — its own scripts, forms and popups, and the whole of this page if it is served from this origin; add `sandbox` to take all of that away, then name back only what the frame needs, such as `sandbox="allow-scripts"`
+```
+
+### Good
+
+```js
+// @flow
+export component Map() {
+  return (
+    <iframe sandbox="allow-scripts" src="https://maps.example/embed" title="Store location" />
+  );
+}
+```
+
+## security/no-dangerously-set-inner-html
+
+Default: `error`. Render HTML only through a sanitizing `@uniflowed/markdown` helper.
+
+`dangerouslySetInnerHTML` writes a string into the page as HTML, so any user-controlled text that reaches it is a cross-site scripting hole. Render text as children, which React escapes, and render Markdown or rich text through `@uniflowed/markdown`, which sanitizes.
+
+### Bad
+
+```js
+// @flow
+export component Comment(body: string) {
+  return <div dangerouslySetInnerHTML={{ __html: body }} />;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:15 unsanitized HTML is an XSS sink; render it through a @uniflowed/markdown helper
+```
+
+### Good
+
+```js
+// @flow
+export component Comment(body: string) {
+  return <p>{body}</p>;
+}
+```
+
+## security/no-eval
+
+Default: `error`. Never turn strings into code via `eval`, `new Function`, or timer strings.
+
+`eval`, `new Function` and a string passed to `setTimeout` or `setInterval` all compile text into code at run time. Any outside input that reaches that text runs with the page's full authority, and Content Security Policy has to be weakened to allow it at all. Pass a function instead.
+
+### Bad
+
+```js
+// @flow
+export function schedule(name: string): void {
+  setTimeout(`refresh("${name}")`, 1000);
+  eval(`window.${name}()`);
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:3 a string timer body is evaluated as code; pass a function instead
+app/example.js:4:3 `eval` executes arbitrary code; parse the data instead
+```
+
+### Good
+
+```js
+// @flow
+declare function refresh(name: string): void;
+
+export function schedule(name: string): void {
+  setTimeout(() => refresh(name), 1000);
+}
+```
+
+## security/no-script-url
+
+Default: `error`. A `javascript:` URL is a program in a prop the browser navigates to.
+
+A `javascript:` URL in `src`, `action`, `formAction` or an `area`'s `href` is a program the browser runs when the URL is loaded or followed. React 19 blocks it and warns, and before that it was a cross-site scripting hole. Use an event handler for an action and a real URL for a resource. A `javascript:` URL in an `a` element's `href` is reported by `a11y/anchor-is-valid` instead, so only one rule speaks about it.
+
+### Bad
+
+```js
+// @flow
+export component Search() {
+  return (
+    <form action="javascript:search()">
+      <input aria-label="Query" name="q" />
+    </form>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:11 `action` on this `<form>` is a `javascript:` URL, which is not a place to go but a program to run, with everything the page can do; browsers and React both block it in more and more positions, and the moment any part of the string comes from outside the module it is an injection rather than a quirk — attach an `onClick` handler and give the element a real destination, or none at all
+```
+
+### Good
+
+```js
+// @flow
+declare function search(data: FormData): void;
+
+export component Search() {
+  return (
+    <form action={search}>
+      <input aria-label="Query" name="q" />
+    </form>
+  );
+}
+```
+
+## security/no-target-blank
+
+Default: `error`. `target="_blank"` carries the page's URL on unless `rel` stops it.
+
+A link that opens with `target="_blank"` sends the current page's URL along as the referrer unless `rel` stops it, and older browsers also hand the new page a `window.opener` handle back to yours. Add `rel="noreferrer"`, which implies `noopener`.
+
+### Bad
+
+```js
+// @flow
+export component Docs() {
+  return (
+    <a href="https://docs.example.com" target="_blank">
+      Documentation
+    </a>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:40 `<a target="_blank">` sends the `Referer` header on, so wherever this goes is told the full URL the reader is coming from — which in an application is a path with an order number, a document id or a search in it; add `rel="noreferrer"`, which stops it and covers `noopener` too (`noopener` on its own adds nothing, because `target="_blank"` already gives the opened page a null `window.opener`)
+```
+
+### Good
+
+```js
+// @flow
+export component Docs() {
+  return (
+    <a href="https://docs.example.com" rel="noreferrer" target="_blank">
+      Documentation
+    </a>
+  );
+}
+```

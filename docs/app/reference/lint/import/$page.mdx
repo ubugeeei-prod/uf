@@ -1,0 +1,462 @@
+---
+title: "Imports lint rules · uf"
+description: "The static import graph: cycles, undeclared packages and paths."
+---
+
+{/* Generated from crates/uf_lint/rules/import by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# Imports
+
+<div className="lede">
+The static import graph: cycles, undeclared packages and paths.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## import/no-absolute-path
+
+Default: `error`. Imports must name packages or project-relative paths, not filesystem roots.
+
+An import that starts at the filesystem root, such as `/Users/me/app/format.js` or `C:\work\app\format.js`, only resolves on the machine that wrote it. Import packages by name and project files by a relative path.
+
+### Bad
+
+```js
+// @flow
+import { format } from "/Users/me/app/lib/format.js";
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:24 import paths must be portable; use a package name or a relative path
+```
+
+### Good
+
+```js
+// @flow
+import { format } from "./lib/format.js";
+import { useState } from "react";
+```
+
+## import/no-cycle
+
+Default: `error`. Relative import graphs must not cycle back to the importing module.
+
+Two modules that import each other, directly or through others, are evaluated in an order that depends on which one is imported first. Whichever runs second finds the first one's exports still uninitialized. Break the cycle by moving what both need into a third module.
+
+### Bad
+
+`cart.js` imports `pricing.js`, which imports `cart.js` back.
+
+`app/cart.js`
+
+```js
+// @flow
+import { priceOf } from "./pricing.js";
+
+export type Line = { readonly sku: string, readonly quantity: number };
+export const total = (lines: $ReadOnlyArray<Line>): number =>
+  lines.reduce((sum, line) => sum + priceOf(line), 0);
+```
+
+`app/pricing.js`
+
+```js
+// @flow
+import type { Line } from "./cart.js";
+import { total } from "./cart.js";
+
+export const priceOf = (line: Line): number => line.quantity * 100;
+export const average = (lines: $ReadOnlyArray<Line>): number => total(lines) / lines.length;
+```
+
+`uf lint` reports:
+
+```text
+app/cart.js:2:25 this import creates a cycle through `app/pricing.js`
+app/pricing.js:2:27 this import creates a cycle through `app/cart.js`
+```
+
+### Good
+
+The shared type moves to its own module, and `pricing.js` no longer reaches back into `cart.js`.
+
+`app/cart.js`
+
+```js
+// @flow
+import type { Line } from "./line.js";
+import { priceOf } from "./pricing.js";
+
+export const total = (lines: $ReadOnlyArray<Line>): number =>
+  lines.reduce((sum, line) => sum + priceOf(line), 0);
+```
+
+`app/pricing.js`
+
+```js
+// @flow
+import type { Line } from "./line.js";
+
+export const priceOf = (line: Line): number => line.quantity * 100;
+```
+
+`app/line.js`
+
+```js
+// @flow
+export type Line = { readonly sku: string, readonly quantity: number };
+```
+
+## import/no-deprecated
+
+Default: `error`. Relative value imports must not use exports marked @deprecated.
+
+An export whose doc comment says `@deprecated` is on its way out, and the comment usually names its replacement. Importing it adds one more caller that has to move when it goes.
+
+### Bad
+
+`app/api.js`
+
+```js
+// @flow
+/** @deprecated Use `fetchUser`, which returns a typed result. */
+export function getUser(id: string): Promise<mixed> {
+  return fetch(`/users/${id}`).then((response) => response.json());
+}
+
+export function fetchUser(id: string): Promise<{ readonly name: string }> {
+  return fetch(`/users/${id}`).then((response) => response.json());
+}
+```
+
+`app/page.js`
+
+```js
+// @flow
+import { getUser } from "./api.js";
+
+export const load = (id: string): Promise<mixed> => getUser(id);
+```
+
+`uf lint` reports:
+
+```text
+app/page.js:2:10 `getUser` is deprecated by `app/api.js`; use a supported export instead
+```
+
+### Good
+
+`app/api.js`
+
+```js
+// @flow
+/** @deprecated Use `fetchUser`, which returns a typed result. */
+export function getUser(id: string): Promise<mixed> {
+  return fetch(`/users/${id}`).then((response) => response.json());
+}
+
+export function fetchUser(id: string): Promise<{ readonly name: string }> {
+  return fetch(`/users/${id}`).then((response) => response.json());
+}
+```
+
+`app/page.js`
+
+```js
+// @flow
+import { fetchUser } from "./api.js";
+
+export const load = (id: string): Promise<{ readonly name: string }> => fetchUser(id);
+```
+
+## import/no-duplicates
+
+Default: `error`. Mergeable static imports from the same module belong together.
+
+Two `import` statements from the same module can be written as one. Keeping them apart means the next reader has to look in two places to see what a module takes from another. A type import beside a value import is not a duplicate, since Flow keeps them apart.
+
+### Bad
+
+```js
+// @flow
+import { useState } from "react";
+import { useEffect } from "react";
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:27 `react` is already imported in this file
+```
+
+### Good
+
+```js
+// @flow
+import { useEffect, useState } from "react";
+import type { Node } from "react";
+```
+
+## import/no-extraneous-dependencies
+
+Default: `error`. Bare package imports must be declared by the nearest package.json.
+
+A package imported by name but not declared in the nearest `package.json` works only while something else happens to install it: a workspace neighbour, a hoisted transitive dependency. It breaks on the next clean install or in the published package. Declare every package you import.
+
+### Bad
+
+`package.json`
+
+```json
+{ "name": "shop", "dependencies": { "react": "^19.0.0" } }
+```
+
+`app/page.js`
+
+```js
+// @flow
+import { useState } from "react";
+import { format } from "date-fns";
+```
+
+`uf lint` reports:
+
+```text
+app/page.js:3:24 `date-fns` must be declared in the nearest package.json
+```
+
+### Good
+
+`package.json`
+
+```json
+{ "name": "shop", "dependencies": { "date-fns": "^4.0.0", "react": "^19.0.0" } }
+```
+
+`app/page.js`
+
+```js
+// @flow
+import { useState } from "react";
+import { format } from "date-fns";
+import { readFile } from "node:fs/promises";
+import { total } from "./cart.js";
+```
+
+## import/no-named-as-default
+
+Default: `error`. A default import must not be named like one of the module's named exports.
+
+When a module exports `Button` by name and something else as its default, `import Button from "./Button.js"` reads as if it imports the named `Button` but actually gets the default export. Name the default import after what it is, or import the named export in braces.
+
+### Bad
+
+`app/Button.js`
+
+```js
+// @flow
+export component Button(label: string) {
+  return <button type="button">{label}</button>;
+}
+
+export default component IconButton(icon: string) {
+  return <button aria-label={icon} type="button" />;
+}
+```
+
+`app/page.js`
+
+```js
+// @flow
+import Button from "./Button.js";
+```
+
+`uf lint` reports:
+
+```text
+app/page.js:2:8 `Button` is a named export of `app/Button.js`; import it by name instead of as the default
+```
+
+### Good
+
+`app/Button.js`
+
+```js
+// @flow
+export component Button(label: string) {
+  return <button type="button">{label}</button>;
+}
+
+export default component IconButton(icon: string) {
+  return <button aria-label={icon} type="button" />;
+}
+```
+
+`app/page.js`
+
+```js
+// @flow
+import IconButton, { Button } from "./Button.js";
+```
+
+## import/no-relative-packages
+
+Default: `error`. Workspace packages should import each other by package name.
+
+A relative path from one workspace package into another, such as `../../state/index.js` from `packages/web`, skips the other package's `exports` and its declared dependencies. It stops working as soon as either package is published or moved. Import the package by its name.
+
+### Bad
+
+`packages/web/src/page.js`
+
+```js
+// @flow
+import { createStore } from "../../state/index.js";
+```
+
+`uf lint` reports:
+
+```text
+packages/web/src/page.js:2:29 use the `state` package name instead of a relative path into it
+```
+
+### Good
+
+`packages/web/src/page.js`
+
+```js
+// @flow
+import { createStore } from "@uniflowed/state";
+import { Header } from "./header.js";
+```
+
+## import/no-self-import
+
+Default: `error`. A module must not import itself.
+
+A module that imports itself gets its own half-initialized exports back, which is never what was meant. It is usually a leftover from moving code between files.
+
+### Bad
+
+`app/format.js`
+
+```js
+// @flow
+import { pad } from "./format.js";
+
+export const pad = (value: number): string => String(value).padStart(2, "0");
+export const clock = (hours: number, minutes: number): string => `${pad(hours)}:${pad(minutes)}`;
+```
+
+`uf lint` reports:
+
+```text
+app/format.js:2:21 a module must not import itself; move shared code to another module
+```
+
+### Good
+
+`app/format.js`
+
+```js
+// @flow
+export const pad = (value: number): string => String(value).padStart(2, "0");
+export const clock = (hours: number, minutes: number): string => `${pad(hours)}:${pad(minutes)}`;
+```
+
+## import/no-unused-modules
+
+Default: `off`. Relative modules and value exports should be imported somewhere.
+
+A module no other module imports, or an export nothing imports, is code that ships and has to be maintained without doing anything. Off by default, because entry points (routes, config files, scripts) are imported by the toolchain rather than by other modules. Switch it on to sweep a codebase for dead code.
+
+### Bad
+
+`legacy.js` is imported by nothing, and `lib.js`'s `unused` export is never imported.
+
+`app.js`
+
+```js
+// @flow
+import { used } from "./lib.js";
+
+used();
+```
+
+`lib.js`
+
+```js
+// @flow
+export function used() {}
+export function unused() {}
+```
+
+`legacy.js`
+
+```js
+// @flow
+export const oldPrice = 100;
+```
+
+`uf lint` reports:
+
+```text
+legacy.js:1:1 no relative import reaches this module
+lib.js:2:1 unused export: `unused`
+```
+
+### Good
+
+`app.js`
+
+```js
+// @flow
+import { used } from "./lib.js";
+
+used();
+```
+
+`lib.js`
+
+```js
+// @flow
+export function used() {}
+```
+
+## import/no-useless-path-segments
+
+Default: `error`. Relative imports should name the shortest equivalent path.
+
+`./features/../model.js` is `./model.js` with a detour. The longer path makes a reader resolve it in their head and hides what the module really depends on. Write the shortest path that names the same file.
+
+### Bad
+
+`app/page.js`
+
+```js
+// @flow
+import { load } from "./features/../model.js";
+```
+
+`uf lint` reports:
+
+```text
+app/page.js:2:22 `./features/../model.js` can be written as `./model.js`
+```
+
+### Good
+
+`app/page.js`
+
+```js
+// @flow
+import { load } from "./model.js";
+import { routes } from "./routes/index.js";
+```

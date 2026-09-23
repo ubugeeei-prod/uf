@@ -1,0 +1,639 @@
+---
+title: "React lint rules · uf"
+description: "Component and hook syntax, JSX shape, and memoization the compiler already does."
+---
+
+{/* Generated from crates/uf_lint/rules/react by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# React
+
+<div className="lede">
+Component and hook syntax, JSX shape, and memoization the compiler already does.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## react/button-has-type
+
+Default: `warn`. A `button` defaults to `submit`, so say which kind it is.
+
+A `button` with no `type` is a submit button. Inside a form, a button meant to open a menu or clear a field submits the form instead. Write `type="button"`, `type="submit"` or `type="reset"` so the choice is on the page.
+
+### Bad
+
+```js
+// @flow
+export component Toolbar(onClear: () => void) {
+  return <button onClick={onClear}>Clear</button>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:10 this `<button>` has no `type`, and HTML defaults one to `type="submit"`: inside a form it submits and navigates away, so whatever its `onClick` did is thrown away by the navigation. Write `type="button"` for a button that runs a handler, or `type="submit"` to say the submission is meant
+```
+
+### Good
+
+```js
+// @flow
+export component Toolbar(onClear: () => void) {
+  return (
+    <button type="button" onClick={onClear}>
+      Clear
+    </button>
+  );
+}
+```
+
+## react/checked-requires-onchange-or-readonly
+
+Default: `error`. A `checked` input needs an `onChange` or a `readOnly`.
+
+A `checked` input with no `onChange` is controlled by React and cannot be changed by anyone: every click is undone on the next render. Handle the change, mark it `readOnly`, or use `defaultChecked` for an uncontrolled box.
+
+### Bad
+
+```js
+// @flow
+export component Agree(accepted: boolean) {
+  return <input type="checkbox" checked={accepted} />;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:33 `checked` makes this input controlled, so React puts the prop's value back after every click and the reader cannot move it; add an `onChange` that stores the new value, or `readOnly` to say that not moving is what was meant. `defaultChecked` is the uncontrolled form, which a click does move
+```
+
+### Good
+
+```js
+// @flow
+export component Agree(accepted: boolean, onToggle: (next: boolean) => void) {
+  return (
+    <input
+      type="checkbox"
+      checked={accepted}
+      onChange={(event) => onToggle(event.currentTarget.checked)}
+    />
+  );
+}
+```
+
+### Good
+
+```js
+// @flow
+export component Remembered() {
+  return <input type="checkbox" defaultChecked />;
+}
+```
+
+## react/component-syntax
+
+Default: `warn`. Declare React components with Flow `component` syntax.
+
+Flow's `component` syntax types props exactly, lets `renders` say what a component may render, and is what the React Compiler reads a component as. A function or arrow that returns JSX gets none of that.
+
+### Bad
+
+```js
+// @flow
+import * as React from "react";
+
+export function Greeting({ name }: { name: string }): React.Node {
+  return <p>Hello, {name}</p>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:1 prefer Flow `component` syntax for React components
+```
+
+### Good
+
+```js
+// @flow
+export component Greeting(name: string) {
+  return <p>Hello, {name}</p>;
+}
+```
+
+### Good
+
+A component whose type says what it renders.
+
+```js
+// @flow
+component Item(label: string) {
+  return <li>{label}</li>;
+}
+
+export component List(labels: $ReadOnlyArray<string>) renders* Item {
+  return labels.map((label) => <Item key={label} label={label} />);
+}
+```
+
+## react/hook-syntax
+
+Default: `warn`. Declare React hooks with Flow `hook` syntax.
+
+Flow's `hook` syntax makes a hook a hook to the type checker: Flow then enforces the Rules of Hooks on its callers and knows its result follows React's rules. A plain `function useX` is just a function whose name looks like a hook.
+
+### Bad
+
+```js
+// @flow
+import { useState } from "react";
+
+function useToggle(initial: boolean): [boolean, () => void] {
+  const [on, setOn] = useState(initial);
+  return [on, () => setOn(!on)];
+}
+
+export { useToggle };
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:1 prefer Flow `hook` syntax for React hooks
+```
+
+### Good
+
+```js
+// @flow
+import { useState } from "react";
+
+export hook useToggle(initial: boolean): [boolean, () => void] {
+  const [on, setOn] = useState(initial);
+  return [on, () => setOn(!on)];
+}
+```
+
+## react/jsx-key
+
+Default: `error`. An element built in an array or by `map` needs a `key`.
+
+React matches list items between renders by `key`. Without one it matches them by position, so state and focus stay where an item was rather than with the item when the list changes.
+
+### Bad
+
+```js
+// @flow
+type Todo = { id: string, title: string };
+
+export component Todos(todos: $ReadOnlyArray<Todo>) {
+  return <ul>{todos.map((todo) => <li>{todo.title}</li>)}</ul>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:35 `<li>` is returned from `map` with no `key`, so React matches the items by position and hands one item's state to another when the list is reordered or filtered; give it `key={…}` with the item's id
+```
+
+### Good
+
+```js
+// @flow
+type Todo = { id: string, title: string };
+
+export component Todos(todos: $ReadOnlyArray<Todo>) {
+  return (
+    <ul>
+      {todos.map((todo) => (
+        <li key={todo.id}>{todo.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## react/jsx-no-comment-textnodes
+
+Default: `error`. `//` and `/*` between JSX tags are text on the page, not comments.
+
+Between JSX tags, `//` and `/*` are text, not comments, so they end up on the page. A comment in JSX goes inside braces: `{/* like this */}`.
+
+### Bad
+
+```js
+// @flow
+export component Empty() {
+  return <div>// nothing yet</div>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:15 `//` between JSX tags is text, not a comment, so it shows on the page; write `{/* … */}` to comment it out, or `{"// …"}` if the slashes are meant to be seen
+```
+
+### Good
+
+```js
+// @flow
+export component Empty() {
+  return <div>{/* nothing yet */}</div>;
+}
+```
+
+## react/jsx-no-duplicate-props
+
+Default: `error`. Give each prop once; a repeated one silently replaces the first.
+
+When a prop is written twice, the last one wins and the first is silently thrown away. It is almost always a copy-and-paste mistake.
+
+### Bad
+
+```js
+// @flow
+export component Avatar(src: string) {
+  return <img src={src} alt="" alt="Profile picture" />;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:32 `alt` is given twice on `<img>`, and only the last one reaches it; remove the one that was not meant
+```
+
+### Good
+
+```js
+// @flow
+export component Avatar(src: string) {
+  return <img src={src} alt="Profile picture" />;
+}
+```
+
+## react/no-array-index-key
+
+Default: `warn`. Key a list item by what it is, not by where it stands.
+
+An index key ties each item's state to its position. When the list is reordered, filtered or added to at the front, React hands one item's state, focus and input text to another. Key by something the item carries, such as its id.
+
+### Bad
+
+```js
+// @flow
+type Row = { id: string, name: string };
+
+export component Rows(rows: $ReadOnlyArray<Row>) {
+  return rows.map((row, index) => <input key={index} defaultValue={row.name} />);
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:42 `key` is built from the list index `index`, so React ties each item's state to its position and hands it to a different item when the list is reordered, filtered or added to at the front; key it by something the item carries, such as its id
+```
+
+### Good
+
+```js
+// @flow
+type Row = { id: string, name: string };
+
+export component Rows(rows: $ReadOnlyArray<Row>) {
+  return rows.map((row) => <input key={row.id} defaultValue={row.name} />);
+}
+```
+
+## react/no-children-prop
+
+Default: `warn`. Write `children` between the tags, not as a prop.
+
+Children belong between the tags. Passed as a `children` prop they are easy to miss when reading, and anything nested between the tags silently replaces them.
+
+### Bad
+
+```js
+// @flow
+export component Notice(text: string) {
+  return <p children={text} />;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:13 pass `children` to `<p>` between its tags rather than as a prop, which is where a reader of JSX looks for them
+```
+
+### Good
+
+```js
+// @flow
+export component Notice(text: string) {
+  return <p>{text}</p>;
+}
+```
+
+## react/no-default-export-component
+
+Default: `warn`. Modules that declare components must use named exports.
+
+A named export keeps a component's name the same at every import site, so it can be searched for, renamed by tools and read in stack traces. uf's router reads a page module's `default` export or its named `Page`, so a named export works for routes too.
+
+### Bad
+
+```js
+// @flow
+component Settings() {
+  return <h1>Settings</h1>;
+}
+
+export default Settings;
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:6:1 framework routes are wired by name; export components with a named export
+```
+
+### Good
+
+```js
+// @flow
+export component Settings() {
+  return <h1>Settings</h1>;
+}
+```
+
+## react/no-namespace
+
+Default: `error`. React has no way to render a namespaced element name.
+
+React cannot render a namespaced element name such as `svg:rect`. JSX parses it, but React DOM has no element to create for it. Write the element's own name.
+
+### Bad
+
+```js
+// @flow
+export component Dot() {
+  return (
+    <svg viewBox="0 0 10 10">
+      <svg:circle cx="5" cy="5" r="5" />
+    </svg>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:8 `<svg:circle>` is a namespaced element name, which React does not support: JSX reads a lowercase name as an HTML tag and a capitalised one as a value in scope, and `svg:circle` is neither, so there is nothing for React to render. Inside an `<svg>` the children are already in the SVG namespace — write `<circle>`
+```
+
+### Good
+
+```js
+// @flow
+export component Dot() {
+  return (
+    <svg viewBox="0 0 10 10">
+      <circle cx="5" cy="5" r="5" />
+    </svg>
+  );
+}
+```
+
+## react/no-redundant-memo
+
+Default: `warn`. Drop a `useMemo`/`useCallback` the React Compiler already did.
+
+The React Compiler memoizes every component and hook it compiles. A hand-written `useMemo` or `useCallback` in one of them is a second copy of work the compiler already did, with a dependency array that someone now has to keep correct. The rule reports only memoization the compiler removed.
+
+### Bad
+
+```js
+// @flow
+import { useMemo } from "react";
+
+export component Total(prices: $ReadOnlyArray<number>) {
+  const total = useMemo(() => prices.reduce((sum, price) => sum + price, 0), [prices]);
+  return <output>{total}</output>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:5:17 the React Compiler memoizes this already; `useMemo` here is a second dependency array to keep correct
+```
+
+### Good
+
+```js
+// @flow
+export component Total(prices: $ReadOnlyArray<number>) {
+  const total = prices.reduce((sum, price) => sum + price, 0);
+  return <output>{total}</output>;
+}
+```
+
+## react/no-this-in-sfc
+
+Default: `error`. `this` names nothing inside a `component` or `hook`.
+
+A `component` or `hook` is a function called by React, not a method, so `this` inside one is `undefined`. It usually means code was moved over from a class component and still reads `this.props`.
+
+### Bad
+
+```js
+// @flow
+export component Title(text: string) {
+  return <h1>{this.props.text}</h1>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:15 `this` names nothing inside a `component`: Flow calls one as a plain function, so `this` is `undefined` here and reading anything off it throws; take the value from a parameter, or from the scope around the declaration
+```
+
+### Good
+
+```js
+// @flow
+export component Title(text: string) {
+  return <h1>{text}</h1>;
+}
+```
+
+## react/no-unescaped-entities
+
+Default: `warn`. A `>` or `}` left in JSX text is usually a mistyped tag.
+
+A `>` or `}` in JSX text is legal, but it is usually a tag or an expression typed one character wrong. Write the character as an entity, or as a string in braces, when you mean it.
+
+### Bad
+
+```js
+// @flow
+export component Breadcrumb() {
+  return <p>Home > Settings</p>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:18 `>` in JSX text renders as itself, and is usually what a mistyped tag or a dropped brace left behind; write `&gt;` if it is meant to be read
+```
+
+### Good
+
+```js
+// @flow
+export component Breadcrumb() {
+  return <p>Home &gt; Settings</p>;
+}
+```
+
+## react/no-unknown-property
+
+Default: `error`. Write the prop React spells, not the HTML attribute name.
+
+React spells some DOM attributes differently from HTML: `className`, `htmlFor`, `tabIndex`. React warns about the HTML spelling at run time and may drop it; this reports it while you write it.
+
+### Bad
+
+```js
+// @flow
+export component Field() {
+  return (
+    <label class="field" for="email">
+      Email
+    </label>
+  );
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:4:12 `class` is the HTML spelling of this attribute and React spells the prop `className`, so the name written on this `<label>` is not the one React binds and whatever it was meant to do does not happen — React reports it as an unknown DOM property in development. Write `className`
+app/example.js:4:26 `for` is the HTML spelling of this attribute and React spells the prop `htmlFor`, so the name written on this `<label>` is not the one React binds and whatever it was meant to do does not happen — React reports it as an unknown DOM property in development. Write `htmlFor`
+```
+
+### Good
+
+```js
+// @flow
+export component Field() {
+  return (
+    <label className="field" htmlFor="email">
+      Email
+    </label>
+  );
+}
+```
+
+## react/no-unused-prop-types
+
+Default: `off`. A prop a `component` declares should be read by its body.
+
+A prop that a `component` declares and never reads is part of its type that does nothing. Callers keep passing it for no effect. Remove it, or use it.
+
+### Bad
+
+```js
+// @flow
+export component Badge(label: string, tone: "info" | "warning") {
+  return <span>{label}</span>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:39 `<Badge>` declares the prop `tone` and never reads it, so every caller is asked for a value that goes nowhere; read it, or drop it from the parameter list
+```
+
+### Good
+
+```js
+// @flow
+export component Badge(label: string, tone: "info" | "warning") {
+  return <span data-tone={tone}>{label}</span>;
+}
+```
+
+## react/style-prop-object
+
+Default: `error`. `style` takes an object; React throws on anything else.
+
+React's `style` takes an object of properties, not a CSS string. A string throws at render time.
+
+### Bad
+
+```js
+// @flow
+export component Spacer() {
+  return <div style="height: 1rem" />;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:15 `style` on this `<div>` is a string, and React's `style` prop takes an object mapping property names to values — it throws on anything else rather than rendering it, so this is a crash rather than a matter of taste. Write `style={{ color: "red" }}`, with the property names camelCased
+```
+
+### Good
+
+```js
+// @flow
+export component Spacer() {
+  return <div style={{ height: "1rem" }} />;
+}
+```
+
+## react/void-dom-elements-no-children
+
+Default: `error`. Void elements such as `img` and `br` take no children.
+
+`img`, `br`, `input` and the other void elements cannot have children in HTML. React throws when it is given some.
+
+### Bad
+
+```js
+// @flow
+export component Photo(src: string) {
+  return <img src={src}>A cat asleep</img>;
+}
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:3:10 `<img>` is a void element and cannot hold children: React throws when it renders one that does; put the content next to it instead
+```
+
+### Good
+
+```js
+// @flow
+export component Photo(src: string) {
+  return <img src={src} alt="A cat asleep" />;
+}
+```

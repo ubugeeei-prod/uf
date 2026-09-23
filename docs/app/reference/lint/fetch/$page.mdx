@@ -1,0 +1,51 @@
+---
+title: "Fetch lint rules · uf"
+description: "The instrumented `fetch` the toolchain is built around."
+---
+
+{/* Generated from crates/uf_lint/rules/fetch by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}
+
+<p className="eyebrow">Lint rules</p>
+
+# Fetch
+
+<div className="lede">
+The instrumented `fetch` the toolchain is built around.
+</div>
+
+Every example on this page is run by uf's test suite. A Bad example
+reports exactly the findings shown under it and a Good example reports
+none. [All rules](/reference/lint).
+
+## fetch/no-global-override
+
+Default: `error`. Do not monkey-patch global `fetch`.
+
+uf's tracing, caching and request mocking are all built around the global `fetch`. Replacing it, as in `globalThis.fetch = …`, silently unhooks them for the whole process, including other packages. Wrap `fetch` in a function of your own, or use `@uniflowed/mock` in tests.
+
+### Bad
+
+`src/client.js`
+
+```js
+// @flow
+const original = globalThis.fetch;
+globalThis.fetch = (input, init) => original(input, { ...init, credentials: "include" });
+```
+
+`uf lint` reports:
+
+```text
+src/client.js:3:1 do not override global fetch; use @uniflowed/fetch explicit clients
+```
+
+### Good
+
+`src/client.js`
+
+```js
+// @flow
+export function request(input: string, init?: RequestOptions): Promise<Response> {
+  return fetch(input, { ...init, credentials: "include" });
+}
+```
