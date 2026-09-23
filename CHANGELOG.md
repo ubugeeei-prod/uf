@@ -1,5 +1,21 @@
 # Changelog
 
+## uf@0.0.0-alpha.47
+
+- fix(router): read a missing chunk off a resolution in one helper, back under the lint budget (#1343) (72187f8b)
+- fix(server): spell the adapter contract's fields `readonly` (#1342) (8e30e4f6)
+- ci(bench): commit the first CI baseline and fix the gate and the comparison on a runner (#1339) (2c45e91c)
+- ci(deploy-parity): run the version-skew fixture where a socket can be bound (#1340) (8010f8d1)
+- feat: prerender a static shell and stream its holes per request (PPR) (#1337) (32acd930)
+- feat(lsp): answer hover, definitions and completion from Flow inference (#1334) (a1af6df5)
+- fix(bench): reach client components in the HMR stage, and commit the first CI baseline (#1338) (6ac309da)
+- feat(deploy): version-skew protection, the adapter contract, and a deploy-parity workflow (#1335) (bcbd3663)
+- feat(images): optimise remote images at request time behind an allow-list (#1336) (e2ac2bac)
+- feat(bench): compare uf with Vite+, Next.js, Bun and the rest, gate it nightly, and publish it (#1333) (275f7425)
+- feat(tui): add Select, TabSelect, Textarea, flex wrapping and absolute positioning (#1332) (ba665dbc)
+- ci(release): check that every npm version has a GitHub release with binaries (#1331) (a65b16a3)
+- fix(editors): publishable VS Code versions, a tested Zed extension and an LSP4IJ template (#1330) (8a5187fd)
+
 ## uf@0.0.0-alpha.46
 
 - ci: validate releases through maintainer pull requests (#1326) (18c0b1d4)
