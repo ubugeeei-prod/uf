@@ -100,7 +100,9 @@ Where a row is not the same work, it says so here rather than in a footnote:
   waited for. It is there because a runner that spreads the same work over more
   cores finishes sooner but costs the same, and on a busy machine CPU is what
   runs out. A dev server's CPU is not measured, because it has not exited when
-  the document is served.
+  the document is served. The kernel counts CPU time in clock ticks, 10 ms on the
+  Linux runner, so a CPU figure under about 20 ms is a count of ticks rather
+  than a measurement.
 - **Installs** use the npm registry. They are measured over the network, with
   an empty home directory for the cold rows, so they depend on the registry.
 

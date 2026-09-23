@@ -91,26 +91,30 @@ jobs:
           path: target/release
       - run: chmod +x target/release/uf
       # Seven timed runs of every stage, the first thrown away. A stage over the
-      # line is measured again — `regress.js` exits 1 for a regression and 2
-      # when it could not compare at all, and only a 1 is worth a second look.
+      # line is measured again before the job fails on it. `regress.js` names
+      # the stages that regressed in `regressed.txt`, and writes the file only
+      # when it could compare at all: a failure without one (no baseline, a
+      # file of the wrong shape) is not worth a second measurement. The file
+      # rather than the exit status, because `uf run` reports any failing task
+      # as 1.
       - name: Measure and compare with the baseline
         run: |
           out="$RUNNER_TEMP/bench"
           mkdir -p "$out"
           ./target/release/uf run bench:toolchain -- --runs 7 --warmup 1 \
             --work-dir "$RUNNER_TEMP/uf-bench" --out "$out/first.json"
-          status=0
-          ./target/release/uf run bench:toolchain:regress -- \
-            --write-regressed "$out/regressed.txt" "$out/first.json" || status=$?
-          if [ "$status" -eq 1 ]; then
-            stages="$(cat "$out/regressed.txt")"
-            echo "Measuring $stages again before failing on it."
-            ./target/release/uf run bench:toolchain -- --runs 7 --warmup 1 --stages "$stages" \
-              --work-dir "$RUNNER_TEMP/uf-bench" --out "$out/second.json"
-            ./target/release/uf run bench:toolchain:regress -- "$out/first.json" "$out/second.json"
-          elif [ "$status" -ne 0 ]; then
-            exit "$status"
+          if ./target/release/uf run bench:toolchain:regress -- \
+            --write-regressed "$out/regressed.txt" "$out/first.json"; then
+            exit 0
           fi
+          stages="$(cat "$out/regressed.txt" 2>/dev/null || true)"
+          if [ -z "$stages" ]; then
+            exit 1
+          fi
+          echo "Measuring $stages again before failing on it."
+          ./target/release/uf run bench:toolchain -- --runs 7 --warmup 1 --stages "$stages" \
+            --work-dir "$RUNNER_TEMP/uf-bench" --out "$out/second.json"
+          ./target/release/uf run bench:toolchain:regress -- "$out/first.json" "$out/second.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
