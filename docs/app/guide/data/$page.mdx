@@ -1,0 +1,762 @@
+---
+title: "Data in the browser · uf"
+description: "A query cache for what the browser fetches after the page has arrived, with requests that fail honestly and answers checked where they enter."
+---
+
+<p className="eyebrow">Build an app</p>
+
+# Data in the browser
+
+<div className="lede">
+`@uniflowed/query` is a cache for data the browser asks for after the page has
+arrived: one request for many readers, a cached answer shown while it is
+refreshed, and writes that can guess and take the guess back.
+`@uniflowed/fetch` makes those requests fail when they should, and
+`@uniflowed/validator` checks what came back before anything reads it.
+</div>
+
+**What you will be able to do:** read data from client components with a
+shared cache, poll it and page through it, write it with an optimistic update
+that rolls back on failure, and act on the cache from outside React — and know
+which data should not go through any of this.
+
+**What you need first:** a project — [Your first project](/guide/project) —
+[Server Components](/guide/server-components) for where `"use client"` draws the
+line, and [Server actions](/guide/server-actions) for the other way to write.
+
+## Which side fetches
+
+In uf, data a page needs in order to render is fetched on the server: in the
+Server Component that uses it, or in a route loader. That data arrives with the
+document, needs no loading state in the browser, and never touches this cache.
+[Loading data](/guide/routing#loading-data) in the routing guide is where it is
+covered, and a write that the server answers is
+[a server action](/guide/server-actions).
+
+`@uniflowed/query` is for the rest: data a client component asks for once it is
+running. A search box that queries as the reader types, a list that polls, a
+"next page" button, a panel that opens without a navigation, a write whose
+result has to appear in three components at once. None of that is known when
+the page is rendered, so none of it can be fetched there.
+
+The line has a mechanical side too. A client component is still rendered on the
+server, and there `useQuery` renders its pending state and asks for nothing: the
+request starts when React subscribes, and React subscribes only in the browser.
+Data that has to be in the first paint cannot come from here.
+
+## Requests that fail when they should
+
+Start with the requests, because everything above them assumes they are honest.
+The platform's `fetch` resolves for a 500, has no timeout, and cannot tell a
+request that is safe to repeat from one that is not. `createFetch` adds those
+three things and nothing else:
+
+```js
+// @flow
+// app/todos/_lib/api.js
+import { createFetch } from "@uniflowed/fetch";
+import { parser, v } from "@uniflowed/validator";
+import type { InferOutput } from "@uniflowed/validator";
+
+const Todo = v.object({ id: v.number(), title: v.string(), done: v.boolean() });
+const TodoPage = v.object({ items: v.array(Todo), next: v.nullable(v.number()) });
+
+export type Todo = InferOutput<typeof Todo>;
+export type TodoPage = InferOutput<typeof TodoPage>;
+
+const readTodo = parser(Todo);
+const readTodos = parser(v.array(Todo));
+const readPage = parser(TodoPage);
+
+export const api = createFetch({ baseURL: "/api", timeout: 10_000 });
+
+export function listTodos(signal?: AbortSignal): Promise<$ReadOnlyArray<Todo>> {
+  return api.request("/todos", { signal, parse: readTodos });
+}
+
+export function listTodoPage(page: number, signal?: AbortSignal): Promise<TodoPage> {
+  return api.request("/todos", { searchParams: { page }, signal, parse: readPage });
+}
+
+export function searchTodos(term: string, signal?: AbortSignal): Promise<$ReadOnlyArray<Todo>> {
+  return api.request("/todos", { searchParams: { q: term }, signal, parse: readTodos });
+}
+
+export function getTodo(id: number, signal?: AbortSignal): Promise<Todo> {
+  return api.request(`/todos/${id}`, { signal, parse: readTodo });
+}
+
+export function addTodo(title: string): Promise<Todo> {
+  return api.request("/todos", { method: "POST", body: { title }, parse: readTodo });
+}
+```
+
+A client belongs to a service rather than to a call, which is why it is created
+once with its `baseURL`, `headers`, `timeout` and retry policy, and why
+`api.extend(...)` layers more defaults on top of one. `request` joins the path
+to the base URL — an absolute URL is left alone — appends `searchParams`, sends
+a plain object `body` as JSON with a `content-type` to match, and reads the
+answer by its content type: JSON, text, nothing for a `204`, bytes otherwise.
+`raw` is the same call handing back the `Response` itself.
+
+**`parse` is where the answer is checked.** It takes a function from `mixed` to
+`{ ok: true, value }` or `{ ok: false, issues }`, which is exactly what
+`parser(schema)` returns — so `@uniflowed/fetch` depends on no validator, and a
+hand-written function of that shape works as well. A body that does not match
+rejects the request there, at the boundary, rather than surfacing three frames
+later as a `TypeError` about a property of `undefined`. It is also what makes
+the return types above true: without `parse`, `request` resolves with whatever
+its caller claims, and nothing has looked. `InferOutput` reads the type off the
+schema, so the schema is the only description of a todo that exists.
+
+**A failure is one class with a reason on it.** Every rejection is a
+`FetchError`, and `error.failure.kind` says which of five things happened:
+
+| `kind` | What happened | Also on `failure` |
+| --- | --- | --- |
+| `"http"` | The server answered, but not with a 2xx | `status`, `statusText`, `response`, `method` |
+| `"network"` | No answer at all | `cause` |
+| `"timeout"` | No answer within `timeout` — 30 seconds unless you say | `millis` |
+| `"parse"` | The body was not what its content type said | `cause` |
+| `"invalid"` | The body parsed, and `parse` rejected it | `issues` |
+
+`error.retriable` is the judgment built on that: a network failure, a timeout,
+a `408`, a `429` or a `5xx` could plausibly go differently next time, and
+nothing else could — a `400` will be a `400` again.
+
+**What is retried depends on the method, not only the failure.** `retries`
+defaults to none. When you raise it, a retriable failure is tried again with a
+delay that starts at `retryDelay` (200 ms) and doubles — but only for `GET`,
+`HEAD`, `QUERY`, `PUT` and `DELETE`. A `POST` or a `PATCH` is never retried,
+however retriable the failure looks, because one that timed out may have been
+applied, and sending it again is how an order is placed twice.
+
+Leave `retries` at zero on a client whose requests run inside queries. The query
+cache has its own retry loop, and the two multiply: three query retries over
+three fetch retries is sixteen attempts. The next section hands the decision to
+the query client, where it can read `retriable`.
+
+Each request is also an OpenTelemetry client span, and the active trace
+context, when there is one, is propagated in its headers. `fetch` in the config
+swaps the platform's `fetch` for another, which is how a test avoids the
+network.
+
+## A client per tree
+
+A `QueryClient` holds the cache and the application's defaults, and
+`QueryClientProvider` gives it to the tree below:
+
+```js
+"use client";
+// @flow
+// app/todos/_components/DataProvider.js
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { FetchError } from "@uniflowed/fetch";
+import { QueryClient, QueryClientProvider } from "@uniflowed/query";
+
+export component DataProvider(children: React.Node) {
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        queries: {
+          staleTime: 30_000,
+          retry: (failureCount, error) =>
+            error instanceof FetchError && error.retriable && failureCount <= 3,
+        },
+      }),
+  );
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+```
+
+```js
+// @flow
+// app/todos/$layout.js
+import * as React from "@uniflowed/react";
+
+import { DataProvider } from "./_components/DataProvider.js";
+
+export component Layout(children: React.Node) {
+  return <DataProvider>{children}</DataProvider>;
+}
+```
+
+**The provider is required.** There is no module-level default client, and a
+hook with no provider above it throws, naming the provider it wanted. A default
+would be shared with every other tree in the process: on a server, one reader's
+data would be in the cache the next request renders from, and in a test, the
+previous test's answer would decide this one's result. That is also why the
+client is made in `useState` rather than at module scope — a client component
+is rendered on the server as well, once per request, and a module-scope client
+there is exactly the shared default the package refuses to be.
+
+**Defaults live on the client** because they are decisions an application makes
+once. Every query option falls back to them, one level, with nothing merged:
+
+| Option | Default | |
+| --- | --- | --- |
+| `staleTime` | `0` | How long an answer counts as fresh |
+| `gcTime` | five minutes | How long an entry nobody is watching is kept |
+| `retry` | `3` | Retries, not attempts; `false`, `true`, a count, or a predicate |
+| `retryDelay` | 1 s, doubling, capped at 30 s | A number or a function of the failure count |
+| `refetchInterval` | `null` | Poll every so many milliseconds while watched |
+| `refetchOnWindowFocus` | `true` | Refetch a stale entry when the tab comes back |
+| `refetchOnReconnect` | `true` | Refetch a stale entry when the network comes back |
+
+The `retry` above replaces the default count with a predicate, and the
+predicate is the reason to prefer it: a count retries a `404` three times,
+waiting a second, two and four in between, for an answer that was never going
+to change. Reading `retriable` retries what could plausibly change and stops at
+once for what could not.
+
+## Reading: `useQuery`
+
+```js
+"use client";
+// @flow
+// app/todos/_components/TodoList.js
+import * as React from "@uniflowed/react";
+import { useQuery } from "@uniflowed/query";
+
+import { listTodos } from "../_lib/api.js";
+import type { Todo } from "../_lib/api.js";
+
+export component TodoList() {
+  const { data, error, isPending, isFetching } = useQuery<$ReadOnlyArray<Todo>>({
+    queryKey: ["todos"],
+    queryFn: ({ signal }) => listTodos(signal),
+  });
+
+  if (isPending) {
+    return <p>Loading…</p>;
+  }
+  return (
+    <section aria-busy={isFetching}>
+      {error != null && <p role="alert">{error.message}</p>}
+      <ul>
+        {(data ?? []).map((todo) => (
+          <li key={todo.id}>{todo.title}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+```
+
+The type argument names what `queryFn` resolves with. `uf check` does not
+infer it from `queryFn` alone, and naming it is what makes `data` a list of
+todos rather than something unknown.
+
+**A key is a value.** `["todos"]` written in two files is one entry, because
+keys are compared by their contents: they are serialised with the members of
+any object sorted, so `["todos", { page: 1, size: 20 }]` and
+`["todos", { size: 20, page: 1 }]` are one request. `1` and `"1"` are not — a
+route parameter is a string and a database id is a number, and treating them as
+one entry would show the wrong data rather than fail. Build keys from strings,
+numbers and plain records.
+
+Keys are also how entries are addressed in bulk. A filter of `["todos"]`
+matches every key that starts with it, `["todos", { page: 2 }]` included, and a
+record in a filter matches on the members it names. That prefix rule is what
+makes `invalidateQueries({ queryKey: ["todos"] })` the right way to say
+"something about todos changed", further down.
+
+**`isPending` and `isFetching` answer different questions.** `isPending` is
+"there is nothing to show yet, not even a failure"; `isFetching` is "a request
+is in flight", whether it is the first or a refresh over data already on screen.
+Treating them as one is how an application flashes a spinner over data it
+already has. `isLoading` is the two together — the first load — and
+`isRefetching` is a request over data that is showing. A refresh that fails
+keeps the data it had and sets `error` beside it, which is why the list above
+renders both rather than choosing.
+
+**Reading `signal` is how a request becomes cancellable.** The context's
+`signal` is a getter, and destructuring it is the query function saying it can
+be stopped. When the last component watching an entry goes away, a request that
+took the signal is aborted — a microtask later, so React's Strict Mode
+unsubscribing and resubscribing in one commit does not abort anything. One that
+never read it is left to finish, since aborting it would only throw away an
+answer already on its way.
+
+A query function must resolve with something. `undefined` is reported as a
+failure, because in the cache it is indistinguishable from "never fetched";
+resolve with `null` for "there is no such thing".
+
+Two components reading the same key make one request, and they cannot disagree:
+an entry has one request in flight, and a second reader joins it. An answer
+that is deeply equal to the cached one is merged into it so that every unchanged
+part keeps its identity, and an answer with no changes at all *is* the previous
+object — so after a refresh that found nothing new, `data` is the object it was,
+and a memoised child given it has nothing to re-render.
+
+### `staleTime`, and why to set it
+
+`staleTime` is the whole of the freshness policy, and its default of `0` is the
+conservative choice and the surprising one: every mount of a component reading
+a key refetches it, showing the cached answer at once and replacing it when the
+new one lands. With `refetchOnWindowFocus` on, so does every return to the tab.
+Nothing is wrong on screen, but nothing is saved either.
+
+Set it to how long an answer is good for in your application — the provider
+above says thirty seconds — and a mount within that window finds a fresh entry
+and asks for nothing. `Infinity` means "until I say so", which is what
+`invalidateQueries` is for. Staleness is measured from when the server last
+answered, not from when the answer last changed, so a refresh that confirmed
+the same data still counts.
+
+### `select`
+
+```js
+"use client";
+// @flow
+// app/todos/_components/OpenCount.js
+import * as React from "@uniflowed/react";
+import { useQuery } from "@uniflowed/query";
+
+import { listTodos } from "../_lib/api.js";
+import type { Todo } from "../_lib/api.js";
+
+export component OpenCount() {
+  const { data: open } = useQuery<$ReadOnlyArray<Todo>, number>({
+    queryKey: ["todos"],
+    queryFn: ({ signal }) => listTodos(signal),
+    select: (todos) => todos.filter((todo) => !todo.done).length,
+  });
+  return <output>{open ?? "…"}</output>;
+}
+```
+
+`select` narrows what one component sees without changing what is cached — this
+is the same `["todos"]` entry as the list, and the two of them make one request.
+The narrowed value goes through the same sharing as a response, so what this
+component holds changes when the count changes and not when a title does. The
+second type argument is what `select` returns.
+
+### `placeholderData`
+
+```js
+"use client";
+// @flow
+// app/todos/_components/TodoPages.js
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { useQuery } from "@uniflowed/query";
+
+import { listTodoPage } from "../_lib/api.js";
+import type { TodoPage } from "../_lib/api.js";
+
+export component TodoPages() {
+  const [page, setPage] = useState(0);
+  const { data, isPlaceholderData } = useQuery<TodoPage>({
+    queryKey: ["todos", { page }],
+    queryFn: ({ signal }) => listTodoPage(page, signal),
+    placeholderData: (previous) => previous,
+  });
+
+  return (
+    <div>
+      <ul aria-busy={isPlaceholderData}>
+        {(data?.items ?? []).map((todo) => (
+          <li key={todo.id}>{todo.title}</li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        disabled={isPlaceholderData || data?.next == null}
+        onClick={() => setPage(page + 1)}
+      >
+        Next page
+      </button>
+    </div>
+  );
+}
+```
+
+Each page is its own key, so moving to the next one moves to an empty entry.
+`placeholderData` is shown while an entry has nothing, and given as a function
+it receives the last real answer this component saw — which is how the page the
+reader is looking at stays on screen while the next one loads, instead of
+blanking. It is never written to the cache, and `isPlaceholderData` says it is
+showing, so the button can wait.
+
+### `enabled`
+
+```js
+"use client";
+// @flow
+// app/todos/_components/Search.js
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { useQuery } from "@uniflowed/query";
+
+import { searchTodos } from "../_lib/api.js";
+import type { Todo } from "../_lib/api.js";
+
+export component Search() {
+  const [term, setTerm] = useState("");
+  const { data, isLoading } = useQuery<$ReadOnlyArray<Todo>>({
+    queryKey: ["todos", "search", term],
+    queryFn: ({ signal }) => searchTodos(term, signal),
+    enabled: term.trim().length >= 2,
+  });
+
+  return (
+    <div>
+      <input
+        type="search"
+        aria-label="Search"
+        value={term}
+        onChange={(event) => setTerm(event.currentTarget.value)}
+      />
+      {isLoading && <p>Searching…</p>}
+      <ul>
+        {(data ?? []).map((todo) => (
+          <li key={todo.id}>{todo.title}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+`enabled: false` means "do not fetch this yet"; the result's `refetch()` still
+works when called by hand. Note which flag the spinner reads. A disabled query
+with nothing cached is pending — there is no answer — but nothing is in flight,
+so `isPending` would show "Searching…" before the reader had typed anything.
+`isLoading` is pending *and* fetching, which is the state the message describes.
+Each term is its own key, and reading `signal` means the request for a term the
+reader has already typed past is aborted once nothing watches it.
+
+### Polling, and coming back
+
+```js
+const { data } = useQuery<$ReadOnlyArray<Todo>, number>({
+  queryKey: ["todos"],
+  queryFn: ({ signal }) => listTodos(signal),
+  select: (todos) => todos.length,
+  refetchInterval: 10_000,
+});
+```
+
+`refetchInterval` polls while a component is watching and stops when it goes.
+A poll over data that has not changed hands back the same `data` object, for
+the sharing reason above, so nothing that receives it has anything new to
+render.
+
+The tab coming back and the network coming back both refetch — but only entries
+that are stale, so returning to a tab after two seconds refetches nothing that
+`staleTime` still calls fresh. React Native has neither event; the client's
+`presence` has `setFocused` and `setOnline` for an application to drive from
+`AppState` and its network status.
+
+## Writing: `useMutation`
+
+```js
+"use client";
+// @flow
+// app/todos/_components/AddTodo.js
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { useMutation, useQueryClient } from "@uniflowed/query";
+
+import { addTodo } from "../_lib/api.js";
+import type { Todo } from "../_lib/api.js";
+
+export component AddTodo() {
+  const client = useQueryClient();
+  const [title, setTitle] = useState("");
+
+  const add = useMutation<string, Todo, {| readonly previous: mixed |}>({
+    mutationFn: addTodo,
+    onMutate: async (next: string) => {
+      await client.cancelQueries({ queryKey: ["todos"] });
+      const previous = client.getQueryData(["todos"]);
+      client.setQueryData(["todos"], (todos) =>
+        Array.isArray(todos)
+          ? [...todos, { id: -todos.length - 1, title: next, done: false }]
+          : undefined,
+      );
+      return { previous };
+    },
+    onError: (_error, _next, context) => {
+      client.setQueryData(["todos"], context?.previous);
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: ["todos"] }),
+  });
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        add.mutate(title);
+        setTitle("");
+      }}
+    >
+      <input
+        aria-label="Title"
+        value={title}
+        onChange={(event) => setTitle(event.currentTarget.value)}
+      />
+      <button type="submit">Add</button>
+      {add.error != null && <p role="alert">{add.error.message}</p>}
+    </form>
+  );
+}
+```
+
+The type arguments are the variables, the answer, and what `onMutate` returns.
+Every step of the optimistic sequence is there because of a specific failure:
+
+- **`cancelQueries` first.** A refresh of `["todos"]` already in flight would
+  land after the guess and put the server's previous answer back on screen,
+  which looks exactly like the write being undone at random. Cancelling it puts
+  the entry back as it was before that refresh started.
+- **`getQueryData` before `setQueryData`.** What `onMutate` returns is handed
+  to `onError`, and it is the only place the rollback can live: a ref in the
+  component is gone if the component unmounted, and two writes can be in flight
+  at once. `getQueryData` answers `mixed` — a key carries no type — which is why
+  the updater checks `Array.isArray` before it spreads.
+- **The updater form of `setQueryData`.** The value it replaces is the one in
+  the cache now, which is not necessarily the one this component rendered.
+  Returning `undefined` from the updater means "do nothing", which is how the
+  guess declines when there is no list to add to.
+- **`onError` runs before the state becomes `error`,** and `onSettled` before
+  either, so a reader never sees the guess and the failure message at once.
+- **`onSettled` returns the invalidation.** Callbacks are awaited, so `add`
+  stays pending until the list has been asked for again and answered. Invalidation marks
+  every match stale and refetches only the ones a component is watching; the
+  rest refetch when they are next read.
+
+`mutate` is fire and forget, and a failure arrives as `error` on the next render;
+`mutateAsync` is the same call returning a promise that rejects, for a caller who
+needs to branch. Both take a second argument of per-call `onSuccess`, `onError`
+and `onSettled`, which run after the hook's — the hook's keep the cache correct,
+and a caller who only wanted a toast cannot skip them.
+
+**A write is not retried by default,** where a read is retried three times. A
+failed read can be repeated because reading twice is free; a failed write may
+have succeeded on the server and lost its answer on the way back, and repeating
+it creates the second invoice. Whether a write is safe to repeat is a decision
+about idempotency only its caller can make, so `retry` is there to opt in to.
+`createFetch` agrees for its own reasons: the `POST` above is never retried at
+that layer either.
+
+**A write is not cancelled when the component unmounts.** A request that has
+left cannot be unsent, and aborting it would only stop the answer arriving, not
+the write happening. So it runs to completion and its callbacks fire — which is
+where the cache updates are, and those still need doing after the reader has
+moved on.
+
+`mutationFn` is any function returning a promise, and a server action's
+reference is one. When what the write changes is shown by a Server Component
+rather than by a query, the cache is not involved at all;
+[Async React](/guide/async-react) covers the pending and optimistic state around
+an action.
+
+## Pages of results: `useInfiniteQuery`
+
+```js
+"use client";
+// @flow
+// app/todos/_components/Feed.js
+import * as React from "@uniflowed/react";
+import { useInfiniteQuery } from "@uniflowed/query";
+
+import { listTodoPage } from "../_lib/api.js";
+import type { TodoPage } from "../_lib/api.js";
+
+export component Feed() {
+  const feed = useInfiniteQuery<TodoPage, number>({
+    queryKey: ["todos", "feed"],
+    queryFn: ({ pageParam, signal }) => listTodoPage(pageParam, signal),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.next,
+  });
+  const todos = (feed.data?.pages ?? []).flatMap((page) => page.items);
+
+  return (
+    <div>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>{todo.title}</li>
+        ))}
+      </ul>
+      {feed.hasNextPage && (
+        <button
+          type="button"
+          disabled={feed.isFetchingNextPage}
+          onClick={() => void feed.fetchNextPage()}
+        >
+          Load more
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+"Load more" is one entry, not a query per page: its value is
+`{ pages, pageParams }`, with one key, one staleness clock and one invalidation.
+Were each page its own entry, one of them refreshing on its own would show a
+list with a hole in it or the same row twice. `getNextPageParam` returning
+`null` is how the list ends, and why `hasNextPage` needs no extra request. The
+type arguments are one page and the page parameter.
+
+A refetch asks again for every page it holds, in order, with the parameters it
+recorded — more requests than refreshing the first page alone, and the only
+version whose pages all come from the same moment. `maxPages` caps how many are
+kept, and `getPreviousPageParam` with `fetchPreviousPage` extends the list the
+other way. Appending a page keeps the identity of the pages already there.
+
+## Outside React
+
+Everything on the client is callable from an event handler, a test or a script,
+with no component involved:
+
+```js
+// @flow
+import { QueryClient } from "@uniflowed/query";
+
+import { getTodo } from "./_lib/api.js";
+
+const client = new QueryClient({ queries: { staleTime: 30_000 } });
+
+// Fill an entry before anything renders it. Never rejects.
+await client.prefetchQuery({
+  queryKey: ["todo", 1],
+  queryFn: ({ signal }) => getTodo(1, signal),
+});
+
+// Read and write without a request.
+const cached = client.getQueryData(["todo", 1]); // mixed
+client.setQueryData(["todos"], (todos) => (Array.isArray(todos) ? todos.slice(1) : undefined));
+
+// Mark everything under ["todos"] stale; refetch only what is on screen.
+await client.invalidateQueries({ queryKey: ["todos"] });
+
+// Stop what is in flight and put those entries back as they were.
+await client.cancelQueries({ queryKey: ["todos"] });
+
+// How many requests are in flight, for a global progress bar.
+client.isFetching();
+
+// Forget one entry, or everything, which is what signing out means.
+client.removeQueries({ queryKey: ["todo", 1] });
+client.clear();
+```
+
+`fetchQuery` is `prefetchQuery` that hands back the answer and rejects when it
+fails — the same cache and the same de-duplication as `useQuery`, and nothing
+fetched if the entry is fresh. Like `getQueryData`, it answers `mixed`: a key
+carries no type, and a signature that pretended otherwise would be an unchecked
+cast. Narrow what you read with the schema that checked it on the way in.
+
+`prefetchQuery` never rejects, because a prefetch is an optimisation, and one
+that could take down the page that started it is not. A failure is recorded on
+the entry, where the component that reads it finds it. Its natural home is the
+moment before the reader asks:
+
+```js
+"use client";
+// @flow
+// app/todos/_components/TodoRow.js
+import * as React from "@uniflowed/react";
+import { useQueryClient } from "@uniflowed/query";
+
+import { getTodo } from "../_lib/api.js";
+
+export component TodoRow(id: number, title: string, onOpen: (id: number) => void) {
+  const client = useQueryClient();
+  return (
+    <button
+      type="button"
+      onPointerEnter={() => {
+        void client.prefetchQuery({
+          queryKey: ["todo", id],
+          queryFn: ({ signal }) => getTodo(id, signal),
+        });
+      }}
+      onClick={() => onOpen(id)}
+    >
+      {title}
+    </button>
+  );
+}
+```
+
+`invalidateQueries()` with no filter means every entry, which is the right call
+after signing in or out. A filter is `queryKey`, `exact` for that key alone
+rather than everything under it, `type` of `"active"` or `"inactive"`, and a
+`predicate`, and every operation above takes the same one — so
+`invalidateQueries` and `cancelQueries` given the same filter act on the same
+entries. `getQueryState(key)` has what a result leaves out, such as
+`dataUpdatedAt`, for a "last updated" label.
+
+## What it does not do
+
+Each of these is a decision recorded in the package's source, with the reason
+beside it in the module that would own it:
+
+- **No Suspense mode.** `useQuery` returns a result rather than suspending,
+  because suspending on read makes waterfalls the default: each component
+  suspends in turn, and each request starts only after the one above it
+  resolved. The fix for that is fetching at the route, which in uf is the
+  server's job.
+- **No `initialData`.** `setQueryData` before the first render is the same thing
+  with fewer rules. `placeholderData` is here, because "show the previous page
+  while the next loads" has no other spelling.
+- **No offline queue.** Nothing pauses a request while the network is gone. A
+  request that fails offline is a failure like any other, retried by the same
+  policy, and the reconnect refetches what is stale. A queue would have to agree
+  with the retry loop about ordering, cancellation and timeouts.
+- **No `fetchInfiniteQuery`.** A paged query cannot be prefetched from outside
+  React yet; `useInfiniteQuery` inside a tree is the only way to fill one.
+- **No timestamps in a result.** A clock reading in what a component sees would
+  re-render it on every successful refresh, even an identical one. They are on
+  `getQueryState`.
+- **Sharing stops at plain objects and arrays.** A `Date`, a `Map` or a class
+  instance in an answer is compared by identity and replaced whole, because
+  "deeply equal" has no single right answer for them. JSON never parses into
+  one, though a schema's `transform` can make one.
+- **No jitter in the backoff.** It matters for servers retrying each other and
+  hardly for browser tabs, and it would make every test of the retry loop
+  probabilistic.
+- **No request cancellation for a write,** for the reason above.
+
+The React surface is `QueryClientProvider`, `useQueryClient` and the three hooks
+on this page. For one request with no cache — a single call and its state —
+`@uniflowed/hooks` has `useAsync`.
+
+## Coming from TanStack Query
+
+The names and the shape are TanStack Query's, and most of it will read as
+familiar. The differences:
+
+| TanStack Query | Here | Why |
+| --- | --- | --- |
+| `initialData` | `client.setQueryData` before rendering | One way to put data in, not two with different staleness rules |
+| `useSuspenseQuery` | Absent | Suspending on read makes waterfalls the default |
+| `client.fetchInfiniteQuery` | Absent | Until something needs it, it would be an untested API |
+| Queries pause while offline | Nothing pauses; a failure is retried like any other | A second mechanism would have to agree with the retry loop |
+| `getQueryData<T>(key)` | `getQueryData(key)` answers `mixed` | A key carries no type; narrow with the schema instead |
+| `dataUpdatedAt` on a result | Only on `getQueryState(key)` | A timestamp in a snapshot re-renders on identical refreshes |
+| `networkMode`, `refetchOnMount` and other options not listed above | A `uf check` error | The options are an exact object type, so an option carried over fails loudly instead of doing nothing |
+
+Every snippet on this page was run before it was published. The modules — the
+API client, the provider, the layout, the seven components and the block under
+*Outside React* — were checked with `uf check` exactly as they appear here, and
+the polling fence is an excerpt of an eighth component that was checked the same
+way. All of them were then rendered, or run, against a stub `fetch` in a
+`uf test` file that also drove the API client and the query client without
+React: one request for the list and the count together, the optimistic row
+appearing and then leaving when the `POST` failed, one `POST` and no retry, no
+search before the second character, the previous page held while the next one
+loaded, "Load more" stopping when `next` was `null`, a row prefetched on pointer
+enter, and nothing requested by a server render. The behaviour itself is pinned
+in the packages — `uf test packages/query/query.test.js packages/fetch/fetch.test.js`.
+
+## Where to go next
+
+[Validating input](/guide/validation) is next: the schemas `parse` was handed
+above, and the other two places uf checks what comes in.

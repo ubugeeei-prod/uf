@@ -193,6 +193,18 @@ export const sections: $ReadOnlyArray<Section> = [
           "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself.",
       },
       {
+        href: "/guide/data",
+        title: "Data in the browser",
+        blurb:
+          "A query cache for what the browser fetches after the page has arrived, with requests that fail honestly and answers checked where they enter.",
+      },
+      {
+        href: "/guide/validation",
+        title: "Validating input",
+        blurb:
+          "Schemas that parse untrusted input into typed values, with issue paths, inferred Flow types and a JSON Schema export.",
+      },
+      {
         href: "/guide/state",
         title: "State",
         blurb: "Atoms, a store, and where this parts company with Jotai.",
