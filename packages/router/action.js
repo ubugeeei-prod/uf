@@ -109,6 +109,7 @@
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
+  ACTION_OUTCOME_HEADER,
   type ActionArgument,
   type ActionValue,
   decodeActionResult,
@@ -117,6 +118,7 @@ import {
 import { loadDocument, refusedAsAnotherDeployment, withDeployment } from "./internal/deployment.js";
 import { withFormAction } from "./internal/form-action.js";
 import { clearNavigationCache } from "./internal/navigation-cache.js";
+import { ForbiddenError, NotFoundError, UnauthorizedError } from "./internal/routing.js";
 
 export type { ActionArgument, ActionValue } from "./internal/action-wire.js";
 export {
@@ -277,6 +279,9 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
     ...args: Array<ActionArgument>
   ): Promise<ActionValue | void> {
     const body = encodeActionArguments(args);
+    // The page the call is made from, kept for the answer: a relative redirect
+    // means relative to this page, whatever the visitor has done since.
+    const from = currentUrl();
     // Built rather than written as a literal, because the header's name is a
     // constant and a computed key in an object literal is a shape Flow
     // declines to track.
@@ -285,7 +290,7 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
     // Which build this page is, so a server on another build refuses the call
     // rather than looking this id up in a table it was never in.
     withDeployment(headers);
-    const response = await fetch(currentUrl(), {
+    const response = await fetch(from, {
       method: "POST",
       // Stated rather than left to the default, because the default is what a
       // reader has to look up and because this one is load-bearing: the
@@ -313,11 +318,63 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
       loadDocument(currentUrl());
       return new Promise<ActionValue | void>(() => {});
     }
+    // The action called `redirect()`, `notFound()`, `unauthorized()` or
+    // `forbidden()`. Checked before the status, because three of the four are
+    // not `ok` and none of them is a failure.
+    const outcome = response.headers.get(ACTION_OUTCOME_HEADER);
+    if (outcome != null) {
+      void response.body?.cancel();
+      return followOutcome(name, outcome, response, from);
+    }
     if (!response.ok) {
       throw new ServerActionError(name, response.status);
     }
     return decodeActionResult(await response.text());
   };
+}
+
+/**
+ * Do in the browser what the action's routing call asked for.
+ *
+ * - `redirect`: go to the answer's `Location` the way `router.push` would. The
+ *   call then resolves with `undefined`, because the action returned nothing;
+ *   it threw. It resolves only once the navigation has settled, so a
+ *   `useActionState` on a page that is still on screen afterwards (a redirect
+ *   to the same page) is not left pending.
+ * - `not-found`, `unauthorized`, `forbidden`: throw the same error the server
+ *   caught. React hands an error thrown by an action to the nearest error
+ *   boundary, and uf's route boundary already tells `unauthorized()` and
+ *   `forbidden()` apart. `notFound()` arrives as a `NotFoundError`, which an
+ *   `$error.js` can test for.
+ *
+ * Any other value is a server this reference does not understand, and it is
+ * the same `ServerActionError` as any other failure.
+ *
+ * The router is imported when a redirect happens, not at module scope. This
+ * module is also imported by the server graphs (`registerServerAction`), and
+ * the router's runtime is client-rendering code that has no place there.
+ */
+async function followOutcome(
+  name: string,
+  outcome: string,
+  response: Response,
+  from: string,
+): Promise<ActionValue | void> {
+  switch (outcome) {
+    case "redirect": {
+      const { followActionRedirect } = await import("./internal/runtime.js");
+      await followActionRedirect(response.headers.get("location") ?? from, from);
+      return undefined;
+    }
+    case "not-found":
+      throw new NotFoundError();
+    case "unauthorized":
+      throw new UnauthorizedError();
+    case "forbidden":
+      throw new ForbiddenError();
+    default:
+      throw new ServerActionError(name, response.status);
+  }
 }
 
 /**

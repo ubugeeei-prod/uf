@@ -125,6 +125,7 @@ import { asResponder, nativeActionAllowed } from "@uniflowed/server/host";
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
+  ACTION_OUTCOME_HEADER,
   type ActionArgument,
   ActionValueError,
   MAX_ACTION_BODY_BYTES,
@@ -140,7 +141,7 @@ import {
   readFormPost,
 } from "./form-action.js";
 import { requireRequest } from "./request.js";
-import { RedirectError } from "./routing.js";
+import { ForbiddenError, NotFoundError, RedirectError, UnauthorizedError } from "./routing.js";
 
 export type { FormState } from "./form-action.js";
 
@@ -294,6 +295,13 @@ export function createActionDispatcher(options: {|
         const call = action as $FlowFixMe;
         result = await traceRequestPhase("action", () => call(...args));
       } catch (error) {
+        // `redirect()` and its three siblings are where the visitor goes next,
+        // not something that went wrong: answered as themselves, and never
+        // reported. See `ACTION_OUTCOME_HEADER`.
+        const outcome = routingOutcome(error);
+        if (outcome != null) {
+          return outcome;
+        }
         report(record, error);
         return refusal(500);
       }
@@ -390,6 +398,16 @@ async function nativeFormPost(
       if (error instanceof RedirectError) {
         return seeOther(addressOf(error.to));
       }
+      // A person is looking at this answer and there is no page to render the
+      // boundary into, so it is the status with a fixed line of text — the same
+      // three statuses the JSON door answers, and nothing of the exception.
+      const status = routingStatus(error);
+      if (status != null) {
+        return new Response(`${status.text}\n`, {
+          status: status.code,
+          headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
       report(record, error);
       return refusal(500);
     }
@@ -449,6 +467,66 @@ function formArguments(post: FormPost): {|
 function sameSiteFetch(request: Request): boolean {
   const site = request.headers.get("sec-fetch-site");
   return site == null || site === "same-origin";
+}
+
+/** The kind, status and text of a routing error other than a redirect. */
+type RoutingStatus = {|
+  readonly kind: "not-found" | "unauthorized" | "forbidden",
+  readonly code: 404 | 401 | 403,
+  readonly text: string,
+|};
+
+/**
+ * What `notFound()`, `unauthorized()` or `forbidden()` answers with, or `null`
+ * for anything else.
+ *
+ * The statuses are the ones a page gets for the same call (`routeErrorStatus`
+ * and the not-found page), so a client that reads only the status reads the
+ * same thing a document request would have told it.
+ */
+function routingStatus(error: mixed): RoutingStatus | null {
+  if (error instanceof NotFoundError) {
+    return { kind: "not-found", code: 404, text: "not found" };
+  }
+  if (error instanceof UnauthorizedError) {
+    return { kind: "unauthorized", code: 401, text: "unauthorized" };
+  }
+  if (error instanceof ForbiddenError) {
+    return { kind: "forbidden", code: 403, text: "forbidden" };
+  }
+  return null;
+}
+
+/**
+ * The JSON door's answer for a routing error, or `null` for any other throw.
+ *
+ * A redirect is a `204` carrying `Location`, the address `addressOf` makes of
+ * it (under the base path for a path on this application). It is not a `3xx`,
+ * because `fetch` would follow that itself and fetch the page's HTML for
+ * nothing, and the reference could not read where it pointed. The other three
+ * are their page statuses. Each one carries `ACTION_OUTCOME_HEADER`, so a `404`
+ * from `notFound()` is not mistaken for the `404` of an unknown id. The body
+ * names the kind and nothing else.
+ */
+function routingOutcome(error: mixed): Response | null {
+  if (error instanceof RedirectError) {
+    const headers: { [string]: string } = {
+      "cache-control": "no-store",
+      location: addressOf(error.to),
+    };
+    headers[ACTION_OUTCOME_HEADER] = "redirect";
+    return new Response(null, { status: 204, headers });
+  }
+  const status = routingStatus(error);
+  if (status == null) {
+    return null;
+  }
+  const headers: { [string]: string } = { ...ANSWER_HEADERS };
+  headers[ACTION_OUTCOME_HEADER] = status.kind;
+  return new Response(JSON.stringify({ outcome: status.kind }), {
+    status: status.code,
+    headers,
+  });
 }
 
 /** A `303 See Other`, which a browser follows with a `GET`. */
