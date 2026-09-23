@@ -9,19 +9,20 @@
 
 import { describe, expect, it } from "@uniflowed/testing";
 import { createEnvironment, GraphQlResponseError } from "@uniflowed/graphql";
+import type { FetchClient } from "@uniflowed/fetch";
 
 /** A fetch client that records what it was asked for and answers `payload`. */
 function recording(payload: mixed, status: number = 200) {
   const calls: Array<{ path: string, options: mixed }> = [];
-  const client = {
-    raw: async (path: string, options: mixed) => {
+  const client: FetchClient = {
+    raw: async (path: string, options?: mixed) => {
       calls.push({ path, options });
       return new Response(JSON.stringify(payload), {
         status,
         headers: { "content-type": "application/json" },
       });
     },
-    request: async () => {
+    request: async <T>(): Promise<T> => {
       throw new Error("the environment must not use request()");
     },
     extend: () => client,
@@ -34,7 +35,7 @@ const operation = { name: "ViewerQuery", text: "query ViewerQuery { viewer { id 
 
 /** Reach the network function the environment was built with. */
 function networkOf(environment: mixed) {
-  return (environment: $FlowFixMe).getNetwork();
+  return (environment as $FlowFixMe).getNetwork();
 }
 
 describe("createEnvironment", () => {
@@ -46,8 +47,8 @@ describe("createEnvironment", () => {
       fetch: client,
     });
 
-    expect(typeof (environment: $FlowFixMe).execute).toBe("function");
-    expect(typeof (environment: $FlowFixMe).getStore).toBe("function");
+    expect(typeof (environment as $FlowFixMe).execute).toBe("function");
+    expect(typeof (environment as $FlowFixMe).getStore).toBe("function");
   });
 
   it("gives each environment its own store", () => {
@@ -57,7 +58,7 @@ describe("createEnvironment", () => {
     const first = createEnvironment({ endpoint: "/graphql", fetch: client });
     const second = createEnvironment({ endpoint: "/graphql", fetch: client });
 
-    expect((first: $FlowFixMe).getStore()).not.toBe((second: $FlowFixMe).getStore());
+    expect((first as $FlowFixMe).getStore()).not.toBe((second as $FlowFixMe).getStore());
   });
 });
 
@@ -70,7 +71,7 @@ describe("the request it sends", () => {
 
     expect(calls.length).toBe(1);
     expect(calls[0].path).toBe("/api/graphql");
-    const options = (calls[0].options: $FlowFixMe);
+    const options = calls[0].options as $FlowFixMe;
     expect(options.method).toBe("POST");
     expect(options.body.query).toBe(operation.text);
     expect(options.body.variables).toEqual({ id: "1" });
@@ -82,7 +83,7 @@ describe("the request it sends", () => {
 
     await networkOf(environment).execute(operation, {}, {}).toPromise();
 
-    expect((calls[0].options: $FlowFixMe).body.operationName).toBe("ViewerQuery");
+    expect((calls[0].options as $FlowFixMe).body.operationName).toBe("ViewerQuery");
   });
 
   it("sends the headers it was configured with", async () => {
@@ -95,7 +96,7 @@ describe("the request it sends", () => {
 
     await networkOf(environment).execute(operation, {}, {}).toPromise();
 
-    const headers = (calls[0].options: $FlowFixMe).headers;
+    const headers = (calls[0].options as $FlowFixMe).headers;
     expect(headers.authorization).toBe("Bearer t");
     expect(headers.accept).toContain("application/json");
   });
@@ -135,7 +136,7 @@ describe("errors", () => {
       thrown = error;
     }
 
-    expect((thrown: $FlowFixMe).errors.length).toBe(2);
+    expect((thrown as $FlowFixMe).errors.length).toBe(2);
     expect(String(thrown)).toContain("and 1 more");
   });
 
@@ -145,6 +146,6 @@ describe("errors", () => {
 
     const result = await networkOf(environment).execute(operation, {}, {}).toPromise();
 
-    expect((result: $FlowFixMe).data).toEqual({ viewer: { id: "1" } });
+    expect((result as $FlowFixMe).data).toEqual({ viewer: { id: "1" } });
   });
 });

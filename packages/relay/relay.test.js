@@ -17,6 +17,12 @@ import { createServerEnvironment as upstreamServerEnvironment } from "react-rela
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
 import { useQueryFromServer as upstreamQueryFromServer } from "react-relay/rsc-client_EXPERIMENTAL.js";
 
+// Both namespaces read by name. A module namespace cannot be indexed by a
+// string, and the questions below are about names read from lists, so each is
+// viewed as the record of bindings it is.
+const ours: { readonly [string]: mixed } = uf;
+const upstream: { readonly [string]: mixed } = ReactRelay;
+
 /** Every binding uf's registry promises for this specifier. */
 const DOCUMENTED = [
   "graphql",
@@ -36,21 +42,21 @@ describe("@uniflowed/relay", () => {
   });
 
   it("exposes every upstream runtime binding through the browser-safe barrel", () => {
-    for (const name of Object.keys(ReactRelay)) {
-      if (name !== "default" && name !== "module.exports") expect(uf[name]).toBe(ReactRelay[name]);
+    for (const name of Object.keys(upstream)) {
+      if (name !== "default" && name !== "module.exports") expect(ours[name]).toBe(upstream[name]);
     }
   });
   it("re-exports the real Relay, not a declaration of it", () => {
     // Identity, not shape: `uf.useFragment` has to be the function Relay
     // exports, or an application is holding two Relays.
     for (const name of DOCUMENTED) {
-      expect(uf[name]).toBe(ReactRelay[name]);
+      expect(ours[name]).toBe(upstream[name]);
     }
   });
 
   it("exports every binding uf documents", () => {
     for (const name of DOCUMENTED) {
-      expect(typeof uf[name]).not.toBe("undefined");
+      expect(typeof ours[name]).not.toBe("undefined");
     }
   });
 
@@ -62,7 +68,7 @@ describe("@uniflowed/relay", () => {
       "createPaginationContainer",
       "createRefetchContainer",
     ]) {
-      expect(uf[name]).toBe(ReactRelay[name]);
+      expect(ours[name]).toBe(upstream[name]);
     }
   });
 
