@@ -3,15 +3,7 @@
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 
-import {
-  Combobox,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxLabel,
-  ComboboxList,
-  ComboboxOption,
-  ComboboxStatus,
-} from "./combobox.js";
+import * as Combobox from "./combobox.js";
 
 const COUNTRIES: $ReadOnlyArray<string> = ["France", "Germany", "Japan", "Kenya", "Norway"];
 
@@ -21,18 +13,18 @@ export component Example() {
   const typed = query.trim().toLowerCase();
   const matches = COUNTRIES.filter((country) => country.toLowerCase().includes(typed));
   return (
-    <Combobox inputValue={query} name="country" onInputValueChange={setQuery}>
-      <ComboboxLabel>Country</ComboboxLabel>
-      <ComboboxInput placeholder="Start typing a country" />
-      <ComboboxList>
+    <Combobox.Root inputValue={query} name="country" onInputValueChange={setQuery}>
+      <Combobox.Label>Country</Combobox.Label>
+      <Combobox.Input placeholder="Start typing a country" />
+      <Combobox.List>
         {matches.map((country) => (
-          <ComboboxOption key={country} value={country}>
+          <Combobox.Option key={country} value={country}>
             {country}
-          </ComboboxOption>
+          </Combobox.Option>
         ))}
-      </ComboboxList>
-      <ComboboxEmpty>No country matches.</ComboboxEmpty>
-      <ComboboxStatus />
-    </Combobox>
+      </Combobox.List>
+      <Combobox.Empty>No country matches.</Combobox.Empty>
+      <Combobox.Status />
+    </Combobox.Root>
   );
 }

@@ -22,7 +22,7 @@
 // * **Every field has a label.** A placeholder is not one: it disappears as
 //   soon as a reader types.
 // * **Invalid is more than a colour.** The border turns `danger` and
-//   `FieldError` says what is wrong in words, which is what a reader hears.
+//   `Field.Error` says what is wrong in words, which is what a reader hears.
 // * **Say how to fix it.** "Enter an address with a domain" rather than
 //   "Invalid".
 // * **Text stays on measured pairs.** `ink` on `surface`, `muted` on `surface`
@@ -35,7 +35,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Field, type FieldSource } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -104,19 +104,19 @@ const styles = stylex.create({
  * The row. `invalid` and `required` reach the control; a field from
  * `@uniflowed/form` passes `field` instead.
  */
-export component Field(
+component FieldRoot(
   children: React.Node,
   invalid?: boolean = false,
   required?: boolean = false,
   busy?: boolean = false,
-  field?: Primitive.FieldSource,
+  field?: FieldSource,
   group?: boolean = false,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Field.Root
+    <Field.Root
       {...forwarded(rest)}
       busy={busy}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -126,36 +126,36 @@ export component Field(
       required={required}
     >
       {children}
-    </Primitive.Field.Root>
+    </Field.Root>
   );
 }
 
 /** The field's name. */
-export component FieldLabel(
+component FieldLabel(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Field.Label
+    <Field.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.Field.Label>
+    </Field.Label>
   );
 }
 
 /** A text input, wired to the label, the description and the error. */
-export component FieldInput(
+component FieldInput(
   type?: string = "text",
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Field.Control
+    <Field.Control
       render={(control) => (
         <input
           {...rest}
@@ -168,10 +168,10 @@ export component FieldInput(
   );
 }
 
-/** A text area, wired the same way as `FieldInput`. */
-export component FieldTextarea(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+/** A text area, wired the same way as `Field.Input`. */
+component FieldTextarea(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.Field.Control
+    <Field.Control
       render={(control) => (
         <textarea
           {...rest}
@@ -187,53 +187,53 @@ export component FieldTextarea(xstyle?: StyleArgument, className?: string, ...re
 }
 
 /** Help that stays under the field, and is read with it. */
-export component FieldDescription(
+component FieldDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Field.Description
+    <Field.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.Field.Description>
+    </Field.Description>
   );
 }
 
 /** Progress while the field is being saved or checked, announced politely. */
-export component FieldStatus(
+component FieldStatus(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Field.Status
+    <Field.Status
       {...forwarded(rest)}
       className={classNames(props(styles.status, xstyle).className, className)}
     >
       {children}
-    </Primitive.Field.Status>
+    </Field.Status>
   );
 }
 
 /** What is wrong and how to fix it, shown only while the field is invalid. */
-export component FieldError(
+component FieldError(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Field.Error
+    <Field.Error
       {...forwarded(rest)}
       className={classNames(props(styles.error, xstyle).className, className)}
     >
       {children}
-    </Primitive.Field.Error>
+    </Field.Error>
   );
 }
 
@@ -253,3 +253,21 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Field from "./field.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Field.Root>`
+ * and `<Field.Label>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `FieldRoot` rather than `Root`.
+ */
+export {
+  FieldRoot as Root,
+  FieldLabel as Label,
+  FieldInput as Input,
+  FieldTextarea as Textarea,
+  FieldDescription as Description,
+  FieldStatus as Status,
+  FieldError as Error,
+};

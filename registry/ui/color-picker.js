@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { ColorPicker } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 const styles = stylex.create({
@@ -62,48 +62,48 @@ const styles = stylex.create({
     borderRadius: ufTokens.radiusSm,
   },
 });
-export component ColorPicker(
+component ColorPickerRoot(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.ColorPicker.Root
+    <ColorPicker.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children}
-    </Primitive.ColorPicker.Root>
+    </ColorPicker.Root>
   );
 }
-export component ColorPickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPicker.Input
+    <ColorPicker.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
   );
 }
-export component ColorPickerField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPicker.Field
+    <ColorPicker.Field
       {...forwarded(rest)}
       className={classNames(props(styles.field, xstyle).className, className)}
     />
   );
 }
-export component ColorPickerChannel(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerChannel(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPicker.Channel
+    <ColorPicker.Channel
       {...forwarded(rest)}
       className={classNames(props(styles.channel, xstyle).className, className)}
     />
   );
 }
-export component ColorPickerSwatch(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ColorPickerSwatch(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPicker.Swatch
+    <ColorPicker.Swatch
       {...forwarded(rest)}
       className={classNames(props(styles.swatch, xstyle).className, className)}
     />
@@ -117,3 +117,19 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as ColorPicker from "./color-picker.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<ColorPicker.Root>`
+ * and `<ColorPicker.Input>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `ColorPickerRoot` rather than `Root`.
+ */
+export {
+  ColorPickerRoot as Root,
+  ColorPickerInput as Input,
+  ColorPickerField as Field,
+  ColorPickerChannel as Channel,
+  ColorPickerSwatch as Swatch,
+};

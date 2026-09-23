@@ -2,14 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import {
-  Carousel,
-  CarouselContent,
-  CarouselControls,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "./carousel.js";
+import * as Carousel from "./carousel.js";
 
 const GUIDES: $ReadOnlyArray<string> = ["Routing", "Styling", "Testing"];
 
@@ -30,18 +23,18 @@ const styles = stylex.create({
 /** Three guides, one at a time, moved between with the buttons under them. */
 export component Example() {
   return (
-    <Carousel count={GUIDES.length} label="Guides" xstyle={styles.frame}>
-      <CarouselContent>
+    <Carousel.Root count={GUIDES.length} label="Guides" xstyle={styles.frame}>
+      <Carousel.Content>
         {GUIDES.map((guide, index) => (
-          <CarouselItem index={index} key={guide}>
+          <Carousel.Item index={index} key={guide}>
             <div {...props(styles.slide)}>{guide}</div>
-          </CarouselItem>
+          </Carousel.Item>
         ))}
-      </CarouselContent>
-      <CarouselControls>
-        <CarouselPrevious />
-        <CarouselNext />
-      </CarouselControls>
-    </Carousel>
+      </Carousel.Content>
+      <Carousel.Controls>
+        <Carousel.Previous />
+        <Carousel.Next />
+      </Carousel.Controls>
+    </Carousel.Root>
   );
 }

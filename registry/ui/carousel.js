@@ -21,7 +21,7 @@
 //
 // # What to keep true when you change it
 //
-// * **A carousel that turns on its own has a pause button.** `CarouselPause`
+// * **A carousel that turns on its own has a pause button.** `Carousel.Pause`
 //   is how a reader stops movement they did not ask for.
 // * **Name it.** `label` says what the slides are, such as "Featured guides".
 // * **Keep the buttons in sight.** Previous and next are how a keyboard user
@@ -33,7 +33,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Carousel } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -101,7 +101,7 @@ const styles = stylex.create({
  * The carousel. `count` is how many slides there are and `label` what they are;
  * `autoplay` is the milliseconds between turns, or `null` to wait for a reader.
  */
-export component Carousel(
+component CarouselRoot(
   children: React.Node,
   count: number,
   label: string,
@@ -116,7 +116,7 @@ export component Carousel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Carousel.Root
+    <Carousel.Root
       {...forwarded(rest)}
       autoplay={autoplay}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -129,29 +129,29 @@ export component Carousel(
       orientation={orientation}
     >
       {children}
-    </Primitive.Carousel.Root>
+    </Carousel.Root>
   );
 }
 
 /** The frame the slides show in. */
-export component CarouselContent(
+component CarouselContent(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Carousel.Content
+    <Carousel.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.Carousel.Content>
+    </Carousel.Content>
   );
 }
 
 /** One slide, shown while it is the current one. */
-export component CarouselItem(
+component CarouselItem(
   index: number,
   children: React.Node,
   xstyle?: StyleArgument,
@@ -159,22 +159,18 @@ export component CarouselItem(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Carousel.Item
+    <Carousel.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       index={index}
     >
       {children}
-    </Primitive.Carousel.Item>
+    </Carousel.Item>
   );
 }
 
 /** A row for the buttons, at the frame's inline end. */
-export component CarouselControls(
-  children: React.Node,
-  xstyle?: StyleArgument,
-  className?: string,
-) {
+component CarouselControls(children: React.Node, xstyle?: StyleArgument, className?: string) {
   return (
     <div className={classNames(props(styles.controls, xstyle).className, className)}>
       {children}
@@ -183,43 +179,43 @@ export component CarouselControls(
 }
 
 /** The button to the slide before. */
-export component CarouselPrevious(
+component CarouselPrevious(
   label?: string = "Previous slide",
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Carousel.Previous
+    <Carousel.Previous
       {...forwarded(rest)}
       className={classNames(props(styles.button, xstyle).className, className)}
       label={label}
     >
       <Chevron path="m15 18-6-6 6-6" />
-    </Primitive.Carousel.Previous>
+    </Carousel.Previous>
   );
 }
 
 /** The button to the slide after. */
-export component CarouselNext(
+component CarouselNext(
   label?: string = "Next slide",
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Carousel.Next
+    <Carousel.Next
       {...forwarded(rest)}
       className={classNames(props(styles.button, xstyle).className, className)}
       label={label}
     >
       <Chevron path="m9 18 6-6-6-6" />
-    </Primitive.Carousel.Next>
+    </Carousel.Next>
   );
 }
 
 /** The button that stops the slides turning on their own, and starts them again. */
-export component CarouselPause(
+component CarouselPause(
   pauseLabel?: string = "Stop the carousel",
   playLabel?: string = "Start the carousel",
   xstyle?: StyleArgument,
@@ -227,7 +223,7 @@ export component CarouselPause(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Carousel.Pause
+    <Carousel.Pause
       {...forwarded(rest)}
       className={classNames(props(styles.button, xstyle).className, className)}
       pauseLabel={pauseLabel}
@@ -255,7 +251,7 @@ export component CarouselPause(
       >
         <path d="M7 4v16l13-8z" />
       </svg>
-    </Primitive.Carousel.Pause>
+    </Carousel.Pause>
   );
 }
 
@@ -295,3 +291,21 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Carousel from "./carousel.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Carousel.Root>`
+ * and `<Carousel.Content>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `CarouselRoot` rather than `Root`.
+ */
+export {
+  CarouselRoot as Root,
+  CarouselContent as Content,
+  CarouselItem as Item,
+  CarouselControls as Controls,
+  CarouselPrevious as Previous,
+  CarouselNext as Next,
+  CarouselPause as Pause,
+};

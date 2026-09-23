@@ -70,9 +70,16 @@ pub(super) fn plan_for(
         plan.write("uf.config.js", before, after);
     }
     if from_number < UI_NAMESPACES_SINCE && to_number >= UI_NAMESPACES_SINCE {
-        ui_namespaces::plan_project(root, &mut plan)?;
+        // Both of #1453's migrations in one pass, because a copy `uf ui add`
+        // wrote is rewritten by both and has to come out as one change.
+        let steps = ui_namespaces::Steps {
+            package: true,
+            copies: true,
+        };
+        ui_namespaces::plan_project(root, &mut plan, steps)?;
         plan.migrations
             .push(ui_namespaces::UI_NAMESPACES.to_owned());
+        plan.migrations.push(super::ui_copies::UI_COPIES.to_owned());
     }
     Ok(plan)
 }

@@ -44,7 +44,7 @@ use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::{UiConfig, load_config};
 use uf_pm::DependencyKind;
-use uf_term::{Cell, Column, Renderer, Status, Table, Tone};
+use uf_term::{Cell, Column, Renderer, Status, Style, Table, Tone};
 use uf_ui::project::{self, AddAction, AddError, AddPlan, Conflict, CopyState, ProjectCopy};
 use uf_ui::update::{self, UpdateAction, UpdateError, UpdatePlan, UpdateStep};
 use uf_ui::{Component, DEFAULT_DIRECTORY, REGISTRY_VERSION, Registry, Stamp};
@@ -173,8 +173,46 @@ fn add(cwd: &Utf8Path, ui: &mut Ui, names: &[String], overwrite: bool) -> Result
 
     project::apply(&plan)
         .with_context(|| format!("could not write into {}", place.relative(&place.directory)))?;
-    render_added(ui, &place, &plan);
+    let imports = import_hints(&place, &registry, &plan);
+    render_added(ui, &place, &plan, &imports);
     Ok(())
+}
+
+/// How a page imports each component that was asked for, as `uf ui add`
+/// prints it once the files are written: `import * as Dialog from
+/// "./components/ui/dialog.js"` for one with parts, `import { Button } from
+/// "./components/ui/button.js"` for one with a single part
+/// (ubugeeei-prod/uf#1453).
+///
+/// The path is written from the top directory the components live under —
+/// `app/` for the default `app/components/ui` — because that is where the
+/// pages that use them are, and a line a person pastes should resolve as
+/// pasted. The first element is that directory, for the line introducing
+/// them. A component pulled in only as another's requirement is not listed:
+/// nobody asked to use it.
+fn import_hints(place: &Place, registry: &Registry, plan: &AddPlan) -> (String, Vec<String>) {
+    let inside = place
+        .directory
+        .strip_prefix(&place.root)
+        .map(Utf8Path::to_path_buf)
+        .unwrap_or_default();
+    let mut parts = inside.components();
+    let top = parts
+        .next()
+        .map(|part| part.as_str().to_owned())
+        .unwrap_or_default();
+    let below: Utf8PathBuf = parts.collect();
+    let lines = plan
+        .steps
+        .iter()
+        .filter(|step| step.requested)
+        .filter_map(|step| registry.get(step.component))
+        .map(|component| {
+            let file = below.join(component.file_name());
+            component.import_statement(&format!("./{file}"))
+        })
+        .collect();
+    (top, lines)
 }
 
 /// Every file a run refused to replace, and the two commands that follow.
@@ -234,7 +272,7 @@ fn unknown_component(registry: &Registry, name: &str) -> anyhow::Error {
     anyhow!(message)
 }
 
-fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan) {
+fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan, imports: &(String, Vec<String>)) {
     let label = project_label(&place.root).to_owned();
     let rows: Vec<(String, &str, String, Tone)> = plan
         .steps
@@ -300,6 +338,18 @@ fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan) {
                 Status::Info,
                 "a kept file stays as it is; `uf ui diff` shows how it differs from this uf's version",
             );
+        }
+        let (top, lines) = imports;
+        if !lines.is_empty() {
+            renderer.blank(out);
+            renderer.status(
+                out,
+                Status::Info,
+                &format!("import from a module in {top}/:"),
+            );
+            for line in lines {
+                renderer.line(out, Style::default(), &format!("  {line}"));
+            }
         }
         renderer.blank(out);
     });

@@ -24,13 +24,13 @@
 // * **The page filters.** The component shows the options it is given; which
 //   ones match the text is the page's decision, because a list can be remote,
 //   fuzzy or grouped.
-// * **Keep `ComboboxStatus` in.** It is visually hidden, and it is how a reader
+// * **Keep `Combobox.Status` in.** It is visually hidden, and it is how a reader
 //   hears "3 results available".
 // * **Draw the cursor.** However an option is restyled, `data-active` needs a
 //   difference a sighted keyboard user can see, since focus never leaves the
 //   field: `accent` on `accentSoft` here, a pair
 //   `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in both themes.
-// * **Label it.** `ComboboxLabel` names the field; a placeholder is not a
+// * **Label it.** `Combobox.Label` names the field; a placeholder is not a
 //   label.
 
 import * as React from "@uniflowed/react";
@@ -38,7 +38,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { Align, LogicalSide } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Combobox } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -194,7 +194,7 @@ const styles = stylex.create({
  * The combobox. `inputValue` and `onInputValueChange` are what the page filters
  * its options by; `value` is the option taken.
  */
-export component Combobox(
+component ComboboxRoot(
   children: React.Node,
   value?: string | null,
   defaultValue?: string | null = null,
@@ -211,7 +211,7 @@ export component Combobox(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Combobox.Root
+    <Combobox.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultInputValue={defaultInputValue}
@@ -226,31 +226,31 @@ export component Combobox(
       value={value}
     >
       {children}
-    </Primitive.Combobox.Root>
+    </Combobox.Root>
   );
 }
 
 /** The field's name. */
-export component ComboboxLabel(
+component ComboboxLabel(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Combobox.Label
+    <Combobox.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.Combobox.Label>
+    </Combobox.Label>
   );
 }
 
 /** The text field. */
-export component ComboboxInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component ComboboxInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.Combobox.Input
+    <Combobox.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
@@ -258,7 +258,7 @@ export component ComboboxInput(xstyle?: StyleArgument, className?: string, ...re
 }
 
 /** The list of options, under the field and at least as wide as it. */
-export component ComboboxList(
+component ComboboxList(
   children: renders* (ComboboxOption | ComboboxGroup),
   align?: Align = "start",
   alignOffset?: number = 0,
@@ -271,7 +271,7 @@ export component ComboboxList(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Combobox.List
+    <Combobox.List
       {...forwarded(rest)}
       align={align}
       alignOffset={alignOffset}
@@ -282,12 +282,12 @@ export component ComboboxList(
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.Combobox.List>
+    </Combobox.List>
   );
 }
 
 /** One option, with the check that shows when it is the chosen one. */
-export component ComboboxOption(
+component ComboboxOption(
   value: string,
   children: React.Node,
   label?: string,
@@ -295,10 +295,10 @@ export component ComboboxOption(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Combobox.Option {
+) renders Combobox.Option {
   const styled = props(styles.option, disabled && styles.optionDisabled, xstyle);
   return (
-    <Primitive.Combobox.Option
+    <Combobox.Option
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
@@ -321,75 +321,75 @@ export component ComboboxOption(
       >
         <path d="M20 6 9 17l-5-5" />
       </svg>
-    </Primitive.Combobox.Option>
+    </Combobox.Option>
   );
 }
 
 /** A named group of options. */
-export component ComboboxGroup(
+component ComboboxGroup(
   children: renders* (ComboboxOption | ComboboxGroupLabel),
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Combobox.Group {
+) renders Combobox.Group {
   return (
-    <Primitive.Combobox.Group
+    <Combobox.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.Combobox.Group>
+    </Combobox.Group>
   );
 }
 
 /** The heading that names a group, which the arrow keys pass over. */
-export component ComboboxGroupLabel(
+component ComboboxGroupLabel(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Combobox.GroupLabel {
+) renders Combobox.GroupLabel {
   return (
-    <Primitive.Combobox.GroupLabel
+    <Combobox.GroupLabel
       {...forwarded(rest)}
       className={classNames(props(styles.groupLabel, xstyle).className, className)}
     >
       {children}
-    </Primitive.Combobox.GroupLabel>
+    </Combobox.GroupLabel>
   );
 }
 
 /** What shows when nothing matches. */
-export component ComboboxEmpty(
+component ComboboxEmpty(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Combobox.Empty
+    <Combobox.Empty
       {...forwarded(rest)}
       className={classNames(props(styles.empty, xstyle).className, className)}
     >
       {children}
-    </Primitive.Combobox.Empty>
+    </Combobox.Empty>
   );
 }
 
 /** The result count a reader hears, out of sight. Words of your own go inside. */
-export component ComboboxStatus(
+component ComboboxStatus(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Combobox.Status
+    <Combobox.Status
       {...forwarded(rest)}
       className={classNames(props(styles.hidden, xstyle).className, className)}
     >
       {children}
-    </Primitive.Combobox.Status>
+    </Combobox.Status>
   );
 }
 
@@ -409,3 +409,23 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Combobox from "./combobox.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Combobox.Root>`
+ * and `<Combobox.Label>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `ComboboxRoot` rather than `Root`.
+ */
+export {
+  ComboboxRoot as Root,
+  ComboboxLabel as Label,
+  ComboboxInput as Input,
+  ComboboxList as List,
+  ComboboxOption as Option,
+  ComboboxGroup as Group,
+  ComboboxGroupLabel as GroupLabel,
+  ComboboxEmpty as Empty,
+  ComboboxStatus as Status,
+};

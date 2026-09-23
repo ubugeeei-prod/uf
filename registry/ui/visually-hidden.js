@@ -12,7 +12,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { VisuallyHidden as HeadlessVisuallyHidden } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 const styles = stylex.create({
@@ -45,7 +45,7 @@ export component VisuallyHidden(
   ...rest: Rest
 ) {
   return (
-    <Primitive.VisuallyHidden
+    <HeadlessVisuallyHidden
       {...forwarded(rest)}
       focusable={focusable}
       // Only visible while a `focusable` one holds focus; hidden, the
@@ -53,7 +53,7 @@ export component VisuallyHidden(
       className={classNames(props(styles.shown, xstyle).className, className)}
     >
       {children}
-    </Primitive.VisuallyHidden>
+    </HeadlessVisuallyHidden>
   );
 }
 

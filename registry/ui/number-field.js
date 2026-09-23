@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { NumberField } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 const styles = stylex.create({
@@ -57,57 +57,57 @@ const styles = stylex.create({
     outlineOffset: "2px",
   },
 });
-export component NumberField(
+component NumberFieldRoot(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.NumberField.Root
+    <NumberField.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children}
-    </Primitive.NumberField.Root>
+    </NumberField.Root>
   );
 }
-export component NumberFieldInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component NumberFieldInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.NumberField.Input
+    <NumberField.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
   );
 }
-export component NumberFieldIncrement(
+component NumberFieldIncrement(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.NumberField.Increment
+    <NumberField.Increment
       {...forwarded(rest)}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       {children}
-    </Primitive.NumberField.Increment>
+    </NumberField.Increment>
   );
 }
-export component NumberFieldDecrement(
+component NumberFieldDecrement(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.NumberField.Decrement
+    <NumberField.Decrement
       {...forwarded(rest)}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       {children}
-    </Primitive.NumberField.Decrement>
+    </NumberField.Decrement>
   );
 }
 
@@ -118,3 +118,18 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as NumberField from "./number-field.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<NumberField.Root>`
+ * and `<NumberField.Input>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `NumberFieldRoot` rather than `Root`.
+ */
+export {
+  NumberFieldRoot as Root,
+  NumberFieldInput as Input,
+  NumberFieldIncrement as Increment,
+  NumberFieldDecrement as Decrement,
+};

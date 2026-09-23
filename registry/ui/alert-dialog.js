@@ -27,13 +27,13 @@
 //
 // # What to keep true when you change it
 //
-// * **It always has a description.** `AlertDialogDescription` is the sentence
+// * **It always has a description.** `AlertDialog.Description` is the sentence
 //   the role exists to announce, and the part raises when there is none — an
 //   alert dialog with nothing to say interrupts the reader to say nothing.
-// * **Focus starts on `AlertDialogCancel`.** Keep one in the footer. The least
+// * **Focus starts on `AlertDialog.Cancel`.** Keep one in the footer. The least
 //   destructive answer is where a reader who pressed `Enter` too early should
 //   land.
-// * **The destructive answer looks destructive.** `AlertDialogAction` takes a
+// * **The destructive answer looks destructive.** `AlertDialog.Action` takes a
 //   `tone`, and a deletion is `tone="danger"`; a confirmation whose two buttons
 //   look the same is one where the colour carries no warning.
 // * **There is no close button in the corner.** A confirmation is answered,
@@ -47,7 +47,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { AlertDialog } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
@@ -140,16 +140,16 @@ const styles = stylex.create({
 });
 
 /** The alert dialog, open or closed. Uncontrolled unless `open` is given. */
-export component AlertDialog(
+component AlertDialogRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.AlertDialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <AlertDialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.AlertDialog.Root>
+    </AlertDialog.Root>
   );
 }
 
@@ -157,7 +157,7 @@ export component AlertDialog(
  * The button that asks the question, and that focus comes back to. It is a
  * `Button` unless `render` says otherwise.
  */
-export component AlertDialogTrigger(
+component AlertDialogTrigger(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -167,7 +167,7 @@ export component AlertDialogTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialog.Trigger
+    <AlertDialog.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -183,12 +183,12 @@ export component AlertDialogTrigger(
       }
     >
       {children}
-    </Primitive.AlertDialog.Trigger>
+    </AlertDialog.Trigger>
   );
 }
 
 /** The scrim and the panel. There is no close button: see the header. */
-export component AlertDialogContent(
+component AlertDialogContent(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -196,87 +196,87 @@ export component AlertDialogContent(
 ) {
   return (
     <>
-      <Primitive.AlertDialog.Overlay className={props(styles.overlay).className} />
-      <Primitive.AlertDialog.Body
+      <AlertDialog.Overlay className={props(styles.overlay).className} />
+      <AlertDialog.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
-      </Primitive.AlertDialog.Body>
+      </AlertDialog.Body>
     </>
   );
 }
 
 /** The question and what answering costs, stacked. */
-export component AlertDialogHeader(
+component AlertDialogHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialog.Header
+    <AlertDialog.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialog.Header>
+    </AlertDialog.Header>
   );
 }
 
 /** The row the two answers sit in, at the end of the reading direction. */
-export component AlertDialogFooter(
+component AlertDialogFooter(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialog.Footer
+    <AlertDialog.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialog.Footer>
+    </AlertDialog.Footer>
   );
 }
 
 /** The question, which is the alert dialog's accessible name. */
-export component AlertDialogTitle(
+component AlertDialogTitle(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialog.Title
+    <AlertDialog.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialog.Title>
+    </AlertDialog.Title>
   );
 }
 
 /** What answering costs, announced the moment focus arrives. Required. */
-export component AlertDialogDescription(
+component AlertDialogDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialog.Description
+    <AlertDialog.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialog.Description>
+    </AlertDialog.Description>
   );
 }
 
 /** The answer that does the thing. A deletion is `tone="danger"`. */
-export component AlertDialogAction(
+component AlertDialogAction(
   children: React.Node,
   tone?: ButtonTone = "primary",
   size?: ButtonSize = "md",
@@ -286,7 +286,7 @@ export component AlertDialogAction(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialog.Action
+    <AlertDialog.Action
       {...forwarded(rest)}
       render={
         render ??
@@ -302,12 +302,12 @@ export component AlertDialogAction(
       }
     >
       {children}
-    </Primitive.AlertDialog.Action>
+    </AlertDialog.Action>
   );
 }
 
 /** The answer that declines, and the one focus starts on. */
-export component AlertDialogCancel(
+component AlertDialogCancel(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -317,7 +317,7 @@ export component AlertDialogCancel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialog.Cancel
+    <AlertDialog.Cancel
       {...forwarded(rest)}
       render={
         render ??
@@ -333,7 +333,7 @@ export component AlertDialogCancel(
       }
     >
       {children}
-    </Primitive.AlertDialog.Cancel>
+    </AlertDialog.Cancel>
   );
 }
 
@@ -357,3 +357,23 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as AlertDialog from "./alert-dialog.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<AlertDialog.Root>`
+ * and `<AlertDialog.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `AlertDialogRoot` rather than `Root`.
+ */
+export {
+  AlertDialogRoot as Root,
+  AlertDialogTrigger as Trigger,
+  AlertDialogContent as Content,
+  AlertDialogHeader as Header,
+  AlertDialogFooter as Footer,
+  AlertDialogTitle as Title,
+  AlertDialogDescription as Description,
+  AlertDialogAction as Action,
+  AlertDialogCancel as Cancel,
+};

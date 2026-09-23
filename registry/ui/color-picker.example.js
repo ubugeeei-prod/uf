@@ -1,21 +1,15 @@
 // @flow
 import * as React from "@uniflowed/react";
-import {
-  ColorPicker,
-  ColorPickerInput,
-  ColorPickerField,
-  ColorPickerChannel,
-  ColorPickerSwatch,
-} from "./color-picker.js";
+import * as ColorPicker from "./color-picker.js";
 
 /** A named, keyboard-operable example using the default presentation. */
 export component Example() {
   return (
-    <ColorPicker defaultValue="#336699">
-      <ColorPickerInput aria-label="Choose color" />
-      <ColorPickerField aria-label="Hex color" />
-      <ColorPickerChannel channel="red" aria-label="Red" />
-      <ColorPickerSwatch />
-    </ColorPicker>
+    <ColorPicker.Root defaultValue="#336699">
+      <ColorPicker.Input aria-label="Choose color" />
+      <ColorPicker.Field aria-label="Hex color" />
+      <ColorPicker.Channel channel="red" aria-label="Red" />
+      <ColorPicker.Swatch />
+    </ColorPicker.Root>
   );
 }

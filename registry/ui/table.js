@@ -26,11 +26,11 @@
 //
 // # What to keep true when you change it
 //
-// * **Give it a caption.** `TableCaption` names the table for a reader moving
+// * **Give it a caption.** `Table.Caption` names the table for a reader moving
 //   between tables.
 // * **The page sorts.** A heading asks for a sort; the order the rows come in
 //   is the page's, because the data can be remote or paged.
-// * **Name every checkbox.** `TableRowSelect` takes a `label` saying which row
+// * **Name every checkbox.** `Table.RowSelect` takes a `label` saying which row
 //   it chooses, such as the row's name.
 // * **Text stays on measured pairs.** `ink` and `muted` on `surface`, which
 //   `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in both themes.
@@ -40,7 +40,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { Sort } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Table } from "@uniflowed/ui";
 
 import { Checkbox } from "./checkbox.js";
 
@@ -137,7 +137,7 @@ const styles = stylex.create({
  * The table, in a frame it scrolls sideways in when it is wider than the page.
  * `sort` and `onSortChange` are the page's to act on.
  */
-export component Table(
+component TableRoot(
   children: React.Node,
   sort?: Sort | null,
   defaultSort?: Sort | null = null,
@@ -151,7 +151,7 @@ export component Table(
 ) {
   return (
     <div {...props(styles.frame)}>
-      <Primitive.Table.Root
+      <Table.Root
         {...forwarded(rest)}
         announceSort={announceSort}
         className={classNames(props(styles.table, xstyle).className, className)}
@@ -162,64 +162,58 @@ export component Table(
         sort={sort}
       >
         {children}
-      </Primitive.Table.Root>
+      </Table.Root>
     </div>
   );
 }
 
 /** The table's name, over it. */
-export component TableCaption(
+component TableCaption(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Table.Caption
+    <Table.Caption
       {...forwarded(rest)}
       className={classNames(props(styles.caption, xstyle).className, className)}
     >
       {children}
-    </Primitive.Table.Caption>
+    </Table.Caption>
   );
 }
 
 /** The rows of headings. */
-export component TableHeader(
+component TableHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Table.Header
-      {...forwarded(rest)}
-      className={classNames(props(xstyle).className, className)}
-    >
+    <Table.Header {...forwarded(rest)} className={classNames(props(xstyle).className, className)}>
       {children}
-    </Primitive.Table.Header>
+    </Table.Header>
   );
 }
 
 /** The rows of data. */
-export component TableBody(
+component TableBody(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Table.Body
-      {...forwarded(rest)}
-      className={classNames(props(xstyle).className, className)}
-    >
+    <Table.Body {...forwarded(rest)} className={classNames(props(xstyle).className, className)}>
       {children}
-    </Primitive.Table.Body>
+    </Table.Body>
   );
 }
 
 /** One row. `index` is its place in the whole data when the table shows part of it. */
-export component TableRow(
+component TableRow(
   children: React.Node,
   index?: number | null = null,
   xstyle?: StyleArgument,
@@ -227,13 +221,13 @@ export component TableRow(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Table.Row
+    <Table.Row
       {...forwarded(rest)}
       className={classNames(props(styles.row, xstyle).className, className)}
       index={index}
     >
       {children}
-    </Primitive.Table.Row>
+    </Table.Row>
   );
 }
 
@@ -241,7 +235,7 @@ export component TableRow(
  * A column heading. With a `column`, it is a button that asks for the rows to
  * be sorted by it, with an arrow while they are.
  */
-export component TableHead(
+component TableHead(
   children: React.Node,
   column?: string | null = null,
   xstyle?: StyleArgument,
@@ -251,13 +245,13 @@ export component TableHead(
   const classes = classNames(props(styles.head, xstyle).className, className);
   if (column == null) {
     return (
-      <Primitive.Table.Head {...forwarded(rest)} className={classes}>
+      <Table.Head {...forwarded(rest)} className={classes}>
         {children}
-      </Primitive.Table.Head>
+      </Table.Head>
     );
   }
   return (
-    <Primitive.Table.Head
+    <Table.Head
       {...forwarded(rest)}
       className={classes}
       column={column}
@@ -279,46 +273,46 @@ export component TableHead(
       >
         <path d="m6 15 6-6 6 6" />
       </svg>
-    </Primitive.Table.Head>
+    </Table.Head>
   );
 }
 
 /** A data cell. */
-export component TableCell(
+component TableCell(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Table.Cell
+    <Table.Cell
       {...forwarded(rest)}
       className={classNames(props(styles.cell, xstyle).className, className)}
     >
       {children}
-    </Primitive.Table.Cell>
+    </Table.Cell>
   );
 }
 
 /** The cell that names its row, such as a person's name. */
-export component TableRowHeader(
+component TableRowHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Table.RowHeader
+    <Table.RowHeader
       {...forwarded(rest)}
       className={classNames(props(styles.rowHeader, xstyle).className, className)}
     >
       {children}
-    </Primitive.Table.RowHeader>
+    </Table.RowHeader>
   );
 }
 
 /** The checkbox that chooses every row, mixed while only some are chosen. */
-export component TableSelectAll(
+component TableSelectAll(
   checked: boolean | "mixed",
   onCheckedChange: (checked: boolean) => void,
   label?: string = "Select all rows",
@@ -340,7 +334,7 @@ export component TableSelectAll(
 }
 
 /** The checkbox that chooses one row. `label` says which. */
-export component TableRowSelect(
+component TableRowSelect(
   label: string,
   checked: boolean,
   onCheckedChange: (checked: boolean) => void,
@@ -388,3 +382,24 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Table from "./table.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Table.Root>`
+ * and `<Table.Caption>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `TableRoot` rather than `Root`.
+ */
+export {
+  TableRoot as Root,
+  TableCaption as Caption,
+  TableHeader as Header,
+  TableBody as Body,
+  TableRow as Row,
+  TableHead as Head,
+  TableCell as Cell,
+  TableRowHeader as RowHeader,
+  TableSelectAll as SelectAll,
+  TableRowSelect as RowSelect,
+};

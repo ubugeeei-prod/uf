@@ -84,7 +84,7 @@ uf ui add button dialog tabs select
 ```
 
 ```js
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./components/ui/dialog.js";
+import * as Dialog from "./components/ui/dialog.js";
 ```
 
 | | Headless: `@uniflowed/ui` | Owned: `uf ui add` |
@@ -104,8 +104,8 @@ The two are not forks of each other. An owned `dialog.js` imports its parts
 from `@uniflowed/ui`, so the focus trap, `Escape`, focus restore and the inert
 page behind it keep arriving by upgrade, and what the file owns is only what a
 person means by "our dialog". The composition constraints hold in the copy
-too: the owned `TabsList` takes `renders* TabsTab`, so a `<button>` dropped
-into it is a Flow error in your own file.
+too: the owned `Tabs.List` takes `renders*` the owned `Tabs.Tab`, so a
+`<button>` dropped into it is a Flow error in your own file.
 
 A copy remembers where it came from. Its last line names the uf that wrote it
 and a digest of what was written, so `uf ui add` never replaces a file somebody
@@ -203,8 +203,13 @@ rewrites `import { DialogRoot, DialogTrigger } from "@uniflowed/ui"` to
 `import { Dialog } from "@uniflowed/ui"`, and every use to `Dialog.Root` and
 `Dialog.Trigger`, including JSX, `typeof`, `renders` and `ui.DialogRoot` on
 a namespace import. A file that already has its own `Dialog` binding gets the
-import as `UiDialog`. Anything it cannot rewrite safely is left alone and listed
-in `.uf/migration-report.json`.
+import as `UiDialog`. The same run moves the components `uf ui add` wrote to
+the registry's new shape. `dialog.js` exports `Root`, `Trigger` and
+`Content`, and every page that imported `DialogTrigger` from it now writes
+`import * as Dialog from "./components/ui/dialog.js"` and `<Dialog.Trigger>`.
+A copy nobody edited comes out as the registry's own text, so a later
+`uf ui update` merges this uf's changes into it without a conflict. Anything the codemod cannot rewrite
+safely is left alone and listed in `.uf/migration-report.json`.
 
 The package exports no subpath, and you cannot import `internal/`. That is on
 purpose. It holds the roving-focus reader, the controlled-state hook and the

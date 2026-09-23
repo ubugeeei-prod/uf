@@ -8,13 +8,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen } from "@uniflowed/react-testing";
 
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "./pagination.js";
+import * as Pagination from "./pagination.js";
 import { Example } from "./pagination.example.js";
 
 afterEach(() => {
@@ -24,16 +18,16 @@ afterEach(() => {
 /** The first of three pages, so there is no page before it. */
 component FirstPage() {
   return (
-    <Pagination page={1} pageCount={3}>
-      <PaginationContent>
-        <PaginationPrevious disabled />
-        <PaginationItem current href="?page=1">
+    <Pagination.Root page={1} pageCount={3}>
+      <Pagination.Content>
+        <Pagination.Previous disabled />
+        <Pagination.Item current href="?page=1">
           1
-        </PaginationItem>
-        <PaginationItem href="?page=2">2</PaginationItem>
-        <PaginationNext href="?page=2" />
-      </PaginationContent>
-    </Pagination>
+        </Pagination.Item>
+        <Pagination.Item href="?page=2">2</Pagination.Item>
+        <Pagination.Next href="?page=2" />
+      </Pagination.Content>
+    </Pagination.Root>
   );
 }
 

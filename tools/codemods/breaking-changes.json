@@ -2,5 +2,9 @@
   {
     "change": "feat(ui)!: export each component's parts through its namespace only",
     "codemod": "ui-namespaces-1453"
+  },
+  {
+    "change": "feat(ui)!: export the registry's parts unprefixed, and import each copy as a namespace",
+    "codemod": "ui-registry-namespaces-1453"
   }
 ]

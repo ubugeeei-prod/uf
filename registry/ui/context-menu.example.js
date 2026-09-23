@@ -2,14 +2,7 @@
 import { stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import {
-  ContextMenu,
-  ContextMenuCheckboxItem,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "./context-menu.js";
+import * as ContextMenu from "./context-menu.js";
 
 const styles = stylex.create({
   area: {
@@ -33,17 +26,17 @@ const styles = stylex.create({
 /** An area whose menu opens where it is right-clicked or long-pressed. */
 export component Example() {
   return (
-    <ContextMenu>
-      <ContextMenuTrigger tabIndex={0} xstyle={styles.area}>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger tabIndex={0} xstyle={styles.area}>
         Right-click here
-      </ContextMenuTrigger>
-      <ContextMenuContent aria-label="Page actions">
-        <ContextMenuItem>Back</ContextMenuItem>
-        <ContextMenuItem disabled>Forward</ContextMenuItem>
-        <ContextMenuItem>Reload</ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuCheckboxItem defaultChecked>Show bookmarks</ContextMenuCheckboxItem>
-      </ContextMenuContent>
-    </ContextMenu>
+      </ContextMenu.Trigger>
+      <ContextMenu.Content aria-label="Page actions">
+        <ContextMenu.Item>Back</ContextMenu.Item>
+        <ContextMenu.Item disabled>Forward</ContextMenu.Item>
+        <ContextMenu.Item>Reload</ContextMenu.Item>
+        <ContextMenu.Separator />
+        <ContextMenu.CheckboxItem defaultChecked>Show bookmarks</ContextMenu.CheckboxItem>
+      </ContextMenu.Content>
+    </ContextMenu.Root>
   );
 }

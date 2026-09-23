@@ -19,7 +19,7 @@
 //
 // # What to keep true when you change it
 //
-// * **The heading level fits the page.** `AccordionTrigger` takes `level`, 3 by
+// * **The heading level fits the page.** `Accordion.Trigger` takes `level`, 3 by
 //   default; an accordion under an `<h1>` wants 2, and a skipped level is an
 //   outline a reader cannot navigate.
 // * **An accordion holds its own items.** `Accordion` takes
@@ -35,7 +35,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { AccordionType } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Accordion } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -111,7 +111,7 @@ const styles = stylex.create({
  * The stack. `type="single"` keeps one section open, and `collapsible` lets it
  * close again; `type="multiple"` opens any number.
  */
-export component Accordion(
+component AccordionRoot(
   children: renders* AccordionItem,
   type?: AccordionType = "single",
   collapsible?: boolean = true,
@@ -123,7 +123,7 @@ export component Accordion(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Accordion.Root
+    <Accordion.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       collapsible={collapsible}
@@ -133,42 +133,42 @@ export component Accordion(
       value={value}
     >
       {children}
-    </Primitive.Accordion.Root>
+    </Accordion.Root>
   );
 }
 
 /** One section: its trigger and its panel. */
-export component AccordionItem(
+component AccordionItem(
   value: string,
   children: renders* (AccordionTrigger | AccordionContent),
   disabled?: boolean = false,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Accordion.Item {
+) renders Accordion.Item {
   return (
-    <Primitive.Accordion.Item
+    <Accordion.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       disabled={disabled}
       value={value}
     >
       {children}
-    </Primitive.Accordion.Item>
+    </Accordion.Item>
   );
 }
 
 /** A section's heading, and the button inside it that opens the section. */
-export component AccordionTrigger(
+component AccordionTrigger(
   children: React.Node,
   level?: number = 3,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Accordion.Header {
+) renders Accordion.Header {
   return (
-    <Primitive.Accordion.Header className={props(styles.heading).className} level={level}>
-      <Primitive.Accordion.Trigger
+    <Accordion.Header className={props(styles.heading).className} level={level}>
+      <Accordion.Trigger
         {...forwarded(rest)}
         className={classNames(props(styles.trigger, xstyle).className, className)}
       >
@@ -188,25 +188,25 @@ export component AccordionTrigger(
         >
           <path d="m6 9 6 6 6-6" />
         </svg>
-      </Primitive.Accordion.Trigger>
-    </Primitive.Accordion.Header>
+      </Accordion.Trigger>
+    </Accordion.Header>
   );
 }
 
 /** A section's panel, named by its trigger. */
-export component AccordionContent(
+component AccordionContent(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Accordion.Content {
+) renders Accordion.Content {
   return (
-    <Primitive.Accordion.Content
+    <Accordion.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.Accordion.Content>
+    </Accordion.Content>
   );
 }
 
@@ -226,3 +226,18 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Accordion from "./accordion.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Accordion.Root>`
+ * and `<Accordion.Item>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `AccordionRoot` rather than `Root`.
+ */
+export {
+  AccordionRoot as Root,
+  AccordionItem as Item,
+  AccordionTrigger as Trigger,
+  AccordionContent as Content,
+};

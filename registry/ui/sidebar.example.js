@@ -2,14 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarItem,
-  SidebarTrigger,
-} from "./sidebar.js";
+import * as Sidebar from "./sidebar.js";
 
 const styles = stylex.create({
   frame: {
@@ -39,24 +32,24 @@ component Dot() {
 export component Example() {
   return (
     <div {...props(styles.frame)}>
-      <Sidebar>
-        <SidebarContent label="Main">
-          <SidebarHeader>Acme</SidebarHeader>
-          <SidebarItem aria-current="page" icon={<Dot />} label="Home">
+      <Sidebar.Root>
+        <Sidebar.Content label="Main">
+          <Sidebar.Header>Acme</Sidebar.Header>
+          <Sidebar.Item aria-current="page" icon={<Dot />} label="Home">
             Home
-          </SidebarItem>
-          <SidebarItem icon={<Dot />} label="Projects">
+          </Sidebar.Item>
+          <Sidebar.Item icon={<Dot />} label="Projects">
             Projects
-          </SidebarItem>
-          <SidebarItem icon={<Dot />} label="Settings">
+          </Sidebar.Item>
+          <Sidebar.Item icon={<Dot />} label="Settings">
             Settings
-          </SidebarItem>
-          <SidebarFooter>v1.30.0</SidebarFooter>
-        </SidebarContent>
+          </Sidebar.Item>
+          <Sidebar.Footer>v1.30.0</Sidebar.Footer>
+        </Sidebar.Content>
         <main {...props(styles.main)}>
-          <SidebarTrigger />
+          <Sidebar.Trigger />
         </main>
-      </Sidebar>
+      </Sidebar.Root>
     </div>
   );
 }

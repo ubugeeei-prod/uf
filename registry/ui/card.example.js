@@ -4,7 +4,7 @@ import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
 import { Button } from "./button.js";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./card.js";
+import * as Card from "./card.js";
 
 const styles = stylex.create({
   frame: {
@@ -19,19 +19,19 @@ const styles = stylex.create({
 export component Example() {
   return (
     <div {...props(styles.frame)}>
-      <Card>
-        <CardHeader>
-          <CardTitle level={2}>Weekly digest</CardTitle>
-          <CardDescription>Sent every Monday at 9:00.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Card.Root>
+        <Card.Header>
+          <Card.Title level={2}>Weekly digest</Card.Title>
+          <Card.Description>Sent every Monday at 9:00.</Card.Description>
+        </Card.Header>
+        <Card.Content>
           <p {...props(styles.body)}>A summary of the week's changes to the projects you follow.</p>
-        </CardContent>
-        <CardFooter>
+        </Card.Content>
+        <Card.Footer>
           <Button tone="primary">Subscribe</Button>
           <Button tone="ghost">Preview</Button>
-        </CardFooter>
-      </Card>
+        </Card.Footer>
+      </Card.Root>
     </div>
   );
 }

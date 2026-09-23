@@ -17,8 +17,8 @@
 //
 // # What to keep true when you change it
 //
-// * **The last crumb is the page, not a link to it.** Use `BreadcrumbPage`.
-// * **A list holds crumbs and separators.** `BreadcrumbList` takes
+// * **The last crumb is the page, not a link to it.** Use `Breadcrumb.Page`.
+// * **A list holds crumbs and separators.** `Breadcrumb.List` takes
 //   `renders* (BreadcrumbItem | BreadcrumbSeparator)`, so anything else in the
 //   `<ol>` is a Flow error.
 // * **A link looks like a link on hover and on focus,** and the page it leads
@@ -31,7 +31,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Breadcrumb } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -79,7 +79,7 @@ const styles = stylex.create({
 });
 
 /** The trail. `label` names the `<nav>`, "Breadcrumb" unless it is given. */
-export component Breadcrumb(
+component BreadcrumbRoot(
   children: React.Node,
   label?: string = "Breadcrumb",
   xstyle?: StyleArgument,
@@ -87,52 +87,52 @@ export component Breadcrumb(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Breadcrumb.Root
+    <Breadcrumb.Root
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
       label={label}
     >
       {children}
-    </Primitive.Breadcrumb.Root>
+    </Breadcrumb.Root>
   );
 }
 
 /** The ordered list of crumbs and the separators between them. */
-export component BreadcrumbList(
+component BreadcrumbList(
   children: renders* (BreadcrumbItem | BreadcrumbSeparator),
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Breadcrumb.List
+    <Breadcrumb.List
       {...forwarded(rest)}
       className={classNames(props(styles.list, xstyle).className, className)}
     >
       {children}
-    </Primitive.Breadcrumb.List>
+    </Breadcrumb.List>
   );
 }
 
 /** One crumb. */
-export component BreadcrumbItem(
+component BreadcrumbItem(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Breadcrumb.Item {
+) renders Breadcrumb.Item {
   return (
-    <Primitive.Breadcrumb.Item
+    <Breadcrumb.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
     >
       {children}
-    </Primitive.Breadcrumb.Item>
+    </Breadcrumb.Item>
   );
 }
 
 /** A crumb that leads somewhere. `render` for the router's own link. */
-export component BreadcrumbLink(
+component BreadcrumbLink(
   children: React.Node,
   render?: RenderProp,
   xstyle?: StyleArgument,
@@ -140,42 +140,42 @@ export component BreadcrumbLink(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Breadcrumb.Link
+    <Breadcrumb.Link
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       render={render}
     >
       {children}
-    </Primitive.Breadcrumb.Link>
+    </Breadcrumb.Link>
   );
 }
 
 /** The page the reader is on, which is not a link. */
-export component BreadcrumbPage(
+component BreadcrumbPage(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Breadcrumb.Page
+    <Breadcrumb.Page
       {...forwarded(rest)}
       className={classNames(props(styles.page, xstyle).className, className)}
     >
       {children}
-    </Primitive.Breadcrumb.Page>
+    </Breadcrumb.Page>
   );
 }
 
 /** The mark between two crumbs, a chevron unless it is given; decoration. */
-export component BreadcrumbSeparator(
+component BreadcrumbSeparator(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Breadcrumb.Separator {
+) renders Breadcrumb.Separator {
   return (
-    <Primitive.Breadcrumb.Separator
+    <Breadcrumb.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     >
@@ -194,7 +194,7 @@ export component BreadcrumbSeparator(
           <path d="m9 18 6-6-6-6" />
         </svg>
       )}
-    </Primitive.Breadcrumb.Separator>
+    </Breadcrumb.Separator>
   );
 }
 
@@ -214,3 +214,20 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Breadcrumb from "./breadcrumb.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Breadcrumb.Root>`
+ * and `<Breadcrumb.List>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `BreadcrumbRoot` rather than `Root`.
+ */
+export {
+  BreadcrumbRoot as Root,
+  BreadcrumbList as List,
+  BreadcrumbItem as Item,
+  BreadcrumbLink as Link,
+  BreadcrumbPage as Page,
+  BreadcrumbSeparator as Separator,
+};

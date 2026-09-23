@@ -2,7 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsible.js";
+import * as Collapsible from "./collapsible.js";
 
 const styles = stylex.create({
   list: {
@@ -16,15 +16,15 @@ const styles = stylex.create({
 /** Older replies, tucked away until someone asks for them. */
 export component Example() {
   return (
-    <Collapsible>
-      <CollapsibleTrigger>Show the 3 older replies</CollapsibleTrigger>
-      <CollapsibleContent>
+    <Collapsible.Root>
+      <Collapsible.Trigger>Show the 3 older replies</Collapsible.Trigger>
+      <Collapsible.Content>
         <ul {...props(styles.list)}>
           <li>Looks good to me.</li>
           <li>Could the button say what it saves?</li>
           <li>Changed, thank you.</li>
         </ul>
-      </CollapsibleContent>
-    </Collapsible>
+      </Collapsible.Content>
+    </Collapsible.Root>
   );
 }

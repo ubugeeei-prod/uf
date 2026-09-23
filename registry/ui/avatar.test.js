@@ -7,7 +7,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen, waitFor } from "@uniflowed/react-testing";
 
-import { Avatar, AvatarFallback } from "./avatar.js";
+import * as Avatar from "./avatar.js";
 import { Example } from "./avatar.example.js";
 
 afterEach(() => {
@@ -24,9 +24,9 @@ describe("Avatar", () => {
 
   it("draws the circle and the initials", async () => {
     render(
-      <Avatar size="lg">
-        <AvatarFallback delay={0}>GH</AvatarFallback>
-      </Avatar>,
+      <Avatar.Root size="lg">
+        <Avatar.Fallback delay={0}>GH</Avatar.Fallback>
+      </Avatar.Root>,
     );
     await waitFor(() => {
       expect(screen.getByText("GH")).toBeInTheDocument();

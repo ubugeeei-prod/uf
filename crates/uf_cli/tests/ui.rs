@@ -91,6 +91,15 @@ fn add_writes_the_component_and_the_components_it_imports() {
     assert!(stdout.contains("app/components/ui/dialog.js"), "{stdout}");
     assert!(stdout.contains("app/components/ui/button.js"), "{stdout}");
     assert!(stdout.contains("wrote 2 files"), "{stdout}");
+    // How to use what was asked for, spelled the way the registry's convention
+    // spells it (ubugeeei-prod/uf#1453): a component with parts is one
+    // namespace. `button` was only needed by `dialog`, so it is not offered.
+    assert!(stdout.contains("import from a module in app/:"), "{stdout}");
+    assert!(
+        stdout.contains("import * as Dialog from \"./components/ui/dialog.js\";"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("import { Button }"), "{stdout}");
 }
 
 #[test]

@@ -34,7 +34,7 @@ import { createContext, useContext } from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Resizable } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -119,7 +119,7 @@ const styles = stylex.create({
  * The group. `value` is the primary panel's share, a percentage between `min`
  * and `max`; `orientation` says whether the panels sit side by side or stacked.
  */
-export component ResizablePanelGroup(
+component ResizablePanelGroup(
   children: React.Node,
   value?: number,
   defaultValue?: number = 50,
@@ -136,7 +136,7 @@ export component ResizablePanelGroup(
   const vertical = orientation === "vertical";
   return (
     <OrientationContext.Provider value={orientation}>
-      <Primitive.Resizable.PanelGroup
+      <Resizable.PanelGroup
         {...forwarded(rest)}
         className={classNames(
           props(styles.group, vertical && styles.groupVertical, xstyle).className,
@@ -152,13 +152,13 @@ export component ResizablePanelGroup(
         value={value}
       >
         {children}
-      </Primitive.Resizable.PanelGroup>
+      </Resizable.PanelGroup>
     </OrientationContext.Provider>
   );
 }
 
 /** One panel. The `primary` one is the panel the group's value measures. */
-export component ResizablePanel(
+component ResizablePanel(
   children: React.Node,
   primary?: boolean = false,
   xstyle?: StyleArgument,
@@ -166,18 +166,18 @@ export component ResizablePanel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Resizable.Panel
+    <Resizable.Panel
       {...forwarded(rest)}
       className={classNames(props(styles.panel, xstyle).className, className)}
       primary={primary}
     >
       {children}
-    </Primitive.Resizable.Panel>
+    </Resizable.Panel>
   );
 }
 
 /** The handle between the panels. */
-export component ResizableHandle(
+component ResizableHandle(
   label?: string = "Resize",
   xstyle?: StyleArgument,
   className?: string,
@@ -185,7 +185,7 @@ export component ResizableHandle(
 ) {
   const vertical = useContext(OrientationContext) === "vertical";
   return (
-    <Primitive.Resizable.Handle
+    <Resizable.Handle
       {...forwarded(rest)}
       className={classNames(
         props(styles.handle, vertical && styles.handleVertical, xstyle).className,
@@ -212,3 +212,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Resizable from "./resizable.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Resizable.PanelGroup>`
+ * and `<Resizable.Panel>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `ResizablePanelGroup` rather than `PanelGroup`.
+ */
+export { ResizablePanelGroup as PanelGroup, ResizablePanel as Panel, ResizableHandle as Handle };

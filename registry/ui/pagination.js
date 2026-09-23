@@ -23,7 +23,7 @@
 //   announced rather than only drawn.
 // * **Previous and next keep their words.** The chevrons are decoration;
 //   "Previous page" is the name.
-// * **A row holds pages, previous and next.** `PaginationContent` takes
+// * **A row holds pages, previous and next.** `Pagination.Content` takes
 //   `renders* (PaginationItem | PaginationPrevious | PaginationNext)`, so an
 //   ellipsis is a gap in the numbers rather than an item, and anything else in
 //   the list is a Flow error.
@@ -37,7 +37,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Pagination } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -95,7 +95,7 @@ const styles = stylex.create({
  * The navigation. `page` and `pageCount` are what a change of page is
  * announced with.
  */
-export component Pagination(
+component PaginationRoot(
   children: React.Node,
   page?: number | null = null,
   pageCount?: number | null = null,
@@ -105,7 +105,7 @@ export component Pagination(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Pagination.Root
+    <Pagination.Root
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
       label={label}
@@ -113,29 +113,29 @@ export component Pagination(
       pageCount={pageCount}
     >
       {children}
-    </Primitive.Pagination.Root>
+    </Pagination.Root>
   );
 }
 
 /** The row of pages, previous and next. */
-export component PaginationContent(
+component PaginationContent(
   children: renders* (PaginationItem | PaginationPrevious | PaginationNext),
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Pagination.Content
+    <Pagination.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.Pagination.Content>
+    </Pagination.Content>
   );
 }
 
 /** A link to one page; `current` for the page the reader is on. */
-export component PaginationItem(
+component PaginationItem(
   children: React.Node,
   current?: boolean = false,
   disabled?: boolean = false,
@@ -143,9 +143,9 @@ export component PaginationItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Pagination.Item {
+) renders Pagination.Item {
   return (
-    <Primitive.Pagination.Item
+    <Pagination.Item
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       current={current}
@@ -153,21 +153,21 @@ export component PaginationItem(
       render={render}
     >
       {children}
-    </Primitive.Pagination.Item>
+    </Pagination.Item>
   );
 }
 
 /** The link to the page before, named "Previous page" unless `label` says otherwise. */
-export component PaginationPrevious(
+component PaginationPrevious(
   label?: string = "Previous page",
   disabled?: boolean = false,
   render?: RenderProp,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Pagination.Previous {
+) renders Pagination.Previous {
   return (
-    <Primitive.Pagination.Previous
+    <Pagination.Previous
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       disabled={disabled}
@@ -188,21 +188,21 @@ export component PaginationPrevious(
       >
         <path d="m15 18-6-6 6-6" />
       </svg>
-    </Primitive.Pagination.Previous>
+    </Pagination.Previous>
   );
 }
 
 /** The link to the page after, named "Next page" unless `label` says otherwise. */
-export component PaginationNext(
+component PaginationNext(
   label?: string = "Next page",
   disabled?: boolean = false,
   render?: RenderProp,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Pagination.Next {
+) renders Pagination.Next {
   return (
-    <Primitive.Pagination.Next
+    <Pagination.Next
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
       disabled={disabled}
@@ -223,7 +223,7 @@ export component PaginationNext(
       >
         <path d="m9 18 6-6-6-6" />
       </svg>
-    </Primitive.Pagination.Next>
+    </Pagination.Next>
   );
 }
 
@@ -243,3 +243,19 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Pagination from "./pagination.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Pagination.Root>`
+ * and `<Pagination.Content>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `PaginationRoot` rather than `Root`.
+ */
+export {
+  PaginationRoot as Root,
+  PaginationContent as Content,
+  PaginationItem as Item,
+  PaginationPrevious as Previous,
+  PaginationNext as Next,
+};

@@ -34,7 +34,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Slider as HeadlessSlider } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -164,7 +164,7 @@ export component Slider(
 ) {
   const vertical = orientation === "vertical";
   return (
-    <Primitive.Slider.Root
+    <HeadlessSlider.Root
       {...forwarded(rest)}
       className={classNames(
         props(styles.root, vertical && styles.rootVertical, xstyle).className,
@@ -181,14 +181,14 @@ export component Slider(
       value={value}
       valueText={valueText}
     >
-      <Primitive.Slider.Track
+      <HeadlessSlider.Track
         className={
           props(styles.track, vertical && styles.trackVertical, disabled && styles.trackDisabled)
             .className
         }
       >
         <span {...props(styles.rail, vertical && styles.railVertical)}>
-          <Primitive.Slider.Range
+          <HeadlessSlider.Range
             className={
               props(
                 styles.range,
@@ -199,15 +199,15 @@ export component Slider(
           />
         </span>
         {labels.map((label, index) => (
-          <Primitive.Slider.Thumb
+          <HeadlessSlider.Thumb
             aria-label={label}
             className={props(styles.thumb, vertical && styles.thumbVertical).className}
             index={index}
             key={`${index}:${label}`}
           />
         ))}
-      </Primitive.Slider.Track>
-    </Primitive.Slider.Root>
+      </HeadlessSlider.Track>
+    </HeadlessSlider.Root>
   );
 }
 

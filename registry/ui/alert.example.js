@@ -2,7 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import { Alert, AlertDescription, AlertTitle } from "./alert.js";
+import * as Alert from "./alert.js";
 
 const styles = stylex.create({
   stack: {
@@ -16,16 +16,16 @@ const styles = stylex.create({
 export component Example() {
   return (
     <div {...props(styles.stack)}>
-      <Alert tone="info">
-        <AlertTitle level={2}>Your trial ends in 3 days</AlertTitle>
-        <AlertDescription>Choose a plan to keep your projects after Friday.</AlertDescription>
-      </Alert>
-      <Alert tone="danger">
-        <AlertTitle level={2}>The last export failed</AlertTitle>
-        <AlertDescription>
+      <Alert.Root tone="info">
+        <Alert.Title level={2}>Your trial ends in 3 days</Alert.Title>
+        <Alert.Description>Choose a plan to keep your projects after Friday.</Alert.Description>
+      </Alert.Root>
+      <Alert.Root tone="danger">
+        <Alert.Title level={2}>The last export failed</Alert.Title>
+        <Alert.Description>
           The file was too large. Try exporting one project at a time.
-        </AlertDescription>
-      </Alert>
+        </Alert.Description>
+      </Alert.Root>
     </div>
   );
 }

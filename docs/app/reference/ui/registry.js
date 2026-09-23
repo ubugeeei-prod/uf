@@ -87,6 +87,38 @@ function description(source: string): string {
   return words.join(" ");
 }
 
+/**
+ * How a page imports a component once `uf ui add` has written it: one with
+ * parts is a namespace, `import * as Dialog from "./components/ui/dialog.js"`,
+ * and one with a single part is that name (ubugeeei-prod/uf#1453). The rule
+ * `uf ui add` prints by, in `crates/uf_ui/src/registry.rs`, and the registry's
+ * suite holds every example to the same line.
+ */
+export function importLine(name: string, source: string): string {
+  const exported = new Set<string>();
+  for (const match of source.matchAll(/^export component (\w+)\(/gm)) {
+    exported.add(match[1]);
+  }
+  for (const list of source.matchAll(/^export \{([^}]*)\}/gm)) {
+    for (const entry of list[1].split(",")) {
+      const words = entry.trim().split(/\s+as\s+/);
+      const last = words[words.length - 1];
+      if (/^[A-Z]/.test(last)) {
+        exported.add(last);
+      }
+    }
+  }
+  const from = `./components/ui/${name}.js`;
+  if (exported.size === 1) {
+    return `import { ${[...exported][0]} } from "${from}";`;
+  }
+  const namespace = name
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("");
+  return `import * as ${namespace} from "${from}";`;
+}
+
 /** `text`, with its backquoted spans set as code. */
 function inline(text: string): React.Node {
   return text
@@ -109,6 +141,9 @@ export component Registry() {
           </h3>
           <p>{inline(entry.description)}</p>
           <Command>{`uf ui add ${entry.name}`}</Command>
+          <pre>
+            <code>{importLine(entry.name, entry.source)}</code>
+          </pre>
           <div className="registry-example">
             <RegistryExample name={entry.name} />
           </div>

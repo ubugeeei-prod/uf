@@ -15,7 +15,7 @@
 // appears on hover: it waits for a pointer and not for focus, it stays while
 // the pointer travels onto it, `Escape` dismisses it from wherever focus is,
 // and it describes its trigger with `aria-describedby` only while it is there.
-// `TooltipProvider` shares one clock across a toolbar, so the second icon a
+// `Tooltip.Provider` shares one clock across a toolbar, so the second icon a
 // reader points at answers at once. A fix to any of that reaches this project
 // by upgrading `@uniflowed/ui`.
 //
@@ -37,7 +37,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Tooltip } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
@@ -100,20 +100,20 @@ const styles = stylex.create({
  * The clock a group of tooltips shares, so the next one opens at once once a
  * reader has waited for the first.
  */
-export component TooltipProvider(
+component TooltipProvider(
   children: React.Node,
   delayDuration?: number,
   skipDelayDuration?: number,
 ) {
   return (
-    <Primitive.Tooltip.Provider delayDuration={delayDuration} skipDelayDuration={skipDelayDuration}>
+    <Tooltip.Provider delayDuration={delayDuration} skipDelayDuration={skipDelayDuration}>
       {children}
-    </Primitive.Tooltip.Provider>
+    </Tooltip.Provider>
   );
 }
 
 /** One tooltip and its trigger. */
-export component Tooltip(
+component TooltipRoot(
   children: React.Node,
   openDelay?: number,
   closeDelay?: number,
@@ -122,7 +122,7 @@ export component Tooltip(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.Tooltip.Root
+    <Tooltip.Root
       closeDelay={closeDelay}
       defaultOpen={defaultOpen}
       onOpenChange={onOpenChange}
@@ -130,7 +130,7 @@ export component Tooltip(
       openDelay={openDelay}
     >
       {children}
-    </Primitive.Tooltip.Root>
+    </Tooltip.Root>
   );
 }
 
@@ -138,7 +138,7 @@ export component Tooltip(
  * The control the tooltip describes. It is a `Button` unless `render` says
  * otherwise, and whatever it is needs a name of its own.
  */
-export component TooltipTrigger(
+component TooltipTrigger(
   children?: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -148,7 +148,7 @@ export component TooltipTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Tooltip.Trigger
+    <Tooltip.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -164,7 +164,7 @@ export component TooltipTrigger(
       }
     >
       {children}
-    </Primitive.Tooltip.Trigger>
+    </Tooltip.Trigger>
   );
 }
 
@@ -172,7 +172,7 @@ export component TooltipTrigger(
  * The phrase, above its trigger unless it does not fit. `side` and `align`
  * reach `Tooltip.Body` untouched; `sideOffset` is the gap.
  */
-export component TooltipContent(
+component TooltipContent(
   children: React.Node,
   sideOffset?: number = 6,
   collisionPadding?: number = 8,
@@ -181,14 +181,14 @@ export component TooltipContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Tooltip.Body
+    <Tooltip.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       collisionPadding={collisionPadding}
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.Tooltip.Body>
+    </Tooltip.Body>
   );
 }
 
@@ -212,3 +212,18 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Tooltip from "./tooltip.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Tooltip.Provider>`
+ * and `<Tooltip.Root>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `TooltipProvider` rather than `Provider`.
+ */
+export {
+  TooltipProvider as Provider,
+  TooltipRoot as Root,
+  TooltipTrigger as Trigger,
+  TooltipContent as Content,
+};

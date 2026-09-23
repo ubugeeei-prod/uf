@@ -2,13 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import {
-  DatePicker,
-  DatePickerContent,
-  DatePickerGroup,
-  DatePickerInput,
-  DatePickerTrigger,
-} from "./date-picker.js";
+import * as DatePicker from "./date-picker.js";
 
 const styles = stylex.create({
   field: {
@@ -35,13 +29,13 @@ export component Example() {
       <label {...props(styles.label)} htmlFor="start-date">
         Start date
       </label>
-      <DatePicker defaultValue="2026-09-14" locale="en-US" today="2026-09-14">
-        <DatePickerGroup>
-          <DatePickerInput aria-describedby="start-date-format" id="start-date" />
-          <DatePickerTrigger />
-        </DatePickerGroup>
-        <DatePickerContent />
-      </DatePicker>
+      <DatePicker.Root defaultValue="2026-09-14" locale="en-US" today="2026-09-14">
+        <DatePicker.Group>
+          <DatePicker.Input aria-describedby="start-date-format" id="start-date" />
+          <DatePicker.Trigger />
+        </DatePicker.Group>
+        <DatePicker.Content />
+      </DatePicker.Root>
       <p {...props(styles.hint)} id="start-date-format">
         Year, month and day, such as 2026-09-14.
       </p>

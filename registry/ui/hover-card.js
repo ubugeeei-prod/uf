@@ -21,7 +21,7 @@
 // # What to keep true when you change it
 //
 // * **The link works on its own.** A hover card never opens on touch, so
-//   `HoverCardTrigger`'s `href` has to go somewhere useful without it, and
+//   `HoverCard.Trigger`'s `href` has to go somewhere useful without it, and
 //   nothing may live only in the card.
 // * **The trigger is focusable.** It is an `<a href>`, and the part refuses a
 //   trigger a keyboard cannot reach: a hover card on a `<span>` is one a
@@ -37,7 +37,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { HoverCard } from "@uniflowed/ui";
 
 /**
  * Every prop a caller passes that this file does not name, on its way to the
@@ -108,7 +108,7 @@ const styles = stylex.create({
 });
 
 /** A hover card and the link it previews. */
-export component HoverCard(
+component HoverCardRoot(
   children: React.Node,
   openDelay?: number,
   closeDelay?: number,
@@ -117,7 +117,7 @@ export component HoverCard(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.HoverCard.Root
+    <HoverCard.Root
       closeDelay={closeDelay}
       defaultOpen={defaultOpen}
       onOpenChange={onOpenChange}
@@ -125,7 +125,7 @@ export component HoverCard(
       openDelay={openDelay}
     >
       {children}
-    </Primitive.HoverCard.Root>
+    </HoverCard.Root>
   );
 }
 
@@ -133,7 +133,7 @@ export component HoverCard(
  * The link the card is about: an `<a href>` unless `render` says otherwise, and
  * whatever it is has to be reachable by keyboard.
  */
-export component HoverCardTrigger(
+component HoverCardTrigger(
   children: React.Node,
   href?: string,
   render?: RenderProp,
@@ -142,7 +142,7 @@ export component HoverCardTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.HoverCard.Trigger
+    <HoverCard.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -156,7 +156,7 @@ export component HoverCardTrigger(
       }
     >
       {children}
-    </Primitive.HoverCard.Trigger>
+    </HoverCard.Trigger>
   );
 }
 
@@ -164,7 +164,7 @@ export component HoverCardTrigger(
  * The card, under its link unless it does not fit. `side` and `align` reach
  * `HoverCard.Body` untouched; `sideOffset` is the gap.
  */
-export component HoverCardContent(
+component HoverCardContent(
   children: React.Node,
   sideOffset?: number = 8,
   collisionPadding?: number = 8,
@@ -173,14 +173,14 @@ export component HoverCardContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.HoverCard.Body
+    <HoverCard.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       collisionPadding={collisionPadding}
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.HoverCard.Body>
+    </HoverCard.Body>
   );
 }
 
@@ -204,3 +204,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as HoverCard from "./hover-card.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<HoverCard.Root>`
+ * and `<HoverCard.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `HoverCardRoot` rather than `Root`.
+ */
+export { HoverCardRoot as Root, HoverCardTrigger as Trigger, HoverCardContent as Content };
