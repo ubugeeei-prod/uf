@@ -45,9 +45,7 @@
 // The rest of the set — uf as the default formatter for JavaScript and JSX —
 // is written only when asked, by the "uf: Configure Workspace for Flow"
 // command, because choosing a formatter is a project's decision to commit, not
-// something an extension should do on install. `uf editor setup vscode` in a
-// terminal writes the same keys, so a team can commit them without anyone
-// opening VS Code.
+// something an extension should do on install.
 
 "use strict";
 

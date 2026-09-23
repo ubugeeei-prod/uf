@@ -144,7 +144,6 @@ JavaScript.
   to the folder's `.vscode/settings.json`, after listing them: the two
   validation switches and uf as the default formatter for `javascript` and
   `javascriptreact`. A value the project already set is kept and reported.
-  `uf editor setup vscode` writes the same file from a terminal.
 * **uf: Show Status and Commands** — the menu behind the status bar item.
 
 ## The status bar
