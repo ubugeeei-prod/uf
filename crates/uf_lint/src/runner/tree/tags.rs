@@ -368,7 +368,7 @@ fn interactive_to_noninteractive(
     let Some((written, Written::Role(role))) = aria::written_role(tree.scope, opening) else {
         return;
     };
-    if role.is_widget() {
+    if role.is_interactive() {
         return;
     }
     tree.report(
@@ -402,13 +402,13 @@ fn noninteractive_to_interactive(
     let Some((written, Written::Role(role))) = aria::written_role(tree.scope, opening) else {
         return;
     };
-    if !role.is_widget() {
+    if !role.is_interactive() {
         return;
     }
     let Implied::Certain(implicit) = aria::implicit_role(tree.scope, host, opening) else {
         return;
     };
-    if implicit.is_widget() || NOT_ADVICE.contains(implicit.name) {
+    if implicit.is_interactive() || NOT_ADVICE.contains(implicit.name) {
         return;
     }
     // A role the element's own role is an ancestor of says something sharper

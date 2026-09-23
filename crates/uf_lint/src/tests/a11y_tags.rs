@@ -237,6 +237,38 @@ fn an_anchor_is_a_control_only_when_it_is_a_link() {
     );
 }
 
+/// A role that only exists inside a structure is not a control: `listitem`,
+/// `cell`, `caption`, `rowgroup`. `<button role="listitem">` is a control told
+/// it is a list item, and it was not reported, because the rules asked whether
+/// a role was "part of a widget" (the question `a11y/prefer-tag-over-role`
+/// needs) instead of whether it is interactive. The contextual roles that *are*
+/// controls, like `tab`, `menuitem`, `row` and `treeitem`, still count as
+/// interactive.
+#[test]
+fn a_structural_role_on_a_control_is_reported_and_a_widget_one_is_not() {
+    reports(
+        "a11y/no-interactive-element-to-noninteractive-role",
+        &[
+            r#"<button type="button" role="listitem">Save</button>"#,
+            r#"<button type="button" role="cell">Save</button>"#,
+            r#"<a href="/x" role="caption">Home</a>"#,
+        ],
+    );
+    accepts(
+        "a11y/no-interactive-element-to-noninteractive-role",
+        &[
+            r#"<button type="button" role="tab">Save</button>"#,
+            r#"<button type="button" role="treeitem">Save</button>"#,
+        ],
+    );
+    // The other direction: a heading made a list item has been given no
+    // interactive role, so there is nothing to report there.
+    accepts(
+        "a11y/no-noninteractive-element-to-interactive-role",
+        &[r#"<h2 role="listitem">Title</h2>"#],
+    );
+}
+
 // --- a11y/no-noninteractive-element-to-interactive-role ---------------------
 
 #[test]
