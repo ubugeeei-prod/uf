@@ -137,8 +137,9 @@ explains each rule.
 
 To refresh the baseline after a change that makes uf faster or intentionally
 slower, or after the runner changes: run the `Bench` workflow by hand, download
-its `bench-comparison` artifact, and commit its `results.json` as
-`tools/bench/toolchain/baseline.json`. This page is rebuilt from the new file.
+its `bench-comparison` artifact, copy its `results.json` over
+`tools/bench/toolchain/baseline.json`, run `uf fmt` (it reformats the JSON and
+changes no number), and commit it. This page is rebuilt from the new file.
 
 ## What is not measured
 
