@@ -486,6 +486,17 @@ export function nextAfter(pathname: string): Entry | null {
   return null;
 }
 
+/**
+ * The file in this repository a manual page is written in, or `null` for a
+ * page outside the manual. Every page the manual lists is `$page.mdx` in the
+ * directory its route names — `tests/library/docs-nav.test.js` holds that — so
+ * this is a function of the route alone and needs nothing read from disk.
+ */
+export function sourceFor(pathname: string): string | null {
+  const entry = entryFor(pathname);
+  return entry == null ? null : `docs/app${entry.href}/$page.mdx`;
+}
+
 /** `true` when `pathname` is the entry's page. */
 export function isCurrent(pathname: string, href: string): boolean {
   return normalize(pathname) === href;

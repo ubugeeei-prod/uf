@@ -181,6 +181,7 @@ const READ_ONLY: &[&[&str]] = &[
     &["routes", "list"],
     &["ui", "list"],
     &["ui", "diff"],
+    &["ui", "update", "--dry-run", "--offline"],
     &["run"],
     &["test", "--list"],
 ];

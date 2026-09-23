@@ -13,6 +13,7 @@ import { Link, useRoute } from "@uniflowed/router";
 import type { Metadata } from "@uniflowed/router";
 
 import "./_design/seam.css";
+import { SearchDialog } from "./_design/search-dialog.js";
 import { themeBootstrap } from "./_design/theme-static.js";
 import { ThemeToggle } from "./_design/theme.js";
 
@@ -137,6 +138,12 @@ component Masthead() {
         first reference page. Which one is highlighted is read from the URL,
         and every guide section lives under `/guide`.
       */}
+      {/*
+        Search sits between the name and the destinations rather than among
+        them: it is not a place to go, and on a phone it stays on the name's
+        row while the destinations take the row below.
+      */}
+      <SearchDialog />
       <nav className="masthead-nav" aria-label="Site">
         <Link to="/guide/start" aria-current={section(pathname) === "guide" ? "page" : undefined}>
           Guide

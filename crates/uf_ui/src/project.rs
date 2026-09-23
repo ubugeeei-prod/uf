@@ -327,7 +327,7 @@ pub fn package_spec(name: &str) -> String {
 /// A project with no `package.json` names none, and is told which packages to
 /// add rather than refused here: the package manager is the one that can say
 /// what it needs.
-fn installed_packages(root: &Utf8Path) -> Result<BTreeSet<String>, AddError> {
+pub(crate) fn installed_packages(root: &Utf8Path) -> Result<BTreeSet<String>, AddError> {
     let path = root.join("package.json");
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,

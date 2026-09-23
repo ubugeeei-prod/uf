@@ -10,12 +10,13 @@ use uf_lib::{UI_HOOK_MODULES, UiReadiness, ui_components};
 
 use crate::diff::unified;
 use crate::project::{
-    AddAction, AddError, CopyState, apply, inspect, package_spec, plan_add, survey,
+    AddAction, AddError, CopyState, ProjectCopy, apply, inspect, package_spec, plan_add, survey,
 };
 use crate::registry::{
     EMBEDDED, REGISTRY_VERSION, Registry, RegistryError, description, imports, is_component_name,
 };
 use crate::stamp::{Copy, Stamp, digest, stamped};
+use crate::update::{self, UpdateAction, UpdateError, base_of, plan_update};
 
 /// This checkout, found by walking out of the crate rather than by counting.
 fn repository_root() -> PathBuf {
@@ -800,4 +801,209 @@ fn a_diff_is_the_copy_against_the_registry() {
     assert!(diff.contains("+++ app/components/ui/knob.js"), "{diff}");
     assert!(diff.contains("-b\n"), "{diff}");
     assert!(diff.contains("+B\n"), "{diff}");
+}
+
+// --- The update --------------------------------------------------------------
+
+/// A knob long enough for two edits that do not touch: the registry changes
+/// the first export, the project the last.
+const DIAL: &str =
+    "// @flow\n// Knob: turns.\nexport const knob = 1;\n\nexport const size = \"md\";\n";
+const DIAL_LATER: &str =
+    "// @flow\n// Knob: turns.\nexport const knob = 2;\n\nexport const size = \"md\";\n";
+
+/// A project with `knob` added from `DIAL`, and its copy edited by `edit`.
+fn edited_dial(edit: impl Fn(&str) -> String) -> (tempfile::TempDir, Utf8PathBuf, Utf8PathBuf) {
+    let (guard, root) = project();
+    let directory = root.join("app/components/ui");
+    apply(&plan_add(&root, &directory, &tiny_registry(DIAL), &["knob"], false).expect("plan"))
+        .expect("written");
+    let path = directory.join("knob.js");
+    let written = fs::read_to_string(&path).expect("knob.js");
+    fs::write(&path, edit(&written)).expect("an edit");
+    (guard, root, directory)
+}
+
+/// Every candidate `find_base` offers is the pristine copy as `uf ui add`
+/// wrote it, which is what a project's history holds.
+fn from_history(source: &'static str) -> impl FnMut(&ProjectCopy, &Stamp) -> Vec<String> {
+    move |_, _| vec![stamped("knob", source)]
+}
+
+#[test]
+fn a_base_is_recognised_by_its_digest_with_or_without_a_stamp() {
+    let stamp = Stamp::new("knob", DIAL);
+    assert_eq!(base_of(&stamp, DIAL).as_deref(), Some(DIAL));
+    assert_eq!(
+        base_of(&stamp, &stamped("knob", DIAL)).as_deref(),
+        Some(DIAL)
+    );
+    assert_eq!(
+        base_of(&stamp, &DIAL.replace('\n', "\r\n")).as_deref(),
+        Some(DIAL),
+        "a checkout with Windows line endings is the same text"
+    );
+    assert_eq!(base_of(&stamp, DIAL_LATER), None);
+    assert_eq!(base_of(&stamp, &DIAL.replace("md", "lg")), None);
+}
+
+#[test]
+fn edits_that_do_not_touch_merge_and_the_copy_reads_as_edited_against_this_registry() {
+    let (_guard, root, directory) = edited_dial(|text| text.replace("\"md\"", "\"lg\""));
+    let later = tiny_registry(DIAL_LATER);
+
+    let plan =
+        plan_update(&root, &directory, &later, &["knob"], from_history(DIAL)).expect("a plan");
+    assert_eq!(plan.steps.len(), 1);
+    assert_eq!(
+        plan.steps[0].action,
+        UpdateAction::Merged {
+            from: REGISTRY_VERSION.into(),
+            conflicts: 0
+        }
+    );
+    assert_eq!(plan.conflicted().count(), 0);
+    update::apply(&plan).expect("written");
+
+    let copy = inspect(&directory, later.get("knob").expect("knob")).expect("inspect");
+    assert_eq!(
+        copy.content.as_deref(),
+        Some("// @flow\n// Knob: turns.\nexport const knob = 2;\n\nexport const size = \"lg\";\n"),
+        "the registry's change and the project's are both there"
+    );
+    assert!(
+        matches!(
+            copy.state,
+            CopyState::Edited {
+                registry_moved: false,
+                ..
+            }
+        ),
+        "a merged copy is the project's edit against this registry, not an untouched copy \
+         the next `uf ui add` may replace: {:?}",
+        copy.state
+    );
+
+    // And a second update has nothing left to do.
+    let again = plan_update(&root, &directory, &later, &[], |_, _| {
+        panic!("a copy the registry has not moved under needs no base")
+    })
+    .expect("a plan");
+    assert_eq!(again.steps[0].action, UpdateAction::Kept);
+    assert!(!again.writes());
+}
+
+#[test]
+fn edits_that_overlap_are_written_as_a_conflict_and_counted() {
+    let (_guard, root, directory) = edited_dial(|text| text.replace("knob = 1", "knob = 9"));
+    let later = tiny_registry(DIAL_LATER);
+
+    let plan =
+        plan_update(&root, &directory, &later, &["knob"], from_history(DIAL)).expect("a plan");
+    assert_eq!(plan.conflicted().count(), 1);
+    let written = plan.steps[0]
+        .contents
+        .as_deref()
+        .expect("a merge is written");
+    for marker in [
+        "<<<<<<< this project\nexport const knob = 9;\n",
+        &format!("||||||| uf {REGISTRY_VERSION}\nexport const knob = 1;\n"),
+        "=======\nexport const knob = 2;\n",
+        &format!(">>>>>>> uf {REGISTRY_VERSION}\n"),
+    ] {
+        assert!(
+            written.contains(marker),
+            "{marker:?} is missing from:\n{written}"
+        );
+    }
+    assert!(
+        written.ends_with(&format!("{}\n", Stamp::new("knob", DIAL_LATER).line())),
+        "a conflicted merge is stamped against this registry too:\n{written}"
+    );
+}
+
+#[test]
+fn without_a_base_that_hashes_to_the_stamp_nothing_is_merged() {
+    let (_guard, root, directory) = edited_dial(|text| text.replace("\"md\"", "\"lg\""));
+    let later = tiny_registry(DIAL_LATER);
+
+    for offered in [
+        Vec::new(),
+        vec![DIAL_LATER.to_owned(), "// @flow\n".to_owned()],
+    ] {
+        let plan = plan_update(&root, &directory, &later, &["knob"], |_, _| offered.clone())
+            .expect("a plan");
+        assert_eq!(
+            plan.steps[0].action,
+            UpdateAction::NoBase {
+                from: REGISTRY_VERSION.into()
+            }
+        );
+        assert!(!plan.writes());
+    }
+}
+
+#[test]
+fn an_untouched_copy_is_brought_up_and_a_sibling_it_now_imports_is_written() {
+    let (_guard, root) = project();
+    let directory = root.join("app/components/ui");
+    let before = Registry::from_sources([
+        ("knob", KNOB),
+        (
+            "panel",
+            "// @flow\n// Panel: holds nothing yet.\nexport const panel = 1;\n",
+        ),
+    ])
+    .expect("reads");
+    apply(&plan_add(&root, &directory, &before, &["panel"], false).expect("plan"))
+        .expect("written");
+
+    let after = tiny_registry(KNOB);
+    let plan = plan_update(&root, &directory, &after, &[], |_, _| {
+        panic!("an untouched copy needs no base")
+    })
+    .expect("a plan");
+    let actions: Vec<(&str, &UpdateAction)> = plan
+        .steps
+        .iter()
+        .map(|step| (step.component, &step.action))
+        .collect();
+    assert_eq!(
+        actions,
+        [
+            (
+                "panel",
+                &UpdateAction::Update {
+                    from: REGISTRY_VERSION.into()
+                }
+            ),
+            ("knob", &UpdateAction::Create),
+        ]
+    );
+    assert_eq!(plan.packages, ["@uniflowed/react"]);
+    update::apply(&plan).expect("written");
+    assert_eq!(
+        fs::read_to_string(directory.join("knob.js")).expect("knob.js"),
+        stamped("knob", KNOB)
+    );
+}
+
+#[test]
+fn a_name_the_project_never_added_is_refused_and_a_foreign_file_is_left_alone() {
+    let (_guard, root) = project();
+    let directory = root.join("app/components/ui");
+    fs::create_dir_all(&directory).expect("the directory");
+    fs::write(directory.join("plain.js"), "// ours\n").expect("a file of the project's own");
+    let registry = tiny_registry(KNOB);
+
+    match plan_update(&root, &directory, &registry, &["knob", "panel"], |_, _| {
+        Vec::new()
+    }) {
+        Err(UpdateError::NotAdded(names)) => assert_eq!(names, ["knob", "panel"]),
+        other => panic!("expected the names to be refused, got {other:?}"),
+    }
+    let plan = plan_update(&root, &directory, &registry, &[], |_, _| Vec::new()).expect("plan");
+    assert_eq!(plan.steps.len(), 1);
+    assert_eq!(plan.steps[0].action, UpdateAction::Foreign);
+    assert!(!plan.writes());
 }

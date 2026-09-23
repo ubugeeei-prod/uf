@@ -92,7 +92,7 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./components/
 | Where it lives | `node_modules`, upgraded with uf | `app/components/ui/`, committed with your code |
 | What it owns | Roles, the keyboard, focus, the ARIA wiring, composition types | The look: tokens, spacing, variants, the markup around the parts |
 | How you change it | `className`, `render`, data attributes | Edit the file |
-| How a fix reaches you | Upgrading `@uniflowed/ui` | Behaviour by upgrading `@uniflowed/ui`, which the file still imports; the look through `uf ui diff` and your own edit, or `uf ui add --overwrite` |
+| How a fix reaches you | Upgrading `@uniflowed/ui` | Behaviour by upgrading `@uniflowed/ui`, which the file still imports; the look through `uf ui update`, which merges the registry's change into your edited file |
 
 Reach for the owned component when the application wants one look that its
 pages agree on and a person expects to open the file and change it, which is
@@ -110,8 +110,11 @@ into it is a Flow error in your own file.
 A copy remembers where it came from. Its last line names the uf that wrote it
 and a digest of what was written, so `uf ui add` never replaces a file somebody
 edited without `--overwrite`, and `uf ui diff` says whether a difference is your
-edit, the registry's change, or both. [Commands](/reference/cli) has the whole
-of all three commands, and [Components](/reference/ui#registry-components)
+edit, the registry's change, or both. `uf ui update` merges the registry's
+change into your edit. The digest identifies the exact text the copy began as,
+and that text is the base of a three-way merge, so updating a component does
+not mean choosing between your edit and the fix. [Commands](/reference/cli) has
+all four commands in full, and [Components](/reference/ui#registry-components)
 renders every component the registry has, live and beside its source.
 
 Every owned component is styled with the tokens `@uniflowed/stylex` compiles,

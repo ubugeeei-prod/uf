@@ -1162,7 +1162,9 @@ impl Commands {
                 }
                 | Self::Test { json: true, .. }
                 | Self::Ui {
-                    command: UiCommand::List { json: true } | UiCommand::Diff { json: true, .. },
+                    command: UiCommand::List { json: true }
+                        | UiCommand::Diff { json: true, .. }
+                        | UiCommand::Update { json: true, .. },
                 }
         )
     }
@@ -1268,6 +1270,31 @@ pub(crate) enum UiCommand {
         #[arg(long)]
         json: bool,
         /// The components to compare; every one the project has, when none is
+        /// named.
+        #[arg(value_name = "NAME")]
+        names: Vec<String>,
+    },
+    /// Bring the project's copies up to this uf's components, merging this
+    /// uf's changes into copies the project has edited.
+    ///
+    /// An untouched copy is replaced, as `uf ui add` would. An edited copy of a
+    /// component this uf has changed is merged three ways, from the registry
+    /// text the copy began as: found in the project's git history, or in the
+    /// uf source at the release its stamp names, and used only when it hashes
+    /// to the digest the stamp recorded. Overlapping edits are written with
+    /// conflict markers, named, and fail the run.
+    Update {
+        /// Say what would change, and write and install nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Look for the text a copy began as only in the project's git
+        /// history, never on the network.
+        #[arg(long)]
+        offline: bool,
+        /// Emit machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+        /// The components to update; every one the project has, when none is
         /// named.
         #[arg(value_name = "NAME")]
         names: Vec<String>,

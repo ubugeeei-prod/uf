@@ -81,10 +81,20 @@ impl Stamp {
 
 /// `source`, stamped as `component`: exactly what `uf ui add` writes.
 pub fn stamped(component: &str, source: &str) -> String {
-    let stamp = Stamp::new(component, source);
-    let mut out = String::with_capacity(source.len() + 128);
-    out.push_str(source);
-    if !source.is_empty() && !source.ends_with('\n') {
+    with_stamp(source, &Stamp::new(component, source))
+}
+
+/// `content` with `stamp` as its last line.
+///
+/// [`stamped`] is the case where the content is the registry's text and the
+/// stamp its digest. `uf ui update` writes the other case: a merge, whose
+/// content is the project's and whose stamp names the registry text it was
+/// merged onto — so the copy then reads as edited against this uf's version,
+/// with nothing of the registry's left outstanding.
+pub fn with_stamp(content: &str, stamp: &Stamp) -> String {
+    let mut out = String::with_capacity(content.len() + 128);
+    out.push_str(content);
+    if !content.is_empty() && !content.ends_with('\n') {
         out.push('\n');
     }
     out.push_str(&stamp.line());

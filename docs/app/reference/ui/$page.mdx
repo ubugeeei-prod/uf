@@ -125,11 +125,18 @@ but they are not primitives with a behaviour contract of their own here.
 
 | Name people expect | Use instead | Why it is not exported |
 | --- | --- | --- |
-| `Button` | a real `<button>` plus a style preset | The behaviour is already in HTML; the design decision is visual |
-| `Card`, `Badge`, `Label`, `Input`, `Textarea` | plain elements plus presets | With no styles they are wrappers around one element, and wrappers lose props |
+| `Button` | a real `<button>` plus a style preset, or `uf ui add button` | The behaviour is already in HTML; the design decision is visual |
+| `Card`, `Badge`, `Label`, `Input`, `Textarea` | plain elements plus presets, or `uf ui add card badge label input textarea` | With no styles they are wrappers around one element, and wrappers lose props |
 | `Command` | `Dialog` + `Combobox` + grouped options + `useKeyCombo` | The composition is the feature; a module would duplicate two finished contracts |
 | `DataTable` | `Table` plus your table state and fetching layer | Sorting, selection and row counts are here; query/state orchestration is app-specific |
 | `FormField` | `Field` plus the control you render | The field owns ids and errors; the form library owns values and validation |
+
+The styled half is different. A styled button, card or badge that the whole
+application agrees on is a decision about that application, so the
+[registry](#registry-components) carries one of each. `uf ui add` writes it into
+the project as a file the project owns, and that file passes every attribute
+through to the element. The headless package declines these names, and the
+registry does not: they sit on opposite sides of the same line.
 
 This is not minimalism for its own sake. A missing component should be a clear
 "compose these parts" or "not implemented yet", never a thin wrapper that looks
