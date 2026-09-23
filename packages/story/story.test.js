@@ -303,7 +303,7 @@ describe("findStory", () => {
     const ambiguous = defineStories({
       title: "Alert",
       component: Badge,
-      props: { tone: "neutral" },
+      props: { label: "Alert", tone: "neutral" },
       stories: {
         Quiet: { name: "Loud" },
         Loud: {},
@@ -683,7 +683,7 @@ describe("a story's mocked requests", () => {
 
 describe("a play function", () => {
   /** `Counter` stories, over whichever counter is handed in. */
-  function counters(component) {
+  function counters(component: component(step: number)) {
     return defineStories({
       title: "Counter",
       component,

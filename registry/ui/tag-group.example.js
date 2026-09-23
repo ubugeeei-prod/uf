@@ -14,7 +14,7 @@ export component Example() {
     <TagGroup
       aria-label="Tags"
       items={tags}
-      onRemove={(key) => setTags(tags.filter((item) => item.key !== key))}
+      onRemove={(key: string) => setTags(tags.filter((item) => item.key !== key))}
     />
   );
 }

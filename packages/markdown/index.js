@@ -17,7 +17,7 @@ export type MdxOptions = MarkdownOptions & {
   readonly jsxImportSource?: "@uniflowed/jsx-runtime",
 };
 
-export component Markdown(source: string, options?: MarkdownOptions) renders React.Node {
+export component Markdown(source: string, options?: MarkdownOptions) {
   return nativeRuntimeRequired(MODULE, "Markdown");
 }
 
@@ -29,7 +29,7 @@ export function compileMarkdown(source: string, options?: MarkdownOptions): Prom
   return nativeRuntimeRequired(MODULE, "compileMarkdown");
 }
 
-export component Mdx(source: string, options?: MdxOptions) renders React.Node {
+export component Mdx(source: string, options?: MdxOptions) {
   return nativeRuntimeRequired(MODULE, "Mdx");
 }
 
