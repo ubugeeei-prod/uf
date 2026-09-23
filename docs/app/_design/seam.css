@@ -1580,6 +1580,140 @@ tbody tr:last-child :is(td, th) {
   }
 }
 
+/* What a reader can do: one row per goal, its status as a word in a small
+   bordered tag, and its path as numbered links joined by arrows. Rules between
+   rows, no cards and no fills; the status colours are the site's existing
+   good/warn tones and are never the only signal — the word is there. */
+.goals .goals-list {
+  border-top: 1px solid var(--doc-rule);
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+}
+
+.goals .goals-list > .goal {
+  border-bottom: 1px solid var(--doc-rule);
+  display: grid;
+  gap: 0.45rem 2rem;
+  margin: 0;
+  padding: 1.1rem 0 1.15rem;
+}
+
+@media (min-width: 48rem) {
+  .goals-compact .goals .goals-list > .goal {
+    align-items: baseline;
+    grid-template-columns: 17rem minmax(0, 1fr);
+  }
+}
+
+.goal-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.7rem;
+}
+
+.goals .goal-head h3 {
+  font-family: var(--uf-font-display);
+  font-size: 1.02rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.goal-status {
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-family: var(--uf-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  padding: 0.22rem 0.4rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.goal-status[data-status="implemented"] {
+  color: var(--doc-good);
+}
+
+.goal-status[data-status="experimental"] {
+  color: var(--doc-warn);
+}
+
+.goal-status[data-status="planned"] {
+  color: var(--doc-ink-faint);
+}
+
+.goals .goal-outcome,
+.goals .goal-caveat {
+  color: var(--doc-ink-muted);
+  font-size: 0.95rem;
+  margin: 0;
+  max-width: none;
+}
+
+.goals .goal-caveat {
+  border-left: 2px solid var(--doc-rule-strong);
+  font-size: 0.88rem;
+  padding-left: 0.7rem;
+}
+
+/* The path: numbered steps on one line where they fit, each a link, the
+   arrow drawn by CSS so a screen reader hears a numbered list, not arrows. */
+.goals .goal-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0;
+  list-style: none;
+  margin: 0.15rem 0 0;
+  padding: 0;
+}
+
+.goals .goal-steps li {
+  align-items: baseline;
+  display: inline-flex;
+  margin: 0;
+}
+
+.goals .goal-steps li + li::before {
+  color: var(--doc-ink-faint);
+  content: "→";
+  padding: 0 0.55rem;
+}
+
+.goals .goal-steps a {
+  color: var(--doc-ink);
+  font-size: 0.93rem;
+  text-decoration-color: var(--doc-rule-strong);
+  text-underline-offset: 0.2em;
+}
+
+.goal-step-number {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  padding-right: 0.3rem;
+}
+
+.goals .goal-steps a:hover {
+  color: var(--doc-link);
+  text-decoration-color: currentColor;
+}
+
+.goals-more {
+  margin: 1rem 0 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .goals .goal-steps a {
+    transition:
+      color 120ms ease-out,
+      text-decoration-color 120ms ease-out;
+  }
+}
+
 /* The home page is one seam from the masthead to the colophon — the whole
    argument is that there is one of these, so drawing a fresh gradient per
    section would be arguing against it. */
