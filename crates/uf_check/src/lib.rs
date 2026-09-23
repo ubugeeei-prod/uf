@@ -175,10 +175,36 @@ pub fn module_closure<'a>(
 /// Each entry carries a digest of the text it was computed from and is dropped
 /// rather than trusted when that text is not the same, so holding one across
 /// an edit is slower and never wrong.
+///
+/// [`ModuleRequires::backed_by`] reads across commands too: a file the last
+/// check filed a record for is read from that record — its imports, and which
+/// bare specifiers Flow's library definitions declare — rather than parsed, so a
+/// walk over an unchanged project neither parses nor merges the builtins.
 #[derive(Default)]
 pub struct ModuleRequires {
     #[cfg(feature = "upstream-typecheck")]
     inner: upstream::closure::Requires,
+}
+
+impl ModuleRequires {
+    /// A memo that also reads the records `cache` holds.
+    ///
+    /// A record is read only under the key the file has now — the compiler,
+    /// the limits, the library definitions, its path and its text — so one
+    /// found is about this file exactly as it is, and an edit is a parse.
+    pub fn backed_by(cache: CheckCache) -> Self {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            Self {
+                inner: upstream::closure::Requires::backed_by(cache),
+            }
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = cache;
+            Self::default()
+        }
+    }
 }
 
 /// [`module_closure`], reading what `requires` already knows.

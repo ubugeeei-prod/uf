@@ -121,6 +121,7 @@ pub(crate) fn prepare(libs: &[Source<'_>]) -> Result<BuiltinsTiming, CheckError>
         elapsed: started.elapsed(),
         cold_elapsed: builtins.cold_elapsed,
         cold,
+        needed: true,
     })
 }
 

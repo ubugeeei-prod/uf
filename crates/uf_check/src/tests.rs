@@ -115,6 +115,7 @@ fn a_report_counts_by_severity() {
             elapsed: std::time::Duration::ZERO,
             cold_elapsed: std::time::Duration::ZERO,
             cold: false,
+            needed: true,
         },
         elapsed: std::time::Duration::from_millis(10),
     };
@@ -138,6 +139,7 @@ fn throughput_is_unknown_when_no_time_passed() {
             elapsed: std::time::Duration::ZERO,
             cold_elapsed: std::time::Duration::ZERO,
             cold: true,
+            needed: true,
         },
         elapsed: std::time::Duration::ZERO,
     };
