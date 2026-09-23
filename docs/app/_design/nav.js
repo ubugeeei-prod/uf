@@ -291,6 +291,12 @@ export const sections: $ReadOnlyArray<Section> = [
           "Relay artifacts, typed components, request-scoped RSC preloads, and an independent backend.",
       },
       {
+        href: "/guide/sqlc",
+        title: "SQL with sqlc",
+        blurb:
+          "Write SQL, and get Flow row types and query functions whose types hold under every driver. Experimental.",
+      },
+      {
         href: "/guide/logging",
         title: "Logging",
         blurb: "A structured logger, and a request id readable from inside a render.",
