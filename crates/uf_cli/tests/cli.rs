@@ -1968,8 +1968,7 @@ fn the_files_a_scaffolded_route_is() {
         .unwrap();
     let report = String::from_utf8(linted.stdout).unwrap();
     assert!(linted.status.success(), "{report}");
-    assert!(report.contains("warnings       0"), "{report}");
-    assert!(report.contains("errors         0"), "{report}");
+    assert!(report.contains("✓ no problems · "), "{report}");
 
     let listed = uf()
         .arg("--cwd")
