@@ -1,0 +1,20 @@
+CREATE TABLE people (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  age INT,
+  big BIGINT,
+  flag BOOLEAN NOT NULL DEFAULT 0,
+  price NUMERIC,
+  dec DECIMAL(10,2),
+  ratio REAL NOT NULL DEFAULT 0,
+  dbl DOUBLE PRECISION,
+  born DATE,
+  at DATETIME,
+  ts TIMESTAMP,
+  data JSON,
+  jb JSONB,
+  raw BLOB,
+  vc VARCHAR(10),
+  weird FOOBAR
+);
+CREATE TABLE pets (id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, name TEXT NOT NULL);

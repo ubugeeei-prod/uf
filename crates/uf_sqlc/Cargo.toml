@@ -1,0 +1,32 @@
+[package]
+name = "uf_sqlc"
+description = "sqlc's Flow target: a code generator speaking sqlc's plugin protocol."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+# The generator on its own, for sqlc's WASM plugin transport
+# (`cargo build -p uf_sqlc --bin sqlc-gen-flow --target wasm32-wasip1`) and for
+# anyone who wants a process plugin that is not the whole of `uf`. `uf` itself
+# answers sqlc's plugin argument and does not need this binary.
+[[bin]]
+name = "sqlc-gen-flow"
+path = "src/bin/sqlc-gen-flow.rs"
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+similar-asserts.workspace = true
+# The golden tests print what `uf` prints, which is the generator's output
+# through `uf fmt`'s printer.
+uf_config = { path = "../uf_config" }
+uf_fmt = { path = "../uf_fmt" }

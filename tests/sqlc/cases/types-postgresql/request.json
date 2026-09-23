@@ -1,0 +1,1074 @@
+{
+  "settings": {
+    "version": "2",
+    "engine": "postgresql",
+    "schema": ["cases/types-postgresql/schema.sql"],
+    "queries": ["cases/types-postgresql/query.sql"],
+    "codegen": {
+      "out": "cases/types-postgresql/gen",
+      "plugin": "flow",
+      "process": {
+        "cmd": "uf"
+      }
+    }
+  },
+  "catalog": {
+    "default_schema": "public",
+    "schemas": [
+      {
+        "name": "public",
+        "tables": [
+          {
+            "rel": {
+              "name": "people"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "bigserial"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "nick",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "varchar"
+                }
+              },
+              {
+                "name": "age",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "int4"
+                }
+              },
+              {
+                "name": "small",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "int2"
+                }
+              },
+              {
+                "name": "score",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "numeric"
+                }
+              },
+              {
+                "name": "ratio",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "float8"
+                }
+              },
+              {
+                "name": "active",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "bool"
+                }
+              },
+              {
+                "name": "born",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "date"
+                }
+              },
+              {
+                "name": "wake",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "time"
+                }
+              },
+              {
+                "name": "created",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "timestamptz"
+                }
+              },
+              {
+                "name": "local_at",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "timestamp"
+                }
+              },
+              {
+                "name": "data",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "jsonb"
+                }
+              },
+              {
+                "name": "raw",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "bytea"
+                }
+              },
+              {
+                "name": "tags",
+                "not_null": true,
+                "is_array": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "text"
+                },
+                "array_dims": 1
+              },
+              {
+                "name": "grid",
+                "is_array": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "int4"
+                },
+                "array_dims": 2
+              },
+              {
+                "name": "feeling",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "mood"
+                }
+              },
+              {
+                "name": "feelings",
+                "is_array": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "mood"
+                },
+                "array_dims": 1
+              },
+              {
+                "name": "uid",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "uuid"
+                }
+              },
+              {
+                "name": "addr",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "inet"
+                }
+              }
+            ]
+          },
+          {
+            "rel": {
+              "name": "pets"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pets"
+                },
+                "type": {
+                  "name": "serial"
+                }
+              },
+              {
+                "name": "owner_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pets"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int8"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pets"
+                },
+                "type": {
+                  "name": "text"
+                }
+              }
+            ]
+          }
+        ],
+        "enums": [
+          {
+            "name": "mood",
+            "vals": ["sad", "ok", "happy"]
+          }
+        ]
+      },
+      {
+        "name": "pg_temp"
+      }
+    ]
+  },
+  "queries": [
+    {
+      "text": "SELECT id, name, nick, age, small, score, ratio, active, born, wake, created, local_at, data, raw, tags, grid, feeling, feelings, uid, addr FROM people WHERE id = $1",
+      "name": "GetPerson",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        },
+        {
+          "name": "nick",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "varchar"
+          },
+          "original_name": "nick"
+        },
+        {
+          "name": "age",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "int4"
+          },
+          "original_name": "age"
+        },
+        {
+          "name": "small",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "int2"
+          },
+          "original_name": "small"
+        },
+        {
+          "name": "score",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "numeric"
+          },
+          "original_name": "score"
+        },
+        {
+          "name": "ratio",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "float8"
+          },
+          "original_name": "ratio"
+        },
+        {
+          "name": "active",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "bool"
+          },
+          "original_name": "active"
+        },
+        {
+          "name": "born",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "date"
+          },
+          "original_name": "born"
+        },
+        {
+          "name": "wake",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "time"
+          },
+          "original_name": "wake"
+        },
+        {
+          "name": "created",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "timestamptz"
+          },
+          "original_name": "created"
+        },
+        {
+          "name": "local_at",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "timestamp"
+          },
+          "original_name": "local_at"
+        },
+        {
+          "name": "data",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "jsonb"
+          },
+          "original_name": "data"
+        },
+        {
+          "name": "raw",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "bytea"
+          },
+          "original_name": "raw"
+        },
+        {
+          "name": "tags",
+          "not_null": true,
+          "is_array": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "tags",
+          "array_dims": 1
+        },
+        {
+          "name": "grid",
+          "is_array": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "int4"
+          },
+          "original_name": "grid",
+          "array_dims": 2
+        },
+        {
+          "name": "feeling",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "mood"
+          },
+          "original_name": "feeling"
+        },
+        {
+          "name": "feelings",
+          "is_array": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "mood"
+          },
+          "original_name": "feelings",
+          "array_dims": 1
+        },
+        {
+          "name": "uid",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "uuid"
+          },
+          "original_name": "uid"
+        },
+        {
+          "name": "addr",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "inet"
+          },
+          "original_name": "addr"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "bigserial"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT id, name FROM people WHERE id = ANY($1::bigint[])",
+      "name": "ListByIds",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "ids",
+            "not_null": true,
+            "is_array": true,
+            "length": -1,
+            "is_named_param": true,
+            "type": {
+              "schema": "pg_catalog",
+              "name": "int8"
+            },
+            "array_dims": 1
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT id, name, feeling FROM people\nWHERE name ILIKE $1 AND ($2::int IS NULL OR age >= $2)",
+      "name": "Search",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        },
+        {
+          "name": "feeling",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "mood"
+          },
+          "original_name": "feeling"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "pattern",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "min_age",
+            "length": -1,
+            "is_named_param": true,
+            "type": {
+              "schema": "pg_catalog",
+              "name": "int4"
+            }
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT people.id, people.name, people.nick, people.age, people.small, people.score, people.ratio, people.active, people.born, people.wake, people.created, people.local_at, people.data, people.raw, people.tags, people.grid, people.feeling, people.feelings, people.uid, people.addr, pets.id, pets.owner_id, pets.name FROM people JOIN pets ON pets.owner_id = people.id",
+      "name": "PeopleWithPets",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "people",
+          "length": -1,
+          "embed_table": {
+            "name": "people"
+          }
+        },
+        {
+          "name": "pets",
+          "length": -1,
+          "embed_table": {
+            "name": "pets"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "INSERT INTO people (name, tags, feeling) VALUES ($1, $2, $3) RETURNING id, created",
+      "name": "CreatePerson",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "created",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "timestamptz"
+          },
+          "original_name": "created"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "people"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "tags",
+            "not_null": true,
+            "is_array": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "people"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "tags",
+            "array_dims": 1
+          }
+        },
+        {
+          "number": 3,
+          "column": {
+            "name": "feeling",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "people"
+            },
+            "type": {
+              "name": "mood"
+            },
+            "original_name": "feeling"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "people"
+      }
+    },
+    {
+      "text": "UPDATE people SET name = $1 WHERE id = $2",
+      "name": "Rename",
+      "cmd": ":execrows",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "new_name",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "schema": "public",
+              "name": "people"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "bigserial"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "UPDATE people SET created = now()",
+      "name": "Touch",
+      "cmd": ":exec",
+      "filename": "query.sql"
+    },
+    {
+      "text": "DELETE FROM people WHERE id = $1",
+      "name": "Remove",
+      "cmd": ":execresult",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "bigserial"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "INSERT INTO pets (owner_id, name) VALUES ($1, $2)",
+      "name": "CopyPets",
+      "cmd": ":copyfrom",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "owner_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "pets"
+            },
+            "type": {
+              "name": "pg_catalog.int8"
+            },
+            "original_name": "owner_id"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "pets"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "pets"
+      }
+    },
+    {
+      "text": "SELECT name FROM people WHERE age = $1",
+      "name": "BatchNames",
+      "cmd": ":batchmany",
+      "columns": [
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "age",
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "int4"
+            },
+            "original_name": "age"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT id FROM people WHERE name = $1",
+      "name": "BatchOne",
+      "cmd": ":batchone",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "DELETE FROM pets WHERE id = $1",
+      "name": "BatchDel",
+      "cmd": ":batchexec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "pets"
+            },
+            "type": {
+              "name": "serial"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT count(*) AS total, max(created) FROM people",
+      "name": "CountPeople",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "total",
+          "not_null": true,
+          "length": -1,
+          "is_func_call": true,
+          "type": {
+            "name": "bigint"
+          }
+        },
+        {
+          "name": "max",
+          "not_null": true,
+          "length": -1,
+          "is_func_call": true,
+          "type": {
+            "name": "anyarray"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT name FROM people WHERE id = $1",
+      "name": "Scalar",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "bigserial"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    }
+  ],
+  "sqlc_version": "v1.31.1"
+}

@@ -1,0 +1,260 @@
+{
+  "settings": {
+    "version": "2",
+    "engine": "postgresql",
+    "schema": ["cases/jets-postgresql/schema.sql"],
+    "queries": ["cases/jets-postgresql/query-building.sql"],
+    "codegen": {
+      "out": "cases/jets-postgresql/gen",
+      "plugin": "flow",
+      "process": {
+        "cmd": "uf"
+      }
+    }
+  },
+  "catalog": {
+    "default_schema": "public",
+    "schemas": [
+      {
+        "name": "public",
+        "tables": [
+          {
+            "rel": {
+              "name": "pilots"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pilots"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int4"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pilots"
+                },
+                "type": {
+                  "name": "text"
+                }
+              }
+            ]
+          },
+          {
+            "rel": {
+              "name": "jets"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "jets"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int4"
+                }
+              },
+              {
+                "name": "pilot_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "jets"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int4"
+                }
+              },
+              {
+                "name": "age",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "jets"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int4"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "jets"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "color",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "jets"
+                },
+                "type": {
+                  "name": "text"
+                }
+              }
+            ]
+          },
+          {
+            "rel": {
+              "name": "languages"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "languages"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int4"
+                }
+              },
+              {
+                "name": "language",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "languages"
+                },
+                "type": {
+                  "name": "text"
+                }
+              }
+            ]
+          },
+          {
+            "rel": {
+              "name": "pilot_languages"
+            },
+            "columns": [
+              {
+                "name": "pilot_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pilot_languages"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int4"
+                }
+              },
+              {
+                "name": "language_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pilot_languages"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "int4"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "pg_temp"
+      }
+    ]
+  },
+  "queries": [
+    {
+      "text": "SELECT COUNT(*) FROM pilots",
+      "name": "CountPilots",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "count",
+          "not_null": true,
+          "length": -1,
+          "is_func_call": true,
+          "type": {
+            "name": "bigint"
+          }
+        }
+      ],
+      "filename": "query-building.sql"
+    },
+    {
+      "text": "SELECT id, name FROM pilots LIMIT 5",
+      "name": "ListPilots",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "pilots"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "int4"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "pilots"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        }
+      ],
+      "filename": "query-building.sql"
+    },
+    {
+      "text": "DELETE FROM pilots WHERE id = $1",
+      "name": "DeletePilot",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "pilots"
+            },
+            "type": {
+              "name": "pg_catalog.int4"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query-building.sql"
+    }
+  ],
+  "sqlc_version": "v1.31.1"
+}

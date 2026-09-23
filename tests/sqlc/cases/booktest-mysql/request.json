@@ -1,0 +1,885 @@
+{
+  "settings": {
+    "version": "2",
+    "engine": "mysql",
+    "schema": ["cases/booktest-mysql/schema.sql"],
+    "queries": ["cases/booktest-mysql/query.sql"],
+    "codegen": {
+      "out": "cases/booktest-mysql/gen",
+      "plugin": "flow",
+      "process": {
+        "cmd": "uf"
+      }
+    }
+  },
+  "catalog": {
+    "default_schema": "public",
+    "schemas": [
+      {
+        "name": "public",
+        "tables": [
+          {
+            "rel": {
+              "name": "authors"
+            },
+            "columns": [
+              {
+                "name": "author_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "authors"
+                },
+                "type": {
+                  "name": "int"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "authors"
+                },
+                "type": {
+                  "name": "text"
+                }
+              }
+            ]
+          },
+          {
+            "rel": {
+              "name": "books"
+            },
+            "columns": [
+              {
+                "name": "book_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "int"
+                }
+              },
+              {
+                "name": "author_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "int"
+                }
+              },
+              {
+                "name": "isbn",
+                "not_null": true,
+                "length": 255,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "varchar"
+                }
+              },
+              {
+                "name": "book_type",
+                "not_null": true,
+                "length": 10,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "books_book_type"
+                }
+              },
+              {
+                "name": "title",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "yr",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "int"
+                }
+              },
+              {
+                "name": "available",
+                "not_null": true,
+                "length": 19,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "datetime"
+                }
+              },
+              {
+                "name": "tags",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "books"
+                },
+                "type": {
+                  "name": "text"
+                }
+              }
+            ]
+          }
+        ],
+        "enums": [
+          {
+            "name": "books_book_type",
+            "vals": ["FICTION", "NONFICTION"]
+          }
+        ]
+      }
+    ]
+  },
+  "queries": [
+    {
+      "text": "SELECT author_id, name FROM authors\nWHERE author_id = ?",
+      "name": "GetAuthor",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "author_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "authors"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "author_id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "authors"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "author_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "authors"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "author_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT book_id, author_id, isbn, book_type, title, yr, available, tags FROM books\nWHERE book_id = ?",
+      "name": "GetBook",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "book_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "book_id"
+        },
+        {
+          "name": "author_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "author_id"
+        },
+        {
+          "name": "isbn",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "isbn"
+        },
+        {
+          "name": "book_type",
+          "not_null": true,
+          "length": 10,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "books_book_type"
+          },
+          "original_name": "book_type"
+        },
+        {
+          "name": "title",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "title"
+        },
+        {
+          "name": "yr",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "yr"
+        },
+        {
+          "name": "available",
+          "not_null": true,
+          "length": 19,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "datetime"
+          },
+          "original_name": "available"
+        },
+        {
+          "name": "tags",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "tags"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "book_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "book_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "DELETE FROM books\nWHERE book_id = ?",
+      "name": "DeleteBook",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "book_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "book_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT book_id, author_id, isbn, book_type, title, yr, available, tags FROM books\nWHERE title = ? AND yr = ?",
+      "name": "BooksByTitleYear",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "book_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "book_id"
+        },
+        {
+          "name": "author_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "author_id"
+        },
+        {
+          "name": "isbn",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "isbn"
+        },
+        {
+          "name": "book_type",
+          "not_null": true,
+          "length": 10,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "books_book_type"
+          },
+          "original_name": "book_type"
+        },
+        {
+          "name": "title",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "title"
+        },
+        {
+          "name": "yr",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "yr"
+        },
+        {
+          "name": "available",
+          "not_null": true,
+          "length": 19,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "datetime"
+          },
+          "original_name": "available"
+        },
+        {
+          "name": "tags",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "tags"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "title",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "title"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "yr",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "yr"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT\n  book_id,\n  title,\n  name,\n  isbn,\n  tags\nFROM books\nLEFT JOIN authors ON books.author_id = authors.author_id\nWHERE tags = ?",
+      "name": "BooksByTags",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "book_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "int"
+          },
+          "original_name": "book_id"
+        },
+        {
+          "name": "title",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "title"
+        },
+        {
+          "name": "name",
+          "length": -1,
+          "table": {
+            "name": "authors"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        },
+        {
+          "name": "isbn",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "isbn"
+        },
+        {
+          "name": "tags",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "books"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "tags"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "tags",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "tags"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "INSERT INTO authors (name) VALUES (?)",
+      "name": "CreateAuthor",
+      "cmd": ":execresult",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "authors"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "authors"
+      }
+    },
+    {
+      "text": "INSERT INTO books (\n    author_id,\n    isbn,\n    book_type,\n    title,\n    yr,\n    available,\n    tags\n) VALUES (\n    ?,\n    ?,\n    ?,\n    ?,\n    ?,\n    ?,\n    ?\n)",
+      "name": "CreateBook",
+      "cmd": ":execresult",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "author_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "author_id"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "isbn",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "isbn"
+          }
+        },
+        {
+          "number": 3,
+          "column": {
+            "name": "book_type",
+            "not_null": true,
+            "length": 10,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "books_book_type"
+            },
+            "original_name": "book_type"
+          }
+        },
+        {
+          "number": 4,
+          "column": {
+            "name": "title",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "title"
+          }
+        },
+        {
+          "number": 5,
+          "column": {
+            "name": "yr",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "yr"
+          }
+        },
+        {
+          "number": 6,
+          "column": {
+            "name": "available",
+            "not_null": true,
+            "length": 19,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "datetime"
+            },
+            "original_name": "available"
+          }
+        },
+        {
+          "number": 7,
+          "column": {
+            "name": "tags",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "tags"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "books"
+      }
+    },
+    {
+      "text": "UPDATE books\nSET title = ?, tags = ?\nWHERE book_id = ?",
+      "name": "UpdateBook",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "title",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "title"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "tags",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "tags"
+          }
+        },
+        {
+          "number": 3,
+          "column": {
+            "name": "book_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "book_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "UPDATE books\nSET title = ?, tags = ?, isbn = ?\nWHERE book_id = ?",
+      "name": "UpdateBookISBN",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "title",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "title"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "tags",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "tags"
+          }
+        },
+        {
+          "number": 3,
+          "column": {
+            "name": "isbn",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "schema": "public",
+              "name": "books"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "isbn"
+          }
+        },
+        {
+          "number": 4,
+          "column": {
+            "name": "book_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "book_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "DELETE FROM books\nWHERE yr < ? AND author_id = ?",
+      "name": "DeleteAuthorBeforeYear",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "yr",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "yr"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "author_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "books"
+            },
+            "type": {
+              "name": "int"
+            },
+            "original_name": "author_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    }
+  ],
+  "sqlc_version": "v1.31.1"
+}

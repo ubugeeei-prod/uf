@@ -4653,6 +4653,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "uf_sqlc"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "similar-asserts",
+ "uf_config",
+ "uf_fmt",
+]
+
+[[package]]
 name = "uf_std"
 version = "0.1.0"
 dependencies = [
