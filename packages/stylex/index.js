@@ -67,15 +67,17 @@
 //
 // # Where the token values come from
 //
-// `@uniflowed/brand` owns uf's visual identity — the palette, the type and
-// spacing scales — and it stays there. (The interface's corners are the token
-// module's own, smaller than brand's.) It cannot own the token
-// module: a StyleX token's name is computed by the compiler from the binding
-// and key it was declared under, `defineVars` accepts only literals, and
-// brand's `--uf-*` names are hand-written for a different consumer. So brand
-// holds the identity values and `./tokens.stylex.js` is their StyleX-shaped
-// projection into semantic roles — `accent`, `ink`, `canvas` — which is the
-// layer a design system needs and an identity does not have.
+// `@uniflowed/brand` owns uf's visual identity — the logo, its spectrum, the
+// type and spacing scales — and it stays there. The interface borrows brand's
+// type and spacing, and chooses its own colours and corners: a UI dressed in
+// the logo's cyan-to-magenta spectrum and round corners looks generated, so
+// `./tokens.stylex.js` holds a neutral-first palette of its own
+// (`docs/ui-visual-language.md` says why). Brand could not own the token
+// module anyway: a StyleX token's name is computed by the compiler from the
+// binding and key it was declared under, and `defineVars` accepts only
+// literals. So `./tokens.stylex.js` is where the semantic roles — `accent`,
+// `ink`, `canvas` — get their values, which is the layer a design system needs
+// and an identity does not have.
 //
 // # Readiness
 //
