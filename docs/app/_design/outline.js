@@ -72,6 +72,13 @@ export component Outline(path: string) {
           break;
         }
       }
+      // At the foot of the page the last sections can be too short ever to
+      // reach that line, and a reader who has scrolled as far as the page
+      // goes is reading its end.
+      const root = document.documentElement;
+      if (root != null && window.innerHeight + window.scrollY >= root.scrollHeight - 2) {
+        reading = elements[elements.length - 1]?.id ?? reading;
+      }
       setCurrent(reading);
     };
     const onScroll = () => {

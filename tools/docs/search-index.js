@@ -44,10 +44,13 @@ export function entriesFromHtml(html: string, href: string, section: string): Ar
     throw new Error(`${href}: no <main id="content"> in the built page`);
   }
   const article = main[1]
-    // The running head, the link onward and the link to the page's source are
+    // The running head, the links to the pages either side, the way down to
+    // the contents and the link to the page's source are
     // chrome that happens to sit inside the article; none is something the
     // page says.
     .replace(/<p class="(eyebrow|next-page|page-source)">[\s\S]*?<\/p>/g, "")
+    .replace(/<nav class="page-turn"[^>]*>[\s\S]*?<\/nav>/g, "")
+    .replace(/<a class="to-contents"[^>]*>[\s\S]*?<\/a>/g, "")
     .replace(/<(script|style|template)\b[\s\S]*?<\/\1>/g, "")
     // Code blocks are left out. They are half the manual's bytes and most of
     // what they would match — `import`, `const`, `return` — is noise; the names

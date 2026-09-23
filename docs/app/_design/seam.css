@@ -812,6 +812,45 @@ pre {
   padding: 0.95rem 1.1rem;
 }
 
+/* A sample's copy button, added once the page has hydrated. It sits in the
+   corner and stays quiet until the sample is being looked at; on a screen
+   with no hover it is simply there. */
+pre,
+.command {
+  position: relative;
+}
+
+.copy {
+  background: var(--doc-paper);
+  border: 1px solid var(--doc-rule-strong);
+  border-radius: 2px;
+  color: var(--doc-ink-muted);
+  cursor: pointer;
+  font-family: var(--uf-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+}
+
+@media (hover: hover) {
+  .copy {
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+
+  :is(pre, .command):hover .copy,
+  .copy:focus-visible {
+    opacity: 1;
+  }
+}
+
+.copy:hover {
+  color: var(--doc-ink);
+}
+
 pre code {
   background: none;
   padding: 0;
@@ -1191,13 +1230,20 @@ tbody tr:last-child :is(td, th) {
  * Next page
  * ------------------------------------------------------------------ */
 
-.next-page {
+/* The pages either side, as two halves of one rule: the previous page on
+   the left, the next on the right, each with a small running label. */
+.page-turn {
   border-top: 1px solid var(--doc-rule);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
   margin-top: 3.5rem;
   padding-top: 1.4rem;
 }
 
-.next-page a {
+.page-turn a {
+  display: grid;
+  gap: 0.2rem;
   font-family: var(--uf-font-display);
   font-size: 1.05rem;
   font-weight: 600;
@@ -1205,9 +1251,40 @@ tbody tr:last-child :is(td, th) {
   text-decoration: none;
 }
 
-.next-page a:hover {
+.page-turn a:hover > span:last-child {
   text-decoration: underline;
   text-underline-offset: 0.2em;
+}
+
+.page-turn-next {
+  grid-column: 2;
+  text-align: right;
+}
+
+.page-turn-label {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The way down to the contents, for a phone, where they follow the article. */
+.prose .to-contents {
+  color: var(--doc-ink-faint);
+  display: inline-block;
+  font-family: var(--uf-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 1.25rem;
+  text-decoration: none;
+}
+
+@media (min-width: 60rem) {
+  .prose .to-contents {
+    display: none;
+  }
 }
 
 /* ------------------------------------------------------------------ *

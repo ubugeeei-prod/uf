@@ -9,13 +9,15 @@
 import * as React from "@uniflowed/react";
 import { useRoute } from "@uniflowed/router";
 
+import { CodeCopy } from "../_design/code-copy.js";
 import { Outline } from "../_design/outline.js";
-import { ManualNav, NextPage, PageSource } from "../_design/parts.js";
-import { nextAfter, sourceFor } from "../_design/nav.js";
+import { ManualNav, PageSource, PageTurn } from "../_design/parts.js";
+import { nextAfter, previousBefore, sourceFor } from "../_design/nav.js";
 
 export component Layout(children: React.Node) {
   const { pathname } = useRoute();
   const next = nextAfter(pathname);
+  const previous = previousBefore(pathname);
   const source = sourceFor(pathname);
 
   return (
@@ -29,8 +31,16 @@ export component Layout(children: React.Node) {
         there" is the question being asked.
       */}
       <main className="prose seam" id="content">
+        {/*
+          On a phone the sidebar is below the article, which is right for a
+          reader who followed a link here and wrong for one who wants to go
+          somewhere else. This is the way down to it, shown only there.
+        */}
+        <a className="to-contents" href="#manual-nav">
+          All pages <span aria-hidden="true">↓</span>
+        </a>
         {children}
-        {next != null ? <NextPage href={next.href} title={next.title} /> : null}
+        <PageTurn previous={previous} next={next} />
         {source != null ? <PageSource file={source} /> : null}
       </main>
       <ManualNav />
@@ -40,6 +50,7 @@ export component Layout(children: React.Node) {
         rail, and below that it is not shown at all.
       */}
       <Outline path={pathname} />
+      <CodeCopy path={pathname} />
     </div>
   );
 }
