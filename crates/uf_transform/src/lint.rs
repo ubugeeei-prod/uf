@@ -294,6 +294,14 @@ pub fn lint(
 /// shows in its own place, and without the code frame, which `uf lint` draws
 /// at the same location. The plugin separates those parts with blank lines; a
 /// lint message is one line, so they are separated by a sentence break.
+///
+/// A part can itself span lines: `EffectSetState`'s description is a paragraph,
+/// a bulleted list and another paragraph. Every run of whitespace that holds a
+/// line break is folded to one space, so the one-line promise holds for the
+/// whole message and not only between its parts. A terminal prints it as the
+/// one line it wraps, `--json` consumers get no embedded newlines, and a
+/// document that records a finding per line (the lint reference's examples)
+/// can read one back.
 fn message(detail: &Value) -> String {
     let mut message = detail
         .get("reason")
@@ -325,7 +333,32 @@ fn message(detail: &Value) -> String {
     if !message.is_empty() && description.is_some() && !message.ends_with(['.', '!', '?']) {
         message.push('.');
     }
-    message
+    one_line(&message)
+}
+
+/// `text` with every whitespace run that contains a line break folded to one
+/// space. Runs without a break are left as the compiler wrote them.
+fn one_line(text: &str) -> String {
+    if !text.contains(['\n', '\r']) {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut pending: Option<String> = None;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            pending.get_or_insert_with(String::new).push(ch);
+            continue;
+        }
+        if let Some(run) = pending.take() {
+            if run.contains(['\n', '\r']) {
+                out.push(' ');
+            } else {
+                out.push_str(&run);
+            }
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// The line each comment carrying one of [`FLOW_SUPPRESSION_CODES`] ends on.
@@ -516,6 +549,33 @@ mod tests {
             ),
             []
         );
+    }
+
+    /// `EffectSetState`'s description is a paragraph, a bulleted list and a
+    /// paragraph. The message still arrives as one line, which is what
+    /// [`LintDiagnostic::message`] and `uf lint --json` promise.
+    #[test]
+    fn a_multi_line_description_arrives_as_one_line() {
+        let findings = linted(
+            "import {useEffect, useState} from 'react';\nexport component Page() {\n  const [n, setN] = useState(0);\n  useEffect(() => {\n    setN(1);\n  }, []);\n  return <p>{n}</p>;\n}\n",
+        );
+        let finding = findings
+            .iter()
+            .find(|finding| finding.category == ErrorCategory::EffectSetState)
+            .expect("setState in an effect is reported");
+        assert!(!finding.message.contains(['\n', '\r']), "{finding:#?}");
+        assert!(
+            finding
+                .message
+                .contains("following: * Update external systems"),
+            "{finding:#?}"
+        );
+    }
+
+    #[test]
+    fn one_line_folds_only_runs_that_break() {
+        assert_eq!(one_line("a\n\n* b  c\r\nd"), "a * b  c d");
+        assert_eq!(one_line("no  break"), "no  break");
     }
 
     #[test]
