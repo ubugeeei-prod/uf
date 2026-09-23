@@ -295,6 +295,9 @@ pub enum DeployAdapter {
     Static,
     /// Container deployment.
     Container,
+    /// Vercel, as the Build Output API (v3) directory `vercel deploy --prebuilt`
+    /// uploads.
+    Vercel,
 }
 
 impl DeployAdapter {
@@ -307,6 +310,7 @@ impl DeployAdapter {
         Self::Serverless,
         Self::Static,
         Self::Container,
+        Self::Vercel,
     ];
 
     /// The name a person writes, in `uf.config.js` and after `--adapter`.
@@ -320,6 +324,7 @@ impl DeployAdapter {
             Self::Serverless => "serverless",
             Self::Static => "static",
             Self::Container => "container",
+            Self::Vercel => "vercel",
         }
     }
 
@@ -355,6 +360,7 @@ impl DeployAdapter {
                 | Self::Serverless
                 | Self::Static
                 | Self::Container
+                | Self::Vercel
         )
     }
 

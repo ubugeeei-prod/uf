@@ -653,9 +653,9 @@ host answers. Deploy the output directory to any static host, or check it with
 ### uf build --adapter TARGET
 
 Writes `.uf/deploy/TARGET/`: everything the target needs and nothing that is
-still in your checkout — no `node_modules`, no source, no `uf`. Seven targets
-are implemented. Six of them run an application and share every line of it;
-the seventh runs none:
+still in your checkout — no `node_modules`, no source, no `uf`. Eight targets
+are implemented. Seven of them run an application and share every line of it;
+the eighth runs none:
 
 | Target | What you get | What runs it |
 | --- | --- | --- |
@@ -665,9 +665,10 @@ the seventh runs none:
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
 | `edge` | `handler.js`, `worker.js`, `wrangler.json` (with `triggers.crons` and a `scheduled()` for any declared schedule), `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
 | `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
+| `vercel` | `.vercel/output/config.json` and one function, `.vercel/output/functions/uf.func/`: `handler.js`, `index.js`, `.vc-config.json`, `chunks/`, `static/`, `package.json` | `cd .uf/deploy/vercel && vercel deploy --prebuilt` |
 | `static` | your build, file for file, and nothing else | upload it to any static host |
 
-`handler.js` is the seam and is identical work in the six that have one: it is
+`handler.js` is the seam and is identical work in the seven that have one: it is
 `@uniflowed/server/fetch`'s handler over your server bundle, it touches no
 filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
@@ -685,6 +686,7 @@ because two of the answers differ:
 | `node`, `bun`, `deno`, `container` | yes | yes |
 | `edge` | yes | no — the isolate may be torn down once the response is out |
 | `serverless` | no — a Lambda response is a JSON value, so the body is read to the end first | no |
+| `vercel` | yes — the function declares response streaming | no — an invocation is frozen once its response is sent |
 
 A route handler that returns an event stream, takes a WebSocket, or queues work
 asks through those, and is refused by name rather than by a connection nobody
@@ -835,6 +837,41 @@ becomes the request's `Cookie` header, and every `Set-Cookie` a response sets
 comes back in the result's `cookies` rather than in `headers`, because
 iterating headers would join two cookies into one field nothing can parse
 apart. A response body whose media type is not text comes back base64-encoded.
+
+#### vercel
+
+The target is **Vercel**, as its [Build Output API (v3)][build-output]: the
+directory `vercel deploy --prebuilt` uploads without building anything again.
+`.vercel/output/config.json` routes every request to one Node.js function,
+`functions/uf.func`, whose `.vc-config.json` names `index.js` as the handler
+for Vercel's Node.js launcher, asks for response streaming, and turns off
+Vercel's request helpers (uf parses the request itself). `index.js` is
+`@uniflowed/server/vercel`'s listener over the same `handler.js`: files from
+`static/` first, behind `app.router`'s redirects and headers, then the
+application — the order `node server.js` answers in.
+
+Link the directory to a project once (`vercel link` inside
+`.uf/deploy/vercel`), then deploy it with `vercel deploy --prebuilt`. uf does
+not create the project, link it, or hold a token.
+
+Three things to know before choosing it:
+
+- **Every request reaches the function, files included.** Vercel's CDN could
+  serve `static/` itself, and would be faster; uf does not route files there
+  yet, because `app.router`'s rules have to be applied in front of them and
+  translating those into Vercel's route grammar would be a second
+  implementation of them. A function invocation per asset is the cost.
+- **Regenerated pages need a provider.** A function instance's memory and its
+  `/tmp` go with the instance, so a build that regenerates pages names a module
+  in `rendering.cache.store` or is refused by name, as on `serverless`.
+- **A declared schedule is refused**, as on `serverless`: uf writes no
+  `crons` into `config.json` yet.
+
+Work that outlives the response — `after()`, a durable cache write — is handed
+to Vercel's `waitUntil` when the runtime's request context offers one, and is
+awaited before the handler returns where it does not.
+
+[build-output]: https://vercel.com/docs/build-output-api/v3
 
 #### static
 

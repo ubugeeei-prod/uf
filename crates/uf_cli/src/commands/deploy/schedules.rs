@@ -427,7 +427,7 @@ pub(crate) fn refuse_unrunnable(
 ///   is no platform file to disagree with and what can disagree is the entry.
 ///   `server.js` has to carry a `cron:` and a `path:` holding the strings of
 ///   every declaration.
-/// * `serverless`, `static` — run none, and [`refuse_unrunnable`] has
+/// * `serverless`, `static`, `vercel` — run none, and [`refuse_unrunnable`] has
 ///   already said so. Reaching here with a schedule means that refusal was
 ///   bypassed rather than that this one is wrong, so it is reported as the
 ///   internal fault it is.
@@ -458,7 +458,7 @@ pub(crate) fn assert_wired(
             assert_process_entry(adapter, &directory.join("server.js"), schedules)
         }
         DeployAdapter::Edge => assert_worker(directory, schedules),
-        DeployAdapter::Serverless | DeployAdapter::Static => {
+        DeployAdapter::Serverless | DeployAdapter::Static | DeployAdapter::Vercel => {
             if schedules.is_empty() {
                 Ok(())
             } else {

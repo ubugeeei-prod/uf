@@ -68,6 +68,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
             DeployAdapter::Serverless,
             DeployAdapter::Static,
             DeployAdapter::Container,
+            DeployAdapter::Vercel,
         ]
     );
     assert_eq!(config.app.runtime.deploy.adapter, None);
@@ -91,6 +92,10 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(DeployAdapter::Deno.tracking_issue(), None);
     assert_eq!(DeployAdapter::Deno.unimplemented_because(), None);
     assert_eq!(DeployAdapter::Node.unimplemented_because(), None);
+    // `vercel` writes the Build Output API directory around the same
+    // `handler.js`; see `uf_cli`'s `commands::deploy`.
+    assert!(DeployAdapter::Vercel.is_implemented());
+    assert_eq!(DeployAdapter::Vercel.as_str(), "vercel");
     assert!(!config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.route);
     assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));

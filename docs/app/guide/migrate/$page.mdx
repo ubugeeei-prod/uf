@@ -102,12 +102,12 @@ is `any`, and the report counts it per package; a package with neither is `any`
 and named. [What an import resolves to](/guide/check#what-an-import-resolves-to)
 is the whole table.
 
-**Where does it deploy?** `uf build --adapter` writes seven targets: `node`,
+**Where does it deploy?** `uf build --adapter` writes eight targets: `node`,
 `bun`, `deno`, `container`, `edge` for Cloudflare Workers, `serverless` for AWS
-Lambda, and `static`. None of the server targets has been deployed to its real
-platform by uf's own pipeline yet
+Lambda, `vercel` (Vercel's Build Output API), and `static`. None of the server
+targets has been deployed to its real platform by uf's own pipeline yet
 ([#956](https://github.com/ubugeeei-prod/uf/issues/956)), `serverless` buffers a
-streamed response, and there is no Vercel or Netlify adapter. A static host runs
+streamed response, and there is no Netlify adapter. A static host runs
 no route handler, middleware or server action, and a build that has one is
 refused rather than uploaded with a hole in it.
 

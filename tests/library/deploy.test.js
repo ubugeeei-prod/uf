@@ -82,6 +82,7 @@ import { installLogger, processLogger, recordingLogger } from "@uniflowed/server
 import { type RoutingRules, createServeHandler, createStaticHandler } from "@uniflowed/server/node";
 import { createHandler as createStandaloneHandler } from "@uniflowed/server/standalone";
 import type { Application } from "@uniflowed/server/fetch";
+import { createVercelHandler, vercelCapabilities } from "@uniflowed/server/vercel";
 
 // The other front door, for the comparison. Reached by path rather than by
 // specifier because `@uniflowed/vite` deliberately does not export it: it is
@@ -589,6 +590,103 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
 
     const response = await handle(request("/anything"), {}, executionContext());
     expect(response.status).toBe(200);
+  });
+});
+
+/**
+ * A `GET` as Node hands it to a Vercel function, and a response that records
+ * what was written to it: the two objects Vercel's Node.js launcher passes to
+ * `index.js`'s default export.
+ */
+function nodeExchange(url: string) {
+  const incoming = { method: "GET", url, headers: { host: "uf.test", accept: "text/html" } };
+  const outgoing = {
+    statusCode: 200,
+    statusMessage: "",
+    headersSent: false,
+    headers: (new Map(): Map<string, mixed>),
+    written: ([]: Array<string>),
+    ended: false,
+    setHeader(name: string, value: mixed) {
+      this.headers.set(name.toLowerCase(), value);
+    },
+    write(chunk: Uint8Array | string): boolean {
+      this.headersSent = true;
+      this.written.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    },
+    end(chunk?: Uint8Array | string) {
+      if (chunk != null) this.write(chunk);
+      this.ended = true;
+    },
+    destroy() {},
+    on() {
+      return this;
+    },
+    once() {
+      return this;
+    },
+    off() {
+      return this;
+    },
+  };
+  return { incoming, outgoing };
+}
+
+describe("the Vercel front door an adapter's index.js runs", () => {
+  it("serves the build's files first, then the application", async () => {
+    const staticDir = directoryWith({
+      "index.html": "<!doctype html><p>home</p>",
+      "assets/client.js": "console.log(1);",
+    });
+    const handler = createVercelHandler({
+      handle: createFetchHandler({ app: appWith({}), document: assets }),
+      beginRequest,
+      staticDir,
+    });
+
+    const file = nodeExchange("/assets/client.js");
+    await handler((file.incoming: $FlowFixMe), (file.outgoing: $FlowFixMe));
+    expect(file.outgoing.statusCode).toBe(200);
+    expect(file.outgoing.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(file.outgoing.written.join("")).toBe("console.log(1);");
+    expect(file.outgoing.ended).toBe(true);
+
+    const page = nodeExchange("/posts/hello");
+    await handler((page.incoming: $FlowFixMe), (page.outgoing: $FlowFixMe));
+    expect(page.outgoing.statusCode).toBe(200);
+    expect(page.outgoing.written.join("")).toContain("/posts/hello");
+  });
+
+  it("hands the request's settle to the platform's waitUntil when it has one", async () => {
+    // Vercel freezes an invocation once its response is sent; work that
+    // outlives the response has to be registered, and the runtime publishes
+    // where under this symbol (what `@vercel/functions`' own `waitUntil` reads).
+    const handed: Array<Promise<mixed>> = [];
+    const key = Symbol.for("@vercel/request-context");
+    const holder: $FlowFixMe = globalThis;
+    holder[key] = { get: () => ({ waitUntil: (promise: Promise<mixed>) => handed.push(promise) }) };
+    try {
+      const handler = createVercelHandler({
+        handle: createFetchHandler({ app: appWith({}), document: assets }),
+        beginRequest,
+        staticDir: directoryWith({}),
+      });
+      const exchange = nodeExchange("/posts/hello");
+      const answered = handler((exchange.incoming: $FlowFixMe), (exchange.outgoing: $FlowFixMe));
+      expect(handed.length).toBe(1);
+      await answered;
+      await handed[0];
+    } finally {
+      delete holder[key];
+    }
+  });
+
+  it("streams and does not outlive its response", () => {
+    const capabilities = vercelCapabilities();
+    expect(capabilities.target).toBe("vercel");
+    expect(capabilities.stream).toBe(true);
+    expect(capabilities.persistent).toBe(false);
   });
 });
 

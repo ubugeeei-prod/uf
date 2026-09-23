@@ -33,6 +33,7 @@
     "./schedule": "./schedule.js",
     "./socket": "./socket.js",
     "./standalone": "./standalone.js",
+    "./vercel": "./vercel.js",
     "./instrumentation": "./instrumentation.js"
   },
   "files": [
