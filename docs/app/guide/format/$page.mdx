@@ -593,7 +593,7 @@ reported. The rules that ask whether an element has a name look inside host
 elements instead of counting any child as content, so an icon link with no
 title is reported:
 
-```jsx
+```jsx fragment
 // a11y/anchor-has-content: nothing inside this <a> can be announced
 <a href="/"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9" /></svg></a>
 
@@ -617,7 +617,7 @@ the element ends up with no name at all. The plugin does not report this,
 because its table of implicit roles has no entry for `div`;
 `a11y/role-supports-aria-props` does:
 
-```jsx
+```jsx fragment
 // a11y/role-supports-aria-props: this name is discarded, not announced
 <div aria-label="Close" />
 

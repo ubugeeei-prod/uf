@@ -537,6 +537,18 @@ export default defineConfig({
       dependsOn: ["build"],
     },
 
+    // Every ```js sample in the manual parses, with the parser uf compiles
+    // with. A sample is what a reader copies, and nothing read the samples
+    // until `uf check` happened to refuse five of them (#1026). A fence that is
+    // deliberately part of a program is marked ```js fragment. Parsing only:
+    // a sample names things declared elsewhere on its page, so resolving names
+    // would fail it for reasons that are not mistakes.
+    "docs:snippets": {
+      command:
+        "UF_BIN=./target/release/uf UF_BINARY=./target/release/uf UF_PROJECT_ROOT=. node --import @uniflowed/host/register tools/docs/snippets.js",
+      dependsOn: ["build"],
+    },
+
     // The `Docs build` job, in one command.
     //
     // `uf run` takes one task, and the checks below share the same built site.
@@ -555,6 +567,7 @@ export default defineConfig({
         "docs:csp",
         "docs:hydration",
         "docs:coverage",
+        "docs:snippets",
       ],
     },
 

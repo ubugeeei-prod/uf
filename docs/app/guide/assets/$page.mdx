@@ -210,7 +210,7 @@ export function createImageTransformer() {
 }
 ```
 
-```js
+```js fragment
 images: { remotePatterns: [/* … */], transformer: "./image-transformer.js" },
 ```
 
@@ -231,7 +231,7 @@ patterns rather than writing a binary whose remote images are all 404s.
 A test that serves its own images from `127.0.0.1` needs the private-address
 refusal turned off:
 
-```js
+```js fragment
 images: {
   remotePatterns: [{ protocol: "http", hostname: "127.0.0.1", port: "4100" }],
   dangerouslyAllowPrivateAddresses: true,

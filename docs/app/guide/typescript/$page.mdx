@@ -230,7 +230,7 @@ parts](/guide/flow) for what uf hands it.
 
 ### The rules of hooks are a type error
 
-```js
+```js fragment
 hook useNow(interval: number): Date { … }
 ```
 
@@ -243,7 +243,7 @@ same checker that checks everything else.
 
 ### A component can constrain its children
 
-```js
+```js fragment
 component Tab(label: string) renders React.Node { … }
 component Tabs(children: renders* Tab) { … }
 ```

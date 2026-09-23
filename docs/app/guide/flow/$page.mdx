@@ -85,7 +85,7 @@ through to the React Compiler rather than letting it infer from the `use` prefix
 A render type says what a component may return, and lets a parent require a
 particular child:
 
-```js
+```js fragment
 component Tab(label: string) renders React.Node { ... }
 component Tabs(children: renders* Tab) { ... }
 ```
@@ -103,8 +103,8 @@ error, not a runtime surprise — which is how a component library expresses
 const label = match (status) {
   "idle" => "Ready",
   "loading" => "Working…",
-  {kind: "failed", code} if code >= 500 => "Server error",
-  {kind: "failed"} => "Failed",
+  {kind: "failed", const code} if (code >= 500) => "Server error",
+  {kind: "failed", ...} => "Failed",
 };
 ```
 
