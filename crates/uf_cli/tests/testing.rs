@@ -844,6 +844,39 @@ fn a_run_records_its_timings_for_the_next_one() {
 }
 
 #[test]
+fn a_run_narrowed_to_a_path_keeps_what_the_last_full_run_recorded() {
+    if !host_ready() {
+        return;
+    }
+    // A run of one directory used to rewrite the timings with only the files
+    // it ran, so the next full run scheduled every other file cold — on this
+    // repository, its slowest files started last.
+    let project = Project::new(&MIXED);
+    run(project.path(), &[]);
+    run(project.path(), &["src/ui"]);
+
+    let full = json(project.path(), &[]);
+    assert_eq!(full["scheduledWarm"], full["files"]);
+    assert_eq!(full["scheduledCold"], 0);
+}
+
+#[test]
+fn a_run_narrowed_to_a_path_still_forgets_a_deleted_file() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&MIXED);
+    run(project.path(), &[]);
+    std::fs::remove_file(project.path().join("src/ui/button.test.js")).unwrap();
+    run(project.path(), &["src/math"]);
+
+    let timings = std::fs::read_to_string(project.path().join(".uf/test-timings.json"))
+        .expect("both runs record their timings");
+    assert!(timings.contains("src/math.test.js"), "{timings}");
+    assert!(!timings.contains("src/ui/button.test.js"), "{timings}");
+}
+
+#[test]
 fn a_corrupt_timings_file_schedules_cold_instead_of_failing() {
     if !host_ready() {
         return;
