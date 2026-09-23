@@ -4,7 +4,7 @@ const { execFileSync, spawnSync } = require("node:child_process");
 const { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
-const { needsFullSuite } = require("./change-scope.cjs");
+const { needsFullSuite, needsRscSuite } = require("./change-scope.cjs");
 
 test("documentation edits retain site checks without the workspace suite", () => {
   assert.equal(
@@ -27,6 +27,29 @@ test("source, dependencies, CI, unknown paths and empty diffs require the suite"
     assert.equal(needsFullSuite(["README.md", path]), true, path);
   assert.equal(needsFullSuite([]), true);
 });
+test("a change to what the RSC and browser job exercises runs it on the pull request", () => {
+  for (const path of [
+    "packages/router/internal/action-endpoint.js",
+    "packages/server/fetch.js",
+    "packages/vite/internal/flight.js",
+    "packages/test/app.js",
+    "crates/uf_rsc/src/lib.rs",
+    "crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js",
+    "tools/ci/test-browser.sh",
+    ".github/workflows/ci.yml",
+  ])
+    assert.equal(needsRscSuite(["README.md", path]), true, path);
+  assert.equal(needsRscSuite([]), true);
+});
+test("a change nothing in the RSC and browser job reaches leaves it to the full suite", () => {
+  for (const path of [
+    "packages/ui/button.js",
+    "crates/uf_fmt/src/lib.rs",
+    "docs/app/guide/testing-server/$page.mdx",
+    "crates/uf_cli/tests/fixtures/rsc-split-app/app/$page.js",
+  ])
+    assert.equal(needsRscSuite([path]), false, path);
+});
 test("missing history cannot suppress tests", () => {
   const dir = mkdtempSync(join(tmpdir(), "uf-ci-scope-"));
   try {
@@ -36,7 +59,7 @@ test("missing history cannot suppress tests", () => {
       env: { ...process.env, BASE_SHA: "a".repeat(40), GITHUB_OUTPUT: output },
       stdio: "pipe",
     });
-    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrelease=false\nversion=\n");
+    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrsc=true\nrelease=false\nversion=\n");
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -123,6 +146,7 @@ test("only the final release merge group gets full validation", () => {
       process: { env: { BASE_SHA: "a".repeat(40), GITHUB_EVENT_NAME: event, GITHUB_OUTPUT: "output" } },
       console: { log() {} },
     });
-    assert.equal(output, `full=${full}\ncode=true\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\n`, event);
+    // Cargo.toml reaches nothing the RSC job tests, so only the full run takes it.
+    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\n`, event);
   }
 });

@@ -30,6 +30,7 @@ jobs:
     outputs:
       full: ${{ steps.scope.outputs.full }}
       code: ${{ steps.scope.outputs.code }}
+      rsc: ${{ steps.scope.outputs.rsc }}
       release: ${{ steps.scope.outputs.release }}
       version: ${{ steps.scope.outputs.version }}
     steps:
@@ -1097,6 +1098,9 @@ jobs:
 
   browser-testing:
     name: RSC and browser testing
+    # On every pull request that touches what it runs (`needsRscSuite` in
+    # tools/ci/change-scope.cjs), not only in the release queue: a lane that
+    # runs only there is a lane the release is the first to fail (#1434).
     needs: [changes, toolchain]
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 15
@@ -1105,23 +1109,23 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.rsc == 'true'
         with:
           node-version: 24
       - run: npm ci --no-audit --no-fund
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.rsc == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.rsc == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.rsc == 'true'
       - run: sh tools/ci/pinned-browser.sh
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.rsc == 'true'
       - run: sh tools/ci/test-browser.sh
-        if: needs.changes.outputs.full == 'true'
-      - if: needs.changes.outputs.full == 'true' && always()
+        if: needs.changes.outputs.rsc == 'true'
+      - if: needs.changes.outputs.rsc == 'true' && always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: browser-testing
