@@ -344,3 +344,218 @@ fn what_uf_ui_add_writes_is_formatted_and_lints_clean() {
         "uf lint rejects what uf ui add wrote:\n{stdout}{stderr}"
     );
 }
+
+// --- uf ui update --------------------------------------------------------------
+
+/// The uf an older copy in these tests claims to have been written by.
+const OLDER: &str = "0.0.0-alpha.1";
+
+/// This uf's `button.js`, and a pretend older registry's: the same file with
+/// its title line different, which is a line no edit below goes near.
+fn button_sources() -> (&'static str, String) {
+    let registry = uf_ui::Registry::embedded().expect("the embedded registry reads");
+    let current = registry.get("button").expect("a button").source;
+    let older = current.replacen("four tones and four sizes", "three tones and four sizes", 1);
+    assert_ne!(
+        older, current,
+        "the title line moved; pick another line to vary"
+    );
+    (current, older)
+}
+
+/// `source`, stamped as the older uf would have written it.
+fn written_by_older(source: &str) -> String {
+    let stamp = uf_ui::Stamp {
+        component: "button".into(),
+        version: OLDER.into(),
+        digest: uf_ui::stamp::digest(source),
+    };
+    uf_ui::stamp::with_stamp(source, &stamp)
+}
+
+/// Run git in `dir`, failing the test with git's own words when it refuses.
+fn git(dir: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        // A commit needs an author, and a CI machine has no global identity.
+        .args([
+            "-c",
+            "user.name=uf",
+            "-c",
+            "user.email=uf@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .expect("git started");
+    assert!(
+        output.status.success(),
+        "git {}: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// An app whose `button.js` the older uf wrote and the project committed, and
+/// then edited with `edit` without committing.
+fn committed_then_edited(edit: impl Fn(&str) -> String) -> tempfile::TempDir {
+    let dir = app();
+    let (_, older) = button_sources();
+    let path = component(dir.path(), "button");
+    fs::create_dir_all(path.parent().expect("a parent")).expect("the directory");
+    let written = written_by_older(&older);
+    fs::write(&path, &written).expect("button.js");
+    git(dir.path(), &["init", "--quiet"]);
+    git(dir.path(), &["add", "--all"]);
+    git(
+        dir.path(),
+        &["commit", "--quiet", "--message", "uf ui add button"],
+    );
+    fs::write(&path, edit(&written)).expect("an edit");
+    dir
+}
+
+/// The project's edit: a button that is primary unless it says otherwise.
+fn primary_by_default(text: &str) -> String {
+    let edited = text.replacen(
+        "tone?: ButtonTone = \"neutral\"",
+        "tone?: ButtonTone = \"primary\"",
+        1,
+    );
+    assert_ne!(edited, text, "the default tone moved; pick another edit");
+    edited
+}
+
+#[test]
+fn update_merges_the_registrys_change_into_a_committed_copy_the_project_edited() {
+    let dir = committed_then_edited(primary_by_default);
+    let (current, _) = button_sources();
+
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "update", "button", "--offline"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.contains("merged: your edits kept"), "{stdout}");
+
+    let text = fs::read_to_string(component(dir.path(), "button")).expect("button.js");
+    let copy = uf_ui::stamp::Copy::read(&text);
+    assert_eq!(
+        copy.content,
+        primary_by_default(current),
+        "this uf's title line and the project's default tone, together"
+    );
+    assert_eq!(
+        copy.stamp,
+        Some(uf_ui::Stamp::new("button", current)),
+        "stamped against this uf's text, so the copy reads as edited and not outdated"
+    );
+
+    let (code, stdout, _) = run(dir.path(), &["ui", "list"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains(&format!("edited since uf {VERSION}")),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn update_writes_overlapping_edits_as_a_conflict_and_fails() {
+    let dir = committed_then_edited(|text| {
+        text.replacen("three tones and four sizes", "five tones and four sizes", 1)
+    });
+
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "update", "--offline"]);
+    assert_ne!(code, 0, "{stdout}{stderr}");
+    assert!(stderr.contains("conflicts to resolve"), "{stderr}");
+    assert!(stderr.contains("app/components/ui/button.js"), "{stderr}");
+
+    let text = fs::read_to_string(component(dir.path(), "button")).expect("button.js");
+    for marker in [
+        "<<<<<<< this project\n// Button: a `<button>` in five tones",
+        &format!("||||||| uf {OLDER}\n// Button: a `<button>` in three tones"),
+        "=======\n// Button: a `<button>` in four tones",
+        &format!(">>>>>>> uf {VERSION}\n"),
+    ] {
+        assert!(text.contains(marker), "{marker:?} is not in:\n{text}");
+    }
+}
+
+#[test]
+fn update_dry_run_says_what_it_would_merge_and_writes_nothing() {
+    let dir = committed_then_edited(primary_by_default);
+    let before = fs::read_to_string(component(dir.path(), "button")).expect("button.js");
+
+    let (code, stdout, stderr) = run(
+        dir.path(),
+        &["ui", "update", "--dry-run", "--offline", "--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let report: Value = serde_json::from_str(&stdout).expect("JSON on stdout");
+    assert_eq!(report["dryRun"], true);
+    assert_eq!(report["components"][0]["name"], "button");
+    assert_eq!(report["components"][0]["action"], "merged");
+    assert_eq!(report["components"][0]["from"], OLDER);
+    assert_eq!(
+        fs::read_to_string(component(dir.path(), "button")).expect("button.js"),
+        before
+    );
+}
+
+/// With no history, the base comes from the release the stamp names — here a
+/// directory standing in for it — and only if it hashes to the stamp.
+#[test]
+fn update_takes_the_base_from_the_release_the_stamp_names_only_when_it_is_that_text() {
+    let (current, older) = button_sources();
+    let release = tempfile::tempdir().expect("a directory for the release");
+    let served = release.path().join(OLDER);
+    fs::create_dir_all(&served).expect("the release directory");
+    let template = format!(
+        "file://{}/{{version}}/{{name}}.js",
+        release.path().display()
+    );
+
+    for (offered, merges) in [
+        (older.replace("Button:", "Buttons:"), false),
+        (older.clone(), true),
+    ] {
+        let dir = app();
+        let path = component(dir.path(), "button");
+        fs::create_dir_all(path.parent().expect("a parent")).expect("the directory");
+        let edited = primary_by_default(&written_by_older(&older));
+        fs::write(&path, &edited).expect("button.js");
+        fs::write(served.join("button.js"), &offered).expect("the released source");
+
+        let output = uf()
+            .arg("--cwd")
+            .arg(dir.path())
+            .args(["--color", "never", "ui", "update", "button"])
+            .env("UF_UI_REGISTRY_URL", &template)
+            .output()
+            .expect("uf started");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{stdout}");
+        let text = fs::read_to_string(&path).expect("button.js");
+        if merges {
+            assert!(stdout.contains("merged: your edits kept"), "{stdout}");
+            assert_eq!(
+                uf_ui::stamp::Copy::read(&text).content,
+                primary_by_default(current)
+            );
+        } else {
+            assert!(stdout.contains("not merged"), "{stdout}");
+            assert!(stdout.contains("uf ui diff button"), "{stdout}");
+            assert_eq!(
+                text, edited,
+                "a base that is not the stamped text merges nothing"
+            );
+        }
+    }
+}
+
+#[test]
+fn update_of_a_component_the_project_never_added_says_how_to_add_it() {
+    let dir = app();
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "update", "dialog"]);
+    assert_ne!(code, 0, "{stdout}{stderr}");
+    assert!(stderr.contains("uf ui add dialog"), "{stderr}");
+}
