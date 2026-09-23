@@ -13,8 +13,8 @@
 //!    produce exactly the findings written in its `diagnostics` block, with
 //!    the same paths, lines, columns and messages. A Good example must produce
 //!    none;
-//! 3. renders `docs/app/reference/lint/**/$page.mdx` from the files and fails
-//!    when the checked-in pages are not what it renders.
+//! 3. renders `docs/app/reference/lint/$page.mdx` from the files and fails
+//!    when the checked-in page is not what it renders.
 //!
 //! So the documentation cannot drift from the linter. An example that stops
 //! being true fails `cargo test`, a message that changes fails it until the
@@ -578,14 +578,17 @@ fn the_rule_reference_pages_are_current() {
             }
         }
     }
-    // A page for a namespace that no longer has rules is stale too.
+    // Anything else in the directory is a page nothing renders any more.
     if let Ok(entries) = std::fs::read_dir(&root) {
         for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                let relative = format!("{}/$page.mdx", entry.file_name().to_string_lossy());
-                if !pages.contains_key(&relative) {
-                    stale.push(relative);
-                }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let relative = if entry.path().is_dir() {
+                format!("{name}/$page.mdx")
+            } else {
+                name
+            };
+            if !pages.contains_key(&relative) {
+                stale.push(relative);
             }
         }
     }
@@ -706,6 +709,11 @@ fn level_name(level: RuleLevel) -> &'static str {
 }
 
 /// Every page, by path relative to `docs/app/reference/lint`.
+///
+/// One page: the manual's navigation names every page that exists
+/// (`tests/library/docs-nav.test.js`), and one entry for the whole catalogue
+/// reads better than fourteen. The page opens with a table per namespace, each
+/// row linking to the rule's own section further down.
 fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String, String> {
     let mut by_namespace: BTreeMap<&str, Vec<&(&'static RuleDescriptor, RuleDoc)>> =
         BTreeMap::new();
@@ -724,8 +732,7 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
         );
     }
 
-    let mut pages = BTreeMap::new();
-    let mut index = String::from(
+    let mut page = String::from(
         "---\n\
          title: \"Lint rules · uf\"\n\
          description: \"Every rule uf lint runs, with an example it reports and one it accepts.\"\n\
@@ -743,40 +750,42 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
          inference* are listed but do not run yet: uf reports them as unavailable,\n\
          and their examples show what they will check.\n\n",
     );
+
+    // The contents: one table per namespace.
     for (namespace, title, summary) in NAMESPACES {
         let Some(entries) = by_namespace.get(namespace) else {
             continue;
         };
-        let _ = writeln!(
-            index,
-            "## [{title}](/reference/lint/{namespace})\n\n{summary}\n"
-        );
-        index.push_str("| Rule | Default | What it checks |\n| --- | --- | --- |\n");
-        let mut page = format!(
-            "---\n\
-             title: \"{title} lint rules · uf\"\n\
-             description: \"{summary}\"\n\
-             ---\n\n\
-             {{/* Generated from crates/uf_lint/rules/{namespace} by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}}\n\n\
-             <p className=\"eyebrow\">Lint rules</p>\n\n\
-             # {title}\n\n\
-             <div className=\"lede\">\n{summary}\n</div>\n\n\
-             Every example on this page is run by uf's test suite. A Bad example\n\
-             reports exactly the findings shown under it and a Good example reports\n\
-             none. [All rules](/reference/lint).\n\n"
-        );
+        let _ = writeln!(page, "## {title}\n\n{summary}\n");
+        page.push_str("| Rule | Default | What it checks |\n| --- | --- | --- |\n");
+        for (rule, _) in entries {
+            let needs = if rule.requirement.is_available() {
+                ""
+            } else {
+                " · needs type inference"
+            };
+            let _ = writeln!(
+                page,
+                "| [`{id}`](#{anchor}) | `{level}`{needs} | {description} |",
+                id = rule.id,
+                anchor = anchor(rule.id),
+                level = level_name(rule.default_level),
+                description = rule.description,
+            );
+        }
+        page.push('\n');
+    }
+
+    // Then every rule, in the same order.
+    page.push_str("## Every rule, with examples\n\n");
+    for (namespace, _, _) in NAMESPACES {
+        let Some(entries) = by_namespace.get(namespace) else {
+            continue;
+        };
         for (rule, doc) in entries {
             let runs = rule.requirement.is_available();
             let level = level_name(rule.default_level);
-            let needs = if runs { "" } else { " · needs type inference" };
-            let _ = writeln!(
-                index,
-                "| [`{id}`](/reference/lint/{namespace}#{anchor}) | `{level}`{needs} | {description} |",
-                id = rule.id,
-                anchor = anchor(rule.id),
-                description = rule.description,
-            );
-            let _ = writeln!(page, "## {}\n", rule.id);
+            let _ = writeln!(page, "### {}\n", rule.id);
             if let Some(why) = not_produced(rule.id) {
                 let _ = writeln!(
                     page,
@@ -798,7 +807,7 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
             page.push_str(&doc.intro);
             page.push_str("\n\n");
             for example in &doc.examples {
-                let _ = writeln!(page, "### {}\n", example.kind.heading());
+                let _ = writeln!(page, "#### {}\n", example.kind.heading());
                 if !example.prose.is_empty() {
                     page.push_str(&example.prose);
                     page.push_str("\n\n");
@@ -827,15 +836,10 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
                 }
             }
         }
-        index.push('\n');
-        page.truncate(page.trim_end().len());
-        page.push('\n');
-        pages.insert(format!("{namespace}/$page.mdx"), page);
     }
-    index.truncate(index.trim_end().len());
-    index.push('\n');
-    pages.insert("$page.mdx".to_owned(), index);
-    pages
+    page.truncate(page.trim_end().len());
+    page.push('\n');
+    BTreeMap::from([("$page.mdx".to_owned(), page)])
 }
 
 // --- The harness's own tests ----------------------------------------------------
