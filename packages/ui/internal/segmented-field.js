@@ -10,6 +10,7 @@ import type { RenderProp, Rest } from "./merge-props.js";
 import { directionOf } from "./roving-focus.js";
 import { useLocale } from "../i18n-provider.js";
 import { visuallyHiddenStyle } from "./visually-hidden-style.js";
+import { formatIsoDate, formatIsoTime, useMessages } from "./messages.js";
 
 type Segment = "year" | "month" | "day" | "hour" | "minute" | "second" | "dayPeriod";
 type Fields = { [string]: string };
@@ -101,6 +102,7 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     ...rest
   } = options;
   const { locale } = useLocale();
+  const messages = useMessages(locale);
   const seconds = granularity === "second";
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
   const [draft, setDraft] = useState<Fields | null>(null);
@@ -174,12 +176,18 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     if (disabled || readOnly) return;
     onValidationChange?.(invalid);
     if (invalid) {
-      announce("Enter a valid value within the allowed range");
+      announce(messages.fieldInvalid);
       return;
     }
     setCurrent(empty ? null : serialized);
     setDraft(null);
-    announce(serialized ?? "Cleared");
+    announce(
+      serialized == null
+        ? messages.fieldCleared
+        : time
+          ? formatIsoTime(serialized, locale, hourCycle)
+          : formatIsoDate(serialized, locale),
+    );
   });
   const edit = useStableCallback((part: Segment, text: string) => {
     if (!disabled && !readOnly) setDraft({ ...fields, [part]: text });

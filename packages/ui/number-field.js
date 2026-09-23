@@ -8,6 +8,7 @@ import { useControlled } from "./internal/controlled-state.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeHandlers, withProps } from "./internal/merge-props.js";
 import { useLocale } from "./i18n-provider.js";
+import { useMessages } from "./internal/messages.js";
 
 type NumberFormatter = {
   format: (value: number) => string,
@@ -231,10 +232,11 @@ export component NumberFieldIncrement(
   ...rest: Rest
 ) {
   const state = useNumber();
+  const messages = useMessages(useLocale().locale);
   const props = withProps(rest, {
     children,
     type: "button",
-    "aria-label": rest["aria-label"] ?? "Increase",
+    "aria-label": rest["aria-label"] ?? messages.increment,
     disabled:
       state.disabled ||
       state.readOnly ||
@@ -249,10 +251,11 @@ export component NumberFieldDecrement(
   ...rest: Rest
 ) {
   const state = useNumber();
+  const messages = useMessages(useLocale().locale);
   const props = withProps(rest, {
     children,
     type: "button",
-    "aria-label": rest["aria-label"] ?? "Decrease",
+    "aria-label": rest["aria-label"] ?? messages.decrement,
     disabled:
       state.disabled ||
       state.readOnly ||

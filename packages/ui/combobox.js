@@ -136,6 +136,8 @@ import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-
 import { itemsOf, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { FormValue } from "./internal/form-value.js";
+import { useLocale } from "./i18n-provider.js";
+import { formatCount, useMessages } from "./internal/messages.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -699,29 +701,22 @@ export component ComboboxEmpty(children: React.Node, ...rest: Rest) {
  * because the technology watching it had nothing to watch until it was already
  * too late; leaving it mounted and empty is what makes the *next* change speak.
  *
- * `children` overrides the wording — the default is English and a real
- * application has a translation table.
+ * `children` overrides the wording. The default comes from the package's
+ * message table (`I18nProvider`'s `messages`), in the surrounding locale.
  */
 export component ComboboxStatus(children?: React.Node, ...rest: Rest) {
   const combobox = useCombobox("Combobox.Status");
-  const message = children ?? defaultAnnouncement(combobox.open, combobox.count);
+  const { locale } = useLocale();
+  const messages = useMessages(locale);
+  const message =
+    children ??
+    (combobox.open ? messages.results(combobox.count, formatCount(combobox.count, locale)) : "");
 
   return (
     <div {...rest} aria-atomic="true" aria-live="polite" role="status">
       {message}
     </div>
   );
-}
-
-/** The wording `Combobox.Status` uses when the caller supplies none. */
-function defaultAnnouncement(open: boolean, count: number): string {
-  if (!open) {
-    return "";
-  }
-  if (count === 0) {
-    return "No results available.";
-  }
-  return count === 1 ? "1 result available." : `${count} results available.`;
 }
 
 /** What a reader hears for an option: its explicit label, or its own text. */

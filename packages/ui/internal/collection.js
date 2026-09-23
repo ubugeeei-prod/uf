@@ -42,6 +42,7 @@ import { clearAll, extendTo, orderedKeys, replaceWith, selectAll, toggleKey } fr
 import type { SelectionBehavior, SelectionMode, SelectionPolicy } from "./selection.js";
 import { startsWithLocale, useLocale } from "../i18n-provider.js";
 import { visuallyHiddenStyle } from "./visually-hidden-style.js";
+import { formatCount, useMessages } from "./messages.js";
 
 export type CollectionItem = {
   readonly key: string,
@@ -160,6 +161,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
   if (height <= 0 || rowHeight <= 0 || !Number.isFinite(height) || !Number.isFinite(rowHeight))
     throw new RangeError("Collection dimensions must be positive finite numbers");
   const { locale } = useLocale();
+  const messages = useMessages(locale);
   const id = useId();
   const root = useRef<HTMLElement | null>(null);
   // Where a Shift range starts (`anchor`) and where the last one ended (`lead`).
@@ -215,7 +217,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
     if (next === selectedSet) return;
     const keys = orderedKeys(next, order);
     setSelected(keys);
-    announce(`${keys.length} selected`);
+    announce(messages.selectedCount(keys.length, formatCount(keys.length, locale)));
   };
   /** A plain or Ctrl/Cmd gesture on one row: toggle or replace, and move the anchor. */
   const selectOne = (key: string, toggle: boolean) => {
@@ -276,7 +278,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
     if (at < 0 || onRemove == null) return;
     onRemove(key);
     setActive(enabled[at + 1]?.item.key ?? enabled[at - 1]?.item.key ?? null);
-    announce(`Removed ${enabled[at].item.textValue}`);
+    announce(messages.removed(enabled[at].item.textValue));
   };
   const keydown = useStableCallback((event: KeyEvent) => {
     const { target, currentTarget } = event;
@@ -458,7 +460,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
                   type="button"
                   tabIndex={-1}
                   disabled={disabled(item)}
-                  aria-label={`Remove ${item.textValue}`}
+                  aria-label={messages.removeItem(item.textValue)}
                   onClick={(event: RowClick) => {
                     event.stopPropagation();
                     root.current?.focus();

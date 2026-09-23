@@ -6,6 +6,8 @@ import { useControlled } from "./internal/controlled-state.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeHandlers, withProps } from "./internal/merge-props.js";
 import { directionOf } from "./internal/roving-focus.js";
+import { useLocale } from "./i18n-provider.js";
+import { useMessages } from "./internal/messages.js";
 
 /** Canonical #rrggbb or #rrggbbaa, with CSS's short hex forms accepted at the boundary. */
 export function parseColor(value: string): string | null {
@@ -100,6 +102,7 @@ export component ColorPickerChannel(
   ...rest: Rest
 ) {
   const color = useColor();
+  const messages = useMessages(useLocale().locale);
   const at = ["red", "green", "blue", "alpha"].indexOf(channel);
   const value = parseInt(
     (color.value + (color.value.length === 7 ? "ff" : "")).slice(1 + at * 2, 3 + at * 2),
@@ -120,7 +123,7 @@ export component ColorPickerChannel(
     step: 1,
     value,
     disabled: color.disabled,
-    "aria-label": rest["aria-label"] ?? channel,
+    "aria-label": rest["aria-label"] ?? messages.colorChannel(channel),
     "aria-valuetext": channel === "alpha" ? `${Math.round((value / 255) * 100)}%` : String(value),
     onChange: composeHandlers(rest.onChange, (event: $FlowFixMe) =>
       change(Number(event.currentTarget.value)),

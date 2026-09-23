@@ -1,6 +1,8 @@
 // @flow
 "use client";
 import { useState } from "@uniflowed/react";
+import { useLocale } from "./i18n-provider.js";
+import { useMessages } from "./internal/messages.js";
 
 export type Drop = {| readonly keys: $ReadOnlyArray<string>, readonly target: string |};
 export type DragAndDrop = {
@@ -36,14 +38,15 @@ export hook useDragAndDrop(options: {
 }): DragAndDrop {
   const [keys, setKeys] = useState<$ReadOnlyArray<string>>([]);
   const [announcement, announce] = useState("");
+  const messages = useMessages(useLocale().locale);
   const cancel = () => {
     setKeys([]);
-    announce("Drag cancelled");
+    announce(messages.dragCancelled);
   };
   const start = (key: string, label: string) => {
     if (options.disabled) return;
     setKeys([key]);
-    announce(`Picked up ${label}. Move to a drop target and press Enter. Escape cancels.`);
+    announce(messages.dragStarted(label));
   };
   const drop = (
     target: string,
@@ -53,7 +56,7 @@ export hook useDragAndDrop(options: {
     if (options.disabled || incoming.length === 0) return;
     options.onDrop({ keys: incoming, target });
     setKeys([]);
-    announce(`Dropped on ${label}`);
+    announce(messages.dropped(label));
   };
   return {
     dragging: keys.length > 0,

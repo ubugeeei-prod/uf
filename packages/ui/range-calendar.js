@@ -9,6 +9,8 @@ import type { DateRange } from "./internal/date-range.js";
 import { validateRange, unavailableInRange } from "./internal/date-range.js";
 import { CalendarRoot, CalendarMonth } from "./calendar.js";
 import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
+import { useLocale } from "./i18n-provider.js";
+import { formatIsoDate, useMessages } from "./internal/messages.js";
 export type { DateRange } from "./internal/date-range.js";
 
 export component RangeCalendarRoot(
@@ -28,6 +30,10 @@ export component RangeCalendarRoot(
   const [range, setRange] = useControlled(value, defaultValue, onValueChange);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [announcement, announce] = useState("");
+  const inherited = useLocale();
+  const speaking = locale ?? inherited.locale;
+  const messages = useMessages(speaking);
+  const say = (iso: string) => formatIsoDate(iso, speaking);
   validateRange(range);
   const disabled = (date: PlainDate) =>
     (minValue != null && date.toString() < minValue) ||
@@ -38,18 +44,18 @@ export component RangeCalendarRoot(
     if (disabled(date)) return;
     if (anchor == null) {
       setAnchor(iso);
-      announce(`Start ${iso}. Choose an end date.`);
+      announce(messages.rangeStarted(say(iso)));
       return;
     }
     const start = anchor < iso ? anchor : iso,
       end = anchor < iso ? iso : anchor;
     if (unavailableInRange(start, end, isDateDisabled)) {
-      announce("The range contains an unavailable date");
+      announce(messages.rangeUnavailable);
       return;
     }
     setRange({ start, end });
     setAnchor(null);
-    announce(`Selected ${start} to ${end}`);
+    announce(messages.rangeSelected(say(start), say(end)));
   };
   const selected = (date: PlainDate) => {
     const iso = date.toString();

@@ -88,7 +88,7 @@ it("edits hex colors, preserves invalid text, and steps channels in RTL", async 
       </I18nProvider>
     </main>,
   );
-  const red = screen.getByRole("slider", { name: "red" });
+  const red = screen.getByRole("slider", { name: "Red" });
   red.focus();
   await userEvent.keyboard("{ArrowLeft}");
   expect(changed).toHaveBeenLastCalledWith("#01000080");

@@ -5,19 +5,32 @@ import * as React from "@uniflowed/react";
 import { createContext, useContext, useMemo } from "@uniflowed/react";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { withProps } from "./internal/merge-props.js";
+import { MessagesContext } from "./internal/messages.js";
+import type { MessageOverrides, UiMessages } from "./internal/messages.js";
 
 export type Locale = {| readonly locale: string, readonly direction: "ltr" | "rtl" |};
 const LocaleContext: React.Context<Locale> = createContext({ locale: "en-US", direction: "ltr" });
 
-/** An explicit locale keeps server and client output identical. Nested providers form islands. */
+/**
+ * An explicit locale keeps server and client output identical. Nested providers form islands.
+ *
+ * `messages` replaces any of the strings the components say on their own —
+ * announcements such as "3 selected" and default labels such as "Increase" —
+ * for this subtree. English and Japanese are built in; any other language
+ * falls back to English until it is given here. A nested provider that keeps
+ * the language inherits the overrides above it, and one that changes language
+ * starts again from that language's built-in table.
+ */
 export component I18nProvider(
   children: React.Node,
   locale?: string,
   direction?: "ltr" | "rtl",
+  messages?: Partial<UiMessages>,
   render?: RenderProp,
   ...rest: Rest
 ) {
   const parent = useLocale();
+  const inherited = useContext(MessagesContext);
   const state = useMemo((): Locale => {
     const resolved = new Intl.Locale(locale ?? parent.locale);
     const script = resolved.maximize().script;
@@ -27,10 +40,18 @@ export component I18nProvider(
       direction: direction ?? (locale == null ? parent.direction : rtl ? "rtl" : "ltr"),
     };
   }, [locale, direction, parent]);
+  const language = new Intl.Locale(state.locale).language;
+  const kept = inherited.language == null || inherited.language === language;
+  const overrides: MessageOverrides = {
+    language,
+    messages: kept ? { ...inherited.messages, ...messages } : { ...messages },
+  };
   const props = withProps(rest, { children, lang: state.locale, dir: state.direction });
   return (
     <LocaleContext.Provider value={state}>
-      {render != null ? render(props) : <div {...props} />}
+      <MessagesContext.Provider value={overrides}>
+        {render != null ? render(props) : <div {...props} />}
+      </MessagesContext.Provider>
     </LocaleContext.Provider>
   );
 }
