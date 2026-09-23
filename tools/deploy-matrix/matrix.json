@@ -98,11 +98,6 @@
           "status": "known-bug",
           "issue": 1493,
           "note": "route-cache"
-        },
-        "cookies": {
-          "status": "known-bug",
-          "issue": 1490,
-          "note": "set-cookie"
         }
       }
     },
@@ -127,7 +122,7 @@
       "id": "deno",
       "title": "Deno",
       "adapter": "deno",
-      "runtime": "`deno run --allow-net --allow-read --allow-env server.js` (the command `uf build` prints), Deno 2.9.7",
+      "runtime": "`deno run --allow-net --allow-read --allow-env --allow-write=.uf server.js` (the command `uf build` prints), Deno 2.9.7",
       "cells": {
         "images": {
           "status": "planned",
@@ -138,10 +133,6 @@
           "issue": 1493,
           "note": "route-cache"
         }
-      },
-      "knownBug": {
-        "issue": 1497,
-        "note": "deno-cache"
       }
     },
     {
@@ -158,16 +149,7 @@
           "status": "known-bug",
           "issue": 1493,
           "note": "route-cache"
-        },
-        "cookies": {
-          "status": "known-bug",
-          "issue": 1490,
-          "note": "set-cookie"
         }
-      },
-      "knownBug": {
-        "issue": 1496,
-        "note": "container-cache"
       }
     },
     {
@@ -197,16 +179,6 @@
           "status": "known-bug",
           "issue": 1494,
           "note": "workers-gzip"
-        },
-        "rsc-payload": {
-          "status": "known-bug",
-          "issue": 1495,
-          "note": "flight-type"
-        },
-        "hydration": {
-          "status": "known-bug",
-          "issue": 1495,
-          "note": "flight-type"
         }
       }
     },
@@ -413,9 +385,6 @@
     "route-cache": "With `rendering.cache.route` on — which `isr` needs, and the fixture has ISR pages — every page rendered per request is buffered whole, so a `$loading.js` fallback arrives with the page it stands in for. The same build with the route cache off streams.",
     "route-cache-edge": "The route-cache buffering of #1493, and on top of it the compression of #1494.",
     "workers-gzip": "Under `wrangler dev`, gzip compression for a client that accepts it holds the static shell until the document ends (shell and hole together at ~1.2 s); with `accept-encoding: identity` the shell arrives at ~4 ms. The Worker streams; the host's compression buffers.",
-    "set-cookie": "`@uniflowed/server/node` sends only the last `Set-Cookie` of a response (fixed by #1491).",
-    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type, so the client router loads the document instead: navigation works, as full page loads.",
-    "container-cache": "The generated `Dockerfile` cannot write the route cache's directory, so a build with `isr` exits at start-up (fixed by #1499).",
-    "deno-cache": "The Deno command `uf build` prints has no write permission for the route cache, so a build with `isr` exits at start-up (fixed by #1499)."
+    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type, so the client router loads the document instead: navigation works, as full page loads. The Worker types it since #1498; a static host needs the router change in #1508 or the `_headers` rule the deploy guide gives."
   }
 }
