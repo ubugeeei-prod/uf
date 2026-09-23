@@ -16,7 +16,7 @@ test("the native entry preserves merges and refuses web or uncompiled namespaces
   expect(
     nativeProps({ $$native: true, padding: 12 }, false, [{ $$native: true, padding: 24 }]),
   ).toEqual({ style: { padding: 24 } });
-  expect(nativeProps(null, false, [])).toEqual({ style: {} });
+  expect(nativeProps(null, false, [] as Array<null>)).toEqual({ style: {} });
   expect(() => nativeProps({ $$css: true, padding: "x123" })).toThrow("compiled native namespace");
   expect(() => nativeProps({ padding: 12 })).toThrow("compiled native namespace");
 });
