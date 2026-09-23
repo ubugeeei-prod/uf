@@ -1,0 +1,924 @@
+---
+title: "Validating input · uf"
+description: "Schemas that parse untrusted input into typed values, with issue paths, inferred Flow types and a JSON Schema export."
+---
+
+<p className="eyebrow">Build an app</p>
+
+# Validating input
+
+<div className="lede">
+`@uniflowed/validator` treats a schema as a parser, not an assertion. It takes
+`mixed` and gives back either a new value of a known type or a list of issues,
+each saying where it happened. The schema is the only description of the value
+you write: the Flow type the code gets, the paths a form binds errors to and the
+JSON Schema another team reads all come from it.
+</div>
+
+**What you will be able to do:** describe a value with a schema, parse it
+synchronously or asynchronously, change its type in a pipeline, read its input
+and output types off the schema, turn issues into field messages, export it as
+JSON Schema, and use it at the three boundaries uf has for it: a server action,
+a form and an HTTP response.
+
+**What you need first:** a project ([Your first project](/guide/project)) and
+[Flow, the modern parts](/guide/flow). [Server actions](/guide/server-actions)
+helps with the first of the three boundaries.
+
+## A schema is a parser
+
+```js
+import { email, integer, min, object, parse, pipe, safeParse, string, transform, trim } from "@uniflowed/validator";
+
+const Signup = object({
+  email: pipe(string(), trim(), email()),
+  age: pipe(string(), transform(Number), integer(), min(18)),
+});
+
+const result = safeParse(Signup, { email: "  ada@example.com ", age: "36", admin: true });
+if (result.ok) {
+  result.value; // { email: "ada@example.com", age: 36 }
+}
+```
+
+`result.value` is a new object, not the one passed in. The email has been
+trimmed, the age is a `number`, and `admin` is gone, because `object` keeps only
+the keys its shape names. Nobody wrote down that `age` is a number. Flow reads
+that off the schema, which is the point: a hand-written `type Signup` next to the
+schema would be a second description of the same thing, and sooner or later the
+two would disagree.
+
+A schema is a closure plus a description of itself. There is no class, no
+registry, and nothing interpreting a description at run time. The closure does
+the parsing. The description is built only when something asks for it, and it is
+what makes [`toJsonSchema`](#handing-the-schema-to-somebody-else) possible,
+because a closure cannot be read.
+
+Every builder is its own named export, so an application ships only the checks
+it calls. `v` holds all of them for code that would rather write `v.object(...)`
+than open with a twelve-name import:
+
+```js
+import { v } from "@uniflowed/validator";
+
+const Account = v.object({ name: v.string(), role: v.enum(["admin", "editor"]) });
+```
+
+## Four ways to run one
+
+Two questions decide which one you call: does the caller already have a way to
+handle failure, and does the schema have anything to wait for?
+
+```js
+import { ValidationError, number, object, parse, safeParse } from "@uniflowed/validator";
+
+const Point = object({ x: number(), y: number() });
+
+safeParse(Point, { x: 1, y: "2" });
+// { ok: false, issues: [{ code: "type", message: "expected number", path: ["y"] }] }
+
+parse(Point, { x: 1, y: 2 }); // { x: 1, y: 2 }
+parse(Point, { x: "1", y: "2" });
+// throws ValidationError: "expected number at x; expected number at y"
+```
+
+**`safeParse`** returns a `Result`, either `{ ok: true, value }` or
+`{ ok: false, issues }`. Use it where a failure path already exists, such as a
+handler building a `422` or a form collecting field errors. There, a `throw`
+would only be a detour to reach a value you were going to inspect anyway.
+
+**`parse`** returns the value or throws a `ValidationError`. Use it where no
+failure path exists, such as a configuration file the process cannot start
+without, or a fixture in a test. The error is a real `Error` subclass, and it
+carries the structured `issues` as well as the joined message, so a `catch`
+that wants to build a response does not have to parse the message back into
+fields.
+
+**`safeParseAsync`** and **`parseAsync`** are the same pair for a schema with
+something to wait for, such as a uniqueness check that needs a database:
+
+```js
+import { checkAsync, isAsync, minLength, object, pipe, safeParse, safeParseAsync, string } from "@uniflowed/validator";
+
+const Handle = pipe(
+  string(),
+  minLength(3),
+  checkAsync(async (name: string) => !(await isTaken(name)), "That handle is taken"),
+);
+
+isAsync(Handle); // true
+isAsync(object({ handle: Handle })); // true, from the moment it was built
+
+safeParse(Handle, "ada");
+// throws Error: "@uniflowed/validator: this schema has an asynchronous step in it; use parseAsync or safeParseAsync"
+
+await safeParseAsync(Handle, "ada");
+// { ok: false, issues: [{ code: "check", message: "That handle is taken" }] }
+```
+
+A schema is asynchronous or it is not, and it knows which when it is built. An
+`object` asks its fields, an `array` asks its item, and each builds the matching
+half. So the synchronous entry points never return a promise some of the time.
+Given an asynchronous schema, they throw a plain `Error` that names the pair to
+use instead. That is a programmer's mistake reported as one, not a
+`ValidationError`, because nothing was invalid. The alternative, a parse that
+returns "a result or a promise of one", would put a `then` test on every node of
+every synchronous parse to pay for a feature most schemas never use.
+
+The asynchronous pair also accepts a synchronous schema. So code that does not
+know which kind it has, like a generic resolver or a handler taking its schema
+from a table, can always call them.
+
+Three smaller entry points are built on `safeParse`:
+
+- `is(schema, value)` is a `boolean`. It is not a type guard: the proof is a
+  closure the checker cannot see into, so a guard would be a claim rather than a
+  check. When you want the narrowed value, use `safeParse` and read
+  `result.value`.
+- `parser(schema)` is a `(value: mixed) => Result` function. Use it where the
+  consumer takes a function and should not have to depend on this package.
+  [`@uniflowed/fetch`](#what-a-server-sent-back) is one.
+- `useValidation(schema, value)` is `safeParse` written as a `hook`, so the
+  React Compiler can memoise it with the rest of the component.
+
+## The vocabulary
+
+### Leaves
+
+| Builder | Accepts |
+| --- | --- |
+| `string()`, `boolean()`, `bigint()` | That `typeof` |
+| `number()` | A finite number. `NaN` and the infinities are rejected |
+| `literal(value)` | Exactly that string, number, boolean or `null` |
+| `enum_(values)` | One of a list of strings. The message names every option |
+| `null_()`, `undefined_()` | Exactly that value |
+| `date()` | A `Date` whose time is a number, so `new Date("nope")` fails |
+| `instance(Class)` | Anything that passes `instanceof Class` |
+| `unknown()`, `never()` | Anything, unexamined; nothing at all |
+| `custom(accepts, message, name?)` | Whatever `accepts` says. Your word is taken for the type |
+
+`enum`, `null` and `undefined` are reserved words, so those three builders end
+in an underscore. On `v` they are `v.enum`, `v.null` and `v.undefined`.
+
+`number()` rejects `NaN` because a validator that lets it through has not
+validated anything: every comparison downstream silently answers `false`.
+`bigint()` is separate because `1n + 1` throws, and a schema that accepted
+either would hand you a value whose arithmetic depends on the payload.
+
+### Objects, and a key nobody named
+
+Three object builders take the same shape and differ only in what they do with a
+key the shape does not name:
+
+```js
+import { looseObject, object, parse, safeParse, strictObject, string } from "@uniflowed/validator";
+
+const shape = { name: string() };
+
+parse(object(shape), { name: "ada", extra: 1 }); // { name: "ada" }
+parse(looseObject(shape), { name: "ada", extra: 1 }); // { name: "ada", extra: 1 }
+safeParse(strictObject(shape), { name: "ada", extra: 1 });
+// { ok: false, issues: [{ code: "unknown_key", message: "unexpected key extra", path: ["extra"] }] }
+```
+
+- **`object` drops the key.** This is the right default for someone else's
+  payload, where a field added upstream is not your problem.
+- **`strictObject` rejects it.** This fits a configuration file or an internal
+  API, where an unknown key is almost always a typo. The unknown-key scan runs
+  even when a field has already failed, so you see both problems in one pass.
+- **`looseObject` keeps it,** for a boundary that has to forward what it did not
+  understand. The extra keys are in the value and not in the type: the result
+  type is inexact, because nothing checked them.
+
+`partial` makes every field optional. A missing key is present in the output
+holding `undefined`, so code can read `draft.name` without first checking
+whether the key exists.
+
+The object builders take a **shape**, not a schema. A built schema is a closure
+and a description, and it has no list of fields that `partial` could take apart.
+So name the shape once and pass it to each builder:
+
+```js
+const account = { name: string(), age: number() };
+
+const Account = object(account);
+const Draft = partial(account); // parse(Draft, {}) is { name: undefined, age: undefined }
+const Contact = object({ name: account.name }); // what other libraries call pick
+```
+
+### Containers
+
+```js
+parse(array(number()), [1, 2, 3]);
+safeParse(array(number()), [1, "2", "3"]);
+// two issues, at ["1"] and ["2"]
+
+parse(tuple([string(), number()]), ["a", 1]);
+safeParse(tuple([string(), number()]), ["a", 1, 2]);
+// { ok: false, issues: [{ code: "length", message: "expected 2 tuple items" }] }
+
+parse(record(number()), { ada: 36, grace: 45 });
+```
+
+Every child is visited, including the ones after a failure. A bad third row does
+not hide a bad seventh one, because reporting them on separate attempts would be
+two round trips for information that was there the first time.
+
+A tuple's length is part of its type, so one item too many is rejected rather
+than truncated. A `record` reads only own keys. `map(key, value)` and
+`set(item)` check a real `Map` and `Set`, for values that did not arrive as
+JSON, such as the result of `structuredClone`, a read from IndexedDB, or another
+module's output. A map entry can fail at its key or at its value, and the path
+says which:
+
+```js
+safeParse(map(string(), number()), new Map([["ada", 36], [2, "grace"]]));
+// issues at ["1", "key"] and ["1", "value"]
+```
+
+### Several schemas over one value
+
+```js
+const Id = union([string(), number()]);
+
+const Shape = variant("kind", {
+  circle: object({ kind: literal("circle"), radius: number() }),
+  square: object({ kind: literal("square"), side: number() }),
+});
+
+safeParse(Shape, { kind: "circle", radius: "big" });
+// { ok: false, issues: [{ code: "type", message: "expected number", path: ["radius"] }] }
+safeParse(Shape, { kind: "hexagon" });
+// { ok: false, issues: [{ code: "variant", message: "expected one of circle, square", path: ["kind"] }] }
+
+const Staff = intersect(object({ id: string() }), object({ role: enum_(["admin", "editor"]) }));
+```
+
+`union` takes the first branch that accepts, trying them in order even when
+they are asynchronous. A later branch's server should not be asked about a value
+an earlier branch already accepted. When no branch accepts, `union` reports
+every branch's issues, because it cannot know which one you meant.
+
+That is why `variant` exists. Its branches are keyed by the value of the
+discriminant. It reads that key first and runs only the matching branch, so the
+circle above gets one issue about `radius` instead of a list of reasons it is not
+a square. A discriminant that matches no branch is reported at the
+discriminant's own path, which lets a form put the message on the control that
+chooses it. Use `variant` whenever the branches share a tag, and keep `union` for
+cases with no tag, like `string | number`.
+
+`intersect` runs both schemas and reports both sides' issues. When both produce
+plain objects, it merges them. When they produce anything else, they must agree
+on one value, or you get an `intersect` issue rather than a guess.
+
+### A value that might not be there
+
+```js
+const Query = object({
+  q: optional(string()),
+  page: withDefault(number(), 1),
+  cursor: nullable(string()),
+  sort: fallback(enum_(["new", "top"]), "new"),
+});
+
+parse(Query, { cursor: null, sort: "oldest" });
+// { q: undefined, page: 1, cursor: null, sort: "new" }
+```
+
+| Wrapper | Passes through | Produces |
+| --- | --- | --- |
+| `optional(s)` | `undefined` | `undefined` |
+| `nullable(s)` | `null` | `null` |
+| `nullish(s)` | `null` or `undefined` | whichever it was |
+| `withDefault(s, value)` | `undefined` | `value` |
+| `fallback(s, value)` | anything `s` rejects | `value` |
+
+`undefined` and `null` are kept apart on purpose. A missing key and a key set to
+`null` mean different things in a PATCH body, in a GraphQL response and in a
+form that cleared a field. `nullish` is for the boundary that really does not
+care.
+
+The default passed to `withDefault` is not validated. It is a value your program
+wrote, in your program's types. `fallback` never fails. Use it where one bad
+field should not sink the whole payload, such as a cached response or a stored
+preference.
+
+### A schema that refers to itself
+
+```js
+import type { Schema } from "@uniflowed/validator";
+import { array, lazy, object, string } from "@uniflowed/validator";
+
+type CommentNode = {| readonly text: string, readonly replies: $ReadOnlyArray<CommentNode> |};
+
+const Comment: Schema<CommentNode> = lazy(() =>
+  object({ text: string(), replies: array(Comment) }),
+);
+```
+
+`lazy` delays building the schema until the first parse, and then reuses it, so
+a thousand-comment thread builds one schema, not a thousand. The annotation is
+required. Flow infers almost every schema in this package, but it will not solve
+a type that mentions itself, and the `Schema<CommentNode>` on the binding is
+where the cycle is cut. A wrong reply three levels down is reported at
+`["replies", "0", "replies", "0", "text"]`.
+
+A recursive schema with a `checkAsync` anywhere inside it has to use
+`lazyAsync` instead. It is the one case where asynchrony cannot be found out at
+build time, because finding out would mean building the schema, which is the
+infinite loop the laziness exists to avoid.
+
+## Pipelines
+
+`pipe` takes a schema and then steps, and runs them left to right:
+
+```js
+import { integer, min, minLength, pipe, startsWith, string, toLowerCase, transform, trim } from "@uniflowed/validator";
+
+const Handle = pipe(string(), trim(), toLowerCase(), minLength(3), startsWith("@"));
+parse(Handle, "  @Ada "); // "@ada"
+
+const Age = pipe(string(), transform(Number), integer(), min(18));
+parse(Age, "36"); // 36, a number
+safeParse(Age, "12");
+// { ok: false, issues: [{ code: "min", message: "expected at least 18" }] }
+```
+
+The steps that come ready-made:
+
+| For | Steps |
+| --- | --- |
+| Strings | `minLength`, `maxLength`, `length`, `nonEmpty`, `startsWith`, `endsWith`, `includes`, `regex`, `email`, `url`, `uuid`, `isoDate` |
+| Changing a string | `trim`, `toLowerCase`, `toUpperCase` |
+| Numbers | `min`, `max`, `integer`, `multipleOf` |
+| Arrays | `minItems`, `maxItems` |
+| Anything | `check`, `checkAsync`, `transform`, `transformAsync`, `brand` |
+
+Each ready-made step records what it constrained, for example `minLength(3)` as
+`{ kind: "minLength", value: 3 }`. That record is how `toJsonSchema` can write
+`"minLength": 3`. A hand-written `check` that does the same thing at run time
+exports as nothing, because a predicate cannot be written down in any export
+format.
+
+A few of the steps are deliberately precise about their edge cases.
+`isoDate()` rejects `2026-02-30`, which matches the pattern but is not a day.
+`multipleOf(0.1)` accepts `0.3`, although `0.3 % 0.1` is not zero in floating
+point. `regex` resets `lastIndex` on every test, so a `/g` pattern does not
+alternate between accepting and rejecting the same input. `email()` is loose on
+purpose. It rejects a missing at-sign or a missing dot, and nothing more, because
+the only real test of an address is sending something to it.
+
+### Order is meaning
+
+A `transform` runs only after every step before it has accepted, so it never
+sees a value those steps rejected:
+
+```js
+const Length = pipe(
+  string(),
+  minLength(2),
+  transform((text: string) => text.length),
+);
+```
+
+`minLength` runs on the string and `transform` produces a number. Written the
+other way round, it would not type-check, because `minLength` takes a string.
+
+### A rule over two fields
+
+`check(predicate, message, path?)` accepts any rule the library did not
+anticipate. A rule that compares two fields has to be attached to the object,
+since it needs both values, but its message belongs under the field the user has
+to change. The third argument says where:
+
+```js
+const Passwords = pipe(
+  object({ password: pipe(string(), minLength(8)), confirm: string() }),
+  check(
+    (form: {| password: string, confirm: string |}) => form.password === form.confirm,
+    "Passwords must match",
+    ["confirm"],
+  ),
+);
+
+safeParse(Passwords, { password: "correct horse", confirm: "battery" });
+// { ok: false, issues: [{ code: "check", message: "Passwords must match", path: ["confirm"] }] }
+```
+
+A check on the object runs only once every field has parsed. With a short
+password, the only issue is the `min_length` one under `password`. You do not
+also get a mismatch message comparing two values that were never valid.
+
+Annotate the predicate's parameter when the checked value is an object, as
+above. `uf check` cannot infer it from the `pipe` around it and asks for the
+annotation.
+
+## Reading the type off the schema
+
+```js
+import type { InferInput, InferOutput } from "@uniflowed/validator";
+
+type SignupInput = InferInput<typeof Signup>; // {| email: string, age: string |}
+type SignupOutput = InferOutput<typeof Signup>; // {| email: string, age: number |}
+
+const raw: SignupInput = { email: " ada@example.com ", age: "36" };
+const account: SignupOutput = parse(Signup, raw);
+const age: number = account.age;
+```
+
+`InferOutput` is what a parse produces. `InferInput` is what a valid input looks
+like. The two are the same until a pipeline changes the type: a `transform`
+makes them differ, and so do `withDefault` (the input may be missing, the output
+never is) and `fallback` (the input is `mixed`). Where they differ, a form's
+`defaultValues` wants the input type and its submit handler wants the output
+type, and [both come from the one schema](#a-forms-resolver).
+
+Both types are **exact**, which matches what `object` does at run time. `uf check` holds
+the code to that:
+
+```js
+const wrongAge: InferOutput<typeof Signup> = { email: "ada@example.com", age: "36" };
+// error: "36" is incompatible with number
+
+const extra: InferOutput<typeof Signup> = { email: "ada@example.com", age: 36, admin: true };
+// error: property admin is extra in object literal but missing in ShapeOutput
+
+const asText: string = account.age;
+// error: number is incompatible with string
+```
+
+A few places need a type argument, and the checker says so when one is missing:
+
+- **`enum_`** infers `string` from a literal list. Say the members if you want
+  them in the type: `enum_<"admin" | "editor">(["admin", "editor"])`.
+- **`brand`**: `pipe(string(), brand<string>("UserId"))`. The result is still a
+  `string` to Flow. The name reaches the description and the JSON Schema `title`,
+  and not the type, because Flow's opaque types are declared in a module and
+  cannot be produced by a function call. When the distinction has to be
+  enforced, declare `opaque type UserId = string` in the module that owns it.
+- **`lazy`**: the annotation on the binding, shown above.
+
+**Inference holds inside the module that defines the schema.** Export an
+unannotated schema and use `InferOutput<typeof Signup>` in another module, and
+`uf check` sees `any` there: the wrong `age` above would pass without a word.
+Annotate the exported binding instead, as `Schema<Output, Input>`. The
+annotation is checked against what the schema infers (a `pinned: string` in the
+annotation over a `boolean()` in the schema is an error at the schema), so it
+cannot drift, and every importer gets the real type. The
+[server action below](#a-server-actions-input) does exactly this.
+
+`InferInput` describes a shape, not a guarantee. It says a valid input to
+`pipe(string(), transform(Number))` is a `string`. It cannot say that the string
+has to be numeric, because checking that is the parse's job.
+
+## Issues, and where they land
+
+An issue is `{ code, message, path }`. `code` is for programs: `"type"`,
+`"min_length"`, `"unknown_key"`, `"check"`. It stays stable when a message
+changes, so code can tell "not an email address" from "we need an email
+address" without matching on English. `path` runs from the root of the value,
+as segments:
+
+```js
+const Team = object({ members: array(object({ email: pipe(string(), email()) })) });
+
+const result = safeParse(Team, {
+  members: [{ email: "ada@example.com" }, { email: "grace" }, { email: 7 }],
+});
+// issues:
+//   { code: "email", message: "expected email address", path: ["members", "1", "email"] }
+//   { code: "type", message: "expected string", path: ["members", "2", "email"] }
+
+if (!result.ok) {
+  flatten(result.issues);
+  // {
+  //   root: [],
+  //   nested: {
+  //     "members.1.email": ["expected email address"],
+  //     "members.2.email": ["expected string"],
+  //   },
+  // }
+}
+```
+
+The path is an array of strings, not `"members[1].email"`. Segments can be
+joined with a dot in one line wherever a string is needed, while splitting a
+string back into segments means writing a parser. Array indices are written as
+decimal strings, because a path is a path whether the container was an array or
+an object.
+
+An issue about the whole value has **no** `path` key at all, rather than an
+empty one. `flatten` puts its message in `root`:
+
+```js
+const Booking = pipe(
+  object({ from: number(), to: number() }),
+  check((range: {| from: number, to: number |}) => range.from < range.to, "The booking ends before it starts"),
+);
+
+safeParse(Booking, { from: 5, to: 2 });
+// { ok: false, issues: [{ code: "check", message: "The booking ends before it starts" }] }
+// flatten(...) is { root: ["The booking ends before it starts"], nested: {} }
+```
+
+`flatten`'s `nested` is keyed by the same dotted string you gave to
+`@uniflowed/form`'s `register`, which is why it is shaped that way. Paths are not
+typed: Flow has no template-literal types, so it cannot express "one of the
+paths this schema has", and a `SchemaPath` type that was really `string` would
+look like it checked something without checking it.
+
+## A payload that names the prototype
+
+`{"__proto__": {"isAdmin": true}}` is valid JSON. `JSON.parse` turns it into an
+object with an *own* key called `__proto__`. The danger comes one step later: in
+code that copies keys with `out[key] = value`, that assignment calls the
+`__proto__` setter instead of adding a property. The copy then has a prototype
+the attacker chose, and every `.isAdmin` read downstream returns `true` for a
+property nobody validated.
+
+Every place in this package that reads or writes a key from a payload goes
+through one module, `plain-object.js`, so there is exactly one defence:
+
+```js
+const payload = '{"name": "ada", "__proto__": {"isAdmin": true}}';
+
+const profile = parse(looseObject({ name: string() }), JSON.parse(payload));
+Object.getPrototypeOf(profile) === Object.prototype; // true
+Object.hasOwn(profile, "__proto__"); // true: an own key holding what was sent
+"isAdmin" in profile; // false
+
+parse(object({ name: string() }), JSON.parse(payload)); // { name: "ada" }
+safeParse(strictObject({ name: string() }), JSON.parse(payload));
+// { ok: false, issues: [{ code: "unknown_key", message: "unexpected key __proto__", path: ["__proto__"] }] }
+```
+
+Reading is protected in the same way. Only own keys are read, so a shape asking
+for `constructor` is not handed `Object.prototype.constructor`:
+`safeParse(object({ constructor: string() }), {})` fails with `expected string`
+at `["constructor"]`. `record`, `intersect` and `flatten` write through the same
+function, because a `__proto__` key can reach `flatten` as a path segment.
+
+One thing no parser can defend against is an `Object.prototype` that other code
+has already polluted. A process in that state has already lost, and every later
+read goes through the same polluted object. The
+[server action wire](/guide/server-actions#what-may-cross) refuses `__proto__`,
+`constructor` and `prototype` keys before an action runs, so this is the second
+line of defence there, not the only one.
+
+## Handing the schema to somebody else
+
+```js
+import { integer, maxLength, min, minLength, nullable, number, optional, pipe, strictObject, string, toJsonSchema, url } from "@uniflowed/validator";
+
+const Account = strictObject({
+  name: pipe(string(), minLength(2), maxLength(40)),
+  age: pipe(number(), integer(), min(18)),
+  nickname: optional(string()),
+  website: nullable(pipe(string(), url())),
+});
+
+toJsonSchema(Account);
+// {
+//   schema: {
+//     $schema: "https://json-schema.org/draft/2020-12/schema",
+//     type: "object",
+//     properties: {
+//       name: { type: "string", minLength: 2, maxLength: 40 },
+//       age: { type: "integer", minimum: 18 },
+//       nickname: { type: "string" },
+//       website: { anyOf: [{ type: "string", format: "uri" }, { type: "null" }] },
+//     },
+//     required: ["name", "age", "website"],
+//     additionalProperties: false,
+//   },
+//   unrepresentable: [],
+// }
+```
+
+The result has two parts, and the second one matters as much as the first.
+JSON Schema describes JSON, and some schemas describe things it has no words
+for. `date`, `set`, `map`, `bigint`, `undefined`, `instance` and `custom`
+describe values JSON does not have, and a `check` is a closure. A converter
+could throw on these, which would make one `Date` field fatal to an otherwise
+fine document. It could quietly emit `{}`, which would make the exported
+schema weaker than the one the application runs, with nothing to say so. This
+one emits `{}`, which accepts anything and is therefore imprecise but never
+wrong, and it **reports where it did so**:
+
+```js
+const Event = object({
+  when: date(),
+  tags: set(string()),
+  slug: pipe(
+    string(),
+    check((text: string) => !text.includes(" "), "no spaces"),
+  ),
+});
+
+toJsonSchema(Event).unrepresentable;
+// [
+//   { path: ["when"], kind: "date" },
+//   { path: ["tags"], kind: "set" },
+//   { path: ["slug"], kind: "check no spaces" },
+// ]
+```
+
+A caller that needs an exact document asserts the list is empty. A caller
+documenting an API with one `Date` in it still gets its document.
+
+**The document describes the input, not the output.** A JSON Schema validates
+what arrives over the wire, and what arrives is the input. A step *after* a
+transform constrains the output, so it cannot be written against the input:
+
+```js
+toJsonSchema(pipe(string(), transform(Number), integer(), min(18)));
+// {
+//   schema: { $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" },
+//   unrepresentable: [
+//     { path: [], kind: "integer after a transform" },
+//     { path: [], kind: "min after a transform" },
+//   ],
+// }
+```
+
+Writing `{ "type": "string", "minimum": 18 }` would ask a consumer to compare a
+string with a number. The schema rejects `"5"` and the document does not, and
+the list says exactly that. A step *before* the transform is exported
+normally: `pipe(string(), minLength(2), transform((text: string) => Number(text)))`
+exports as `{ "type": "string", "minLength": 2 }`. A `fallback` exports as `{}`,
+since it accepts everything.
+
+A `lazy` schema becomes one entry under `$defs` and a `$ref` to it, so the
+comment tree above exports as a single definition that refers to itself.
+
+`toJsonSchema` is built on `describe(schema)`, which returns the schema's
+`Description` as plain data. **`describe` and the `Description` type are
+experimental.** They have the shape a code generator would read, but no generator
+exists yet to prove it, so the type may gain cases before it is stable.
+
+## Where it is used
+
+### A server action's input
+
+A server action is a public endpoint, and
+[it authorizes itself](/guide/server-actions#an-action-authorizes-itself). It
+also validates itself, for the same reason: the request that reaches it was not
+necessarily made by your code.
+
+```js
+"use server";
+// @flow
+// app/notes/_actions/save-note.js
+import type { FlatIssues, Schema } from "@uniflowed/validator";
+import { boolean, flatten, maxLength, nonEmpty, pipe, safeParse, strictObject, string, trim } from "@uniflowed/validator";
+
+import { insertNote } from "../../_lib/notes.js";
+import { requireEditor } from "../../_lib/session.js";
+
+export type NoteInput = {| title: string, body: string, pinned: boolean |};
+
+const NewNote: Schema<NoteInput, NoteInput> = strictObject({
+  title: pipe(string(), trim(), nonEmpty(), maxLength(80)),
+  body: pipe(string(), maxLength(10_000)),
+  pinned: boolean(),
+});
+
+export type SaveNoteResult =
+  | {| readonly ok: true, readonly id: string |}
+  | {| readonly ok: false, readonly problems: FlatIssues |};
+
+export async function saveNote(input: NoteInput): Promise<SaveNoteResult> {
+  const editor = await requireEditor();
+
+  const parsed = safeParse(NewNote, input);
+  if (!parsed.ok) {
+    return { ok: false, problems: flatten(parsed.issues) };
+  }
+  return { ok: true, id: await insertNote(editor, parsed.value) };
+}
+```
+
+The parameter annotation and the parse do different jobs, and you need both.
+Flow reads the action's module, so the annotation makes
+`saveNote({ title: 1, body: "", pinned: false })` a `uf check` error in your own
+client code. But the annotation is not enforced over the network. The wire
+refuses functions, `Date`s and prototype keys, and says nothing about your
+fields. So `{ title: "   ", body: 7, pinned: false, authorId: "someone-else" }`
+reaches the function as it was sent, and the parse is what answers it:
+
+```js
+// { ok: false, problems: { root: [], nested: {
+//   title: ["expected a value"],
+//   body: ["expected string"],
+//   authorId: ["unexpected key authorId"],
+// } } }
+```
+
+Five decisions in that file:
+
+- **Authorize first.** A caller who may not write learns nothing about the
+  schema.
+- **`strictObject`, not `object`.** Dropping an `authorId` nobody asked for would
+  be safe, but reporting it tells you someone sent one.
+- **Failure is a returned value.** An action that throws answers with a `500` and
+  an empty body. "The title is empty" is not an internal error, and `FlatIssues`
+  is plain data that crosses the wire.
+- **The action receives the parsed value.** `insertNote` gets the trimmed title,
+  not `input`.
+- **`NoteInput` is written out, and the schema is annotated with it.** The
+  signature is read from other modules, and a type inferred from an
+  unannotated binding does not survive that trip (see
+  [the note under inference](#reading-the-type-off-the-schema)). The annotation
+  on `NewNote` is checked against what the schema infers, so the two cannot
+  drift apart unnoticed.
+
+When the action is called from an `@uniflowed/form` form, the form already runs
+the same schema before submitting. The server still runs it again, because that
+is the only run that counts as a check. For issues only the server can find, pass
+them through `errorsFromIssues` from `@uniflowed/form` to get keys that match
+the form's fields, then hand each one to `setError`. For an action that takes a
+`FormData` from `<form action={fn}>`, see
+[Server actions](/guide/server-actions#forms).
+
+### A form's resolver
+
+```js
+"use client";
+// @flow
+// app/signup/_components/SignupForm.js
+import { useForm, validatorResolver } from "@uniflowed/form";
+import type { InferInput, InferOutput } from "@uniflowed/validator";
+import { email, integer, min, object, pipe, string, transform, trim } from "@uniflowed/validator";
+
+export const Signup = object({
+  email: pipe(string(), trim(), email()),
+  age: pipe(string(), transform(Number), integer(), min(18)),
+});
+
+type SignupValues = InferInput<typeof Signup>;
+type SignupOutput = InferOutput<typeof Signup>;
+
+export component SignupForm(onSignup: (account: SignupOutput) => mixed) {
+  const { register, handleSubmit, errorProps, formState } = useForm<SignupValues, SignupOutput>({
+    defaultValues: { email: "", age: "" },
+    resolver: validatorResolver<SignupValues, SignupOutput>(Signup),
+  });
+
+  return (
+    <form onSubmit={handleSubmit((account) => onSignup(account))}>
+      <label htmlFor="email">Email</label>
+      <input id="email" {...register("email")} />
+      {formState.errors.email != null && (
+        <p {...errorProps("email")}>{formState.errors.email.message}</p>
+      )}
+
+      <label htmlFor="age">Age</label>
+      <input id="age" inputMode="numeric" {...register("age")} />
+      {formState.errors.age != null && (
+        <p {...errorProps("age")}>{formState.errors.age.message}</p>
+      )}
+
+      <button type="submit">Sign up</button>
+    </form>
+  );
+}
+```
+
+This is where the two inferred types pay off. The text boxes hold
+`SignupValues`, with `age` as the string the user typed. `onSignup` receives
+`SignupOutput`, where `age` is a number, because `handleSubmit` passes on the
+resolver's output. `validatorResolver` has to be given both types: its argument
+is a schema, and a schema describes its output, so the form's input type cannot
+be inferred from it. `InferInput` is the way to state that type without writing
+it out by hand.
+
+An issue's path segments are joined into the string `register` was given, and
+its `code` becomes the error's `type`. `"ada"` and `"12"` produce
+`{ email: { type: "email", message: "expected email address" }, age: { type: "min", message: "expected at least 18" } }`.
+A synchronous schema gives a synchronous resolver, so a form in `onChange` mode
+does not wait a microtask per keystroke. A schema with a `checkAsync` gives an
+asynchronous resolver, and the choice is made once, when the resolver is built.
+[Forms](/guide/form#a-schema-instead-of-rules) covers the rest: a resolver
+replaces the inline rules rather than running alongside them.
+
+### What a server sent back
+
+`@uniflowed/fetch` depends on no validator. Its `parse` option is a function
+from `mixed` to a result, and `parser(schema)` is exactly that function:
+
+```js
+import { FetchError, createFetch } from "@uniflowed/fetch";
+import { number, object, parser, string } from "@uniflowed/validator";
+
+const User = object({ id: number(), name: string() });
+
+const api = createFetch({ baseURL: "https://api.example.com" });
+
+const user = await api.request("/users/7", { parse: parser(User) });
+// {| id: number, name: string |}, and any other field the server sent is gone
+```
+
+The type of `user` comes from the schema. A body that does not match makes the
+request fail at the boundary, rather than surfacing three calls later as a
+`TypeError` about a property of `undefined`:
+
+```js
+try {
+  await api.request("/users/7", { parse: parser(User) });
+} catch (error) {
+  if (error instanceof FetchError && error.failure.kind === "invalid") {
+    error.failure.issues;
+    // [{ code: "type", message: "expected number", path: ["id"] }]
+  }
+}
+```
+
+`failure.issues` is typed `$ReadOnlyArray<mixed>`, not `Issue`, and that is the
+cost of `@uniflowed/fetch` not depending on this package. The message is
+`https://api.example.com/users/7 returned 1 value(s) the schema rejected`.
+
+A route handler can also export its request and response schemas, which
+`uf build` reads into an OpenAPI document. See
+[Answering requests](/guide/routing/requests).
+
+## Coming from Zod or Valibot
+
+| Zod / Valibot | Here | Why |
+| --- | --- | --- |
+| `safeParse` gives `success` with `data` (Zod) or `output` (Valibot) | `{ ok: true, value }` or `{ ok: false, issues }` | An exact union, so checking `ok` narrows to the side that has the field |
+| Valibot's `objectAsync`, `pipeAsync` and friends | One set of builders. `isAsync` says what a schema turned out to be | A composite asks its children when it is built. Only `lazyAsync` has to be told |
+| `discriminatedUnion` / `variant` take a list of options | `variant("kind", { circle: …, square: … })`, keyed by the discriminant's value | The discriminant is read first, and it names the one branch to run |
+| `.refine(f, { path })` / `forward(partialCheck(…), path)` | `check(f, message, ["confirm"])` | The rule lives on the object, and the message belongs under a field |
+| `.pick()`, `.omit()`, `.required()` on a schema | Object literals over a shape. `partial(shape)` exists | A built schema is a closure, with no field list to take apart |
+| A brand makes a nominal type | `brand<string>("UserId")` is a name in the description only | Flow's opaque types are declared in a module and cannot be produced by a call |
+| Valibot's `is` narrows | `is` returns a `boolean` | The proof is a closure the checker cannot see into. Narrow with `safeParse` |
+| Paths hold numbers (Zod) or path-item objects (Valibot) | `$ReadOnlyArray<string>`, indices as decimal strings | They join straight into the names `register` uses |
+| `.default(x)` / `optional(s, x)` | `withDefault(s, x)`, and the default is not validated | It is the program's own value, in its own types |
+| `creditCard`, `emoji`, `mac`, `cuid2` | Absent. Write a `check` | A stale regular expression in a library is worse than a rule the application owns |
+
+## What it does not do
+
+**Implemented and tested,** in the package's own words: the schema vocabulary,
+including discriminated unions, intersections, recursive schemas, maps and sets;
+issue paths through every composite; both entry points in both synchronous and
+asynchronous forms; `InferInput` and `InferOutput` over objects, shapes, tuples,
+unions, variants and pipelines; a `pipe` whose change of output type survives
+into the inferred type; and `toJsonSchema` with `$defs` for recursion and its
+`unrepresentable` list. `packages/validator/validator.test.js` covers each,
+including `@uniflowed/form`'s resolver over a synchronous and an asynchronous
+schema.
+
+**Experimental:** `describe` and the `Description` type, as above.
+
+**Not implemented, deliberately:**
+
+- **`pick`, `omit` and `required` over a built schema.** Write them over a
+  shape.
+- **A nominal `brand`.** Declare an `opaque type` where the distinction has to
+  hold.
+- **Typed field paths.** Flow has no template-literal types, and
+  `@uniflowed/form` makes the same call for the same reason.
+- **The long tail of format checks.** `email` is loose, and there is no
+  `creditCard`, `emoji`, `mac` or `cuid2`. Each is a regular expression that needs
+  maintaining, and a `check` you own does not go stale in someone else's
+  release.
+- **More than eight steps in one `pipe`.** Flow cannot compute a type across a
+  variable-length argument list, so each length has its own signature, up to
+  eight steps. A ninth is a type error. Pipe the result of a pipe instead.
+
+**Not implemented, and a gap:** `uf prepare` lists a `GenerateValidatorTypes`
+step, and nothing implements it. No part of the toolchain reads a schema and
+writes Flow types or a JSON Schema file to disk. The half that belongs in this
+package, a description complete enough to generate from, is here, and
+`toJsonSchema` exercises it. The build-time half has not been written.
+
+Three limits are part of the design rather than missing features. `custom` takes
+your word for its type, so prefer `check` on an ordinary type when you can,
+because that keeps the type honest. A JSON Schema export is looser than the
+schema wherever `unrepresentable` says so. And no parser can protect a process
+whose `Object.prototype` has already been polluted.
+
+Every snippet on this page was run before it was published. The short fences
+are excerpts of a module: they continue from the fences above them and leave
+their imports there. The samples were written out as test files importing
+`@uniflowed/validator`, `@uniflowed/form` and `@uniflowed/fetch` by name, run with
+`uf test` (the form rendered and submitted, and `useValidation` rendered, through
+`@uniflowed/react-testing`), and checked with `uf check`. The type claims were
+checked from both sides. The annotations shown hold, and each `// error:` line
+under *Reading the type off the schema*, the ninth `pipe` step, `is` used as a
+guard, `transform` before `minLength`, an `enum_` without its type argument, a
+wrong call to `saveNote` and a schema annotation that disagrees with its schema
+is a `uf check` error. The unannotated cross-module `InferOutput` was confirmed
+to pass unreported, which is why the page tells you to annotate. Three names
+stand for code a real application would have written: `isTaken` for a database
+lookup, and `requireEditor` and `insertNote` for the session and database behind
+the action. The `@uniflowed/fetch` samples ran against a `fetch` injected into
+`createFetch`, so they never touched the network.
+`packages/validator/validator.test.js` is where the package's behaviour is
+pinned: `uf test packages/validator/validator.test.js`.
+
+## Where to go next
+
+[State](/guide/state) is next: atoms, for the state the browser owns rather
+than borrows from a server. [Forms](/guide/form), after it, builds its resolver
+from the schemas on this page.
