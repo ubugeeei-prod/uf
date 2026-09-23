@@ -629,6 +629,20 @@ CI. A worker may serve more than one file, but every file starts from the same
 test state: spies are cleared, fake timers are restored, module stand-ins are
 dropped, and `stubEnv` / `stubGlobal` writes are put back.
 
+Every file also gets its own copy of the project's modules. Each module a test
+file reaches — its own imports, theirs, and any `import()` they make later — is
+evaluated afresh for that file, so state a module keeps (a React context's
+current value, a cache, a counter) cannot reach the next file in the worker.
+Two kinds of module stay shared, one instance per worker: installed packages
+under `node_modules` (React, react-dom, the DOM shim), because evaluating them
+again for every file is what a worker exists to avoid, and `@uniflowed/test`
+itself, whose registry the file's cases are registered in. Two files that need
+to share something at run time share it through `globalThis`, not through a
+module. On Node and Deno this holds for every file; on Bun, whose loader is a
+plugin the rule does not reach yet, project modules are still shared between
+the files one worker runs. It costs about 16% more CPU on this repository's
+suite (57 → 66 CPU-s), measured on a 12-core laptop under load.
+
 ### Keeping the loop fast
 
 The fast local loop is usually three commands:

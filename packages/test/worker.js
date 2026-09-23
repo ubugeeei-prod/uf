@@ -54,6 +54,9 @@ import { writeChangedSnapshots } from "./internal/snapshot.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { installInSourceTests } from "./in-source.js";
 import { restoreSharedState } from "./internal/isolation.js";
 import { run } from "./internal/run.js";
@@ -372,4 +375,48 @@ process.on("uncaughtException", (thrown: mixed) => {
   process.exit(1);
 });
 
+/**
+ * Give every test file its own copy of the project's modules.
+ *
+ * The Flow loader in `@uniflowed/host` imports every project module a test
+ * file reaches under a URL that names the file's run, so no module-level state
+ * — a React context's current value, a cache, a registry a package keeps —
+ * outlives the file that set it (ubugeeei-prod/uf#1443). Installed packages
+ * and the runner itself stay one instance per process; `internal/file-scope.js`
+ * in `@uniflowed/host` says why each is on its side of the line.
+ *
+ * The runner is named by directory: this package's and the loader's, as the
+ * loader will see them — real paths, because a workspace reaches both through
+ * a `node_modules` symlink and the loader is handed where they really are.
+ */
+function scopeModulesToFiles(): void {
+  const here = path.dirname(fileURLToPath(String(import.meta.url)));
+  let host: string | null = null;
+  try {
+    host = path.dirname(
+      fileURLToPath(String((import.meta as $FlowFixMe).resolve("@uniflowed/host/register"))),
+    );
+  } catch {
+    // A host without `import.meta.resolve`: the loader's own modules are
+    // reached from this package's, never from a test file's, so leaving them
+    // out of the list only matters for a test that imports the loader itself.
+  }
+  const shared = [here, host]
+    .filter((directory) => directory != null)
+    .map((directory) => {
+      try {
+        return fs.realpathSync(String(directory));
+      } catch {
+        return String(directory);
+      }
+    });
+  Object.defineProperty(globalThis, Symbol.for("@uniflowed/host/file-scope"), {
+    value: Object.freeze({ shared: Object.freeze(shared) }),
+    configurable: true,
+    enumerable: false,
+    writable: false,
+  });
+}
+
+scopeModulesToFiles();
 serve();

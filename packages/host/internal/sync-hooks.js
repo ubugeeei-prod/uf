@@ -78,6 +78,7 @@ import {
   readCached,
   writeCached,
 } from "./flow-cache.js";
+import { fileScoped } from "./file-scope.js";
 
 /**
  * Install the hooks for the rest of this thread, compiling under `root`.
@@ -108,14 +109,18 @@ export function installFlowHooks(root) {
 
   return nodeModule.registerHooks({
     resolve(specifier, context, nextResolve) {
+      let resolved;
       try {
-        return nextResolve(specifier, context);
+        resolved = nextResolve(specifier, context);
       } catch (error) {
         if (isTestCompilerRuntime(specifier) && error.code === "ERR_MODULE_NOT_FOUND") {
           return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
         }
         throw error;
       }
+      // A test file's own copy of the project's modules; see `./file-scope.js`.
+      const url = fileScoped(context?.parentURL, resolved?.url, isImport(context));
+      return url === resolved.url ? resolved : { ...resolved, url };
     },
 
     load(url, context, nextLoad) {
