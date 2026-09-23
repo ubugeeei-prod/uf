@@ -308,10 +308,10 @@ fn detected_manager(resolved: &ResolvedConfig) -> Finding {
         role: "package manager".to_owned(),
         status: Health::Ok,
         found: String::new(),
-        reason: Some(format!(
-            "chosen by {}",
-            crate::commands::pm::chosen_by(&detection.source, substituted)
-        )),
+        reason: Some(manager_reason(&crate::commands::pm::chosen_by(
+            &detection.source,
+            substituted,
+        ))),
         fix: None,
         declared_by: Vec::new(),
         location: None,
@@ -338,6 +338,16 @@ fn detected_manager(resolved: &ResolvedConfig) -> Finding {
         }
     }
     finding
+}
+
+/// Why this manager: `chosen by package-lock.json`, or, when nothing chose
+/// it, what was missing — "chosen by no lockfile" reads as a typo.
+fn manager_reason(chosen_by: &str) -> String {
+    if chosen_by.starts_with("no ") {
+        format!("uf's default: {chosen_by}")
+    } else {
+        format!("chosen by {chosen_by}")
+    }
 }
 
 /// The executable a package manager is run as.
