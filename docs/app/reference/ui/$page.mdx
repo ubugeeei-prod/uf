@@ -2160,6 +2160,13 @@ directory `uf` embeds, so a component `uf ui list` offers is a component shown
 here. The examples render in the tokens' default theme whatever this site's
 theme is, because that is what a project sees before it applies one of its own.
 
+A few entries are **blocks** rather than components: a finished piece of a page,
+such as `sign-in-form`, made only of components the registry already has.
+`uf ui add sign-in-form` writes the block and the components it is made of into
+the same directory, and from then on the block is the project's, like any
+component. Blocks are Experimental, which means their props may still change
+between releases. `uf ui list --json` marks them `"kind": "block"`.
+
 <Registry />
 
 ## What this page is

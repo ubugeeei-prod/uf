@@ -303,11 +303,36 @@ fn list_says_what_the_registry_has_and_what_the_project_added() {
     assert_eq!(state("dialog"), "current");
     assert_eq!(state("button"), "current");
     assert_eq!(state("tabs"), "missing");
+    let kind = |name: &str| {
+        report["components"]
+            .as_array()
+            .expect("a list")
+            .iter()
+            .find(|each| each["name"] == name)
+            .unwrap_or_else(|| panic!("no {name} in {stdout}"))["kind"]
+            .clone()
+    };
+    assert_eq!(kind("dialog"), "component");
+    assert_eq!(kind("sign-in-form"), "block");
 
     let (code, stdout, _) = run(dir.path(), &["ui", "list"]);
     assert_eq!(code, 0);
     for name in ["button", "dialog", "select", "tabs"] {
         assert!(stdout.contains(name), "{stdout}");
+    }
+}
+
+/// A block is added like a component, and brings the components it is made of.
+#[test]
+fn a_block_is_added_with_the_components_it_is_made_of() {
+    let dir = app();
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "add", "sign-in-form"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    for name in ["sign-in-form", "field", "button", "alert"] {
+        assert!(
+            component(dir.path(), name).is_file(),
+            "{name}.js was not written:\n{stdout}"
+        );
     }
 }
 

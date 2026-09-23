@@ -13,7 +13,8 @@ use crate::project::{
     AddAction, AddError, CopyState, apply, inspect, package_spec, plan_add, survey,
 };
 use crate::registry::{
-    EMBEDDED, REGISTRY_VERSION, Registry, RegistryError, description, imports, is_component_name,
+    BLOCKS, EMBEDDED, Kind, REGISTRY_VERSION, Registry, RegistryError, description, imports,
+    is_component_name,
 };
 use crate::stamp::{Copy, Stamp, digest, stamped};
 
@@ -185,13 +186,55 @@ fn a_component_with_no_module_answers_one_the_headless_package_declined() {
         .collect();
 
     for name in components_on_disk() {
-        if modules.contains(&name) {
+        if modules.contains(&name) || BLOCKS.contains(&name.as_str()) {
             continue;
         }
         assert!(
             declined.contains(&name),
             "`{name}` has no module in `@uniflowed/ui` and is not a component its table declined"
         );
+    }
+}
+
+/// A block is made of the registry's own components: it needs at least two of
+/// them, imports nothing of `@uniflowed/ui`'s directly, and takes no name the
+/// headless package has a module or a declined entry for — so the exemption
+/// in the test above cannot be used to ship a component without its decision.
+#[test]
+fn every_block_is_made_of_registry_components_and_nothing_else() {
+    let registry = Registry::embedded().expect("the embedded registry reads");
+    let modules = headless_modules();
+    let tabled: BTreeSet<String> = ui_components()
+        .iter()
+        .map(|component| kebab(&component.name))
+        .collect();
+    assert!(!BLOCKS.is_empty(), "the registry has no block to check");
+    for name in BLOCKS {
+        let block = registry
+            .get(name)
+            .unwrap_or_else(|| panic!("`BLOCKS` names `{name}`, which the registry does not have"));
+        assert_eq!(block.kind, Kind::Block);
+        assert!(
+            block.requires.len() >= 2,
+            "`{name}` is a block made of {} registry component(s); a block composes several",
+            block.requires.len()
+        );
+        assert!(
+            !block
+                .dependencies
+                .iter()
+                .any(|package| package == "@uniflowed/ui"),
+            "`{name}` imports `@uniflowed/ui` itself; a block's behaviour comes through the components it is made of"
+        );
+        assert!(
+            !modules.contains(*name) && !tabled.contains(*name),
+            "`{name}` is a name the headless table has; a block cannot stand in for a component"
+        );
+    }
+    for component in registry.components() {
+        if !BLOCKS.contains(&component.name) {
+            assert_eq!(component.kind, Kind::Component, "`{}`", component.name);
+        }
     }
 }
 

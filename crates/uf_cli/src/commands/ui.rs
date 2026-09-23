@@ -285,6 +285,7 @@ fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> {
                 .zip(&copies)
                 .map(|(component, copy)| json!({
                     "name": component.name,
+                    "kind": component.kind.as_str(),
                     "description": component.description.as_str(),
                     "dependencies": component.dependencies.iter().map(|each| each.as_str()).collect::<Vec<_>>(),
                     "requires": component.requires.iter().map(|each| each.as_str()).collect::<Vec<_>>(),

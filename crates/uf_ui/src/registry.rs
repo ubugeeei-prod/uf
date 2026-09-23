@@ -71,6 +71,7 @@ pub(crate) const EMBEDDED: &[Embedded] = embed![
     "separator",
     "sheet",
     "sidebar",
+    "sign-in-form",
     "skeleton",
     "slider",
     "switch",
@@ -85,11 +86,49 @@ pub(crate) const EMBEDDED: &[Embedded] = embed![
     "tree",
 ];
 
+/// The entries in `registry/ui/` that are blocks rather than components.
+///
+/// A component is one piece of an interface: the styled half of an
+/// `@uniflowed/ui` module, or the styled answer to one its table declined. A
+/// block is a finished piece of a page — a sign-in form — made only of
+/// components the registry already has, so that a page starts from something
+/// that already gets the hard parts right. It lives in the same directory and
+/// is written by the same `uf ui add`, because its imports are its siblings and
+/// `./field.js` has to mean in the project what it means here.
+///
+/// A list somebody adds to on purpose, like `uf_lib`'s `UI_HOOK_MODULES`,
+/// rather than a rule that reads a block off its imports: the test that holds
+/// every registry name to a headless module or a declined one exempts exactly
+/// these names, and `tests.rs` holds each one to being made of registry
+/// components and nothing of `@uniflowed/ui`'s directly.
+pub(crate) const BLOCKS: &[&str] = &["sign-in-form"];
+
+/// What a registry entry is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// One piece of an interface.
+    Component,
+    /// A finished piece of a page, made of components. See [`BLOCKS`].
+    Block,
+}
+
+impl Kind {
+    /// One word for the kind, which is also what `--json` reports.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Component => "component",
+            Self::Block => "block",
+        }
+    }
+}
+
 /// A component, as its source declares it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Component {
     /// Its name, which is its file's: `dialog` is `dialog.js`.
     pub name: &'static str,
+    /// Whether it is a component or a block.
+    pub kind: Kind,
     /// What its header says it is: the first line, after the title.
     pub description: CompactString,
     /// The npm packages it imports, by package name, sorted.
@@ -130,6 +169,11 @@ impl Component {
         requires.sort();
         Ok(Self {
             name,
+            kind: if BLOCKS.contains(&name) {
+                Kind::Block
+            } else {
+                Kind::Component
+            },
             description: description.to_compact_string(),
             dependencies,
             requires,

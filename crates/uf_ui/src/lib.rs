@@ -146,7 +146,7 @@ pub mod registry;
 pub mod stamp;
 
 pub use project::DEFAULT_DIRECTORY;
-pub use registry::{Component, REGISTRY_VERSION, Registry, RegistryError, UnknownComponent};
+pub use registry::{Component, Kind, REGISTRY_VERSION, Registry, RegistryError, UnknownComponent};
 pub use stamp::Stamp;
 
 #[cfg(test)]
