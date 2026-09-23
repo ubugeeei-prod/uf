@@ -100,7 +100,9 @@ Where a row is not the same work, it says so here rather than in a footnote:
   waited for. It is there because a runner that spreads the same work over more
   cores finishes sooner but costs the same, and on a busy machine CPU is what
   runs out. A dev server's CPU is not measured, because it has not exited when
-  the document is served.
+  the document is served. The kernel counts CPU time in clock ticks, 10 ms on the
+  Linux runner, so a CPU figure under about 20 ms is a count of ticks rather
+  than a measurement.
 - **Installs** use the npm registry. They are measured over the network, with
   an empty home directory for the cold rows, so they depend on the registry.
 
@@ -135,8 +137,9 @@ explains each rule.
 
 To refresh the baseline after a change that makes uf faster or intentionally
 slower, or after the runner changes: run the `Bench` workflow by hand, download
-its `bench-comparison` artifact, and commit its `results.json` as
-`tools/bench/toolchain/baseline.json`. This page is rebuilt from the new file.
+its `bench-comparison` artifact, copy its `results.json` over
+`tools/bench/toolchain/baseline.json`, run `uf fmt` (it reformats the JSON and
+changes no number), and commit it. This page is rebuilt from the new file.
 
 ## What is not measured
 
