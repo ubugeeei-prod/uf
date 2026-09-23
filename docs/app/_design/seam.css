@@ -1480,6 +1480,106 @@ tbody tr:last-child :is(td, th) {
   font-size: 0.95rem;
 }
 
+/* The pages a section's readers open first, at the top of its landing page:
+   a grid of hairline cells. The outer box draws the top and left rules and
+   each cell its right and bottom, so the lines are one weight where cells
+   meet and a short last row leaves no filled hole. The whole cell is the link.
+   No shadow and no fill on hover — the title takes the link colour instead. */
+.prose .lead-links {
+  border-left: 1px solid var(--doc-rule);
+  border-top: 1px solid var(--doc-rule);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  list-style: none;
+  margin: 1.5rem 0 2.5rem;
+  padding: 0;
+}
+
+.prose .lead-links li {
+  border-bottom: 1px solid var(--doc-rule);
+  border-right: 1px solid var(--doc-rule);
+  margin: 0;
+}
+
+.prose .lead-links a {
+  align-content: start;
+  color: var(--doc-ink-muted);
+  display: grid;
+  gap: 0.3rem;
+  height: 100%;
+  padding: 1rem 1.1rem 1.1rem;
+  text-decoration: none;
+}
+
+.prose .lead-links strong {
+  color: var(--doc-ink);
+  font-family: var(--uf-font-display);
+  font-size: 1.05rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+}
+
+.prose .lead-links a > span:not(.lead-links-first) {
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.prose .lead-links a:hover strong {
+  color: var(--doc-link);
+}
+
+.prose .lead-links a:focus-visible {
+  outline: 2px solid var(--uf-color-blue-500);
+  outline-offset: -2px;
+}
+
+/* The first cell is where to start, said in words in the one accent. */
+.lead-links-first {
+  color: var(--doc-link);
+  font-family: var(--uf-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* On the home page, the pages each section's readers open first, as one line
+   of links under the section's sentence. */
+.paths-featured {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+}
+
+.paths-featured li {
+  margin: 0;
+}
+
+.paths-featured a {
+  color: var(--doc-ink);
+  font-size: 0.93rem;
+  text-decoration-color: var(--doc-rule-strong);
+  text-underline-offset: 0.2em;
+}
+
+.paths-featured a:hover {
+  color: var(--doc-link);
+  text-decoration-color: currentColor;
+}
+
+.paths-featured a::after {
+  color: var(--doc-ink-faint);
+  content: " →";
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .prose .lead-links strong {
+    transition: color 120ms ease-out;
+  }
+}
+
 /* The home page is one seam from the masthead to the colophon — the whole
    argument is that there is one of these, so drawing a fresh gradient per
    section would be arguing against it. */

@@ -10,7 +10,7 @@ import * as React from "@uniflowed/react";
 import { Link, useRoute } from "@uniflowed/router";
 
 import { NavOverflow } from "./nav-overflow.js";
-import { currentHref, openSectionFor, sections } from "./nav.js";
+import { currentHref, featuredIn, openSectionFor, sections } from "./nav.js";
 import type { Entry, Section } from "./nav.js";
 
 /**
@@ -105,25 +105,67 @@ export component ManualNav() {
 
 /**
  * The home page's choice of path: one row per section, the question its
- * reader arrives with, and the landing page that answers it.
+ * reader arrives with, the landing page that answers it, and the pages most
+ * of its readers open first.
  *
  * A definition list, because that is what this is — a question and where it
  * is answered. It is generated from `nav.js`, so the home page cannot offer a
- * path the manual does not have or leave out one it does.
+ * path the manual does not have or leave out one it does, and a featured page
+ * is always one its section lists.
  */
 export component ReaderPaths() {
   return (
     <dl className="paths">
-      {sections.map((section) => (
-        <div key={section.title}>
-          <dt>{section.question}</dt>
-          <dd>
-            <Link to={section.landing.href}>{section.title}</Link>
-            <span>{section.landing.blurb}</span>
-          </dd>
-        </div>
-      ))}
+      {sections.map((section) => {
+        const featured = featuredIn(section);
+        return (
+          <div key={section.title}>
+            <dt>{section.question}</dt>
+            <dd>
+              <Link to={section.landing.href}>{section.title}</Link>
+              <span>{section.landing.blurb}</span>
+              {featured.length > 0 ? (
+                <ul className="paths-featured" aria-label={`${section.title}: most read`}>
+                  {featured.map((page) => (
+                    <li key={page.href}>
+                      <Link to={page.href}>{page.title}</Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
+  );
+}
+
+/**
+ * The top of a section's landing page: the three to five pages most of its
+ * readers open first, as a grid a reader takes in at a glance, with the first
+ * marked as the place to start. The full list in reading order follows it on
+ * the page; this is not a second copy of that list but the part of it that
+ * matters most, which a flat numbered list cannot show.
+ *
+ * `section` is the section's title, and a title nothing matches fails the
+ * build the same way `SectionContents` does.
+ */
+export component SectionLead(section: string) {
+  const featured = featuredIn(sectionTitled(section));
+
+  return (
+    <ol className="lead-links">
+      {featured.map((page, index) => (
+        <li key={page.href}>
+          <Link to={page.href}>
+            {index === 0 ? <span className="lead-links-first">Start here</span> : null}
+            <strong>{page.title}</strong>
+            <span>{page.blurb}</span>
+          </Link>
+        </li>
+      ))}
+    </ol>
   );
 }
 
