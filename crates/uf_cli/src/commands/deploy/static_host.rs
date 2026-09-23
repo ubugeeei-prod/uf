@@ -20,6 +20,7 @@
 //! | a route the prerender wrote no document for | the route table against the pages Vite reported | there is nothing to upload for it |
 //! | a server action | the RSC registry | it is a `POST` the browser makes back to the application |
 //! | a page the build wrote for regeneration | the pages Vite reported | its document is where a server starts it from, and the page is replaced once its lifetime passes |
+//! | a page the build wrote as a static shell | the pages Vite reported | the shell has holes only a server fills, per request |
 //!
 //! Two of those four are invisible to the route table, which is why
 //! [`uf_router::discover_server_modules`] exists: a `$route.js` has no page
@@ -59,6 +60,8 @@ pub(crate) enum Reason {
     ServerAction,
     /// A page the build wrote for regeneration.
     Regenerates,
+    /// A page the build wrote as a static shell with holes (`ppr`).
+    PartiallyPrerendered,
     /// An entry of `app.router.redirects`.
     Redirect,
     /// An entry of `app.router.rewrites`.
@@ -94,6 +97,11 @@ impl Reason {
             Self::Regenerates => {
                 "it regenerates once its lifetime passes, so the build wrote its document for a \
                  server to answer from rather than at its URL, and a static host has no server"
+            }
+            Self::PartiallyPrerendered => {
+                "it reads the request inside a `<Suspense>` boundary, so the build wrote its \
+                 static shell for a server to send and fill per request rather than a document \
+                 at its URL, and a static host has no server"
             }
             Self::Redirect => {
                 "`app.router.redirects` sends a redirect when a request arrives, and a static \
@@ -187,6 +195,20 @@ pub(crate) fn unservable(
                 .find(|route| route.matches_url(&page.url))
                 .map_or_else(|| page.file.clone(), |route| relative_to(root, &route.page)),
             reason: Reason::Regenerates,
+        });
+    }
+
+    // A page the build wrote as a static shell, for the same reason and in the
+    // same words: the route loop counted it, and what the build wrote is the
+    // server's record of the shell rather than a document at its URL.
+    for page in pages.iter().filter(|page| page.partial) {
+        found.push(Unservable {
+            subject: page.url.clone(),
+            file: routes
+                .iter()
+                .find(|route| route.matches_url(&page.url))
+                .map_or_else(|| page.file.clone(), |route| relative_to(root, &route.page)),
+            reason: Reason::PartiallyPrerendered,
         });
     }
 

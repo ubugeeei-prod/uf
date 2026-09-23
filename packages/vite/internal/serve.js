@@ -246,6 +246,7 @@ export async function loadBuild({ root, outDir, serverDir }) {
   await deployment();
   const build = await buildIdentity(root, serverDir);
   const regeneration = await readRegeneration(path.resolve(root, serverDir));
+  const partial = await readPartialPrerenders(path.resolve(root, serverDir));
   return {
     entry,
     assets: await documentAssetsFor(path.resolve(root, serverDir), manifest),
@@ -253,6 +254,7 @@ export async function loadBuild({ root, outDir, serverDir }) {
     root,
     build,
     regeneration,
+    partial,
   };
 }
 
@@ -315,6 +317,33 @@ export async function readRegeneration(serverDir) {
   let text;
   try {
     text = await readFile(path.join(serverDir, REGENERATION_FILE), "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+  return JSON.parse(text);
+}
+
+/**
+ * The file beside the server bundle that holds the static shells of the pages a
+ * build prerendered partially.
+ *
+ * Beside the server bundle rather than under the output directory, because a
+ * shell is not a document anybody should be sent on its own: its holes are
+ * filled by the server that reads this file, and a file server would send it
+ * with every hole showing its fallback forever.
+ */
+export const PARTIAL_PRERENDER_FILE = "partial-prerender.json";
+
+/**
+ * The pages this build prerendered partially, or `undefined` for a build with
+ * none — which then serves exactly as every build did before partial
+ * prerendering existed.
+ */
+export async function readPartialPrerenders(serverDir) {
+  let text;
+  try {
+    text = await readFile(path.join(serverDir, PARTIAL_PRERENDER_FILE), "utf8");
   } catch (error) {
     if (error?.code === "ENOENT") return undefined;
     throw error;
@@ -571,7 +600,7 @@ export async function beginRequest(entry, request) {
  * `images` is `app.builtins.images`, and it adds `/__uf/image` to what the
  * handler answers when it lists remote hosts; see `./image-endpoint.js`.
  *
- * @param {{entry: object, assets: object, cache?: object, root?: string, build?: string | null, images?: object}} build
+ * @param {{entry: object, assets: object, cache?: object, root?: string, build?: string | null, regeneration?: object, images?: object, partial?: object}} build
  */
 export function createApplicationHandler({
   entry,
@@ -581,6 +610,7 @@ export function createApplicationHandler({
   build,
   regeneration,
   images,
+  partial,
 }) {
   const ready = deployment().then(
     async ({ createFetchHandler, createCacheStore, nodeCapabilities }) =>
@@ -610,6 +640,9 @@ export function createApplicationHandler({
         // bundle. Absent for a build with none, which then serves exactly as it
         // did before regeneration existed.
         ...(regeneration == null ? {} : { regeneration }),
+        // And the static shells of the pages it prerendered partially, from the
+        // file beside the server bundle, for the same reason.
+        ...(partial == null ? {} : { partial }),
         // `uf preview` and `uf start` are a Node process with a socket, which is
         // what a deployed `--adapter node` build is too — so a route handler
         // that streams events answers the same way in the preview it is checked
@@ -658,7 +691,7 @@ export function createStaticHandler({ root }) {
  * a deployment. `uf preview` puts the same two in front of Vite's file
  * middleware as well; see [`answerRouting`].
  *
- * @param {{entry: object, assets: object, distDir: string, cache?: object, root?: string, build?: string | null, regeneration?: object}} build
+ * @param {{entry: object, assets: object, distDir: string, cache?: object, root?: string, build?: string | null, regeneration?: object, partial?: object}} build
  */
 export function createServeHandler({
   entry,
@@ -669,6 +702,7 @@ export function createServeHandler({
   build,
   regeneration,
   images,
+  partial,
 }) {
   const application = createApplicationHandler({
     entry,
@@ -678,6 +712,7 @@ export function createServeHandler({
     build,
     regeneration,
     images,
+    partial,
   });
   const ready = deployment().then(({ createServeHandler: create }) =>
     create({ staticDir: distDir, handle: application, routing: entry.routing }),

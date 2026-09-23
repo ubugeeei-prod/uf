@@ -66,6 +66,21 @@ export type RenderedDocument = {|
   readonly stream: () => ReadableStream<Uint8Array>,
 |};
 
+/**
+ * A page's static shell, as `uf build` recorded it and `@uniflowed/router`
+ * resumes it.
+ *
+ * Stated here rather than imported, for the reason [`RenderedDocument`] is:
+ * this package links no renderer, and what crosses between the two is data.
+ * `@uniflowed/router`'s `internal/stream.js` is where each field is argued.
+ */
+export type PrerenderedShell = {|
+  readonly html: string,
+  readonly close: string,
+  readonly rootDepth: number,
+  readonly postponed: mixed,
+|};
+
 /** What the project's server bundle exports; see `virtual:uf/server`. */
 export type Application = {|
   /** Render `url`, resolving when the shell is ready. */
@@ -95,6 +110,20 @@ export type Application = {|
     readonly stream: ReadableStream<Uint8Array> | null,
     readonly error?: mixed,
   |}>,
+  /**
+   * Answer a page `uf build` prerendered partially: its static shell first,
+   * then its holes as this request renders them.
+   *
+   * Present on a bundle React Server Components render, which is the only kind
+   * that writes a shell. `shell` is what the build recorded for the page; see
+   * `../fetch.js`'s `PartialPrerenders`.
+   */
+  readonly resume?: (
+    url: string,
+    assets: DocumentAssets,
+    shell: PrerenderedShell,
+    options?: {| readonly onError?: (error: mixed) => void |},
+  ) => Promise<RenderedDocument>,
   /** The route handler for this request, or `null` when no handler claims it. */
   readonly dispatch: (request: Request) => Promise<Response | null>,
   /**

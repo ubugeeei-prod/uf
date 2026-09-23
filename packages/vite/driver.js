@@ -66,6 +66,7 @@ import { VIRTUAL, resolveRouteTarget, routingRulesOf, scanRoutes } from "./inter
 import {
   BUILD_ID_FILE,
   DOCUMENT_ASSETS_FILE,
+  PARTIAL_PRERENDER_FILE,
   REGENERATED_DIRECTORY,
   REGENERATION_FILE,
   answerRouting,
@@ -80,6 +81,7 @@ import {
   loadBuild,
   nodeListener,
   providerSpecifier,
+  readPartialPrerenders,
   readRegeneration,
   withRequest,
 } from "./internal/serve.js";
@@ -872,14 +874,30 @@ async function build() {
   // A tag without a lifetime is not enough, for the route cache's own reason:
   // an entry with no end is one another process could serve from its memory
   // for ever after `revalidateTag` took it out of the shared store.
+  //
+  // A page is written as a static shell when `uf` passed `--partial` — `ppr`
+  // allowed in `app.rendering.modes` and a server deployed to fill it — and the
+  // page read `cookies()`, `headers()` or `draftMode()` inside a `<Suspense>`
+  // boundary. The prerender then answers with a `shell` instead of a document:
+  // the markup React could render without a request, and React's record of the
+  // holes. Nothing is written under `dist/` for it, neither a document nor a
+  // payload, because a shell on its own is a page whose holes never fill and
+  // the browser hydrates from the request's payload. The shell goes into
+  // `PARTIAL_PRERENDER_FILE` beside the server bundle, and every server that
+  // serves this build answers the page from there. A page that read the
+  // request outside every boundary still fails, naming what it read.
   const { collectCacheDeclarations } = await import("@uniflowed/server/cache");
   const regenerate = flag("--regenerate");
+  const partialPrerender = flag("--partial");
   const regenerated = {};
+  const partial = {};
   for (const url of pages) {
     let declared;
     const renderedAt = Date.now();
     try {
-      declared = await collectCacheDeclarations(() => server.prerender(url, assets));
+      declared = await collectCacheDeclarations(() =>
+        server.prerender(url, assets, partialPrerender ? { partial: true } : undefined),
+      );
     } catch (error) {
       failed(url, error);
       continue;
@@ -887,6 +905,18 @@ async function build() {
     const result = declared.value;
     if (result.error != null) {
       failed(url, result.error);
+      continue;
+    }
+    if (result.shell != null) {
+      partial[url] = result.shell;
+      emit("page", {
+        url,
+        file: path.relative(root, path.join(serverDir, PARTIAL_PRERENDER_FILE)),
+        status: result.status,
+        bytes: Buffer.byteLength(result.shell.html),
+        regenerates: false,
+        partial: true,
+      });
       continue;
     }
     const lifetime = declared.lifetime;
@@ -933,6 +963,12 @@ async function build() {
     writeFileSync(
       path.join(serverDir, REGENERATION_FILE),
       `${JSON.stringify({ pages: regenerated }, null, 2)}\n`,
+    );
+  }
+  if (Object.keys(partial).length > 0) {
+    writeFileSync(
+      path.join(serverDir, PARTIAL_PRERENDER_FILE),
+      `${JSON.stringify({ pages: partial })}\n`,
     );
   }
   // One `404.html`, from the boundary at the router root: a static host serves
@@ -1334,11 +1370,24 @@ async function compile() {
  * invocations and is refused by name instead. A regenerated page kept only in
  * memory would go back to the build's copy on every restart, which is a page
  * that travels back in time. See [`deploy`].
+ *
+ * `streams: false` marks the one target whose responses are buffered whole.
+ * A page the build prerendered partially is worth nothing there — its shell is
+ * the part that was meant to arrive first — so such a build is refused by name
+ * rather than deployed as a page that waits for its slowest hole.
  */
 const ADAPTERS = {
   node: {
-    entries: (document, cache, build, schedules, regeneration, images) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration, images),
+    entries: (document, cache, build, schedules, regeneration, images, partial) => ({
+      handler: handlerEntrySource(
+        document,
+        cache,
+        NODE_CAPABILITIES,
+        build,
+        regeneration,
+        images,
+        partial,
+      ),
       server: nodeEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
@@ -1358,15 +1407,31 @@ const ADAPTERS = {
   // nobody here. `edge` pays that price because it must: there is no
   // `node:stream` in a Worker.
   bun: {
-    entries: (document, cache, build, schedules, regeneration, images) => ({
-      handler: handlerEntrySource(document, cache, BUN_CAPABILITIES, build, regeneration, images),
+    entries: (document, cache, build, schedules, regeneration, images, partial) => ({
+      handler: handlerEntrySource(
+        document,
+        cache,
+        BUN_CAPABILITIES,
+        build,
+        regeneration,
+        images,
+        partial,
+      ),
       server: bunEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
   },
   deno: {
-    entries: (document, cache, build, schedules, regeneration, images) => ({
-      handler: handlerEntrySource(document, cache, DENO_CAPABILITIES, build, regeneration, images),
+    entries: (document, cache, build, schedules, regeneration, images, partial) => ({
+      handler: handlerEntrySource(
+        document,
+        cache,
+        DENO_CAPABILITIES,
+        build,
+        regeneration,
+        images,
+        partial,
+      ),
       server: denoEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
@@ -1376,15 +1441,31 @@ const ADAPTERS = {
   // output rather than anything the bundler produces — see `uf_cli`'s
   // `commands::deploy`.
   container: {
-    entries: (document, cache, build, schedules, regeneration, images) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration, images),
+    entries: (document, cache, build, schedules, regeneration, images, partial) => ({
+      handler: handlerEntrySource(
+        document,
+        cache,
+        NODE_CAPABILITIES,
+        build,
+        regeneration,
+        images,
+        partial,
+      ),
       server: nodeEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
   },
   edge: {
-    entries: (document, cache, build, schedules, regeneration, images) => ({
-      handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES, build, regeneration, images),
+    entries: (document, cache, build, schedules, regeneration, images, partial) => ({
+      handler: handlerEntrySource(
+        document,
+        cache,
+        EDGE_CAPABILITIES,
+        build,
+        regeneration,
+        images,
+        partial,
+      ),
       worker: workerEntrySource("./handler.js", schedules),
     }),
     // Workers KV, through the same module seam a project's own provider goes
@@ -1408,7 +1489,7 @@ const ADAPTERS = {
     workerBuiltins: true,
   },
   serverless: {
-    entries: (document, cache, build, _schedules, regeneration, images) => ({
+    entries: (document, cache, build, _schedules, regeneration, images, partial) => ({
       handler: handlerEntrySource(
         document,
         cache,
@@ -1416,6 +1497,7 @@ const ADAPTERS = {
         build,
         regeneration,
         images,
+        partial,
       ),
       lambda: lambdaEntrySource("./handler.js"),
     }),
@@ -1423,6 +1505,11 @@ const ADAPTERS = {
     // `/tmp`, so neither is somewhere a regenerated page survives. A build that
     // regenerates pages has to name a provider module; see [`deploy`].
     regenerationStore: null,
+    // And `@uniflowed/server/lambda` buffers every response into the one
+    // result an invocation returns, so a page's static shell would reach the
+    // browser with its holes, not before them. A build that prerendered a page
+    // partially is refused by name; see [`deploy`].
+    streams: false,
   },
 };
 
@@ -1583,8 +1670,33 @@ async function deploy() {
     }
     cacheConfig = { ...declaredCache, store: shape.regenerationStore };
   }
+  // The pages this build prerendered partially. Their static shells are baked
+  // into `handler.js`, and a target that cannot send a shell before its holes
+  // refuses them by name: a partial prerender answered by a buffered response
+  // is a page that waits for its slowest hole, which is exactly the page it
+  // was prerendered not to be.
+  const partial = await readPartialPrerenders(path.join(root, ".uf", "build", "server"));
+  if (partial != null && shape.streams === false) {
+    const pages = Object.keys(partial.pages);
+    throw new Error(
+      `uf: this build prerendered ${pages.length} ${plural(pages.length, "page")} partially ` +
+        `(${pages.join(", ")}), and \`--adapter ${adapter}\` buffers every response, so the ` +
+        "static shell would arrive with its holes rather than before them. Deploy with an " +
+        "adapter that streams — node, bun, deno, container or edge — or export " +
+        '`dynamic = "force-dynamic"` from those pages to render each of them whole per ' +
+        "request. See docs/app/guide/rendering.",
+    );
+  }
   const images = await imageEndpointFor(adapter, config.app?.builtins?.images);
-  const entries = shape.entries(document, cacheConfig, buildId, schedules, regeneration, images);
+  const entries = shape.entries(
+    document,
+    cacheConfig,
+    buildId,
+    schedules,
+    regeneration,
+    images,
+    partial,
+  );
   const input = {};
   for (const name of Object.keys(entries)) {
     writeFileSync(path.join(work, `${name}.js`), entries[name]);
@@ -1733,7 +1845,7 @@ async function deploy() {
  * `buildIdentity` is where it came from and
  * `packages/server/internal/cache-key.js` is why it exists.
  */
-function handlerEntrySource(document, cache, capabilities, build, regeneration, images) {
+function handlerEntrySource(document, cache, capabilities, build, regeneration, images, partial) {
   const route = cache?.route === true;
   const fetchCache = cache?.fetch === true;
   const dataCache = cache?.data === true;
@@ -1753,6 +1865,9 @@ function handlerEntrySource(document, cache, capabilities, build, regeneration, 
     // the deployed directory has only what this file carries.
     ...(store && regeneration != null ? [`regeneration: ${JSON.stringify(regeneration)}`] : []),
     ...(images == null ? [] : ["images"]),
+    // The static shells of the pages it prerendered partially, for the same
+    // reason. Absent for a build with none, so its `handler.js` is unchanged.
+    ...(partial != null ? [`partial: ${JSON.stringify(partial)}`] : []),
   ].join(", ");
   // The image endpoint keeps its variants over the same durable provider when
   // there is one, so it needs the store constructor even for a build whose

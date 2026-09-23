@@ -242,14 +242,20 @@ a process.
 | `["ssr"]` | Prerenders nothing. Every route is rendered per request |
 | `["csr"]` | Prerenders one shell that is no route's document, and the browser renders every route from it |
 | contains `isr` (the default does) | Prerenders what `ssg` would, and regenerates a prerendered page that states a lifetime with `cacheLife` once the lifetime passes, when `rendering.cache.route` is on and a server is deployed |
+| contains `ppr` (the default does) | Prerenders what `ssg` would, and writes a page that reads `cookies()`, `headers()` or `draftMode()` inside a `<Suspense>` boundary as a static shell whose boundary a server renders per request, when a server is deployed and routes render as Server Components |
 
 `isr` allows what `ssg` allows, because a regenerated page is a prerendered
 document with a lifetime: `["isr"]` alone prerenders every route. The
 [rendering guide](/guide/rendering) has what regeneration does on each target.
 
-`ppr` is **Planned**. Naming it alongside an implemented mode is allowed and
-selects nothing; a list that names *only* `ppr` is refused while the config is
-read, because there is no build behind it.
+`ppr` allows what `ssg` allows for the same reason: a page that reads nothing
+from the request has no hole, and is a static document. Without `ppr` a
+prerendered page that reads the request fails the build, naming the route and
+the chain of imports that reaches the read; with it, the read decides the
+page's shell, and only a read outside every `<Suspense>` boundary fails. The
+[rendering guide](/guide/rendering#ppr-a-static-shell-with-holes) has what each
+target does with a shell. A list that allows nothing, `[]`, is refused while the
+config is read.
 
 `csr` is the one value that **cannot share the list**. The others answer "where
 does this route's document come from", which is what makes the list a set the

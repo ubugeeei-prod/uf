@@ -1,0 +1,15 @@
+{
+  "name": "uf-ppr-app",
+  "private": true,
+  "type": "module",
+  "description": "The fixture partial prerendering is tested against: a page whose static shell is prerendered and whose one hole reads the request.",
+  "dependencies": {
+    "@uniflowed/config": "0.0.0-alpha.5",
+    "@uniflowed/react": "0.0.0-alpha.5",
+    "@uniflowed/router": "0.0.0-alpha.5",
+    "@uniflowed/server": "0.0.0-alpha.5",
+    "@uniflowed/vite": "0.0.0-alpha.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

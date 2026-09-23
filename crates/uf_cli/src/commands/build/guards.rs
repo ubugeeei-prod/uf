@@ -96,7 +96,9 @@ pub(crate) fn unguarded_pages(
     }
 
     let mut found = Vec::new();
-    for Prerendered { url, file, .. } in pages {
+    // A static shell is sent by the server, after the middleware has run for
+    // the request, so its guards run for it like any other request's.
+    for Prerendered { url, file, .. } in pages.iter().filter(|page| !page.partial) {
         // The most specific route wins, the way the router resolves a request:
         // `/posts/new` is `/posts/new` and not `/posts/:slug` when both exist.
         // Chosen over *every* route and then asked whether it is guarded,

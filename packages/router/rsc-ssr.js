@@ -22,6 +22,7 @@
 import * as React from "react";
 
 import { addressOf } from "./internal/base-path.js";
+import { withoutErrorRows } from "./internal/flight-rows.js";
 import {
   type ClientModuleLoader,
   installServerModules,
@@ -32,10 +33,22 @@ import { type StreamRecord, streamReporter } from "./internal/inspector.js";
 import { requireServerComponentsReact } from "./internal/react-version.js";
 import { RedirectError } from "./internal/routing.js";
 import type { AppProps } from "./internal/runtime.js";
-import { currentNonce } from "@uniflowed/server/host";
+import {
+  currentNonce,
+  isPostponedRead,
+  newPartialPrerender,
+  runPartialPrerender,
+} from "@uniflowed/server/host";
 
 import { redirectDocument, redirectResult, shellFor } from "./internal/shell.js";
-import { type DocumentBody, prerenderDocument, renderDocument } from "./internal/stream.js";
+import {
+  type DocumentBody,
+  type PrerenderedShell,
+  prerenderDocument,
+  prerenderShell,
+  renderDocument,
+  resumeDocument,
+} from "./internal/stream.js";
 import type { FlightRenderer } from "./rsc.js";
 import type {
   FlightResponse,
@@ -233,22 +246,34 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
   ): Promise<PrerenderResult> {
     const report = settings?.onError ?? (() => {});
     const ledger = createErrorLedger();
+    // A read of the request, while the build may leave it for the request, is
+    // not an exception to report: it is how the build finds the holes. Its row
+    // carries a digest of its own, so the HTML renderer's copy of it is known
+    // too, and `./internal/flight-rows.js` can take the row out.
+    const partial = settings?.partial === true ? newPartialPrerender() : null;
+    let postponedRows = 0;
     // The Flight renderer's copy of an exception is the one reported, because it
     // is the exception as thrown; the HTML renderer's copy of the same one is
     // recognised by its digest and dropped. See [`createErrorLedger`].
     const onServerError = (error: mixed): string => {
+      if (partial != null && isPostponedRead(error)) {
+        postponedRows += 1;
+        return `${POSTPONED_DIGEST}${postponedRows}`;
+      }
       report(error);
       return ledger.record(error);
     };
     const onHtmlError = (error: mixed) => {
-      if (!ledger.isCopy(error)) {
+      if (!ledger.isCopy(error) && !isPostponedCopy(error)) {
         report(error);
       }
     };
 
     // `defer: false`, for the reason [`createRenderer`]'s prerender passes it:
     // a file has no fallback to show first.
-    const rendered = await renderFlight(url, { defer: false, onError: onServerError });
+    const flightOf = () => renderFlight(url, { defer: false, onError: onServerError });
+    const rendered =
+      partial == null ? await flightOf() : await runPartialPrerender(partial, flightOf);
     if (rendered.kind === "redirect") {
       return redirectResult(
         redirectDocument(new RedirectError(rendered.location, rendered.status === 308)),
@@ -264,8 +289,22 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       // fails the stream itself, and that is this route's failure like any
       // other.
       payload = await bytesOf(rendered.stream);
+      // A read made before anything rendered — in a loader — has no boundary
+      // around it at all.
+      if (partial != null && isPostponedRead(failure)) {
+        throw readOutsideSuspense(url, partial.reads);
+      }
+      if (partial != null && partial.reads.length > 0 && failure == null) {
+        const shell = await partialDocumentOf(payload, url, assets, onHtmlError, partial.reads);
+        if (shell != null) {
+          return { status, html: shell.html, error: undefined, shell };
+        }
+      }
       html = await staticDocumentOf(payload, url, assets, onHtmlError);
     } catch (error) {
+      if (error instanceof ReadOutsideSuspenseError) {
+        throw error;
+      }
       const cause = ledger.originalOf(error);
       if (cause instanceof RedirectError) {
         return redirectResult(redirectDocument(cause));
@@ -294,6 +333,104 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       }
     }
     return { status, html, error: failure, payload };
+  }
+
+  /**
+   * A page's static shell, for a payload whose render read the request.
+   *
+   * Two renders of the same payload. The first is the whole document, with an
+   * error where each read was, and it is there to prove one thing: that every
+   * read sits inside a `<Suspense>` boundary. A read outside one fails the
+   * shell itself, and the page is refused naming what it read, because a shell
+   * that has to wait for the request is not a shell. It also loads every client
+   * module the payload names, so the second render waits on nothing but the
+   * request.
+   *
+   * The second is the shell: the same payload with the rows the reads produced
+   * taken out, rendered until it has done everything it can and then stopped,
+   * so each boundary that is still waiting on one of those rows is a hole. It is
+   * `null` when that left no hole — a read whose result the page never rendered
+   * — and the page is then the plain document the first render already was.
+   */
+  async function partialDocumentOf(
+    payload: Uint8Array,
+    url: string,
+    assets: RenderAssets,
+    onError: (error: mixed) => void,
+    reads: $ReadOnlyArray<string>,
+  ): Promise<PrerenderedShell | null> {
+    try {
+      await staticDocumentOf(payload, url, assets, onError);
+    } catch (error) {
+      if (isPostponedCopy(error)) {
+        throw readOutsideSuspense(url, reads);
+      }
+      throw error;
+    }
+    const shellPayload = withoutErrorRows(payload, (digest) =>
+      digest.startsWith(POSTPONED_DIGEST),
+    ).payload;
+    const shell = await prerenderShell(
+      <App url={url} flight={readPayload(streamOf(shellPayload), { partial: true })} />,
+      { shell: shellFor(assets), onError, settle: settled },
+    );
+    return shell.postponed == null ? null : shell;
+  }
+
+  /**
+   * Answer `url` from its static shell: the shell now, and its holes as this
+   * request renders them.
+   *
+   * The route is resolved first, and that is the only thing the shell waits
+   * for: a redirect has to be the whole response, and a request that resolves
+   * to something other than the page the build prerendered — a `404`, an error
+   * boundary — is not answered with that page's shell. Either way it is
+   * rendered the way any other request is. Otherwise the whole route is
+   * rendered as Server Components for this request, the shell goes out, and
+   * React's `resume` renders the holes from the payload while the payload
+   * itself is written into the document for the browser to hydrate from.
+   *
+   * The payload is the request's whole one, not the shell's with the holes
+   * added: the browser hydrates the document from it, and the shell was
+   * rendered from the same modules without a request, so what it has in common
+   * with the shell is the same markup.
+   */
+  async function resume(
+    url: string,
+    assets: RenderAssets,
+    shell: PrerenderedShell,
+    settings?: RenderOptions,
+  ): Promise<RenderResult> {
+    const report = settings?.onError ?? (() => {});
+    const ledger = createErrorLedger();
+    const stop = new AbortController();
+    const rendered = await renderFlight(url, {
+      onError: (error: mixed) => {
+        report(error);
+        return ledger.record(error);
+      },
+      signal: stop.signal,
+    });
+    if (rendered.kind === "redirect") {
+      return redirectDocument(new RedirectError(rendered.location, rendered.status === 308));
+    }
+    if (rendered.status !== 200 || rendered.failure != null) {
+      stop.abort();
+      return render(url, assets, settings);
+    }
+    const send = settings?.onStream;
+    const [forHtml, forBrowser] = rendered.stream.tee();
+    const body = resumeDocument(<App url={url} flight={readPayload(forHtml)} />, shell, {
+      onError: (error: mixed) => {
+        if (!ledger.isCopy(error)) {
+          report(error);
+        }
+      },
+      payload: forBrowser,
+      nonce: currentNonce(),
+      onStream: send == null ? undefined : streamReporter(url, send),
+    });
+    return { status: 200, pipe: body.pipe, stream: body.stream, text: body.text };
   }
 
   /** A finished document for a finished payload, with the payload written into it. */
@@ -342,7 +479,61 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     };
   }
 
-  return { render, prerender, flight };
+  return { render, prerender, flight, resume };
+}
+
+/**
+ * The digests a partial prerender gives the rows its reads of the request
+ * produced. React writes the digest into the row and onto the error its client
+ * rebuilds from it, which is how both copies are recognised.
+ */
+const POSTPONED_DIGEST = "uf:postponed:";
+
+/** Whether `error` is the HTML renderer's copy of a read left for the request. */
+function isPostponedCopy(error: mixed): boolean {
+  return digestOf(error)?.startsWith(POSTPONED_DIGEST) === true;
+}
+
+/**
+ * A page whose render read the request where no `<Suspense>` boundary could
+ * leave the read for later.
+ *
+ * Thrown rather than resolved to the error boundary, because it is not the
+ * page's failure to render — the page would render fine with a request — but
+ * the build's refusal to write it, and `uf build` names the route with it.
+ */
+class ReadOutsideSuspenseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReadOutsideSuspenseError";
+  }
+}
+
+function readOutsideSuspense(url: string, reads: $ReadOnlyArray<string>): ReadOutsideSuspenseError {
+  const named = [...new Set(reads)].map((read) => `${read}()`).join(", ");
+  return new ReadOutsideSuspenseError(
+    `${url} reads ${named} outside any <Suspense> boundary, so it has no static shell to ` +
+      "prerender. Move the part of the page that reads it inside a <Suspense> boundary, which " +
+      'leaves that part for the request, or export `dynamic = "force-dynamic"` from the page to ' +
+      "render all of it per request.",
+  );
+}
+
+/**
+ * Until the render reading a finished payload has done everything it can.
+ *
+ * Every row it will ever get is in memory and every module the payload names
+ * was loaded by the render before it, so what is left is React's own work,
+ * which it schedules as microtasks and a task to start. A few turns of the
+ * event loop is more than that takes; stopping early would only make a hole
+ * larger, never the document wrong. See `prerenderShell`.
+ */
+async function settled(): Promise<void> {
+  for (let turn = 0; turn < 4; turn += 1) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
 }
 
 /**

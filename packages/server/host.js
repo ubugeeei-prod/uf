@@ -42,6 +42,14 @@
 // None of the three answers anything *about* the request, which is the test for
 // whether something belongs in the root instead.
 //
+// # `runPartialPrerender` and `isPostponedRead` are for a build
+//
+// `uf build` prerenders a page's static shell inside `runPartialPrerender`, so
+// that `cookies()`, `headers()` and `draftMode()` throw a read left for the
+// request rather than a read outside one, and `@uniflowed/router` recognises
+// what they threw with `isPostponedRead`. They answer nothing about a request
+// either; `./internal/partial.js` has the mechanism.
+//
 // # Which module's copy
 //
 // The request store behind these functions is the process's rather than this
@@ -66,6 +74,8 @@ export type {
   RequestLifecycle,
 } from "./internal/context.js";
 export { nativeActionAllowed } from "./internal/native-actions.js";
+export type { PartialPrerender } from "./internal/partial.js";
+export { isPostponedRead, newPartialPrerender, runPartialPrerender } from "./internal/partial.js";
 
 export {
   asResponder,

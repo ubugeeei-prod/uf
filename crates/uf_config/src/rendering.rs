@@ -138,8 +138,11 @@ impl RenderingPlan {
         // `isr` prerenders too. A regenerated page is a prerendered document
         // with a lifetime, and a page that states none is regenerated never,
         // which is a static document — so allowing `isr` allows what `ssg` does.
-        let prerendered =
-            modes.contains(&RenderingMode::Ssg) || modes.contains(&RenderingMode::Isr);
+        // `ppr` likewise: a partially prerendered page is a prerendered shell
+        // with holes, and a page that reads nothing has none.
+        let prerendered = modes.contains(&RenderingMode::Ssg)
+            || modes.contains(&RenderingMode::Isr)
+            || modes.contains(&RenderingMode::Ppr);
         // Carried rather than resolved *with* the two settings above, because
         // it does not interact with either: a document is prerendered or it is
         // not, and what the browser does after it has one does not change the
@@ -282,8 +285,8 @@ impl RenderingPlan {
             ),
             PlanSource::Modes => match self.prerender {
                 Prerender::Nothing => String::from(
-                    "`app.rendering.modes` allows neither `ssg` nor `isr`, so this build \
-                     prerenders nothing",
+                    "`app.rendering.modes` allows none of `ssg`, `isr` and `ppr`, so this \
+                     build prerenders nothing",
                 ),
                 Prerender::Shell => String::from(
                     "`app.rendering.modes` is `[\"csr\"]`, so this build writes one shell and \

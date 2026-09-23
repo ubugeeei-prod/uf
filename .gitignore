@@ -24,6 +24,11 @@ coverage/
 /crates/uf_cli/tests/fixtures/isr-app/dist/
 /crates/uf_cli/tests/fixtures/isr-app/router.js
 /crates/uf_cli/tests/fixtures/isr-app/server-actions.js
+# The application partial prerendering is tested against, built in place for
+# the same reason.
+/crates/uf_cli/tests/fixtures/ppr-app/dist/
+/crates/uf_cli/tests/fixtures/ppr-app/router.js
+/crates/uf_cli/tests/fixtures/ppr-app/server-actions.js
 # The application `app.router.basePath` and `trailingSlash` are tested
 # against, built in place for the same reason.
 /crates/uf_cli/tests/fixtures/based-app/dist/
