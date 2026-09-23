@@ -60,6 +60,7 @@
     "schedule.js",
     "socket.js",
     "standalone.js",
+    "vercel.js",
     "internal/*.js",
     "!*.test.js"
   ],
