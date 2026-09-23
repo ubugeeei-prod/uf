@@ -28,7 +28,8 @@
     "./middleware": "./middleware.js",
     "./native-navigation": "./native-navigation.js",
     "./http-client": "./http-client.js",
-    "./instrumentation": "./instrumentation.js"
+    "./instrumentation": "./instrumentation.js",
+    "./testing": "./testing.js"
   },
   "files": [
     "action.js",
@@ -47,6 +48,7 @@
     "native-navigation.js",
     "http-client.js",
     "instrumentation.js",
+    "testing.js",
     "!*.test.js"
   ],
   "peerDependencies": {
