@@ -105,6 +105,7 @@ import {
   withPermits,
   zip,
 } from "@uniflowed/effect";
+import type { Effect } from "@uniflowed/effect";
 import { scheduleStart, scheduleStep } from "@uniflowed/effect/schedule";
 import type { Schedule, ScheduleDecision } from "@uniflowed/effect/schedule";
 import {
@@ -346,15 +347,17 @@ describe("the generator form", () => {
     // The point of the test: `readName` can fail with `MissingName` and the
     // caller adds `Empty`, so the pipeline's failure type is the union — and
     // at run time either of them arrives at the same `catchTag`.
-    function* readName(record) {
+    function* readName(record: { readonly name: ?string }) {
       const found = yield* succeed(record);
-      if (found.name == null) {
-        yield* fail({ kind: "MissingName" });
+      const name = found.name;
+      if (name == null) {
+        // `return yield*`, so the checker sees the branch end where the run does.
+        return yield* fail({ kind: "MissingName" });
       }
-      return found.name;
+      return name;
     }
 
-    const program = (record) =>
+    const program = (record: { readonly name: ?string }) =>
       effect(function* () {
         const name = yield* readName(record);
         if (name === "") {
@@ -424,7 +427,7 @@ describe("the generator form", () => {
   });
 
   it("reads a service with yield* and gets the service back", async () => {
-    const Clock = tag("Clock");
+    const Clock = tag<{| readonly now: () => number |}>("Clock");
     const program = effect(function* () {
       const clock = yield* Clock;
       return clock.now() + 1;
@@ -576,7 +579,8 @@ describe("all", () => {
   });
 
   it("is a success on an empty list", async () => {
-    await expect(runPromise(all([]))).resolves.toEqual([]);
+    const none: $ReadOnlyArray<Effect<number>> = [];
+    await expect(runPromise(all(none))).resolves.toEqual([]);
   });
 });
 
@@ -697,7 +701,7 @@ describe("services", () => {
   });
 
   it("reads a service provided by a layer", async () => {
-    const Greeter = tag("Greeter");
+    const Greeter = tag<{| readonly hello: () => string |}>("Greeter");
     const program = flatMap(Greeter, (greeter) => succeed(greeter.hello()));
     const layer = layerSucceed(Greeter, { hello: () => "hi" });
 
@@ -705,12 +709,12 @@ describe("services", () => {
   });
 
   it("merges two layers into one context", async () => {
-    const A = tag("A");
-    const B = tag("B");
+    const A = tag<number>("A");
+    const B = tag<number>("B");
     const layer = layerMerge(layerSucceed(A, 1), layerSucceed(B, 2));
     const program = effect(function* () {
-      const a = yield A;
-      const b = yield B;
+      const a = yield* A;
+      const b = yield* B;
       return a + b;
     });
 
@@ -727,16 +731,16 @@ describe("concurrency", () => {
 
   it("joins a forked fiber", async () => {
     const program = effect(function* () {
-      const fiber = yield fork(as(sleep(1), "done"));
-      return yield join(fiber);
+      const fiber = yield* fork(as(sleep(1), "done"));
+      return yield* join(fiber);
     });
     await expect(runPromise(program)).resolves.toBe("done");
   });
 
   it("interrupts a fiber and reports it in the Exit", async () => {
     const program = effect(function* () {
-      const fiber = yield fork(as(sleep(200), "never"));
-      return yield interrupt(fiber);
+      const fiber = yield* fork(as(sleep(200), "never"));
+      return yield* interrupt(fiber);
     });
 
     const result = await runPromise(program);
@@ -879,11 +883,11 @@ describe("promises", () => {
 describe("what the review found", () => {
   it("reports an interruption inside timeout as an interruption", async () => {
     const program = effect(function* () {
-      const fiber = yield fork(timeout(sleep(500), 400));
+      const fiber = yield* fork(timeout(sleep(500), 400));
       // Interrupting while the effect waits inside `timeout` used to resolve
       // the pause early and be reported as a timeout — a typed failure, which
       // `retry` would then have run again after somebody asked it to stop.
-      return yield interrupt(fiber);
+      return yield* interrupt(fiber);
     });
 
     const result = await runPromise(program);
@@ -1016,7 +1020,9 @@ describe("resource release under interruption", () => {
           () =>
             andThen(
               sleep(1),
-              sync(() => events.push("release")),
+              sync(() => {
+                events.push("release");
+              }),
             ),
         ),
         () => sleep(400),
@@ -1247,7 +1253,7 @@ describe("what a forked fiber's parent owns", () => {
     const outcome = await runPromise(
       scoped(
         effect(function* () {
-          const release = yield* deferred();
+          const release = yield* deferred<boolean>();
           const forker = yield* fork(
             effect(function* () {
               return yield* forkScoped(
@@ -1302,7 +1308,7 @@ describe("what a forked fiber's parent owns", () => {
     await runPromise(
       scoped(
         effect(function* () {
-          const acquired = yield* deferred();
+          const acquired = yield* deferred<boolean>();
           yield* forkScoped(
             effect(function* () {
               yield* acquireRelease(
@@ -1310,7 +1316,10 @@ describe("what a forked fiber's parent owns", () => {
                   events.push("open");
                   return "handle";
                 }),
-                () => sync(() => events.push("close")),
+                () =>
+                  sync(() => {
+                    events.push("close");
+                  }),
               );
               yield* deferredSucceed(acquired, true);
               yield* never();
@@ -1419,8 +1428,8 @@ describe("what a concurrent failure does to its siblings", () => {
   });
 
   it("stops taking new work once its fiber has been interrupted", async () => {
-    const ran = [];
-    const record = (item) => sync(() => ran.push(item));
+    const ran: Array<number> = [];
+    const record = (item: number) => sync(() => ran.push(item));
     // A raw promise cannot be interrupted, so this element finishes well after
     // the cancellation was asked for — which is the moment `all` has to notice
     // on its own behalf, because `sync` has no checkpoint inside it.
@@ -1443,7 +1452,8 @@ describe("what a concurrent failure does to its siblings", () => {
 
   it("has a synchronous answer when every element has one", () => {
     expect(runSync(all([succeed(1), sync(() => 2), succeed(3)]))).toEqual([1, 2, 3]);
-    expect(runSync(all([]))).toEqual([]);
+    const none: $ReadOnlyArray<Effect<number>> = [];
+    expect(runSync(all(none))).toEqual([]);
   });
 
   it("refuses synchronously when one element is asynchronous", () => {
@@ -1843,7 +1853,7 @@ describe("schedules", () => {
   });
 
   it("takes the longer wait of an intersection and stops with the first side", () => {
-    const schedule = {
+    const schedule: Schedule<mixed> = {
       kind: "intersect",
       left: { kind: "recurs", times: 2 },
       right: { kind: "spaced", millis: 40 },
@@ -1852,7 +1862,7 @@ describe("schedules", () => {
   });
 
   it("takes the shorter wait of a union and continues while either side does", () => {
-    const schedule = {
+    const schedule: Schedule<mixed> = {
       kind: "union",
       left: { kind: "recurs", times: 1 },
       right: { kind: "spaced", millis: 40 },
@@ -1861,7 +1871,10 @@ describe("schedules", () => {
   });
 
   it("spreads a wait over a range, and the midpoint leaves it alone", () => {
-    const schedule = { kind: "jittered", schedule: { kind: "spaced", millis: 100 } };
+    const schedule: Schedule<mixed> = {
+      kind: "jittered",
+      schedule: { kind: "spaced", millis: 100 },
+    };
     // The factor is an argument, so the whole range is testable without a seed
     // and without hoping about `Math.random`.
     expect(delaysOf(schedule, 1, 0)).toEqual([80]);
@@ -1873,7 +1886,7 @@ describe("schedules", () => {
   });
 
   it("honours a jitter range given as percentages", () => {
-    const schedule = {
+    const schedule: Schedule<mixed> = {
       kind: "jittered",
       schedule: { kind: "spaced", millis: 200 },
       minPercent: 50,
@@ -1885,7 +1898,10 @@ describe("schedules", () => {
 
   it("jitters the schedule it wraps rather than replacing it", () => {
     // A jittered exponential still grows.
-    const schedule = { kind: "jittered", schedule: { kind: "exponential", baseMillis: 10 } };
+    const schedule: Schedule<mixed> = {
+      kind: "jittered",
+      schedule: { kind: "exponential", baseMillis: 10 },
+    };
     expect(delaysOf(schedule, 4, 1)).toEqual([12, 24, 48, 96]);
   });
 
@@ -1902,7 +1918,10 @@ describe("schedules", () => {
   });
 
   it("clamps a factor outside the unit interval rather than escaping the range", () => {
-    const schedule = { kind: "jittered", schedule: { kind: "spaced", millis: 100 } };
+    const schedule: Schedule<mixed> = {
+      kind: "jittered",
+      schedule: { kind: "spaced", millis: 100 },
+    };
     expect(delaysOf(schedule, 1, -1)).toEqual([80]);
     expect(delaysOf(schedule, 1, 4)).toEqual([120]);
   });
@@ -1922,7 +1941,7 @@ describe("schedules", () => {
   it("decides on the input rather than on the count", () => {
     // The thing an attempt counter could not do at all: a policy that looks at
     // what it is being asked about.
-    const schedule = {
+    const schedule: Schedule<string> = {
       kind: "whileInput",
       schedule: { kind: "spaced", millis: 10 },
       predicate: (error: string) => error !== "forbidden",
@@ -1937,7 +1956,7 @@ describe("schedules", () => {
   });
 
   it("stops as soon as untilInput is satisfied", () => {
-    const schedule = {
+    const schedule: Schedule<{ done: boolean }> = {
       kind: "untilInput",
       schedule: { kind: "spaced", millis: 10 },
       predicate: (job: { done: boolean }) => job.done,
@@ -1954,7 +1973,7 @@ describe("schedules", () => {
   it("stops on the inner schedule's own number with whileOutput", () => {
     // "Back off, but stop once the wait would pass 50ms" without a second
     // schedule to intersect with.
-    const schedule = {
+    const schedule: Schedule<mixed> = {
       kind: "whileOutput",
       schedule: { kind: "exponential", baseMillis: 10 },
       predicate: (delay: number) => delay <= 50,
@@ -1966,7 +1985,7 @@ describe("schedules", () => {
   });
 
   it("stops as soon as untilOutput is satisfied", () => {
-    const schedule = {
+    const schedule: Schedule<mixed> = {
       kind: "untilOutput",
       schedule: { kind: "count" },
       predicate: (count: number) => count >= 3,
@@ -1985,7 +2004,7 @@ describe("schedules", () => {
     // a second rather than after a number of attempts. This is the only
     // combinator that has to name the type between two schedules, and it can
     // only because the output type is fixed rather than a parameter.
-    const schedule = {
+    const schedule: Schedule<mixed> = {
       kind: "compose",
       first: { kind: "elapsed" },
       second: {
@@ -2059,7 +2078,7 @@ describe("repeat", () => {
       return job;
     });
 
-    const schedule = {
+    const schedule: Schedule<{ done: boolean }> = {
       kind: "untilInput",
       schedule: { kind: "recurs", times: 20 },
       predicate: (job: { done: boolean }) => job.done,
@@ -2244,7 +2263,7 @@ describe("what two fibers can share", () => {
 
   it("hands a deferred's value to everyone waiting for it", async () => {
     const program = effect(function* () {
-      const handshake = yield* deferred();
+      const handshake = yield* deferred<string>();
       const first = yield* fork(deferredAwait(handshake));
       const second = yield* fork(deferredAwait(handshake));
       yield* sleep(5);
@@ -2258,7 +2277,7 @@ describe("what two fibers can share", () => {
 
   it("puts a deferred's failure in the error channel of whoever waited", async () => {
     const program = effect(function* () {
-      const handshake = yield* deferred();
+      const handshake = yield* deferred<string, {| kind: "unavailable" |}>();
       const waiting = yield* fork(deferredAwait(handshake));
       yield* deferredFail(handshake, { kind: "unavailable" });
       return yield* exit(join(waiting));
@@ -2274,7 +2293,7 @@ describe("what two fibers can share", () => {
 
   it("answers a deferred that is already done without waiting", async () => {
     const program = effect(function* () {
-      const handshake = yield* deferred();
+      const handshake = yield* deferred<number>();
       const before = yield* deferredIsDone(handshake);
       yield* deferredSucceed(handshake, 7);
       const after = yield* deferredIsDone(handshake);
@@ -2289,7 +2308,7 @@ describe("what two fibers can share", () => {
     // the fiber uninterruptible, which is the bug the waker protocol exists
     // to prevent — the same one `never` is written the way it is to avoid.
     const program = effect(function* () {
-      const handshake = yield* deferred();
+      const handshake = yield* deferred<string>();
       const waiting = yield* fork(deferredAwait(handshake));
       yield* sleep(5);
       return yield* interrupt(waiting);
@@ -2450,8 +2469,8 @@ describe("what a queue does when the producer is faster", () => {
 
     const taken = await runPromise(
       effect(function* () {
-        const buffer = yield* queue(2);
-        const full = yield* deferred();
+        const buffer = yield* queue<number>(2);
+        const full = yield* deferred<boolean>();
         const producer = yield* fork(
           effect(function* () {
             yield* queueOffer(buffer, 1);
@@ -2481,7 +2500,7 @@ describe("what a queue does when the producer is faster", () => {
   it("stops a fiber blocked in a take when it is interrupted", async () => {
     const outcome = await runPromise(
       effect(function* () {
-        const buffer = yield* queue(2);
+        const buffer = yield* queue<string>(2);
         // Nothing has been offered, so nothing but the interruption can end
         // this fiber. Getting the waking protocol wrong is how a `take` becomes
         // a fiber `interrupt` cannot stop.
@@ -2502,7 +2521,7 @@ describe("what a queue does when the producer is faster", () => {
     // value, so the piece of work is still there for somebody to do.
     const taken = await runPromise(
       effect(function* () {
-        const buffer = yield* queue(2);
+        const buffer = yield* queue<string>(2);
         const first = yield* fork(queueTake(buffer));
         const second = yield* fork(queueTake(buffer));
 
@@ -2518,7 +2537,7 @@ describe("what a queue does when the producer is faster", () => {
   it("serves takers in the order they asked", () => {
     const order = runSync(
       effect(function* () {
-        const buffer = yield* queue(4);
+        const buffer = yield* queue<string>(4);
         yield* queueOffer(buffer, "a");
         yield* queueOffer(buffer, "b");
         return [yield* queueTake(buffer), yield* queueTake(buffer)];
@@ -2532,7 +2551,7 @@ describe("what a queue does when the producer is faster", () => {
     // The end, and the offer says so by answering `false`.
     const answered = runSync(
       effect(function* () {
-        const buffer = yield* queue(2, "dropping");
+        const buffer = yield* queue<number>(2, "dropping");
         const accepted = [
           yield* queueOffer(buffer, 1),
           yield* queueOffer(buffer, 2),
@@ -2551,7 +2570,7 @@ describe("what a queue does when the producer is faster", () => {
     // what it lost was an older one.
     const answered = runSync(
       effect(function* () {
-        const buffer = yield* queue(2, "sliding");
+        const buffer = yield* queue<number>(2, "sliding");
         const accepted = [
           yield* queueOffer(buffer, 1),
           yield* queueOffer(buffer, 2),
@@ -2568,7 +2587,7 @@ describe("what a queue does when the producer is faster", () => {
   it("reports what is waiting, and takes up to a bound of it", () => {
     const answered = runSync(
       effect(function* () {
-        const buffer = yield* queue(4, "dropping");
+        const buffer = yield* queue<number>(4, "dropping");
         yield* queueOffer(buffer, 1);
         yield* queueOffer(buffer, 2);
         yield* queueOffer(buffer, 3);
@@ -2585,10 +2604,10 @@ describe("what a queue does when the producer is faster", () => {
     // and what `fail` does not.
     const outcomes = await runPromise(
       effect(function* () {
-        const emptied = yield* queue(1);
+        const emptied = yield* queue<string>(1);
         const waitingTaker = yield* fork(queueTake(emptied));
 
-        const filled = yield* queue(1);
+        const filled = yield* queue<string>(1);
         yield* queueOffer(filled, "fills it");
         const waitingOfferer = yield* fork(queueOffer(filled, "no room for this"));
 
@@ -2612,7 +2631,7 @@ describe("what a queue does when the producer is faster", () => {
   it("interrupts a take on a queue that was already shut down", () => {
     const outcome = runSyncExit(
       effect(function* () {
-        const buffer = yield* queue(2);
+        const buffer = yield* queue<string>(2);
         yield* queueOffer(buffer, "never taken");
         yield* queueShutdown(buffer);
         return yield* queueTake(buffer);
@@ -2627,7 +2646,7 @@ describe("what a queue does when the producer is faster", () => {
     // race it might have won on another day.
     const outcome = runSyncExit(
       effect(function* () {
-        const buffer = yield* queue(1);
+        const buffer = yield* queue<string>(1);
         return yield* queueTake(buffer);
       }),
     );
@@ -2644,7 +2663,7 @@ describe("one value, everybody listening", () => {
     const seen = await runPromise(
       scoped(
         effect(function* () {
-          const topic = yield* pubSub(4);
+          const topic = yield* pubSub<string>(4);
           const first = yield* pubSubSubscribe(topic);
           const second = yield* pubSubSubscribe(topic);
           yield* pubSubPublish(topic, "tick");
@@ -2660,7 +2679,7 @@ describe("one value, everybody listening", () => {
     const seen = await runPromise(
       scoped(
         effect(function* () {
-          const topic = yield* pubSub(4);
+          const topic = yield* pubSub<string>(4);
           const early = yield* pubSubSubscribe(topic);
           yield* pubSubPublish(topic, "before");
           const late = yield* pubSubSubscribe(topic);
@@ -2676,7 +2695,7 @@ describe("one value, everybody listening", () => {
   it("unsubscribes when the subscription's scope closes", async () => {
     const seen = await runPromise(
       effect(function* () {
-        const topic = yield* pubSub(4);
+        const topic = yield* pubSub<string>(4);
         // The subscription escapes its scope on purpose: what a caller holds
         // afterwards is a queue that has been shut down, not a leak.
         const closed = yield* scoped(
@@ -2701,9 +2720,9 @@ describe("one value, everybody listening", () => {
     const taken = await runPromise(
       scoped(
         effect(function* () {
-          const topic = yield* pubSub(1);
+          const topic = yield* pubSub<string>(1);
           const slow = yield* pubSubSubscribe(topic);
-          const full = yield* deferred();
+          const full = yield* deferred<boolean>();
           const publisher = yield* fork(
             effect(function* () {
               yield* pubSubPublish(topic, "one");
@@ -2733,7 +2752,7 @@ describe("one value, everybody listening", () => {
     const outcomes = await runPromise(
       scoped(
         effect(function* () {
-          const topic = yield* pubSub(2);
+          const topic = yield* pubSub<string>(2);
           const listener = yield* pubSubSubscribe(topic);
           const waiting = yield* fork(queueTake(listener));
           yield* pubSubShutdown(topic);
@@ -2774,7 +2793,7 @@ describe("the runners", () => {
 
 describe("layers", () => {
   it("carries a layer's own failure into the effect's error channel", async () => {
-    const Config = tag("Config");
+    const Config = tag<{| readonly value: number |}>("Config");
     const layer = layerEffect(Config, fail({ kind: "NoConfig" }));
     const program = effect(function* () {
       const config = yield* Config;
@@ -2790,7 +2809,11 @@ describe("layers", () => {
   });
 
   it("reports a service that was never provided as a defect", async () => {
-    const Missing = tag("Missing");
+    // `empty` is the service type nobody can supply, so reading it adds no
+    // requirement and the program type-checks as runnable. That is the
+    // point: this is the run-time half of a mistake the checker cannot see,
+    // such as a tag read through a module the checker was not shown.
+    const Missing = tag<empty>("Missing");
     const result = await runPromiseExit(
       effect(function* () {
         return yield* Missing;
@@ -2809,9 +2832,9 @@ describe("layers", () => {
     // The diamond: `Database` and `Logger` both want `Config`. Built once per
     // path, a layer that opens a connection pool opens two, and a layer that
     // reads a config file may get two different answers.
-    const Config = tag("Config");
-    const Database = tag("Database");
-    const Logger = tag("Logger");
+    const Config = tag<{| readonly url: string |}>("Config");
+    const Database = tag<{| readonly at: string |}>("Database");
+    const Logger = tag<{| readonly about: string |}>("Logger");
 
     let builds = 0;
     const configLayer = layerEffect(
@@ -2858,7 +2881,7 @@ describe("layers", () => {
     // The honest other half, and still the right answer for what `provide` is:
     // one build, one scope, closed when the effect ends. Building once for a
     // whole application is `managedRuntime`, below.
-    const Config = tag("Config");
+    const Config = tag<{| readonly url: string |}>("Config");
     let builds = 0;
     const configLayer = layerEffect(
       Config,
@@ -2877,7 +2900,7 @@ describe("layers", () => {
     // Nothing here is asynchronous, and until `provide` had a synchronous
     // kernel this died with "effect is asynchronous" — which made "use a
     // layer" and "use runSync" mutually exclusive, including in a test.
-    const Clock = tag("Clock");
+    const Clock = tag<{| readonly now: () => number |}>("Clock");
     expect(runSync(provide(succeed(1), layerSucceed(Clock, { now: () => 1 })))).toBe(1);
 
     const reading = effect(function* () {
@@ -2898,7 +2921,7 @@ describe("layers", () => {
   });
 
   it("refuses synchronously when the layer needs to wait", () => {
-    const Clock = tag("Clock");
+    const Clock = tag<{| readonly now: () => number |}>("Clock");
     const result = runSyncExit(
       provide(
         succeed(1),
@@ -2916,8 +2939,8 @@ describe("layers", () => {
   });
 
   it("feeds one layer into another with layerProvide", async () => {
-    const Config = tag("Config");
-    const Database = tag("Database");
+    const Config = tag<{| readonly url: string |}>("Config");
+    const Database = tag<{| readonly at: string |}>("Database");
     const configLayer = layerSucceed(Config, { url: "postgres://" });
     const databaseLayer = layerProvide(
       layerEffect(
@@ -2941,8 +2964,8 @@ describe("layers", () => {
   });
 
   it("keeps the outer services with layerProvideMerge", async () => {
-    const Config = tag("Config");
-    const Database = tag("Database");
+    const Config = tag<{| readonly url: string |}>("Config");
+    const Database = tag<{| readonly at: string |}>("Database");
     const configLayer = layerSucceed(Config, { url: "postgres://" });
     const databaseLayer = layerProvideMerge(
       layerEffect(
@@ -2967,8 +2990,8 @@ describe("layers", () => {
   });
 
   it("carries an inner layer's failure out of layerProvide", async () => {
-    const Config = tag("Config");
-    const Database = tag("Database");
+    const Config = tag<{| readonly value: number |}>("Config");
+    const Database = tag<{| readonly at: string |}>("Database");
     const databaseLayer = layerProvide(
       layerEffect(Database, fail({ kind: "NoDatabase" })),
       layerSucceed(Config, { url: "postgres://" }),
@@ -2983,7 +3006,7 @@ describe("layers", () => {
   });
 
   it("keeps interruption working underneath a layer", async () => {
-    const Config = tag("Config");
+    const Config = tag<{| readonly value: number |}>("Config");
     const program = provide(sleep(400), layerSucceed(Config, { value: 1 }));
 
     const outcome = await runPromise(
@@ -3004,7 +3027,7 @@ describe("layers", () => {
 describe("a layer that acquires something", () => {
   /** A pool layer that records every open and close. */
   const pooling = (events: Array<string>) => {
-    const Pool = tag("Pool");
+    const Pool = tag<{| readonly query: () => string |}>("Pool");
     return {
       Pool,
       layer: layerScoped(
@@ -3014,7 +3037,10 @@ describe("a layer that acquires something", () => {
             events.push("open");
             return { query: () => "row" };
           }),
-          () => sync(() => events.push("close")),
+          () =>
+            sync(() => {
+              events.push("close");
+            }),
         ),
       ),
     };
@@ -3107,7 +3133,7 @@ describe("a layer that acquires something", () => {
 describe("a runtime built once for an application", () => {
   /** A pool layer that records every open and close. */
   const pooling = (events: Array<string>) => {
-    const Pool = tag("Pool");
+    const Pool = tag<{| readonly query: () => string |}>("Pool");
     return {
       Pool,
       layer: layerScoped(
@@ -3117,7 +3143,10 @@ describe("a runtime built once for an application", () => {
             events.push("open");
             return { query: () => "row" };
           }),
-          () => sync(() => events.push("close")),
+          () =>
+            sync(() => {
+              events.push("close");
+            }),
         ),
       ),
     };
@@ -3127,7 +3156,7 @@ describe("a runtime built once for an application", () => {
     // The other half of #261's complaint, and the reason `provide`'s memo was
     // never going to be enough: two `provide`s are two builds, which for a
     // request handler is two connection pools a second.
-    const Config = tag("Config");
+    const Config = tag<{| readonly url: string |}>("Config");
     let builds = 0;
     const configLayer = layerEffect(
       Config,
@@ -3209,7 +3238,7 @@ describe("a runtime built once for an application", () => {
   it("answers synchronously when the layer and the effect both can", () => {
     // `provide` grew a synchronous kernel so that using a layer did not cost a
     // test its `runSync`; a runtime that lost it again would be a step back.
-    const Clock = tag("Clock");
+    const Clock = tag<{| readonly now: () => number |}>("Clock");
     const runtime = runSync(managedRuntime(layerSucceed(Clock, { now: () => 7 })));
     const reading = effect(function* () {
       const clock = yield* Clock;
@@ -3223,7 +3252,7 @@ describe("a runtime built once for an application", () => {
   });
 
   it("starts an effect with runtimeRunFork and hands back a handle to it", async () => {
-    const Config = tag("Config");
+    const Config = tag<{| readonly url: string |}>("Config");
     const runtime = await runPromise(managedRuntime(layerSucceed(Config, { url: "postgres://" })));
     const fiber = runtimeRunFork(
       runtime,
@@ -3238,7 +3267,7 @@ describe("a runtime built once for an application", () => {
   });
 
   it("carries a layer's own failure out of the build", async () => {
-    const Config = tag("Config");
+    const Config = tag<{| readonly url: string |}>("Config");
     const result = await runPromiseExit(
       managedRuntime(layerEffect(Config, fail({ kind: "NoConfig" }))),
     );
@@ -3253,7 +3282,7 @@ describe("a runtime built once for an application", () => {
   it("releases what a failed build had already acquired", async () => {
     const events: Array<string> = [];
     const pool = pooling(events);
-    const Broken = tag("Broken");
+    const Broken = tag<{| readonly broken: true |}>("Broken");
     const result = await runPromiseExit(
       managedRuntime(layerMerge(pool.layer, layerEffect(Broken, fail({ kind: "NoBroken" })))),
     );
@@ -3448,7 +3477,8 @@ describe("streams", () => {
     );
     await expect(runPromise(streamRunDrain(source))).resolves.toBe(undefined);
     await expect(runPromise(streamRunHead(source))).resolves.toBe(1);
-    await expect(runPromise(streamRunHead(streamFromArray([])))).resolves.toBe(null);
+    const nothing: Array<number> = [];
+    await expect(runPromise(streamRunHead(streamFromArray(nothing)))).resolves.toBe(null);
   });
 
   it("traverses the same stream twice, from the start each time", async () => {
@@ -3533,7 +3563,14 @@ describe("streams", () => {
       () => sync(() => events.push("released")),
     );
 
-    const web = streamToReadableStream(counting, (source) => new ReadableStream(source));
+    const web = streamToReadableStream(
+      counting,
+      (source) =>
+        new ReadableStream({
+          pull: (controller) => source.pull(controller),
+          cancel: (reason) => source.cancel(reason),
+        }),
+    );
     const reader = web.getReader();
     const first = await reader.read();
     const second = await reader.read();
@@ -3552,7 +3589,11 @@ describe("streams", () => {
   it("drains a whole stream into a ReadableStream and closes it at the end", async () => {
     const web = streamToReadableStream(
       streamFromArray([1, 2, 3], { chunkSize: 2 }),
-      (source) => new ReadableStream(source),
+      (source) =>
+        new ReadableStream({
+          pull: (controller) => source.pull(controller),
+          cancel: (reason) => source.cancel(reason),
+        }),
     );
     const reader = web.getReader();
     const read = [];
@@ -3575,7 +3616,14 @@ describe("streams", () => {
     const failing = streamEnsuring(streamFromEffect(fail({ kind: "notFound" })), () =>
       sync(() => events.push("released")),
     );
-    const web = streamToReadableStream(failing, (source) => new ReadableStream(source));
+    const web = streamToReadableStream(
+      failing,
+      (source) =>
+        new ReadableStream({
+          pull: (controller) => source.pull(controller),
+          cancel: (reason) => source.cancel(reason),
+        }),
+    );
     const reader = web.getReader();
 
     const reason = await reader.read().then(
@@ -3590,8 +3638,8 @@ describe("streams", () => {
   it("reads a queue until it is shut down", async () => {
     const collected = await runPromise(
       effect(function* () {
-        const work = yield* queue(4);
-        const seenThree = yield* deferred();
+        const work = yield* queue<number>(4);
+        const seenThree = yield* deferred<boolean>();
         const reading = yield* fork(
           streamRunCollect(
             streamTap(streamFromQueue(work), (value) =>

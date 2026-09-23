@@ -212,9 +212,13 @@ export function streamFromArray<A>(
  * The source may be infinite. `streamTake` and a failing step both end a
  * traversal without draining it, and the batch size bounds how far past the
  * last wanted element the source is asked to go.
+ *
+ * `open` may return any object with a `next`, not only a full `Iterator`:
+ * `next` is all a traversal calls, and a hand-written `{ next() { … } }` is
+ * the usual way an infinite or stateful source is written.
  */
 export function streamFromIterator<A>(
-  open: () => Iterator<A>,
+  open: () => $IteratorProtocol<A, mixed, void>,
   options?: { readonly chunkSize?: number },
 ): Stream<A> {
   const size = chunkSizeOf(options);
@@ -714,17 +718,25 @@ export function streamMerge<A, E1, E2, R1, R2>(
       if (drained) {
         return null;
       }
-      let buffer = shared;
-      let started = pumps;
-      if (buffer == null || started == null) {
-        buffer = yield* queue(size);
-        started = {
-          left: yield* pumpingInto(leftSource, buffer),
-          right: yield* pumpingInto(rightSource, buffer),
+      // Read into constants rather than refining the two `let`s: Flow does
+      // not keep a refinement of a `let` across a `yield`, so a `buffer`
+      // proved non-null above a `yield*` was `?Queue` again below it.
+      const knownBuffer = shared;
+      const knownPumps = pumps;
+      let running;
+      if (knownBuffer != null && knownPumps != null) {
+        running = { buffer: knownBuffer, started: knownPumps };
+      } else {
+        const fresh = yield* queue<?$ReadOnlyArray<A>>(size);
+        const pumped = {
+          left: yield* pumpingInto(leftSource, fresh),
+          right: yield* pumpingInto(rightSource, fresh),
         };
-        shared = buffer;
-        pumps = started;
+        shared = fresh;
+        pumps = pumped;
+        running = { buffer: fresh, started: pumped };
       }
+      const { buffer, started } = running;
       for (;;) {
         const taken = yield* exit(queueTake(buffer));
         if (taken.kind === "failure") {
@@ -845,7 +857,7 @@ function pumping<A, E, R>(
   capacity: number,
 ): Effect<PumpedInto<A, E>, empty, R> {
   return effect(function* (): EffectGenerator<PumpedInto<A, E>, empty, R> {
-    const buffer: Queue<?$ReadOnlyArray<A>> = yield* queue(capacity);
+    const buffer = yield* queue<?$ReadOnlyArray<A>>(capacity);
     return { buffer, fiber: yield* pumpingInto(source, buffer) };
   });
 }
@@ -915,17 +927,28 @@ function whyPumpStopped<E>(fiber: Fiber<void, E>): Effect<void, E, empty> {
  * not agree on which library file declares `ReadableStreamController`, and they
  * do agree on this shape.
  */
-type ChunkSink<A> = {
-  readonly enqueue: (chunk: A) => mixed,
-  readonly close: () => mixed,
-  readonly error: (reason: mixed) => mixed,
-  ...
-};
+interface ChunkSink<A> {
+  enqueue(chunk: A): mixed;
+  close(): mixed;
+  error(reason: mixed): mixed;
+}
 
-/** What a host's `ReadableStream` constructor takes, structurally. */
+/**
+ * What a host's `ReadableStream` constructor takes, structurally.
+ *
+ * The controller is an interface rather than an object type because a host's
+ * controller is a class instance, and a class instance is not a subtype of an
+ * object type. So a factory that forwards to the host,
+ * `(source) => new ReadableStream({ pull: (c) => source.pull(c), cancel: (r) =>
+ * source.cancel(r) })`, type-checks. Handing `source` over as it is does not
+ * yet: uf's `ReadableStream` declaration types the underlying source's members
+ * as writable, which makes them invariant, and no structural type other than
+ * the host's own is exactly equal to them. ubugeeei-prod/uf#1451 tracks that
+ * library definition.
+ */
 type ChunkSource<A> = {
-  readonly pull: (controller: ChunkSink<A>) => Promise<mixed>,
-  readonly cancel: (reason: mixed) => Promise<mixed>,
+  readonly pull: (controller: ChunkSink<A>) => Promise<void>,
+  readonly cancel: (reason: mixed) => Promise<void>,
 };
 
 /**
@@ -952,7 +975,8 @@ type ChunkSource<A> = {
  * a defect has a message and an interruption has only the fact.
  *
  * **How the host's constructor is reached.** By being handed it:
- * `streamToReadableStream(stream, (source) => new ReadableStream(source))`. That
+ * `streamToReadableStream(stream, (source) => new ReadableStream(source))`. (Under
+ * `uf check` today, forward the two members instead; `ChunkSource` says why.) That
  * is the same avoidance `streamFromReadableStream` makes by taking `open`, for
  * the same reason — this module cannot name a global that four hosts declare in
  * four places — and it is why the return type is whatever the caller's
@@ -996,30 +1020,30 @@ export function streamToReadableStream<A, E, Made>(
   return make({
     pull: async (controller: ChunkSink<A>) => {
       if (cancelled) {
-        return null;
+        return;
       }
       const fiber = runFork(opened().pull);
       pulling = fiber;
       const settled = await runPromiseExit(join(fiber));
       pulling = null;
       if (cancelled) {
-        return null;
+        return;
       }
       if (settled.kind === "failure") {
         await closeOnce();
         controller.error(reasonFor(settled.cause));
-        return null;
+        return;
       }
       const batch = settled.value;
       if (batch == null) {
         await closeOnce();
         controller.close();
-        return null;
+        return;
       }
       for (const item of batch) {
         controller.enqueue(item);
       }
-      return null;
+      return;
     },
     cancel: async () => {
       cancelled = true;
@@ -1028,7 +1052,7 @@ export function streamToReadableStream<A, E, Made>(
         await runPromiseExit(interrupt(running));
       }
       await closeOnce();
-      return null;
+      return;
     },
   });
 }
