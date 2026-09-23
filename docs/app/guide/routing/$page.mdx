@@ -431,6 +431,7 @@ rule. It renders in place of the subtree below it, and everything above stays
 mounted: the layouts, the navigation, whatever state they hold.
 
 ```js
+"use client";
 // @flow
 // app/guide/$error.js
 import type { RouteError } from "@uniflowed/router";
@@ -450,6 +451,11 @@ export default component Error(error: RouteError, reset: () => void) {
   );
 }
 ```
+
+`"use client"` is not optional. The boundary catches a throw while the browser
+renders, so its component runs in the browser; `uf build` and `uf dev` refuse an
+`$error.js` that does not open with the directive, naming the file, rather than
+letting the first page that throws be answered with a bare `500`.
 
 One file, not three. `unauthorized()` and `forbidden()` are thrown the way
 `notFound()` is, and they arrive here as cases of one `RouteError` rather than
