@@ -97,6 +97,42 @@ export const sections: $ReadOnlyArray<Section> = [
           "uf lsp in VS Code, Cursor, Neovim, Vim, Helix, Emacs, Zed and JetBrains: what it answers, what it does not, and the config it reads.",
       },
       {
+        href: "/guide/editors/vscode",
+        title: "VS Code and Cursor",
+        blurb:
+          "Install the uf extension, turn VS Code's built-in TypeScript checking off for a uf project's Flow files, and make uf the formatter.",
+      },
+      {
+        href: "/guide/editors/zed",
+        title: "Zed",
+        blurb:
+          "Install the uf extension for Zed, and keep vtsls off a uf project's Flow files with a committed .zed/settings.json.",
+      },
+      {
+        href: "/guide/editors/jetbrains",
+        title: "JetBrains IDEs",
+        blurb:
+          "uf lsp in WebStorm and IntelliJ IDEA through LSP4IJ, the IDE's Flow language level, and what the IDE's own JavaScript checking leaves on.",
+      },
+      {
+        href: "/guide/editors/neovim",
+        title: "Neovim and Vim",
+        blurb:
+          "Start uf lsp in Neovim or Vim, and keep ts_ls and vtsls off a uf project's Flow files without losing them in TypeScript projects.",
+      },
+      {
+        href: "/guide/editors/helix",
+        title: "Helix",
+        blurb:
+          "A committed .helix/languages.toml that replaces typescript-language-server with uf lsp for one project, and formats on write.",
+      },
+      {
+        href: "/guide/editors/emacs",
+        title: "Emacs",
+        blurb:
+          "uf lsp with Eglot or lsp-mode: uf in a uf project, typescript-language-server everywhere else.",
+      },
+      {
         href: "/guide/flow",
         title: "Flow, the modern parts",
         blurb: "component, hook, renders, match and enums — and what uf does with them.",
