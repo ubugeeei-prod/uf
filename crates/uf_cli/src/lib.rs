@@ -32,8 +32,20 @@ use crate::ui::{OutputMode, Ui};
 // `uf --version` — the first thing anyone runs after installing — answered
 // `uf_cli 0.0.0-alpha.2`, naming something no user has heard of. The usage
 // line still comes from `argv[0]`, so `ufr --help` keeps saying `ufr`.
+//
+// `styles` gives the help the colours the rest of uf's output uses — headings
+// in the accent, what you type in cyan, placeholders receding — rather than
+// clap's plain bold. clap decides whether to colour at all by itself, from the
+// same signals uf reads: not a terminal, `NO_COLOR`, `TERM=dumb`.
 #[derive(Debug, Parser)]
-#[command(name = "uf", version, about = "Unified Toolchain for Flow (React)")]
+#[command(
+    name = "uf",
+    version,
+    about = "Unified Toolchain for Flow (React)",
+    styles = HELP_STYLES,
+    after_help = "Run `uf <COMMAND> --help` for a command's options, or `uf` on its own to pick \
+                  one from a menu.\nDocumentation: https://docs.uniflowed.dev"
+)]
 struct Cli {
     /// Run as if uf had been started in DIR instead of the current directory.
     #[arg(long, global = true, value_name = "DIR")]
@@ -44,6 +56,20 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
+
+/// The help's palette: the accent for headings, cyan for what a reader types,
+/// and grey for the placeholders standing in for their own values.
+const HELP_STYLES: clap::builder::Styles = {
+    use clap::builder::styling::{AnsiColor, Effects, Styles};
+    Styles::styled()
+        .header(AnsiColor::Blue.on_default().effects(Effects::BOLD))
+        .usage(AnsiColor::Blue.on_default().effects(Effects::BOLD))
+        .literal(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
+        .placeholder(AnsiColor::BrightBlack.on_default())
+        .error(AnsiColor::Red.on_default().effects(Effects::BOLD))
+        .valid(AnsiColor::Green.on_default())
+        .invalid(AnsiColor::Yellow.on_default().effects(Effects::BOLD))
+};
 
 pub fn main() -> ExitCode {
     let (cli, target) = match parse_cli() {

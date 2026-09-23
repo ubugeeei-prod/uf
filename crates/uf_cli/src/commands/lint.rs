@@ -27,6 +27,8 @@
 //! command has are the two a shell script branches on, and a `--check`-like
 //! run is simply the default one, which writes nothing.
 
+use std::time::{Duration, Instant};
+
 use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
@@ -36,26 +38,19 @@ use uf_lint::{
     Diagnostic, LintReport, Severity, SourceFile, lint_sources, lint_sources_with_context,
 };
 use uf_project::{SourceKind, scan_selected_source_files_matching};
-use uf_term::{
-    Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
-};
+use uf_term::{CodeFrame, DiagnosticLevel, Status, format_duration};
 
 #[cfg(feature = "upstream-typecheck")]
 use crate::commands::check::libdefs;
 use crate::fix::files::{FixMode, FixSummary, fix_project};
+use crate::fix::{RuleFix, rule_fix};
 use crate::support::{
-    ignore_deprecation, plural, problem_summary, quoted_list, render_ignore_deprecation, selects,
-    unreadable_lines,
+    ignore_deprecation, plural, problem_summary, project_label, quoted_list,
+    render_ignore_deprecation, selects, unreadable_lines,
 };
 use crate::ui::Ui;
 
 pub(crate) mod plugins;
-
-/// How many skipped rules are named before the list is summarised.
-///
-/// The full list is always in `--json`; on screen it must not out-shout the
-/// diagnostics a reader actually has to act on.
-const SKIPPED_RULES_SHOWN: usize = 5;
 
 /// Which of the two lint entry points is running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +68,17 @@ impl LintCommand {
             Self::Check => "uf check",
         }
     }
+
+    /// The command a reader runs to apply a tier of fixes: `uf lint --fix`.
+    fn fix_command(self, fix: RuleFix) -> &'static str {
+        match (self, fix) {
+            (_, RuleFix::Formatter) => "uf fmt",
+            (Self::Lint, RuleFix::Safe) => "uf lint --fix",
+            (Self::Lint, RuleFix::Unsafe) => "uf lint --fix-unsafe",
+            (Self::Check, RuleFix::Safe) => "uf check --fix",
+            (Self::Check, RuleFix::Unsafe) => "uf check --fix-unsafe",
+        }
+    }
 }
 
 pub(crate) fn lint_command(
@@ -83,6 +89,7 @@ pub(crate) fn lint_command(
     fix: FixMode,
     paths: &[String],
 ) -> Result<()> {
+    let started = Instant::now();
     let mut progress = ui.progress();
     let fixed = if fix.writes() {
         progress.draw("applying fixes");
@@ -95,6 +102,7 @@ pub(crate) fn lint_command(
         report,
         sources,
         unreadable,
+        root,
         ignore_deprecation,
         project_rules,
         ..
@@ -111,7 +119,15 @@ pub(crate) fn lint_command(
         }
         ui.json(&payload)?;
     } else {
-        render_lint_report(ui, command, &report, &sources, fixed.as_ref());
+        render_lint_report(
+            ui,
+            command,
+            project_label(&root),
+            &report,
+            &sources,
+            fixed.as_ref(),
+            started,
+        );
         plugins::render(ui, &project_rules);
         render_unreadable(ui, &unreadable);
         render_ignore_deprecation(ui, ignore_deprecation);
@@ -419,24 +435,26 @@ pub(crate) fn render_unreadable(ui: &mut Ui, unreadable: &[String]) {
 fn render_lint_report(
     ui: &mut Ui,
     command: LintCommand,
+    project: &str,
     report: &LintReport,
     sources: &[SourceFile],
     fixed: Option<&FixSummary>,
+    started: Instant,
 ) {
     let errors = severity_count(report, Severity::Error);
     let warnings = severity_count(report, Severity::Warn);
-    let groups = group_by_path(&report.diagnostics);
 
     ui.render(|renderer, out| {
-        renderer.banner(out, command.title(), None);
+        renderer.banner(out, command.title(), Some(project));
         renderer.blank(out);
     });
 
-    for group in &groups {
+    // Each file's findings under its own header, and nothing after them that
+    // repeats which files those were: the headers already say it, and a table
+    // of the same paths at the bottom was one more thing to read past on the
+    // way to the verdict.
+    for group in group_by_path(&report.diagnostics) {
         render_group(ui, group, sources);
-    }
-    if groups.len() > 1 {
-        render_file_summary(ui, &groups);
     }
     // Above the verdict, because the verdict counts what is left and this
     // counts what went: a reader who sees "16 warnings" wants the line that
@@ -444,7 +462,17 @@ fn render_lint_report(
     if let Some(fixed) = fixed {
         render_fix_summary(ui, fixed);
     }
-    render_verdict(ui, report, errors, warnings);
+    render_verdict(
+        ui,
+        command,
+        report,
+        Verdict {
+            errors,
+            warnings,
+            elapsed: started.elapsed(),
+            fixed: fixed.is_some(),
+        },
+    );
 }
 
 /// `1 fix` / `3 fixes`.
@@ -567,82 +595,56 @@ pub(crate) fn render_group(ui: &mut Ui, group: &[Diagnostic], sources: &[SourceF
     });
 }
 
-/// A per-file count table, printed once diagnostics span more than one file.
-pub(crate) fn render_file_summary(ui: &mut Ui, groups: &[&[Diagnostic]]) {
-    let rows: Vec<(String, String, String)> = groups
-        .iter()
-        .map(|group| {
-            let group_errors = group
-                .iter()
-                .filter(|diagnostic| diagnostic.severity == Severity::Error)
-                .count();
-            (
-                diagnostic_path(&group[0]).to_string(),
-                group_errors.to_string(),
-                (group.len() - group_errors).to_string(),
-            )
-        })
-        .collect();
-
-    ui.render(|renderer, out| {
-        let mut table = Table::new(vec![
-            Column::left("file"),
-            Column::right("errors"),
-            Column::right("warnings"),
-        ]);
-        for (path, errors, warnings) in &rows {
-            table.push(vec![
-                Cell::toned(path, Tone::Path),
-                Cell::toned(errors, Tone::Bad),
-                Cell::toned(warnings, Tone::Warn),
-            ]);
-        }
-        renderer.table(out, 2, &table);
-        renderer.blank(out);
-    });
+/// What the line a lint run ends on counts.
+pub(crate) struct Verdict {
+    /// Errors left, from every pass the command ran.
+    pub(crate) errors: usize,
+    /// Warnings left, from every pass the command ran.
+    pub(crate) warnings: usize,
+    /// How long the command took, from start to verdict.
+    pub(crate) elapsed: Duration,
+    /// Whether `--fix` ran, in which case its own summary has already said
+    /// what the fixes could not reach and the hint is not repeated.
+    pub(crate) fixed: bool,
 }
 
-pub(crate) fn render_verdict(ui: &mut Ui, report: &LintReport, errors: usize, warnings: usize) {
-    let files_checked = report.files_checked.to_string();
-    let error_count = errors.to_string();
-    let warning_count = warnings.to_string();
-    let skipped = report.unavailable.len().to_string();
-    let mut unavailable: Vec<&str> = report
-        .unavailable
-        .iter()
-        .take(SKIPPED_RULES_SHOWN)
-        .map(|unavailable| unavailable.rule)
-        .collect();
-    let overflow = report.unavailable.len().saturating_sub(SKIPPED_RULES_SHOWN);
-    let and_more = format!("and {overflow} more");
-    if overflow > 0 {
-        unavailable.push(&and_more);
-    }
-    let verdict = problem_summary(errors, warnings);
+/// The line a lint run ends on, and what to do next.
+///
+/// `✗ 3 errors, 1 warning · 10 files checked · 41ms`, then a hint for each
+/// thing a reader can act on: the findings a command can fix, and the rules
+/// that were enabled and skipped. The skipped rules are counted, not listed:
+/// the list was the same five names on every run of every project, and
+/// `uf lint --rules` marks each of them, while `--json` names them.
+pub(crate) fn render_verdict(
+    ui: &mut Ui,
+    command: LintCommand,
+    report: &LintReport,
+    verdict: Verdict,
+) {
+    let Verdict {
+        errors,
+        warnings,
+        elapsed,
+        fixed,
+    } = verdict;
+    let headline = problem_summary(errors, warnings);
+    let files = format!("{} checked", plural(report.files_checked, "file"));
+    let took = format_duration(elapsed);
+    let fixable = if fixed {
+        None
+    } else {
+        fixable_hint(command, &report.diagnostics)
+    };
+    let skipped = report.unavailable.len();
+    let skipped = (skipped > 0).then(|| {
+        format!(
+            "{} skipped: they need Flow type inference, which uf does not have yet; \
+             `uf lint --rules` marks them",
+            plural(skipped, "enabled rule")
+        )
+    });
 
     ui.render(|renderer, out| {
-        let mut rows = vec![
-            KeyValue::toned("files checked", &files_checked, Tone::Number),
-            KeyValue::toned("errors", &error_count, Tone::Bad),
-            KeyValue::toned("warnings", &warning_count, Tone::Warn),
-        ];
-        if !unavailable.is_empty() {
-            rows.push(KeyValue::toned("rules skipped", &skipped, Tone::Muted));
-        }
-        renderer.key_values(out, 2, &rows);
-
-        if !unavailable.is_empty() {
-            renderer.blank(out);
-            push_spaces(out, 2);
-            renderer.status(
-                out,
-                Status::Info,
-                "these rules need Flow type inference, which uf does not implement yet",
-            );
-            renderer.bullet_list(out, 4, &unavailable);
-        }
-
-        renderer.blank(out);
         let status = if errors > 0 {
             Status::Error
         } else if warnings > 0 {
@@ -650,8 +652,44 @@ pub(crate) fn render_verdict(ui: &mut Ui, report: &LintReport, errors: usize, wa
         } else {
             Status::Success
         };
-        renderer.status(out, status, &verdict);
+        renderer.summary(out, status, &headline, &[&files, &took]);
+        if let Some(fixable) = &fixable {
+            renderer.hint(out, 2, fixable);
+        }
+        if let Some(skipped) = &skipped {
+            renderer.hint(out, 2, skipped);
+        }
     });
+}
+
+/// How many of `diagnostics` a command can fix, by the command that fixes
+/// them: `2 fixable with `uf lint --fix`; 1 with `uf fmt``.
+///
+/// Said about the rule rather than tried against the line, so it can count a
+/// finding a fixer would decline once it re-reads the line; `--fix` reports
+/// what it actually wrote.
+fn fixable_hint(command: LintCommand, diagnostics: &[Diagnostic]) -> Option<String> {
+    let mut counts = [
+        (RuleFix::Safe, 0usize),
+        (RuleFix::Unsafe, 0),
+        (RuleFix::Formatter, 0),
+    ];
+    for diagnostic in diagnostics {
+        if let Some(fix) = rule_fix(diagnostic.rule)
+            && let Some((_, count)) = counts.iter_mut().find(|(tier, _)| *tier == fix)
+        {
+            *count += 1;
+        }
+    }
+    let parts: Vec<String> = counts
+        .iter()
+        .filter(|(_, count)| *count > 0)
+        .map(|(tier, count)| format!("{count} with `{}`", command.fix_command(*tier)))
+        .collect();
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!("fixable: {}", parts.join("; ")))
 }
 
 mod rules;

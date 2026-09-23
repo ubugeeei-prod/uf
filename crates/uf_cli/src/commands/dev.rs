@@ -307,19 +307,19 @@ fn serve(
                 let route_count = plural(routes.len(), "route");
                 ui.render(|renderer, out| {
                     renderer.blank(out);
+                    // One block, so the addresses and the route count share a
+                    // column instead of each lining up only with itself.
+                    let mut rows: Vec<KeyValue<'_>> = Vec::new();
                     for url in &local {
-                        renderer.key_values(out, 2, &[KeyValue::toned("local", url, Tone::Accent)]);
+                        rows.push(KeyValue::toned("local", url, Tone::Accent));
                     }
                     for url in &network {
-                        renderer.key_values(out, 2, &[KeyValue::toned("network", url, Tone::Warn)]);
+                        rows.push(KeyValue::toned("network", url, Tone::Warn));
                     }
-                    renderer.key_values(
-                        out,
-                        2,
-                        &[KeyValue::toned("routes", &route_count, Tone::Number)],
-                    );
+                    rows.push(KeyValue::toned("routes", &route_count, Tone::Number));
+                    renderer.key_values(out, 2, &rows);
                     renderer.blank(out);
-                    renderer.status(out, Status::Success, "dev server ready");
+                    renderer.summary(out, Status::Success, "dev server ready", &[]);
                 });
                 server_components.report(ui);
             }

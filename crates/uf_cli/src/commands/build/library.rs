@@ -417,7 +417,7 @@ pub(crate) fn build(
         {
             renderer.status(out, Status::Warn, warning);
         }
-        renderer.status(out, Status::Success, &summary);
+        renderer.summary(out, Status::Success, &summary, &[]);
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)

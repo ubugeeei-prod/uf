@@ -233,3 +233,126 @@ fn a_shared_buffer_is_reused_across_renders() {
 
     assert_eq!(out.capacity(), capacity, "the buffer must not regrow");
 }
+
+#[test]
+fn a_summary_is_a_mark_a_verdict_and_its_facts() {
+    let out = render(|renderer, out| {
+        renderer.summary(
+            out,
+            Status::Error,
+            "3 errors, 1 warning",
+            &["10 files checked", "", "41ms"],
+        );
+    });
+
+    // The empty fact is skipped rather than drawn as a doubled separator.
+    assert_eq!(out, "✗ 3 errors, 1 warning · 10 files checked · 41ms\n");
+}
+
+#[test]
+fn an_ascii_summary_separates_its_facts_with_commas() {
+    let renderer = renderer(ColorLevel::Never, GlyphSet::Ascii);
+    let mut out = String::new();
+    renderer.summary(&mut out, Status::Success, "no problems", &["8 files"]);
+
+    assert_eq!(out, "+ no problems, 8 files\n");
+    assert!(out.is_ascii());
+}
+
+#[test]
+fn a_summary_with_no_facts_is_a_status_line() {
+    let out = render(|renderer, out| renderer.summary(out, Status::Success, "done", &[]));
+    assert_eq!(out, "✓ done\n");
+}
+
+#[test]
+fn a_plain_hint_keeps_its_backticks() {
+    let out = render(|renderer, out| renderer.hint(out, 2, "run `uf lint --fix` to apply it"));
+    assert_eq!(out, "  › run `uf lint --fix` to apply it\n");
+}
+
+/// With colour, the code span is set apart by the accent, so the backticks
+/// that did the same job in plain text go.
+#[test]
+fn a_coloured_hint_draws_code_in_the_accent_instead_of_backticks() {
+    let renderer = renderer(ColorLevel::TrueColor, GlyphSet::Unicode);
+    let mut out = String::new();
+    renderer.hint(&mut out, 0, "run `uf fmt` now");
+
+    assert!(!out.contains('`'), "{out:?}");
+    let mut accent = String::new();
+    renderer
+        .theme()
+        .accent
+        .paint(ColorLevel::TrueColor, "uf fmt", &mut accent);
+    assert!(out.contains(&accent), "{out:?}");
+}
+
+/// An unmatched backtick is punctuation, not the start of a code span.
+#[test]
+fn a_hint_with_an_unmatched_backtick_is_left_as_written() {
+    let renderer = renderer(ColorLevel::TrueColor, GlyphSet::Unicode);
+    let mut out = String::new();
+    renderer.hint(&mut out, 0, "a ` alone");
+
+    assert!(out.contains("a ` alone"), "{out:?}");
+}
+
+#[test]
+fn the_banner_draws_the_command_in_its_own_style() {
+    let renderer = renderer(ColorLevel::TrueColor, GlyphSet::Unicode);
+    let mut out = String::new();
+    renderer.banner(&mut out, "uf lint", None);
+
+    let mut expected = String::new();
+    renderer
+        .theme()
+        .banner
+        .paint(ColorLevel::TrueColor, "uf lint", &mut expected);
+    assert!(out.starts_with(&expected), "{out:?}");
+}
+
+#[test]
+fn status_rows_align_their_columns_and_carry_hints() {
+    let out = render(|renderer, out| {
+        renderer.status_rows(
+            out,
+            2,
+            &[
+                StatusRow::new(Status::Success, "node", "24.3.0").with_detail("runtime"),
+                StatusRow::new(Status::Error, "pnpm@10", "missing")
+                    .with_detail("package manager")
+                    .with_hint("run `uf env install`"),
+                StatusRow::new(Status::Warn, "bun", ""),
+            ],
+        );
+    });
+
+    assert_eq!(
+        out,
+        "  ✓ node     24.3.0   runtime\n\
+         \x20 ✗ pnpm@10  missing  package manager\n\
+         \x20   › run `uf env install`\n\
+         \x20 ! bun\n"
+    );
+}
+
+#[test]
+fn status_rows_render_no_escape_without_color() {
+    let out = render(|renderer, out| {
+        renderer.status_rows(
+            out,
+            0,
+            &[StatusRow::new(Status::Error, "a", "b")
+                .with_detail("c")
+                .with_hint("`d`")],
+        );
+    });
+    assert!(!out.contains('\x1b'), "{out:?}");
+}
+
+#[test]
+fn a_hint_s_later_lines_stay_under_its_first() {
+    let out = render(|renderer, out| renderer.hint(out, 2, "first\nsecond"));
+    assert_eq!(out, "  › first\n    second\n");
+}

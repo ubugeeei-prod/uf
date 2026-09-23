@@ -1038,6 +1038,13 @@ Runs uf's rules and Flow's built-in lints. `--json` for the report.
 Without a `--fix` flag nothing is written. That is the `--check`-like use, and
 it is what CI and a git hook run.
 
+The report groups the findings under the file they are in, and ends on one
+line — the verdict, the number of files read and how long it took — followed
+by what to do next: how many findings `--fix`, `--fix-unsafe` or `uf fmt`
+would clear, and how many enabled rules were skipped because they need type
+inference. It does not list the files again at the end; `--json` has every
+finding with its path.
+
 `uf lint --rules` lints nothing. It lists every rule with the level a run in
 this project would use — `uf.config.js` over the defaults, deprecated rule
 names included, so a rule the project turned off says `off` — the command that
@@ -1963,8 +1970,35 @@ name, `uf` last — and records the version it replaced, so
 
 ### uf env doctor
 
-Reports which JavaScript hosts are installed on this machine, which one uf would
-use, and why.
+Checks that this machine has what the project runs on: every tool it declares —
+`runtime`, `build.runtime`, `test.runtime`, `packageManager`, `env.toolchain`,
+an exact `package.json#engines` — and, where it declares none, the runtime and
+package manager uf falls back to. One row per tool, with the release found and
+what it is for; a row with something wrong says what to do about it.
+
+```
+uf env doctor · my-app
+──────────────────────
+
+  ! node@26      not locked yet        runtime, build runtime
+  ! pnpm@10.4.1  10.4.1 not installed  package manager
+  › `uf env install` installs what is missing now; otherwise the first command that needs a tool installs it
+
+! 2 tools not installed yet · 2 tools checked
+```
+
+A release the store does not have yet is a warning rather than an error, since
+the first command that needs it installs it. A tool named without a version
+that is not on `PATH` is an error: the command that needs it will fail.
+
+| Flag | Meaning |
+| --- | --- |
+| `--verbose`, `-v` | Also where each tool is, which key declared it, and where the store, the links and `uf.lock` are |
+| `--json` | Every row, with `status` (`ok`, `warn`, `error`), `found`, `fix`, `declaredBy` and `location`, plus `platform`, `store`, `bin`, `lock` and `ok` |
+
+It reads `uf.lock` and fetches, installs and writes nothing. It exits `0`
+whatever it finds — including over a `uf.config.js` it cannot read, which is
+reported as a row — so read `ok` in `--json` to fail a script on it.
 
 ### uf env use PROFILE
 

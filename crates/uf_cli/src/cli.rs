@@ -424,7 +424,8 @@ pub(crate) enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Inspect and switch the Capability JS Host uf runs JavaScript on.
+    /// Check, install and switch the runtimes and package manager this project
+    /// runs on.
     Env {
         #[command(subcommand)]
         command: EnvCommand,
@@ -1156,6 +1157,9 @@ impl Commands {
                 }
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true, .. }
+                | Self::Env {
+                    command: EnvCommand::Doctor { json: true, .. },
+                }
                 | Self::Test { json: true, .. }
                 | Self::Ui {
                     command: UiCommand::List { json: true } | UiCommand::Diff { json: true, .. },
@@ -1443,8 +1447,18 @@ pub(crate) enum I18nCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum EnvCommand {
-    /// Report which tools are installed on this machine.
-    Doctor,
+    /// Check that this machine has the runtimes and package manager this
+    /// project runs on, and say what to do about any that are missing.
+    Doctor {
+        /// Emit the report as JSON: every row, where each tool was found, and
+        /// where uf keeps what it installs.
+        #[arg(long)]
+        json: bool,
+        /// Also show where each tool is, which key declared it, and where uf
+        /// keeps the store, the links and the lock.
+        #[arg(long, short)]
+        verbose: bool,
+    },
     /// Set the active `.env` profile.
     Use {
         /// The profile name, e.g. `production`.

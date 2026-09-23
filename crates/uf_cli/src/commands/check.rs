@@ -27,13 +27,13 @@ use uf_term::Status;
 use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Tone, push_spaces};
 
 use crate::commands::lint::{
-    LintCommand, LintRun, group_by_path, lint_payload, plugins, render_file_summary,
-    render_fix_summary, render_group, render_unreadable, render_verdict, run_lint, severity_count,
+    LintCommand, LintRun, Verdict, group_by_path, lint_payload, plugins, render_fix_summary,
+    render_group, render_unreadable, render_verdict, run_lint, severity_count,
 };
 use crate::fix::files::{FixMode, FixSummary, fix_project};
 #[cfg(feature = "upstream-typecheck")]
 use crate::support::problem_summary;
-use crate::support::{plural, render_ignore_deprecation};
+use crate::support::{plural, project_label, render_ignore_deprecation};
 use crate::ui::Ui;
 
 /// How many untyped imports are named before the list is summarised.
@@ -254,6 +254,7 @@ pub(crate) fn check(
     explain_any: Option<&str>,
 ) -> Result<()> {
     let profile = Profile::start();
+    let started = std::time::Instant::now();
     let mut progress = ui.progress();
     // Before the scan, and only the *lint* fixes: `uf check` is `uf lint` plus
     // inference, and inference has no fix catalogue of its own. A type error
@@ -287,7 +288,17 @@ pub(crate) fn check(
         }
         ui.json(&body)?;
     } else {
-        render(ui, &lint, &sources, &types, fixed.as_ref());
+        render(
+            ui,
+            project_label(&root),
+            Report {
+                lint: &lint,
+                sources: &sources,
+                types: &types,
+                fixed: fixed.as_ref(),
+            },
+            started,
+        );
         plugins::render(ui, &project_rules);
         render_unreadable(ui, &unreadable);
         render_ignore_deprecation(ui, ignore_deprecation);
@@ -660,41 +671,55 @@ fn type_check_payload(types: &TypeCheck) -> Value {
     })
 }
 
-fn render(
-    ui: &mut Ui,
-    lint: &LintReport,
-    sources: &[SourceFile],
-    types: &TypeCheck,
-    fixed: Option<&FixSummary>,
-) {
+/// Everything one `uf check` run found, for the report.
+struct Report<'a> {
+    lint: &'a LintReport,
+    sources: &'a [SourceFile],
+    types: &'a TypeCheck,
+    fixed: Option<&'a FixSummary>,
+}
+
+fn render(ui: &mut Ui, project: &str, report: Report<'_>, started: std::time::Instant) {
+    let Report {
+        lint,
+        sources,
+        types,
+        fixed,
+    } = report;
     let lint_errors = severity_count(lint, Severity::Error);
     let lint_warnings = severity_count(lint, Severity::Warn);
-    let groups = group_by_path(&lint.diagnostics);
 
     ui.render(|renderer, out| {
-        renderer.banner(out, LintCommand::Check.title(), None);
+        renderer.banner(out, LintCommand::Check.title(), Some(project));
         renderer.blank(out);
     });
 
-    for group in &groups {
+    // As in `uf lint`: the file headers name the files, so nothing after the
+    // findings lists them again.
+    for group in group_by_path(&lint.diagnostics) {
         render_group(ui, group, sources);
-    }
-    if groups.len() > 1 {
-        render_file_summary(ui, &groups);
     }
 
     render_type_diagnostics(ui, sources, types);
+    // What inference read and what it could not type, before the verdict
+    // rather than after it: the verdict is the line a reader scrolls to, so
+    // it is the last one.
+    render_type_footer(ui, types);
 
     if let Some(fixed) = fixed {
         render_fix_summary(ui, fixed);
     }
     render_verdict(
         ui,
+        LintCommand::Check,
         lint,
-        lint_errors + types.count(TypeSeverity::Error),
-        lint_warnings + types.count(TypeSeverity::Warning),
+        Verdict {
+            errors: lint_errors + types.count(TypeSeverity::Error),
+            warnings: lint_warnings + types.count(TypeSeverity::Warning),
+            elapsed: started.elapsed(),
+            fixed: fixed.is_some(),
+        },
     );
-    render_type_footer(ui, types);
 }
 
 /// Type diagnostics, grouped by file, as code frames.
@@ -811,19 +836,19 @@ fn render_type_group(ui: &mut Ui, sources: &[SourceFile], group: &[TypeDiagnosti
 fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
     match types {
         TypeCheck::Unavailable => ui.render(|renderer, out| {
-            renderer.blank(out);
             renderer.status(
                 out,
                 Status::Info,
                 "type inference is not compiled into this build",
             );
+            renderer.blank(out);
         }),
         #[cfg(feature = "upstream-typecheck")]
         TypeCheck::Failed(error) => {
             let detail = error.to_string();
             ui.render(|renderer, out| {
-                renderer.blank(out);
                 renderer.status(out, Status::Warn, &detail);
+                renderer.blank(out);
             });
         }
         #[cfg(feature = "upstream-typecheck")]
@@ -876,7 +901,6 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             let translated = translated_package_list(&batch.translated);
             let explained = batch.explained.as_ref().map(explanation_lines);
             ui.render(|renderer, out| {
-                renderer.blank(out);
                 renderer.key_values(out, 2, &rows);
                 if !untyped.is_empty() {
                     renderer.blank(out);
@@ -918,6 +942,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                     let items: Vec<&str> = lines.iter().map(String::as_str).collect();
                     renderer.bullet_list(out, 4, &items);
                 }
+                renderer.blank(out);
             });
         }
     }
