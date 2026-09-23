@@ -71,3 +71,76 @@ describe("fetching a route's payload", () => {
     expect(headers.get(INTERCEPTED_FROM_HEADER)).toBe("/feed");
   });
 });
+
+// A static host that does not know `.flight` — the Workers asset server, Pages,
+// many others — serves a prerendered payload with no `Content-Type`, or as
+// `application/octet-stream`. Refusing it made every client navigation on such
+// a host a full page load; the deploy matrix found it under `wrangler dev`
+// (ubugeeei-prod/uf#1495). The type check is replaced for those answers by a
+// look at the first row, and by nothing weaker.
+describe("a payload a static host served untyped", () => {
+  /**
+   * An answer at `url` with `body` and `headers`, as `fetch` would give it.
+   * Bytes rather than a string, because a string body gives a `Response` a
+   * `text/plain` type of its own and the case here is a host that sent none.
+   */
+  function answered(url: string, body: string, init?: $FlowFixMe): Response {
+    const response = new Response(new TextEncoder().encode(body), init);
+    Object.defineProperty(response, "url", { value: url });
+    return response;
+  }
+
+  it("is a payload when its first row is a Flight row", async () => {
+    for (const type of [null, "application/octet-stream"]) {
+      pageAt("http://uf.test/", () =>
+        Promise.resolve(
+          answered(
+            "http://uf.test/posts/first/__uf.flight",
+            '0:["$","h1",null,{"children":"post: first"}]\n',
+            type == null ? undefined : { headers: { "content-type": type } },
+          ),
+        ),
+      );
+      const fetched = await fetchFlight("/posts/first");
+      expect(fetched.kind).toBe("flight");
+      expect(fetched.url).toBe("/posts/first");
+    }
+  });
+
+  it("is a document when it is untyped HTML", async () => {
+    pageAt("http://uf.test/", () =>
+      Promise.resolve(
+        answered("http://uf.test/posts/first/__uf.flight", "<!doctype html><p>sign in</p>"),
+      ),
+    );
+    expect(await fetchFlight("/posts/first")).toEqual({ kind: "document", url: "/posts/first" });
+  });
+
+  it("is a document when a type says it is something else", async () => {
+    // `text/html` is a document whatever its bytes look like.
+    pageAt("http://uf.test/", () =>
+      Promise.resolve(
+        answered("http://uf.test/posts/first/__uf.flight", '0:["$","h1"]\n', {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      ),
+    );
+    expect(await fetchFlight("/posts/first")).toEqual({ kind: "document", url: "/posts/first" });
+  });
+
+  it("is a document when it is not a 200", async () => {
+    pageAt("http://uf.test/", () =>
+      Promise.resolve(
+        answered("http://uf.test/posts/first/__uf.flight", '0:["$","h1"]\n', { status: 404 }),
+      ),
+    );
+    expect(await fetchFlight("/posts/first")).toEqual({ kind: "document", url: "/posts/first" });
+  });
+
+  it("is a document when it came from another origin", async () => {
+    pageAt("http://uf.test/", () =>
+      Promise.resolve(answered("http://cdn.example/posts/first/__uf.flight", '0:["$","h1"]\n')),
+    );
+    expect(await fetchFlight("/posts/first")).toEqual({ kind: "document", url: "/posts/first" });
+  });
+});

@@ -178,6 +178,27 @@ The fix is a deployment choice, not a flag: remove the server-only feature,
 give a dynamic route every path through `generateStaticParams`, or choose a
 server target.
 
+**A host that knows the payload's type is faster, not required.** Each
+prerendered page has an RSC payload beside it, `<route>/__uf.flight`, which a
+client-side navigation fetches instead of the document. Its type is
+`text/x-component`, and many static hosts do not know the extension: they send
+it untyped or as `application/octet-stream`. The router accepts such an answer
+when it is a `200` for the payload URL itself and its first line is a payload
+row, so navigation stays on the client. A host that can be told the type
+should be; on Cloudflare (Workers static assets, Pages) and Netlify that is a
+`_headers` file in the uploaded directory:
+
+```
+/__uf.flight
+  Content-Type: text/x-component
+/*/__uf.flight
+  Content-Type: text/x-component
+```
+
+uf does not write it into `.uf/deploy/static`, because a platform's file in
+that directory is a file every other host serves at a URL the site never
+mentions.
+
 ## A tab opened before the deploy
 
 A deploy replaces the server while browsers still hold pages from the previous

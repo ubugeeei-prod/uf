@@ -222,12 +222,16 @@ export async function fetchFlight(
   const landed = new URL(response.url, window.location.href);
   const document = documentPathOf(landed.pathname);
   const type = response.headers.get("content-type") ?? "";
-  if (
-    landed.origin !== window.location.origin ||
-    document == null ||
-    !type.startsWith(FLIGHT_CONTENT_TYPE)
-  ) {
-    void response.body?.cancel();
+  // A payload file a static host could not type (#1495) is taken for what it
+  // is only after its first bytes say so; see [`untypedPayload`].
+  const payload =
+    landed.origin === window.location.origin && document != null
+      ? type.startsWith(FLIGHT_CONTENT_TYPE)
+        ? response
+        : await untypedPayload(response, type)
+      : null;
+  if (payload == null || document == null) {
+    void response.body?.cancel().catch(() => {});
     // The URL the reader asked for when the redirect did not end on a payload,
     // rather than the one it ended on. A middleware that answered with its
     // sign-in page wrote a `next=` naming the payload URL; loading the document
@@ -237,6 +241,70 @@ export async function fetchFlight(
   return {
     kind: "flight",
     url: `${document}${landed.search}`,
-    root: createFromFetch(Promise.resolve(response)),
+    root: createFromFetch(Promise.resolve(payload)),
   };
+}
+
+/** The types a host sends for a file it does not know, or no type at all. */
+const UNTYPED: $ReadOnlyArray<string> = Object.freeze([
+  "",
+  "application/octet-stream",
+  "binary/octet-stream",
+]);
+
+/** How far into a body to look for the first row before giving up. */
+const SNIFF_LIMIT = 256;
+
+/**
+ * `response` as a payload, when a host served one without saying so.
+ *
+ * A prerendered page's payload is a file, `<route>/__uf.flight`, and a static
+ * host that does not know the extension sends it with no `Content-Type` (the
+ * Workers asset server, Pages) or as `application/octet-stream`. Refusing it
+ * made every client navigation on such a host a full page load. The type
+ * check is not dropped for it, it is replaced by one that cannot be fooled the
+ * same way: the answer has to be a `200` for the payload URL itself (no
+ * redirect — a sign-in page reached by one is what the type check is for),
+ * untyped rather than typed as something else (`text/html` is a document,
+ * whatever its bytes), and its first line has to be a Flight row, `<hex id>:`.
+ * Anything else answers `null` and the router loads the document, as before.
+ *
+ * The bytes read to decide are put back in front of the rest, so React reads
+ * the whole payload.
+ */
+async function untypedPayload(response: Response, type: string): Promise<Response | null> {
+  const media = type.split(";")[0].trim().toLowerCase();
+  if (!UNTYPED.includes(media) || response.status !== 200 || response.redirected) return null;
+  const body = response.body;
+  if (body == null) return null;
+  const reader = body.getReader();
+  const read: Array<Uint8Array> = [];
+  let seen = "";
+  const decoder = new TextDecoder();
+  while (!seen.includes("\n") && seen.length < SNIFF_LIMIT) {
+    const step = await reader.read();
+    if (step.done === true) break;
+    read.push(step.value);
+    seen += decoder.decode(step.value, { stream: true });
+  }
+  if (!/^[0-9a-f]+:/i.test(seen)) {
+    void reader.cancel().catch(() => {});
+    return null;
+  }
+  const replayed = new ReadableStream({
+    start(controller) {
+      for (const chunk of read) controller.enqueue(chunk);
+    },
+    async pull(controller) {
+      const step = await reader.read();
+      if (step.done === true) controller.close();
+      else controller.enqueue(step.value);
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+  const headers = new Headers(response.headers);
+  headers.set("content-type", FLIGHT_CONTENT_TYPE);
+  return new Response(replayed, { status: 200, headers });
 }
