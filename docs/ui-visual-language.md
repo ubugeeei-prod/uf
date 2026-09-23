@@ -57,6 +57,26 @@ gradients and large radii.
   fails on a `box-shadow`, a `text-shadow`, a `drop-shadow()`, a gradient, or a
   corner that is not one of the tokens.
 
+## Calendars
+
+`registry/ui/calendar.js` is shared by the calendar, the range calendar and
+both date pickers.
+
+- **A grid that lines up.** Every day cell is 36px square, so the hit target
+  is over 32px. Each weekday heading is one day wide, the table layout is
+  fixed, and numerals are `tabular-nums`. The columns stay columns in every
+  locale, including the ones whose short weekday names are whole words.
+- **The month name sits between the month buttons.** It is the grid's
+  `<caption>` and so its accessible name. The buttons hang on the caption's
+  line at its inline ends, so a right-to-left page swaps them and mirrors
+  their arrows.
+- **States with little fill.** Today is the accent numeral in bold. The chosen
+  day is the only filled cell. A range is two filled ends joined by a pale
+  band, squared off where the ends meet the band. An unavailable day is muted
+  and struck through. Hover is a neutral tint, and keyboard focus is an inset
+  2px outline that stays visible on a filled day.
+- The frame is 278px wide, which fits a 320px screen.
+
 ## Where this does not apply
 
 `@uniflowed/brand` holds uf's logo identity, including the cyan-to-magenta

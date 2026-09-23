@@ -70,10 +70,11 @@ const styles = stylex.create({
     outlineColor: ufTokens.focus,
     outlineOffset: "1px",
   },
+  // A block, not a grid: the month buttons hang on the caption's line from a
+  // zero-height row, and a grid's gap would push the caption off it.
   content: {
     zIndex: 50,
-    display: "grid",
-    gap: ufTokens.space2,
+    display: "block",
     boxSizing: "border-box",
     padding: ufTokens.space3,
     fontFamily: ufTokens.fontSans,
