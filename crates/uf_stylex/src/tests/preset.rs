@@ -101,9 +101,16 @@ const PAIRS: &[(&str, &str)] = &[
     ("muted", "canvas"),
     ("muted", "surface"),
     ("muted", "sunken"),
+    ("muted", "surfaceHover"),
     ("accentInk", "accent"),
     ("accentInk", "accentHover"),
     ("accent", "accentSoft"),
+    // The accent is also text: a link, the current tab, a selected option's
+    // check, a hovered day.
+    ("accent", "surface"),
+    ("accent", "canvas"),
+    ("accent", "surfaceHover"),
+    ("ink", "accentSoft"),
     ("dangerInk", "danger"),
     ("dangerInk", "dangerHover"),
     ("danger", "dangerSoft"),
@@ -297,6 +304,91 @@ fn the_focus_ring_is_visible_against_the_surfaces_it_is_drawn_on() {
             night >= 3.0,
             "in dark the focus ring is {night:.2}:1 on `{background}`"
         );
+    }
+}
+
+/// The red, green and blue bytes of a `#rrggbb` colour.
+fn bytes(colour: &str) -> [u8; 3] {
+    let digits = colour
+        .strip_prefix('#')
+        .unwrap_or_else(|| panic!("`{colour}` is not a hex colour"));
+    let byte = |at: usize| {
+        u8::from_str_radix(&digits[at..at + 2], 16)
+            .unwrap_or_else(|_| panic!("`{colour}` is not hexadecimal"))
+    };
+    [byte(0), byte(2), byte(4)]
+}
+
+/// The hue of a `#rrggbb` colour in degrees, `None` for a grey.
+fn hue(colour: &str) -> Option<f64> {
+    let [r, g, b] = bytes(colour).map(|byte| f64::from(byte) / 255.0);
+    let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+    let chroma = max - min;
+    if chroma == 0.0 {
+        return None;
+    }
+    let sector = if max == r {
+        ((g - b) / chroma).rem_euclid(6.0)
+    } else if max == g {
+        (b - r) / chroma + 2.0
+    } else {
+        (r - g) / chroma + 4.0
+    };
+    Some(sector * 60.0)
+}
+
+/// The tokens that are the interface's greys.
+const NEUTRALS: &[&str] = &[
+    "canvas",
+    "sunken",
+    "surface",
+    "surfaceHover",
+    "border",
+    "ink",
+    "muted",
+];
+
+#[test]
+fn the_neutrals_are_grey_rather_than_tinted() {
+    // A slate or navy grey is what makes an interface read as a generated one:
+    // everything carries the same faint blue. The defaults' greys stay within a
+    // few steps of neutral in every channel, in light and in dark.
+    let tokens = shipped("tokens.stylex.js", TOKENS);
+    let themes = shipped("theme.js", THEMES);
+    for key in NEUTRALS {
+        for (mode, colour) in [
+            ("light", token(&tokens.sheet, key)),
+            ("dark", dark(&themes.sheet, key)),
+        ] {
+            let [r, g, b] = bytes(&colour);
+            let spread = r.max(g).max(b) - r.min(g).min(b);
+            assert!(
+                spread <= 8,
+                "in {mode}, `{key}` is {colour}, a tinted grey ({spread} steps between channels)"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_accent_is_not_violet() {
+    // Indigo through magenta (roughly 235° to 330°) is the default of every
+    // generated interface; the preset's one accent stays out of that band in
+    // both modes, and so does the focus ring.
+    let tokens = shipped("tokens.stylex.js", TOKENS);
+    let themes = shipped("theme.js", THEMES);
+    for key in ["accent", "accentHover", "accentSoft", "focus"] {
+        for (mode, colour) in [
+            ("light", token(&tokens.sheet, key)),
+            ("dark", dark(&themes.sheet, key)),
+        ] {
+            if let Some(degrees) = hue(&colour) {
+                assert!(
+                    !(235.0..=330.0).contains(&degrees),
+                    "in {mode}, `{key}` is {colour}, a violet at {degrees:.0}°"
+                );
+            }
+        }
     }
 }
 

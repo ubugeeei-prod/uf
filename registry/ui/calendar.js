@@ -10,29 +10,35 @@
 //
 // # What this file owns, and what it does not
 //
-// The month's frame, the buttons to the months either side, and each day: the
-// chosen day filled, today ringed, and a day that cannot be chosen struck
-// through. `@uniflowed/ui`'s `Calendar` owns the grid: a `<table role="grid">` named
-// by its caption, weekday headings that give a reader the whole weekday name,
-// one day in the tab order with the keyboard moving between days and months,
-// and a polite announcement of the month shown. A day is drawn from
-// `aria-selected`, `aria-current="date"` and `aria-disabled`.
+// The month's frame, the buttons to the months either side, and each day:
+// today in the accent's numeral, the chosen day filled, a range's middle as a
+// pale band between its filled ends, and a day that cannot be chosen muted and
+// struck through. `@uniflowed/ui`'s `Calendar` owns the grid: a `<table
+// role="grid">` named by its caption, weekday headings that give a reader the
+// whole weekday name, one day in the tab order with the keyboard moving between
+// days and months, and a polite announcement of the month shown. A day is drawn
+// from `aria-selected`, `aria-current="date"`, `aria-disabled`, and
+// `data-selection-start` / `data-selection-end` on the ends of a chosen run.
 //
-// The caption and the weekday headings are rendered by the part with no prop for
-// a class, so they take this file's type by inheritance. Every prop of the
-// part's root, such as `value`, `locale` or `isDateDisabled`, passes through
-// `Calendar` unchanged.
+// The caption and the weekday headings are the part's own elements and take
+// this file's classes through `captionClassName` and `columnHeaderClassName`.
+// The month buttons hang on the caption's line, at its inline ends. Every prop
+// of the part's root, such as `value`, `locale` or `isDateDisabled`, passes
+// through `Calendar` unchanged.
 //
 // # What to keep true when you change it
 //
 // * **Name the month buttons.** They show only an arrow; `label` is what a
 //   reader hears.
 // * **Chosen is more than a colour.** The chosen day is filled, and a reader
-//   hears it as selected.
+//   hears it as selected. Today is bold as well as coloured.
+// * **Numerals line up.** Days are `tabular-nums` and each weekday heading is
+//   a day's width, so the columns are columns in any locale.
 // * **Keep the ring.** One day takes focus at a time, and its outline is how a
 //   sighted keyboard user follows it.
-// * **Text stays on measured pairs.** `ink` and `muted` on `surface`, `accent`
-//   on `accentSoft`, and `accentInk` on `accent` for the chosen day, which
+// * **Text stays on measured pairs.** `ink`, `muted` and `accent` on `surface`
+//   and `surfaceHover`, `ink` and `accent` on `accentSoft` inside a range, and
+//   `accentInk` on `accent` for the chosen day, which
 //   `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in both themes.
 
 import * as React from "@uniflowed/react";
@@ -47,9 +53,11 @@ export type { DateValue } from "@uniflowed/ui";
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 const styles = stylex.create({
+  // A block rather than a grid: the header is a zero-height row the month
+  // slides under (see `header`), and a grid's gap would open a space between
+  // the two that pushed the caption off the buttons' line.
   root: {
-    display: "inline-grid",
-    gap: ufTokens.space2,
+    display: "inline-block",
     boxSizing: "border-box",
     padding: ufTokens.space3,
     fontFamily: ufTokens.fontSans,
@@ -61,71 +69,163 @@ const styles = stylex.create({
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
   },
+  // The month buttons sit on the caption's line, one at each end, with the
+  // month's name between them. The caption belongs to the grid — it is the
+  // grid's accessible name — so it cannot move into this row; instead this row
+  // takes no height, and its buttons hang over the caption's ends. `inline`
+  // ends, so a right-to-left page puts "previous" on the right.
   header: {
+    position: "relative",
+    zIndex: 1,
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: ufTokens.space2,
+    height: 0,
   },
   step: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    boxSizing: "border-box",
     width: "32px",
     height: "32px",
     margin: 0,
     padding: 0,
-    color: { default: ufTokens.ink, ":hover": ufTokens.accent },
-    backgroundColor: { default: "transparent", ":hover": ufTokens.accentSoft },
+    color: { default: ufTokens.muted, ":hover": ufTokens.ink },
+    backgroundColor: { default: "transparent", ":hover": ufTokens.surfaceHover },
     borderWidth: "1px",
     borderStyle: "solid",
-    borderColor: ufTokens.border,
+    borderColor: "transparent",
     borderRadius: ufTokens.radiusSm,
     cursor: { default: "pointer", ":disabled": "not-allowed" },
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
-    outlineOffset: "2px",
+    outlineOffset: "-2px",
+  },
+  // Mirrored in a right-to-left page, where "previous" points right.
+  chevron: {
+    display: "block",
+    transform: { default: "none", ":dir(rtl)": "scaleX(-1)" },
   },
   month: {
+    // No space between columns, so a range reads as one band; a little
+    // between weeks, so the rows stay rows.
     borderCollapse: "separate",
-    borderSpacing: "2px",
+    borderSpacing: "0 2px",
+    // Columns a day wide whatever the headings say: some locales' short
+    // weekday names are whole words, and an automatic layout widened their
+    // columns and pulled the numerals out of line.
+    tableLayout: "fixed",
+    margin: 0,
     fontSize: ufTokens.textSm,
     textAlign: "center",
+  },
+  // The month and year, on the buttons' line and clear of them.
+  caption: {
+    captionSide: "top",
+    boxSizing: "border-box",
+    height: "32px",
+    paddingInline: "36px",
+    marginBottom: ufTokens.space1,
+    overflow: "hidden",
+    fontSize: ufTokens.textSm,
+    fontWeight: ufTokens.weightMedium,
+    lineHeight: "32px",
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+    color: ufTokens.ink,
+  },
+  // As wide as a day, so each initial stands over its column.
+  weekday: {
+    boxSizing: "border-box",
+    width: "36px",
+    height: "28px",
+    padding: 0,
+    fontSize: ufTokens.textXs,
+    fontWeight: ufTokens.weightMedium,
+    lineHeight: 1,
+    color: ufTokens.muted,
+    textAlign: "center",
+    verticalAlign: "middle",
+    // A long short name is clipped rather than allowed to widen its column;
+    // the heading's `aria-label` still gives the reader the whole name.
+    overflow: "hidden",
+    whiteSpace: "nowrap",
   },
   day: {
     boxSizing: "border-box",
     width: "36px",
     height: "36px",
     padding: 0,
+    fontSize: ufTokens.textSm,
+    lineHeight: 1,
+    // Every numeral the same width, so 11 does not sit narrower than 18.
+    fontVariantNumeric: "tabular-nums",
     textAlign: "center",
     verticalAlign: "middle",
-    borderRadius: ufTokens.radiusSm,
     cursor: { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
+    // Today is the accent's numeral in bold, not a ring or a fill: a mark you
+    // find when you look for it. The chosen day is the one fill in the month,
+    // and the days between a range's ends are a pale band.
+    //
+    // The states overlap — today can be chosen, or unavailable, or inside a
+    // range — and a key with more conditions sorts later, so each overlap is
+    // written as its own key rather than left to the order of two equal ones.
     color: {
       default: ufTokens.ink,
-      ":hover": ufTokens.accent,
-      ":is([aria-selected=true])": ufTokens.accentInk,
-      ":is([aria-disabled=true])": ufTokens.muted,
+      ":is([aria-current=date])": ufTokens.accent,
+      ":is([aria-disabled=true]):not([aria-selected=true])": ufTokens.muted,
+      ":is([aria-selected=true]):not([aria-disabled=true])": ufTokens.accentInk,
+      ":is([aria-selected=true]):not([data-selection-start]):not([data-selection-end])":
+        ufTokens.ink,
+      ":is([aria-current=date]):is([aria-selected=true]):not([data-selection-start]):not([data-selection-end])":
+        ufTokens.accent,
     },
     backgroundColor: {
       default: "transparent",
-      ":hover": ufTokens.accentSoft,
-      ":is([aria-selected=true])": ufTokens.accent,
+      ":hover": ufTokens.surfaceHover,
       ":is([aria-disabled=true])": "transparent",
+      ":is([aria-selected=true])": ufTokens.accent,
+      ":is([aria-selected=true]):not([data-selection-start]):not([data-selection-end])":
+        ufTokens.accentSoft,
     },
-    textDecoration: { default: "none", ":is([aria-disabled=true])": "line-through" },
+    textDecorationLine: { default: "none", ":is([aria-disabled=true])": "line-through" },
     fontWeight: {
       default: ufTokens.weightRegular,
-      ":is([aria-current=date])": ufTokens.weightMedium,
+      ":is([aria-selected=true])": ufTokens.weightMedium,
+      ":is([aria-current=date]):not([aria-disabled=true])": ufTokens.weightBold,
     },
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: { default: "transparent", ":is([aria-current=date])": "currentColor" },
+    borderWidth: 0,
+    // A range's ends are square where they meet the band, named by inline
+    // side so the join is right in a right-to-left page too.
+    borderStartStartRadius: {
+      default: ufTokens.radiusSm,
+      ":is([aria-selected=true]):not([data-selection-start])": 0,
+    },
+    borderEndStartRadius: {
+      default: ufTokens.radiusSm,
+      ":is([aria-selected=true]):not([data-selection-start])": 0,
+    },
+    borderStartEndRadius: {
+      default: ufTokens.radiusSm,
+      ":is([aria-selected=true]):not([data-selection-end])": 0,
+    },
+    borderEndEndRadius: {
+      default: ufTokens.radiusSm,
+      ":is([aria-selected=true]):not([data-selection-end])": 0,
+    },
+    // Inside the cell, so neighbours never cover it; light on the filled day,
+    // where the focus colour would vanish into the accent.
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
-    outlineColor: ufTokens.focus,
-    outlineOffset: "-2px",
+    outlineColor: {
+      default: ufTokens.focus,
+      ":is([aria-selected=true])": ufTokens.accentInk,
+      ":is([aria-selected=true]):not([data-selection-start]):not([data-selection-end])":
+        ufTokens.focus,
+    },
+    outlineOffset: "-3px",
   },
 });
 
@@ -199,7 +299,9 @@ export component CalendarMonth(xstyle?: StyleArgument, className?: string, ...re
   return (
     <Primitive.CalendarMonth
       {...forwarded(rest)}
+      captionClassName={props(styles.caption).className}
       className={classNames(props(styles.month, xstyle).className, className)}
+      columnHeaderClassName={props(styles.weekday).className}
     >
       {(date) => <Primitive.CalendarDay className={day} date={date} />}
     </Primitive.CalendarMonth>
@@ -210,6 +312,7 @@ export component CalendarMonth(xstyle?: StyleArgument, className?: string, ...re
 component Chevron(path: string) {
   return (
     <svg
+      {...props(styles.chevron)}
       aria-hidden="true"
       fill="none"
       focusable="false"

@@ -77,6 +77,7 @@ import {
   withoutComposed,
 } from "./internal/merge-props.js";
 import { directionOf } from "./internal/roving-focus.js";
+import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 import {
   firstDayOfWeekFor,
   moveDate,
@@ -321,7 +322,16 @@ export component CalendarRoot(
     <CalendarContext.Provider value={state}>
       <div {...rest}>
         {children}
-        <div aria-atomic="true" aria-live="polite" id={`${base}-status`} role="status">
+        {/* Heard and not drawn: the caption above the grid already shows the
+            month, and a second copy under it is what a sighted reader would
+            otherwise see after the first page. */}
+        <div
+          aria-atomic="true"
+          aria-live="polite"
+          id={`${base}-status`}
+          role="status"
+          style={visuallyHiddenStyle}
+        >
           {announcement}
         </div>
       </div>
@@ -343,7 +353,14 @@ export component CalendarRoot(
  * with a dot under it for an appointment is a `Calendar.Day` with a child, not a
  * fork of this component. Omitted, every day renders its own number.
  */
-export component CalendarMonth(children?: (date: PlainDate) => renders CalendarDay, ...rest: Rest) {
+export component CalendarMonth(
+  /** A class for the `<caption>`, which this part renders itself. */
+  captionClassName?: string,
+  children?: (date: PlainDate) => renders CalendarDay,
+  /** A class for each weekday heading, which this part renders itself. */
+  columnHeaderClassName?: string,
+  ...rest: Rest
+) {
   const calendar = useCalendar("Calendar.Month");
   const gridRef = useRef<HTMLElement | null>(null);
   const { focused, focusedDayRef, moveFocus, pendingFocusRef, weekStartsOn } = calendar;
@@ -406,7 +423,9 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
       })}
       role="grid"
     >
-      <caption id={`${calendar.base}-caption`}>{calendar.caption}</caption>
+      <caption className={captionClassName} id={`${calendar.base}-caption`}>
+        {calendar.caption}
+      </caption>
       <thead>
         <tr>
           {columns.map((day) => (
@@ -416,6 +435,7 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
               // header. `aria-label` wins over the contents for the announced
               // name, so a reader still hears "Wednesday" rather than "Wed".
               aria-label={day.toLocaleString(calendar.locale, COLUMN_FORMAT)}
+              className={columnHeaderClassName}
               key={day.dayOfWeek}
               scope="col"
             >
@@ -463,9 +483,14 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
 export component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Rest) {
   const calendar = useCalendar("Calendar.Day");
   const disabled = calendar.isDisabled(date);
-  const chosen =
-    calendar.isDateSelected?.(date) ??
-    (calendar.selected != null && calendar.selected.equals(date));
+  const isChosen = (day: PlainDate) =>
+    calendar.isDateSelected?.(day) ?? (calendar.selected != null && calendar.selected.equals(day));
+  const chosen = isChosen(date);
+  // Where a run of chosen days opens and closes, for a stylesheet to round the
+  // ends of a range and join its middle. Markup only: nothing reads it, and a
+  // single chosen day is a run that opens and closes on itself.
+  const opensRun = chosen && !isChosen(date.subtract({ days: 1 }));
+  const closesRun = chosen && !isChosen(date.add({ days: 1 }));
   const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown"]);
 
   return (
@@ -481,6 +506,8 @@ export component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Re
       // makes a screen reader announce "not selected" on all thirty-one.
       aria-selected={chosen ? "true" : undefined}
       data-date={date.toString()}
+      data-selection-end={closesRun ? "true" : undefined}
+      data-selection-start={opensRun ? "true" : undefined}
       onClick={composeHandlers(rest.onClick, () => calendar.select(date))}
       // The tab stop follows real focus, which is the half of a roving set that
       // is easy to leave out and impossible to see. A press on an *unavailable*

@@ -11,21 +11,27 @@
 // # Roles, not colours
 //
 // The names are what a token is *for*, never what it looks like. `accent` is
-// the colour a primary action wears; it is indigo today and a theme can make it
-// anything, and no rule in `preset.js` has to change when it does. A token
-// named `indigo500` would have made the preset unthemeable the moment someone
-// wanted a green product.
+// the colour a primary action wears; it is a quiet cobalt today and a theme
+// can make it anything, and no rule in `preset.js` has to change when it does.
+// A token named `blue600` would have made the preset unthemeable the moment
+// someone wanted a green product.
 //
-// The values are uf's identity, and `@uniflowed/brand` is where that identity
-// is decided: `accent`, `ink`, `canvas` and `muted` are brand's Indigo, Ink,
-// Mist and Slate, and the type and spacing steps are brand's scales. The
-// corners are not: brand's radius scale is for the logo and the marketing
-// surfaces, and an interface built from it looks soft and generic, so the
-// radii below are this module's own and much smaller.
-// Brand cannot hold the token module itself — a StyleX token's name is computed
-// by the compiler, and `defineVars` takes literals, not an imported array — so
-// this module is brand's projection into the semantic roles a design system
-// needs and an identity does not have.
+// # The palette
+//
+// `docs/ui-visual-language.md` explains it; in short: the interface is
+// neutral first — warm greys with no blue cast, near-black ink on off-white
+// paper — and colour is spent in one place, a single accent for what is
+// selected, current or primary. Danger is a brick red rather than a signal
+// red. Dark is designed as its own palette (charcoal, not navy; a lighter,
+// desaturated accent that does not glow), not the light one inverted.
+//
+// The type and spacing steps are `@uniflowed/brand`'s scales. The colours and
+// the corners are not: brand's cyan-to-magenta spectrum and its round corners
+// are uf's logo and marketing identity, and an interface built from them looks
+// like every other generated one, so this module's values are its own. Brand
+// cannot hold the token module itself anyway — a StyleX token's name is
+// computed by the compiler, and `defineVars` takes literals, not an imported
+// array.
 //
 // # No shadows, no gradients
 //
@@ -58,31 +64,31 @@ import { stylex } from "@uniflowed/stylex";
 // `ThemeOverrides<typeof ufTokens>` reject a token this module does not declare.
 export const ufTokens = stylex.defineVars({
   // Surfaces, from furthest back to nearest front.
-  canvas: "#f8fafc",
-  sunken: "#eef2f7",
+  canvas: "#f6f6f4",
+  sunken: "#eeeeeb",
   surface: "#ffffff",
-  surfaceHover: "#f1f5f9",
-  border: "#dbe3ec",
+  surfaceHover: "#f1f1ee",
+  border: "#d9d9d4",
 
   // Text.
-  ink: "#0f172a",
-  muted: "#475569",
+  ink: "#1b1b19",
+  muted: "#5c5c57",
 
   // The colour a primary action wears, and what is legible on it.
-  accent: "#5c49ff",
-  accentHover: "#4a37f0",
+  accent: "#2b58b5",
+  accentHover: "#234996",
   accentInk: "#ffffff",
-  accentSoft: "#eeecff",
+  accentSoft: "#e8eef9",
 
   // The colour a destructive action wears.
-  danger: "#b42318",
-  dangerHover: "#9a1c12",
+  danger: "#b1271d",
+  dangerHover: "#931f17",
   dangerInk: "#ffffff",
-  dangerSoft: "#fef3f2",
+  dangerSoft: "#fbedeb",
 
   // Focus ring, and the wash behind a modal surface.
-  focus: "#2677ff",
-  scrim: "rgba(15, 23, 42, 0.48)",
+  focus: "#2b58b5",
+  scrim: "rgba(27, 27, 25, 0.45)",
 
   // Type.
   fontSans: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",

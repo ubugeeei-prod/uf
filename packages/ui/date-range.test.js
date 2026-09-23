@@ -75,6 +75,15 @@ it("chooses an inclusive range by keyboard and refuses unavailable dates inside 
     screen.getAllByRole("gridcell").filter((cell) => cell.getAttribute("aria-selected") === "true")
       .length,
   ).toBe(3);
+  // The ends of the run are marked for a stylesheet, and the middle is not.
+  const edges = (name: string) => {
+    const cell = screen.getByRole("gridcell", { name });
+    return [cell.getAttribute("data-selection-start"), cell.getAttribute("data-selection-end")];
+  };
+  expect(edges("10")).toEqual(["true", null]);
+  expect(edges("11")).toEqual([null, null]);
+  expect(edges("12")).toEqual([null, "true"]);
+  expect(edges("13")).toEqual([null, null]);
   change.mockClear();
   rerender(
     <RangeCalendar.Root
