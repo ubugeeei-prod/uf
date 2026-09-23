@@ -1,6 +1,7 @@
 /**
  * @fileoverview The Fetch `Response` class, with the static `json` the vendored
- * one is missing.
+ * one is missing, and `AbortSignal`, whose factories the vendored one declares
+ * on the wrong side.
  *
  * Flow's `evals/flow-typed/environment/bom.js` declares `Response.error()` and
  * `Response.redirect()` and stops there. `Response.json(data, init)`, from the
@@ -53,4 +54,29 @@ declare class Response {
   formData(): Promise<FormData>;
   json(): Promise<any>;
   text(): Promise<string>;
+}
+
+/**
+ * `AbortSignal`, with its factories where the standard puts them.
+ *
+ * The vendored `dom.js` declares `abort(reason)` and `timeout(time)` as
+ * *instance* methods, which no runtime has, and leaves out `any(signals)`
+ * entirely. So `AbortSignal.timeout(3000)`, the usual way to give a `fetch` a
+ * deadline, was "property timeout is missing in statics of AbortSignal". Here
+ * all three are statics, as the DOM standard and every runtime uf targets
+ * have them. The instance members are `dom.js`'s, unchanged, except that the
+ * two misplaced factories are gone: calling `signal.timeout(…)` fails at run
+ * time, so declaring it only hid a bug.
+ */
+declare class AbortSignal extends EventTarget {
+  readonly aborted: boolean;
+  readonly reason: any;
+  onabort: (event: Event) => mixed;
+  throwIfAborted(): void;
+  /** A signal already aborted with `reason`. */
+  static abort(reason?: mixed): AbortSignal;
+  /** A signal that aborts with a `TimeoutError` after `milliseconds`. */
+  static timeout(milliseconds: number): AbortSignal;
+  /** A signal that aborts when any of `signals` does, with that one's reason. */
+  static any(signals: Iterable<AbortSignal>): AbortSignal;
 }

@@ -18,3 +18,8 @@ export async function roundTrip(): Promise<mixed> {
   const text: string = await response.text();
   return { status, text, gone: Response.error(), moved: Response.redirect("/", 308) };
 }
+
+export async function withDeadline(): Promise<Response> {
+  const either = AbortSignal.any([AbortSignal.timeout(3000), AbortSignal.abort("stop")]);
+  return fetch("https://example.com", { signal: either });
+}

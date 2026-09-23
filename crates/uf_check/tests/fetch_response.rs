@@ -1,4 +1,4 @@
-//! Fetch's `Response`, as Flow sees it.
+//! Fetch's `Response` and `AbortSignal`, as Flow sees them.
 //!
 //! The vendored `bom.js` declares `Response.error()` and `Response.redirect()`
 //! and no `Response.json()`, so every route handler answering with JSON was
@@ -52,6 +52,7 @@ fn response_json_and_the_rest_of_the_class_check_clean() {
 fn a_misused_response_json_is_an_error_and_nothing_else_is() {
     let diagnostics = check("fetch_response_misuse.js", RESPONSE_MISUSE);
 
-    // A string status, and the response mistaken for the data it carries.
-    assert_eq!(error_lines(&diagnostics), [8, 11], "{diagnostics:#?}");
+    // A string status, the response mistaken for the data it carries, and a
+    // factory called on an instance.
+    assert_eq!(error_lines(&diagnostics), [8, 11, 15], "{diagnostics:#?}");
 }

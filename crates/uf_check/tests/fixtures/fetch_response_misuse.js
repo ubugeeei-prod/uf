@@ -10,5 +10,9 @@ export function misuses(): mixed {
   // `json` is a factory, and it answers a `Response`, not the data.
   const notData: { ok: boolean } = Response.json({ ok: true });
 
-  return { badStatus, notData };
+  // The factories are statics; a signal has no `timeout` of its own.
+  const signal = new AbortController().signal;
+  const notAMethod = signal.timeout(10);
+
+  return { badStatus, notData, notAMethod };
 }
