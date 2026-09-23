@@ -1118,7 +1118,7 @@ pub(crate) fn build(
         if !guarded_rows.is_empty() {
             renderer.status(out, Status::Warn, &guarded_summary);
         }
-        renderer.status(out, Status::Success, &summary);
+        renderer.summary(out, Status::Success, &summary, &[]);
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)

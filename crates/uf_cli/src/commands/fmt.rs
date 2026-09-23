@@ -2,20 +2,23 @@
 //! check passed.
 
 use std::fs;
+use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
 use uf_config::load_config;
 use uf_fmt::format_source;
 use uf_project::scan_selected_source_files;
-use uf_term::Status;
+use uf_term::{Status, format_duration};
 
 use crate::support::{
-    ignore_deprecation, plural, quoted_list, render_ignore_deprecation, selects, unreadable_lines,
+    ignore_deprecation, plural, project_label, quoted_list, render_ignore_deprecation, selects,
+    unreadable_lines,
 };
 use crate::ui::Ui;
 
 pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) -> Result<()> {
+    let started = Instant::now();
     let resolved = load_config(cwd)?;
     let deprecation = ignore_deprecation(&resolved.config);
     // Discovery returns `package.json` too, because the linter reads it. The
@@ -126,8 +129,21 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
         format!("formatted {} of {}", plural(changed.len(), "file"), scanned)
     };
 
+    let took = format_duration(started.elapsed());
+    let checked = plural(scanned, "file");
+    // Only when the files are the whole problem: a file that could not be
+    // parsed or read is not something `uf fmt` would fix.
+    let rerun =
+        (check && !changed.is_empty() && skipped.is_empty() && unreadable.is_empty()).then(|| {
+            format!(
+                "`uf fmt` formats {}",
+                if changed.len() == 1 { "it" } else { "them" }
+            )
+        });
+    let project = project_label(&resolved.root).to_owned();
+
     ui.render(|renderer, out| {
-        renderer.banner(out, "uf fmt", None);
+        renderer.banner(out, "uf fmt", Some(&project));
         renderer.blank(out);
         if paths.is_empty()
             && skipped_paths.is_empty()
@@ -136,7 +152,12 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
             && non_flow_skipped.is_none()
             && !non_flow_unformatted
         {
-            renderer.status(out, Status::Success, "every file is already formatted");
+            renderer.summary(
+                out,
+                Status::Success,
+                "every file is already formatted",
+                &[&checked, &took],
+            );
         } else {
             if !paths.is_empty() {
                 renderer.bullet_list(out, 2, &paths);
@@ -190,7 +211,7 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                 );
                 renderer.blank(out);
             }
-            renderer.status(
+            renderer.summary(
                 out,
                 if failing {
                     Status::Warn
@@ -198,7 +219,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                     Status::Success
                 },
                 &summary,
+                &[&took],
             );
+            if let Some(rerun) = &rerun {
+                renderer.hint(out, 2, rerun);
+            }
         }
     });
     // After the summary, and outside the closure that draws it: the answer is

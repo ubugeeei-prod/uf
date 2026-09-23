@@ -708,10 +708,11 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
         // is no delta to show, so the phases and the next steps would be a
         // report about nothing happening.
         renderer.blank(out);
-        renderer.status(
+        renderer.summary(
             out,
             Status::Success,
             &format!("already up to date in {elapsed}"),
+            &[],
         );
         return;
     }
@@ -741,10 +742,11 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
     renderer.ordered_list(out, 4, &["uf dev", "uf check"]);
 
     renderer.blank(out);
-    renderer.status(
+    renderer.summary(
         out,
         Status::Success,
         &format!("dependencies installed in {elapsed}"),
+        &[],
     );
 }
 
@@ -931,7 +933,7 @@ fn phases(prelude: &[Phase], watch: Option<&InstallWatch>, lockfile: Duration) -
 }
 
 /// Why this manager, in a sentence rather than in a derived `Debug`.
-pub(super) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
+pub(crate) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
     if substituted {
         // Something named uf's own resolver, which records what a workspace
         // declares and reaches no registry, so npm did the fetching. Saying
