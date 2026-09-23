@@ -15,6 +15,7 @@
 
 import { describe, expect, it, render, screen } from "@uniflowed/testing";
 import { props, stylex } from "@uniflowed/stylex";
+import type { CompiledClasses, CompiledStyle, StyleProps } from "@uniflowed/stylex";
 import {
   buttonStyles,
   cardStyles,
@@ -28,12 +29,18 @@ import { ufAutoTheme, ufDarkTheme } from "@uniflowed/stylex/theme";
 import { Switch, Tabs } from "@uniflowed/ui";
 
 /** A compiled namespace, in the shape `uf transform` emits. */
-function compiled(properties: { readonly [string]: string | null }): mixed {
-  return { $$css: true, ...properties };
+function compiled(properties: {
+  readonly [string]: string | null | CompiledClasses,
+}): CompiledStyle {
+  const namespace: { [string]: string | null | true | CompiledClasses } = { $$css: true };
+  for (const property of Object.keys(properties)) {
+    namespace[property] = properties[property];
+  }
+  return { ...namespace, $$css: true };
 }
 
 /** The class names in a `StyleProps`, as a list. */
-function classes(styled: { readonly className?: string }): $ReadOnlyArray<string> {
+function classes(styled: StyleProps): $ReadOnlyArray<string> {
   const name = styled.className;
   return name == null || name === "" ? [] : name.split(" ");
 }
@@ -70,10 +77,11 @@ describe("stylex.props", () => {
   });
 
   it("skips falsy arguments, which is what conditional styles are", () => {
-    const active = false;
-    const out = props(compiled({ color: "c1" }), active && compiled({ color: "c2" }));
+    const styled = (active: boolean) =>
+      props(compiled({ color: "c1" }), active && compiled({ color: "c2" }));
 
-    expect(out).toEqual({ className: "c1" });
+    expect(styled(false)).toEqual({ className: "c1" });
+    expect(styled(true)).toEqual({ className: "c2" });
     expect(props(null, undefined, false)).toEqual({});
   });
 

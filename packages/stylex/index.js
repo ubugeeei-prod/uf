@@ -132,13 +132,22 @@ export type ThemeOverrides<Tokens extends { readonly [string]: ThemeValue }> = P
 /**
  * Declare a set of style namespaces.
  *
+ * Typed as what the compiler hands back, not what was written: every key of
+ * `styles` becomes a {@link CompiledStyle}, a map of property to class name
+ * marked with `$$css`. Typing the result as the input (`T`) said a namespace
+ * held `{ color: "black" }` when at run time it holds `{ $$css: true, color:
+ * "x1e2nbdu" }`, so code reading the compiled marker, and `props`'s own
+ * tests, were type errors against the truth.
+ *
  * Never runs. `uf transform` replaces the whole call with the object it
  * computed, so reaching this means the module was loaded without going through
  * uf — a bundler configured by hand, a plain `node` invocation — and the styles
  * it declares are in no stylesheet. Throwing says so; returning the input would
  * render an application with no styles and no explanation.
  */
-export function create<T extends { readonly [string]: mixed }>(styles: T): T {
+export function create<T extends { readonly [string]: mixed }>(
+  styles: T,
+): { readonly [Key in keyof T]: CompiledStyle } {
   return nativeRuntimeRequired(MODULE, "stylex.create");
 }
 
