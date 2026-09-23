@@ -73,6 +73,10 @@ export default defineConfig({
     "target",
     "node_modules",
     "examples/simple-sns-native",
+    // sqlc's Flow target, end to end: its own project with its own drivers
+    // (PGlite, pg, postgres, mysql2), checked, linted and tested by
+    // `tools/ci/sqlc.sh` after `npm ci` there.
+    "tests/sqlc",
     // Node runner checks execute separately in the Metadata job.
     "tools/ci/test-change-scope.cjs",
     "tools/release/test-policy.cjs",
@@ -234,6 +238,14 @@ export default defineConfig({
     // number; #280 carries that argument.
     "example:sns:graphql": {
       command: "node tools/ci/relay-sns-smoke.mjs",
+    },
+    // sqlc's Flow target end to end, over `tests/sqlc`: see
+    // `tools/ci/sqlc.sh`. Not in `ci` below, like `example:sns:graphql`: it
+    // downloads the pinned sqlc and installs `tests/sqlc`'s drivers, and its
+    // MySQL half needs a server (`UF_SQLC_MYSQL_URL`; skipped without one
+    // outside CI). No `inputs`: sqlc, Node and the drivers are part of it.
+    "test:sqlc": {
+      command: "UF_BINARY=./target/release/uf sh tools/ci/sqlc.sh",
     },
     "test:lib:coverage": {
       command: "./target/release/uf test --coverage",

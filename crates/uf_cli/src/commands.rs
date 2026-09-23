@@ -31,6 +31,7 @@ pub(crate) mod release;
 pub(crate) mod routes;
 pub(crate) mod runtimes;
 pub(crate) mod serve;
+pub(crate) mod sqlc;
 pub(crate) mod task;
 pub(crate) mod test;
 pub(crate) mod toolchain;

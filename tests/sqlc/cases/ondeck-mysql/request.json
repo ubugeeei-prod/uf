@@ -1,0 +1,872 @@
+{
+  "settings": {
+    "version": "2",
+    "engine": "mysql",
+    "schema": ["cases/ondeck-mysql/schema"],
+    "queries": ["cases/ondeck-mysql/query"],
+    "codegen": {
+      "out": "cases/ondeck-mysql/gen",
+      "plugin": "flow",
+      "process": {
+        "cmd": "uf"
+      }
+    }
+  },
+  "catalog": {
+    "default_schema": "public",
+    "schemas": [
+      {
+        "name": "public",
+        "tables": [
+          {
+            "rel": {
+              "name": "city"
+            },
+            "columns": [
+              {
+                "name": "slug",
+                "not_null": true,
+                "length": 255,
+                "table": {
+                  "name": "city"
+                },
+                "type": {
+                  "name": "varchar"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "city"
+                },
+                "type": {
+                  "name": "text"
+                }
+              }
+            ]
+          },
+          {
+            "rel": {
+              "name": "venue"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "bigint"
+                },
+                "unsigned": true
+              },
+              {
+                "name": "status",
+                "not_null": true,
+                "comment": "Venues can be either open or closed",
+                "length": 6,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "venue_status"
+                }
+              },
+              {
+                "name": "statuses",
+                "length": -1,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "slug",
+                "not_null": true,
+                "comment": "This value appears in public URLs",
+                "length": -1,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": 255,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "varchar"
+                }
+              },
+              {
+                "name": "city",
+                "not_null": true,
+                "length": 255,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "varchar"
+                }
+              },
+              {
+                "name": "spotify_playlist",
+                "not_null": true,
+                "length": 255,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "varchar"
+                }
+              },
+              {
+                "name": "songkick_id",
+                "length": -1,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "tags",
+                "length": -1,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "created_at",
+                "not_null": true,
+                "length": 19,
+                "table": {
+                  "name": "venue"
+                },
+                "type": {
+                  "name": "timestamp"
+                }
+              }
+            ],
+            "comment": "Venues are places where muisc happens"
+          }
+        ],
+        "enums": [
+          {
+            "name": "venue_status",
+            "vals": ["open", "closed"]
+          }
+        ]
+      }
+    ]
+  },
+  "queries": [
+    {
+      "text": "SELECT slug, name\nFROM city\nORDER BY name",
+      "name": "ListCities",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "slug",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "city"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "slug"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "city"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        }
+      ],
+      "filename": "city.sql"
+    },
+    {
+      "text": "SELECT slug, name\nFROM city\nWHERE slug = ?",
+      "name": "GetCity",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "slug",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "city"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "slug"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "city"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "name": "city"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "slug"
+          }
+        }
+      ],
+      "filename": "city.sql"
+    },
+    {
+      "text": "INSERT INTO city (\n    name,\n    slug\n) VALUES (\n    ?,\n    ? \n)",
+      "name": "CreateCity",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "city"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "schema": "public",
+              "name": "city"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "slug"
+          }
+        }
+      ],
+      "filename": "city.sql",
+      "insert_into_table": {
+        "name": "city"
+      }
+    },
+    {
+      "text": "UPDATE city\nSET name = ?\nWHERE slug = ?",
+      "name": "UpdateCityName",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "city"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "name": "city"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "slug"
+          }
+        }
+      ],
+      "filename": "city.sql"
+    },
+    {
+      "text": "SELECT id, status, statuses, slug, name, city, spotify_playlist, songkick_id, tags, created_at\nFROM venue\nWHERE city = ?\nORDER BY name",
+      "name": "ListVenues",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "bigint"
+          },
+          "original_name": "id",
+          "unsigned": true
+        },
+        {
+          "name": "status",
+          "not_null": true,
+          "length": 6,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "venue_status"
+          },
+          "original_name": "status"
+        },
+        {
+          "name": "statuses",
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "statuses"
+        },
+        {
+          "name": "slug",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "slug"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "name"
+        },
+        {
+          "name": "city",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "city"
+        },
+        {
+          "name": "spotify_playlist",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "spotify_playlist"
+        },
+        {
+          "name": "songkick_id",
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "songkick_id"
+        },
+        {
+          "name": "tags",
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "tags"
+        },
+        {
+          "name": "created_at",
+          "not_null": true,
+          "length": 19,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "timestamp"
+          },
+          "original_name": "created_at"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "city",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "name": "venue"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "city"
+          }
+        }
+      ],
+      "filename": "venue.sql"
+    },
+    {
+      "text": "DELETE FROM venue\nWHERE slug = ? AND slug = ?",
+      "name": "DeleteVenue",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "venue"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "slug"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "venue"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "slug"
+          }
+        }
+      ],
+      "filename": "venue.sql"
+    },
+    {
+      "text": "SELECT id, status, statuses, slug, name, city, spotify_playlist, songkick_id, tags, created_at\nFROM venue\nWHERE slug = ? AND city = ?",
+      "name": "GetVenue",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "bigint"
+          },
+          "original_name": "id",
+          "unsigned": true
+        },
+        {
+          "name": "status",
+          "not_null": true,
+          "length": 6,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "venue_status"
+          },
+          "original_name": "status"
+        },
+        {
+          "name": "statuses",
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "statuses"
+        },
+        {
+          "name": "slug",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "slug"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "name"
+        },
+        {
+          "name": "city",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "city"
+        },
+        {
+          "name": "spotify_playlist",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "spotify_playlist"
+        },
+        {
+          "name": "songkick_id",
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "songkick_id"
+        },
+        {
+          "name": "tags",
+          "length": -1,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "tags"
+        },
+        {
+          "name": "created_at",
+          "not_null": true,
+          "length": 19,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "timestamp"
+          },
+          "original_name": "created_at"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "venue"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "slug"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "city",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "name": "venue"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "city"
+          }
+        }
+      ],
+      "filename": "venue.sql"
+    },
+    {
+      "text": "INSERT INTO venue (\n    slug,\n    name,\n    city,\n    created_at,\n    spotify_playlist,\n    status,\n    statuses,\n    tags\n) VALUES (\n    ?,\n    ?,\n    ?,\n    NOW(),\n    ?,\n    ?,\n    ?,\n    ?\n)",
+      "name": "CreateVenue",
+      "cmd": ":execresult",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "slug"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 3,
+          "column": {
+            "name": "city",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "city"
+          }
+        },
+        {
+          "number": 4,
+          "column": {
+            "name": "spotify_playlist",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "spotify_playlist"
+          }
+        },
+        {
+          "number": 5,
+          "column": {
+            "name": "status",
+            "not_null": true,
+            "length": 6,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "venue_status"
+            },
+            "original_name": "status"
+          }
+        },
+        {
+          "number": 6,
+          "column": {
+            "name": "statuses",
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "statuses"
+          }
+        },
+        {
+          "number": 7,
+          "column": {
+            "name": "tags",
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "tags"
+          }
+        }
+      ],
+      "filename": "venue.sql",
+      "insert_into_table": {
+        "name": "venue"
+      }
+    },
+    {
+      "text": "UPDATE venue\nSET name = ?\nWHERE slug = ?",
+      "name": "UpdateVenueName",
+      "cmd": ":exec",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": 255,
+            "table": {
+              "schema": "public",
+              "name": "venue"
+            },
+            "type": {
+              "name": "varchar"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "slug",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "venue"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "slug"
+          }
+        }
+      ],
+      "filename": "venue.sql"
+    },
+    {
+      "text": "SELECT\n    city,\n    count(*)\nFROM venue\nGROUP BY 1\nORDER BY 1",
+      "name": "VenueCountByCity",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "city",
+          "not_null": true,
+          "length": 255,
+          "table": {
+            "name": "venue"
+          },
+          "type": {
+            "name": "varchar"
+          },
+          "original_name": "city"
+        },
+        {
+          "name": "count",
+          "not_null": true,
+          "length": -1,
+          "is_func_call": true,
+          "type": {
+            "name": "bigint"
+          }
+        }
+      ],
+      "filename": "venue.sql"
+    }
+  ],
+  "sqlc_version": "v1.31.1"
+}

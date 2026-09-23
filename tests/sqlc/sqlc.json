@@ -1,0 +1,204 @@
+{
+  "version": "2",
+  "plugins": [
+    {
+      "name": "flow",
+      "process": {
+        "cmd": "uf"
+      }
+    }
+  ],
+  "sql": [
+    {
+      "engine": "postgresql",
+      "schema": "cases/authors-postgresql/schema.sql",
+      "queries": "cases/authors-postgresql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/authors-postgresql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "mysql",
+      "schema": "cases/authors-mysql/schema.sql",
+      "queries": "cases/authors-mysql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/authors-mysql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "sqlite",
+      "schema": "cases/authors-sqlite/schema.sql",
+      "queries": "cases/authors-sqlite/query.sql",
+      "codegen": [
+        {
+          "out": "cases/authors-sqlite/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "schema": "cases/booktest-postgresql/schema.sql",
+      "queries": "cases/booktest-postgresql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/booktest-postgresql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "mysql",
+      "schema": "cases/booktest-mysql/schema.sql",
+      "queries": "cases/booktest-mysql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/booktest-mysql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "sqlite",
+      "schema": "cases/booktest-sqlite/schema.sql",
+      "queries": "cases/booktest-sqlite/query.sql",
+      "codegen": [
+        {
+          "out": "cases/booktest-sqlite/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "schema": "cases/jets-postgresql/schema.sql",
+      "queries": "cases/jets-postgresql/query-building.sql",
+      "codegen": [
+        {
+          "out": "cases/jets-postgresql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "schema": "cases/ondeck-postgresql/schema",
+      "queries": "cases/ondeck-postgresql/query",
+      "codegen": [
+        {
+          "out": "cases/ondeck-postgresql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "mysql",
+      "schema": "cases/ondeck-mysql/schema",
+      "queries": "cases/ondeck-mysql/query",
+      "codegen": [
+        {
+          "out": "cases/ondeck-mysql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "sqlite",
+      "schema": "cases/ondeck-sqlite/schema",
+      "queries": "cases/ondeck-sqlite/query",
+      "codegen": [
+        {
+          "out": "cases/ondeck-sqlite/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "schema": "cases/batch-postgresql/schema.sql",
+      "queries": "cases/batch-postgresql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/batch-postgresql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "schema": "cases/types-postgresql/schema.sql",
+      "queries": "cases/types-postgresql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/types-postgresql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "mysql",
+      "schema": "cases/types-mysql/schema.sql",
+      "queries": "cases/types-mysql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/types-mysql/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "sqlite",
+      "schema": "cases/types-sqlite/schema.sql",
+      "queries": "cases/types-sqlite/query.sql",
+      "codegen": [
+        {
+          "out": "cases/types-sqlite/gen",
+          "plugin": "flow"
+        }
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "schema": "cases/options-postgresql/schema.sql",
+      "queries": "cases/options-postgresql/query.sql",
+      "codegen": [
+        {
+          "out": "cases/options-postgresql/gen",
+          "plugin": "flow",
+          "options": {
+            "int8": "number",
+            "timestamptz": "string",
+            "rename": {
+              "spotify_url": "spotifyURL"
+            },
+            "overrides": [
+              {
+                "column": "accounts.settings",
+                "type": {
+                  "import": "./cases/options-postgresql/types.js",
+                  "name": "Settings",
+                  "decode": "parseSettings"
+                }
+              },
+              {
+                "db_type": "uuid",
+                "type": {
+                  "import": "./cases/options-postgresql/types.js",
+                  "name": "ExternalId",
+                  "decode": "toExternalId",
+                  "encode": "fromExternalId"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

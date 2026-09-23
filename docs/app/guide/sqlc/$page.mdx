@@ -1,0 +1,269 @@
+---
+title: "SQL with sqlc · uf"
+description: "Write SQL, and get Flow row types and query functions whose types hold under every driver. Experimental."
+---
+
+<p className="eyebrow">Build an app</p>
+
+# SQL with sqlc
+
+<div className="lede">
+uf has no ORM. The server half of a uf application is a backend for its own
+frontend, and when it reads a database it reads it in SQL. [sqlc](https://sqlc.dev)
+parses that SQL against your schema and infers every parameter and column. uf is
+sqlc's **Flow target**: it turns what sqlc inferred into Flow row types and one
+function per query, and `@uniflowed/sql` runs them on the driver you already use.
+</div>
+
+**Status: Experimental.** Generation, the runtime and the adapters marked
+*tested* below run against real SQLite, PostgreSQL and MySQL in uf's CI. But
+`@uniflowed/sql`, which every generated module imports, is **not on npm yet**
+([#1314](https://github.com/ubugeeei-prod/uf/issues/1314)), so a project outside
+the uf repository cannot install what the generator writes against. Until it
+publishes, treat this page as a preview. [#1367](https://github.com/ubugeeei-prod/uf/issues/1367)
+tracks what is left.
+
+**What you will be able to do:** point sqlc at `uf`, generate Flow from your
+queries, run them on SQLite, PostgreSQL or MySQL, use transactions, and fail CI
+when the generated files are stale.
+
+**What you need first:** a project ([Your first project](/guide/project)) and
+[sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) on your `PATH`.
+uf does not install sqlc for you. uf's own tests use sqlc 1.31.1.
+
+## Point sqlc at uf
+
+Your project keeps an ordinary sqlc config. The only uf part is the plugin:
+sqlc starts `uf` as a [process plugin](https://docs.sqlc.dev/en/latest/guides/plugins.html)
+and hands it what it inferred.
+
+```yaml
+# sqlc.yaml
+version: "2"
+plugins:
+  - name: flow
+    process:
+      cmd: uf
+sql:
+  - engine: postgresql
+    schema: db/schema.sql
+    queries: db/query.sql
+    codegen:
+      - out: src/db
+        plugin: flow
+```
+
+The engine can be `postgresql`, `mysql` or `sqlite`. The schema and queries are
+sqlc's as they are, and sqlc's own documentation covers them. Every sqlc flag
+and every sqlc upgrade reaches your project unchanged, and if you leave uf you
+keep your SQL.
+
+## Generate
+
+```sh
+uf sqlc generate
+```
+
+This runs `sqlc generate` with the running `uf` first on `PATH`, so the plugin
+sqlc starts is the same `uf` you asked. It looks for sqlc as `$SQLC`, then as
+`sqlc` on `PATH`. Pass `-f other.yaml` for a config that is not `sqlc.yaml`,
+`sqlc.yml` or `sqlc.json` in the project root.
+
+For this query file
+
+```sql
+-- name: GetAuthor :one
+SELECT * FROM authors WHERE id = $1 LIMIT 1;
+
+-- name: ListAuthors :many
+SELECT * FROM authors ORDER BY name;
+
+-- name: CreateAuthor :one
+INSERT INTO authors (name, bio) VALUES ($1, $2) RETURNING *;
+```
+
+against `CREATE TABLE authors (id BIGSERIAL PRIMARY KEY, name text NOT NULL, bio text)`,
+`src/db/models.js` gets the row type
+
+```js
+export type Author = {|
+  readonly id: bigint,
+  readonly name: string,
+  readonly bio: string | null,
+|};
+```
+
+and `src/db/query.sql.js` gets one function per query. Each one takes the
+database first and an arguments object second, which is left out when the
+query has no parameters:
+
+```js
+export function getAuthor(db: Queryable, args: GetAuthorArgs): Promise<Author | null> {
+  // …
+}
+
+export function listAuthors(db: Queryable): Promise<Array<Author>> {
+  // …
+}
+```
+
+The files are signed as `@generated`. `uf fmt` leaves them alone, and the
+generator already prints them the way `uf fmt` would, so they pass `uf check`,
+`uf lint` and `uf fmt --check` as generated. Edit the SQL and run
+`uf sqlc generate` again rather than editing them.
+
+## Run the queries
+
+Wrap your driver in an adapter and pass it as the first argument:
+
+```js
+import pg from "pg";
+import { fromPgPool } from "@uniflowed/sql/pg";
+import { createAuthor, getAuthor, listAuthors } from "./db/query.sql.js";
+
+const db = fromPgPool(new pg.Pool({ connectionString: process.env.DATABASE_URL }));
+
+const author = await createAuthor(db, { name: "Brian Kernighan", bio: null });
+const same = author === null ? null : await getAuthor(db, { id: author.id });
+const everyone = await listAuthors(db);
+```
+
+| Engine | Adapter | Import | Status |
+| --- | --- | --- | --- |
+| SQLite | `node:sqlite` (Node 22.16 or 24 and newer) | `fromNodeSqlite` from `@uniflowed/sql/node-sqlite` | tested |
+| SQLite | `bun:sqlite` | `fromBunSqlite` from `@uniflowed/sql/bun-sqlite` | tested |
+| SQLite | `better-sqlite3` | `fromBetterSqlite3` from `@uniflowed/sql/better-sqlite3` | Experimental: no test runs it yet |
+| SQLite | Cloudflare D1 | `fromD1` from `@uniflowed/sql/d1` | Experimental: no test runs it yet, and D1 has no interactive transactions |
+| PostgreSQL | PGlite | `fromPGlite` from `@uniflowed/sql/pglite` | tested |
+| PostgreSQL | `pg` | `fromPgClient`, `fromPgPool` from `@uniflowed/sql/pg` | tested |
+| PostgreSQL | `postgres` (postgres.js) | `fromPostgres` from `@uniflowed/sql/postgres` | tested |
+| MySQL | `mysql2` | `fromMysql2Pool` from `@uniflowed/sql/mysql2` | tested, against MySQL 8.4 |
+
+*Tested* means uf's CI runs sqlc's own examples and uf's type cases through
+that adapter against a real database, and checks every value that comes back.
+
+The adapter does not decide the types. Drivers disagree about them: `pg` hands
+back `int8` as a string, postgres.js parses `date` into a `Date` at local
+midnight, and a SQLite driver may round an integer past 2^53. So every adapter
+returns what the database sent, as text or as SQLite's own storage classes, and
+the generated code decodes each column by its SQL type. An `int8` is a `bigint`
+under every PostgreSQL driver, and a type that is wrong is wrong in one place.
+
+## What the types are
+
+| SQL | Flow |
+| --- | --- |
+| `smallint`, `integer`, MySQL `int` | `number` |
+| `bigint` | `bigint` |
+| SQLite `INTEGER` | `number`, which throws rather than rounds past 2^53 |
+| `numeric`, `decimal`, `money` | `string`, the exact digits |
+| `real`, `double precision` | `number` |
+| `boolean`, MySQL `tinyint(1)` | `boolean` |
+| text types, `uuid`, `inet`, `interval`, `time` | `string` |
+| `bytea`, `blob` | `Uint8Array` |
+| `date` | `string`, `YYYY-MM-DD`: a calendar date has no time zone |
+| `timestamp` without a time zone, MySQL `datetime` | `string`, as the server printed it |
+| `timestamptz` | `Date` |
+| `json`, `jsonb` | `JsonValue` |
+| an enum | a union of its labels, plus a `$ReadOnlyArray` of them |
+| a PostgreSQL array | `$ReadOnlyArray<T>`, one level per dimension |
+
+A column that can be `NULL` is `T | null`, never `?T`, because no driver returns
+`undefined`. When sqlc cannot tell a column's type, as with `max(created)`, the
+column is `mixed`. Add a cast (`max(created)::timestamptz`) and it gets a real
+one. The [design record](https://github.com/ubugeeei-prod/uf/blob/main/docs/sqlc.md#exact-types)
+has the full table and the reason for each row.
+
+## Query annotations
+
+- `:one` resolves to the row or `null`, `:many` to an `Array` of rows, and
+  `:exec` to nothing.
+- `:execrows` resolves to the number of rows changed, `:execresult` to
+  `{ rowsAffected, lastInsertId }`, and `:execlastid` to the last id as a
+  `bigint`.
+- `:copyfrom` takes an array of argument objects and inserts them with multi-row
+  `INSERT`s, split under the driver's parameter limit, in one transaction when
+  the adapter can open one. It works on every engine. PostgreSQL's `COPY`
+  protocol is not used yet.
+- `:batchexec`, `:batchmany` and `:batchone` take an array of argument objects
+  and resolve to one result per item, in order, in one transaction when the
+  adapter can open one.
+- `sqlc.arg(name)` and `@name` name an argument, and `sqlc.narg(name)` makes it
+  `T | null`. `sqlc.slice(name)` takes a `$ReadOnlyArray<T>` and expands to
+  `IN (…)` on MySQL and SQLite. `sqlc.embed(table)` nests that table's row
+  type under its name.
+
+## Transactions
+
+A database or pool adapter has a `transaction` method. The function you pass it
+gets a transaction to run queries on. The transaction commits when the function
+resolves and rolls back when it throws, and it rethrows what the function threw:
+
+```js
+const transaction = db.transaction;
+if (transaction !== undefined) {
+  await transaction(async (tx) => {
+    const author = await createAuthor(tx, { name: "Anonymous", bio: null });
+    if (author === null) {
+      throw new Error("no row came back");
+    }
+  });
+}
+```
+
+`transaction` is optional in the type because D1 cannot hold one open. Calling
+`tx.transaction` inside the function opens a savepoint, which rolls back only
+its own work. A transaction refuses queries once it has ended, so a leaked `tx`
+fails loudly instead of running outside the transaction.
+
+## Options
+
+Plugin options go under the codegen entry:
+
+```yaml
+codegen:
+  - out: src/db
+    plugin: flow
+    options:
+      int8: bigint            # bigint | number | string
+      sqliteInteger: number   # number | bigint
+      numeric: string         # string | number
+      timestamptz: Date       # Date | string
+      naming: camelCase       # camelCase | preserve
+      rename:
+        spotify_url: spotifyURL
+      overrides:
+        - column: authors.settings
+          type: { import: "./src/settings.js", name: "Settings", decode: "parseSettings" }
+```
+
+An override that changes a type names a `decode` function, `(value: T) => U`
+from the default type, because the generator does not write `any`. When the
+column is also a parameter, name an `encode` function too, unless your type
+already is the default one. An unknown option is an error, not something the
+generator ignores.
+
+## Keep the generated files current in CI
+
+```sh
+uf sqlc diff
+```
+
+This runs `sqlc diff`. It exits non-zero when generating again would change a
+file, and says to run `uf sqlc generate`.
+
+## What is not here
+
+These are deliberately missing: migrations (sqlc reads a schema, and applying it
+is your migration tool's job), a connection pool, retries, and a query builder.
+The pool and retries belong to the driver you already chose.
+
+These are planned: `@uniflowed/sql` on npm, the generator as a sqlc WASM plugin,
+PostgreSQL `COPY` for `:copyfrom`, and uf installing sqlc for you. See
+[#1367](https://github.com/ubugeeei-prod/uf/issues/1367).
+
+## Where to go next
+
+[GraphQL and Relay](/guide/graphql-relay) is the other way a uf server reaches
+data it does not own. [Server actions](/guide/server-actions) are where most
+generated queries end up being called.

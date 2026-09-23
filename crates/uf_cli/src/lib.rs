@@ -72,6 +72,16 @@ const HELP_STYLES: clap::builder::Styles = {
 };
 
 pub fn main() -> ExitCode {
+    // sqlc starts a process plugin as `<cmd> /plugin.CodegenService/Generate`
+    // with the request on stdin. That is not a command line a person types,
+    // so it is answered before the parser sees it: no banner, no menu, and
+    // nothing on stdout but the response.
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == uf_sqlc::PLUGIN_METHOD)
+    {
+        return commands::sqlc::plugin();
+    }
     let (cli, target) = match parse_cli() {
         Ok(parsed) => parsed,
         Err(error) if is_bare_uf(&error) => match ask_what_to_run() {
@@ -393,6 +403,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         }
         Commands::Fmt { check, paths } => commands::fmt::fmt(&cwd, ui, check, &paths),
         Commands::I18n { command } => commands::i18n::i18n(&cwd, ui, command),
+        Commands::Sqlc { command } => commands::sqlc::sqlc(&cwd, ui, command),
         Commands::Info { package: None, .. } => commands::info::info(&cwd, ui),
         Commands::Info {
             package: Some(package),

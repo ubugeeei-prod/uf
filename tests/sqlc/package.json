@@ -1,0 +1,17 @@
+{
+  "name": "uf-tests-sqlc",
+  "private": true,
+  "type": "module",
+  "description": "sqlc's Flow target, checked end to end: golden output type-checked and linted, and run against SQLite and PostgreSQL.",
+  "dependencies": {
+    "@uniflowed/config": "file:../../packages/config",
+    "@uniflowed/sql": "file:../../packages/sql",
+    "@uniflowed/test": "file:../../packages/test",
+    "@uniflowed/host": "file:../../packages/host",
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
+    "pg": "8.23.0",
+    "postgres": "3.4.9",
+    "mysql2": "3.24.4"
+  }
+}

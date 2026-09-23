@@ -1039,6 +1039,62 @@ jobs:
           path: output/relay-sns
           retention-days: 3
 
+  # sqlc's Flow target, end to end (`tools/ci/sqlc.sh`): the pinned sqlc
+  # (checksummed by `tools/ci/install-sqlc.sh`) still sends the captured
+  # requests, running this `uf` as its plugin writes exactly the golden files,
+  # those files type-check, lint and are formatted, and they run against
+  # SQLite (`node:sqlite`, and `bun:sqlite` under Bun), PostgreSQL (PGlite,
+  # and `pg` and `postgres` over the wire protocol) and the MySQL below
+  # (`mysql2`). The MySQL image is pinned by digest, like the actions. It
+  # runs whenever code changed, not only in the release queue (`full`): the
+  # generator, the runtime and the `uf` that sqlc runs as its plugin are code
+  # any pull request can break.
+  sqlc:
+    name: sqlc Flow target
+    needs: [changes, toolchain]
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+        env:
+          MYSQL_ROOT_PASSWORD: uf
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -puf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          node-version: 24
+      - run: npm ci --prefer-offline --no-audit --no-fund
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.code == 'true'
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+        if: needs.changes.outputs.code == 'true'
+      # For the `bun:sqlite` adapter: the SQLite suite runs again under Bun,
+      # the floor `uf_runtime::BUN_MINIMUM` declares (see `bun-adapter`).
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          bun-version: 1.3.14
+      - run: ./target/release/uf run test:sqlc
+        if: needs.changes.outputs.code == 'true'
+        env:
+          UF_SQLC_MYSQL_URL: mysql://root:uf@127.0.0.1:3306
+
   browser-testing:
     name: RSC and browser testing
     needs: [changes, toolchain]
@@ -1170,6 +1226,7 @@ jobs:
       - upstream-typecheck
       - bun-adapter
       - relay-sns
+      - sqlc
       - native-bundle
       - browser-testing
     runs-on: ubuntu-latest

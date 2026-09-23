@@ -4353,6 +4353,7 @@ dependencies = [
  "uf_router",
  "uf_rsc",
  "uf_runtime",
+ "uf_sqlc",
  "uf_stylex",
  "uf_task",
  "uf_term",
@@ -4650,6 +4651,18 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "smallvec",
+]
+
+[[package]]
+name = "uf_sqlc"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "similar-asserts",
+ "uf_config",
+ "uf_fmt",
 ]
 
 [[package]]

@@ -1520,6 +1520,31 @@ with the message's parameters. That needs MessageFormat 2 parsed, and it is
 checked by `translate` when the locale loads, against the real parser, in the
 one place this repository implements it.
 
+## SQL
+
+`uf sqlc` runs [sqlc](https://sqlc.dev) with `uf` as its Flow plugin. The
+project keeps an ordinary `sqlc.yaml` whose plugin is `process: { cmd: uf }`;
+sqlc starts `uf /plugin.CodegenService/Generate`, and `uf` answers that
+argument itself, before any command is parsed. [SQL with sqlc](/guide/sqlc)
+is the guide, and says what is still Experimental.
+
+uf does not install sqlc. Both commands run `$SQLC` when it is set and `sqlc`
+on `PATH` otherwise, with the directory of the running `uf` put first on
+`PATH`, so the plugin sqlc starts is this `uf` rather than an older one earlier
+on the path.
+
+### uf sqlc generate
+
+Runs `sqlc generate`, which writes the Flow modules each `codegen` entry asks
+for. `--file FILE` (`-f`) names the sqlc config when it is not `sqlc.yaml`,
+`sqlc.yml` or `sqlc.json` in the project root. A failure is sqlc's, printed as
+sqlc printed it, and the command exits non-zero.
+
+### uf sqlc diff
+
+Runs `sqlc diff`, and fails when generating again would change any file: the
+check for CI. `--file FILE` (`-f`) is as for `generate`.
+
 ## Dependencies
 
 [Dependencies](/guide/dependencies) is the guide to these commands, with what each

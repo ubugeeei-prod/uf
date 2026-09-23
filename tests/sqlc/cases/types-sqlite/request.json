@@ -1,0 +1,1067 @@
+{
+  "settings": {
+    "version": "2",
+    "engine": "sqlite",
+    "schema": ["cases/types-sqlite/schema.sql"],
+    "queries": ["cases/types-sqlite/query.sql"],
+    "codegen": {
+      "out": "cases/types-sqlite/gen",
+      "plugin": "flow",
+      "process": {
+        "cmd": "uf"
+      }
+    }
+  },
+  "catalog": {
+    "default_schema": "main",
+    "schemas": [
+      {
+        "name": "main",
+        "tables": [
+          {
+            "rel": {
+              "name": "people"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "INTEGER"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "TEXT"
+                }
+              },
+              {
+                "name": "age",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "INT"
+                }
+              },
+              {
+                "name": "big",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "BIGINT"
+                }
+              },
+              {
+                "name": "flag",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "BOOLEAN"
+                }
+              },
+              {
+                "name": "price",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "NUMERIC"
+                }
+              },
+              {
+                "name": "dec",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "DECIMAL(10,2)"
+                }
+              },
+              {
+                "name": "ratio",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "REAL"
+                }
+              },
+              {
+                "name": "dbl",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "DOUBLEPRECISION"
+                }
+              },
+              {
+                "name": "born",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "DATE"
+                }
+              },
+              {
+                "name": "at",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "DATETIME"
+                }
+              },
+              {
+                "name": "ts",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "TIMESTAMP"
+                }
+              },
+              {
+                "name": "data",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "JSON"
+                }
+              },
+              {
+                "name": "jb",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "JSONB"
+                }
+              },
+              {
+                "name": "raw",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "BLOB"
+                }
+              },
+              {
+                "name": "vc",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "VARCHAR(10)"
+                }
+              },
+              {
+                "name": "weird",
+                "length": -1,
+                "table": {
+                  "name": "people"
+                },
+                "type": {
+                  "name": "FOOBAR"
+                }
+              }
+            ]
+          },
+          {
+            "rel": {
+              "name": "pets"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pets"
+                },
+                "type": {
+                  "name": "INTEGER"
+                }
+              },
+              {
+                "name": "owner_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pets"
+                },
+                "type": {
+                  "name": "INTEGER"
+                }
+              },
+              {
+                "name": "name",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "pets"
+                },
+                "type": {
+                  "name": "TEXT"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "queries": [
+    {
+      "text": "SELECT id, name, age, big, flag, price, dec, ratio, dbl, born, at, ts, data, json(jb), raw, vc, weird FROM people WHERE id = ?",
+      "name": "GetPerson",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "TEXT"
+          },
+          "original_name": "name"
+        },
+        {
+          "name": "age",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "INT"
+          },
+          "original_name": "age"
+        },
+        {
+          "name": "big",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "BIGINT"
+          },
+          "original_name": "big"
+        },
+        {
+          "name": "flag",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "BOOLEAN"
+          },
+          "original_name": "flag"
+        },
+        {
+          "name": "price",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "NUMERIC"
+          },
+          "original_name": "price"
+        },
+        {
+          "name": "dec",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "DECIMAL(10,2)"
+          },
+          "original_name": "dec"
+        },
+        {
+          "name": "ratio",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "REAL"
+          },
+          "original_name": "ratio"
+        },
+        {
+          "name": "dbl",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "DOUBLEPRECISION"
+          },
+          "original_name": "dbl"
+        },
+        {
+          "name": "born",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "DATE"
+          },
+          "original_name": "born"
+        },
+        {
+          "name": "at",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "DATETIME"
+          },
+          "original_name": "at"
+        },
+        {
+          "name": "ts",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "TIMESTAMP"
+          },
+          "original_name": "ts"
+        },
+        {
+          "name": "data",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "JSON"
+          },
+          "original_name": "data"
+        },
+        {
+          "name": "jb",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "JSONB"
+          },
+          "original_name": "jb"
+        },
+        {
+          "name": "raw",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "BLOB"
+          },
+          "original_name": "raw"
+        },
+        {
+          "name": "vc",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "VARCHAR(10)"
+          },
+          "original_name": "vc"
+        },
+        {
+          "name": "weird",
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "FOOBAR"
+          },
+          "original_name": "weird"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT id, name FROM people WHERE id IN (/*SLICE:ids*/?) AND name <> ?2",
+      "name": "ByIds",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "TEXT"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "ids",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "is_sqlc_slice": true,
+            "original_name": "id"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "skip",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT people.id, people.name, people.age, people.big, people.flag, people.price, people.dec, people.ratio, people.dbl, people.born, people.at, people.ts, people.data, json(people.jb), people.raw, people.vc, people.weird, pets.id, pets.owner_id, pets.name FROM people JOIN pets ON pets.owner_id = people.id",
+      "name": "Embed",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "people",
+          "length": -1,
+          "embed_table": {
+            "name": "people"
+          }
+        },
+        {
+          "name": "pets",
+          "length": -1,
+          "embed_table": {
+            "name": "pets"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "INSERT INTO people (name) VALUES (?)",
+      "name": "Create",
+      "cmd": ":execlastid",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "main",
+              "name": "people"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "people"
+      }
+    },
+    {
+      "text": "SELECT id FROM people WHERE age > ?2 LIMIT ?",
+      "name": "Nar",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "id"
+        }
+      ],
+      "params": [
+        {
+          "number": 2,
+          "column": {
+            "name": "min",
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INT"
+            },
+            "original_name": "age"
+          }
+        },
+        {
+          "number": 1,
+          "column": {
+            "name": "limit",
+            "not_null": true,
+            "length": -1,
+            "type": {
+              "name": "integer"
+            }
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT id FROM people WHERE name = ?2 AND age = ?1",
+      "name": "Num",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "id"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "age",
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INT"
+            },
+            "original_name": "age"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT count(*) AS n, max(age) AS oldest, 1 AS one FROM people",
+      "name": "Count",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "n",
+          "not_null": true,
+          "length": -1,
+          "is_func_call": true,
+          "type": {
+            "name": "integer"
+          }
+        },
+        {
+          "name": "oldest",
+          "length": -1,
+          "is_func_call": true,
+          "type": {
+            "name": "any"
+          }
+        },
+        {
+          "name": "one",
+          "not_null": true,
+          "length": -1,
+          "type": {
+            "name": "int"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "INSERT INTO pets (owner_id, name) VALUES (?, ?) RETURNING id, owner_id, name",
+      "name": "Ret",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "pets"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "owner_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "pets"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "owner_id"
+        },
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "pets"
+          },
+          "type": {
+            "name": "TEXT"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "owner_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "main",
+              "name": "pets"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "original_name": "owner_id"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "main",
+              "name": "pets"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "pets"
+      }
+    },
+    {
+      "text": "SELECT id FROM people WHERE id IN (/*SLICE:ids*/?) AND name = ? AND age IN (/*SLICE:ages*/?) AND big = ?",
+      "name": "Mixed",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "id"
+        }
+      ],
+      "params": [
+        {
+          "number": 2,
+          "column": {
+            "name": "ids",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "is_sqlc_slice": true,
+            "original_name": "id"
+          }
+        },
+        {
+          "number": 1,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 3,
+          "column": {
+            "name": "ages",
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INT"
+            },
+            "is_sqlc_slice": true,
+            "original_name": "age"
+          }
+        },
+        {
+          "number": 4,
+          "column": {
+            "name": "big",
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "BIGINT"
+            },
+            "original_name": "big"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT id FROM people WHERE name = ?1 OR vc = ?1",
+      "name": "Either",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "people"
+          },
+          "type": {
+            "name": "INTEGER"
+          },
+          "original_name": "id"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "n",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "UPDATE people SET name = ?1 WHERE id = ?2",
+      "name": "Rename",
+      "cmd": ":execrows",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "new_name",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "schema": "main",
+              "name": "people"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "is_named_param": true,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "DELETE FROM people WHERE id = ?",
+      "name": "Remove",
+      "cmd": ":execresult",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "people"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "UPDATE people SET ratio = ratio + 1",
+      "name": "Touch",
+      "cmd": ":exec",
+      "filename": "query.sql"
+    },
+    {
+      "text": "INSERT INTO pets (owner_id, name) VALUES (?, ?)",
+      "name": "CopyPets",
+      "cmd": ":copyfrom",
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "owner_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "main",
+              "name": "pets"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "original_name": "owner_id"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "name",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "main",
+              "name": "pets"
+            },
+            "type": {
+              "name": "TEXT"
+            },
+            "original_name": "name"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "pets"
+      }
+    },
+    {
+      "text": "SELECT name FROM pets WHERE owner_id = ?",
+      "name": "PetNames",
+      "cmd": ":batchmany",
+      "columns": [
+        {
+          "name": "name",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "pets"
+          },
+          "type": {
+            "name": "TEXT"
+          },
+          "original_name": "name"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "owner_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "pets"
+            },
+            "type": {
+              "name": "INTEGER"
+            },
+            "original_name": "owner_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    }
+  ],
+  "sqlc_version": "v1.31.1"
+}

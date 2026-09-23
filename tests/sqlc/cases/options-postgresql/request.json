@@ -1,0 +1,420 @@
+{
+  "settings": {
+    "version": "2",
+    "engine": "postgresql",
+    "schema": ["cases/options-postgresql/schema.sql"],
+    "queries": ["cases/options-postgresql/query.sql"],
+    "codegen": {
+      "out": "cases/options-postgresql/gen",
+      "plugin": "flow",
+      "options": "eyJpbnQ4IjoibnVtYmVyIiwib3ZlcnJpZGVzIjpbeyJjb2x1bW4iOiJhY2NvdW50cy5zZXR0aW5ncyIsInR5cGUiOnsiZGVjb2RlIjoicGFyc2VTZXR0aW5ncyIsImltcG9ydCI6Ii4vY2FzZXMvb3B0aW9ucy1wb3N0Z3Jlc3FsL3R5cGVzLmpzIiwibmFtZSI6IlNldHRpbmdzIn19LHsiZGJfdHlwZSI6InV1aWQiLCJ0eXBlIjp7ImRlY29kZSI6InRvRXh0ZXJuYWxJZCIsImVuY29kZSI6ImZyb21FeHRlcm5hbElkIiwiaW1wb3J0IjoiLi9jYXNlcy9vcHRpb25zLXBvc3RncmVzcWwvdHlwZXMuanMiLCJuYW1lIjoiRXh0ZXJuYWxJZCJ9fV0sInJlbmFtZSI6eyJzcG90aWZ5X3VybCI6InNwb3RpZnlVUkwifSwidGltZXN0YW1wdHoiOiJzdHJpbmcifQ==",
+      "process": {
+        "cmd": "uf"
+      }
+    }
+  },
+  "catalog": {
+    "default_schema": "public",
+    "schemas": [
+      {
+        "name": "public",
+        "tables": [
+          {
+            "rel": {
+              "name": "accounts"
+            },
+            "columns": [
+              {
+                "name": "id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "accounts"
+                },
+                "type": {
+                  "name": "bigserial"
+                }
+              },
+              {
+                "name": "external_id",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "accounts"
+                },
+                "type": {
+                  "name": "uuid"
+                }
+              },
+              {
+                "name": "settings",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "accounts"
+                },
+                "type": {
+                  "name": "jsonb"
+                }
+              },
+              {
+                "name": "created_at",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "accounts"
+                },
+                "type": {
+                  "name": "timestamptz"
+                }
+              },
+              {
+                "name": "spotify_url",
+                "length": -1,
+                "table": {
+                  "name": "accounts"
+                },
+                "type": {
+                  "name": "text"
+                }
+              },
+              {
+                "name": "balance",
+                "not_null": true,
+                "length": -1,
+                "table": {
+                  "name": "accounts"
+                },
+                "type": {
+                  "schema": "pg_catalog",
+                  "name": "numeric"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "pg_temp"
+      }
+    ]
+  },
+  "queries": [
+    {
+      "text": "SELECT id, external_id, settings, created_at, spotify_url, balance FROM accounts WHERE id = $1",
+      "name": "GetAccount",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "external_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "uuid"
+          },
+          "original_name": "external_id"
+        },
+        {
+          "name": "settings",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "jsonb"
+          },
+          "original_name": "settings"
+        },
+        {
+          "name": "created_at",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "timestamptz"
+          },
+          "original_name": "created_at"
+        },
+        {
+          "name": "spotify_url",
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "spotify_url"
+        },
+        {
+          "name": "balance",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "numeric"
+          },
+          "original_name": "balance"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "accounts"
+            },
+            "type": {
+              "name": "bigserial"
+            },
+            "original_name": "id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "SELECT id, created_at FROM accounts WHERE external_id = $1",
+      "name": "FindByExternal",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "created_at",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "timestamptz"
+          },
+          "original_name": "created_at"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "external_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "name": "accounts"
+            },
+            "type": {
+              "name": "uuid"
+            },
+            "original_name": "external_id"
+          }
+        }
+      ],
+      "filename": "query.sql"
+    },
+    {
+      "text": "INSERT INTO accounts (external_id, settings, spotify_url) VALUES ($1, $2, $3)\nRETURNING id, external_id, settings, created_at, spotify_url, balance",
+      "name": "CreateAccount",
+      "cmd": ":one",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        },
+        {
+          "name": "external_id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "uuid"
+          },
+          "original_name": "external_id"
+        },
+        {
+          "name": "settings",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "jsonb"
+          },
+          "original_name": "settings"
+        },
+        {
+          "name": "created_at",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "timestamptz"
+          },
+          "original_name": "created_at"
+        },
+        {
+          "name": "spotify_url",
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "text"
+          },
+          "original_name": "spotify_url"
+        },
+        {
+          "name": "balance",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "schema": "pg_catalog",
+            "name": "numeric"
+          },
+          "original_name": "balance"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "external_id",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "accounts"
+            },
+            "type": {
+              "name": "uuid"
+            },
+            "original_name": "external_id"
+          }
+        },
+        {
+          "number": 2,
+          "column": {
+            "name": "settings",
+            "not_null": true,
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "accounts"
+            },
+            "type": {
+              "name": "jsonb"
+            },
+            "original_name": "settings"
+          }
+        },
+        {
+          "number": 3,
+          "column": {
+            "name": "spotify_url",
+            "length": -1,
+            "table": {
+              "schema": "public",
+              "name": "accounts"
+            },
+            "type": {
+              "name": "text"
+            },
+            "original_name": "spotify_url"
+          }
+        }
+      ],
+      "filename": "query.sql",
+      "insert_into_table": {
+        "name": "accounts"
+      }
+    },
+    {
+      "text": "SELECT id FROM accounts WHERE external_id = ANY($1::uuid[])",
+      "name": "ByExternals",
+      "cmd": ":many",
+      "columns": [
+        {
+          "name": "id",
+          "not_null": true,
+          "length": -1,
+          "table": {
+            "name": "accounts"
+          },
+          "type": {
+            "name": "bigserial"
+          },
+          "original_name": "id"
+        }
+      ],
+      "params": [
+        {
+          "number": 1,
+          "column": {
+            "name": "ids",
+            "not_null": true,
+            "is_array": true,
+            "length": -1,
+            "is_named_param": true,
+            "type": {
+              "name": "uuid"
+            },
+            "array_dims": 1
+          }
+        }
+      ],
+      "filename": "query.sql"
+    }
+  ],
+  "sqlc_version": "v1.31.1",
+  "plugin_options": "eyJpbnQ4IjoibnVtYmVyIiwib3ZlcnJpZGVzIjpbeyJjb2x1bW4iOiJhY2NvdW50cy5zZXR0aW5ncyIsInR5cGUiOnsiZGVjb2RlIjoicGFyc2VTZXR0aW5ncyIsImltcG9ydCI6Ii4vY2FzZXMvb3B0aW9ucy1wb3N0Z3Jlc3FsL3R5cGVzLmpzIiwibmFtZSI6IlNldHRpbmdzIn19LHsiZGJfdHlwZSI6InV1aWQiLCJ0eXBlIjp7ImRlY29kZSI6InRvRXh0ZXJuYWxJZCIsImVuY29kZSI6ImZyb21FeHRlcm5hbElkIiwiaW1wb3J0IjoiLi9jYXNlcy9vcHRpb25zLXBvc3RncmVzcWwvdHlwZXMuanMiLCJuYW1lIjoiRXh0ZXJuYWxJZCJ9fV0sInJlbmFtZSI6eyJzcG90aWZ5X3VybCI6InNwb3RpZnlVUkwifSwidGltZXN0YW1wdHoiOiJzdHJpbmcifQ=="
+}
