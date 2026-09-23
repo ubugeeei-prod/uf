@@ -1,7 +1,7 @@
 {
   "name": "uf",
   "displayName": "uf",
-  "description": "Flow diagnostics, formatting, quick fixes and hover from the uf toolchain, over uf lsp.",
+  "description": "Flow diagnostics and type errors, formatting, quick fixes, hover, definitions and completion from the uf toolchain, over uf lsp.",
   "version": "0.0.0",
   "license": "MIT",
   "publisher": "uniflowed",
@@ -39,6 +39,16 @@
         "command": "uf.showOutput",
         "title": "Show Language Server Log",
         "category": "uf"
+      },
+      {
+        "command": "uf.configureWorkspace",
+        "title": "Configure Workspace for Flow",
+        "category": "uf"
+      },
+      {
+        "command": "uf.showMenu",
+        "title": "Show Status and Commands",
+        "category": "uf"
       }
     ],
     "configuration": {
@@ -66,9 +76,25 @@
           "default": "off",
           "scope": "window",
           "description": "Log the JSON-RPC traffic between VS Code and `uf lsp` to the uf output channel."
+        },
+        "uf.workspace.disableBuiltinValidation": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "In a folder with `uf.config.js`, write `\"javascript.validate.enable\": false` to that folder's `.vscode/settings.json` once, so VS Code's built-in TypeScript service stops reporting Flow syntax as TypeScript errors. Never changes a value the project already set, never touches `.ts` files, and never runs outside a uf project. Turn this off to leave the setting to you; **uf: Configure Workspace for Flow** writes the full set on request."
         }
       }
-    }
+    },
+    "grammars": [
+      {
+        "scopeName": "source.flow.injection.uf",
+        "path": "./syntaxes/flow.injection.json",
+        "injectTo": [
+          "source.js",
+          "source.js.jsx"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
