@@ -48,6 +48,19 @@ const submitForm = (container: Element) => {
 
 const settle = () => act(() => Promise.resolve());
 
+/**
+ * What a probe component published by rendering, or a failure that says it
+ * has not rendered. A read through this, not a `== null` check before a run of
+ * reads: the probe writes the variable from a closure, so Flow does not keep a
+ * refinement of it across the calls in between.
+ */
+function rendered<T>(value: T | null): T {
+  if (value == null) {
+    throw new Error("the probe has not rendered");
+  }
+  return value;
+}
+
 describe("register: the keystroke that renders nothing", () => {
   it("does not re-render the form while the user types", async () => {
     let renders = 0;
@@ -146,7 +159,7 @@ describe("register: the keystroke that renders nothing", () => {
 
     component Owner() {
       ownerRenders += 1;
-      const { register, control } = useForm({ defaultValues: { title: "" } });
+      const { register, control } = useForm<{ title: string }>({ defaultValues: { title: "" } });
       return (
         <form>
           <input aria-label="title" {...register("title")} />
@@ -294,7 +307,9 @@ describe("watch: one field, not the others", () => {
 
     component Probe() {
       formRenders += 1;
-      const { register, control } = useForm({ defaultValues: { price: "", note: "" } });
+      const { register, control } = useForm<{ price: string, note: string }>({
+        defaultValues: { price: "", note: "" },
+      });
       return (
         <form>
           <input aria-label="price" {...register("price")} />
@@ -345,7 +360,13 @@ describe("watch: one field, not the others", () => {
     component Probe() {
       renders += 1;
       const { register, watch } = useForm({ defaultValues: { a: "", b: "" } });
-      React.useEffect(() => watch("a", (values) => seen.push(values.a)), [watch]);
+      React.useEffect(
+        () =>
+          watch("a", (values) => {
+            seen.push(values.a);
+          }),
+        [watch],
+      );
       return (
         <form>
           <input aria-label="a" {...register("a")} />
@@ -386,7 +407,10 @@ describe("a path given as segments is the same field", () => {
     let read: () => mixed = () => null;
     let readDotted: () => mixed = () => null;
     component Probe() {
-      const { register, getValues, setValue, control } = useForm({
+      const { register, getValues, setValue, control } = useForm<{
+        items: Array<{ price: number }>,
+        address: { city: string },
+      }>({
         defaultValues: { items: [{ price: 1 }, { price: 2 }], address: { city: "" } },
       });
       read = () => getValues("items", 1, "price");
@@ -851,12 +875,7 @@ describe("reset", () => {
     // `property of null`.
     let state: FormState | null = null;
     let read: () => mixed = () => null;
-    const stateOf = (): FormState => {
-      if (state == null) {
-        throw new Error("the probe has not rendered");
-      }
-      return state;
-    };
+    const stateOf = (): FormState => rendered(state);
     component Probe() {
       const { register, reset, formState, getValues } = useForm({
         defaultValues: { email: "start" },
@@ -947,11 +966,8 @@ describe("reset", () => {
     expect(valueIn(screen.getByLabelText("note"))).toBe("server");
     // And the kept field is still dirty, because it still disagrees with what
     // a reset would now go back to.
-    if (state == null) {
-      throw new Error("the probe has not rendered");
-    }
-    expect(state.dirtyFields).toEqual({ name: true });
-    expect(state.defaultValues).toEqual({ name: "server", note: "server" });
+    expect(rendered(state).dirtyFields).toEqual({ name: true });
+    expect(rendered(state).defaultValues).toEqual({ name: "server", note: "server" });
   });
 
   it("recomputes which kept fields are still dirty against the values that arrived", async () => {
@@ -986,10 +1002,7 @@ describe("reset", () => {
     await userEvent.type(screen.getByLabelText("name"), "mine");
     await userEvent.clear(screen.getByLabelText("note"));
     await userEvent.type(screen.getByLabelText("note"), "edited");
-    if (state == null) {
-      throw new Error("the probe has not rendered");
-    }
-    expect(state.dirtyFields).toEqual({ name: true, note: true });
+    expect(rendered(state).dirtyFields).toEqual({ name: true, note: true });
 
     await userEvent.click(screen.getByRole("button", { name: "Sync" }));
 
@@ -997,8 +1010,8 @@ describe("reset", () => {
     expect(read()).toEqual({ name: "mine", note: "edited" });
     // `name` now says what the record says, so it is not an unsaved change.
     // `note` still disagrees with it, so it is.
-    expect(state.dirtyFields).toEqual({ note: true });
-    expect(state.isDirty).toBe(true);
+    expect(rendered(state).dirtyFields).toEqual({ note: true });
+    expect(rendered(state).isDirty).toBe(true);
   });
 });
 
@@ -1032,10 +1045,7 @@ describe("values that come from outside the form", () => {
     expect(valueIn(screen.getByLabelText("email"))).toBe("a@example.com");
     // And the first seed moves the defaults, exactly as every one after it
     // does — otherwise `reset()` would go back to a form that never existed.
-    if (state == null) {
-      throw new Error("the probe has not rendered");
-    }
-    expect(state.defaultValues).toEqual(first);
+    expect(rendered(state).defaultValues).toEqual(first);
 
     // The same object again is not news, and re-seeding on it would throw away
     // whatever the user had done since.
@@ -1133,7 +1143,9 @@ describe("values that come from outside the form", () => {
 
     component Probe() {
       renders += 1;
-      const { register, getValues, formState } = useForm({ defaultValues: () => record });
+      const { register, getValues, formState } = useForm<{ email: string }>({
+        defaultValues: () => record,
+      });
       read = getValues;
       state = formState;
       return (
@@ -1144,13 +1156,10 @@ describe("values that come from outside the form", () => {
     }
 
     render(<Probe />);
-    if (state == null) {
-      throw new Error("the probe has not rendered");
-    }
     // The first render is honest rather than absent: empty, not dirty, and
     // saying so.
-    expect(state.isLoading).toBe(true);
-    expect(state.isDirty).toBe(false);
+    expect(rendered(state).isLoading).toBe(true);
+    expect(rendered(state).isDirty).toBe(false);
     expect(read()).toEqual({});
     expect(renders).toBe(1);
 
@@ -1159,10 +1168,10 @@ describe("values that come from outside the form", () => {
       await record;
     });
 
-    expect(state.isLoading).toBe(false);
+    expect(rendered(state).isLoading).toBe(false);
     expect(read()).toEqual({ email: "loaded@example.com" });
     expect(valueIn(screen.getByLabelText("email"))).toBe("loaded@example.com");
-    expect(state.defaultValues).toEqual({ email: "loaded@example.com" });
+    expect(rendered(state).defaultValues).toEqual({ email: "loaded@example.com" });
     // One render for the values arriving, and one only.
     expect(renders).toBe(2);
   });
@@ -1175,7 +1184,9 @@ describe("values that come from outside the form", () => {
     });
 
     component Probe() {
-      const { register, getValues } = useForm({ defaultValues: () => record });
+      const { register, getValues } = useForm<{ email: string, note: string }>({
+        defaultValues: () => record,
+      });
       read = getValues;
       return (
         <form>
@@ -1212,7 +1223,7 @@ describe("values that come from outside the form", () => {
     });
 
     component Probe() {
-      const { register, getValues, formState } = useForm({
+      const { register, getValues, formState } = useForm<{ email: string }>({
         defaultValues: () => original,
         values: { email: "draft@example.com" },
       });
@@ -1233,12 +1244,9 @@ describe("values that come from outside the form", () => {
       await original;
     });
 
-    if (state == null) {
-      throw new Error("the probe has not rendered");
-    }
     expect(read()).toEqual({ email: "draft@example.com" });
-    expect(state.defaultValues).toEqual({ email: "saved@example.com" });
-    expect(state.isLoading).toBe(false);
+    expect(rendered(state).defaultValues).toEqual({ email: "saved@example.com" });
+    expect(rendered(state).isLoading).toBe(false);
   });
 
   it("drops a default that resolves after somebody said what the values are", async () => {
@@ -1249,7 +1257,9 @@ describe("values that come from outside the form", () => {
     });
 
     component Probe() {
-      const { register, getValues, reset } = useForm({ defaultValues: () => record });
+      const { register, getValues, reset } = useForm<{ email: string }>({
+        defaultValues: () => record,
+      });
       read = getValues;
       return (
         <form>
@@ -2478,7 +2488,7 @@ describe("React semantics", () => {
 
   it("reaches the form from a descendant through FormProvider", async () => {
     component Field() {
-      const { register } = useFormContext();
+      const { register } = useFormContext<{ email: string }>();
       return <input aria-label="email" {...register("email", { required: "Required" })} />;
     }
 
@@ -2488,7 +2498,7 @@ describe("React semantics", () => {
     }
 
     component Probe() {
-      const form = useForm({ defaultValues: { email: "" } });
+      const form = useForm<{ email: string }>({ defaultValues: { email: "" } });
       return (
         <FormProvider form={form}>
           <form onSubmit={form.handleSubmit(() => {})}>
@@ -2557,7 +2567,10 @@ describe("React semantics", () => {
     const Message = React.memo(MessageView);
 
     component Probe() {
-      const { register, control } = useForm({ defaultValues: { a: "", b: "" }, mode: "onChange" });
+      const { register, control } = useForm<{ a: string, b: string }>({
+        defaultValues: { a: "", b: "" },
+        mode: "onChange",
+      });
       return (
         <form>
           <input aria-label="a" {...register("a", { required: "Required" })} />
