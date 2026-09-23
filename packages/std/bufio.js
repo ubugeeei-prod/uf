@@ -212,6 +212,10 @@ export class Scanner {
       return false;
     }
 
+    // A clean end of input leaves the loop with `break`, and what follows the
+    // loop is that exit. Flow does not treat `for (;;)` as ending the function
+    // (facebook/flow#7657), so a loop whose only exits were `return`s inside
+    // it still left an implicit `undefined` return possible.
     for (;;) {
       await this._reader._fill(1);
       const buffered = this._reader._buffer;
@@ -238,7 +242,7 @@ export class Scanner {
         return false;
       }
       if (this._atEof) {
-        return false;
+        break;
       }
 
       const previous = this._reader.buffered();
@@ -247,6 +251,7 @@ export class Scanner {
         this._atEof = true;
       }
     }
+    return false;
   }
 }
 
