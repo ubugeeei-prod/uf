@@ -2503,3 +2503,78 @@ fn a_forking_host_shim_does_not_leave_the_run_hanging() {
         "the shim exec'd rather than forked, so this proved nothing:\n{marked}"
     );
 }
+
+/// Every file under `directory`, by name, with its bytes.
+fn entries(directory: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    std::fs::read_dir(directory)
+        .map(|listing| {
+            listing
+                .flatten()
+                .map(|entry| {
+                    (
+                        entry.file_name().to_string_lossy().into_owned(),
+                        std::fs::read(entry.path()).unwrap(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn compiling_ahead_of_the_workers_files_what_the_workers_would_have() {
+    if !host_ready() {
+        return;
+    }
+    // `uf test` compiles what its workers will import before it starts them
+    // (`commands/test/prewarm.rs`), into the cache the loader reads. The only
+    // way that is safe is if every entry is the one the loader itself would
+    // have written — same name, same bytes — and nothing else: an entry under
+    // a name the loader never asks for is work thrown away, and one under the
+    // right name with other bytes is a module that changed meaning. So the same
+    // suite runs twice from nothing, once with the loader doing all of it and
+    // once with the ahead-of-time pass, and the two caches must be identical.
+    let project = Project::new(&[
+        (
+            "src/shared.js",
+            "// @flow\nimport type { Name } from \"./names.js\";\nexport const greet = (name: Name): string => `hi ${name}`;\n",
+        ),
+        ("src/names.js", "// @flow\nexport type Name = string;\n"),
+        (
+            "src/greet.test.js",
+            "// @flow\nimport { expect, it } from \"@uniflowed/test\";\nimport { greet } from \"./shared.js\";\n\nit(\"greets\", () => {\n  expect(greet(\"ada\")).toBe(\"hi ada\");\n});\n",
+        ),
+    ]);
+    let cache = project.path().join(".uf/cache/transform");
+
+    let loader = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--json"])
+        .env("UF_TEST_PREWARM", "0")
+        .output()
+        .unwrap();
+    assert!(
+        loader.status.success(),
+        "{}",
+        String::from_utf8_lossy(&loader.stderr)
+    );
+    let by_the_loader = entries(&cache);
+    assert!(
+        !by_the_loader.is_empty(),
+        "the loader caches what it compiles"
+    );
+
+    std::fs::remove_dir_all(project.path().join(".uf")).unwrap();
+    let document = json(project.path(), &[]);
+    assert_eq!(document["passed"], 1, "{document}");
+    let ahead = entries(&cache);
+
+    let names =
+        |map: &std::collections::BTreeMap<String, Vec<u8>>| map.keys().cloned().collect::<Vec<_>>();
+    assert_eq!(names(&ahead), names(&by_the_loader));
+    assert!(
+        ahead == by_the_loader,
+        "an entry compiled ahead of the workers differs from the loader's"
+    );
+}

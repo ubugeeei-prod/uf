@@ -49,6 +49,7 @@ pub(crate) mod bun;
 mod changed;
 mod coverage;
 mod payload;
+mod prewarm;
 mod render;
 mod shards;
 mod stream;
@@ -491,9 +492,26 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         .shard
         .map(|shard| shards::cut(ui, &files, &args, &timings, shard));
     let run_files = cut.as_ref().map_or(&files[..], |cut| &cut.files[..]);
-    let report = timer.measure("run", || match &planned {
-        Some(planned) => run_once_planned(ui, &root, &host, planned, &args, timings.clone()),
-        None => run_once(ui, &root, &host, run_files, &args, timings.clone()),
+    let report = timer.measure("run", || {
+        // Compile what the workers are about to import once, here, rather than
+        // once per worker; see `prewarm`. Part of the run, because it is work
+        // the workers would otherwise have done inside it.
+        let absolute: Vec<Utf8PathBuf> = match &planned {
+            Some(planned) => planned
+                .iter()
+                .map(|planned| root.join(&planned.file.relative_path))
+                .collect(),
+            None => run_files
+                .iter()
+                .map(|file| root.join(&file.relative_path))
+                .collect(),
+        };
+        let seeds: Vec<&Utf8Path> = absolute.iter().map(Utf8PathBuf::as_path).collect();
+        prewarm::warm(&host, &seeds);
+        match &planned {
+            Some(planned) => run_once_planned(ui, &root, &host, planned, &args, timings.clone()),
+            None => run_once(ui, &root, &host, run_files, &args, timings.clone()),
+        }
     })?;
 
     // A shard measures and records. The reports and the thresholds are
