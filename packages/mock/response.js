@@ -38,20 +38,29 @@ const PASSTHROUGH_HEADER = "x-uf-mock-intention";
  * Merge a content type into a caller's headers without overriding one they set.
  *
  * A test that says `{ "content-type": "application/problem+json" }` means it,
- * so the default only fills a gap. The comparison is lower-cased because header
- * names are case-insensitive and an object literal is not.
+ * so the default only fills a gap. `Headers` does the case-insensitive lookup
+ * an object literal cannot, and takes every shape a `ResponseInit` may carry
+ * its headers in: a plain object, a `Headers`, or a list of pairs.
  */
-function withContentType(init: HttpResponseInit | void, fallback: string): { [string]: string } {
-  const headers: { [string]: string } = {};
+function withContentType(
+  init: HttpResponseInit | ResponseOptions | void,
+  fallback: string,
+): Headers {
+  const headers = new Headers();
   const given = init?.headers;
-  if (given != null) {
+  if (given instanceof Headers) {
+    given.forEach((value, name) => headers.set(name, value));
+  } else if (Array.isArray(given)) {
+    for (const [name, value] of given) {
+      headers.append(name, value);
+    }
+  } else if (given != null) {
     for (const name of Object.keys(given)) {
-      headers[name] = given[name];
+      headers.set(name, given[name]);
     }
   }
-  const named = Object.keys(headers).some((name) => name.toLowerCase() === "content-type");
-  if (!named) {
-    headers["content-type"] = fallback;
+  if (!headers.has("content-type")) {
+    headers.set("content-type", fallback);
   }
   return headers;
 }
@@ -67,8 +76,15 @@ function withContentType(init: HttpResponseInit | void, fallback: string): { [st
  * somebody calls `.clone()`.
  */
 export class HttpResponse extends Response {
-  /** A JSON body, with `content-type` already set. */
-  static json(body: mixed, init?: HttpResponseInit): HttpResponse {
+  /**
+   * A JSON body, with `content-type` already set.
+   *
+   * Takes any `ResponseInit` as well as the narrower `HttpResponseInit`,
+   * because this overrides `Response.json(data, init)`, and an override has to
+   * accept every argument the method it replaces accepts: code that calls
+   * `Response.json` through a `typeof Response` may be handed this class.
+   */
+  static json(body: mixed, init?: HttpResponseInit | ResponseOptions): HttpResponse {
     return new HttpResponse(JSON.stringify(body), {
       status: init?.status ?? 200,
       statusText: init?.statusText ?? "",

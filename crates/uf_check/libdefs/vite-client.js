@@ -26,11 +26,21 @@
  * — this file is declared last in `crates/uf_check/src/upstream/
  * environments.rs`, which is the whole extension point.
  *
- * Everything `core.js` promised is still promised: `url` is still an optional
- * string, and the open `[key: string]: unknown` indexer is still there, so a
- * project reading some `import.meta` member uf has not heard of gets `unknown`
- * rather than a new error. Named members win over the indexer, so the three
- * below are typed properly.
+ * Everything else `core.js` promised is still promised: the open
+ * `[key: string]: unknown` indexer is still there, so a project reading some
+ * `import.meta` member uf has not heard of gets `unknown` rather than a new
+ * error. Named members win over the indexer, so the members below are typed
+ * properly.
+ *
+ * # `url` is a string, not an optional one
+ *
+ * `core.js` makes `url` optional because Flow types code for module systems
+ * where `import.meta` has no URL. uf compiles ES modules and nothing else, and
+ * every host it targets gives an ES module its URL: Node, Deno and Bun set it
+ * to the module's `file:` URL, a browser to the script's URL, and Vite's build
+ * and dev server preserve it. As `url?: string`, the most common line in a
+ * Node module, `fileURLToPath(import.meta.url)`, was a type error in every
+ * uf project: 19 of them in this repository (ubugeeei-prod/uf#1451).
  *
  * # One thing that does not work, and what to write instead
  *
@@ -251,7 +261,7 @@ interface ImportMetaUf {
 
 type Import$Meta = {
   [key: string]: unknown,
-  url?: string,
+  readonly url: string,
   readonly env: ImportMetaEnv,
   readonly hot?: ImportMetaHot,
   readonly glob: ImportGlobFunction,

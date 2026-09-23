@@ -121,6 +121,21 @@ describe("answering", () => {
     );
   });
 
+  it("keeps a caller's content type given as a Headers or as pairs, in any case", () => {
+    // `HttpResponse.json` overrides `Response.json`, so it takes any
+    // `ResponseInit` — and a `ResponseInit` may carry its headers as a
+    // `Headers` or a list of pairs as well as an object.
+    const fromHeaders = HttpResponse.json(
+      { title: "nope" },
+      { headers: new Headers({ "Content-Type": "application/problem+json" }) },
+    );
+    expect(fromHeaders.headers.get("content-type")).toBe("application/problem+json");
+
+    const fromPairs = HttpResponse.json({ title: "nope" }, { headers: [["X-Trace", "1"]] });
+    expect(fromPairs.headers.get("content-type")).toBe("application/json");
+    expect(fromPairs.headers.get("x-trace")).toBe("1");
+  });
+
   it("reads the request body in the resolver", async () => {
     await withMock(
       [

@@ -54,6 +54,10 @@ const api: string = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 // What Flow's own core.js already promised is still promised.
 const url: string = new URL("./logo.png", import.meta.url).href;
 
+// And more: every host uf targets gives an ES module its URL, so it is a
+// string and not an optional one. `fileURLToPath(import.meta.url)` needs that.
+const here: string = import.meta.url;
+
 export default {
   load,
   home,
@@ -66,4 +70,5 @@ export default {
   ssr,
   api,
   url,
+  here,
 };
