@@ -321,12 +321,15 @@ function inspectSetting(
 }
 
 /**
- * Write the steps a plan says to write, to this folder's settings.
+ * Write the steps a plan says to write, to this folder's settings:
+ * `.vscode/settings.json` in that folder, the file a team commits.
  *
- * `WorkspaceFolder` first — `.vscode/settings.json` in that folder, which is
- * the file a team commits. A setting VS Code registered as window-scoped
- * refuses a folder target, and for that one the workspace is the narrowest
- * place there is.
+ * Never the workspace instead. In a multi-root workspace
+ * `javascript.validate.enable` is window-scoped, so VS Code refuses it as a
+ * folder setting; writing it to the `.code-workspace` file would turn
+ * validation off for every folder in the window, a TypeScript one included.
+ * There the old name is skipped and said so, and VS Code 1.110's
+ * `js/ts.validate.enabled`, which is per folder, does the work.
  */
 async function writeSteps(
   folder /*: vscode.WorkspaceFolder */,
@@ -341,33 +344,19 @@ async function writeSteps(
     const scope =
       setting.language != null ? { uri: folder.uri, languageId: setting.language } : folder.uri;
     const configuration = vscode.workspace.getConfiguration(undefined, scope);
-    const inLanguage = setting.language != null;
     try {
       await configuration.update(
         setting.key,
         setting.value,
         vscode.ConfigurationTarget.WorkspaceFolder,
-        inLanguage,
-      );
-      written += 1;
-      continue;
-    } catch (error) {
-      log(
-        `uf: ${describeSetting(setting)} cannot go in folder settings (${String(error)}); trying the workspace`,
-      );
-    }
-    try {
-      await configuration.update(
-        setting.key,
-        setting.value,
-        vscode.ConfigurationTarget.Workspace,
-        inLanguage,
+        setting.language != null,
       );
       written += 1;
     } catch (error) {
-      // A settings file VS Code cannot parse, or a read-only one: say so and
-      // go on, rather than failing the server's start over a preference.
-      log(`uf: could not write ${describeSetting(setting)}: ${String(error)}`);
+      // A window-scoped setting in a multi-root workspace, a settings file VS
+      // Code cannot parse, a read-only one: say so and go on, rather than fail
+      // the server's start over a preference.
+      log(`uf: ${describeSetting(setting)} was not written to ${folder.name}: ${String(error)}`);
     }
   }
   return written;
@@ -417,17 +406,15 @@ async function applyAutomaticSettings(folder /*: vscode.WorkspaceFolder */) /*: 
         undefined,
         language != null ? { uri: folder.uri, languageId: language } : folder.uri,
       );
-      // Both levels: `writeSteps` may have fallen back to the workspace, and
-      // the plan only wrote where the project had set nothing.
-      for (const target of [
-        vscode.ConfigurationTarget.WorkspaceFolder,
-        vscode.ConfigurationTarget.Workspace,
-      ]) {
-        try {
-          await configuration.update(step.setting.key, undefined, target, language != null);
-        } catch (error) {
-          log(`uf: could not clear ${step.setting.key}: ${String(error)}`);
-        }
+      try {
+        await configuration.update(
+          step.setting.key,
+          undefined,
+          vscode.ConfigurationTarget.WorkspaceFolder,
+          language != null,
+        );
+      } catch (error) {
+        log(`uf: could not clear ${step.setting.key}: ${String(error)}`);
       }
     }
     await vscode.workspace

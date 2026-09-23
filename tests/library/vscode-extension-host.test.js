@@ -117,6 +117,9 @@ function fake(
     settings?: { [string]: mixed },
     inspections?: { [string]: { [string]: mixed } },
     workspaceState?: Map<string, mixed>,
+    // Keys VS Code refuses as a folder setting, as it refuses a
+    // window-scoped one in a multi-root workspace.
+    refuseInFolder?: Array<string>,
   },
 ): Fake {
   const commands = new Map<string, () => mixed>();
@@ -185,6 +188,9 @@ function fake(
         // A registered setting nobody set, unless the test says otherwise.
         inspect: (key: string) => options.inspections?.[key] ?? { defaultValue: true },
         update: (key: string, value: mixed, target: number, language: boolean = false) => {
+          if (target === 3 && options.refuseInFolder?.includes(key) === true) {
+            return Promise.reject(new Error(`${key} does not support the folder resource scope`));
+          }
           updates.push({
             key: section != null ? `${section}.${key}` : key,
             value,
@@ -326,6 +332,20 @@ describe("VS Code's built-in JavaScript validation", () => {
     workspaceState.set(`uf.automaticSettings:${again.folderUris[0]}`, true);
     await activate(again);
     expect(again.updates).toEqual([]);
+  });
+
+  it("is never written to the whole workspace when a folder refuses it", async () => {
+    // In a multi-root window the old name is window-scoped; the workspace file
+    // would turn validation off for a TypeScript folder beside this one.
+    const f = fake([ufProject()], {
+      serverVersion: "0.2.0",
+      refuseInFolder: ["javascript.validate.enable"],
+    });
+    await activate(f);
+    expect(f.updates).toEqual([
+      { key: "js/ts.validate.enabled", value: false, target: 3, language: true },
+    ]);
+    expect(f.clients[0].started).toBe(true);
   });
 
   it("is left alone when the project set it", async () => {

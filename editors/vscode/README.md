@@ -179,6 +179,12 @@ hover, go to definition and suggestions from VS Code's service remain beside
 uf's, since no setting turns those off short of disabling the built-in
 "TypeScript and JavaScript Language Features" extension for the workspace.
 
+In a multi-root workspace VS Code treats the old name as window-scoped and
+refuses it as a folder setting; the extension then skips it rather than write
+it to the `.code-workspace` file, which would turn validation off for a
+TypeScript folder beside this one, and the per-folder new name does the work on
+VS Code 1.110 and later.
+
 It never writes over a value the project set, either way; it writes once per
 folder, so deleting the lines is respected; it never touches `typescript.*` or
 `.ts` files; and the notification it shows has an **Undo**.
