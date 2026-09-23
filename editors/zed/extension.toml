@@ -3,8 +3,8 @@
 # This is the manifest half of a Zed extension. Zed has no way to add an
 # arbitrary language server from settings, so the language server has to arrive
 # as an extension, and an extension that provides one is a Rust crate compiled
-# to WebAssembly. `src/lib.rs` is that half, and CI checks it for the
-# `wasm32-wasip1` target.
+# to WebAssembly. `src/lib.rs` is that half; CI tests it on the host and builds
+# it for the `wasm32-wasip1` target.
 #
 # Install with Zed's "Install Dev Extension" against this directory.
 
@@ -18,6 +18,8 @@ repository = "https://github.com/ubugeeei-prod/uf"
 
 [language_servers.uf]
 name = "uf"
-# Zed's own language names. `.mjs` and `.cjs` are JavaScript to Zed, and `.jsx`
-# is JSX — the four extensions `uf_lint`'s `flow/syntax` parses.
-languages = ["JavaScript", "JSX"]
+# Zed's own language name. Zed files `.js`, `.jsx`, `.mjs` and `.cjs` all under
+# JavaScript — the four extensions `uf_lint`'s `flow/syntax` parses. It has no
+# separate JSX language, and a name it does not know attaches the server to
+# nothing.
+languages = ["JavaScript"]
