@@ -33,7 +33,10 @@ import {
   Input,
   MouseButton,
   ScrollBox,
+  Select,
+  TabSelect,
   Text,
+  Textarea,
   createInputDecoder,
   decodeInput,
   decodeKeys,
@@ -48,7 +51,7 @@ import {
   useRenderer,
   useTerminalSize,
 } from "@uniflowed/tui";
-import type { Frame, MouseEvent } from "@uniflowed/tui";
+import type { BoxLayoutProps, Frame, MouseEvent } from "@uniflowed/tui";
 // The layout module directly, and not through the package root: what a
 // scrolling box costs is a number of calls into layout, and the only place a
 // call into layout can be counted is a tree whose leaves this file wrote.
@@ -368,6 +371,255 @@ describe("layout is flexbox", () => {
     expect(rows(handle.frame())).toEqual(["8x1     "]);
     handle.resize(12, 3);
     expect(frameRow(handle.frame(), 0)).toBe("12x3        ");
+    handle.stop();
+  });
+});
+
+describe("a line that wraps", () => {
+  /** Three three-letter words in a row that wraps, in a box `width` wide. */
+  component Words(size: number, ...rest: BoxLayoutProps) {
+    return (
+      <Box flexDirection="row" flexWrap="wrap" columnGap={1} width={size} {...rest}>
+        <Text>aaa</Text>
+        <Text>bbb</Text>
+        <Text>ccc</Text>
+      </Box>
+    );
+  }
+
+  it("starts a new line for a child that would not fit, and grows to hold it", () => {
+    const handle = testRender(
+      <Box>
+        <Words size={7} />
+        <Text>below</Text>
+      </Box>,
+      { width: 7, height: 4 },
+    );
+    expect(rows(handle.frame())).toEqual(["aaa bbb", "ccc    ", "below  ", "       "]);
+    handle.stop();
+  });
+
+  it("keeps everything on one line when it does not wrap, which is the default", () => {
+    const handle = testRender(
+      <Box flexDirection="row" columnGap={1} width={7}>
+        <Text>aaa</Text>
+        <Text>bbb</Text>
+        <Text>ccc</Text>
+      </Box>,
+      { width: 7, height: 2 },
+    );
+    expect(frameRow(handle.frame(), 1)).toBe("       ");
+    handle.stop();
+  });
+
+  it("puts rowGap between the lines", () => {
+    const handle = testRender(<Words size={7} rowGap={1} />, { width: 7, height: 3 });
+    expect(rows(handle.frame())).toEqual(["aaa bbb", "       ", "ccc    "]);
+    handle.stop();
+  });
+
+  it("stacks the lines from the far side with wrap-reverse", () => {
+    const handle = testRender(<Words size={7} height={3} flexWrap="wrap-reverse" />, {
+      width: 7,
+      height: 3,
+    });
+    expect(rows(handle.frame())).toEqual(["       ", "ccc    ", "aaa bbb"]);
+    handle.stop();
+  });
+
+  it("places the lines with alignContent", () => {
+    const centred = testRender(<Words size={7} height={4} alignContent="center" />, {
+      width: 7,
+      height: 4,
+    });
+    expect(rows(centred.frame())).toEqual(["       ", "aaa bbb", "ccc    ", "       "]);
+    centred.stop();
+
+    const apart = testRender(<Words size={7} height={4} alignContent="space-between" />, {
+      width: 7,
+      height: 4,
+    });
+    expect(rows(apart.frame())).toEqual(["aaa bbb", "       ", "       ", "ccc    "]);
+    apart.stop();
+  });
+
+  it("grows each child into the space left on its own line", () => {
+    const handle = testRender(
+      <Box flexDirection="row" flexWrap="wrap" width={6}>
+        <Box width={4} height={1} flexGrow={1} backgroundColor="#111111" />
+        <Box width={4} height={1} flexGrow={1} backgroundColor="#222222" />
+      </Box>,
+      { width: 6, height: 2 },
+    );
+    const frame = handle.frame();
+    expect([0, 5].map((x) => cell(frame, x, 0).bg)).toEqual([0x111111, 0x111111]);
+    expect([0, 5].map((x) => cell(frame, x, 1).bg)).toEqual([0x222222, 0x222222]);
+    handle.stop();
+  });
+
+  it("wraps a column into the next column", () => {
+    const handle = testRender(
+      <Box flexWrap="wrap" height={2} alignItems="flex-start">
+        <Text>a</Text>
+        <Text>b</Text>
+        <Text>c</Text>
+      </Box>,
+      { width: 4, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["ac  ", "b   "]);
+    handle.stop();
+  });
+});
+
+describe("a box out of the line", () => {
+  it("places an absolute box against the inside of its parent's border", () => {
+    const handle = testRender(
+      <Box border={true} padding={1} width={10} height={5}>
+        <Text>in</Text>
+        <Text position="absolute" top={0} left={5}>
+          x
+        </Text>
+      </Box>,
+      { width: 10, height: 5 },
+    );
+    // Inside the border and not inside the padding: `top: 0` is the first row
+    // under the frame, where the padding is.
+    expect(rows(handle.frame())).toEqual([
+      "┌────────┐",
+      "│     x  │",
+      "│ in     │",
+      "│        │",
+      "└────────┘",
+    ]);
+    handle.stop();
+  });
+
+  it("takes no room in the line, so its siblings are where they would have been", () => {
+    const handle = testRender(
+      <Box flexDirection="row" width={10}>
+        <Text>ab</Text>
+        <Text position="absolute" right={0}>
+          Z
+        </Text>
+        <Text>cd</Text>
+      </Box>,
+      { width: 10, height: 1 },
+    );
+    expect(rows(handle.frame())).toEqual(["abcd     Z"]);
+    handle.stop();
+  });
+
+  it("makes its parent no larger", () => {
+    const handle = testRender(
+      <Box flexDirection="row">
+        <Box backgroundColor="#111111">
+          <Text>ab</Text>
+          <Box position="absolute" top={0} left={0} width={6} height={1} />
+        </Box>
+        <Text>|</Text>
+      </Box>,
+      { width: 8, height: 1 },
+    );
+    expect(frameRow(handle.frame(), 0)).toBe("ab|     ");
+    handle.stop();
+  });
+
+  it("is stretched between two offsets on one axis", () => {
+    const handle = testRender(
+      <Box width={8} height={4}>
+        <Box position="absolute" top={1} bottom={1} left={2} right={2} backgroundColor="#222222" />
+      </Box>,
+      { width: 8, height: 4 },
+    );
+    const frame = handle.frame();
+    const painted = [];
+    for (let y = 0; y < 4; y += 1) {
+      let line = "";
+      for (let x = 0; x < 8; x += 1) {
+        line += cell(frame, x, y).bg === 0x222222 ? "#" : ".";
+      }
+      painted.push(line);
+    }
+    expect(painted).toEqual(["........", "..####..", "..####..", "........"]);
+    handle.stop();
+  });
+
+  it("goes where its parent's alignment puts it when it is given no offsets", () => {
+    const handle = testRender(
+      <Box width={10} height={3} justifyContent="center" alignItems="center">
+        <Text position="absolute">hi</Text>
+      </Box>,
+      { width: 10, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["          ", "    hi    ", "          "]);
+    handle.stop();
+  });
+
+  it("sits on its parent's border with a negative offset", () => {
+    const handle = testRender(
+      <Box border={true} width={8} height={3}>
+        <Text position="absolute" top={-1} right={0}>
+          3
+        </Text>
+      </Box>,
+      { width: 8, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["┌─────3┐", "│      │", "└──────┘"]);
+    handle.stop();
+  });
+
+  it("nudges a relative box without moving anything around it", () => {
+    const handle = testRender(
+      <Box>
+        <Text top={1} left={2}>
+          a
+        </Text>
+        <Text>b</Text>
+      </Box>,
+      { width: 4, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["    ", "b a "]);
+    handle.stop();
+  });
+
+  it("stacks overlapping siblings by zIndex, in the frame and under the pointer", () => {
+    const clicked = [];
+    const handle = testRender(
+      <Box width={6} height={1}>
+        <Box
+          id="front"
+          position="absolute"
+          left={0}
+          width={4}
+          height={1}
+          zIndex={1}
+          backgroundColor="#111111"
+          onMouseDown={(event) => {
+            clicked.push(event.target);
+          }}
+        />
+        <Box
+          id="back"
+          position="absolute"
+          left={2}
+          width={4}
+          height={1}
+          backgroundColor="#222222"
+          onMouseDown={(event) => {
+            clicked.push(event.target);
+          }}
+        />
+      </Box>,
+      { width: 6, height: 1 },
+    );
+    const frame = handle.frame();
+    expect([0, 1, 2, 3, 4, 5].map((x) => cell(frame, x, 0).bg)).toEqual([
+      0x111111, 0x111111, 0x111111, 0x111111, 0x222222, 0x222222,
+    ]);
+    // Column 3 is under both, and the one drawn on top is the one clicked.
+    handle.press("\u001b[<0;4;1M\u001b[<0;4;1m");
+    handle.press("\u001b[<0;6;1M\u001b[<0;6;1m");
+    expect(clicked).toEqual(["front", "back"]);
     handle.stop();
   });
 });
@@ -2024,6 +2276,746 @@ describe("a drag selects what it crossed", () => {
   });
 });
 
+describe("a list a reader chooses from", () => {
+  // OpenTUI's own example shape: a name, and a line saying what it is.
+  const TASKS = [
+    { name: "build", description: "Compile it" },
+    { name: "test", description: "Run tests" },
+    { name: "lint", description: "Check style" },
+  ];
+
+  /** Ten one-line items, for the tests about a window onto a longer list. */
+  const TEN = Array.from({ length: 10 }, (_, index) => ({
+    name: `item ${index}`,
+    description: "",
+  }));
+
+  const UP = "\u001b[A";
+  const DOWN = "\u001b[B";
+  const SHIFT_UP = "\u001b[1;2A";
+  const SHIFT_DOWN = "\u001b[1;2B";
+
+  it("draws OpenTUI's list: a marker, the name one column in, the description under it", () => {
+    const handle = testRender(<Select options={TASKS} />, { width: 20, height: 7 });
+    const frame = handle.frame();
+    expect(rows(frame)).toEqual([
+      " ▶ build            ",
+      "   Compile it       ",
+      "   test             ",
+      "   Run tests        ",
+      "   lint             ",
+      "   Check style      ",
+      "                    ",
+    ]);
+    // The selected item is filled across the whole width, both of its rows,
+    // in OpenTUI's colours: a slate background, a yellow name, a light
+    // description.
+    expect(cell(frame, 0, 0).bg).toBe(0x334455);
+    expect(cell(frame, 19, 1).bg).toBe(0x334455);
+    expect(cell(frame, 1, 0)).toEqual({
+      char: "▶",
+      fg: 0xffff00,
+      bg: 0x334455,
+      attributes: Attributes.NONE,
+    });
+    expect(cell(frame, 3, 1).fg).toBe(0xcccccc);
+    // The rest are in the terminal's own colours, with OpenTUI's grey for a
+    // description.
+    expect(cell(frame, 3, 2)).toEqual({
+      char: "t",
+      fg: INHERIT,
+      bg: INHERIT,
+      attributes: Attributes.NONE,
+    });
+    expect(cell(frame, 3, 3).fg).toBe(0x888888);
+    expect(cell(frame, 3, 3).bg).toBe(INHERIT);
+    handle.stop();
+  });
+
+  it("moves with the arrows and with j and k, and chooses with Enter", () => {
+    const changes = [];
+    const chosen = [];
+    const handle = testRender(
+      <Select
+        focused={true}
+        options={TASKS}
+        onChange={(index, option) => {
+          changes.push([index, option?.name ?? null]);
+        }}
+        onSelect={(index, option) => {
+          chosen.push([index, option?.name ?? null]);
+        }}
+      />,
+      { width: 20, height: 6 },
+    );
+
+    handle.press(DOWN);
+    expect(frameRow(handle.frame(), 2)).toBe(" ▶ test             ");
+    expect(frameRow(handle.frame(), 0)).toBe("   build            ");
+    handle.press("j");
+    expect(frameRow(handle.frame(), 4)).toBe(" ▶ lint             ");
+    handle.press("k");
+    handle.press(UP);
+    expect(frameRow(handle.frame(), 0)).toBe(" ▶ build            ");
+    handle.press("\r");
+
+    expect(changes).toEqual([
+      [1, "test"],
+      [2, "lint"],
+      [1, "test"],
+      [0, "build"],
+    ]);
+    expect(chosen).toEqual([[0, "build"]]);
+    handle.stop();
+  });
+
+  it("stops at either end, and still says so, unless it wraps", () => {
+    const changes = [];
+    const handle = testRender(
+      <Select
+        focused={true}
+        options={TASKS}
+        onChange={(index) => {
+          changes.push(index);
+        }}
+      />,
+      { width: 20, height: 6 },
+    );
+    handle.press(UP);
+    expect(frameRow(handle.frame(), 0)).toBe(" ▶ build            ");
+    expect(changes).toEqual([0]);
+    handle.stop();
+
+    const wrapping = testRender(<Select focused={true} options={TASKS} wrapSelection={true} />, {
+      width: 20,
+      height: 6,
+    });
+    wrapping.press(UP);
+    expect(frameRow(wrapping.frame(), 4)).toBe(" ▶ lint             ");
+    wrapping.press(DOWN);
+    expect(frameRow(wrapping.frame(), 0)).toBe(" ▶ build            ");
+    wrapping.stop();
+  });
+
+  it("keeps the selection in the middle of the rows it has, and stops at the ends", () => {
+    const handle = testRender(
+      <Select focused={true} options={TEN} showDescription={false} height={4} />,
+      { width: 12, height: 4 },
+    );
+    expect(rows(handle.frame())).toEqual([
+      " ▶ item 0   ",
+      "   item 1   ",
+      "   item 2   ",
+      "   item 3   ",
+    ]);
+
+    // Five down: the window starts two above the selection, which is half of
+    // four rows.
+    handle.press(DOWN.repeat(5));
+    expect(rows(handle.frame())).toEqual([
+      "   item 3   ",
+      "   item 4   ",
+      " ▶ item 5   ",
+      "   item 6   ",
+    ]);
+
+    // And at the end it stops, rather than showing rows past the last item.
+    handle.press(DOWN.repeat(4));
+    expect(rows(handle.frame())).toEqual([
+      "   item 6   ",
+      "   item 7   ",
+      "   item 8   ",
+      " ▶ item 9   ",
+    ]);
+    handle.stop();
+  });
+
+  it("jumps by fastScrollStep with Shift", () => {
+    const changes = [];
+    const handle = testRender(
+      <Select
+        focused={true}
+        options={TEN}
+        showDescription={false}
+        fastScrollStep={3}
+        onChange={(index) => {
+          changes.push(index);
+        }}
+      />,
+      { width: 12, height: 10 },
+    );
+    handle.press(SHIFT_DOWN);
+    handle.press(SHIFT_DOWN);
+    handle.press(SHIFT_UP);
+    expect(changes).toEqual([3, 6, 3]);
+    expect(frameRow(handle.frame(), 3)).toBe(" ▶ item 3   ");
+    handle.stop();
+  });
+
+  it("draws no item it cannot draw whole", () => {
+    // Five rows, two per item: two items, and the fifth row empty rather than
+    // holding half of a third.
+    const handle = testRender(<Select options={TASKS} height={5} />, { width: 16, height: 5 });
+    expect(rows(handle.frame())).toEqual([
+      " ▶ build        ",
+      "   Compile it   ",
+      "   test         ",
+      "   Run tests    ",
+      "                ",
+    ]);
+    handle.stop();
+  });
+
+  it("says where in the list the window is when asked to", () => {
+    const at = (selected: number) => {
+      const handle = testRender(
+        <Select
+          options={TEN}
+          selectedIndex={selected}
+          showDescription={false}
+          showScrollIndicator={true}
+          height={5}
+        />,
+        { width: 12, height: 5 },
+      );
+      const frame = handle.frame();
+      const column = rows(frame).map((row) => row[11]);
+      expect(cell(frame, 11, column.indexOf("█")).fg).toBe(0x666666);
+      handle.stop();
+      return column.join("");
+    };
+    // The top of the list, the middle, and the bottom: OpenTUI's one-cell
+    // marker, moving down a track that leaves a row free at either end.
+    expect(at(0)).toBe(" █   ");
+    expect(at(5)).toBe("  █  ");
+    expect(at(9)).toBe("    █");
+  });
+
+  it("moves to a new selectedIndex when the prop changes, and moves on from there", () => {
+    component Picker() {
+      const [asked, setAsked] = useState<number>(0);
+      useKeyboard((key) => {
+        if (key.name === "g") {
+          setAsked(2);
+        }
+      });
+      return (
+        <Select focused={true} options={TASKS} selectedIndex={asked} showDescription={false} />
+      );
+    }
+    const handle = testRender(<Picker />, { width: 12, height: 3 });
+    handle.press(DOWN);
+    expect(frameRow(handle.frame(), 1)).toBe(" ▶ test     ");
+    handle.press("g");
+    expect(frameRow(handle.frame(), 2)).toBe(" ▶ lint     ");
+    handle.press(UP);
+    expect(frameRow(handle.frame(), 1)).toBe(" ▶ test     ");
+    handle.stop();
+  });
+
+  it("takes no keys without focus, and none from a key's release", () => {
+    const changes = [];
+    const handle = testRender(
+      <Select
+        options={TASKS}
+        onChange={(index) => {
+          changes.push(index);
+        }}
+      />,
+      { width: 20, height: 6 },
+    );
+    handle.press(DOWN);
+    handle.stop();
+
+    const focused = testRender(
+      <Select
+        focused={true}
+        options={TASKS}
+        onChange={(index) => {
+          changes.push(index);
+        }}
+      />,
+      { width: 20, height: 6 },
+    );
+    // `j` released, as a Kitty keyboard report.
+    focused.press("\u001b[106;1:3u");
+    focused.stop();
+    expect(changes).toEqual([]);
+  });
+
+  it("draws the marker in the vocabulary the terminal has", () => {
+    const handle = testRender(<Select options={TASKS} showDescription={false} />, {
+      width: 10,
+      height: 3,
+      capabilities: { color: "none", glyphs: "ascii", tty: "piped" },
+    });
+    expect(frameRow(handle.frame(), 0)).toBe(" > build  ");
+    handle.stop();
+  });
+
+  it("cannot be selected by a drag, because it is a list of choices", () => {
+    const handle = testRender(<Select options={TASKS} />, { width: 20, height: 6 });
+    handle.press("\u001b[<0;2;1M\u001b[<32;10;3M\u001b[<0;10;3m");
+    expect(handle.selectedText()).toBe("");
+    handle.stop();
+  });
+});
+
+describe("a row of tabs", () => {
+  const VIEWS = [
+    { name: "files", description: "The working tree" },
+    { name: "log", description: "What changed" },
+    { name: "diff", description: "How it changed" },
+    { name: "tags", description: "Named versions" },
+    { name: "stash", description: "Put aside" },
+  ];
+
+  const LEFT = "\u001b[D";
+  const RIGHT = "\u001b[C";
+
+  it("draws the names, a rule under the selected one, and its description", () => {
+    const handle = testRender(<TabSelect options={VIEWS.slice(0, 3)} tabWidth={8} />, {
+      width: 24,
+      height: 4,
+    });
+    const frame = handle.frame();
+    expect(rows(frame)).toEqual([
+      " files   log     diff   ",
+      "▬▬▬▬▬▬▬▬                ",
+      " The working tree       ",
+      "                        ",
+    ]);
+    // The selected tab's cells, its rule and its name in OpenTUI's colours.
+    expect(cell(frame, 0, 0).bg).toBe(0x334455);
+    expect(cell(frame, 7, 0).bg).toBe(0x334455);
+    expect(cell(frame, 8, 0).bg).toBe(INHERIT);
+    expect(cell(frame, 1, 0).fg).toBe(0xffff00);
+    expect(cell(frame, 3, 1)).toEqual({
+      char: "▬",
+      fg: 0xffff00,
+      bg: 0x334455,
+      attributes: Attributes.NONE,
+    });
+    expect(cell(frame, 1, 2).fg).toBe(0xcccccc);
+    handle.stop();
+  });
+
+  it("is as tall as the rows it draws, whatever height it is given", () => {
+    const handle = testRender(
+      <Box>
+        <TabSelect options={VIEWS.slice(0, 2)} tabWidth={8} height={10} showDescription={false} />
+        <Text>below</Text>
+      </Box>,
+      { width: 16, height: 4 },
+    );
+    expect(rows(handle.frame())).toEqual([
+      " files   log    ",
+      "▬▬▬▬▬▬▬▬        ",
+      "below           ",
+      "                ",
+    ]);
+    handle.stop();
+  });
+
+  it("moves with the arrows and the brackets, chooses with Enter, and is quiet at the ends", () => {
+    const changes = [];
+    const chosen = [];
+    const handle = testRender(
+      <TabSelect
+        focused={true}
+        options={VIEWS.slice(0, 3)}
+        tabWidth={8}
+        onChange={(index, option) => {
+          changes.push([index, option?.name ?? null]);
+        }}
+        onSelect={(index, option) => {
+          chosen.push([index, option?.name ?? null]);
+        }}
+      />,
+      { width: 24, height: 3 },
+    );
+    handle.press(LEFT);
+    handle.press(RIGHT);
+    expect(rows(handle.frame())).toEqual([
+      " files   log     diff   ",
+      "        ▬▬▬▬▬▬▬▬        ",
+      " What changed           ",
+    ]);
+    handle.press("]");
+    handle.press("]");
+    handle.press("[");
+    handle.press("\r");
+    expect(changes).toEqual([
+      [1, "log"],
+      [2, "diff"],
+      [1, "log"],
+    ]);
+    expect(chosen).toEqual([[1, "log"]]);
+    handle.stop();
+  });
+
+  it("comes round at the ends when it wraps", () => {
+    const handle = testRender(
+      <TabSelect focused={true} options={VIEWS.slice(0, 3)} tabWidth={8} wrapSelection={true} />,
+      { width: 24, height: 3 },
+    );
+    handle.press(LEFT);
+    expect(frameRow(handle.frame(), 2)).toBe(" How it changed         ");
+    handle.press(RIGHT);
+    expect(frameRow(handle.frame(), 2)).toBe(" The working tree       ");
+    handle.stop();
+  });
+
+  it("shows as many tabs as fit, the selected one in the middle, with arrows past the edges", () => {
+    const handle = testRender(
+      <TabSelect focused={true} options={VIEWS} tabWidth={10} showDescription={false} />,
+      { width: 30, height: 2 },
+    );
+    expect(frameRow(handle.frame(), 0)).toBe(" files     log       diff    ›");
+
+    // The first tab shown is the one before the selection. The arrow is drawn
+    // over the first cell of the leftmost tab, which is where its name's
+    // leading space was.
+    handle.press(RIGHT.repeat(2));
+    expect(frameRow(handle.frame(), 0)).toBe(
+      "‹log" + " ".repeat(7) + "diff" + " ".repeat(6) + "tags" + " ".repeat(4) + "›",
+    );
+    expect(cell(handle.frame(), 0, 0).fg).toBe(0xaaaaaa);
+
+    // And at the end of the row the window stops, with nothing past it.
+    handle.press(RIGHT.repeat(2));
+    expect(rows(handle.frame())).toEqual([
+      "‹diff" + " ".repeat(6) + "tags" + " ".repeat(6) + "stash" + " ".repeat(4),
+      " ".repeat(20) + "▬".repeat(10),
+    ]);
+    handle.stop();
+  });
+
+  it("cuts a name that does not fit its tab, and says so", () => {
+    const handle = testRender(
+      <TabSelect options={[{ name: "configuration", description: "" }]} tabWidth={8} />,
+      { width: 8, height: 3 },
+    );
+    expect(frameRow(handle.frame(), 0)).toBe(" confi… ");
+    handle.stop();
+  });
+});
+
+describe("several lines a reader types into", () => {
+  const LEFT = "\u001b[D";
+  const RIGHT = "\u001b[C";
+  const UP = "\u001b[A";
+  const DOWN = "\u001b[B";
+  /** Kitty's report for `Ctrl` plus a character: `CSI <code> ; 5 u`. */
+  const ctrl = (character: string) => `\u001b[${character.codePointAt(0) ?? 0};5u`;
+
+  it("takes typing, a newline for Enter, and says what the text is now", () => {
+    const seen = [];
+    const handle = testRender(
+      <Textarea
+        focused={true}
+        width={12}
+        height={3}
+        onContentChange={(value) => {
+          seen.push(value);
+        }}
+      />,
+      { width: 12, height: 3 },
+    );
+    handle.press("one");
+    handle.press("\r");
+    handle.press("two");
+    expect(rows(handle.frame())).toEqual(["one         ", "two         ", "            "]);
+    // The cursor is an inverse cell after the last character.
+    expect(cell(handle.frame(), 3, 1).attributes).toBe(Attributes.INVERSE);
+    expect(seen[seen.length - 1]).toBe("one\ntwo");
+    handle.stop();
+  });
+
+  it("wraps at a word and keeps the space it broke at on the line it ends", () => {
+    const handle = testRender(
+      <Textarea focused={true} initialValue="hello world again" width={10} height={3} />,
+      { width: 10, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["hello     ", "world     ", "again     "]);
+    handle.stop();
+
+    const chars = testRender(
+      <Textarea initialValue="hello world" wrapMode="char" width={4} height={3} />,
+      { width: 4, height: 3 },
+    );
+    expect(rows(chars.frame())).toEqual(["hell", "o wo", "rld "]);
+    chars.stop();
+  });
+
+  it("moves up and down the rows as they are drawn, not the lines as they are stored", () => {
+    const handle = testRender(
+      <Textarea focused={true} initialValue="hello world" width={8} height={2} />,
+      { width: 8, height: 2 },
+    );
+    const cursorAt = () => {
+      const frame = handle.frame();
+      for (let y = 0; y < frame.height; y += 1) {
+        for (let x = 0; x < frame.width; x += 1) {
+          if ((cell(frame, x, y).attributes & Attributes.INVERSE) !== 0) {
+            return [x, y];
+          }
+        }
+      }
+      return null;
+    };
+    expect(cursorAt()).toEqual([5, 1]);
+    // Up from the end of "world" to the same column of "hello ", which is
+    // the space it wrapped at.
+    handle.press(UP);
+    expect(cursorAt()).toEqual([5, 0]);
+    handle.press("X");
+    expect(rows(handle.frame())).toEqual(["helloX  ", "world   "]);
+    handle.press(DOWN);
+    handle.press("Y");
+    expect(rows(handle.frame())).toEqual(["helloX  ", "worldY  "]);
+    handle.stop();
+  });
+
+  it("scrolls to keep the cursor in view, and no further than it has to", () => {
+    const handle = testRender(
+      <Textarea focused={true} initialValue={"a\nb\nc\nd"} width={4} height={2} />,
+      { width: 4, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["c   ", "d   "]);
+    handle.press(UP);
+    // Still in the window: it does not move.
+    expect(rows(handle.frame())).toEqual(["c   ", "d   "]);
+    handle.press(UP);
+    expect(rows(handle.frame())).toEqual(["b   ", "c   "]);
+    handle.press(UP);
+    expect(rows(handle.frame())).toEqual(["a   ", "b   "]);
+    handle.press(DOWN);
+    expect(rows(handle.frame())).toEqual(["a   ", "b   "]);
+    handle.stop();
+  });
+
+  it("scrolls sideways when it does not wrap", () => {
+    const handle = testRender(<Textarea focused={true} wrapMode="none" width={5} height={1} />, {
+      width: 5,
+      height: 1,
+    });
+    handle.press("abcdefg");
+    expect(frameRow(handle.frame(), 0)).toBe("defg ");
+    handle.press("\u001b[H");
+    expect(frameRow(handle.frame(), 0)).toBe("abcde");
+    handle.stop();
+  });
+
+  it("goes to the ends of the line with Ctrl+A and Ctrl+E, and of the text with Home and End", () => {
+    const handle = testRender(
+      <Textarea focused={true} initialValue={"first\nsecond"} width={10} height={2} />,
+      { width: 10, height: 2 },
+    );
+    handle.press("\u0001");
+    handle.press(">");
+    handle.press("\u0005");
+    handle.press("<");
+    handle.press("\u001b[H");
+    handle.press("^");
+    handle.press("\u001b[F");
+    handle.press("$");
+    expect(rows(handle.frame())).toEqual(["^first    ", ">second<$ "]);
+    handle.stop();
+  });
+
+  it("moves and deletes by word", () => {
+    const seen = [];
+    const handle = testRender(
+      <Textarea
+        focused={true}
+        initialValue="one two three"
+        width={16}
+        height={1}
+        onContentChange={(value) => {
+          seen.push(value);
+        }}
+      />,
+      { width: 16, height: 1 },
+    );
+    // Meta+B twice, then Ctrl+W: the word before the cursor goes.
+    handle.press("\u001bb");
+    handle.press("\u001bb");
+    handle.press(RIGHT.repeat(4));
+    handle.press("\u0017");
+    expect(seen).toEqual(["one three"]);
+    // Meta+D: the word after it.
+    handle.press("\u001bd");
+    expect(seen[seen.length - 1]).toBe("one ");
+    handle.stop();
+  });
+
+  it("deletes to either end of the line with Ctrl+K and Ctrl+U", () => {
+    const seen = [];
+    const handle = testRender(
+      <Textarea
+        focused={true}
+        initialValue={"keep\nabcdef\nkeep"}
+        width={10}
+        height={3}
+        onContentChange={(value) => {
+          seen.push(value);
+        }}
+      />,
+      { width: 10, height: 3 },
+    );
+    handle.press(UP);
+    handle.press("\u0001");
+    handle.press(RIGHT.repeat(3));
+    handle.press("\u000b");
+    expect(seen[seen.length - 1]).toBe("keep\nabc\nkeep");
+    handle.press(LEFT);
+    handle.press("\u0015");
+    expect(seen[seen.length - 1]).toBe("keep\nc\nkeep");
+    handle.stop();
+  });
+
+  it("deletes the whole line with Ctrl+Shift+D, which only a Kitty terminal can send", () => {
+    const seen = [];
+    const handle = testRender(
+      <Textarea
+        focused={true}
+        initialValue={"a\nb\nc"}
+        width={4}
+        height={3}
+        onContentChange={(value) => {
+          seen.push(value);
+        }}
+      />,
+      { width: 4, height: 3 },
+    );
+    handle.press(UP);
+    handle.press("\u001b[100;6u");
+    expect(seen).toEqual(["a\nc"]);
+    handle.stop();
+  });
+
+  it("deletes a character either side of the cursor", () => {
+    const seen = [];
+    const handle = testRender(
+      <Textarea
+        focused={true}
+        initialValue="abcd"
+        width={6}
+        height={1}
+        onContentChange={(value) => {
+          seen.push(value);
+        }}
+      />,
+      { width: 6, height: 1 },
+    );
+    handle.press(LEFT.repeat(2));
+    handle.press("\u007f");
+    handle.press("\u001b[3~");
+    expect(seen).toEqual(["acd", "ad"]);
+    // Ctrl+D is Delete too.
+    handle.press("\u0004");
+    expect(seen[seen.length - 1]).toBe("a");
+    handle.stop();
+  });
+
+  it("submits with Meta+Enter, and Enter stays a newline", () => {
+    const submitted = [];
+    const handle = testRender(
+      <Textarea
+        focused={true}
+        width={10}
+        height={2}
+        onSubmit={(value) => {
+          submitted.push(value);
+        }}
+      />,
+      { width: 10, height: 2 },
+    );
+    handle.press("a\rb");
+    handle.press("\u001b\r");
+    expect(submitted).toEqual(["a\nb"]);
+    expect(rows(handle.frame())).toEqual(["a         ", "b         "]);
+    handle.stop();
+  });
+
+  it("undoes with Ctrl+- and redoes with Ctrl+.", () => {
+    const seen = [];
+    const handle = testRender(
+      <Textarea
+        focused={true}
+        width={10}
+        height={1}
+        onContentChange={(value) => {
+          seen.push(value);
+        }}
+      />,
+      { width: 10, height: 1 },
+    );
+    handle.press("ab");
+    handle.press(ctrl("-"));
+    handle.press(ctrl("-"));
+    handle.press(ctrl("."));
+    expect(seen).toEqual(["a", "ab", "a", "", "a"]);
+    expect(frameRow(handle.frame(), 0)).toBe("a         ");
+    handle.stop();
+  });
+
+  it("takes a paste whole, newlines and all, without the escape sequences in it", () => {
+    const handle = testRender(<Textarea focused={true} width={10} height={3} />, {
+      width: 10,
+      height: 3,
+    });
+    handle.press("\u001b[200~one\r\n\u001b[31mtwo\u001b[0m\u0007\u001b[201~");
+    expect(rows(handle.frame())).toEqual(["one       ", "two       ", "          "]);
+    handle.stop();
+  });
+
+  it("shows a placeholder until something is typed, and ignores Tab", () => {
+    const handle = testRender(
+      <Textarea focused={true} placeholder="notes" width={8} height={1} />,
+      { width: 8, height: 1 },
+    );
+    const frame = handle.frame();
+    expect(frameRow(frame, 0)).toBe("notes   ");
+    expect(cell(frame, 0, 0).attributes).toBe(Attributes.INVERSE);
+    expect(cell(frame, 1, 0).fg).toBe(0x666666);
+    handle.press("\t");
+    expect(frameRow(handle.frame(), 0)).toBe("notes   ");
+    handle.press("x");
+    expect(frameRow(handle.frame(), 0)).toBe("x       ");
+    handle.stop();
+  });
+
+  it("takes no keys without focus, and none from a key's release", () => {
+    const handle = testRender(<Textarea initialValue="a" width={4} height={1} />, {
+      width: 4,
+      height: 1,
+    });
+    handle.press("b");
+    expect(frameRow(handle.frame(), 0)).toBe("a   ");
+    handle.stop();
+
+    const focused = testRender(<Textarea focused={true} width={4} height={1} />, {
+      width: 4,
+      height: 1,
+    });
+    focused.press("\u001b[98;1:3u");
+    expect(frameRow(focused.frame(), 0)).toBe("    ");
+    focused.stop();
+  });
+
+  it("can have its text selected with a drag, as any other text can", () => {
+    const handle = testRender(
+      <Textarea initialValue={"first line\nsecond"} width={12} height={2} />,
+      { width: 12, height: 2 },
+    );
+    handle.press("\u001b[<0;1;1M\u001b[<32;3;2M\u001b[<0;3;2m");
+    expect(handle.selectedText()).toBe("first line\nsec");
+    handle.stop();
+  });
+});
+
 describe("what the terminal can take", () => {
   const env = (overrides: { [string]: string }) => ({ ...overrides });
 
@@ -2520,6 +3512,42 @@ describe("the manual is not a screenshot", () => {
     const keystroke = page().match(/\| pressing the up arrow \| (\d+) \| (\d+) \|/);
     expect(table?.slice(1, 3)).toEqual([String(first.cells), String(first.output.length)]);
     expect(keystroke?.slice(1, 3)).toEqual([String(next.cells), String(next.output.length)]);
+    handle.stop();
+  });
+
+  /** The guide's `Select` example, transcribed the same way `Workers` is. */
+  component Tasks() {
+    const [ran, setRan] = useState<string>("");
+    return (
+      <Box>
+        <Select
+          focused={true}
+          height={4}
+          options={[
+            { name: "build", description: "Compile the project" },
+            { name: "test", description: "Run the suite" },
+            { name: "lint", description: "Check the style" },
+          ]}
+          onSelect={(index, option) => {
+            setRan(option?.name ?? "");
+          }}
+        />
+        <Text>{ran === "" ? "nothing chosen" : `ran ${ran}`}</Text>
+      </Box>
+    );
+  }
+
+  it("draws the list the guide prints, and chooses from it", () => {
+    const section = page().slice(page().indexOf("## Choosing from a list"));
+    const fence = section.match(/```text\n([\s\S]*?)```/);
+    expect(fence).not.toBe(null);
+    const documented = (fence?.[1] ?? "").replace(/\n$/, "").split("\n");
+
+    const handle = testRender(<Tasks />, { width: 24, height: 5 });
+    // Trimmed, because a guide's code block keeps no trailing blanks.
+    expect(rows(handle.frame()).map((row) => row.trimEnd())).toEqual(documented);
+    handle.press("\u001b[B\r");
+    expect(frameRow(handle.frame(), 4).trimEnd()).toBe("ran test");
     handle.stop();
   });
 });

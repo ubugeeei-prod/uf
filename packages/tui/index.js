@@ -67,18 +67,20 @@
 // # What is here, and what is not
 //
 // Implemented, tested, and true: a component tree, flexbox layout in whole
-// cells, a cell buffer with correct wide-grapheme handling, a diff that emits
+// cells — wrapping, absolute positioning and `zIndex` included — a cell buffer with correct wide-grapheme handling, a diff that emits
 // only changed cells, keyboard input with OpenTUI's key names, propagation
 // rules and Kitty press/repeat/release event types, bracketed paste,
 // declarative focus, mouse input — press, release, hover, drag with capture,
 // drop and wheel, routed by a hit grid the painter records — text selection by
 // drag, one per renderer, read back with
-// `getSelectedText()`, a scrolling window onto content taller than it,
-// terminal capability and *size* detection that agrees with the CLI's, and an
+// `getSelectedText()`, a scrolling window onto content taller than it, a
+// list, a row of tabs and a multi-line editor with OpenTUI's keys, terminal
+// capability and *size* detection that agrees with the CLI's, and an
 // in-memory renderer that runs the same code the terminal one does.
 //
 // Not here: the repeated-press gestures that widen a selection to a word or a
-// line, images, the rich content components, and everything under OpenTUI's
+// line, images, the rich content components, `Slider` and `ScrollBar`, and
+// everything under OpenTUI's
 // "application APIs" — except for the write-only OSC 52 clipboard — which is
 // why `getSelectedText()` hands a string back and leaves policy to the caller.
 // They are ubugeeei-prod/uf#314, and they are absent rather than present as
@@ -117,13 +119,15 @@
 // - `capability.js` — what this terminal can render and how big it is, by the
 //   CLI's own rules.
 // - `terminal.js` — a real terminal, and the in-memory one tests use.
-// - `components.js` — `Box`, `Text`, `Input`, `ScrollBox`, and the hooks.
+// - `components.js` — `Box`, `Text`, `Input`, `ScrollBox`, `Select`,
+//   `TabSelect`, `Textarea`, and the hooks.
 //
-// `internal/` holds the four that a consumer must not be able to reach past:
+// `internal/` holds the five that a consumer must not be able to reach past:
 // `tree.js` (props become a layout style once, here), `paint.js` (both passes
-// must break lines the same way), `hits.js` (what is under the pointer is only
-// true for the frame that recorded it) and `host.js` (one React root, one
-// terminal, one owner). Each says so in its own header. There is no
+// must break lines the same way), `widgets.js` (the same, for a textarea's
+// cursor and its painter), `hits.js` (what is under the pointer is only true
+// for the frame that recorded it) and `host.js` (one React root, one terminal,
+// one owner). Each says so in its own header. There is no
 // `internal/util.js`: a module that cannot say what it is about does not
 // belong in this package.
 
@@ -154,13 +158,16 @@ export { Attributes, INHERIT, frameRow, frameText, parseColor } from "./cells.js
 export type { Clipboard } from "./clipboard.js";
 
 export type {
+  AlignContent,
   AlignItems,
   AlignSelf,
   Dimension,
   FlexDirection,
+  FlexWrap,
   JustifyContent,
   LayoutStyle,
   Overflow,
+  Position,
 } from "./layout.js";
 
 export type { WrapMode } from "./internal/paint.js";
@@ -193,15 +200,23 @@ export type {
   InputProps,
   MouseProps,
   ScrollBoxProps,
+  SelectColorProps,
+  SelectProps,
+  TabSelectProps,
   TextProps,
   TextStyleProps,
+  TextareaProps,
   TitleAlignment,
 } from "./components.js";
+export type { EditWrapMode, SelectOption } from "./internal/widgets.js";
 export {
   Box,
   Input,
   ScrollBox,
+  Select,
+  TabSelect,
   Text,
+  Textarea,
   useClipboard,
   useKeyboard,
   useRenderer,

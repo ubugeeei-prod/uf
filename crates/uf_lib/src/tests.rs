@@ -130,6 +130,9 @@ fn tui_registry_names_what_the_package_exports() {
         "Text",
         "Input",
         "ScrollBox",
+        "Select",
+        "TabSelect",
+        "Textarea",
         "useKeyboard",
     ] {
         assert!(
@@ -144,7 +147,19 @@ fn tui_registry_names_what_the_package_exports() {
         );
     }
 
-    assert_eq!(contract.components.len(), 4);
+    // Every component the contract names is something the package exports,
+    // which is the direction a reader of `uf inspect` relies on.
+    assert_eq!(contract.components.len(), 7);
+    for component in &contract.components {
+        assert!(
+            module
+                .flow_exports
+                .iter()
+                .any(|name| name == component.name.as_str()),
+            "@uniflowed/tui exports the {} its contract names",
+            component.name
+        );
+    }
     assert!(!contract.react_ink_target.replacement_ready);
 }
 

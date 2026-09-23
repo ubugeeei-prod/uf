@@ -15,7 +15,8 @@ as cells — and a diff that sends only the cells that changed.
 
 **What you will be able to do:** build a terminal application with the
 components and hooks you write for a page, handle the keyboard, focus, the mouse
-and selection, and test it without a terminal.
+and selection, give a reader a list to choose from and a box to write in, and
+test it without a terminal.
 
 **What you need first:** a project — [Your first project](/guide/project) — and
 React you already know.
@@ -82,6 +83,39 @@ columns; keys are named `"return"` and `"escape"` rather than `"enter"` and
 
 What is different is underneath. OpenTUI's core is Zig, reached over an FFI
 boundary. uf's is Flow — the argument is at the bottom of this page.
+
+### Wrapping, and boxes out of the line
+
+`flexWrap="wrap"` starts a new line for a child that would not fit, and the box
+grows to hold it; `rowGap` goes between the lines and `alignContent` places
+them, starting — as Yoga's and so OpenTUI's does — at `"flex-start"`, where
+CSS would stretch them. `"wrap-reverse"` stacks them from the other side.
+
+`position="absolute"` takes a box out of its parent's line: its siblings are
+laid out as if it were not there, and it is placed against the inside of the
+parent's border by `top`, `right`, `bottom` and `left`, in cells or as a
+percentage. Two offsets on one axis stretch it between them. With none it goes
+where the parent's `justifyContent` and `alignItems` would put it, so an
+overlay is centred by the props that centre anything else. A negative offset is
+allowed, which is how a badge sits on its parent's border:
+
+```js
+<Box border={true} width={20} height={5}>
+  <Text position="absolute" top={-1} right={1}>
+    3 new
+  </Text>
+</Box>
+```
+
+On a box left in the line — `position="relative"`, the default — the same four
+offsets nudge where it is drawn without moving anything around it. And
+`zIndex` decides which of two overlapping siblings is on top, for the mouse as
+well as for the eye; siblings that do not say stack in tree order.
+
+A `ScrollBox` reads neither `flexWrap` nor `position`: its children are one
+column whose heights it keeps between frames, which is what makes it cost its
+window, and a child out of that column would be a second answer to which rows
+are showing. There is no `aspectRatio` either.
 
 ## Only the cells that changed
 
@@ -371,6 +405,125 @@ is where the hold begins.
 The mode is turned off again when the application stops: a terminal left in it
 hands the *shell* brackets around every paste.
 
+## Choosing from a list
+
+`Select` is OpenTUI's `select`: a list of options, each a name with a
+description under it, that a reader moves through and chooses from.
+
+```js
+component Tasks() {
+  const [ran, setRan] = useState<string>("");
+  return (
+    <Box>
+      <Select
+        focused={true}
+        height={4}
+        options={[
+          { name: "build", description: "Compile the project" },
+          { name: "test", description: "Run the suite" },
+          { name: "lint", description: "Check the style" },
+        ]}
+        onSelect={(index, option) => setRan(option?.name ?? "")}
+      />
+      <Text>{ran === "" ? "nothing chosen" : `ran ${ran}`}</Text>
+    </Box>
+  );
+}
+```
+
+```text
+ ▶ build
+   Compile the project
+   test
+   Run the suite
+nothing chosen
+```
+
+The keys are OpenTUI's: <kbd>↑</kbd> or <kbd>k</kbd> and <kbd>↓</kbd> or
+<kbd>j</kbd> move, <kbd>Shift</kbd> with an arrow moves `fastScrollStep` items
+(five unless you say), and <kbd>Enter</kbd> chooses. Moving calls
+`onChange(index, option)` and choosing calls `onSelect(index, option)`, which
+are the names and the arguments OpenTUI's React binding uses. `wrapSelection`
+lets the ends meet; `showDescription`, `showSelectionIndicator`,
+`showScrollIndicator` and `itemSpacing` change the drawing.
+
+Give it a height and it scrolls: the selected item is kept in the middle of the
+rows there are, the window stops at either end of the list, and an item that
+would not fit whole is not drawn. Without a height it is as tall as all its
+items — OpenTUI's is as tall as its style says and no taller, and a box here is
+as tall as its content.
+
+`selectedIndex` is where it starts, and it moves on from there by itself. Pass
+a different number and it goes there. That is OpenTUI's model rather than
+React's controlled one, and it is what makes a list that remembers its place
+across screens a one-line change.
+
+`TabSelect` is the same thing sideways — OpenTUI's `tab-select`: a row of
+tabs `tabWidth` cells wide (twenty unless you say), a `▬` rule under the
+selected one, and its description under that. <kbd>←</kbd> or <kbd>[</kbd>
+and <kbd>→</kbd> or <kbd>]</kbd> move, <kbd>Enter</kbd> chooses. It shows as
+many tabs as fit, with `‹` and `›` when some do not, and its height is not
+yours to set: it is one row for the names, one for the rule and one for the
+description, less whichever of those two is turned off.
+
+The selected item is drawn in OpenTUI's colours — a slate background, a yellow
+name — and everything else in the terminal's own, where OpenTUI draws white on
+near-black. A hard-coded white is invisible on a light terminal. Each colour is
+a prop under OpenTUI's name if you want something else.
+
+Not here: OpenTUI's `font`, which draws the names in ASCII-art letters
+(`AsciiFont` is not implemented), and `keyBindings`, which rebinds the keys.
+
+## Several lines of text
+
+`Textarea` is OpenTUI's `textarea`: an editor for text with newlines in it.
+<kbd>Enter</kbd> is a newline, so submitting is <kbd>Meta</kbd>+<kbd>Enter</kbd>.
+
+```js
+<Textarea
+  focused={true}
+  height={6}
+  placeholder="What changed?"
+  onContentChange={setMessage}
+  onSubmit={(text) => commit(text)}
+/>
+```
+
+Lines wrap at a word by default — `wrapMode` also takes `"char"` and `"none"`,
+and with `"none"` the box scrolls sideways instead. With a height it scrolls to
+keep the cursor in view, and moves no further than it has to.
+
+The keys are OpenTUI's defaults. The arrows move by character and by row, and a
+row is a row *as drawn*, so <kbd>↓</kbd> inside a wrapped paragraph goes to its
+next row rather than to the next paragraph. <kbd>Home</kbd> and <kbd>End</kbd>
+go to the ends of the whole text; <kbd>Ctrl</kbd>+<kbd>A</kbd> and
+<kbd>Ctrl</kbd>+<kbd>E</kbd> to the ends of the line, and
+<kbd>Meta</kbd>+<kbd>A</kbd> and <kbd>Meta</kbd>+<kbd>E</kbd> to the ends of the
+row. <kbd>Meta</kbd>+<kbd>F</kbd> and <kbd>Meta</kbd>+<kbd>B</kbd> move by word.
+<kbd>Ctrl</kbd>+<kbd>W</kbd> deletes the word before the cursor and
+<kbd>Meta</kbd>+<kbd>D</kbd> the one after it; <kbd>Ctrl</kbd>+<kbd>K</kbd> and
+<kbd>Ctrl</kbd>+<kbd>U</kbd> delete to the end and the start of the line;
+<kbd>Ctrl</kbd>+<kbd>-</kbd> undoes and <kbd>Ctrl</kbd>+<kbd>.</kbd> redoes. A
+paste goes in whole, newlines and all, without the escape sequences a copy out
+of another terminal brings with it.
+
+Some of those need a terminal that can say them. Without the Kitty keyboard
+protocol, <kbd>Ctrl</kbd>+<kbd>Backspace</kbd> arrives as <kbd>Backspace</kbd>,
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> (delete the line) does not arrive
+at all, and <kbd>Ctrl</kbd>+<kbd>-</kbd> is a control character nothing can
+tell from <kbd>Ctrl</kbd>+<kbd>_</kbd>.
+
+It is controlled when you pass `value` and uncontrolled otherwise, as `Input`
+is. OpenTUI's is always uncontrolled and is read through a ref, which this
+package does not hand out — so `onContentChange` and `onSubmit` carry the text
+instead of an empty event, and `initialValue` is OpenTUI's name for where it
+starts.
+
+Not here: selecting inside the text with <kbd>Shift</kbd> and the arrows (a
+drag selects a textarea's text the way it selects any other, but an edit has no
+range to replace), the <kbd>Super</kbd> bindings, `keyBindings`, and a column
+the cursor remembers while it moves up and down through shorter lines.
+
 ## The mouse, and what it is under
 
 Mouse reporting is off until an application asks for it:
@@ -427,7 +580,8 @@ the painter fills as it draws, not a walk over the tree asking whose rectangle
 contains the point — those differ wherever `overflow: "hidden"` cut a child
 off, and inside a `ScrollBox`, where a row that has been scrolled out still has
 last frame's geometry on it. A box painted later is the box on top, because
-that is what the reader is looking at. There is no `zIndex` to say otherwise.
+that is what the reader is looking at — and `zIndex` is how a sibling asks to
+be painted later.
 
 **A drag belongs to the box it started on.** A left press remembers that box,
 and every motion after it is delivered there rather than to whatever the
@@ -455,10 +609,10 @@ Three of the terminal's own limits show through and are worth knowing before
 they surprise you. A hover needs the terminal to report motion with no button
 held, which is a report for every cell the pointer crosses — that is the cost
 of `over` and `out` working before a reader has clicked anything, and it is
-paid only by applications that asked for the mouse. Key *release* is not
-reported at all: `KeyEvent.eventType` is always `"press"`, because release
-needs the Kitty keyboard protocol
-([#314](https://github.com/ubugeeei-prod/uf/issues/314)). And a terminal too
+paid only by applications that asked for the mouse. Key *release* is reported
+only by a terminal that speaks the Kitty keyboard protocol; everywhere else
+`KeyEvent.eventType` is `"press"`, because that is all the terminal says. And a
+terminal too
 old for SGR-encoded reports gets no mouse rather than a wrong one — its
 encoding cannot express a column past 223, and this decoder recognises those
 reports only to discard them, so a click on such a terminal does nothing
@@ -638,18 +792,17 @@ behind it, which is the thing this was fixing.
 
 ## What is not here yet
 
-Key release, images, the rich-content components (`Code`, `Markdown`, `Diff`,
-`TextTable`) and OpenTUI's remaining application APIs — notifications, audio,
-animation — are not implemented. They are
+`Slider` and `ScrollBar`; the rich-content components (`Code`, `Markdown`,
+`LineNumbers`, `Diff`, `TextTable`); `AsciiFont`, `FrameBuffer`, `Image`,
+`QrCode` and `EmbeddedTerminal`; and OpenTUI's remaining application APIs —
+notifications, audio, `Timeline` — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
-rather than present as functions that throw: `uf inspect` reports four
-components because there are four.
+rather than present as functions that throw: `uf inspect` reports seven
+components because there are seven.
 
-The next selection-shaped gap is *item* selection — `Select` and `TabSelect`,
-which are components rather than a renderer capability, and which is why
-`uf inspect` reports text selection as implemented and neither of them as
-existing. Repeated-press gestures that widen a selection to a word or line are
-also still absent.
+Two smaller gaps are on the same issue. The repeated-press gestures that widen
+a text selection to a word or a line are absent, and so is `aspectRatio`, and
+wrapping or positioning inside a `ScrollBox`.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not

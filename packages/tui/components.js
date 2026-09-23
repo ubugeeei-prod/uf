@@ -2,18 +2,21 @@
 //
 // The components a caller writes, and the hooks they reach for.
 //
-// Four components, and the choice of which four is most of the argument of the
-// first two releases. `Box` is a flex container that can draw a frame around
-// itself; `Text` is a run of styled characters that knows how to wrap; `Input`
-// is a line a reader types into; `ScrollBox` is a window onto content taller
-// than it. Everything else OpenTUI offers — a select, a table, a diff view — is
-// those plus state, and shipping them badly is worse than not shipping them, so
-// they are ubugeeei-prod/uf#314 rather than stubs that throw.
+// Seven components. The first four were most of the argument of the first
+// two releases: `Box` is a flex container that can draw a frame around itself;
+// `Text` is a run of styled characters that knows how to wrap; `Input` is a
+// line a reader types into; `ScrollBox` is a window onto content taller than
+// it. Much of what else OpenTUI offers — a table, a diff view — is those plus
+// state, and shipping them badly is worse than not shipping them, so they are
+// ubugeeei-prod/uf#314 rather than stubs that throw.
 //
 // `ScrollBox` is the exception to "plus state", which is why it is a component
 // here rather than something a caller writes: which children are laid out and
 // painted depends on where the window is, and nothing above the renderer can
-// decide that.
+// decide that. The last three — `Select`, `TabSelect` and `Textarea` — are the
+// same exception for the same reason: which items a select shows and where a
+// textarea's lines break depend on the size layout gives them, so they draw
+// themselves after layout. `internal/widgets.js` argues it out.
 //
 // # Why these are `component`s and not intrinsic elements
 //
@@ -35,11 +38,12 @@
 //
 // Nothing that `ubugeeei-redundancy.md` forbids. Nothing below mutates during
 // render, reads a ref during render, or depends on a render happening exactly
-// once. `Input` keeps its cursor in state, not in a ref that a render reads;
-// `useTerminalSize` subscribes with `useSyncExternalStore` and returns a
-// snapshot that is stable between resizes; `ScrollBox` owns no scroll state at
-// all. All four are safe under Strict Mode's double invocation and under the
-// React Compiler's memoization.
+// once. `Input` and `Textarea` keep their cursors in state, not in a ref that
+// a render reads — `Textarea` reads its node through a ref only inside a key
+// handler, to know how wide its lines were drawn; `useTerminalSize` subscribes
+// with `useSyncExternalStore` and returns a snapshot that is stable between
+// resizes; `ScrollBox` owns no scroll state at all. All seven are safe under
+// Strict Mode's double invocation and under the React Compiler's memoization.
 
 import * as React from "@uniflowed/react";
 import {
@@ -56,18 +60,31 @@ import type { Clipboard } from "./clipboard.js";
 import type { KeyEvent } from "./keys.js";
 import type { MouseEvent } from "./mouse.js";
 import type {
+  AlignContent,
   AlignItems,
   AlignSelf,
   Dimension,
   FlexDirection,
+  FlexWrap,
   JustifyContent,
   LayoutStyle,
   Margin,
   Overflow,
+  Position,
 } from "./layout.js";
 import type { WrapMode } from "./internal/paint.js";
 import type { Renderer } from "./internal/host.js";
 import { RendererContext } from "./internal/host.js";
+import type { TuiNode } from "./internal/tree.js";
+import type { EditWrapMode, SelectOption } from "./internal/widgets.js";
+import {
+  contentBox,
+  editLines,
+  lineEnd,
+  locate,
+  offsetAt,
+  tabSelectHeight,
+} from "./internal/widgets.js";
 
 /** A colour, as `"#rrggbb"`, one of the sixteen names, or a packed number. */
 export type ColorValue = string | number;
@@ -84,8 +101,10 @@ export type TitleAlignment = "left" | "center" | "right";
  */
 export type BoxLayoutProps = {
   readonly flexDirection?: FlexDirection,
+  readonly flexWrap?: FlexWrap,
   readonly justifyContent?: JustifyContent,
   readonly alignItems?: AlignItems,
+  readonly alignContent?: AlignContent,
   readonly alignSelf?: AlignSelf,
   readonly flexGrow?: number,
   readonly flexShrink?: number,
@@ -112,6 +131,22 @@ export type BoxLayoutProps = {
   readonly rowGap?: number,
   readonly columnGap?: number,
   readonly overflow?: Overflow,
+  /** In its parent's flex line (`"relative"`, the default) or out of it. */
+  readonly position?: Position,
+  /**
+   * Offsets: where an absolutely positioned box sits against the inside of
+   * its parent's border, or how far a relative one is nudged from where its
+   * line put it. Cells or a percentage; negative is allowed.
+   */
+  readonly top?: Dimension,
+  readonly right?: Dimension,
+  readonly bottom?: Dimension,
+  readonly left?: Dimension,
+  /**
+   * Which of two overlapping siblings is on top: the higher one, painted
+   * later. Ties, and siblings that give none, stack in tree order.
+   */
+  readonly zIndex?: number,
 };
 
 /** Everything that paints a node's text. Inherited by nested `Text`. */
@@ -618,4 +653,635 @@ export component Input(
   }, [at, bg, fg, focused, placeholder, placeholderColor, showPlaceholder, text]);
 
   return React.createElement(Box, { ...layout, focusable: true, focused, onKeyDown }, body);
+}
+
+/**
+ * Whether `key` is exactly `name` with exactly these modifiers held.
+ *
+ * Exactly, because that is how OpenTUI matches a binding: `up` and `shift+up`
+ * are two bindings that do two different things in a `Select`, and a match
+ * that ignored Shift would make the second unreachable.
+ */
+function bound(
+  key: KeyEvent,
+  name: string,
+  ctrl: boolean = false,
+  shift: boolean = false,
+  meta: boolean = false,
+): boolean {
+  return key.name === name && key.ctrl === ctrl && key.shift === shift && key.meta === meta;
+}
+
+/**
+ * An index the caller owns the initial value of, and the component moves.
+ *
+ * OpenTUI's `selectedIndex` is a property the component starts at and keeps
+ * moving on its own; setting it again moves it again. That is neither React's
+ * controlled nor its uncontrolled pattern, and it is reproduced as it is: the
+ * index is this component's state, and a *change* to the prop replaces it. The
+ * previous prop is kept beside the state so the change can be seen during the
+ * render that brings it — React's documented way of adjusting state to a prop,
+ * which runs no effect and draws no frame with the stale index in it.
+ */
+hook useMovingIndex(requested: number): [number, (next: number) => void] {
+  const [state, setState] = useState<{ index: number, requested: number }>({
+    index: requested,
+    requested,
+  });
+  let index = state.index;
+  if (state.requested !== requested) {
+    index = requested;
+    setState({ index: requested, requested });
+  }
+  const move = (next: number) => {
+    setState({ index: next, requested });
+  };
+  return [index, move];
+}
+
+/** The colours both selects accept, under OpenTUI's names. */
+export type SelectColorProps = {
+  /** Behind the whole list. Unset is the terminal's own background. */
+  readonly backgroundColor?: ColorValue,
+  /** Every name but the selected one. Unset is the terminal's own colour. */
+  readonly textColor?: ColorValue,
+  /** `backgroundColor` while the select has focus. */
+  readonly focusedBackgroundColor?: ColorValue,
+  /** `textColor` while the select has focus. */
+  readonly focusedTextColor?: ColorValue,
+  /** Behind the selected item. OpenTUI's `#334455` by default. */
+  readonly selectedBackgroundColor?: ColorValue,
+  /** The selected item's name. OpenTUI's `#FFFF00` by default. */
+  readonly selectedTextColor?: ColorValue,
+  /** The selected item's description. OpenTUI's `#CCCCCC` by default. */
+  readonly selectedDescriptionColor?: ColorValue,
+};
+
+/** Everything a `Select` accepts. */
+export type SelectProps = {
+  ...BoxLayoutProps,
+  ...SelectColorProps,
+  readonly id?: string,
+  /** The items, in order. OpenTUI's `SelectOption`: a name, a description, a value. */
+  readonly options?: $ReadOnlyArray<SelectOption>,
+  /** The item selected to begin with, and whenever this prop changes. */
+  readonly selectedIndex?: number,
+  /** Whether this select has focus, and so receives the keys. */
+  readonly focused?: boolean,
+  /** The selection moved: up, down, or by `fastScrollStep` with Shift. */
+  readonly onChange?: (index: number, option: SelectOption | null) => void,
+  /** Enter was pressed on an item. */
+  readonly onSelect?: (index: number, option: SelectOption | null) => void,
+  /** Whether moving past either end comes round to the other. Off by default. */
+  readonly wrapSelection?: boolean,
+  /** Whether each item has its description under it. On by default. */
+  readonly showDescription?: boolean,
+  /** Whether the selected item has `▶ ` in front of it. On by default. */
+  readonly showSelectionIndicator?: boolean,
+  /** Whether a `█` down the right edge says where in the list the window is. */
+  readonly showScrollIndicator?: boolean,
+  /** Blank rows after each item. */
+  readonly itemSpacing?: number,
+  /** How many items Shift+Up and Shift+Down move. Five by default. */
+  readonly fastScrollStep?: number,
+  /** Every description but the selected one's. OpenTUI's `#888888` by default. */
+  readonly descriptionColor?: ColorValue,
+};
+
+const EMPTY_OPTIONS: $ReadOnlyArray<SelectOption> = [];
+
+/**
+ * A vertical list a reader moves through and chooses from.
+ *
+ * OpenTUI's `select`, with its keys: Up or `k` and Down or `j` move one item,
+ * Shift+Up and Shift+Down move `fastScrollStep`, and Enter chooses. Moving
+ * calls `onChange(index, option)` and choosing calls `onSelect(index, option)`
+ * — the two events OpenTUI's React binding exposes, under the same names and
+ * with the same arguments.
+ *
+ * ```js
+ * <Select
+ *   focused={true}
+ *   height={6}
+ *   options={[
+ *     { name: "build", description: "Compile the project" },
+ *     { name: "test", description: "Run the suite" },
+ *   ]}
+ *   onSelect={(index, option) => run(option?.name)}
+ * />
+ * ```
+ *
+ * Give it a height to make it scroll. The selected item then stays in the
+ * middle of the rows there are, and the window stops at either end of the
+ * list, which is OpenTUI's rule. Without one it is as tall as all its items —
+ * a box here is as tall as its content, where OpenTUI's is as tall as its
+ * style and no taller.
+ *
+ * # What is not here
+ *
+ * `font`, which draws each name in one of OpenTUI's ASCII-art fonts: this
+ * package has no fonts, and `AsciiFont` is still ubugeeei-prod/uf#314.
+ * `keyBindings` and `keyAliasMap`, which rebind the keys: the keys above are
+ * the only ones, and a caller who wants others binds them with `useKeyboard`
+ * and moves `selectedIndex`. And the default colours for text that is *not*
+ * selected: OpenTUI draws it white, on `#1a1a1a` when focused, which is
+ * unreadable on a light terminal, so unset here means the terminal's own
+ * colours. The selected item's colours are OpenTUI's, because "selected" has
+ * to be visible whatever the theme.
+ */
+export component Select(...props: SelectProps) {
+  const {
+    options = EMPTY_OPTIONS,
+    selectedIndex = 0,
+    onChange,
+    onSelect,
+    wrapSelection = false,
+    fastScrollStep = 5,
+    ...rest
+  } = props;
+  const [index, move] = useMovingIndex(selectedIndex);
+  const current = options.length > 0 ? Math.min(Math.max(0, index), options.length - 1) : 0;
+
+  const onKeyDown = (key: KeyEvent) => {
+    if (key.eventType === "release") {
+      return;
+    }
+    const moveBy = (steps: number) => {
+      const target = current + steps;
+      let next: number;
+      if (target >= 0 && target < options.length) {
+        next = target;
+      } else if (wrapSelection && options.length > 0) {
+        next = steps < 0 ? options.length - 1 : 0;
+      } else {
+        next = steps < 0 ? 0 : Math.max(0, options.length - 1);
+      }
+      move(next);
+      // Reported even when the index did not change, at either end of a list
+      // that does not wrap. OpenTUI does the same.
+      if (onChange != null) {
+        onChange(next, options[next] ?? null);
+      }
+    };
+    if (bound(key, "up") || bound(key, "k")) {
+      moveBy(-1);
+    } else if (bound(key, "down") || bound(key, "j")) {
+      moveBy(1);
+    } else if (bound(key, "up", false, true)) {
+      moveBy(-fastScrollStep);
+    } else if (bound(key, "down", false, true)) {
+      moveBy(fastScrollStep);
+    } else if (bound(key, "return")) {
+      const option = options[current];
+      if (option != null && onSelect != null) {
+        onSelect(current, option);
+      }
+    }
+  };
+
+  return React.createElement("uf-select", {
+    ...rest,
+    options,
+    selectedIndex: current,
+    focusable: true,
+    onKeyDown,
+    // What a select draws is a list of choices, not a paragraph: a drag over
+    // one is not a copy of its names, which is also true of OpenTUI's.
+    selectable: false,
+  });
+}
+
+/** Everything a `TabSelect` accepts. */
+export type TabSelectProps = {
+  ...BoxLayoutProps,
+  ...SelectColorProps,
+  readonly id?: string,
+  /** The tabs, in order. The selected one's description is drawn under them. */
+  readonly options?: $ReadOnlyArray<SelectOption>,
+  /** The tab selected to begin with, and whenever this prop changes. */
+  readonly selectedIndex?: number,
+  /** Whether this select has focus, and so receives the keys. */
+  readonly focused?: boolean,
+  /** The selection moved left or right. */
+  readonly onChange?: (index: number, option: SelectOption | null) => void,
+  /** Enter was pressed on a tab. */
+  readonly onSelect?: (index: number, option: SelectOption | null) => void,
+  /** Cells each tab is given. Twenty by default, as in OpenTUI. */
+  readonly tabWidth?: number,
+  /** Whether moving past either end comes round to the other. Off by default. */
+  readonly wrapSelection?: boolean,
+  /** Whether the selected tab's description is drawn. On by default. */
+  readonly showDescription?: boolean,
+  /** Whether a `▬` rule is drawn under the selected tab. On by default. */
+  readonly showUnderline?: boolean,
+  /** Whether `‹` and `›` say there are tabs off either edge. On by default. */
+  readonly showScrollArrows?: boolean,
+};
+
+/**
+ * A row of tabs a reader moves along and chooses from.
+ *
+ * OpenTUI's `tab-select`, with its keys: Left or `[` and Right or `]` move,
+ * and Enter chooses; `onChange` and `onSelect` are called as a `Select`'s are.
+ * Unlike a `Select`, moving past an end of a row that does not wrap is not
+ * reported — the index did not move, and OpenTUI says nothing either.
+ *
+ * Its height is not a prop. It is one row for the names, one for the rule
+ * under the selected tab and one for its description, less whichever of the
+ * two is turned off — which is OpenTUI's rule, and the reason a `height` given
+ * to one is overridden rather than obeyed. As many tabs as fit across its
+ * width are shown, the selected one kept in the middle.
+ *
+ * The same things are missing as from `Select`, for the same reasons:
+ * `keyBindings`, `keyAliasMap`, and OpenTUI's default colours for the tabs
+ * that are not selected.
+ */
+export component TabSelect(...props: TabSelectProps) {
+  const {
+    options = EMPTY_OPTIONS,
+    selectedIndex = 0,
+    onChange,
+    onSelect,
+    wrapSelection = false,
+    showUnderline = true,
+    showDescription = true,
+    ...rest
+  } = props;
+  const [index, move] = useMovingIndex(selectedIndex);
+  const current = options.length > 0 ? Math.min(Math.max(0, index), options.length - 1) : 0;
+
+  const onKeyDown = (key: KeyEvent) => {
+    if (key.eventType === "release") {
+      return;
+    }
+    let next = -1;
+    if (bound(key, "left") || bound(key, "[")) {
+      if (current > 0) {
+        next = current - 1;
+      } else if (wrapSelection && options.length > 0) {
+        next = options.length - 1;
+      }
+    } else if (bound(key, "right") || bound(key, "]")) {
+      if (current < options.length - 1) {
+        next = current + 1;
+      } else if (wrapSelection && options.length > 0) {
+        next = 0;
+      }
+    } else if (bound(key, "return")) {
+      const option = options[current];
+      if (option != null && onSelect != null) {
+        onSelect(current, option);
+      }
+      return;
+    }
+    if (next < 0) {
+      return;
+    }
+    move(next);
+    if (onChange != null) {
+      onChange(next, options[next] ?? null);
+    }
+  };
+
+  return React.createElement("uf-tab-select", {
+    ...rest,
+    options,
+    selectedIndex: current,
+    showUnderline,
+    showDescription,
+    height: tabSelectHeight(showUnderline, showDescription),
+    focusable: true,
+    onKeyDown,
+    selectable: false,
+  });
+}
+
+/** Everything a `Textarea` accepts. */
+export type TextareaProps = {
+  ...BoxLayoutProps,
+  readonly id?: string,
+  /** The text, when the caller controls it. */
+  readonly value?: string,
+  /** The text to begin with, when it does not. OpenTUI's name for it. */
+  readonly initialValue?: string,
+  /** What to show while there is no text. */
+  readonly placeholder?: string,
+  /** OpenTUI's `#666666` by default. */
+  readonly placeholderColor?: ColorValue,
+  /** Whether this textarea has focus, and so receives the keys. */
+  readonly focused?: boolean,
+  /** How long lines break: at a word, anywhere, or not at all. `"word"` by default. */
+  readonly wrapMode?: EditWrapMode,
+  readonly textColor?: ColorValue,
+  readonly backgroundColor?: ColorValue,
+  readonly focusedTextColor?: ColorValue,
+  readonly focusedBackgroundColor?: ColorValue,
+  /** Called with the new text on every edit. */
+  readonly onContentChange?: (value: string) => void,
+  /** Called with the text when Meta+Enter is pressed. */
+  readonly onSubmit?: (value: string) => void,
+};
+
+/** An edit the undo history can take back: the text and cursor before it. */
+type Snapshot = { readonly text: string, readonly cursor: number };
+
+/** How many edits `Ctrl+-` can take back. */
+const UNDO_DEPTH = 200;
+
+const GRAPHEME_BREAKS = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** The grapheme boundary before `at`, so a cursor never stands inside one. */
+function previousBoundary(text: string, at: number): number {
+  let previous = 0;
+  for (const segment of GRAPHEME_BREAKS.segment(text)) {
+    if (segment.index >= at) {
+      break;
+    }
+    previous = segment.index;
+  }
+  return previous;
+}
+
+/** The grapheme boundary after `at`. */
+function nextBoundary(text: string, at: number): number {
+  for (const segment of GRAPHEME_BREAKS.segment(text)) {
+    if (segment.index > at) {
+      return segment.index;
+    }
+  }
+  return text.length;
+}
+
+const isSpace = (character: string | void): boolean => character != null && /\s/.test(character);
+
+/** Where Meta+F lands: past the whitespace ahead, then past the word after it. */
+function wordForward(text: string, at: number): number {
+  let cursor = at;
+  while (cursor < text.length && isSpace(text[cursor])) {
+    cursor += 1;
+  }
+  while (cursor < text.length && !isSpace(text[cursor])) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+/** Where Meta+B lands: back over whitespace, then to the start of the word before it. */
+function wordBackward(text: string, at: number): number {
+  let cursor = at;
+  while (cursor > 0 && isSpace(text[cursor - 1])) {
+    cursor -= 1;
+  }
+  while (cursor > 0 && !isSpace(text[cursor - 1])) {
+    cursor -= 1;
+  }
+  return cursor;
+}
+
+/** The start of the logical line `at` is on. */
+function lineStart(text: string, at: number): number {
+  return at === 0 ? 0 : text.lastIndexOf("\n", at - 1) + 1;
+}
+
+/** The end of the logical line `at` is on, before its newline. */
+function lineFinish(text: string, at: number): number {
+  const newline = text.indexOf("\n", at);
+  return newline < 0 ? text.length : newline;
+}
+
+/**
+ * Pasted text, as it can go into a textarea.
+ *
+ * Line endings become `\n`, which is the only one this component draws, and
+ * escape sequences and control characters other than newline and tab are
+ * dropped — OpenTUI strips ANSI from a paste for the same reason `Input` drops
+ * a pasted bell: text copied out of another terminal carries its colours with
+ * it, and pasting them would draw them.
+ */
+function cleanPaste(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
+}
+
+/**
+ * Several lines a reader types into.
+ *
+ * OpenTUI's `textarea`, and its keys. The arrows move a character or a line —
+ * a line as it is *drawn*, so Down in a wrapped paragraph goes to the next row
+ * of it rather than the next paragraph. Home and End go to the start and end
+ * of the whole text, `Ctrl+A` and `Ctrl+E` to the start and end of the line,
+ * and `Meta+A` and `Meta+E` to the start and end of the row it is wrapped
+ * onto. `Meta+F`/`Meta+B`, `Meta+→`/`Meta+←` and `Ctrl+→`/`Ctrl+←` move by
+ * word; `Ctrl+F` and `Ctrl+B` by character. Backspace and Delete (and
+ * `Ctrl+D`) delete a character; `Ctrl+W`, `Meta+Backspace` and
+ * `Ctrl+Backspace` the word before the cursor, `Meta+D`, `Meta+Delete` and
+ * `Ctrl+Delete` the word after it; `Ctrl+K` to the end of the line, `Ctrl+U`
+ * to its start, and `Ctrl+Shift+D` the whole line. Enter is a newline and
+ * `Meta+Enter` submits. `Ctrl+-` undoes and `Ctrl+.` redoes. A paste goes in
+ * whole, newlines and all.
+ *
+ * Some of those only exist where the terminal can say them. A terminal
+ * without the Kitty protocol sends the same byte for Backspace and
+ * Ctrl+Backspace, has no Ctrl+Shift+D at all, and sends `Ctrl+-` as a control
+ * character nothing can tell from `Ctrl+_`; on one that has it, all of them
+ * arrive as themselves.
+ *
+ * Controlled when `value` is given and uncontrolled otherwise, as `Input` is;
+ * OpenTUI's is always uncontrolled and is read through a ref, which this
+ * package does not hand out, so `onContentChange` and `onSubmit` carry the
+ * text rather than an empty event. The cursor is this component's own state
+ * for the reason `Input` gives, and is drawn the way `Input` draws it.
+ *
+ * Give it a height and it scrolls to keep the cursor in view, moving no
+ * further than it has to. Without one it is as tall as its text.
+ *
+ * # What is not here
+ *
+ * Selection inside the text with Shift and the arrows, and the `select-*`
+ * bindings that go with it: a drag over a textarea selects its cells as it
+ * does any other text, but there is no range inside the buffer for an edit to
+ * replace. The `Super` bindings, which need a modifier `KeyEvent` does not
+ * carry. `keyBindings` and `keyAliasMap`. Syntax styles, extmarks and line
+ * numbers, which are OpenTUI's `Code` and `LineNumbers` territory and still
+ * ubugeeei-prod/uf#314. And a column the cursor remembers: moving up through a
+ * short line and on to a long one lands at the short line's end, not at the
+ * column the cursor started in.
+ */
+export component Textarea(...props: TextareaProps) {
+  const {
+    value,
+    initialValue = "",
+    focused = false,
+    wrapMode = "word",
+    onContentChange,
+    onSubmit,
+    ...rest
+  } = props;
+  const [internal, setInternal] = useState<string>(initialValue);
+  const text = value ?? internal;
+  const [cursor, setCursor] = useState<number>(text.length);
+  const at = Math.min(cursor, text.length);
+  const [history, setHistory] = useState<{
+    undo: $ReadOnlyArray<Snapshot>,
+    redo: $ReadOnlyArray<Snapshot>,
+  }>({ undo: [], redo: [] });
+  const node = useRef<TuiNode | null>(null);
+
+  const change = (next: string, nextCursor: number) => {
+    if (value == null) {
+      setInternal(next);
+    }
+    setCursor(nextCursor);
+    if (onContentChange != null) {
+      onContentChange(next);
+    }
+  };
+
+  const onKeyDown = (key: KeyEvent) => {
+    if (key.eventType === "release") {
+      return;
+    }
+    const replace = (from: number, to: number, insert: string) => {
+      if (from === to && insert === "") {
+        return;
+      }
+      setHistory({
+        undo: [...history.undo, { text, cursor: at }].slice(-UNDO_DEPTH),
+        redo: [],
+      });
+      change(text.slice(0, from) + insert + text.slice(to), from + insert.length);
+    };
+    // The lines as they were drawn: the node is read here, in an event, and
+    // never while rendering. Before the first frame it has no width, and the
+    // lines are then the logical ones.
+    const lines = () => {
+      const drawn = node.current;
+      return editLines(text, drawn == null ? 0 : contentBox(drawn).width, wrapMode);
+    };
+    const vertical = (direction: number) => {
+      const drawn = lines();
+      const { row, column } = locate(drawn, at);
+      const target = drawn[row + direction];
+      if (target != null) {
+        setCursor(offsetAt(target, column));
+      }
+    };
+
+    if (bound(key, "left") || bound(key, "b", true)) {
+      setCursor(previousBoundary(text, at));
+    } else if (bound(key, "right") || bound(key, "f", true)) {
+      setCursor(nextBoundary(text, at));
+    } else if (bound(key, "up")) {
+      vertical(-1);
+    } else if (bound(key, "down")) {
+      vertical(1);
+    } else if (bound(key, "home")) {
+      setCursor(0);
+    } else if (bound(key, "end")) {
+      setCursor(text.length);
+    } else if (bound(key, "a", true)) {
+      setCursor(lineStart(text, at));
+    } else if (bound(key, "e", true)) {
+      setCursor(lineFinish(text, at));
+    } else if (bound(key, "a", false, false, true) || bound(key, "e", false, false, true)) {
+      const drawn = lines();
+      const line = drawn[locate(drawn, at).row];
+      if (line != null) {
+        setCursor(key.name === "a" ? line.start : lineEnd(line));
+      }
+    } else if (
+      bound(key, "f", false, false, true) ||
+      bound(key, "right", false, false, true) ||
+      bound(key, "right", true)
+    ) {
+      setCursor(wordForward(text, at));
+    } else if (
+      bound(key, "b", false, false, true) ||
+      bound(key, "left", false, false, true) ||
+      bound(key, "left", true)
+    ) {
+      setCursor(wordBackward(text, at));
+    } else if (
+      bound(key, "w", true) ||
+      bound(key, "backspace", true) ||
+      bound(key, "backspace", false, false, true)
+    ) {
+      replace(wordBackward(text, at), at, "");
+    } else if (
+      bound(key, "d", false, false, true) ||
+      bound(key, "delete", false, false, true) ||
+      bound(key, "delete", true)
+    ) {
+      replace(at, wordForward(text, at), "");
+    } else if (bound(key, "d", true, true)) {
+      const start = lineStart(text, at);
+      const finish = lineFinish(text, at);
+      // The line and one of the newlines beside it, so no empty line is left
+      // where it was: the one after it, or the one before the last line.
+      if (finish < text.length) {
+        replace(start, finish + 1, "");
+      } else {
+        replace(Math.max(0, start - 1), finish, "");
+      }
+    } else if (bound(key, "k", true)) {
+      replace(at, lineFinish(text, at), "");
+    } else if (bound(key, "u", true)) {
+      replace(lineStart(text, at), at, "");
+    } else if (bound(key, "backspace") || bound(key, "backspace", false, true)) {
+      replace(previousBoundary(text, at), at, "");
+    } else if (bound(key, "delete") || bound(key, "d", true) || bound(key, "delete", false, true)) {
+      replace(at, nextBoundary(text, at), "");
+    } else if (bound(key, "return", false, false, true)) {
+      if (onSubmit != null) {
+        onSubmit(text);
+      }
+    } else if (bound(key, "return")) {
+      replace(at, at, "\n");
+    } else if (bound(key, "-", true)) {
+      const previous = history.undo[history.undo.length - 1];
+      if (previous != null) {
+        setHistory({
+          undo: history.undo.slice(0, -1),
+          redo: [...history.redo, { text, cursor: at }],
+        });
+        change(previous.text, previous.cursor);
+      }
+    } else if (bound(key, ".", true)) {
+      const next = history.redo[history.redo.length - 1];
+      if (next != null) {
+        setHistory({
+          undo: [...history.undo, { text, cursor: at }],
+          redo: history.redo.slice(0, -1),
+        });
+        change(next.text, next.cursor);
+      }
+    } else if (key.name === "paste") {
+      replace(at, at, cleanPaste(key.sequence));
+    } else if (!key.ctrl && !key.meta) {
+      if (key.name === "space") {
+        replace(at, at, " ");
+        return;
+      }
+      // Anything else with printable text behind it. The same test as
+      // OpenTUI's: a first character below a space or at DEL is a control
+      // key that happens to carry one, such as Tab.
+      const code = key.sequence.charCodeAt(0);
+      if (key.sequence !== "" && code >= 0x20 && code !== 0x7f) {
+        replace(at, at, key.sequence);
+      }
+    }
+  };
+
+  return React.createElement("uf-textarea", {
+    ...rest,
+    ref: node,
+    value: text,
+    cursor: at,
+    focused,
+    wrapMode,
+    focusable: true,
+    onKeyDown,
+  });
 }
