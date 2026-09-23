@@ -36,7 +36,9 @@
 import * as React from "@uniflowed/react";
 import { describe, expect, it } from "@uniflowed/test";
 import { createDispatcher } from "@uniflowed/router/handler";
+import type { HandlerModule, HandlerRecord } from "@uniflowed/router/handler";
 import { createMiddlewareRunner } from "@uniflowed/router/middleware";
+import type { MiddlewareRecord } from "@uniflowed/router/middleware";
 import { beginRequest, createActionDispatcher, createRenderer } from "@uniflowed/router/server";
 import { recordingLogger } from "@uniflowed/server/log";
 import { routerView } from "@uniflowed/router";
@@ -44,22 +46,23 @@ import { after, cookies, draftMode, headers } from "@uniflowed/server";
 import { createHandler } from "@uniflowed/server/standalone";
 
 import { nodeListener } from "@uniflowed/server/node";
+import type { NodeResponse } from "@uniflowed/server/node";
 
 // Not a package export: the generated server module's text is `@uniflowed/vite`'s
 // own, and `serve.test.js` reaches into that package the same way.
 import { serverModuleSource } from "../../packages/vite/internal/routes.js";
 
-const get = (url: string, init?: mixed) => new Request(`http://localhost${url}`, init);
+const get = (url: string, init?: RequestOptions) => new Request(`http://localhost${url}`, init);
 
 /** A middleware table entry whose module is given inline. */
-const guard = (path: string, middleware: mixed) => ({
+const guard = (path: string, middleware: mixed): MiddlewareRecord => ({
   path,
   file: `app${path === "/" ? "" : path}/$middleware.js`,
   load: async () => ({ default: middleware }),
 });
 
 /** A handler table entry whose module is given inline. */
-const route = (path: string, module: mixed) => ({
+const route = (path: string, module: HandlerModule): HandlerRecord => ({
   path,
   params: [],
   file: `app${path}/$route.js`,
@@ -75,7 +78,11 @@ const route = (path: string, module: mixed) => ({
  * middleware and a handler have no socket in them and this is the shape they
  * see.
  */
-async function serving<T>(request: Request, answer: () => Promise<T>, write: () => mixed) {
+async function serving<T>(
+  request: Request,
+  answer: () => Promise<T>,
+  write: () => mixed,
+): Promise<T> {
   const { run, settle } = beginRequest(request);
   try {
     const result = await run(answer);
@@ -162,7 +169,7 @@ describe("a middleware's deferred work", () => {
       () => order.push("403 written"),
     );
 
-    expect(response?.status).toBe(403);
+    expect(answeredBy(response).status).toBe(403);
     // The claim, in one line. The runner used to drain before returning, so
     // "audited the denial" came first — the audit of a rejection recorded
     // before the rejection was sent.
@@ -394,9 +401,11 @@ describe("the request a page is inside", () => {
 
     const result = await renderer.render("/", { scripts: [], styles: [], preloads: [] });
 
-    expect(String((result.error: $FlowFixMe)?.message)).toContain(
-      "cookies() was called outside a request",
-    );
+    const failure = result.error;
+    if (!(failure instanceof Error)) {
+      throw new Error(`expected the render to fail, and it answered ${String(failure)}`);
+    }
+    expect(failure.message).toContain("cookies() was called outside a request");
   });
 
   it("runs a page's deferred work after the document has been written", async () => {
@@ -429,8 +438,8 @@ describe("the request a page is inside", () => {
  * own `cookies()` reads. A fake here would prove the host calls something.
  */
 function bundle(options: {
-  middleware?: $ReadOnlyArray<mixed>,
-  handlers?: $ReadOnlyArray<mixed>,
+  middleware?: $ReadOnlyArray<MiddlewareRecord>,
+  handlers?: $ReadOnlyArray<HandlerRecord>,
   render?: (url: string) => mixed,
 }) {
   return {
@@ -445,10 +454,10 @@ function bundle(options: {
   };
 }
 
-function emptyStream(): ReadableStream {
+function emptyStream(): ReadableStream<Uint8Array> {
   return new ReadableStream({
-    start(controller: mixed) {
-      (controller: $FlowFixMe).close();
+    start: (controller: ReadableStreamDefaultController<Uint8Array>) => {
+      controller.close();
     },
   });
 }
@@ -460,18 +469,32 @@ const incoming = (method: string, url: string) => ({
   headers: { host: "example.test" },
 });
 
+/**
+ * The `Response` a host is handed, from a dispatcher or a guard that may also
+ * decline (`null`) or rewrite (a `Request`). Each case here is one the table
+ * answers, so anything else is the case failing.
+ */
+function answeredBy(answer: Response | Request | null): Response {
+  if (!(answer instanceof Response)) {
+    throw new Error(`expected an answer, and the table gave ${String(answer)}`);
+  }
+  return answer;
+}
+
 const text = (chunk: Uint8Array | string) =>
   typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
 
 /** A `ServerResponse` with the members the writers touch, and a record. */
 function outgoing(order: Array<string>) {
   const listeners: Map<string, Array<() => mixed>> = new Map();
-  return {
+  // The listener methods return the object by name rather than `this`, as a
+  // stream's do, so one taken off the response and called still chains.
+  const response: NodeResponse = {
     statusCode: 0,
     statusMessage: "",
     headersSent: false,
     setHeader() {},
-    write(chunk: Uint8Array): boolean {
+    write(chunk: Uint8Array | string): boolean {
       order.push(`wrote ${text(chunk)}`);
       return true;
     },
@@ -484,19 +507,20 @@ function outgoing(order: Array<string>) {
     destroy() {},
     on(event: string, listener: () => mixed) {
       listeners.set(event, [...(listeners.get(event) ?? []), listener]);
-      return this;
+      return response;
     },
     once(event: string, listener: () => mixed) {
-      return this.on(event, listener);
+      return response.on(event, listener);
     },
     off(event: string, listener: () => mixed) {
       listeners.set(
         event,
         (listeners.get(event) ?? []).filter((each) => each !== listener),
       );
-      return this;
+      return response;
     },
   };
+  return response;
 }
 
 describe("`uf start`, `uf preview` and a deployed directory", () => {
@@ -516,7 +540,7 @@ describe("`uf start`, `uf preview` and a deployed directory", () => {
         }),
       ],
     });
-    const listen = nodeListener(async (request) => await entry.dispatch(request), {
+    const listen = nodeListener(async (request) => answeredBy(await entry.dispatch(request)), {
       beginRequest: entry.beginRequest,
     });
 
@@ -536,7 +560,7 @@ describe("`uf start`, `uf preview` and a deployed directory", () => {
         }),
       ],
     });
-    const listen = nodeListener(async (request) => await entry.runMiddleware(request), {
+    const listen = nodeListener(async (request) => answeredBy(await entry.runMiddleware(request)), {
       beginRequest: entry.beginRequest,
     });
 
