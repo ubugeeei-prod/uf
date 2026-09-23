@@ -47,6 +47,7 @@ effect
 form
 immer
 mock
+sql
 std
 story
 testing
