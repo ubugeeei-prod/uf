@@ -196,7 +196,7 @@ export class QueryObserver<TData, TSelected = TData> {
     client: QueryClient,
     options: ResolvedQueryOptions<TData, TSelected>,
   ): QueryResult<TSelected> {
-    const query = client.cache.get(hashKey(options.queryKey)) as $FlowFixMe;
+    const query = this.entryFor(client, options);
     const candidate = this.buildResult(query, query?.state ?? EMPTY_STATE, options);
     const previous = this.result;
     if (previous != null && shallowEqual(previous, candidate)) {
@@ -204,6 +204,20 @@ export class QueryObserver<TData, TSelected = TData> {
     }
     this.result = candidate;
     return candidate;
+  }
+
+  /**
+   * The cache's entry for these options, if it has one, without building it.
+   *
+   * The cache holds every entry as a `Query<mixed>`; the one these options
+   * hash to holds this observer's `TData`, because the key is what decides
+   * what the query function answers.
+   */
+  entryFor(
+    client: QueryClient,
+    options: ResolvedQueryOptions<TData, TSelected>,
+  ): Query<TData> | void {
+    return client.cache.get(hashKey(options.queryKey)) as $FlowFixMe;
   }
 
   /**
@@ -276,7 +290,11 @@ export class QueryObserver<TData, TSelected = TData> {
    */
   attach(options: ResolvedQueryOptions<TData, TSelected>, refill: boolean = false): Query<TData> {
     const held = this.query;
-    if (held != null && this.client.cache.get(held.hash) === held) {
+    // Compared as `mixed`: the cache holds every entry as a `Query<mixed>`,
+    // this observer holds its own as a `Query<TData>`, and the question is only
+    // whether they are the same object.
+    const cached: mixed = held == null ? undefined : this.client.cache.get(held.hash);
+    if (held != null && cached === held) {
       return held;
     }
 

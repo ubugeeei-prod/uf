@@ -57,9 +57,16 @@ export function isPlainObject(value: mixed): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  const prototype: mixed = Object.getPrototypeOf(value);
+  return prototype === OBJECT_PROTOTYPE || prototype === null;
 }
+
+/**
+ * `Object.prototype`, read off a literal. Flow's library declares no static
+ * `prototype` on `Object`, and a literal's prototype is exactly the object the
+ * check above means.
+ */
+const OBJECT_PROTOTYPE: mixed = Object.getPrototypeOf({});
 
 /**
  * `next`, with every deeply-equal subtree replaced by `previous`'s reference.
@@ -87,7 +94,11 @@ export function structuralShare<T>(previous: mixed, next: T): T {
   const keys = bothArrays ? null : Object.keys(after);
   const size = bothArrays ? after.length : (keys as $FlowFixMe).length;
   const beforeSize = bothArrays ? before.length : Object.keys(before).length;
-  const copy = bothArrays ? new Array(size) : ({}: $FlowFixMe);
+  // Next's own shape, every slot of which the loop below overwrites. A copy
+  // of `after` rather than an empty one so that it has `after`'s type: the
+  // result of this function is `next` with some references swapped, and that
+  // is what `T` says.
+  const copy = bothArrays ? after.slice() : { ...after };
 
   // Counted rather than tracked with a flag, because "every child was shared"
   // is only half the answer: a child can be shared while the parent has gained
@@ -114,7 +125,10 @@ export function structuralShare<T>(previous: mixed, next: T): T {
  * [`structuralShare`], so identity is the correct question and a deep walk
  * here would be paying twice for an answer we already have.
  */
-export function shallowEqual(left: { +[string]: mixed }, right: { +[string]: mixed }): boolean {
+export function shallowEqual(
+  left: { readonly [string]: mixed },
+  right: { readonly [string]: mixed },
+): boolean {
   if (left === right) {
     return true;
   }

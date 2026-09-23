@@ -61,7 +61,7 @@ import type { RetryDelay, RetryPolicy } from "./retry.js";
 
 export type MutationStatus = "idle" | "pending" | "success" | "error";
 
-export type MutationState<TVariables, TData> = {|
+export type MutationState<out TVariables, out TData> = {|
   readonly status: MutationStatus,
   readonly data: TData | void,
   readonly error: Error | null,
@@ -169,7 +169,7 @@ export class Mutation<TVariables, TData, TContext> {
   /** Back to idle, forgetting the last result. */
   reset(): void {
     this.runId += 1;
-    this.setState(IDLE as $FlowFixMe);
+    this.setState(IDLE);
   }
 
   async execute(
@@ -240,8 +240,8 @@ export class Mutation<TVariables, TData, TContext> {
     }
   }
 
-  setState(patch: { +[string]: mixed }): void {
-    this.state = { ...this.state, ...patch } as $FlowFixMe;
+  setState(patch: Partial<MutationState<TVariables, TData>>): void {
+    this.state = { ...this.state, ...patch };
     for (const listener of Array.from(this.listeners)) {
       listener();
     }
