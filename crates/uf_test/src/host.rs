@@ -173,6 +173,10 @@ pub struct HostCommand {
     pub coverage_dir: Option<Utf8PathBuf>,
 }
 
+/// The variable that tells a worker it will be kept between runs; see
+/// [`HostCommand::with_kept_workers`].
+const KEEP_WORKERS: &str = "UF_TEST_KEEP_WORKERS";
+
 impl HostCommand {
     /// A command that runs the worker with no loader registered.
     ///
@@ -390,6 +394,35 @@ impl HostCommand {
         self.axe = axe;
         self
     }
+
+    /// Start workers that will be kept between runs, as `uf test --watch`
+    /// keeps them.
+    ///
+    /// A kept worker is told which files changed before its next run, and its
+    /// Flow loader records the graph it loads so that it can answer that; see
+    /// [`Worker::invalidate`]. A worker that is not kept loads every module
+    /// once, and records nothing it would never be asked about.
+    ///
+    /// Carried as `UF_TEST_KEEP_WORKERS=1` in [`HostCommand::env`] rather than
+    /// as a field of its own, so every existing way of building this struct
+    /// keeps compiling. A project whose `.env` sets the same name only makes
+    /// its workers record a graph nobody asks about.
+    #[must_use]
+    pub fn with_kept_workers(mut self, keep: bool) -> Self {
+        self.env.retain(|(name, _)| name != KEEP_WORKERS);
+        if keep {
+            self.env.push((KEEP_WORKERS.to_owned(), "1".to_owned()));
+        }
+        self
+    }
+
+    /// Whether [`HostCommand::with_kept_workers`] asked for kept workers.
+    #[must_use]
+    pub fn keeps_workers(&self) -> bool {
+        self.env
+            .iter()
+            .any(|(name, value)| name == KEEP_WORKERS && value == "1")
+    }
 }
 
 /// One file handed to a worker.
@@ -420,6 +453,17 @@ struct Request<'a> {
     generation: u64,
 }
 
+/// The files that changed, sent to a kept worker between runs.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InvalidateRequest<'a> {
+    /// Absolute paths, as the worker's loader resolves them.
+    invalidate: &'a [String],
+    /// Counted with the file requests, so an event a finished file left
+    /// behind cannot be taken for the answer to this.
+    generation: u64,
+}
+
 /// One line the worker wrote.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "event", rename_all = "kebab-case")]
@@ -431,6 +475,8 @@ enum Event {
     /// Something printed. A test's `console.log` arrives here rather than as a
     /// raw line, which is what stops it from being read as a malformed event.
     Output(OutputEvent),
+    /// The answer to an [`InvalidateRequest`].
+    Invalidated(InvalidatedEvent),
 }
 
 impl Event {
@@ -440,6 +486,7 @@ impl Event {
             Self::Test(event) => event.generation,
             Self::File(event) => event.generation,
             Self::Output(event) => event.generation,
+            Self::Invalidated(event) => event.generation,
         }
     }
 
@@ -460,6 +507,7 @@ impl Event {
                 None => format!("the file result \"{}\"", excerpt(&event.status)),
             },
             Self::Output(event) => format!("output \"{}\"", excerpt(&event.text)),
+            Self::Invalidated(_) => String::from("an answer about changed files"),
         }
     }
 }
@@ -519,6 +567,17 @@ struct FileEvent {
     #[serde(default)]
     duration_micros: Option<u64>,
     /// The request this was written under. See [`Request::generation`].
+    #[serde(default)]
+    generation: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InvalidatedEvent {
+    /// Whether the worker can promise its next file sees every change.
+    #[serde(default)]
+    ok: bool,
+    /// The request this answers. See [`Request::generation`].
     #[serde(default)]
     generation: u64,
 }
@@ -873,6 +932,7 @@ impl Worker {
             // can never lose one. The loader keys its cache on it too; see
             // `packages/host/internal/node-hooks.js`.
             .env("UF_IN_SOURCE_TESTS", "1")
+            .env(KEEP_WORKERS, if command.keeps_workers() { "1" } else { "" })
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             // The worker's stderr is the host's own noise — an unhandled
@@ -1080,6 +1140,9 @@ impl Worker {
                         records.push(record);
                     }
                     Ok(Event::Output(event)) => pending.push(event),
+                    // Only ever the answer to a request this method did not
+                    // send; nothing about this file.
+                    Ok(Event::Invalidated(_)) => {}
                     Ok(Event::File(event)) => {
                         self.reported_micros = event.duration_micros;
                         return FileOutcome {
@@ -1124,6 +1187,72 @@ impl Worker {
                 }
             }
         }
+    }
+
+    /// Tell a kept worker which files changed since it last ran one.
+    ///
+    /// `true` when the worker promises that the next file it imports sees every
+    /// one of them: the changed modules, and each module it has loaded that
+    /// reaches one, are imported afresh from then on, and nothing else is.
+    /// `false` when it cannot — it was not started to be kept, its host has no
+    /// in-thread loader to answer with, or a module in the way was loaded with
+    /// `require()` — and when it does not answer within `timeout` or at all. A
+    /// worker that says `false` must not run another file; the caller replaces
+    /// it with a fresh one, which cannot have seen the old code.
+    pub fn invalidate(&mut self, changed: &[String], timeout: Duration) -> bool {
+        if changed.is_empty() {
+            return true;
+        }
+        self.served.push(String::from("(the files that changed)"));
+        let generation = u64::try_from(self.served.len()).unwrap_or(u64::MAX);
+        let request = InvalidateRequest {
+            invalidate: changed,
+            generation,
+        };
+        let Ok(mut line) = serde_json::to_string(&request) else {
+            return false;
+        };
+        line.push('\n');
+        let Some(stdin) = self.stdin.as_mut() else {
+            return false;
+        };
+        if stdin
+            .write_all(line.as_bytes())
+            .and_then(|()| stdin.flush())
+            .is_err()
+        {
+            return false;
+        }
+        let started = Instant::now();
+        loop {
+            let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
+                return false;
+            };
+            match self.events.recv_timeout(remaining) {
+                Ok(line) => match serde_json::from_str::<Event>(&line) {
+                    Ok(Event::Invalidated(event)) if !is_stale(event.generation, generation) => {
+                        return event.ok;
+                    }
+                    // Whatever a finished file left behind, arriving late. It
+                    // belongs to nobody now, as in [`Worker::run_file`].
+                    Ok(_) => {}
+                    Err(_) => return false,
+                },
+                Err(_) => return false,
+            }
+        }
+    }
+
+    /// How many requests this worker has been sent: every file, every retry
+    /// of one, and every [`Worker::invalidate`].
+    ///
+    /// Counted whether or not the request was answered, because it is the
+    /// generation the next request will carry that this is a measure of. A
+    /// [`crate::WorkerPool`] reads it to retire a kept worker after
+    /// [`crate::MAX_REQUESTS_PER_KEPT_WORKER`], which is a bound on the modules
+    /// a long watch session has loaded afresh and never let go of.
+    pub fn served(&self) -> usize {
+        self.served.len()
     }
 
     /// How long the worker said its most recent file took, when it said.
@@ -1812,6 +1941,62 @@ mod tests {
             let event = serde_json::from_str::<Event>(line).expect("an event must parse");
             assert_eq!(event.generation(), 4, "in {line}");
         }
+    }
+
+    #[test]
+    fn a_kept_worker_is_told_what_changed_in_a_request_of_its_own() {
+        // No `file`: the worker's `serve` reads a request without one as the
+        // list of files that changed, and answers it without running anything.
+        let changed = [String::from("/project/dep.js")];
+        let line = serde_json::to_string(&InvalidateRequest {
+            invalidate: &changed,
+            generation: 3,
+        })
+        .expect("a request serialises");
+        assert_eq!(line, r#"{"invalidate":["/project/dep.js"],"generation":3}"#);
+    }
+
+    #[test]
+    fn a_worker_answers_whether_it_can_promise_the_next_file_sees_the_change() {
+        for (line, promised) in [
+            (r#"{"event":"invalidated","ok":true,"generation":3}"#, true),
+            (
+                r#"{"event":"invalidated","ok":false,"generation":3}"#,
+                false,
+            ),
+            // An answer that does not say is not a promise.
+            (r#"{"event":"invalidated","generation":3}"#, false),
+        ] {
+            let Ok(Event::Invalidated(event)) = serde_json::from_str::<Event>(line) else {
+                panic!("an invalidation answer must parse: {line}");
+            };
+            assert_eq!(event.ok, promised, "in {line}");
+            assert_eq!(event.generation, 3);
+        }
+    }
+
+    #[test]
+    fn a_worker_that_was_not_kept_is_told_so_and_records_no_graph() {
+        let node = HostCommand::new(
+            HostKind::Node,
+            Utf8PathBuf::from("node"),
+            Utf8PathBuf::from("worker.js"),
+            Utf8PathBuf::from("."),
+        );
+        assert!(!node.keeps_workers());
+        let kept = node.with_kept_workers(true);
+        assert!(kept.keeps_workers());
+        // Asked twice, said once; taken back, gone.
+        let again = kept.with_kept_workers(true);
+        assert_eq!(
+            again
+                .env
+                .iter()
+                .filter(|(name, _)| name == KEEP_WORKERS)
+                .count(),
+            1
+        );
+        assert!(!again.with_kept_workers(false).keeps_workers());
     }
 
     #[test]

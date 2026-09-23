@@ -42,6 +42,7 @@ use crate::filter::TestFilter;
 use crate::host::{FileOutcome, HostCommand, SpawnError, Worker};
 use crate::options::{Bail, Concurrency, RunOptions};
 use crate::plan::TestPlan;
+use crate::pool::WorkerPool;
 use crate::report::{FileReport, FileStatus, TestRunReport, TestStatus, TestSummary};
 use crate::schedule::{ScheduleEntry, auto_workers, schedule_files};
 use crate::timings::TestTimings;
@@ -239,7 +240,32 @@ impl TestRunner {
     ) -> Result<TestRunReport, RunError> {
         let started = Instant::now();
         let selected = self.select(files);
-        self.run_selected(started, selected, observer)
+        self.run_selected(started, selected, observer, None)
+    }
+
+    /// Run every file on workers kept in `pool`, notifying `observer` as each
+    /// one finishes: what `uf test --watch` does for every run after its first.
+    ///
+    /// Workers are taken from the pool before any is started, and every worker
+    /// that finishes its last file healthy is given back for the next run —
+    /// one that timed out or lost its host was stopped, as in any run. The
+    /// pool is borrowed rather than owned by the runner, because it outlives
+    /// every run that uses it. What keeps a kept worker from running the code
+    /// as it was before an edit is [`WorkerPool::invalidate`], which the caller
+    /// calls between runs.
+    ///
+    /// # Errors
+    ///
+    /// [`RunError`] when no host is configured or the host will not start.
+    pub fn run_observed_in(
+        &self,
+        files: &[TestFile],
+        observer: &dyn RunObserver,
+        pool: &WorkerPool,
+    ) -> Result<TestRunReport, RunError> {
+        let started = Instant::now();
+        let selected = self.select(files);
+        self.run_selected(started, selected, observer, Some(pool))
     }
 
     /// Run already-discovered files, notifying `observer` as each one finishes.
@@ -254,7 +280,7 @@ impl TestRunner {
     ) -> Result<TestRunReport, RunError> {
         let started = Instant::now();
         let selected = self.select_planned(files);
-        self.run_selected(started, selected, observer)
+        self.run_selected(started, selected, observer, None)
     }
 
     fn run_selected<'a>(
@@ -262,6 +288,7 @@ impl TestRunner {
         started: Instant,
         selected: Vec<SelectedFile<'a>>,
         observer: &dyn RunObserver,
+        pool: Option<&WorkerPool>,
     ) -> Result<TestRunReport, RunError> {
         let schedule = schedule_files(&sources_of(&selected), &self.timings);
         if schedule.is_empty() {
@@ -286,7 +313,10 @@ impl TestRunner {
         // first thread that wants one. It used to be a probe killed on the
         // spot, which was a whole host process started and thrown away on
         // every run, before any worker that did work had been started.
-        let first = Worker::spawn(host)?;
+        let first = match pool.and_then(WorkerPool::take) {
+            Some(kept) => kept,
+            None => Worker::spawn(host)?,
+        };
         observer.run_started(schedule.len(), workers);
 
         let state = RunState {
@@ -302,14 +332,19 @@ impl TestRunner {
         std::thread::scope(|scope| {
             let mut handles = Vec::with_capacity(workers);
             for _ in 0..workers {
-                handles
-                    .push(scope.spawn(|| self.drive(host, &selected, &schedule, &state, observer)));
+                handles.push(
+                    scope.spawn(|| self.drive(host, &selected, &schedule, &state, observer, pool)),
+                );
             }
             for handle in handles {
                 let _ = handle.join();
             }
         });
 
+        // A worker no thread wanted is still a healthy one.
+        if let (Some(pool), Some(unused)) = (pool, state.take_first()) {
+            pool.give_back(unused);
+        }
         let mut start_ups = state
             .start_ups
             .into_inner()
@@ -393,12 +428,16 @@ impl TestRunner {
         schedule: &[ScheduleEntry],
         state: &RunState,
         observer: &dyn RunObserver,
+        pool: Option<&WorkerPool>,
     ) {
         let mut worker: Option<Worker> = None;
         loop {
             let at = state.next.fetch_add(1, Ordering::Relaxed);
             if at >= schedule.len() {
-                retire(&mut worker, host);
+                match (pool, worker.take()) {
+                    (Some(pool), Some(healthy)) => pool.give_back(healthy),
+                    (_, mut last) => retire(&mut last, host),
+                }
                 return;
             }
             if self.bailed(state) {
@@ -416,6 +455,9 @@ impl TestRunner {
 
             if worker.is_none() {
                 worker = state.take_first();
+            }
+            if worker.is_none() {
+                worker = pool.and_then(WorkerPool::take);
             }
             if worker.is_none() {
                 worker = match Worker::spawn(host) {

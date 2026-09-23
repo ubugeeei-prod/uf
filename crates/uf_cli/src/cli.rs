@@ -876,6 +876,10 @@ pub(crate) enum Commands {
         #[arg(short = 'j', long, value_name = "N")]
         threads: Option<usize>,
         /// How often `--watch` looks for changes, in milliseconds.
+        ///
+        /// Left out, it looks as often as costs about two per cent of a core:
+        /// every 50 ms on a few hundred files, backing off to 250 ms on a
+        /// project large enough that a look takes longer.
         #[arg(long, value_name = "MS")]
         watch_interval: Option<u64>,
         /// Measure which of the project's Flow lines the suite executed.

@@ -321,3 +321,25 @@ fn the_next_poll_instant_is_one_interval_away() {
         now + Duration::from_millis(500)
     );
 }
+
+#[test]
+fn an_unchosen_interval_costs_about_two_per_cent_of_a_core() {
+    use crate::{DEFAULT_POLL_INTERVAL, MIN_POLL_INTERVAL, adaptive_interval};
+    // A narrowed session: a poll of a few hundred files is well under a
+    // millisecond, and the watcher looks as often as it ever does.
+    assert_eq!(
+        adaptive_interval(Duration::from_micros(400)),
+        MIN_POLL_INTERVAL
+    );
+    // A poll of 3 ms is waited on for fifty times that.
+    assert_eq!(
+        adaptive_interval(Duration::from_millis(3)),
+        Duration::from_millis(150)
+    );
+    // A huge selection, or a slow disk, never waits longer than the fixed
+    // default always did.
+    assert_eq!(
+        adaptive_interval(Duration::from_secs(1)),
+        DEFAULT_POLL_INTERVAL
+    );
+}

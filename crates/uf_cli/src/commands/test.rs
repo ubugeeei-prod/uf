@@ -493,7 +493,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     let run_files = cut.as_ref().map_or(&files[..], |cut| &cut.files[..]);
     let report = timer.measure("run", || match &planned {
         Some(planned) => run_once_planned(ui, &root, &host, planned, &args, timings.clone()),
-        None => run_once(ui, &root, &host, run_files, &args, timings.clone()),
+        None => run_once(ui, &root, &host, run_files, &args, timings.clone(), None),
     })?;
 
     // A shard measures and records. The reports and the thresholds are
@@ -1145,6 +1145,7 @@ pub(crate) fn run_once(
     files: &[ProjectFile],
     args: &TestArgs,
     timings: TestTimings,
+    pool: Option<&uf_test::WorkerPool>,
 ) -> Result<TestRunReport> {
     let sources = test_files(root, files);
     let runner = TestRunner::new()
@@ -1160,7 +1161,10 @@ pub(crate) fn run_once(
             .map(|file| (file.relative_path.as_str(), file.source.as_str())),
         crate::support::project_label(root),
     );
-    Ok(stream.drive(|| runner.run_observed(&sources, &stream))?)
+    Ok(stream.drive(|| match pool {
+        Some(pool) => runner.run_observed_in(&sources, &stream, pool),
+        None => runner.run_observed(&sources, &stream),
+    })?)
 }
 
 fn run_once_planned(

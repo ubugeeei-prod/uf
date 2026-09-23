@@ -78,6 +78,7 @@ import {
   readCached,
   writeCached,
 } from "./flow-cache.js";
+import { moduleEpochs } from "./module-epochs.js";
 
 /**
  * Install the hooks for the rest of this thread, compiling under `root`.
@@ -105,17 +106,25 @@ export function installFlowHooks(root) {
   }
   const cacheDirectory = cacheDirectoryFor(root);
   let compiler = null;
+  // Only for a `uf test --watch` worker, which is kept between runs and told
+  // which files changed; see `./module-epochs.js`. Every other process loads
+  // each module once and has no use for the graph.
+  const epochs = environmentVariable("UF_TEST_KEEP_WORKERS") === "1" ? moduleEpochs() : null;
 
   return nodeModule.registerHooks({
     resolve(specifier, context, nextResolve) {
+      let resolved;
       try {
-        return nextResolve(specifier, context);
+        resolved = nextResolve(specifier, context);
       } catch (error) {
         if (isTestCompilerRuntime(specifier) && error.code === "ERR_MODULE_NOT_FOUND") {
           return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
         }
         throw error;
       }
+      if (epochs == null) return resolved;
+      const url = epochs.resolved(context?.parentURL, resolved?.url, isImport(context));
+      return url === resolved.url ? resolved : { ...resolved, url };
     },
 
     load(url, context, nextLoad) {
