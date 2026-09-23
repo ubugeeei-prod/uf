@@ -89,9 +89,9 @@ export const STATIC_DIRECTORY = "static";
  * front of its own files. Absent means none.
  */
 export type HandlerModule = {|
-  +fetch: (request: Request) => Promise<Response>,
-  +beginRequest: (request: Request) => RequestLifecycle,
-  +routing?: RoutingRules,
+  readonly fetch: (request: Request) => Promise<Response>,
+  readonly beginRequest: (request: Request) => RequestLifecycle,
+  readonly routing?: RoutingRules,
 |};
 
 /**
