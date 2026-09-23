@@ -814,58 +814,114 @@ function isDisabled(node: Element): boolean {
  * `negated` decides which message a failing verdict raises, which is all of
  * what `.not` is.
  *
- * # Why the object is built rather than written
+ * # Why the matchers live on a prototype
  *
- * `.not` has to be reached lazily or building an expectation would build its
- * negation, which would build *its* negation, forever. A lazily installed
- * property is not something an object literal carries, so the value is
- * completed with `Object.defineProperty` after it exists — and an object
- * completed after the fact is not one Flow can check a literal against. That
- * is what this `$FlowFixMe` is, and it now covers a construction rather than a
- * published type: [`expectValue`] states the real one, and the checker holds
- * every caller to it.
+ * `expect` is called once per assertion, and building its answer used to be
+ * the largest single cost of a passing assertion: the whole verdict table and a
+ * wrapper for each of its forty-one entries, eighty-odd closures, to call one
+ * of them. On a suite of 1,000 cases and 2,000 assertions that was about a
+ * twentieth of a worker's CPU, spent on functions nobody called.
+ *
+ * So the object carries only what differs between two assertions — the value
+ * and the polarity — and every matcher is a getter on one shared prototype,
+ * built the first time `expect` is used. The getter hands back a function
+ * closed over the object it was read from, rather than being a method that
+ * reads `this`: `const { toBe } = expect(1)` and `[1, 2].forEach(expect(n).not.toBe)`
+ * keep working, because the function a destructuring or a callback receives is
+ * already bound, which is what they got when every matcher was an own closure.
+ * The table is still built per *call*, from [`verdicts`], so a matcher still
+ * sees the one received value it was asked about and nothing else.
+ *
+ * `.not` is a getter on the same prototype for the reason it always was
+ * lazy: an expectation that built its negation would build *its* negation,
+ * forever. `.resolves` and `.rejects` are on a second prototype that only
+ * [`expectValue`]'s object has, so `expect(p).not.resolves` stays what it was —
+ * not a thing.
  */
-function bind(received: mixed, negated: boolean): $FlowFixMe {
-  const table = verdicts(received);
-  const bound: $FlowFixMe = {};
-  for (const name of Object.keys(table)) {
-    const decide = (verdict: Verdict) => {
-      if (verdict.pass !== negated) {
-        return undefined;
-      }
-      const message = negated ? verdict.negatedFailure() : verdict.failure();
-      throw new AssertionError(
-        message,
-        name,
-        verdict.expected ?? "",
-        verdict.received ?? render(received),
-      );
-    };
-    bound[name] = (...args: $ReadOnlyArray<mixed>) => {
-      const verdict = table[name](...args);
-      // A matcher whose engine is asynchronous answers with a promise of a
-      // verdict, and the promise is handed straight back rather than hidden.
-      //
-      // Hiding it was the alternative and it cannot be done: the only way to
-      // present an asynchronous answer synchronously is to decide before it
-      // arrives, which is deciding without it. What the promise costs is a
-      // forgotten `await`, and that case is not silent either — the rejection
-      // reaches the worker's unhandled-rejection handler, which fails the file
-      // the promise was created in and prints this same message. A missing
-      // `await` on a passing audit is the one case nothing reports, and it is
-      // the case where nothing happened.
-      //
-      // `instanceof Promise` rather than a `then` test, and it is safe for a
-      // reason that would not survive being generalised: every entry in the
-      // table is written in this file, so the only promise that can arrive
-      // here is one an `async` function in this module made, in this realm. A
-      // matcher registered from outside — which `@uniflowed/test` has no API
-      // for, deliberately — could hand back a foreign thenable, and this line
-      // would be the thing to revisit.
-      return verdict instanceof Promise ? verdict.then(decide) : decide(verdict);
-    };
+type Bound = { readonly received: mixed, readonly negated: boolean, ... };
+
+/** The two prototypes, built on first use; see [`bind`]. */
+type Prototypes = {| readonly bound: interface {}, readonly root: interface {} |};
+let prototypes: Prototypes | null = null;
+
+/** A getter for matcher `name`, handing back a function bound to its object. */
+function matcherGetter(name: string): (this: Bound) => (...args: $ReadOnlyArray<mixed>) => mixed {
+  return function (this: Bound) {
+    const self = this;
+    return (...args: $ReadOnlyArray<mixed>) => apply(self, name, args);
+  };
+}
+
+function negation(this: Bound): mixed {
+  return bind(this.received, !this.negated);
+}
+
+function resolution(this: Bound): mixed {
+  return settled(this.received, "resolve", false);
+}
+
+function rejection(this: Bound): mixed {
+  return settled(this.received, "reject", false);
+}
+
+function matcherPrototypes(): Prototypes {
+  if (prototypes != null) {
+    return prototypes;
   }
-  Object.defineProperty(bound, "not", { get: () => bind(received, !negated) });
+  const bound: $FlowFixMe = {};
+  for (const name of Object.keys(verdicts(undefined))) {
+    Object.defineProperty(bound, name, { get: matcherGetter(name) });
+  }
+  Object.defineProperty(bound, "not", { get: negation });
+  const root: $FlowFixMe = Object.create(bound);
+  Object.defineProperty(root, "resolves", { get: resolution });
+  Object.defineProperty(root, "rejects", { get: rejection });
+  prototypes = { bound, root };
+  return prototypes;
+}
+
+/** Decide matcher `name` on `bound`'s value, raising when it does not hold. */
+function apply(bound: Bound, name: string, args: $ReadOnlyArray<mixed>): mixed {
+  const { received, negated } = bound;
+  const decide = (verdict: Verdict) => {
+    if (verdict.pass !== negated) {
+      return undefined;
+    }
+    const message = negated ? verdict.negatedFailure() : verdict.failure();
+    throw new AssertionError(
+      message,
+      name,
+      verdict.expected ?? "",
+      verdict.received ?? render(received),
+    );
+  };
+  const verdict = verdicts(received)[name](...args);
+  // A matcher whose engine is asynchronous answers with a promise of a
+  // verdict, and the promise is handed straight back rather than hidden.
+  //
+  // Hiding it was the alternative and it cannot be done: the only way to
+  // present an asynchronous answer synchronously is to decide before it
+  // arrives, which is deciding without it. What the promise costs is a
+  // forgotten `await`, and that case is not silent either — the rejection
+  // reaches the worker's unhandled-rejection handler, which fails the file
+  // the promise was created in and prints this same message. A missing
+  // `await` on a passing audit is the one case nothing reports, and it is
+  // the case where nothing happened.
+  //
+  // `instanceof Promise` rather than a `then` test, and it is safe for a
+  // reason that would not survive being generalised: every entry in the
+  // table is written in this file, so the only promise that can arrive
+  // here is one an `async` function in this module made, in this realm. A
+  // matcher registered from outside — which `@uniflowed/test` has no API
+  // for, deliberately — could hand back a foreign thenable, and this line
+  // would be the thing to revisit.
+  return verdict instanceof Promise ? verdict.then(decide) : decide(verdict);
+}
+
+function bind(received: mixed, negated: boolean): $FlowFixMe {
+  const bound: $FlowFixMe = Object.create(matcherPrototypes().bound);
+  bound.received = received;
+  bound.negated = negated;
   return bound;
 }
 
@@ -938,11 +994,9 @@ function settled(promise: mixed, wanted: "resolve" | "reject", negated: boolean)
  * received, for the reasons this module's header sets out.
  */
 function expectValue(received: mixed): Expectation {
-  const expectation: $FlowFixMe = bind(received, false);
-  Object.defineProperty(expectation, "resolves", {
-    get: () => settled(received, "resolve", false),
-  });
-  Object.defineProperty(expectation, "rejects", { get: () => settled(received, "reject", false) });
+  const expectation: $FlowFixMe = Object.create(matcherPrototypes().root);
+  expectation.received = received;
+  expectation.negated = false;
   return expectation;
 }
 

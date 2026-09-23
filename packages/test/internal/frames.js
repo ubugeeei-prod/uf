@@ -195,3 +195,181 @@ export function userFrames(stack: string | null | void): string | null {
   const frames = lines.slice(1).filter((frame) => !isInternalFrame(frame));
   return frames.length === 0 ? head : [head, ...frames].join("\n");
 }
+
+/**
+ * A V8 call site, as much of it as [`callerSite`] reads.
+ *
+ * Written out rather than imported: there is no library definition for V8's
+ * structured stack API, and these four methods are all it asks of one.
+ */
+type CallSite = interface {
+  getFileName(): ?string,
+  getLineNumber(): ?number,
+  getColumnNumber(): ?number,
+};
+
+/** The piece of `node:module`'s source-map API [`callerSite`] needs. */
+type SourceMapEntry = {|
+  readonly originalLine?: number,
+  readonly originalColumn?: number,
+  readonly originalSource?: string,
+|};
+type FindSourceMap = (
+  file: string,
+) => ?interface { findEntry(line: number, column: number): SourceMapEntry };
+
+/**
+ * `node:module`'s `findSourceMap` when the host is Node with source maps on;
+ * `false` when the structured path must not be taken; `undefined` until asked.
+ *
+ * Asked once per process: the host does not change under a running worker.
+ */
+let nodeSourceMaps: FindSourceMap | false | void;
+
+/**
+ * How to map a generated position the way Node's own stack traces do, or
+ * `false` when this host's stacks cannot be reproduced from call sites.
+ *
+ * Node only. Bun and Deno implement the call-site API too, but whether their
+ * call sites carry the generated position or the mapped one is theirs to
+ * decide and has changed between releases, so they keep the string path,
+ * whose answer is by construction the one their `.stack` prints. A browser
+ * has no `process` at all.
+ */
+function sourceMapsForCallSites(): FindSourceMap | false {
+  if (nodeSourceMaps !== undefined) {
+    return nodeSourceMaps;
+  }
+  const host: $FlowFixMe = globalThis;
+  const process = host.process;
+  const isNode =
+    typeof process?.versions?.node === "string" &&
+    process.versions.bun == null &&
+    host.Deno == null &&
+    typeof process.getBuiltinModule === "function" &&
+    typeof Error.captureStackTrace === "function";
+  if (!isNode) {
+    nodeSourceMaps = false;
+    return false;
+  }
+  const findSourceMap = process.getBuiltinModule("node:module")?.findSourceMap;
+  nodeSourceMaps =
+    typeof findSourceMap === "function"
+      ? // Only while Node applies source maps to its own stacks: with them off
+        // a `.stack` prints the generated position, and so must this.
+        (file) => (process.sourceMapsEnabled === true ? findSourceMap(file) : null)
+      : false;
+  return nodeSourceMaps;
+}
+
+/**
+ * The first position outside the runner on the stack of the call to `skip`,
+ * as `firstUserSite(new Error().stack)` would read it — or `undefined` when
+ * this host cannot answer that way, and the caller should build the string.
+ *
+ * # Why not simply read `.stack`
+ *
+ * Because it is the most expensive line in registering a test. `describe` and
+ * `it` ask where they were called from, once per case, and on Node with
+ * `--enable-source-maps` — which every `uf test` worker runs with — the string
+ * `.stack` is built by mapping *every* frame through its module's source map
+ * and printing each one, to read back one line and column from the first that
+ * is not the runner's. On a suite of 50 files and 1,000 cases that was about a
+ * sixth of a worker's CPU.
+ *
+ * V8 hands the same frames over unprinted to a `prepareStackTrace` installed
+ * for the one capture, and only the frame the answer comes from is mapped,
+ * with the lookup Node's printer itself uses — `findSourceMap(file)` then
+ * `findEntry(line - 1, column - 1)`, falling back to the generated position
+ * when there is no map or no entry — so the number is the one the string would
+ * have carried. `packages/test/registration-site.test.js` holds the two paths
+ * to that.
+ */
+export function callerSite(skip: (...args: $ReadOnlyArray<empty>) => mixed): Site | null | void {
+  const findSourceMap = sourceMapsForCallSites();
+  if (findSourceMap === false) {
+    return undefined;
+  }
+  const errors: $FlowFixMe = Error;
+  const limit: mixed = errors.stackTraceLimit;
+  const full = typeof limit === "number" ? limit : 0;
+  // A few frames first. The caller of a registration is two or three frames
+  // above it — `it`, the modifier or `each` wrapper, `addCase` — and V8's cost
+  // is per frame it materialises, so the whole default ten is walked only for
+  // the rare caller that is deeper than that.
+  const shallow = Math.min(full, SHALLOW_FRAMES);
+  const first = readCallSites(skip, shallow);
+  if (first === undefined) {
+    return undefined;
+  }
+  const found = firstUserCallSite(first, findSourceMap);
+  if (found != null || first.length < shallow || shallow === full) {
+    return found;
+  }
+  const again = readCallSites(skip, full);
+  return again === undefined ? undefined : firstUserCallSite(again, findSourceMap);
+}
+
+/** How many frames [`callerSite`] asks for before it asks for all of them. */
+const SHALLOW_FRAMES = 4;
+
+/** Hands V8's call sites back unprinted; one function, so none is made per capture. */
+function unprinted(_error: mixed, sites: $ReadOnlyArray<CallSite>): $ReadOnlyArray<CallSite> {
+  return sites;
+}
+
+/**
+ * Up to `limit` call sites above `skip`, or `undefined` when the host does not
+ * hand them over.
+ */
+function readCallSites(
+  skip: (...args: $ReadOnlyArray<empty>) => mixed,
+  limit: number,
+): $ReadOnlyArray<CallSite> | void {
+  const errors: $FlowFixMe = Error;
+  const prepare = errors.prepareStackTrace;
+  const before = errors.stackTraceLimit;
+  const holder: $FlowFixMe = {};
+  try {
+    errors.prepareStackTrace = unprinted;
+    errors.stackTraceLimit = limit;
+    errors.captureStackTrace(holder, skip);
+    // Read inside the `try`: V8 formats `stack` lazily, on first access, and
+    // with whatever `prepareStackTrace` is installed *then*. What comes back is
+    // what `unprinted` returned, which V8 does not type.
+    const sites: $FlowFixMe = holder.stack;
+    return Array.isArray(sites) ? sites : undefined;
+  } finally {
+    errors.prepareStackTrace = prepare;
+    errors.stackTraceLimit = before;
+  }
+}
+
+/** The first of `sites` outside the runner, mapped as Node maps a printed frame. */
+function firstUserCallSite(
+  sites: $ReadOnlyArray<CallSite>,
+  findSourceMap: FindSourceMap,
+): Site | null {
+  for (const site of sites) {
+    const file = site.getFileName();
+    if (file == null || isInternalFrame(file)) {
+      continue;
+    }
+    const line = site.getLineNumber();
+    const column = site.getColumnNumber();
+    if (line == null || column == null) {
+      continue;
+    }
+    const entry = findSourceMap(file)?.findEntry(line - 1, column - 1);
+    if (
+      entry?.originalSource != null &&
+      entry.originalSource !== "" &&
+      entry.originalLine != null &&
+      entry.originalColumn != null
+    ) {
+      return { line: entry.originalLine + 1, column: entry.originalColumn + 1 };
+    }
+    return { line, column };
+  }
+  return null;
+}

@@ -19,7 +19,7 @@
 // * `.only` anywhere in the file restricts the file to marked cases and their
 //   ancestors; everything else is reported skipped, never silently dropped.
 
-import { firstUserSite } from "./frames.js";
+import { callerSite, firstUserSite } from "./frames.js";
 
 /** The placeholders `it.each` substitutes a row into. */
 const ROW_TOKEN = /%[sjdi]/g;
@@ -118,6 +118,10 @@ export function collected(): Suite {
  * treats as "unknown" rather than as line one.
  */
 function callSite(): {| readonly line: number, readonly column: number |} {
+  const site = callerSite(callSite);
+  if (site !== undefined) {
+    return site ?? { line: 0, column: 0 };
+  }
   return firstUserSite(new Error("position").stack) ?? { line: 0, column: 0 };
 }
 
