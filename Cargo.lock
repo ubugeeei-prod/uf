@@ -202,6 +202,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c59bdb34bc650a32731b31bd8f0829cc15d24a708ee31559e0bb34f2bc320cba"
 
 [[package]]
+name = "atomic"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a89cbf775b137e9b968e67227ef7f775587cde3fd31b0d8599dbd0f598a48340"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -242,6 +251,12 @@ checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
 dependencies = [
  "virtue",
 ]
+
+[[package]]
+name = "bitflags"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
@@ -767,6 +782,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erased-serde"
+version = "0.4.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2add8a07dd6a8d93ff627029c51de145e12686fbc36ecb298ac22e74cf02dec"
+dependencies = [
+ "serde",
+ "serde_core",
+ "typeid",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1009,6 +1035,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_event_logger"
+version = "0.0.0"
+dependencies = [
+ "flow_common",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "flow_flowlib"
 version = "0.0.0"
 dependencies = [
@@ -1094,6 +1129,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_lsp"
+version = "0.0.0"
+dependencies = [
+ "flow_parser",
+ "flow_server_utils",
+ "lsp-types",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "flow_monitor_rpc"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_common",
+ "flow_common_errors",
+ "flow_common_exit_status",
+ "flow_event_logger",
+ "flow_lsp",
+ "flow_parser",
+ "flow_parser_utils_output",
+ "flow_server_utils",
+ "flow_services_coverage",
+ "flow_services_export_index",
+ "log",
+ "lsp-types",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "flow_packed_locs"
 version = "0.0.0"
 dependencies = [
@@ -1171,6 +1240,103 @@ name = "flow_server_utils"
 version = "0.0.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "flow_services_autocomplete"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_aloc",
+ "flow_analysis",
+ "flow_common",
+ "flow_common_errors",
+ "flow_common_modulename",
+ "flow_common_ty",
+ "flow_common_utils",
+ "flow_env_builder",
+ "flow_lsp",
+ "flow_parser",
+ "flow_parser_utils",
+ "flow_parser_utils_output",
+ "flow_services_export",
+ "flow_services_get_def",
+ "flow_typing",
+ "flow_typing_context",
+ "flow_typing_errors",
+ "flow_typing_flow_common",
+ "flow_typing_flow_js",
+ "flow_typing_statement",
+ "flow_typing_tvar",
+ "flow_typing_ty_normalizer",
+ "flow_typing_type",
+ "flow_typing_utils",
+ "flow_utils_concurrency",
+ "lsp-types",
+]
+
+[[package]]
+name = "flow_services_coverage"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_aloc",
+ "flow_parser",
+ "flow_typing_context",
+ "flow_typing_type",
+ "serde",
+]
+
+[[package]]
+name = "flow_services_export"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_common",
+ "flow_common_modulename",
+ "flow_common_utils",
+ "flow_data_structure_wrapper",
+ "flow_heap",
+ "flow_hh_logger",
+ "flow_imports_exports",
+ "flow_monitor_rpc",
+ "flow_parser",
+ "flow_services_export_index",
+ "flow_utils_concurrency",
+]
+
+[[package]]
+name = "flow_services_export_index"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_common",
+ "flow_data_structure_wrapper",
+ "flow_parser",
+ "serde",
+]
+
+[[package]]
+name = "flow_services_get_def"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_aloc",
+ "flow_analysis",
+ "flow_common",
+ "flow_data_structure_wrapper",
+ "flow_parser",
+ "flow_parser_utils",
+ "flow_typing",
+ "flow_typing_context",
+ "flow_typing_flow_common",
+ "flow_typing_flow_js",
+ "flow_typing_statement",
+ "flow_typing_tvar",
+ "flow_typing_type",
+ "flow_typing_utils",
+ "flow_utils_concurrency",
+ "vec1",
 ]
 
 [[package]]
@@ -1628,6 +1794,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluent-uri"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17c704e9dbe1ddd863da1e6ff3567795087b1eb201ce80d8fa81162e1516500d"
+dependencies = [
+ "bitflags 1.3.2",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1999,7 +2174,7 @@ version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebf3631712f5b790675292ff827af269f5d9f920c920b77dc41d0485e3719612"
 dependencies = [
- "atomic",
+ "atomic 0.5.3",
  "parking_lot",
 ]
 
@@ -2008,6 +2183,9 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+dependencies = [
+ "value-bag",
+]
 
 [[package]]
 name = "logos"
@@ -2039,6 +2217,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d3a9855747c17eaf4383823f135220716ab49bea5fbea7dd42cc9a92f8aa31"
 dependencies = [
  "logos-codegen",
+]
+
+[[package]]
+name = "lsp-types"
+version = "0.97.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53353550a17c04ac46c585feb189c2db82154fc84b79c7a66c96c2c644f66071"
+dependencies = [
+ "bitflags 1.3.2",
+ "fluent-uri",
+ "serde",
+ "serde_json",
+ "serde_repr",
 ]
 
 [[package]]
@@ -2110,7 +2301,7 @@ version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "cfg-if",
  "cfg_aliases",
  "libc",
@@ -2227,7 +2418,7 @@ version = "0.149.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e9bdb56efa22b6eb5c213f512a838521a2433905d25da4e3021d3fac0bc7d1d"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "oxc_allocator",
  "oxc_ast_macros",
  "oxc_data_structures",
@@ -2269,7 +2460,7 @@ version = "0.149.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a313a091df12abad72542deeba21e6b44e37dd4a2ed66bf3159acc1aa68f0ef0"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "cow-utils",
  "oxc_allocator",
  "oxc_ast",
@@ -2363,7 +2554,7 @@ version = "0.149.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6ac968fd0450309168e18c761dee4b68377bc0bbd4e1eb4e23d1c4d2e2cc825"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "cow-utils",
  "memchr",
  "num-bigint",
@@ -2387,7 +2578,7 @@ version = "0.149.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18ef364ac0d7e5beda9e59a3fea4ba050da6e34720c10c7c0a16b3993373ba52"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "oxc_allocator",
  "oxc_ast_macros",
  "oxc_diagnostics",
@@ -2465,7 +2656,7 @@ version = "0.149.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c10f6276b8d5e3df514299a6a93241276531f2801853c3309a86805be278664"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "cow-utils",
  "dragonbox_ecma",
  "nonmax",
@@ -2650,7 +2841,7 @@ version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60769b8b31b2a9f263dae2776c37b1b28ae246943cf719eb6946a1db05128a61"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "crc32fast",
  "fdeflate",
  "flate2",
@@ -2965,7 +3156,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
 ]
 
 [[package]]
@@ -3049,7 +3240,7 @@ version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
- "bitflags",
+ "bitflags 2.13.1",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -3061,6 +3252,12 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "ryu"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "same-file"
@@ -3129,6 +3326,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_fmt"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e497af288b3b95d067a23a4f749f2861121ffcb2f6d8379310dcda040c345ed"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3143,6 +3349,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_repr"
+version = "0.1.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d3b1629de253c70a0508c3899572da79ca359fdab27c7920ff00406df418906"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
+
+[[package]]
 name = "serde_spanned"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3150,6 +3367,12 @@ checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
@@ -3323,6 +3546,85 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
+name = "sval"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec4a2a7d92fa86fcc6222e4c3845f8486cff899d9db32480b26c91a5dbf2e22d"
+
+[[package]]
+name = "sval_buffer"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4324db9ac500c609d659b752edf9c8abbf2233f8afd61a503fd6f88ed625032"
+dependencies = [
+ "sval",
+ "sval_ref",
+ "zerocopy",
+]
+
+[[package]]
+name = "sval_dynamic"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4046add0eecf55e680b9e207edf5fc7737b18a1d950db363d97e7f1b2d7c629c"
+dependencies = [
+ "sval",
+]
+
+[[package]]
+name = "sval_fmt"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "911a3486b5984a0a4f25edefcf2c2dba23654c29f63e75493b671d338bf24243"
+dependencies = [
+ "itoa",
+ "ryu",
+ "sval",
+]
+
+[[package]]
+name = "sval_json"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da53aae7c737b5b5f1be4bcb0ff20e057bf6b2ee4e9d025560075c5830d09f95"
+dependencies = [
+ "itoa",
+ "ryu",
+ "sval",
+]
+
+[[package]]
+name = "sval_nested"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df24df43cbdc4bb8c9f5ed19d0d57dc8f60a1a4259cdce52d597fe774ad3a71f"
+dependencies = [
+ "sval",
+ "sval_buffer",
+ "sval_ref",
+]
+
+[[package]]
+name = "sval_ref"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bebc17f0f1fad060e57b778728d41ef87627e9111a6365d7463472cb58fc1b3"
+dependencies = [
+ "sval",
+]
+
+[[package]]
+name = "sval_serde"
+version = "2.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f26fe3f6a68b40e6c8d654ea48c00e4316272fddf68c80493714c1b034ae70b"
+dependencies = [
+ "serde_core",
+ "sval",
+ "sval_nested",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3494,6 +3796,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5283634e518fe9e82c7b20520bb4bc209009fd16c82077c802f8111ecbb0117a"
 
 [[package]]
+name = "typeid"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3555,6 +3863,7 @@ dependencies = [
  "flow_aloc",
  "flow_common",
  "flow_common_errors",
+ "flow_common_ty",
  "flow_config",
  "flow_data_structure_wrapper",
  "flow_flowlib",
@@ -3562,7 +3871,11 @@ dependencies = [
  "flow_lint_settings",
  "flow_parser",
  "flow_parser_utils",
+ "flow_parser_utils_output",
  "flow_parsing",
+ "flow_services_autocomplete",
+ "flow_services_export",
+ "flow_services_get_def",
  "flow_type_sig",
  "flow_typing",
  "flow_typing_builtins",
@@ -4093,10 +4406,70 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
+name = "uuid"
+version = "1.26.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
+dependencies = [
+ "atomic 0.6.1",
+ "getrandom",
+ "js-sys",
+ "serde_core",
+ "sha1_smol",
+ "uuid-rng-internal",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "uuid-rng-internal"
+version = "1.26.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c994a501354f95311ecd159c7e13fede645ce5d184dd576b7569a7478981383"
+dependencies = [
+ "getrandom",
+]
+
+[[package]]
 name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+
+[[package]]
+name = "value-bag"
+version = "1.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "068e763e8279de7ab94b6afebded2cb701678af094feb1c12ccb061b4783c1be"
+dependencies = [
+ "value-bag-serde1",
+ "value-bag-sval2",
+]
+
+[[package]]
+name = "value-bag-serde1"
+version = "1.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "417d6197dd0ee696783d6be4276ac6ea74b985e00024c85ccfb37aff4f2bed82"
+dependencies = [
+ "erased-serde",
+ "serde_core",
+ "serde_fmt",
+]
+
+[[package]]
+name = "value-bag-sval2"
+version = "1.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c61f7251ecde2c9ed431bbe0659853e7991753447447bbf1ae59d8b31c578d4e"
+dependencies = [
+ "sval",
+ "sval_buffer",
+ "sval_dynamic",
+ "sval_fmt",
+ "sval_json",
+ "sval_ref",
+ "sval_serde",
+]
 
 [[package]]
 name = "vec1"

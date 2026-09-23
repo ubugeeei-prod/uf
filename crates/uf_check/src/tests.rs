@@ -19,6 +19,9 @@ macro_rules! require_checker {
     };
 }
 
+// After the macro, which it uses: `macro_rules!` is scoped by text.
+mod session;
+
 #[test]
 fn backend_names_are_stable() {
     assert_eq!(

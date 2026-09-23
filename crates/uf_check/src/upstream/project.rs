@@ -74,7 +74,7 @@
 //! `a_type_defined_as_itself_across_files_resolves_to_any_instead_of_erroring`.
 
 use std::cell::{LazyCell, OnceCell, RefCell};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use uf_profiler::profile_span;
@@ -151,7 +151,10 @@ struct Signature {
 /// The batch, indexed for resolution, with the signatures it has been asked for.
 pub(super) struct ProjectModules {
     /// Paths and text, owned. See [`Resolver`] for why this is a copy.
-    sources: Vec<(CompactString, Box<str>)>,
+    ///
+    /// In a cell because a [`super::session`] replaces one file's text when
+    /// an editor changes it; a batch `uf check` builds never does.
+    sources: RefCell<Vec<(CompactString, Rc<str>)>>,
     index: ModuleIndex,
     /// The packages the batch's own `package.json` files publish.
     ///
@@ -195,6 +198,14 @@ pub(super) struct ProjectModules {
     /// The parsed file from the facts pass, retained only for a one-file
     /// batch so `check_source` and editor-style checks do not parse it twice.
     parsed_for_check: RefCell<Option<(usize, Rc<parse::Parsed>)>>,
+    /// Who has resolved an import to each source: target index to importer
+    /// indices.
+    ///
+    /// Recorded as [`Self::resolve`] answers, which is exactly the set that
+    /// matters: a context only holds a dependency's types if it asked for
+    /// them, and it can only have asked through here. [`Self::replace`] walks
+    /// it backwards to find what an edit invalidates.
+    dependents: RefCell<HashMap<usize, HashSet<usize>>>,
 }
 
 impl ProjectModules {
@@ -209,10 +220,12 @@ impl ProjectModules {
         Self {
             index: ModuleIndex::new(sources.iter().map(|source| source.path)),
             packages: WorkspacePackages::new(sources, &options),
-            sources: sources
-                .iter()
-                .map(|source| (source.path.to_compact_string(), Box::from(source.source)))
-                .collect(),
+            sources: RefCell::new(
+                sources
+                    .iter()
+                    .map(|source| (source.path.to_compact_string(), Rc::from(source.source)))
+                    .collect(),
+            ),
             options,
             mk_builtins: RefCell::new(mk_builtins),
             file_timeout: limits.file_timeout,
@@ -221,6 +234,87 @@ impl ProjectModules {
             probe: RefCell::new(None),
             aloc_tables: RefCell::new(HashMap::new()),
             parsed_for_check: RefCell::new(None),
+            dependents: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// The path and text of the batch's `index`th source.
+    ///
+    /// Cloned out rather than borrowed, so that no borrow of the batch is
+    /// outstanding while the port runs; see [`Self::signature`].
+    pub(super) fn source(&self, index: usize) -> (CompactString, Rc<str>) {
+        let sources = self.sources.borrow();
+        let (path, text) = &sources[index];
+        (path.clone(), Rc::clone(text))
+    }
+
+    /// How many sources the batch holds.
+    pub(super) fn len(&self) -> usize {
+        self.sources.borrow().len()
+    }
+
+    /// The index of the batch source at `path`, if the batch has one.
+    pub(super) fn index_of(&self, path: &str) -> Option<usize> {
+        self.index.index_of(path)
+    }
+
+    /// Replace the `index`th source's text, and forget everything that was
+    /// derived from the old one.
+    ///
+    /// Returns every source whose answers are now stale: the edited file, and
+    /// each file that reached it through an import, transitively. Their merged
+    /// dependency contexts are torn down here — each holds types forced out of
+    /// the old text — and rebuilt on the next import that asks for them.
+    /// Everything else stays merged, which is what makes the next question
+    /// after an edit cost one file's inference rather than a project's.
+    ///
+    /// A file's *signature* depends on its own text alone, so only the edited
+    /// file's is dropped; a dependent is re-merged from its unchanged
+    /// signature against the new one.
+    pub(super) fn replace(&self, index: usize, text: &str) -> HashSet<usize> {
+        let mut stale = HashSet::from([index]);
+        let mut frontier = vec![index];
+        {
+            let dependents = self.dependents.borrow();
+            while let Some(target) = frontier.pop() {
+                for &importer in dependents.get(&target).into_iter().flatten() {
+                    if stale.insert(importer) {
+                        frontier.push(importer);
+                    }
+                }
+            }
+        }
+        let file_key = {
+            let mut sources = self.sources.borrow_mut();
+            sources[index].1 = Rc::from(text);
+            FileKey::new(FileKeyInner::SourceFile(sources[index].0.to_string()))
+        };
+        self.signatures.borrow_mut().remove(&index);
+        self.aloc_tables.borrow_mut().remove(&file_key);
+        self.parsed_for_check.borrow_mut().take();
+        let torn_down: Vec<_> = {
+            let mut merged = self.merged.borrow_mut();
+            stale
+                .iter()
+                .filter_map(|index| merged.remove(index))
+                .collect()
+        };
+        // Outside the borrow: cleanup runs the port.
+        for (file, cx) in torn_down {
+            cx.post_inference_cleanup();
+            file.drop_closures();
+        }
+        stale
+    }
+
+    /// Note that `importer` resolved an import to `target`.
+    fn depends(&self, importer: &str, target: usize) {
+        if let Some(importer) = self.index.index_of(importer) {
+            self.dependents
+                .borrow_mut()
+                .entry(target)
+                .or_default()
+                .insert(importer);
         }
     }
 
@@ -299,10 +393,10 @@ impl ProjectModules {
         mut mk_builtins: impl FnMut() -> Result<MkBuiltins, CheckError>,
     ) -> Result<ModuleFacts, CheckError> {
         profile_span!("check::module_facts");
-        let (path, source) = &self.sources[index];
+        let (path, source) = self.source(index);
         let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_string()));
-        let parsed = Rc::new(parse::parse_file(file_key, source, &self.options, false));
-        if self.sources.len() == 1 {
+        let parsed = Rc::new(parse::parse_file(file_key, &source, &self.options, false));
+        if self.sources.borrow().len() == 1 {
             *self.parsed_for_check.borrow_mut() = Some((index, parsed.dupe()));
         }
         // The one place the batch decides what "skipped" means, because a file
@@ -472,6 +566,7 @@ impl ProjectModules {
             if let Some(index) = self.index.resolve(importer, name)
                 && let Some(signature) = self.signature(index)
             {
+                self.depends(importer, index);
                 return ResolvedRequire::TypedModule(self.module_thunk(index, &signature));
             }
             // A stylesheet, an icon, a `?raw`. Nothing here is ever in the
@@ -494,6 +589,7 @@ impl ProjectModules {
         if let Some(index) = self.resolve_package(importer, name)
             && let Some(signature) = self.signature(index)
         {
+            self.depends(importer, index);
             return ResolvedRequire::TypedModule(self.module_thunk(index, &signature));
         }
         self.unchecked(cx, name)
@@ -596,9 +692,9 @@ impl ProjectModules {
     ///
     /// The AST is dropped when this returns; see [`Signature`].
     fn build_signature(&self, index: usize) -> Option<Rc<Signature>> {
-        let (path, source) = &self.sources[index];
+        let (path, source) = self.source(index);
         let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_string()));
-        let parsed = parse::parse_file(file_key, source, &self.options, false);
+        let parsed = parse::parse_file(file_key, &source, &self.options, false);
         // A file that does not parse has no signature, and one that opted out
         // of Flow has no types in it. Both are reported where they belong —
         // against the file itself, when the batch reaches it — and both are

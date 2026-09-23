@@ -34,6 +34,7 @@ mod packages;
 mod parse;
 mod project;
 mod resolve;
+pub(crate) mod session;
 
 pub(crate) use convert::error_code;
 
@@ -595,6 +596,47 @@ fn check_one(
         return Ok(Vec::new());
     }
 
+    let inferred = infer(
+        index,
+        options,
+        mk_builtins,
+        limits,
+        source.path,
+        modules,
+        &parsed,
+    )?;
+
+    // Suppression filtering and the translation into uf's diagnostics, together
+    // because they are one phase from outside: what the check has to say.
+    profile_span!("check::infer_diagnostics");
+    let (errors, warnings) = suppressed(&inferred.cx, &parsed, inferred.cx.errors(), modules);
+    Ok(convert::diagnostics(&errors, &warnings, source.path))
+}
+
+/// One file's inference, kept: the context it ran in and the typed AST it
+/// produced.
+///
+/// A check needs only the context's errors and drops the rest. A positional
+/// question — the type under a cursor, where a name is defined — needs both
+/// halves, which is why this is its own value rather than the middle of
+/// [`check_one`]. See [`session`].
+pub(super) struct Inferred {
+    /// The context inference ran in, with every type it solved.
+    pub(super) cx: Context<'static>,
+    /// The AST with a type on every expression.
+    pub(super) typed_ast: ast::Program<ALoc, (ALoc, flow_typing_type::type_::Type)>,
+}
+
+/// Run inference over one parsed, checked file of the batch.
+fn infer(
+    index: usize,
+    options: &Options,
+    mk_builtins: &MkBuiltins,
+    limits: &CheckLimits,
+    path: &str,
+    modules: &Rc<ProjectModules>,
+    parsed: &parse::Parsed,
+) -> Result<Inferred, CheckError> {
     let file_key = parsed.file_key.dupe();
     let metadata = parsed.metadata.clone();
     let lint_severities = merge::get_lint_severities(
@@ -605,14 +647,14 @@ fn check_one(
     // The table this file's own signature was packed with, not an empty one:
     // it is what makes a class defined here the same class an importing file
     // sees. See `ProjectModules::aloc_table_for`.
-    let aloc_table = modules.aloc_table_for(index, &parsed);
+    let aloc_table = modules.aloc_table_for(index, parsed);
     let cx = Context::make(
         Rc::new(flow_typing_context::make_ccx()),
         metadata.clone(),
         file_key.dupe(),
         Arc::default(),
         aloc_table,
-        modules.resolver(source.path),
+        modules.resolver(path),
         mk_builtins.dupe(),
         CheckBudget::new(limits.file_timeout),
     );
@@ -624,7 +666,7 @@ fn check_one(
     // where a cold `uf check` spends nine allocations in ten, so it is the row
     // a reader should reach for first and the one a change to the port has to
     // move.
-    {
+    let typed_ast = {
         profile_span!("check::infer_ast");
         type_inference::infer_ast(
             &lint_severities,
@@ -635,14 +677,9 @@ fn check_one(
             all_comments,
             aloc_ast,
         )
-        .map_err(|error| job_error(source.path, error))?;
-    }
-
-    // Suppression filtering and the translation into uf's diagnostics, together
-    // because they are one phase from outside: what the check has to say.
-    profile_span!("check::infer_diagnostics");
-    let (errors, warnings) = suppressed(&cx, &parsed, cx.errors(), modules);
-    Ok(convert::diagnostics(&errors, &warnings, source.path))
+        .map_err(|error| job_error(path, error))?
+    };
+    Ok(Inferred { cx, typed_ast })
 }
 
 fn job_error(path: &str, error: JobError) -> CheckError {
