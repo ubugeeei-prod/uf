@@ -5,7 +5,7 @@
 //! [`crate::session`] for what is kept and why.
 
 use std::cell::LazyCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 use std::sync::{Arc, mpsc};
@@ -31,12 +31,15 @@ use flow_typing_utils::typed_ast_utils::AvailableAst;
 use flow_utils_concurrency::check_budget::CheckBudget;
 
 use super::project::{MkBuiltins, ProjectModules};
-use super::{BatchEnvironment, Inferred, builtins, infer, job_error, loc_of_aloc, options, parse};
+use super::{
+    BatchEnvironment, Inferred, builtins, convert, infer, job_error, loc_of_aloc, options, parse,
+    suppressed,
+};
 use crate::limits::CHECK_STACK_BYTES;
 use crate::session::{
     Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, TypeAt,
 };
-use crate::{CheckError, CheckLimits, Position, Source, Span};
+use crate::{CheckError, CheckLimits, Position, Source, Span, TypeDiagnostic};
 
 /// One question, as the worker runs it.
 pub(crate) type Job = Box<dyn FnOnce(&mut Worker) + Send>;
@@ -104,6 +107,15 @@ pub(crate) struct Worker {
     modules: Option<Rc<ProjectModules>>,
     /// The files most recently inferred, most recent first.
     checked: Vec<Rc<Checked>>,
+    /// What checking each file said, by batch index, for as long as nothing
+    /// it depends on changes.
+    ///
+    /// Kept apart from [`Self::checked`] and not bounded by it: an editor
+    /// re-asks every open file after an edit, because any of them may import
+    /// the edited one, and a file whose answer cannot have changed must not
+    /// be inferred again just because hovering elsewhere pushed its typed AST
+    /// out. A list of diagnostics is small next to the AST it came from.
+    diagnosed: HashMap<usize, Rc<[TypeDiagnostic]>>,
 }
 
 impl Worker {
@@ -116,12 +128,14 @@ impl Worker {
             mk_builtins: None,
             modules: None,
             checked: Vec::new(),
+            diagnosed: HashMap::new(),
         }
     }
 
     /// Drop the batch and everything derived from it.
     fn release(&mut self) {
         self.checked.clear();
+        self.diagnosed.clear();
         if let Some(modules) = self.modules.take() {
             modules.release();
         }
@@ -210,6 +224,7 @@ impl Worker {
         let stale = modules.replace(index, &text);
         self.checked
             .retain(|checked| !stale.contains(&checked.index));
+        self.diagnosed.retain(|index, _| !stale.contains(index));
         Ok(true)
     }
 
@@ -255,6 +270,45 @@ impl Worker {
         self.checked.insert(0, Rc::clone(&checked));
         self.checked.truncate(INFERRED_FILES);
         Ok(Some(checked))
+    }
+
+    /// What checking the batch's file at `path` reports: the diagnostics
+    /// `uf check` gives the same file, suppressions applied.
+    ///
+    /// [`None`] when there is no inference to report on — the file is not in
+    /// the batch, does not parse, or says `@noflow`. A syntax error is the
+    /// parser's to report, and the editor already has it from `uf lint`'s
+    /// `flow/syntax`; saying it twice would put two markers on one token.
+    pub(crate) fn diagnostics(
+        &mut self,
+        path: &str,
+    ) -> Result<Option<Rc<[TypeDiagnostic]>>, CheckError> {
+        let Some(modules) = self.modules.clone() else {
+            return Ok(None);
+        };
+        let Some(index) = modules.index_of(path) else {
+            return Ok(None);
+        };
+        if let Some(found) = self.diagnosed.get(&index) {
+            return Ok(Some(Rc::clone(found)));
+        }
+        let Some(checked) = self.checked(path)? else {
+            return Ok(None);
+        };
+        // The same two steps as `check_one`, over the same context, so an
+        // editor and `uf check` cannot disagree about a file. They take the
+        // suppressions out of the context, so they may run once per
+        // inference, and do: an entry leaves `diagnosed` only where `edit` or
+        // `release` drops the inference it came from as well.
+        let (errors, warnings) = suppressed(
+            &checked.inferred.cx,
+            &checked.parsed,
+            checked.inferred.cx.errors(),
+            &modules,
+        );
+        let found: Rc<[TypeDiagnostic]> = convert::diagnostics(&errors, &warnings, path).into();
+        self.diagnosed.insert(index, Rc::clone(&found));
+        Ok(Some(found))
     }
 
     /// Resolve an abstract location with every table the batch has built.

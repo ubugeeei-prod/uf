@@ -35,16 +35,18 @@ smaller than it was, and uf counts it per package instead of hiding it.
 
 **Editors.** uf ships `uf lsp`, and every editor integration under
 [`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client
-of it. What it can do is the diagnostics it pushes when a document opens or
-changes, and what it advertises in `initialize`: `textDocument/formatting`,
+of it. What it can do is the diagnostics it pushes — the linter's when a document
+opens or changes, and Flow's type errors, the ones `uf check` reports, once
+typing pauses — and what it advertises in `initialize`: `textDocument/formatting`,
 `textDocument/codeAction` (`quickfix` and `source.fixAll.uf`),
 `textDocument/hover`, `textDocument/definition`, `textDocument/typeDefinition`
 and `textDocument/completion`. Hover, the definitions and completion outside
 `uf.config.js` are answered by Flow's own inference over the whole project,
 kept in memory: the type under the cursor, where a name or a type is declared —
 across files and into `node_modules` — and the members of a value after `.`.
-There is no rename, no find-references, no signature help, no auto-import, and
-no type errors pushed as diagnostics.
+There is no rename, no find-references, no signature help, no inlay hints, no
+document symbols and no auto-import. Against TypeScript 7's own server, which
+advertises all of those, that is most of the gap.
 `tests/library/lsp.test.js` drives the real binary and asserts both the
 capabilities the READMEs claim and the absence of the ones they disclaim.
 

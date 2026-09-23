@@ -27,25 +27,34 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
 `uf lsp` serves exactly this, and no integration claims more:
 
 * **Diagnostics** — `textDocument/publishDiagnostics`, from `uf_lint`, pushed
-  on open and on every change.
+  on open and on every change; and Flow's type errors, the ones `uf check`
+  reports, pushed beside them once typing pauses — for the edited file and
+  every other open file that may import it. A type error's source is `flow`,
+  its code is Flow's, and each location its message refers to is related
+  information.
 * **Formatting** — `textDocument/formatting`, from `uf_fmt`. One edit over the
   whole document, because the printer reprints from the syntax tree.
 * **Code actions** — `quickfix` for the diagnostics with a mechanical answer,
   and `source.fixAll.uf` for all of them at once.
 * **Hover** — the rule behind a diagnostic, what an import specifier names,
-  what a rule id in a suppression comment means, and a key of `uf.config.js`.
-* **Completion**, in `uf.config.js` and nowhere else — the keys valid at the
-  cursor, each with the documentation and type `@uniflowed/config` declares for
-  it, the values of a key whose type is a fixed set, and in a tool spec like
+  what a rule id in a suppression comment means, a key of `uf.config.js`, and
+  anywhere else in a Flow file the type under the cursor as Flow infers it.
+* **Go to definition** and **go to type definition** — Flow's own answers,
+  across files, into `node_modules` and into `flow-typed/`.
+* **Completion** — in `uf.config.js`, the keys valid at the cursor, each with
+  the documentation and type `@uniflowed/config` declares for it, the values
+  of a key whose type is a fixed set, and in a tool spec like
   `runtime: "node@26"` the names and, after `@`, the versions. It works while
   the file is half-typed, and it needs nothing installed: the declaration it
   reads is compiled into `uf`, and versions come from release lists uf caches
-  and refreshes in the background, never on a request's time.
+  and refreshes in the background, never on a request's time. In any other
+  Flow file, Flow's completion service: after `value.` the members of
+  `value`'s type with their types, and elsewhere the names in scope.
 
-Not go-to-definition, rename, references, document symbols, the type at a
-position, organize imports, or completion in any other file. The server
-advertises none of them; `tests/library/lsp.test.js` asserts that it does not,
-so a README here cannot quietly start over-claiming.
+Not rename, references, document symbols, signature help, inlay hints,
+organize imports or auto-imports. The server advertises none of them;
+`tests/library/lsp.test.js` asserts that it does not, so a README here cannot
+quietly start over-claiming.
 
 ## The one thing every integration has to get right
 

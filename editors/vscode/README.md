@@ -58,7 +58,7 @@ they are in `uf run ci`.
 
 | | Where it comes from | How you use it |
 | --- | --- | --- |
-| **Diagnostics** | `uf_lint`, pushed on open and on every change | Squiggles and the Problems panel. Source `uf`, code the rule id. |
+| **Diagnostics** | `uf_lint`, pushed on open and on every change; Flow's type errors, once typing pauses | Squiggles and the Problems panel. Source `uf`, code the rule id; for a type error, source `flow`, Flow's error code, and each location the message refers to listed under it. |
 | **Formatting** | `uf_fmt`, the same `format_source` `uf fmt` calls | Format Document, or `uf.formatOnSave`. |
 | **Quick fixes** | `textDocument/codeAction`, kind `quickfix` | The lightbulb on a diagnostic. |
 | **Fix all** | kind `source.fixAll.uf` | `editor.codeActionsOnSave`, or the lightbulb. |
@@ -109,8 +109,8 @@ does not answer.
 
 **Types need the file to parse.** Hover and go to definition answer nothing
 while the file has a syntax error, because there is no inference to ask;
-completion still answers after `value.`. Type errors are not pushed as
-diagnostics — `uf check` in the terminal reports them.
+completion still answers after `value.`. The syntax error itself is reported
+(`flow/syntax`); type errors come back once it parses.
 
 **The first type answer waits for the project to be read.** The server reads
 the whole project, as `uf check` does, in the background when it starts; a
