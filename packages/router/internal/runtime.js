@@ -380,15 +380,29 @@ hook useMountedRouter(router: Router): void {
  * Go where a server action's `redirect()` pointed.
  *
  * `location` is the address the action endpoint answered with — already under
- * `app.router.basePath` for a path on this application. A path on this origin
- * is the mounted router's `push`, so the page underneath stays hydrated and a
- * layout keeps its state, exactly as a `Link` to it would; another origin, or
- * no router on screen, is the browser's document load. The promise settles
- * when the navigation has, so a `useActionState` that awaited the action is
- * not left pending on a page that has moved on.
+ * `app.router.basePath` for a path on this application — and `from` is the page
+ * the call was made from, which a relative `location` is resolved against: the
+ * visitor may have navigated while the action ran, and `redirect("next")` means
+ * next to the page that called it. A path on this origin is the mounted
+ * router's `push`, so the page underneath stays hydrated and a layout keeps its
+ * state, exactly as a `Link` to it would; another origin, or no router on
+ * screen, is the browser's document load. The promise settles when the
+ * navigation has, so a `useActionState` that awaited the action is not left
+ * pending on a page that has moved on.
+ *
+ * Only `http:` and `https:` are followed. `redirect()` refuses a script URL
+ * where it is built, but `location` arrived over the network, and
+ * `location.assign("javascript:…")` runs it in this page; a scheme this
+ * function would not follow is thrown as an error instead.
  */
-export async function followActionRedirect(location: string): Promise<void> {
-  const target = new URL(location, window.location.href);
+export async function followActionRedirect(location: string, from: string): Promise<void> {
+  const target = new URL(location, new URL(from, window.location.href));
+  if (target.protocol !== "http:" && target.protocol !== "https:") {
+    throw new Error(
+      `@uniflowed/router: a server action redirected to a ${target.protocol} URL, which is not ` +
+        "followed. A redirect goes to an http or https address.",
+    );
+  }
   const router = mountedRouter;
   if (router == null || target.origin !== window.location.origin) {
     window.location.assign(target.href);

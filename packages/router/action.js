@@ -279,6 +279,9 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
     ...args: Array<ActionArgument>
   ): Promise<ActionValue | void> {
     const body = encodeActionArguments(args);
+    // The page the call is made from, kept for the answer: a relative redirect
+    // means relative to this page, whatever the visitor has done since.
+    const from = currentUrl();
     // Built rather than written as a literal, because the header's name is a
     // constant and a computed key in an object literal is a shape Flow
     // declines to track.
@@ -287,7 +290,7 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
     // Which build this page is, so a server on another build refuses the call
     // rather than looking this id up in a table it was never in.
     withDeployment(headers);
-    const response = await fetch(currentUrl(), {
+    const response = await fetch(from, {
       method: "POST",
       // Stated rather than left to the default, because the default is what a
       // reader has to look up and because this one is load-bearing: the
@@ -321,7 +324,7 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
     const outcome = response.headers.get(ACTION_OUTCOME_HEADER);
     if (outcome != null) {
       void response.body?.cancel();
-      return followOutcome(name, outcome, response);
+      return followOutcome(name, outcome, response, from);
     }
     if (!response.ok) {
       throw new ServerActionError(name, response.status);
@@ -355,11 +358,12 @@ async function followOutcome(
   name: string,
   outcome: string,
   response: Response,
+  from: string,
 ): Promise<ActionValue | void> {
   switch (outcome) {
     case "redirect": {
       const { followActionRedirect } = await import("./internal/runtime.js");
-      await followActionRedirect(response.headers.get("location") ?? currentUrl());
+      await followActionRedirect(response.headers.get("location") ?? from, from);
       return undefined;
     }
     case "not-found":

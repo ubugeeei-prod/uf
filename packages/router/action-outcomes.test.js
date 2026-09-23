@@ -229,6 +229,38 @@ describe("a server action reference, when its action made a routing call", () =>
     expect(loaded).toEqual(["http://localhost/notes/7"]);
   });
 
+  it("resolves a relative redirect against the page the call was made from", async () => {
+    let answered: (response: Response) => void = () => {};
+    const loaded = pageAnswering(() => new Response(null));
+    uft.spyOn(globals, "fetch").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answered = resolve;
+        }),
+    );
+    const call = createServerReference(ID, "app/notes/_actions.js#save")();
+    // The visitor moves on while the action runs.
+    globals.window.history.replaceState(null, "", "/elsewhere/deep");
+    answered(outcome(204, "redirect", { location: "next" })());
+    await call;
+    expect(loaded).toEqual(["http://localhost/next"]);
+  });
+
+  it("follows only an http or https Location, whatever the server said", async () => {
+    for (const location of ["javascript:alert(1)", " javascript:alert(1)", "data:text/html,x"]) {
+      const loaded = pageAnswering(outcome(204, "redirect", { location }));
+      let thrown: mixed = null;
+      try {
+        await createServerReference(ID, "app/notes/_actions.js#save")();
+      } catch (error) {
+        thrown = error;
+      }
+      expect(String(thrown)).toContain("is not followed");
+      expect(loaded).toEqual([]);
+      uft.restoreAllMocks();
+    }
+  });
+
   it("navigates the router on screen to the redirect, rather than loading a document", async () => {
     const save = createServerReference(ID, "app/notes/_actions.js#save");
     component Notes() {
