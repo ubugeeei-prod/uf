@@ -23,6 +23,7 @@ import { encodeActionResult } from "./internal/action-wire.js";
 import {
   DEPLOYMENT_HEADER,
   currentDeployment,
+  failedOnAMissingChunk,
   forgetDeployment,
   fromAnotherDeployment,
   isChunkLoadFailure,
@@ -237,6 +238,14 @@ describe("what counts as another build", () => {
     }
     expect(isChunkLoadFailure(new TypeError("cannot read properties of undefined"))).toBe(false);
     expect(isChunkLoadFailure("Failed to fetch dynamically imported module")).toBe(false);
+  });
+
+  it("reads a route's resolution error the same way, and only when the route threw", () => {
+    const gone = new TypeError("Importing a module script failed.");
+    expect(failedOnAMissingChunk({ kind: "thrown", error: gone })).toBe(true);
+    expect(failedOnAMissingChunk({ kind: "thrown", error: new Error("boom") })).toBe(false);
+    expect(failedOnAMissingChunk({ kind: "forbidden", error: gone })).toBe(false);
+    expect(failedOnAMissingChunk(null)).toBe(false);
   });
 });
 
