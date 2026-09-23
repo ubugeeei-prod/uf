@@ -47,7 +47,6 @@ pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf publish", Some(&registry));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,
@@ -135,7 +134,6 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf release", Some(&tag));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,

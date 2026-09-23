@@ -121,7 +121,6 @@ fn render_rules(ui: &mut Ui, listed: &[ListedRule]) {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf lint --rules", None);
-        renderer.blank(out);
         let mut table = Table::new(vec![
             Column::left("rule"),
             Column::left("level"),

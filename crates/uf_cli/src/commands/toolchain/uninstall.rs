@@ -89,7 +89,6 @@ pub(crate) fn self_uninstall(ui: &mut Ui, dry_run: bool, yes: bool) -> Result<()
             .collect::<Vec<_>>();
         ui.render(|renderer, out| {
             renderer.banner(out, "uf self-uninstall", None);
-            renderer.blank(out);
             if !left_alone.is_empty() {
                 renderer.heading(out, 2, "left alone");
                 renderer.bullet_list(out, 4, &left_alone);
@@ -356,7 +355,6 @@ fn render_plan(ui: &mut Ui, plan: &Plan) {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf self-uninstall", None);
-        renderer.blank(out);
         let mut table = Table::new(vec![
             Column::left("removes"),
             Column::left("path"),

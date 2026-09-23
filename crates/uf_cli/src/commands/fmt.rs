@@ -144,7 +144,6 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf fmt", Some(&project));
-        renderer.blank(out);
         if paths.is_empty()
             && skipped_paths.is_empty()
             && unreadable.is_empty()

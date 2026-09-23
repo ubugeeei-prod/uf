@@ -215,6 +215,8 @@ pub(crate) fn update(
         if banner {
             renderer.banner(out, "uf update", Some(&project));
         }
+        // Dropped under the banner by the rule spacing; without one, it
+        // separates the report from the manager's own output above it.
         renderer.blank(out);
         render(renderer, out, &report);
     });

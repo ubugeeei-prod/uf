@@ -198,7 +198,6 @@ pub(crate) fn explain(
     let heading = invocation;
     ui.render(|renderer, out| {
         renderer.banner(out, "uf explain", Some(label));
-        renderer.blank(out);
         renderer.heading(out, 2, &heading);
         renderer.blank(out);
 

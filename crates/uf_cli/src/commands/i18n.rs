@@ -200,7 +200,6 @@ fn render_extracted(ui: &mut Ui, root: &Utf8Path, path: &Utf8Path, report: &Extr
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf i18n extract", Some(&project));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,
@@ -238,7 +237,6 @@ fn render_extract_problems(ui: &mut Ui, report: &ExtractReport) {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf i18n extract", None);
-        renderer.blank(out);
         if !unreadable.is_empty() {
             renderer.status(
                 out,
@@ -267,7 +265,6 @@ fn render_merged(ui: &mut Ui, root: &Utf8Path, path: &Utf8Path, report: &MergeRe
     // printed, because "83 of 214" is the only number anybody wants from this.
     ui.render(|renderer, out| {
         renderer.banner(out, "uf i18n merge", Some(&locale));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,
@@ -304,7 +301,6 @@ fn render_merge_problems(ui: &mut Ui, report: &MergeReport) {
     }
     ui.render(|renderer, out| {
         renderer.banner(out, "uf i18n merge", Some(&report.locale));
-        renderer.blank(out);
         renderer.status(
             out,
             Status::Error,

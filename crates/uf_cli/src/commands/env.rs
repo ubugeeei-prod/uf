@@ -82,7 +82,6 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         };
         ui.render(|renderer, out| {
             renderer.banner(out, "uf env install", Some(project_label(&resolved.root)));
-            renderer.blank(out);
             renderer.status(out, Status::Warn, sentence);
         });
         return Ok(());
@@ -144,7 +143,6 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf env install", Some(project_label(&resolved.root)));
-        renderer.blank(out);
         renderer.bullet_list(out, 2, &rows);
         renderer.blank(out);
         // Said out loud, because uf removed a directory from somebody's
@@ -198,7 +196,6 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf env", Some(project_label(&resolved.root)));
-        renderer.blank(out);
         renderer.heading(out, 2, "this project");
         if mine.is_empty() {
             renderer.bullet_list(
@@ -270,7 +267,6 @@ fn update(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf env update", Some(project_label(&resolved.root)));
-        renderer.blank(out);
         if !rows.is_empty() {
             renderer.bullet_list(out, 2, &rows);
             renderer.blank(out);
@@ -358,7 +354,6 @@ fn gc(ui: &mut Ui, dry_run: bool) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf env gc", None);
-        renderer.blank(out);
         if !dead.is_empty() {
             renderer.heading(out, 2, "repositories that are gone");
             renderer.bullet_list(out, 4, &dead);

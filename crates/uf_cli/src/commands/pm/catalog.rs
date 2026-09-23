@@ -75,7 +75,6 @@ pub(crate) fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf catalog", Some(&project));
-        renderer.blank(out);
         render(renderer, out, &entries);
     });
     Ok(())
@@ -152,7 +151,6 @@ pub(crate) fn set(
     );
     ui.render(|renderer, out| {
         renderer.banner(out, "uf catalog set", Some(&project));
-        renderer.blank(out);
         if nothing {
             renderer.status(
                 out,

@@ -1116,7 +1116,6 @@ pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     if tasks.is_empty() {
         ui.render(|renderer, out| {
             renderer.banner(out, "uf run", None);
-            renderer.blank(out);
             renderer.status(
                 out,
                 Status::Info,
@@ -1157,7 +1156,6 @@ pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let count = tasks.len();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf run", Some(project_label(&resolved.root)));
-        renderer.blank(out);
         renderer.table(out, 2, &table);
         renderer.blank(out);
         renderer.status(
@@ -1610,7 +1608,6 @@ fn exec_uniflowed_virtual_package(
 
     ui.render(|renderer, out| {
         renderer.banner(out, "ufx", Some(package));
-        renderer.blank(out);
     });
 
     match package {

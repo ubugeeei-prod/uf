@@ -309,7 +309,6 @@ pub(crate) fn dev(
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf dev", Some(&project));
-        renderer.blank(out);
         let mut rows = vec![
             KeyValue::new("engine", &engine),
             KeyValue::new("target", target.as_str()),

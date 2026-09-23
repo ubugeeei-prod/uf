@@ -345,7 +345,32 @@ fn every_read_only_command_succeeds_in_a_scaffolded_project() {
             "`uf {}` exited {code}\nstdout: {stdout}\nstderr: {stderr}",
             args.join(" ")
         );
+        no_blank_line_under_a_rule(args, &stdout);
+        no_blank_line_under_a_rule(args, &stderr);
     }
+
+    // And the commands that report a problem, whose transcripts are the ones
+    // people read most closely.
+    for args in [
+        &["fmt", "--check", "no-such-path"][..],
+        &["lint", "no-such-path"],
+    ] {
+        let (_, stdout, stderr) = run(dir.path(), args);
+        no_blank_line_under_a_rule(args, &stdout);
+        no_blank_line_under_a_rule(args, &stderr);
+    }
+}
+
+/// A banner's rule sits directly on the report under it: no command's
+/// transcript has a blank line right after a rule. See
+/// `docs/cli-visual-language.md`.
+fn no_blank_line_under_a_rule(args: &[&str], transcript: &str) {
+    assert_eq!(
+        uf_term::blank_after_rule(transcript),
+        None,
+        "`uf {}` wrote a blank line under a rule:\n{transcript}",
+        args.join(" ")
+    );
 }
 
 /// A project with no `uf.config.js` is a project, not a failure.

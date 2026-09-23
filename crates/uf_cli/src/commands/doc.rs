@@ -81,7 +81,6 @@ fn render_unreadable(ui: &mut Ui, report: &DocReport) {
         .collect::<Vec<_>>();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf doc", None);
-        renderer.blank(out);
         renderer.status(
             out,
             Status::Warn,
@@ -108,7 +107,6 @@ fn render_success(
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf doc", Some(&project));
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,
@@ -128,7 +126,6 @@ fn render_diagnostics(ui: &mut Ui, report: &DocReport) {
     let errors = report.diagnostics.len().to_string();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf doc", None);
-        renderer.blank(out);
         renderer.key_values(
             out,
             2,

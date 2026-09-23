@@ -691,7 +691,6 @@ fn render(ui: &mut Ui, project: &str, report: Report<'_>, started: std::time::In
 
     ui.render(|renderer, out| {
         renderer.banner(out, LintCommand::Check.title(), Some(project));
-        renderer.blank(out);
     });
 
     // As in `uf lint`: the file headers name the files, so nothing after the

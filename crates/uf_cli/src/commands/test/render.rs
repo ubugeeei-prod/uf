@@ -101,7 +101,6 @@ pub(super) fn render_list(
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf test", Some("discovery"));
-        renderer.blank(out);
         let mut table = Table::new(vec![
             Column::left("location"),
             Column::left("test"),
@@ -381,7 +380,6 @@ pub(super) fn render_report(
 /// The banner a run opens with, and the blank line under it.
 pub(super) fn render_banner(renderer: &uf_term::Renderer, out: &mut String, label: &str) {
     renderer.banner(out, "uf test", Some(label));
-    renderer.blank(out);
 }
 
 /// The widest a file line pads its path to.

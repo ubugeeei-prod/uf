@@ -204,7 +204,6 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
     let env_files = env_file_list(&root, &env);
     ui.render(|renderer, out| {
         renderer.banner(out, &banner, Some(&project));
-        renderer.blank(out);
         let mut rows = vec![
             KeyValue::new("serving", serves),
             KeyValue::toned("host", host_name, Tone::Muted),
