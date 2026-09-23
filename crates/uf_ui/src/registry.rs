@@ -83,6 +83,7 @@ pub(crate) const EMBEDDED: &[Embedded] = embed![
     "toggle-group",
     "tooltip",
     "tree",
+    "visually-hidden",
 ];
 
 /// A component, as its source declares it.
