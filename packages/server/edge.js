@@ -197,6 +197,34 @@ function isDocument(response: Response): boolean {
   return type != null && type.toLowerCase().startsWith("text/html");
 }
 
+/** What a prerendered RSC payload is, as the client router checks it. */
+const FLIGHT_CONTENT_TYPE = "text/x-component";
+
+/**
+ * An asset the binding answered, with the content type uf's files need.
+ *
+ * A prerendered page's payload is `<route>/__uf.flight`, and the client
+ * router hands a navigation's answer to React only when it says
+ * `text/x-component`; anything else is taken for a sign-in page or an error
+ * and the navigation becomes a document load. `./internal/static.js` knows the
+ * extension, so `uf start`, `node server.js` and the Lambda answer it
+ * correctly — but Cloudflare's asset server does not, and sends no
+ * `Content-Type` at all, so on a Worker every client navigation to a
+ * prerendered page reloaded the page. Found by the deploy matrix
+ * (ubugeeei-prod/uf#1478, #1495).
+ *
+ * Only the payload's type is set, and only when the binding did not already
+ * say it: every other extension Cloudflare types itself, and a project that
+ * configured a type in `_headers` keeps it.
+ */
+function typedAsset(request: Request, asset: Response): Response {
+  if (!new URL(request.url).pathname.endsWith(".flight")) return asset;
+  if ((asset.headers.get("content-type") ?? "").startsWith(FLIGHT_CONTENT_TYPE)) return asset;
+  const headers = new Headers(asset.headers);
+  headers.set("content-type", FLIGHT_CONTENT_TYPE);
+  return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
+}
+
 /**
  * Cloudflare's static assets binding redirects a directory index request like
  * `/guide` to `/guide/`. Node's front door answers that same build artefact
@@ -324,7 +352,7 @@ export function createWorkerFetch(
           }
           if (asset.status !== 404) {
             if (prerenderedMayAnswer(request.headers.get("cookie")) || !isDocument(asset)) {
-              return asset;
+              return typedAsset(addressed, asset);
             }
             // The application will answer instead, so this body has no reader.
             // Cancelled rather than abandoned: a stream nobody drains is a

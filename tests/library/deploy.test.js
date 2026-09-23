@@ -331,6 +331,44 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
     expect(await asset.text()).toBe("console.log(1);");
   });
 
+  it("answers a prerendered payload as text/x-component when the binding gave it no type", async () => {
+    // Cloudflare's asset server does not know `.flight` and sends no
+    // `Content-Type`; the client router takes anything but
+    // `text/x-component` for a page that is not a payload and reloads. Found
+    // by the deploy matrix under `wrangler dev` (#1495).
+    const handle = createWorkerFetch({
+      handle: createFetchHandler({ app: appWith({}), document: assets }),
+      beginRequest,
+    });
+    const binding = {
+      fetch: async (incoming: Request): Promise<Response> => {
+        const { pathname } = new URL(incoming.url);
+        if (pathname === "/posts/first/__uf.flight") return new Response('0:["$","h1"]\n');
+        if (pathname === "/assets/site.css") {
+          return new Response("body{}", { headers: { "content-type": "text/css" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    };
+
+    const payload = await handle(
+      request("/posts/first/__uf.flight"),
+      { ASSETS: binding },
+      executionContext(),
+    );
+    expect(payload.status).toBe(200);
+    expect(payload.headers.get("content-type")).toBe("text/x-component");
+    expect(await payload.text()).toBe('0:["$","h1"]\n');
+
+    // Any other asset keeps the type the binding gave it.
+    const stylesheet = await handle(
+      request("/assets/site.css"),
+      { ASSETS: binding },
+      executionContext(),
+    );
+    expect(stylesheet.headers.get("content-type")).toBe("text/css");
+  });
+
   it("follows the assets binding's directory redirect for a prerendered page", async () => {
     const asked: Array<string> = [];
     const handle = createWorkerFetch({
