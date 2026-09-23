@@ -190,6 +190,23 @@ document. `crates/uf_cli/tests/fixtures/rsc-split-app` is the shape —
 believes, with the failure answered as state rather than thrown, because the
 endpoint answers a thrown action with a `500` and nothing in it.
 
+**A bound argument is an argument.** `action.bind(null, post.id)` records
+`post.id` in plain JSON — in the reference the browser holds, and in the
+`$uf_bound_` field of a form written before hydration — and it comes back in
+the same envelope as everything else. Nothing signs or encrypts it, so the
+sender can change it, exactly as it can change any other argument. uf does not
+put a closure's captured variables on the wire at all: an inline `"use server"`
+closure has no endpoint (ubugeeei-prod/uf#252), so there is no captured value to
+tamper with. An action that takes an id checks that the caller may touch that
+id, whether the id was bound or typed.
+
+The value ceiling is on the call, not on each argument: every argument's walk
+spends from one budget of 10,000. The walk also checks the count *before* it
+queues an array's or an object's members. Without that, one array of half a
+million zeros, which fits in the 1 MiB body, was fully queued before the counter
+refused it: about 79 MB of heap per request, compared with about 4 MB now
+(`tests/library/server-actions.test.js`).
+
 ### A server action authorizes itself
 
 An action call is a `POST` to the page's own URL carrying the id in a header,

@@ -53,6 +53,7 @@ import {
   ActionValueError,
   MAX_ACTION_ARGUMENTS,
   MAX_ACTION_DEPTH,
+  MAX_ACTION_VALUES,
   MAX_FORM_ENTRIES,
   MAX_FORM_NAME_LENGTH,
   checkActionValue,
@@ -238,6 +239,34 @@ describe("what may cross to a server action", () => {
       allowed = [allowed];
     }
     checkActionValue(allowed, "argument 1");
+  });
+
+  // `docs/security.md` promises "at most 10,000 values in total". The budget
+  // used to be per argument, so sixteen arguments carried sixteen times it.
+  it("bounds the values of a whole call, not of each argument", () => {
+    const share = Math.ceil(MAX_ACTION_VALUES / 4);
+    const args = Array.from({ length: 5 }, () => Array.from({ length: share }, () => 0));
+    // Each argument alone is inside the bound.
+    checkActionValue(args[0], "argument 1");
+    expect(() => encodeActionArguments(args)).toThrow(ActionValueError);
+    expect(() => decodeActionArguments(JSON.stringify({ args }))).toThrow(ActionValueError);
+    // And a call exactly at the bound still crosses.
+    const fits = [Array.from({ length: MAX_ACTION_VALUES - 2 }, () => 0)];
+    expect(decodeActionArguments(JSON.stringify({ args: fits }))[0]).toEqual(fits[0]);
+  });
+
+  // One array of half a million zeros fits in the 1 MiB body. The walk used
+  // to push every element — each with a path string of its own — before its
+  // counter reached any of them, so a body a thousandth of the heap bought
+  // tens of megabytes of it. The count is now checked before the push.
+  it("refuses a wide array before it has queued its elements", () => {
+    const wide = `{"args":[[${"0,".repeat(400000)}0]]}`;
+    const before = process.memoryUsage().heapUsed;
+    expect(() => decodeActionArguments(wide)).toThrow(ActionValueError);
+    const grown = process.memoryUsage().heapUsed - before;
+    // `JSON.parse` of the array itself is a few megabytes; the queue was ten
+    // times that.
+    expect(grown < 24 * 1024 * 1024).toBe(true);
   });
 
   it("bounds how many arguments a call may pass", () => {
