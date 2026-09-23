@@ -65,8 +65,8 @@ A segment in brackets is a parameter, and a segment in brackets with a spread
 captures the rest:
 
 ```
-app/posts/[slug]/$page.js      →  /posts/anything
 app/docs/[...path]/$page.js    →  /docs/a/b/c
+app/posts/[slug]/$page.js      →  /posts/anything
 ```
 
 A directory named `@team` is a [parallel-route slot](#parallel-routes): it is
@@ -156,12 +156,12 @@ A directory whose name starts with `@` is a **slot**: a second thing a layout
 renders, beside its `children`.
 
 ```
-app/dashboard/$layout.js            the frame, which renders both
-app/dashboard/$page.js              →  /dashboard          as `children`
-app/dashboard/members/$page.js      →  /dashboard/members  as `children`
-app/dashboard/@team/$default.js     the team slot when the URL says nothing
-app/dashboard/@team/$error.js       the team slot when it throws in the page
-app/dashboard/@team/members/$page.js  /dashboard/members   as `team`
+app/dashboard/$layout.js              the frame, which renders both
+app/dashboard/$page.js                →  /dashboard          as `children`
+app/dashboard/@team/$default.js       the team slot when the URL says nothing
+app/dashboard/@team/$error.js         the team slot when it throws in the page
+app/dashboard/@team/members/$page.js  →  /dashboard/members  as `team`
+app/dashboard/members/$page.js        →  /dashboard/members  as `children`
 ```
 
 The layout receives the slot under the directory's name without its `@`:
@@ -213,9 +213,9 @@ stream its placeholder without replacing the main page:
 
 ```
 app/dashboard/$layout.js
-app/dashboard/members/$page.js
 app/dashboard/@team/$loading.js
 app/dashboard/@team/members/$page.js
+app/dashboard/members/$page.js
 ```
 
 `/dashboard/members` renders the members page immediately and puts the team
@@ -247,9 +247,9 @@ the bar, is the shape it exists for:
 
 ```
 app/feed/$layout.js                     the frame, which renders `modal`
-app/feed/$page.js                    →  /feed
-app/feed/photo/[id]/$page.js         →  /feed/photo/:id   the photo page
-app/feed/@modal/(.)photo/[id]/$page.js  /feed/photo/:id   in `modal`, over the feed
+app/feed/$page.js                       →  /feed
+app/feed/@modal/(.)photo/[id]/$page.js  →  /feed/photo/:id   in `modal`, over the feed
+app/feed/photo/[id]/$page.js            →  /feed/photo/:id   the photo page
 ```
 
 ```js

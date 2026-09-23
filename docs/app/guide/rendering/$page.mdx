@@ -50,11 +50,11 @@ For every route in the table, `uf build` answers the same question: can this
 URL be written as a file now, or does something need a request later?
 
 ```text
-app/$page.js                       /                 no parameters
+app/$page.js                       /                  no parameters
+app/admin/$middleware.js           /admin/*           request guard
+app/api/health/$route.js           /api/health        request handler
 app/posts/[slug]/$page.js          /posts/:slug       parameters
 app/search/$page.js                /search            no parameters, maybe dynamic
-app/api/health/$route.js           /api/health        request handler
-app/admin/$middleware.js           /admin/*           request guard
 ```
 
 The default `modes` list allows both halves, so the build writes the files it

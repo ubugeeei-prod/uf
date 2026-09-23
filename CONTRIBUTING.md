@@ -221,6 +221,46 @@ has to be reset by hand, and a pull request that was kicked out for somebody
 else's failure can simply be queued again.
 
 
+## Directory trees in documentation
+
+A directory tree in the manual, a README or an example's README is sorted the
+way `LC_ALL=C ls` sorts a directory: at every level, entries by code point
+(the bytes of their UTF-8 names), with files and directories interleaved as
+that order puts them — not directories first. A directory's trailing `/` is how
+the listing marks it, not part of its name, so `app/` sorts as `app`, above
+`app.js`.
+
+That order is why route files start with `$`: `$` is U+0024, below `(`, `.`,
+`@`, digits and letters, so `$layout.js`, `$page.js` and `$not-found.js` come
+first in their directory, above slots (`@team`), groups (`(tabs)`) and the
+components beside them. A listing drawn in any other order shows the reader a
+tree their own `ls`, their editor and `uf new` will never show them.
+
+```text
+my-site/
+  .gitignore
+  AGENTS.md
+  app/
+    $layout.js
+    $page.js
+    Counter.js
+  app.js
+  uf.config.js
+```
+
+A list of paths is a tree written out and sorts the same way, one segment at a
+time. A listing that shows a real directory — a template `uf new` writes, an
+example — lists exactly what is there. `uf new` prints its tree in this order
+too.
+
+`tests/library/docs-trees.test.js` holds every `.md` and `.mdx` file to this
+(`uf test tests/library/docs-trees.test.js`, or
+`node --import @uniflowed/host/register tools/docs/trees.js` for the report
+alone). It reads drawn trees (`├─`, `└──`, uf's ASCII `|-`) in any fence, and
+indented listings and lists of paths in plain-text fences. A tree that is not a
+file system, such as a component hierarchy, keeps its meaningful order with
+```` ```text unsorted ````.
+
 ## Breaking changes and migrations
 
 Every breaking conventional commit (a ! subject or BREAKING CHANGE: footer)
