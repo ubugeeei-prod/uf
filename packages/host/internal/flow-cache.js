@@ -90,13 +90,18 @@ export function cacheDirectoryFor(root) {
 }
 
 /**
- * Whether `filename` is the compiled `uf.config.*` the config loader wrote.
+ * The load context for a module `isCompiledOutput` names: the caller's, with
+ * the format set to what uf wrote.
  *
- * It is already JavaScript, and it is the one module that must never go back
- * through the transform: the transform reads the config it came from.
+ * Everything under `.uf/` that uf compiled is an ES module, and a loader that
+ * transformed it used to say so by forcing `format: "module"`. Handing it on
+ * untouched must not take that away: a project whose `package.json` has no
+ * `"type": "module"` would otherwise have its server bundle read as CommonJS
+ * the first time `uf start` imported it. A `.cjs` file is left to the host,
+ * which knows what that extension means.
  */
-export function isCompiledConfig(filename) {
-  return filename.includes(`${path.sep}.uf${path.sep}config${path.sep}uf.config.`);
+export function compiledOutputContext(filename, context) {
+  return filename.endsWith(".cjs") ? context : { ...context, format: "module" };
 }
 
 /**

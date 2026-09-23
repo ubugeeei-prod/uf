@@ -99,7 +99,12 @@ import {
   scanRoutes,
   serverModuleSource,
 } from "./internal/routes.js";
-import { TransformService, isFlowModule, uniflowedPackages } from "@uniflowed/host/transform";
+import {
+  TransformService,
+  isCompiledOutput,
+  isFlowModule,
+  uniflowedPackages,
+} from "@uniflowed/host/transform";
 import {
   DEV_RSC_HOOK,
   FLIGHT_BROWSER_DEPENDENCIES,
@@ -183,6 +188,12 @@ export function devUrlFor(id) {
  * @property {object} [config] the loaded `uf.config.js` object
  * @property {"web" | "native" | "ios" | "android"} [target] app target
  * @property {string} [command] the `uf` binary to transform through
+ * @property {boolean} [shareTransformAcrossBuilds] keep one `uf transform` for
+ *   every build these plugins run, rather than closing it when each ends. For a
+ *   caller that runs several builds with the same plugins and owns the process
+ *   they run in — `driver.js` — which is what makes an idle service left open
+ *   at the end nobody's problem. Off by default: a process that builds many
+ *   projects in turn would otherwise keep one idle `uf` per project.
  */
 
 /**
@@ -255,6 +266,7 @@ export default function uniflowed(options = {}) {
       flightState,
       routing,
       command: options.command,
+      shareTransformAcrossBuilds: options.shareTransformAcrossBuilds === true,
       accessibility,
       relayEnabled: builtins.relay !== false,
     }),
@@ -285,6 +297,7 @@ function flowPlugin({
   flightState,
   routing,
   command,
+  shareTransformAcrossBuilds,
   accessibility,
   relayEnabled,
 }) {
@@ -334,8 +347,11 @@ function flowPlugin({
   /** Findings held back as a dependency's, waiting to be counted out loud. */
   let suppressed = [];
 
+  // A service that has lost its process is replaced rather than kept: under
+  // `shareTransformAcrossBuilds` one outlives a build, and a `uf transform`
+  // that died in one pass must not fail every pass after it.
   const ensureService = () => {
-    service ??= new TransformService({ command, root });
+    if (service == null || !service.alive) service = new TransformService({ command, root });
     return service;
   };
 
@@ -692,6 +708,10 @@ function flowPlugin({
       // A view of a barrel's namespace has the barrel's path and none of its
       // source: `uf:barrel-imports` generates it as JavaScript.
       if (!isFlowModule(id) || namespaceViewOf(id) != null) return null;
+      // What an earlier pass of this build wrote under `.uf/build/` — the ssr
+      // pass imports the rsc graph's bundle — is already this transform's
+      // output. See `isCompiledOutput`.
+      if (isCompiledOutput(id)) return null;
       // Both server graphs: neither gets a refresh wrapper, and the rsc graph's
       // findings are reported as that graph's.
       const rsc = this.environment?.name === RSC_ENVIRONMENT;
@@ -764,9 +784,15 @@ function flowPlugin({
     buildEnd() {
       summariseSuppressed(this, suppressed);
       suppressed = [];
-      // A dev server keeps its service for the whole session; a build is
-      // done with it here.
-      if (server == null) {
+      // A dev server keeps its service for the whole session. A build is done
+      // with it here, unless the caller runs more builds with these plugins:
+      // `uf build`'s passes — the rsc graph, the client, the server — go over
+      // largely the same modules with the same options, and `uf transform`
+      // answers a request it has already answered from memory. A service per
+      // pass compiled `@uniflowed/router` and every shared module three times.
+      // An idle service does not hold the host open (see `TransformService`),
+      // and its child sees stdin close when the host exits.
+      if (server == null && !shareTransformAcrossBuilds) {
         service?.close();
         service = null;
       }
