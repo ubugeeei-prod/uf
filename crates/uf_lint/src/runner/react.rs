@@ -194,6 +194,17 @@ pub(crate) fn run_react_hook_syntax(
     }
 }
 
+/// `react/no-default-export-component`: a module that declares a component,
+/// or a route module, exporting it as `default`.
+///
+/// A convention and not a defect, hence `warn`: `@uniflowed/router` reads a
+/// page's `default` first and its named `Page` second, so a default export
+/// works. The rule asks for the named form because it is what `uf create`
+/// scaffolds, and because a named component has one name in every import, in
+/// stack traces and in React DevTools, where a default export takes whatever
+/// name each importer gives it. The message used to say routes were "wired by
+/// name", which was not true of uf's own router and sent readers looking for
+/// a wiring bug that did not exist.
 pub(crate) fn run_react_no_default_export_component(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
@@ -230,7 +241,9 @@ pub(crate) fn run_react_no_default_export_component(
             severity,
             position,
             at,
-            "framework routes are wired by name; export components with a named export",
+            "export the component by name: the router reads a named `Page`, `Layout` and the rest \
+             as well as `default`, and a named component keeps one name in every import, stack \
+             trace and DevTools tree",
         );
     }
 }

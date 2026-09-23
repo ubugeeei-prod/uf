@@ -1634,7 +1634,7 @@ export default Settings;
 `uf lint` reports:
 
 ```text
-app/example.js:6:1 framework routes are wired by name; export components with a named export
+app/example.js:6:1 export the component by name: the router reads a named `Page`, `Layout` and the rest as well as `default`, and a named component keeps one name in every import, stack trace and DevTools tree
 ```
 
 #### Good

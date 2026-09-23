@@ -213,6 +213,24 @@ fn hook_rule_leaves_factories_and_non_hooks_alone() {
     }
 }
 
+/// The message says what is true of uf's router: it reads `default` and the
+/// named export both, so the reason for the named one is the name. It used to
+/// say routes were "wired by name", which sent readers hunting for a wiring
+/// bug.
+#[test]
+fn the_default_export_message_does_not_claim_the_router_needs_a_name() {
+    let diagnostics = lint_one(
+        "react/no-default-export-component",
+        "app/$page.js",
+        "// @flow\nexport default component Page() { return null; }\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    let message = &diagnostics[0].message;
+    assert!(!message.contains("wired by name"), "{message}");
+    assert!(message.contains("as well as `default`"), "{message}");
+}
+
 /// ubugeeei-prod/uf#451: source a module *generates* is not source it *is*.
 ///
 /// `packages/vite/driver.js` builds a Cloudflare Worker entry as text, and the
