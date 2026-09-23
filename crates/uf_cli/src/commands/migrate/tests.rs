@@ -53,6 +53,62 @@ export default {
 }
 
 #[test]
+fn releases_order_the_alpha_series_below_0_x_0() {
+    let release = |version| codemod::Release::parse(version).unwrap();
+    assert!(release("0.0.0-alpha.9") < release("0.0.0-alpha.10"));
+    assert!(release("0.0.0-alpha.48") < release("0.1.0"));
+    assert!(release("0.1.0-rc.1") < release("0.1.0"));
+    assert!(release("0.1.0-alpha.3") < release("0.1.0-beta.1"));
+    assert!(release("0.1.0") < release("0.1.1"));
+    assert!(release("0.1.1") < release("0.2.0"));
+    assert!(release("0.9.0") < release("0.10.0"));
+    assert!(release("0.10.0") < release("1.0.0"));
+    for text in [
+        "",
+        "0.1",
+        "0.1.0.0",
+        "v0.1.0",
+        "0.01.0",
+        "0.1.0-alpha",
+        "0.1.0-nightly.1",
+        "uf@0.1.0",
+    ] {
+        assert!(
+            codemod::Release::parse(text).is_err(),
+            "{text:?} was accepted"
+        );
+    }
+    // This binary's own version is the default `--to`, so it has to be one
+    // the catalog reads — `0.0.0-alpha.N` before 0.1.0, `0.x.0` after.
+    codemod::Release::parse(env!("CARGO_PKG_VERSION")).unwrap();
+}
+
+#[test]
+fn a_project_on_the_alpha_series_migrates_to_this_binarys_version() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(temp.path()).unwrap();
+    fs::write(
+        root.join("uf.config.js"),
+        "export default { env: { toolchain: { node: '24.14.0' } } };\n",
+    )
+    .unwrap();
+    let plan = codemod::plan(root, Some("0.0.0-alpha.32"), env!("CARGO_PKG_VERSION")).unwrap();
+    assert!(
+        plan.migrations
+            .iter()
+            .any(|m| m == codemod::TOOL_DECLARATIONS)
+    );
+    let after = plan.changes[0].after.as_ref().unwrap();
+    assert_eq!(
+        source::get(after, &["runtime"]).unwrap(),
+        Some(json!("node@24.14.0"))
+    );
+    // Past the release that introduced it, there is nothing left to do.
+    let current = codemod::plan(root, Some("0.0.0-alpha.41"), env!("CARGO_PKG_VERSION")).unwrap();
+    assert!(current.changes.is_empty() && current.migrations.is_empty());
+}
+
+#[test]
 fn conflicts_and_ambiguous_roles_keep_original_values() {
     let temp = tempfile::tempdir().unwrap();
     let root = Utf8Path::from_path(temp.path()).unwrap();
