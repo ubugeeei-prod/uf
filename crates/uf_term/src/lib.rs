@@ -19,7 +19,9 @@
 //!   contains no escape byte anywhere.
 //! * [`Renderer`] draws the primitives: a banner, a key/value block, a tree, a
 //!   table with per-column alignment, a rule, status marks, phase timings, and
-//!   a rustc-shaped [`CodeFrame`].
+//!   a rustc-shaped [`CodeFrame`] — and prose: sentences word-wrapped to the
+//!   terminal, and [`Definition`] lists that keep a description beside its
+//!   term at any width.
 //! * [`Progress`] is a spinner that writes nothing unless the stream is an
 //!   interactive terminal, so CI logs stay clean, and [`Live`] is the same
 //!   promise for a block of several lines redrawn where they stand.
@@ -63,6 +65,7 @@ mod glyph;
 mod image;
 mod progress;
 pub mod prompt;
+mod prose;
 mod render;
 mod spacing;
 mod style;
@@ -80,6 +83,7 @@ pub use crate::diagnostic::{CodeFrame, DiagnosticLevel};
 pub use crate::glyph::{ASCII_GLYPHS, Glyphs, Status, UNICODE_GLYPHS};
 pub use crate::image::{ImageEnv, ImageProtocol, Placement, inline_image};
 pub use crate::progress::{DEFAULT_TICK, LIVE_WIDTH, Live, Progress};
+pub use crate::prose::{Definition, MIN_DESCRIPTION_WIDTH};
 pub use crate::render::{KeyValue, Renderer, StatusRow};
 pub use crate::spacing::{RuleSpacing, blank_after_rule, is_rule_line};
 pub use crate::style::{Attributes, Color, Style};
