@@ -40,7 +40,16 @@ diagnostics, formatting, quick fixes, `source.fixAll.uf`, hover, go to
 definition and completion.
 
 The settings are spelled the same — `uf.server.path`, `uf.formatOnSave`,
-`uf.trace.server` — and go in Cursor's own `settings.json`.
+`uf.trace.server`, `uf.workspace.disableBuiltinValidation` — and go in Cursor's
+own `settings.json`.
+
+Cursor's extension API is older than VS Code 1.110, which renamed the built-in
+validation switch to `js/ts.validate.enabled`. In a uf project the extension
+writes the name Cursor has, `"javascript.validate.enable": false`, and skips
+the new one; `editors/vscode/README.md` has the details. `cursor
+--install-extension <file.vsix>` is Cursor's command-line install; Cursor's
+forum reports that a VSIX installed that way does not appear in a non-default
+profile.
 
 `editors/vscode/README.md` is the reference for all of it, including what
 `uf lsp` deliberately does not serve.
