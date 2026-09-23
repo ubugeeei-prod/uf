@@ -200,12 +200,77 @@ export class ForbiddenError extends Error {
   }
 }
 
-/** Thrown by `redirect()`; the renderer answers with a redirect. */
+/**
+ * The URL schemes a navigation never follows, because following one runs
+ * script in the page rather than loading one.
+ *
+ * `javascript:` is the reason. `location.assign("javascript:…")` and
+ * `location.replace("javascript:…")` execute it in the current document, with
+ * the page's origin and its cookies, so a router that hands a caller's string
+ * to either is a DOM XSS sink the moment that string comes from a query
+ * parameter: `redirect(searchParams.get("next"))` is the sign-in flow in half
+ * the applications ever written. React 19 refuses the same scheme in `href`
+ * for the same reason, and `Link` renders through that; this is the half of
+ * the router React never sees. `vbscript:` is the same thing in an older
+ * browser, and `data:` a document of the sender's choosing that browsers now
+ * refuse to navigate to at the top level anyway — refused here too, so the
+ * answer does not depend on which browser was asked.
+ */
+const SCRIPT_SCHEMES: $ReadOnlyArray<string> = ["javascript:", "vbscript:", "data:"];
+
+/**
+ * The scheme `to` would run as script when navigated to, or `null` when it is
+ * a URL a navigation may follow.
+ *
+ * Parsed with the WHATWG URL parser rather than compared as text, because the
+ * browser is what decides and it forgives a great deal: leading spaces and
+ * control characters are stripped, tabs and newlines anywhere are dropped, and
+ * the scheme is case-insensitive — ` JaVa\tScRiPt:` is `javascript:`. The base
+ * only resolves a relative path, which is never one of these.
+ */
+export function scriptSchemeOf(to: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(to, "http://uf.invalid/");
+  } catch {
+    return null;
+  }
+  return SCRIPT_SCHEMES.includes(parsed.protocol) ? parsed.protocol : null;
+}
+
+/**
+ * Throw unless `to` is a URL a navigation may follow.
+ *
+ * Named after the call that asked (`redirect()`, `router.push()`), so the
+ * stack a developer reads points at the line that built the URL. The URL
+ * itself is not repeated: it is often a value a visitor chose, and an error
+ * message is something applications log.
+ */
+export function refuseScriptUrl(to: string, caller: string): void {
+  const scheme = scriptSchemeOf(to);
+  if (scheme != null) {
+    throw new Error(
+      `@uniflowed/router: ${caller} refused a ${scheme} URL, which a browser would run as ` +
+        "script in this page rather than load. If the URL came from a query parameter, allow " +
+        "only paths on this site before navigating to it.",
+    );
+  }
+}
+
+/**
+ * Thrown by `redirect()`; the renderer answers with a redirect.
+ *
+ * Refuses a script URL when it is built (see [`refuseScriptUrl`]), so every
+ * place that follows one — the server's `Location`, the browser's
+ * `location.replace` in a single-page application, a form's `303` — is
+ * covered by one check rather than by one each.
+ */
 export class RedirectError extends Error {
   to: string;
   permanent: boolean;
 
   constructor(to: string, permanent: boolean) {
+    refuseScriptUrl(to, permanent ? "permanentRedirect()" : "redirect()");
     super(`redirect to ${to}`);
     this.name = "RedirectError";
     this.to = to;

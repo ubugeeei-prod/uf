@@ -100,7 +100,13 @@ import {
   navigationKey,
   routeNavigations,
 } from "./navigation-cache.js";
-import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
+import {
+  hasClientPage,
+  matchRoute,
+  nearestBoundary,
+  refuseScriptUrl,
+  scriptSchemeOf,
+} from "./routing.js";
 import type { RouteParams, SearchParams } from "./routing.js";
 import {
   beneath,
@@ -679,6 +685,9 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     if (!isBrowser()) {
       return;
     }
+    // Before anything else: every path below may end in `location.assign`,
+    // which runs a `javascript:` URL in this page. See `refuseScriptUrl`.
+    refuseScriptUrl(to, "a router navigation");
     const target = new URL(addressOf(to), window.location.href);
     // The application path the route table is asked about, and the address the
     // history entry keeps: one URL, with and without `app.router.basePath`.
@@ -1019,6 +1028,8 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     if (!isBrowser()) {
       return;
     }
+    // As in `ModuleRouter`: a `javascript:` URL never reaches `location`.
+    refuseScriptUrl(to, "a router navigation");
     // A payload URL is an address, so it keeps the base path; the server takes
     // it off.
     const target = new URL(addressOf(to), window.location.href);
@@ -1857,9 +1868,14 @@ export component Link(
       try {
         await router.push(to, { replace, transition });
       } catch (error) {
-        // A failed navigation falls back to the browser doing it.
+        // A failed navigation falls back to the browser doing it — unless what
+        // failed was the router refusing a script URL, which the browser would
+        // run rather than load. `isExternal` above does not catch every
+        // spelling of one: ` javascript:` with a leading space is a path to it.
         console.error(error);
-        window.location.assign(addressOf(to));
+        if (scriptSchemeOf(to) == null) {
+          window.location.assign(addressOf(to));
+        }
       }
     });
   };
