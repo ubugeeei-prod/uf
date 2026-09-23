@@ -3615,21 +3615,81 @@ fn shared_answers(said: &str) -> Vec<String> {
         .collect()
 }
 
-/// `line` with the contents of the `uf:render` meta replaced by a placeholder.
+/// `line` with the contents of the `uf:render` meta replaced by a placeholder,
+/// and the `uf:deployment` meta's with another.
+///
+/// The second for the same reason as the first, one level up: each adapter here
+/// is its own `uf build --adapter`, so its own build, and every build publishes
+/// a deployment id of its own (ubugeeei-prod/uf#956). That the id is *present*
+/// in what a build writes is asserted by
+/// [`a_tab_on_the_previous_build_keeps_working_or_loads_the_document_again`].
 ///
 /// A string scan rather than a regular expression, because the attribute's
 /// value is React's own escaping and the only `"` inside it is the one that
 /// ends it — `JSON.stringify` produces `&quot;` here, never a bare quote.
 fn without_the_render_anchor(line: &str) -> String {
-    const OPEN: &str = "<meta name=\"uf:render\" content=\"";
-    let Some(start) = line.find(OPEN) else {
-        return line.to_owned();
-    };
-    let value = start + OPEN.len();
-    let Some(end) = line[value..].find('"') else {
-        return line.to_owned();
-    };
-    format!("{}<envelope>{}", &line[..value], &line[value + end..])
+    let mut line = line.to_owned();
+    for (open, placeholder) in [
+        ("<meta name=\"uf:render\" content=\"", "<envelope>"),
+        ("<meta name=\"uf:deployment\" content=\"", "<deployment>"),
+    ] {
+        let Some(start) = line.find(open) else {
+            continue;
+        };
+        let value = start + open.len();
+        let Some(end) = line[value..].find('"') else {
+            continue;
+        };
+        line = format!("{}{placeholder}{}", &line[..value], &line[value + end..]);
+    }
+    // And the same id in the root of the payload a document carries, where it
+    // is JSON inside a JSON string: `\"deployment\":\"298b016e388b79ba\"`.
+    for needle in ["\"deployment\":\"", "\\\"deployment\\\":\\\""] {
+        let mut from = 0;
+        while let Some(found) = line[from..].find(needle) {
+            let value = from + found + needle.len();
+            let end = value
+                + line[value..]
+                    .bytes()
+                    .take_while(u8::is_ascii_hexdigit)
+                    .count();
+            line = format!("{}<deployment>{}", &line[..value], &line[end..]);
+            from = value + "<deployment>".len();
+        }
+    }
+    line
+}
+
+/// Two builds' answers compare equal once what is per build and per render is
+/// blanked, and not before.
+///
+/// Its own test, and one with no socket, for the reason the envelope reader's
+/// is: every comparison that uses [`without_the_render_anchor`] builds each
+/// adapter separately, and a normalisation that stopped blanking the
+/// deployment id would fail all of them at once with a diff that looks like
+/// the adapters disagreeing.
+#[test]
+fn two_builds_answer_alike_once_the_per_build_ids_are_blanked() {
+    let first = "rendered 200 <!doctype html><html lang=\"en\"><head>\
+         <meta name=\"uf:render\" content=\"{&quot;at&quot;:1788840631074}\"/>\
+         <meta name=\"uf:deployment\" content=\"298b016e388b79ba\">\
+         <title>served-app</title></head><body><script type=\"application/json\" \
+         data-uf-flight>\"0:{\\\"route\\\":{},\\\"deployment\\\":\\\"298b016e388b79ba\\\"}\\n\"\
+         </script></body></html>";
+    let second = first
+        .replace("298b016e388b79ba", "fc6bf5941c4e14fe")
+        .replace("1788840631074", "1788840699001");
+
+    assert_ne!(first, second);
+    assert_eq!(
+        without_the_render_anchor(first),
+        without_the_render_anchor(&second)
+    );
+    // And a line with neither is left as it was.
+    assert_eq!(
+        without_the_render_anchor("handler-get 200 {\"ok\":true}"),
+        "handler-get 200 {\"ok\":true}"
+    );
 }
 
 /// Assert on the answers themselves, once, for whichever adapter produced them.
