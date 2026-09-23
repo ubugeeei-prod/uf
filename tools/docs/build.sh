@@ -48,4 +48,8 @@ done
   else
     cargo run --release --package uf_cli --bin uf -- build#docs --size-report
   fi
+  # The search index is read from what the build wrote — the ids the markdown
+  # pipeline rendered, not the ones the sources imply — so it runs after the
+  # build and writes beside it. `docs/app/_design/search.js` says what is in it.
+  UF_PROJECT_ROOT=. node --import @uniflowed/host/register tools/docs/search-index.js docs/dist/docs
 )
