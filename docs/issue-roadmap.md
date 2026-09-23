@@ -146,6 +146,9 @@
 - [ ] Map host-provided IO capabilities for Node.js, Deno, and Bun.
 - [x] Support a deploy-anywhere adapter for Node.js: `uf build --adapter node` writes a directory that runs on a host with a JavaScript runtime and nothing else.
 - [x] Support the edge, serverless and container deploy targets against the same `@uniflowed/server/fetch` handler: Cloudflare Workers with a `wrangler.json`, AWS Lambda payload format 2.0, and `node` with a `Dockerfile` ([#391](https://github.com/ubugeeei-prod/uf/issues/391)). None has been deployed to a real platform.
+- [x] Survive a deploy with the previous build open in a tab: every document, action call and payload names its build, a front door on another build answers `409` before any application code runs, the router turns that into a hard navigation, and `uf build` keeps the previous build's hashed assets for one build ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
+- [x] Write the adapter contract down as `@uniflowed/server/adapter` and the deploy guide, so a platform can implement an adapter outside this repository ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
+- [ ] Prove the `node`/`container`, `edge` and `serverless` outputs on their real platforms: `.github/workflows/deploy-parity.yml` is written and skips each platform by name until the repository has its credentials; it has not run against any of them ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
 - [x] Support the static deploy target: `uf build --adapter static` copies the build and refuses, by name, a project whose route handlers, middleware, unprerendered routes or server actions a static host cannot answer ([#335](https://github.com/ubugeeei-prod/uf/issues/335)).
 - [ ] Support the Deno and Bun deploy targets, once a benchmark shows a native server beating `node:http` under the same handler ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - [ ] Assume React 19, Suspense, `use`, and Async React.

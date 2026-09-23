@@ -599,7 +599,13 @@ process, and that all six answer *identically* — byte for byte, the same as
 `uf start`, including a loader's `redirect()`, whose whole answer is a
 `Location` header. None of that is a deployment. The first person to run
 `wrangler deploy` or upload the zip is finding something out, and
-[#956](https://github.com/ubugeeei-prod/uf/issues/956) is where to say what.
+[#956](https://github.com/ubugeeei-prod/uf/issues/956) is where to say what. The
+`Deploy parity` workflow is written to deploy the `node`/`container`, `edge` and
+`serverless` outputs and ask them the same questions over the network; it skips
+each platform by name until the repository has that platform's credentials, and
+it has not run against any of them yet. [Deploy](/guide/deploy) has the list of
+secrets, the adapter contract a platform can implement itself, and what happens
+to a tab left open across a deploy.
 
 `static` is the exception, and only because there is nothing to deploy *to*: a
 directory of files is what every static host serves, and uf's own

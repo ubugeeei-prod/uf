@@ -15,7 +15,9 @@ a static file host, or nothing but one executable.
 
 **What you will be able to do:** choose between the local servers, adapter
 outputs, a static host and a compiled binary, know what a static deployment
-refuses, and know which environment variables are read when the server starts.
+refuses, know what a tab opened before a deploy does after it, write an adapter
+for a platform uf does not ship one for, and know which environment variables
+are read when the server starts.
 
 **What you need first:** a web project with dependencies installed — [Your first
 project](/guide/project), then [Dependencies](/guide/dependencies).
@@ -137,11 +139,21 @@ half.
 | Static | [`uf build --adapter static`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/static`, 14 files, `upload the contents of .uf/deploy/static to a static host` |
 
 The successful adapter commands built the directories. They did not deploy them
-to Cloudflare, AWS, a container registry, a Deno host or a Bun host. The command
-reference says the same thing at the adapter level: no server adapter's output
-has been proven on a real platform by uf's own pipeline yet, and
-[#956](https://github.com/ubugeeei-prod/uf/issues/956) is where that evidence
-belongs.
+to Cloudflare, AWS, a container registry, a Deno host or a Bun host.
+
+The `Deploy parity` workflow (`.github/workflows/deploy-parity.yml`) is written
+to do that: on a schedule and on every release tag, it deploys the
+`served-app` fixture as a container on Fly.io (`node`/`container`), as a
+Cloudflare Worker (`edge`) and as an AWS Lambda function (`serverless`), then
+asks each deployment the adapter-parity questions beside `uf start` over the
+same build. Each platform job needs that platform's repository secrets and
+skips by name without them. **None of the three has run against a real platform
+yet**: the repository has no credentials for any of them, so no server
+adapter's output has been proven on a real platform by uf's own pipeline, and
+[#956](https://github.com/ubugeeei-prod/uf/issues/956) stays open for that
+evidence. What does run on every such change is the workflow's harness, which
+asks a `node` artefact on the runner the same questions and proves the
+comparison itself.
 
 ## Static is only files
 
@@ -167,6 +179,132 @@ error: this project cannot be served by a static host, so `uf build --adapter st
 The fix is a deployment choice, not a flag: remove the server-only feature,
 give a dynamic route every path through `generateStaticParams`, or choose a
 server target.
+
+## A tab opened before the deploy
+
+A deploy replaces the server while browsers still hold pages from the previous
+build. Every build mints new server action ids and new chunk names, so a tab
+opened on build N that calls an action or opens a lazy route after build N+1 is
+live would otherwise call an action the server has never heard of, or ask for a
+chunk that is gone.
+
+`uf build` gives each build a **deployment id** and carries it three ways:
+
+| Where | How |
+| --- | --- |
+| the document | `<meta name="uf:deployment" content="…">` in every page's head, prerendered or rendered |
+| the action endpoint | every server action call sends `uf-deployment: <id>` |
+| payload and chunk requests | every navigation payload request sends the same header, and every payload says in its root which build rendered it |
+
+The id is a 16-character digest of the build id, not the build id itself: the
+build id is the key action ids are derived from and is never published. Two
+artefacts that are one build — `UF_BUILD_ID` set to the same value — publish
+one deployment id.
+
+**On a mismatch, nothing of the new build runs.** Every front door — `uf start`,
+`uf preview`, every adapter and a compiled binary — answers a request naming
+another build with `409 Conflict`, `cache-control: no-store`, and a
+`uf-deployment` header naming the build that is live. That happens after the
+host's files and before middleware, server actions, route handlers and
+rendering, so a stale action id is never looked up. The browser then makes a
+**hard navigation** instead of calling a stale action or rendering a stale
+payload:
+
+- an action call that is refused loads the current page's document again, and
+  the promise it returned never settles, because the page is being replaced;
+- a navigation whose payload is refused, or whose payload another build
+  rendered — a prerendered payload is a file, and a file host refuses nothing —
+  loads the target's document instead of rendering it;
+- a navigation whose chunk cannot be fetched loads the target's document
+  instead of showing the route's error boundary. A module that loaded and then
+  threw still reaches the error boundary: a reload would not fix it.
+
+A page with no deployment id — `uf dev`, or a build from before this existed —
+sends no header and compares nothing.
+
+**The previous build's static assets stay servable for one build.** Before the
+bundler empties the output directory, `uf build` sets aside every hashed file
+the previous build's `.vite/manifest.json` names; after measuring what the new
+build ships, it puts back each one the new build did not write, and records them
+in `.uf/build/meta/carried-assets.json`. So build N+1's `dist/` — and every
+adapter's `static/`, and a compiled binary — still serves build N's chunks, and
+a tab on build N keeps loading them. Build N+2 does not carry them again: a tab
+two deploys behind falls back to hard navigations. The summary says
+`kept from the last build` when it kept any.
+
+That window depends on the output directory surviving between builds. A CI job
+that builds on a fresh checkout has no previous build to carry, and a platform
+that replaces its files wholesale on upload keeps only what that upload held;
+both fall back to the hard navigation for a chunk that is gone. Restore the
+previous `dist/` before building (a CI cache) to get the window there too.
+
+`crates/uf_cli/tests/vite.rs`'s
+`a_tab_on_the_previous_build_keeps_working_or_loads_the_document_again` builds
+the `rsc-split-app` fixture three times and asks `uf start` what a tab on the
+first build would ask: build N's chunks answer `200`, build N's action call is
+refused with a `409` naming build N+1 without running, the prerendered payload
+names build N+1, and build N's chunks are gone after build N+2.
+`packages/router/deployment.test.js` drives the browser's half.
+
+## The adapter contract
+
+A platform uf ships no adapter for can be served by writing the one file an
+adapter is. Every server adapter in this repository is the same `handler.js`
+with a few lines around it, and those lines are the contract.
+
+**What the platform receives** is the directory
+[`uf build --adapter node`](/reference/cli#uf-build---adapter-target) writes, or
+`--adapter edge` for a runtime with Web-standard APIs and no Node built-ins:
+
+| Path | What it is |
+| --- | --- |
+| `handler.js` | the application: `export default { fetch, beginRequest, routing }` |
+| `static/` | the output directory: hashed assets, prerendered documents and payloads, and the previous build's hashed assets for one build |
+| `chunks/` | modules `handler.js` imports, when the bundle split |
+| `package.json` | `{"type": "module"}` |
+
+`fetch` takes a `Request` and returns a `Response`. It touches no filesystem
+and holds no socket; it runs middleware, server actions, payloads, route
+handlers and rendering in that order, and it refuses a request from another
+build by itself.
+
+**What the platform's entry owes it**, for every request, in this order:
+
+1. **Serve files first.** A `GET` or `HEAD` for a file under `static/` is
+   answered with it before any application code runs; a request with any other
+   method never is. A miss falls through to the application, whose 404 is the
+   project's own page.
+2. **Apply `routing`'s redirects and headers in front of those files**, if the
+   entry serves them itself. A request that reaches `fetch` has them applied
+   there.
+3. **Begin one request with `handler.js`'s own `beginRequest`**, never with a
+   copy of `@uniflowed/server` installed beside the entry: the request store
+   belongs to the copy bundled into the application.
+4. **Run `fetch` inside `run`, and call `settle` after the body has been sent**,
+   or hand it to the platform's `waitUntil`.
+5. **Keep every `Set-Cookie` separate**, and stream the body where the platform
+   can.
+6. **Answer a thrown error with a bare `500`**, with nothing of the error in the
+   body.
+
+`@uniflowed/server/adapter` is that contract as code: the `HandlerModule` type,
+`handlerModule(loaded)`, which refuses by name a module that is not a uf
+handler, and `answerWith(handler)`, which does steps 3, 4 and 6 and hands the
+settle to the entry. `@uniflowed/server/node`'s `createStaticHandler` and
+`@uniflowed/server/edge`'s `createWorkerFetch` are the reference for steps 1
+and 2 on a filesystem and behind an assets binding.
+
+**How to know it conforms.** Build `crates/uf_cli/tests/fixtures/served-app`
+with the adapter, deploy it, run `uf start` over the same build, and run:
+
+```sh
+node tools/ci/deployed-parity.mjs --reference http://127.0.0.1:3000 --deployed https://your-deployment.example
+```
+
+It asks both the adapter-parity questions — route handlers, a render, a
+loader's redirect, the project's 404, `app.router` rules, a middleware rewrite,
+a prerendered page, and the two version-skew answers — and fails on the first
+that differs.
 
 ## Compile one file
 
@@ -209,8 +347,13 @@ wins over a file.
 `uf preview`, `uf start`, server-adapter directories and `--compile` use the
 same request handler. The `static` adapter deploys generated files only. The
 checked project confirmed the local servers answered the same document. The
-tests go further by driving adapter outputs in process.
+tests go further by driving adapter outputs in process, and they drive version
+skew across two real builds under `uf start`.
 
 What is not established is a successful real deployment of the server adapters.
-When that happens, write down the platform, the generated directory and the
-runtime version beside [#956](https://github.com/ubugeeei-prod/uf/issues/956).
+The `Deploy parity` workflow is written to produce that evidence and has not
+yet run with credentials. When it does, write down the platform, the generated
+directory and the runtime version beside
+[#956](https://github.com/ubugeeei-prod/uf/issues/956). The previous build's
+assets are kept only where the output directory survives between builds;
+version skew is not tested in a real browser.
