@@ -369,9 +369,9 @@ fn the_terminal_answers_when_the_environment_will_not() {
 
 #[test]
 fn a_terminal_the_environment_already_described_is_not_asked() {
-    // The probe is a process spawn. Paying for it to get an answer that the
-    // next line would discard is the kind of cost nobody notices until a
-    // command that runs a hundred times does it.
+    // The probe is a system call on `/dev/tty`. Paying for it to get an
+    // answer that the next line would discard is the kind of cost nobody
+    // notices until a command that runs a hundred times does it.
     let env = env().with_columns("40").with_lines("12");
 
     assert_eq!(
@@ -382,8 +382,8 @@ fn a_terminal_the_environment_already_described_is_not_asked() {
 
 #[test]
 fn a_stream_nobody_is_watching_is_never_measured() {
-    // A piped stream draws no region at all, so paying a process spawn to
-    // find out how wide the window behind it is buys nothing. There is no
+    // A piped stream draws no region at all, so asking the terminal how wide
+    // the window behind it is buys nothing. There is no
     // observable difference to assert here other than the size it settles on,
     // so the branch is stated where it lives and asserted by its result.
     assert_eq!(
@@ -415,7 +415,7 @@ fn a_terminal_that_reports_nothing_gets_the_fallback() {
 
 #[test]
 fn a_zero_dimension_is_a_terminal_that_is_not_ready_yet() {
-    // Some CI shells answer `stty size` with `0 0`. A region zero columns wide
+    // Some CI shells report a size of `0 0`. A region zero columns wide
     // is worse than one laid out for eighty.
     let size = detect_size(&env(), Some((0, 0)));
 
@@ -423,41 +423,28 @@ fn a_zero_dimension_is_a_terminal_that_is_not_ready_yet() {
 }
 
 #[test]
-fn stty_size_reports_rows_before_columns() {
-    assert_eq!(parse_stty_size("43 132\n"), Some((132, 43)));
-    assert_eq!(parse_stty_size("  24   80  "), Some((80, 24)));
-    assert_eq!(parse_stty_size(""), None);
-    assert_eq!(parse_stty_size("43"), None);
-    assert_eq!(parse_stty_size("stty: stdin: Not a typewriter"), None);
-}
-
-#[test]
-fn stty_is_run_from_a_root_owned_directory_and_not_from_path() {
-    // The whole of CWE-426 is *which directory* the program came out of. A
-    // relative name, or an absolute one under a directory an unprivileged
-    // process can write to, is a program somebody else chooses.
-    for program in STTY_PROGRAMS {
-        let path = Path::new(program);
-        assert!(
-            path.is_absolute(),
-            "{program} would be resolved through PATH"
-        );
-        assert!(
-            path.parent() == Some(Path::new("/bin"))
-                || path.parent() == Some(Path::new("/usr/bin")),
-            "{program} is outside POSIX's default utility path"
-        );
-    }
-    // And the resolver hands back one of those or nothing — never a path it
-    // went looking for.
-    if let Some(resolved) = stty_program() {
-        assert!(
-            STTY_PROGRAMS
-                .iter()
-                .any(|program| Path::new(program) == resolved),
-            "{} is not one of the paths this crate trusts",
-            resolved.display()
-        );
+fn the_terminal_is_measured_the_way_stty_measures_it() {
+    // `stty size` is what the size used to come from, and it is the reference
+    // the system call is held to: the same terminal, the same two numbers.
+    // Without a controlling terminal — CI, a sandbox — there is nothing to
+    // compare, and both sides must say so rather than invent a size.
+    let Ok(terminal) = std::fs::File::open("/dev/tty") else {
+        assert_eq!(probe_size(), None);
+        return;
+    };
+    let Ok(output) = std::process::Command::new("/bin/stty")
+        .arg("size")
+        .stdin(terminal)
+        .output()
+    else {
+        return;
+    };
+    let reported = String::from_utf8_lossy(&output.stdout);
+    let mut words = reported.split_ascii_whitespace();
+    let rows = words.next().and_then(|word| word.parse::<usize>().ok());
+    let columns = words.next().and_then(|word| word.parse::<usize>().ok());
+    if let (Some(rows), Some(columns)) = (rows, columns) {
+        assert_eq!(probe_size(), Some((columns, rows)));
     }
 }
 
