@@ -26,7 +26,11 @@
 import path from "node:path";
 import { describe, it } from "@uniflowed/test";
 
-import { everyMisuseIsReported } from "./type-tests.js";
+import { everyMisuseIsReported, oneCheckPerCommand } from "./type-tests.js";
+
+// Both fixtures go to the checker with the same two packages, so they are one
+// command, run once for the file; see `oneCheckPerCommand`.
+const checker = oneCheckPerCommand();
 
 describe("a matcher is a name the checker knows", () => {
   // `expect` was `$FlowFixMe`, and so was everything it handed back, so a
@@ -42,6 +46,7 @@ describe("a matcher is a name the checker knows", () => {
       fixture: path.join("tests", "type-tests", "matchers.js"),
       alongside: ["packages/test", "packages/react-testing"],
       atLeast: 6,
+      checker,
     });
   });
 });
@@ -60,6 +65,7 @@ describe("an event name is a name the checker knows", () => {
       fixture: path.join("tests", "type-tests", "event-names.js"),
       alongside: ["packages/test", "packages/react-testing"],
       atLeast: 2,
+      checker,
     });
   });
 });

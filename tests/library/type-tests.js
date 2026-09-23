@@ -147,11 +147,102 @@ export type MisuseCheck = {
    * four would not notice.
    */
   readonly atLeast: number,
+  /**
+   * Where the checker is run from; a fresh `uf check` per call when absent.
+   *
+   * See [`oneCheckPerCommand`] for when a file passes one.
+   */
+  readonly checker?: Checker,
 };
+
+/** What one `uf check` printed, before anything is read out of it. */
+type CheckRun = {
+  readonly status: number | null,
+  readonly stdout: string,
+  readonly stderr: string,
+};
+
+/** Runs `uf <argv>` from the repository root and hands back what it printed. */
+export type Checker = (argv: $ReadOnlyArray<string>) => CheckRun;
+
+/** A fresh `uf check` every time it is asked. */
+const runEveryTime: Checker = (argv) => {
+  const run = spawnSync(ufBinary, [...argv], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return { status: run.status, stdout: String(run.stdout), stderr: String(run.stderr) };
+};
+
+/**
+ * A checker that runs each distinct command once, for the file that made it.
+ *
+ * A fixture goes to `uf check` with the whole of `tests/type-tests` and the
+ * packages it imports, so every fixture of one package is the same command:
+ * `packages/ui/types.test.js` asked `uf check tests/type-tests packages/ui`
+ * three times, and `assertion-types.test.js` asked its own command twice. The
+ * command's answer does not depend on which fixture is about to be read out
+ * of it, and each run cost as much as the last — about two seconds of CPU
+ * warm, most of the file's time on a cold cache — so the second and third were
+ * the same work done again. See ubugeeei-prod/uf#1430.
+ *
+ * Made by the test file, at its top level, rather than kept in this module.
+ * A worker imports a test file afresh for every run of it but keeps this
+ * module between files, so a cache here would outlive the file: a watch-mode
+ * rerun after an edit to a fixture would read the answer about the fixture
+ * before the edit. One per file, made where the file is, lives exactly as long
+ * as the run it speeds up.
+ *
+ * What is kept is what the command printed, not a verdict, so every case still
+ * reads it and fails on its own — a run that printed nothing fails each case
+ * that asked for it, in the same words.
+ *
+ * `run` is what actually starts the checker, and is a parameter only so that
+ * `./type-tests-harness.test.js` can count the starts without a binary.
+ */
+export function oneCheckPerCommand(run: Checker = runEveryTime): Checker {
+  const runs = new Map<string, CheckRun>();
+  return (argv) => {
+    const key = JSON.stringify(argv);
+    const known = runs.get(key);
+    if (known != null) return known;
+    const ran = run(argv);
+    runs.set(key, ran);
+    return ran;
+  };
+}
+
+/**
+ * What `uf check <paths> --json` reported, and proof that it checked something.
+ *
+ * Three things that would otherwise pass as success are refused here rather
+ * than in each caller: printing nothing at all (the wrong directory, or a
+ * binary that did not start — `JSON.parse("")` names neither, which is the
+ * half of #313 that made a wrong directory take an afternoon to find), and a
+ * report whose type check did not run or checked no file, which would match an
+ * empty set of expectations.
+ */
+function checkReport(paths: $ReadOnlyArray<string>, checker: Checker): CheckReport {
+  const argv = ["check", ...paths, "--json"];
+  const run = checker(argv);
+  if (run.stdout === "") {
+    throw new Error(
+      `\`uf ${argv.join(" ")}\` in ${repositoryRoot} printed nothing: ` +
+        `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
+    );
+  }
+  const report: CheckReport = JSON.parse(run.stdout);
+  expect(report.typeCheck.status).toBe("checked");
+  expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
+  return report;
+}
 
 export type CleanCheck = {
   readonly fixture: string,
   readonly alongside: $ReadOnlyArray<string>,
+  /** As [`MisuseCheck.checker`]. */
+  readonly checker?: Checker,
 };
 
 /**
@@ -179,7 +270,7 @@ export type CleanCheck = {
  * * a fixture with no markers left in it — see [`MisuseCheck.atLeast`].
  */
 export function everyMisuseIsReported(check: MisuseCheck): void {
-  const { fixture, alongside, atLeast } = check;
+  const { fixture, alongside, atLeast, checker = runEveryTime } = check;
   const source = fs.readFileSync(path.join(repositoryRoot, fixture), "utf8").split("\n");
   const wanted = new Map<number, string>();
   source.forEach((line, index) => {
@@ -191,22 +282,7 @@ export function everyMisuseIsReported(check: MisuseCheck): void {
   });
   expect(wanted.size).toBeGreaterThan(atLeast);
 
-  const paths = ["tests/type-tests", ...alongside];
-  const argv = ["check", ...paths, "--json"];
-  const run = spawnSync(ufBinary, argv, {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  if (run.stdout === "") {
-    throw new Error(
-      `\`uf ${argv.join(" ")}\` in ${repositoryRoot} printed nothing: ` +
-        `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
-    );
-  }
-  const report: CheckReport = JSON.parse(run.stdout);
-  expect(report.typeCheck.status).toBe("checked");
-  expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
+  const report = checkReport(["tests/type-tests", ...alongside], checker);
 
   const reported = new Map<number, string>();
   for (const diagnostic of report.typeCheck.diagnostics) {
@@ -238,23 +314,8 @@ export function everyMisuseIsReported(check: MisuseCheck): void {
 
 /** Hold a fixture that must type-check cleanly to that promise. */
 export function noDiagnosticsAreReported(check: CleanCheck): void {
-  const { fixture, alongside } = check;
-  const paths = ["tests/type-tests", ...alongside];
-  const argv = ["check", ...paths, "--json"];
-  const run = spawnSync(ufBinary, argv, {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  if (run.stdout === "") {
-    throw new Error(
-      `\`uf ${argv.join(" ")}\` in ${repositoryRoot} printed nothing: ` +
-        `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
-    );
-  }
-  const report: CheckReport = JSON.parse(run.stdout);
-  expect(report.typeCheck.status).toBe("checked");
-  expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
+  const { fixture, alongside, checker = runEveryTime } = check;
+  const report = checkReport(["tests/type-tests", ...alongside], checker);
 
   const unexpected = [];
   for (const diagnostic of report.typeCheck.diagnostics) {
