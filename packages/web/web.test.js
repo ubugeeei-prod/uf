@@ -45,7 +45,7 @@ const markupOf = (element: React.Node): string => String(server.renderToStaticMa
  * element actually went.
  */
 function preloadFor(href: string): Element | null {
-  return globalThis.document.head.querySelector(`link[rel="preload"][href="${href}"]`);
+  return globalThis.document.head?.querySelector(`link[rel="preload"][href="${href}"]`) ?? null;
 }
 
 describe("Image", () => {

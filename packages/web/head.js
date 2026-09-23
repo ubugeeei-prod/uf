@@ -80,7 +80,7 @@ export function useHead(head: Head): void {
   const key = JSON.stringify(head);
 
   React.useEffect(() => {
-    const document = (globalThis: $FlowFixMe).document;
+    const document = (globalThis as $FlowFixMe).document;
     if (document == null) {
       return undefined;
     }
@@ -124,7 +124,7 @@ export function useHead(head: Head): void {
         document.title = previousTitle;
       }
       for (const element of added) {
-        (element: $FlowFixMe).remove();
+        (element as $FlowFixMe).remove();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

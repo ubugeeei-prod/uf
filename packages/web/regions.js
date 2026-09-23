@@ -75,7 +75,7 @@ export component Announcer(
   children?: React.Node,
   urgency?: "polite" | "assertive" = "polite",
   atomic?: boolean = true,
-) renders React.Node {
+) {
   return (
     <div aria-live={urgency} aria-atomic={atomic} style={VISUALLY_HIDDEN}>
       {children}
@@ -90,7 +90,7 @@ export component Announcer(
  * landmark list offers, and there must be exactly one per document — which is
  * why this is not something a layout should also render.
  */
-export component Page(children?: React.Node, className?: string) renders React.Node {
+export component Page(children?: React.Node, className?: string) {
   return (
     <main id={MAIN_ID} className={className}>
       {children}
@@ -110,7 +110,7 @@ export component Page(children?: React.Node, className?: string) renders React.N
  * it takes focus and then shows itself, which is why it does not cost a
  * design anything: the only person who ever sees it is the person using it.
  */
-export component SkipLink(children?: React.Node = "Skip to content") renders React.Node {
+export component SkipLink(children?: React.Node = "Skip to content") {
   const [focused, setFocused] = React.useState(false);
 
   return (
@@ -150,6 +150,6 @@ export component SkipLink(children?: React.Node = "Skip to content") renders Rea
  * inside it — `<nav>`, `<main>`, `<footer>` — are the ones a reader navigates
  * by, and wrapping them in another one adds a level to walk through.
  */
-export component Layout(children?: React.Node, className?: string) renders React.Node {
+export component Layout(children?: React.Node, className?: string) {
   return <div className={className}>{children}</div>;
 }

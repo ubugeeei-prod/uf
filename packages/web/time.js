@@ -159,7 +159,7 @@ export component Time(
   zone?: string,
   locale?: string,
   className?: string,
-) renders React.Node {
+) {
   const at = asInstant(value);
   const machine = at.toString();
   const rendered = useRenderEnvelope();
