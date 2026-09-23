@@ -24,6 +24,7 @@
 //                      `app/rNNN/page.tsx`, the toggles marked "use client".
 //                      `next dev` and `next build` run here.
 //   <preset>-vitest    the library modules and their tests against `vitest`.
+//   <preset>-rstest    the same against `@rstest/core`.
 //   <preset>-bun       the same against `bun:test`.
 //   <preset>-fmt-*     one copy of the Vite application per formatter, each
 //                      formatted by that formatter first, so that each one's
@@ -535,7 +536,7 @@ const NEXT_TSCONFIG = `${JSON.stringify(
 )}\n`;
 
 /** The shapes of copy there are, which `rivalFiles` writes. */
-export type RivalFixture = "vite" | "next" | "vitest" | "bun";
+export type RivalFixture = "vite" | "next" | "vitest" | "rstest" | "bun";
 
 /** Every file of one TypeScript copy of `preset`, in the order written. Pure. */
 export function rivalFiles(preset: Preset, kind: RivalFixture): Array<FixtureFile> {
@@ -596,6 +597,13 @@ export function rivalFiles(preset: Preset, kind: RivalFixture): Array<FixtureFil
         contents: manifest(`uf-bench-${preset.name}-vitest`, {}),
       });
       libraries("", "vitest");
+      break;
+    case "rstest":
+      files.push({
+        path: "package.json",
+        contents: manifest(`uf-bench-${preset.name}-rstest`, {}),
+      });
+      libraries("", "@rstest/core");
       break;
     case "bun":
       files.push({ path: "package.json", contents: manifest(`uf-bench-${preset.name}-bun`, {}) });
@@ -745,24 +753,51 @@ export function mirrorInto(
   walk(installed, path.join(root, "node_modules"), true);
 }
 
-/** Where a tool comes from: the pinned npm install, or `PATH`. */
+/**
+ * Where a tool comes from: the pinned npm install, or `PATH`.
+ *
+ * `module`, when there is one, is the program's path inside the pinned
+ * `node_modules` rather than `.bin/<bin>`: a tool whose `.bin` entry is a Node
+ * script that only starts a native executable is measured as the executable,
+ * so its row is not charged for a Node start-up the tool itself does not need.
+ */
 export type ToolSource = {
   readonly name: string,
   readonly bin: string,
   readonly from: "rivals" | "path",
+  readonly module?: string,
 };
+
+/**
+ * TypeScript 7's native compiler — the Go port, `tsgo` — for this platform.
+ *
+ * `typescript@7` ships it as an optional dependency per platform and puts a
+ * Node launcher in front of it as `bin/tsc`. The launcher `execve`s the
+ * executable, so all it adds is a Node start-up; the row times what the
+ * launcher starts. It is installed under an alias because `typescript` itself
+ * is pinned at 6, the JavaScript compiler, for the `tsc` row and for
+ * `typescript-eslint`.
+ */
+export const NATIVE_TYPESCRIPT: string = path.join(
+  "@typescript",
+  `typescript-${process.platform}-${process.arch}`,
+  "lib",
+  "tsc",
+);
 
 /** Every tool but uf, in the order the report lists them. */
 export const RIVAL_TOOLS: $ReadOnlyArray<ToolSource> = [
   { name: "vp", bin: "vp", from: "rivals" },
   { name: "next", bin: "next", from: "rivals" },
   { name: "vitest", bin: "vitest", from: "rivals" },
+  { name: "rstest", bin: "rstest", from: "rivals" },
   { name: "bun", bin: "bun", from: "path" },
   { name: "eslint", bin: "eslint", from: "rivals" },
   { name: "prettier", bin: "prettier", from: "rivals" },
   { name: "biome", bin: "biome", from: "rivals" },
   { name: "flow", bin: "flow", from: "rivals" },
   { name: "tsc", bin: "tsc", from: "rivals" },
+  { name: "tsgo", bin: "tsc", from: "rivals", module: NATIVE_TYPESCRIPT },
   // pnpm is a name here, not a command this repository runs: it is one of the
   // tools being measured.
   // uf-lint-disable-next-line uniflowed/no-npm-script-invocation
@@ -805,13 +840,14 @@ export function locateTool(
       ? { program: null, skipped: `\`${tool.bin}\` is not on PATH` }
       : { program: found, skipped: null };
   }
-  const program = path.join(repoRoot, RIVALS_DIR, "node_modules", ".bin", tool.bin);
+  const installed = tool.module ?? path.join(".bin", tool.bin);
+  const program = path.join(repoRoot, RIVALS_DIR, "node_modules", installed);
   return fs.existsSync(program)
     ? { program, skipped: null }
     : {
         program: null,
         skipped:
-          `${RIVALS_DIR}/node_modules has no ${tool.bin}: ` +
+          `${RIVALS_DIR}/node_modules has no ${installed}: ` +
           `run \`npm ci --prefix ${RIVALS_DIR}\` to install the pinned comparison tools`,
       };
 }
@@ -827,6 +863,7 @@ export type Copy =
   | "vite"
   | "next"
   | "vitest"
+  | "rstest"
   | "bun"
   | "flow"
   | "fmt-vp"
@@ -932,6 +969,16 @@ export const ONE_SHOT_RIVALS: $ReadOnlyArray<OneShotSpec> = [
     tests: false,
   },
   {
+    tool: "tsgo",
+    stage: "check",
+    title: "type check",
+    copy: "vite",
+    args: ["--noEmit"],
+    caches: [],
+    setup: null,
+    tests: false,
+  },
+  {
     tool: "vp",
     stage: "test",
     title: "test suite",
@@ -948,6 +995,18 @@ export const ONE_SHOT_RIVALS: $ReadOnlyArray<OneShotSpec> = [
     copy: "vitest",
     args: ["run"],
     caches: [path.join("node_modules", ".vite")],
+    setup: null,
+    tests: true,
+  },
+  {
+    tool: "rstest",
+    stage: "test",
+    title: "test suite",
+    copy: "rstest",
+    args: ["run"],
+    // What Rstest keeps between runs: the result record `--changed` and the
+    // failed-first ordering read. It keeps no transform cache by default.
+    caches: [path.join("node_modules", ".cache")],
     setup: null,
     tests: true,
   },
@@ -1024,7 +1083,8 @@ export const INSTALL_RIVALS: $ReadOnlyArray<string> = ["pnpm", "bun"];
 /**
  * The number of passing tests a runner reports, or null if it printed none.
  *
- * Vitest and `vp test`: `Tests  200 passed (200)`. Bun: ` 200 pass`. Colour
+ * Vitest and `vp test`: `Tests  200 passed (200)`. Rstest: `Tests 200 passed`.
+ * Bun: ` 200 pass`. Colour
  * codes are taken out first: a runner on CI colours its summary whether or not
  * anybody is reading it.
  */

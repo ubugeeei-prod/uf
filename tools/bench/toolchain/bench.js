@@ -21,8 +21,8 @@
 // # The tools
 //
 // `--tools` names them, `uf` alone unless it says otherwise, `all` for every
-// one. Besides uf: Vite+ (`vp`), Next.js, Vitest, Bun, ESLint, Prettier,
-// Biome, Flow, `tsc` and pnpm. `rivals.js` says what input each is given —
+// one. Besides uf: Vite+ (`vp`), Next.js, Vitest, Rstest, Bun, ESLint,
+// Prettier, Biome, Flow, `tsc`, TypeScript 7's native `tsc` (`tsgo`) and pnpm. `rivals.js` says what input each is given —
 // its own idiomatic copy of the same application — and where each is found.
 // A tool that is not installed is skipped by name, with the reason, in the
 // table and in the file. Nothing is timed in its place.
@@ -76,7 +76,7 @@
 // starting workers rather than running tests: 50 files of 20 cases of two
 // assertions. `tools/bench/testing/suite.js` writes it, once for each runner in
 // that runner's idiom, and its rows are the `test` stages of the fixture
-// called `suite`, for uf, Bun and Vitest.
+// called `suite`, for uf, Bun, Vitest and Rstest.
 //
 // # Why the HMR stage has no browser in it
 //
@@ -994,7 +994,13 @@ function copies(workDir: string, preset: Preset, versions: Versions): (copy: Cop
       writeFiles(dir, flowFiles(fixtureFiles(preset, versions)));
     } else {
       const kind = copy.startsWith("fmt-") ? "vite" : copy;
-      if (kind !== "vite" && kind !== "next" && kind !== "vitest" && kind !== "bun") {
+      if (
+        kind !== "vite" &&
+        kind !== "next" &&
+        kind !== "vitest" &&
+        kind !== "rstest" &&
+        kind !== "bun"
+      ) {
         throw new Error(`there is no copy called ${copy}`);
       }
       writeFiles(dir, rivalFiles(preset, kind));
@@ -1205,11 +1211,20 @@ function servedRival(spec: DevSpec, program: string, dir: string, fixture: strin
   };
 }
 
+/** What a cold run of `tool` on the suite removes first: the one-shot row's caches. */
+function suiteCaches(tool: string): $ReadOnlyArray<string> {
+  if (tool === "uf") {
+    return CACHES;
+  }
+  return ONE_SHOT_RIVALS.find((spec) => spec.tool === tool && spec.stage === "test")?.caches ?? [];
+}
+
 /**
- * The suite of many small files, for uf, Bun and Vitest — whichever are measured.
+ * The suite of many small files, for uf, Bun, Vitest and Rstest — whichever are
+ * measured.
  *
- * `suite.js` writes the three copies and links uf's; Vitest's is linked into
- * the pinned install here, and Bun's needs nothing.
+ * `suite.js` writes the four copies and links uf's; Vitest's and Rstest's are
+ * linked into the pinned install here, and Bun's needs nothing.
  */
 async function measureSuite(
   context: Context,
@@ -1235,13 +1250,19 @@ async function measureSuite(
   if (vitest != null) {
     runners.push({ tool: "vitest", program: vitest, args: ["run"] });
   }
+  const rstest = found.programs.get("rstest");
+  if (rstest != null) {
+    runners.push({ tool: "rstest", program: rstest, args: ["run"] });
+  }
   if (runners.length === 0 || !(selected("test.cold") || selected("test.warm"))) {
     return false;
   }
   const root = path.join(options.workDir, "suite");
   generateSuites(root, GUIDE_PRESET, REPO);
-  if (vitest != null) {
-    linkInto(path.join(root, "vitest"), path.join(REPO, RIVALS_DIR, "node_modules"));
+  for (const linked of [vitest == null ? null : "vitest", rstest == null ? null : "rstest"]) {
+    if (linked != null) {
+      linkInto(path.join(root, linked), path.join(REPO, RIVALS_DIR, "node_modules"));
+    }
   }
   const tests = GUIDE_PRESET.files * GUIDE_PRESET.cases;
   for (const runner of runners) {
@@ -1283,12 +1304,7 @@ async function measureSuite(
               args: runner.args,
               command: `${runner.tool} ${runner.args.join(" ")}`,
               dir,
-              caches:
-                runner.tool === "uf"
-                  ? CACHES
-                  : runner.tool === "vitest"
-                    ? [path.join("node_modules", ".vite")]
-                    : [],
+              caches: suiteCaches(runner.tool),
             },
             cold,
           ),
