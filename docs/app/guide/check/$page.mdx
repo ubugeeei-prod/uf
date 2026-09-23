@@ -283,8 +283,12 @@ go to definition and member completion — see [Editors](/guide/editors).
 
 `$FlowFixMe` and `$FlowExpectedError` suppress the error on the line below them,
 best written with the code they expect — `// $FlowFixMe[incompatible-type]` — so
-that a different error on the same line is still reported. A suppression that no
-longer suppresses anything is not reported.
+that a different error on the same line is still reported. A suppression that
+suppresses nothing is reported as a warning, "Unused suppression comment.", on
+the comment itself, as Flow reports it. It is a warning rather than an error, so
+a stale comment does not fail a run. Delete it, or correct its code: an error
+code Flow has since renamed is the usual reason a working suppression stops
+matching.
 
 ## What is not here
 
