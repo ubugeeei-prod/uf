@@ -694,7 +694,11 @@ fn a_route_written_once_that_reads_the_request_fails_the_build_naming_its_chain(
     files.extend([
         (
             "uf.config.js",
-            "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({\n  app: { rendering: { cache: { route: true } } },\n});\n",
+            // Without `ppr`, which the default allows: a build that prerenders
+            // partially decides a prerendered route's reads by rendering it,
+            // and `a_read_outside_every_suspense_boundary_fails_the_build_naming_it`
+            // is that half. This is the half the import graph decides.
+            "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({\n  app: { rendering: { modes: [\"ssr\", \"ssg\", \"isr\"], cache: { route: true } } },\n});\n",
         ),
         (
             "app/account/$page.js",
@@ -3169,6 +3173,341 @@ fn assert_regenerates(
              one-second lifetime\n{}",
             server.evidence(said)
         );
+    }
+}
+
+/// The application whose one interesting page is prerendered partially.
+fn ppr_app_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ppr-app")
+}
+
+/// The fixture has one `dist/` and one `.uf/`, and two tests build it.
+static PPR: Mutex<()> = Mutex::new(());
+
+fn ppr_lock() -> std::sync::MutexGuard<'static, ()> {
+    PPR.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The cookie every request for the partially prerendered page carries, and
+/// what the page's hole renders from it.
+const PPR_COOKIE: &str = "session=ada";
+const PPR_HOLE: &str = "signed in as ada";
+
+/// Build the ppr-app fixture and return the static shell it recorded for
+/// `/account`, as a server sends it.
+fn build_ppr_app(root: &Path) -> String {
+    let build = uf().arg("--cwd").arg(root).arg("build").output().unwrap();
+    assert!(
+        build.status.success(),
+        "the fixture must build before it can be served\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    built_shell(root)
+}
+
+/// The shell `uf build` recorded for `/account`.
+fn built_shell(root: &Path) -> String {
+    let manifest = fs::read_to_string(root.join(".uf/build/server/partial-prerender.json"))
+        .expect("a build with a partially prerendered page records its shell");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+    manifest["pages"]["/account"]["html"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no shell for /account in {manifest}"))
+        .to_owned()
+}
+
+/// A page that reads the request inside a `<Suspense>` boundary is written as
+/// a static shell, and a server sends that shell before it renders anything.
+///
+/// What the build wrote first: the shell is in the record beside the server
+/// bundle, and nothing is at the page's URL — no document and no payload,
+/// because a shell on its own is a page whose hole never fills. Its fallback is
+/// in it and the request's part is not.
+///
+/// Then, under `uf preview` and `uf start`, one request carrying a cookie: the
+/// body's first bytes are the shell the build recorded, byte for byte; the hole
+/// arrives later in the same response, rendered from the cookie; and the gap
+/// between them is the hole's own wait, so a server that rendered the page
+/// before sending a byte cannot pass by being quick.
+///
+/// [`every_streaming_adapter_sends_the_static_shell_first`] asks the same of the
+/// adapters.
+#[test]
+fn a_partially_prerendered_page_sends_its_shell_before_its_hole() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let _guard = ppr_lock();
+    let root = ppr_app_root();
+    let shell = build_ppr_app(&root);
+    assert!(shell.contains("id=\"shell\""), "{shell}");
+    assert!(shell.contains("checking who you are"), "{shell}");
+    assert!(
+        !shell.contains("signed in as"),
+        "the shell must not hold the hole's content: {shell}"
+    );
+    assert!(
+        !root.join("dist/account").exists(),
+        "a shell is not a document, and a file server would send it with its hole unfilled"
+    );
+    assert!(
+        root.join("dist/index.html").is_file(),
+        "a page that reads nothing is the document it always was"
+    );
+
+    for command in ["preview", "start"] {
+        serve_partial(&root, command, &shell);
+    }
+}
+
+/// Start `uf <command>` on the ppr-app fixture and ask it for `/account`.
+fn serve_partial(root: &Path, command: &str, shell: &str) {
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+        let port_text = port.to_string();
+        let args = [command, "--host", "127.0.0.1", "--port", port_text.as_str()];
+        let answered = std::thread::scope(|scope| {
+            let mut server = Server::start(root, &args, scope, &said);
+            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+                refused.push(format!(
+                    "attempt {attempt} on port {port}: {}",
+                    server.evidence(&said)
+                ));
+                return false;
+            }
+            assert_partial(&mut server, &said, port, command, shell);
+            true
+        });
+        if answered {
+            return;
+        }
+    }
+    panic!(
+        "`uf {command}` never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// `/account` from a server that is up: the shell first, then the hole.
+fn assert_partial(
+    server: &mut Server,
+    said: &Mutex<String>,
+    port: u16,
+    command: &str,
+    shell: &str,
+) {
+    let response = timed_request(port, "/account", &[("Cookie", PPR_COOKIE)]);
+    let mut context = |what: &str| {
+        format!(
+            "`uf {command}` {what}\n{}\n{}",
+            response.evidence(),
+            server.evidence(said)
+        )
+    };
+    assert!(
+        response.text.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not answer the page")
+    );
+    let body = dechunked(&response.text);
+    assert!(
+        body.starts_with(shell),
+        "{}",
+        context("did not open the page with the shell the build recorded")
+    );
+    let Some(sent) = response.first_at("checking who you are") else {
+        panic!("{}", context("never sent the hole's fallback"));
+    };
+    let Some(filled) = response.first_at(PPR_HOLE) else {
+        panic!(
+            "{}",
+            context("never filled the hole from the request's cookie")
+        );
+    };
+    assert!(
+        sent + STREAMING_MARGIN <= filled,
+        "{}",
+        context(&format!(
+            "sent the shell {}ms in and the hole {}ms in, and the hole waits 400ms — so the \
+             shell waited for it",
+            sent.as_millis(),
+            filled.as_millis()
+        ))
+    );
+    assert!(
+        body.trim_end().ends_with("</html>"),
+        "{}",
+        context("did not finish the document")
+    );
+}
+
+/// An HTTP/1.1 response's body, with any chunked framing taken off.
+fn dechunked(response: &str) -> String {
+    let Some((head, mut rest)) = response.split_once("\r\n\r\n") else {
+        return String::new();
+    };
+    if !head
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
+        return rest.to_owned();
+    }
+    let mut body = String::new();
+    while let Some((size, after)) = rest.split_once("\r\n") {
+        let Ok(size) = usize::from_str_radix(size.trim(), 16) else {
+            break;
+        };
+        if size == 0 || after.len() < size {
+            break;
+        }
+        body.push_str(&after[..size]);
+        rest = after[size..].trim_start_matches("\r\n");
+    }
+    body
+}
+
+/// What a streaming artefact is asked about the partially prerendered page:
+/// its first chunk, the rest, and when the first and the last arrived.
+const PPR_QUESTIONS: &str = r#"
+const started = performance.now();
+const response = await answer(
+  new Request("http://127.0.0.1/account", { headers: { cookie: "session=ada" } }),
+);
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+const first = await reader.read();
+const firstAt = performance.now() - started;
+const firstText = decoder.decode(first.value, { stream: true });
+let rest = "";
+for (;;) {
+  const step = await reader.read();
+  if (step.done) break;
+  rest += decoder.decode(step.value, { stream: true });
+}
+const doneAt = performance.now() - started;
+process.stdout.write(
+  `partial ${response.status} ${JSON.stringify({ first: firstText, rest, firstAt, doneAt })}\n`,
+);
+"#;
+
+/// Every adapter whose responses stream sends a partially prerendered page's
+/// shell first, and the two that cannot refuse it by name.
+///
+/// `node` and `edge` stand for the streaming five — `bun`, `deno` and
+/// `container` write the same `handler.js` as `node`, which
+/// `every_adapter_answers_exactly_what_the_node_adapter_answers` holds them to —
+/// and each artefact is copied somewhere empty and asked for the page through
+/// the door its platform uses. The first chunk out of the door is the shell,
+/// exactly; the hole is in what follows; and the first chunk arrived long
+/// enough before the last that nothing waited for the hole to send the shell.
+///
+/// `serverless` buffers every response, and `static` has no server to fill a
+/// hole: both builds fail naming `/account`.
+#[test]
+fn every_streaming_adapter_sends_the_static_shell_first() {
+    if !fixture_ready() {
+        return;
+    }
+    let _guard = ppr_lock();
+    let root = ppr_app_root();
+    for adapter in ["node", "edge"] {
+        let (_, empty) = deploy_and_copy(&root, adapter);
+        let shell = built_shell(&root);
+        let said = ask_the_artefact(empty.path(), adapter, PPR_QUESTIONS);
+        let line = said
+            .lines()
+            .find(|line| line.starts_with("partial "))
+            .unwrap_or_else(|| {
+                panic!("the `{adapter}` artefact said nothing about /account:\n{said}")
+            });
+        let answer = line
+            .strip_prefix("partial 200 ")
+            .unwrap_or_else(|| panic!("the `{adapter}` artefact did not answer 200: {line}"));
+        let answer: serde_json::Value = serde_json::from_str(answer).unwrap();
+        assert_eq!(
+            answer["first"].as_str().unwrap(),
+            shell,
+            "the `{adapter}` artefact's first chunk is not the shell the build recorded"
+        );
+        assert!(
+            answer["rest"].as_str().unwrap().contains(PPR_HOLE),
+            "the `{adapter}` artefact never filled the hole from the cookie: {line}"
+        );
+        let first_at = answer["firstAt"].as_f64().unwrap();
+        let done_at = answer["doneAt"].as_f64().unwrap();
+        assert!(
+            first_at + 200.0 <= done_at,
+            "the `{adapter}` artefact sent the shell {first_at}ms in and finished {done_at}ms \
+             in, and the hole waits 400ms — so the shell waited for it"
+        );
+    }
+
+    for (adapter, expected) in [
+        ("serverless", "buffers every response"),
+        ("static", "static shell"),
+    ] {
+        let output = uf()
+            .arg("--cwd")
+            .arg(&root)
+            .args(["build", "--adapter", adapter])
+            .env("COLUMNS", "2000")
+            .output()
+            .unwrap();
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !output.status.success(),
+            "`--adapter {adapter}` must refuse a partially prerendered page:\n{said}"
+        );
+        for needle in ["/account", expected] {
+            assert!(
+                said.contains(needle),
+                "`--adapter {adapter}` did not say {needle:?}:\n{said}"
+            );
+        }
+    }
+}
+
+/// A prerendered page that reads the request outside every `<Suspense>`
+/// boundary has no static shell, and the build fails naming the route and what
+/// it read — under the default `modes`, where the read is decided by rendering
+/// rather than by the import graph.
+#[test]
+fn a_read_outside_every_suspense_boundary_fails_the_build_naming_it() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/account/$page.js",
+        "// @flow\nimport { cookies } from \"@uniflowed/server\";\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <p>{cookies().get(\"session\") ?? \"nobody\"}</p>;\n}\n",
+    ));
+    let project = Project::new(&files);
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .env("COLUMNS", "2000")
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{said}");
+    for expected in [
+        "/account reads cookies() outside any <Suspense> boundary",
+        "force-dynamic",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
     }
 }
 
@@ -5659,14 +5998,23 @@ fn indent(text: &str) -> String {
 /// shape for every other assertion here and destroys the only evidence this one
 /// needs. `Connection: close` is what makes the read loop end.
 fn timed_get(port: u16, path: &str) -> TimedResponse {
+    timed_request(port, path, &[])
+}
+
+/// [`timed_get`], with headers of the caller's beside the ones a browser sends.
+fn timed_request(port: u16, path: &str, headers: &[(&str, &str)]) -> TimedResponse {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to the server");
     stream
         .set_read_timeout(Some(Duration::from_secs(60)))
         .unwrap();
+    let extra = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect::<String>();
     // Built before it is written, and kept, because it is the first thing a
     // reader of a failure here needs; see `TimedResponse::evidence`.
     let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/html\r\n\
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/html\r\n{extra}\
          Connection: close\r\n\r\n"
     );
     stream.write_all(request.as_bytes()).unwrap();

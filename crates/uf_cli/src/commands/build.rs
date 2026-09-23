@@ -118,6 +118,15 @@ pub(crate) struct Prerendered {
     /// its lifetime passes. A static host has no server, which is why
     /// `deploy::static_host` refuses it by name.
     pub(crate) regenerates: bool,
+    /// Whether the build wrote it as a static shell.
+    ///
+    /// Such a page read the request inside a `<Suspense>` boundary, so the
+    /// build wrote the markup around the boundary and left the boundary for a
+    /// server to fill per request. `file` is the server's record of the shell
+    /// beside the server bundle, and nothing is at the page's URL under
+    /// `dist/`. A static host has no server to fill it, which is why
+    /// `deploy::static_host` refuses it by name.
+    pub(crate) partial: bool,
 }
 
 /// What Vite reported building.
@@ -466,6 +475,7 @@ pub(crate) fn build(
                 plan,
                 app_target,
                 regenerates_pages(&resolved.config, plan),
+                prerenders_partially(&resolved.config, plan),
                 analyze,
             ),
             &env,
@@ -480,12 +490,14 @@ pub(crate) fn build(
                     file,
                     status,
                     regenerates,
+                    partial,
                     ..
                 } => report.pages.push(Prerendered {
                     url,
                     file,
                     status,
                     regenerates,
+                    partial,
                 }),
                 // Reported as it happens and not fatal here: the driver keeps
                 // going and ends the build itself, so the reader sees every
@@ -1342,6 +1354,7 @@ fn build_arguments(
     plan: RenderingPlan,
     target: RouteTarget,
     regenerate: bool,
+    partial: bool,
     analyze: bool,
 ) -> Vec<String> {
     let mut args = vec![
@@ -1359,6 +1372,9 @@ fn build_arguments(
     }
     if regenerate {
         args.push(String::from("--regenerate"));
+    }
+    if partial {
+        args.push(String::from("--partial"));
     }
     if analyze {
         args.push(String::from("--analyze"));
@@ -1382,6 +1398,32 @@ fn regenerates_pages(config: &uf_config::UniflowedConfig, plan: RenderingPlan) -
         .contains(&uf_config::RenderingMode::Isr)
         && config.app.rendering.cache.route
         && plan.emits_a_server()
+}
+
+/// Whether a prerendered page that reads the request inside a `<Suspense>`
+/// boundary is written as a static shell rather than refused.
+///
+/// Three declarations and one fact about the renderer: `app.rendering.modes`
+/// allows `ppr`, the plan prerenders and leaves a server behind to fill the
+/// holes, and routes render as Server Components — the renderer that writes a
+/// shell. `app.rsc: false` renders a route from its modules, whole or not at
+/// all. Decided here, beside the rest of the rendering decision, so the builder
+/// is told one word and [`request_state`] asks the same question.
+pub(crate) fn prerenders_partially(
+    config: &uf_config::UniflowedConfig,
+    plan: RenderingPlan,
+) -> bool {
+    config
+        .app
+        .rendering
+        .modes
+        .contains(&uf_config::RenderingMode::Ppr)
+        && config.app.rsc
+        && plan.emits_a_server()
+        && matches!(
+            plan.prerender(),
+            uf_config::Prerender::Everything | uf_config::Prerender::Possible
+        )
 }
 
 /// Print the RSC analysis's diagnostics, grouped by module.

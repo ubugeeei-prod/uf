@@ -173,6 +173,11 @@ pub(crate) enum Event {
         /// and its document is not at its own URL. `false` from a driver that
         /// predates regeneration, which wrote no such page.
         regenerates: bool,
+        /// Whether the build wrote it as a static shell with holes a server
+        /// fills per request: it read the request inside a `<Suspense>`
+        /// boundary, and `file` is the server's record of it rather than a
+        /// document. `false` from a driver that predates partial prerendering.
+        partial: bool,
     },
     /// One route did not prerender.
     ///
@@ -342,6 +347,10 @@ impl Event {
                 bytes: number("bytes").unwrap_or(0),
                 regenerates: value
                     .get("regenerates")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                partial: value
+                    .get("partial")
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
             },

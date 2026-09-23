@@ -17,12 +17,14 @@ import type { CookieStore, DraftMode, HeaderStore, RequestContext } from "./inte
 import { currentContext, nonceFor } from "./internal/context.js";
 import { refuseRequestInDataScope } from "./internal/data-scope.js";
 import { DraftModeError } from "./internal/draft.js";
+import { postponeInPartialPrerender } from "./internal/partial.js";
 import type { LogFields, Logger } from "./internal/log.js";
 import { processLogger } from "./log.js";
 
 export type { CookieStore, DraftMode, HeaderStore } from "./internal/context.js";
 export type { LogFields, LogLevel, Logger } from "./internal/log.js";
 export { DraftModeError } from "./internal/draft.js";
+export { PostponedReadError } from "./internal/partial.js";
 export { authorizeNativeAction } from "./internal/native-actions.js";
 
 /**
@@ -53,6 +55,32 @@ function require$Context(binding: string) {
     throw new OutsideRequestError(binding);
   }
   return context;
+}
+
+/**
+ * The current request's context, for a read partial prerendering can leave to
+ * the request.
+ *
+ * `cookies()`, `headers()` and `draftMode()`, and only those three. While
+ * `uf build` prerenders a page's static shell there is no request, and each of
+ * them throws a [`PostponedReadError`] there instead of an
+ * [`OutsideRequestError`]: the part of the page that made the read becomes a
+ * hole a server renders per request, when it sits inside a `<Suspense>`
+ * boundary, and the build fails naming the route when it does not.
+ * `./internal/partial.js` has the mechanism.
+ *
+ * `nonce()` and `requestId()` are not among them. Both name one response, and
+ * both still throw during a prerender: nothing in a hole needs either to be
+ * worth the second way of failing.
+ */
+function require$PostponableContext(binding: string) {
+  // A cached function's refusal first: it is the more specific mistake, and a
+  // read inside one is wrong with or without a request.
+  refuseRequestInDataScope(binding);
+  if (currentContext() == null) {
+    postponeInPartialPrerender(binding);
+  }
+  return require$VaryingContext(binding);
 }
 
 /**
@@ -88,7 +116,7 @@ function require$VaryingContext(binding: string) {
  * component deep in the tree renders.
  */
 export function headers(): HeaderStore {
-  return require$VaryingContext("headers").headers;
+  return require$PostponableContext("headers").headers;
 }
 
 /**
@@ -98,7 +126,7 @@ export function headers(): HeaderStore {
  * before a response exists and can say so in it.
  */
 export function cookies(): CookieStore {
-  return require$VaryingContext("cookies").cookies;
+  return require$PostponableContext("cookies").cookies;
 }
 
 /**
@@ -189,7 +217,7 @@ export function nonce(): string {
  * `./node.js`'s static handler the second.
  */
 export function draftMode(): DraftMode {
-  const context = require$VaryingContext("draftMode");
+  const context = require$PostponableContext("draftMode");
   return {
     isEnabled: context.draft,
     enable: () => {

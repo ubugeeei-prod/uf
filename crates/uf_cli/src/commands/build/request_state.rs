@@ -25,6 +25,21 @@
 //!
 //! A read reached through a layout is one diagnostic naming every route under
 //! that layout, rather than one per route saying the same thing.
+//!
+//! # Except where the build can leave the read for the request
+//!
+//! When the build prerenders partially — `ppr` allowed, a server left behind,
+//! routes rendered as Server Components; see
+//! [`super::prerenders_partially`] — a prerendered route may read the request
+//! inside a `<Suspense>` boundary: the build writes the page's static shell and
+//! a server renders the boundary per request. Whether a read is inside a
+//! boundary is a fact about the rendered tree, not about the import graph —
+//! the boundary is often in the page and the read three modules away — so this
+//! analysis cannot answer it, and it asks nothing about such routes. The
+//! prerender answers instead, by rendering, and refuses a route whose read is
+//! outside every boundary, naming the route and what it read. A route cache
+//! that states a lifetime is still refused here: a document kept for every
+//! request is about nobody, shell or not.
 
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::{Prerender, RenderingPlan, UniflowedConfig};
@@ -43,10 +58,12 @@ pub(crate) fn request_state_in_static_routes(
     routes: &[Route],
     graph: &RscGraph,
 ) -> Vec<RscDiagnostic> {
+    // A build that prerenders partially asks the render about its prerendered
+    // routes rather than the graph; see the module documentation.
     let prerenders = matches!(
         plan.prerender(),
         Prerender::Everything | Prerender::Possible
-    );
+    ) && !super::prerenders_partially(config, plan);
     let caches = config.app.rendering.cache.route && plan.emits_a_server();
     if !prerenders && !caches {
         return Vec::new();

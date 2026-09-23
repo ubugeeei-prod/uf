@@ -71,8 +71,21 @@ export function installServerModules(load: ClientModuleLoader): void {
   });
 }
 
-/** Read a payload into its root value, as React's client does in the browser. */
-export function readPayload(stream: ReadableStream<Uint8Array>): Promise<FlightRoot> {
+/**
+ * Read a payload into its root value, as React's client does in the browser.
+ *
+ * `partial` is for a payload that is missing rows on purpose: a static shell's,
+ * with the parts a partial prerender left for the request taken out
+ * (`./flight-rows.js`). React's client then keeps waiting on those parts once
+ * the stream has ended, rather than failing every one of them with
+ * "Connection closed", so the HTML renderer leaves each as a hole.
+ */
+export function readPayload(
+  stream: ReadableStream<Uint8Array>,
+  options?: {| +partial?: boolean |},
+): Promise<FlightRoot> {
   requireServerComponentsReact(ENTRY);
-  return createFromReadableStream(stream);
+  return options?.partial === true
+    ? createFromReadableStream(stream, { unstable_allowPartialStream: true })
+    : createFromReadableStream(stream);
 }

@@ -799,8 +799,8 @@ impl Default for RenderingConfig {
 /// does afterwards. Spelling this as `modes: ["mpa", …]` would have put a
 /// whole-application decision into a per-route allowlist, where
 /// `["mpa", "ssr"]` permits two things that are not alternatives — and an
-/// allowlist entry the build can never select is the defect
-/// `RenderingMode::Ppr` already is.
+/// allowlist entry the build can never select is the defect `RenderingMode::Ppr`
+/// was until ubugeeei-prod/uf#950 gave it a build.
 ///
 /// It is also deliberately not spelled the way the neighbours spell it.
 /// Next.js says `output: "export"` and Astro says `output: "static"`, and each
@@ -839,13 +839,11 @@ impl Navigation {
 
 /// One rendering strategy a project may allow.
 ///
-/// Four of the five are implemented, and the enum keeps the fifth because the
-/// list is an allowlist: naming a strategy uf cannot do yet permits something
-/// that never happens, which costs nothing, where *removing* the name would
-/// make today's `uf.config.js` files fail to parse. What is refused is a list
-/// that allows **only** unimplemented strategies — see
-/// [`crate::ConfigError::NoImplementedRenderingMode`] — because that is a
-/// project asking for a build uf cannot produce at all.
+/// All five are implemented. The list is an allowlist, so naming a strategy
+/// that no route of a project ends up needing permits something that never
+/// happens, which costs nothing. What is refused is a list that allows nothing
+/// at all — see [`crate::ConfigError::NoImplementedRenderingMode`] — because
+/// that is a project asking for a build uf cannot produce.
 ///
 /// [`Csr`](Self::Csr) is the value that does not behave like the others, and
 /// its own documentation says why: it is not a per-route answer, so it is the
@@ -853,7 +851,15 @@ impl Navigation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RenderingMode {
-    /// Partial prerendering. **Planned**; allowed and never selected.
+    /// Partial prerendering. **Implemented.**
+    ///
+    /// A prerendered page that reads `cookies()`, `headers()` or `draftMode()`
+    /// inside a `<Suspense>` boundary is written as a static shell with that
+    /// boundary left as a hole, and a server sends the shell before it renders
+    /// anything and then streams the hole. It takes a deployment with a server
+    /// that streams and routes rendered as Server Components. A page that reads
+    /// nothing is a static document, which is why allowing `ppr` allows what
+    /// `ssg` does. See ubugeeei-prod/uf#950.
     Ppr,
     /// Rendered per request, by `uf start`, `uf preview` or a deploy adapter.
     /// **Implemented.**
@@ -912,12 +918,15 @@ impl RenderingMode {
 
     /// Whether `uf build` can select this strategy for a route today.
     ///
-    /// `ppr` is declared and unwritten. It is not refused on its own — see the
-    /// type's documentation — but a project that allows nothing else is
-    /// refused, and this is the predicate that decides it.
+    /// Every one of them, since `ppr` was given a build. Kept as the predicate
+    /// the refusal of a list with nothing in it asks, so that a strategy
+    /// declared before it is written has somewhere to say so.
     #[must_use]
     pub const fn is_implemented(self) -> bool {
-        matches!(self, Self::Ssr | Self::Ssg | Self::Isr | Self::Csr)
+        matches!(
+            self,
+            Self::Ppr | Self::Ssr | Self::Ssg | Self::Isr | Self::Csr
+        )
     }
 
     /// Whether this value is the whole application's answer rather than one

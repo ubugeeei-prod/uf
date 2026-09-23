@@ -78,7 +78,12 @@
 // this function.
 
 import { noStore } from "./cache.js";
-import type { Application, DocumentAssets } from "./internal/application.js";
+import type {
+  Application,
+  DocumentAssets,
+  PrerenderedShell,
+  RenderedDocument,
+} from "./internal/application.js";
 import type {
   CacheEntry,
   CacheOptions,
@@ -92,7 +97,12 @@ import { currentContext } from "./internal/context.js";
 import { flightResponse } from "./internal/flight.js";
 import { admit, headersFor, rewriteFor, wasAdmitted, withHeaders } from "./internal/routing.js";
 
-export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
+export type {
+  Application,
+  DocumentAssets,
+  PrerenderedShell,
+  RenderedDocument,
+} from "./internal/application.js";
 
 export type {
   CapabilityDefaults,
@@ -144,6 +154,28 @@ export type FetchHandlerOptions = {|
    * prerendered pages stated no lifetime and no tag. See [`Regeneration`].
    */
   readonly regeneration?: Regeneration,
+  /**
+   * The pages this build prerendered partially, from what `uf build` recorded.
+   *
+   * Absent for a build that wrote no static shell. See [`PartialPrerenders`].
+   */
+  readonly partial?: PartialPrerenders,
+|};
+
+/**
+ * Every page `uf build` prerendered as a static shell with holes, by the
+ * pathname it was prerendered for.
+ *
+ * A page is one of these when `app.rendering.modes` allows `ppr`, the build
+ * left a server behind, and the page read `cookies()`, `headers()` or
+ * `draftMode()` inside a `<Suspense>` boundary. The build writes no document at
+ * the page's URL — a shell on its own is a page whose holes never fill — so
+ * every request for it reaches this handler, which sends the shell before it
+ * renders anything and then streams the holes. See `@uniflowed/router`'s
+ * `internal/stream.js` for the shell and `resumeDocument`.
+ */
+export type PartialPrerenders = {|
+  readonly pages: { readonly [pathname: string]: PrerenderedShell },
 |};
 
 /**
@@ -342,6 +374,22 @@ export function createFetchHandler(
     // it — the build wrote the document somewhere no static half answers — so
     // this is the only thing that can answer it, and the build recorded it only
     // because `rendering.cache.route` was on.
+    // A page the build prerendered partially comes before both caches. Its own
+    // URL has no file behind it either, and it read the request, so neither
+    // cache would keep it. A draft request is rendered whole, because the
+    // shell is an answer from before the draft existed.
+    const shell =
+      app.resume != null && context?.draft !== true
+        ? builtShell(options.partial, url.pathname)
+        : null;
+    const resume = app.resume;
+    if (shell != null && resume != null) {
+      const result = await runInScope(newScope({ key: [] }), () =>
+        resume(target, document, shell, { onError }),
+      );
+      return streamedResponse(result, method);
+    }
+
     const regenerated =
       method === "GET" && cache != null && context?.draft !== true
         ? regeneratedPage(options.regeneration, url.pathname)
@@ -360,19 +408,7 @@ export function createFetchHandler(
     const result = await runInScope(newScope({ key: [] }), () =>
       app.render(target, document, { onError }),
     );
-    const headers = new Headers(result.headers ?? {});
-    headers.set("content-type", "text/html; charset=utf-8");
-    // A `HEAD` gets the status and the headers and no body, which is what the
-    // renderer cannot know to do for itself. The stream is cancelled rather
-    // than dropped, so the render behind it stops instead of filling its queue
-    // and waiting for a reader that is never coming.
-    if (method === "HEAD") {
-      await result.stream().cancel();
-      return new Response(null, { status: result.status ?? 200, headers });
-    }
-    // The body is a stream, so the layouts and any `<Suspense>` fallback reach
-    // the browser while the page they surround is still resolving.
-    return new Response(result.stream(), { status: result.status ?? 200, headers });
+    return streamedResponse(result, method);
   }
 
   // `app.router.redirects` before anything else and its headers on whatever
@@ -483,6 +519,46 @@ async function regeneratedDocument(
   return cachedResponse(result);
 }
 
+/** A document rendered for this request, as the response that streams it. */
+async function streamedResponse(result: RenderedDocument, method: string): Promise<Response> {
+  const headers = new Headers(result.headers ?? {});
+  headers.set("content-type", "text/html; charset=utf-8");
+  // A `HEAD` gets the status and the headers and no body, which is what the
+  // renderer cannot know to do for itself. The stream is cancelled rather
+  // than dropped, so the render behind it stops instead of filling its queue
+  // and waiting for a reader that is never coming.
+  if (method === "HEAD") {
+    await result.stream().cancel();
+    return new Response(null, { status: result.status ?? 200, headers });
+  }
+  // The body is a stream, so the layouts and any `<Suspense>` fallback reach
+  // the browser while the page they surround is still resolving.
+  return new Response(result.stream(), { status: result.status ?? 200, headers });
+}
+
+/**
+ * The static shell `partial` records for `pathname`, or `null`.
+ *
+ * Named the way [`regeneratedPage`] names a page, for the same reason.
+ */
+function builtShell(partial: PartialPrerenders | void, pathname: string): PrerenderedShell | null {
+  if (partial == null) return null;
+  const name = pageName(pathname);
+  if (name == null || !Object.hasOwn(partial.pages, name)) return null;
+  return partial.pages[name];
+}
+
+/** `pathname`, decoded and without a trailing slash; `null` if it does not decode. */
+function pageName(pathname: string): string | null {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  return decoded.length > 1 && decoded.endsWith("/") ? decoded.slice(0, -1) : decoded;
+}
+
 /**
  * The page `pathname` names in `regeneration`, or `null`.
  *
@@ -495,14 +571,8 @@ function regeneratedPage(
   pathname: string,
 ): {| readonly pathname: string, readonly page: RegeneratedPage |} | null {
   if (regeneration == null) return null;
-  let decoded;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-  const name = decoded.length > 1 && decoded.endsWith("/") ? decoded.slice(0, -1) : decoded;
-  if (!Object.hasOwn(regeneration.pages, name)) return null;
+  const name = pageName(pathname);
+  if (name == null || !Object.hasOwn(regeneration.pages, name)) return null;
   return { pathname: name, page: regeneration.pages[name] };
 }
 
