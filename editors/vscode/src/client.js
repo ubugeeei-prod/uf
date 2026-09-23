@@ -17,20 +17,20 @@ const { needsShell } = require("./binary");
 import type { Resolution } from "./binary";
 
 export type Executable = {
-  +command: string,
-  +args: Array<string>,
-  +options: {
-    +cwd: string,
-    +shell?: boolean,
+  readonly command: string,
+  readonly args: Array<string>,
+  readonly options: {
+    readonly cwd: string,
+    readonly shell?: boolean,
     ...
   },
 };
 
 export type Settings = {
   // `uf.server.path`, trimmed; empty string means "decide for me".
-  +serverPath: string,
+  readonly serverPath: string,
   // `uf.formatOnSave`.
-  +formatOnSave: boolean,
+  readonly formatOnSave: boolean,
 };
 */
 

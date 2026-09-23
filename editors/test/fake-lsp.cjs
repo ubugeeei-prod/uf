@@ -18,7 +18,9 @@ const name = process.argv[2] ?? "fake";
 let buffer = Buffer.alloc(0);
 
 function send(message /*: mixed */) {
-  const body = Buffer.from(JSON.stringify(message), "utf8");
+  // `JSON.stringify` answers `undefined` for a value with no JSON form; a
+  // message is never one, but "null" is what the protocol would read it as.
+  const body = Buffer.from(JSON.stringify(message) ?? "null", "utf8");
   process.stdout.write(`Content-Length: ${body.length}\r\n\r\n`);
   process.stdout.write(body);
 }
