@@ -172,7 +172,13 @@ const runEveryTime: Checker = (argv) => {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
-  return { status: run.status, stdout: String(run.stdout), stderr: String(run.stderr) };
+  // A checker that could not be started has no output at all rather than an
+  // empty one; either way it is "printed nothing", which `checkReport` names.
+  return {
+    status: run.status,
+    stdout: String(run.stdout ?? ""),
+    stderr: String(run.stderr ?? run.error?.message ?? ""),
+  };
 };
 
 /**
