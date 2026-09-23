@@ -269,7 +269,7 @@ function propertyAt(
     if (current == null) {
       return { found: false, value: undefined };
     }
-    if (!Object.prototype.hasOwnProperty.call(current as $FlowFixMe, key)) {
+    if (!Object.hasOwn(current as $FlowFixMe, key)) {
       return { found: false, value: undefined };
     }
     current = (current as $FlowFixMe)[key];
@@ -647,6 +647,7 @@ function verdicts(received: mixed): {
         expected: render(value),
         received: render(actual),
         failure: () => `expected ${render(name)} to be ${render(value)}, not ${render(actual)}`,
+        negatedFailure: () => `expected ${render(name)} not to be ${render(value)}`,
       };
     },
     toHaveClass: (...names: $ReadOnlyArray<mixed>) => {
@@ -658,6 +659,8 @@ function verdicts(received: mixed): {
         expected: render(wanted),
         received: render(classes),
         failure: () => `expected the class list ${render(classes)} to include ${render(wanted)}`,
+        negatedFailure: () =>
+          `expected the class list ${render(classes)} not to include ${render(wanted)}`,
       };
     },
     toHaveTextContent: (expected: mixed) => {
@@ -670,6 +673,8 @@ function verdicts(received: mixed): {
         expected: render(expected),
         received: render(text),
         failure: () => `expected the text ${render(text)} to contain ${render(expected)}`,
+        negatedFailure: () =>
+          `expected the text ${render(text)} not to contain ${render(expected)}`,
       };
     },
     toHaveValue: (expected: mixed) => {
@@ -680,11 +685,12 @@ function verdicts(received: mixed): {
         expected: render(expected),
         received: render(actual),
         failure: () => `expected the value ${render(actual)} to be ${render(expected)}`,
+        negatedFailure: () => `expected the value not to be ${render(expected)}`,
       };
     },
     toHaveNoAxeViolations: async (options: mixed) => {
       const node = element("toHaveNoAxeViolations");
-      const found = await auditElement(node, (options: $FlowFixMe));
+      const found = await auditElement(node, options as $FlowFixMe);
       const named = violationIds(found);
       return {
         pass: found.length === 0,

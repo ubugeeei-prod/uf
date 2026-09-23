@@ -56,7 +56,7 @@ const loaded: Map<string, { entries: { [string]: string }, dirty: boolean }> = n
 
 /** Whether this run may rewrite a snapshot that did not match. */
 function updating(): boolean {
-  const value = (globalThis: $FlowFixMe).process?.env?.UF_UPDATE_SNAPSHOTS;
+  const value = (globalThis as $FlowFixMe).process?.env?.UF_UPDATE_SNAPSHOTS;
   return value != null && value !== "" && value !== "0";
 }
 
@@ -101,7 +101,7 @@ function entriesFor(file: string): { entries: { [string]: string }, dirty: boole
     return already;
   }
 
-  const state = { entries: (Object.create(null): $FlowFixMe), dirty: false };
+  const state = { entries: Object.create(null) as $FlowFixMe, dirty: false };
   if (existsSync(target)) {
     parseInto(readFileSync(target, "utf8"), state.entries);
   }

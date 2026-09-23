@@ -53,7 +53,7 @@ function makeSpy(implementation: mixed, restore: Restore, name: string): $FlowFi
   let current = implementation;
   let mockName = name;
 
-  const spy: $FlowFixMe = function (...args: $ReadOnlyArray<mixed>) {
+  const spy: $FlowFixMe = function (this: mixed, ...args: $ReadOnlyArray<mixed>) {
     // `this` is recorded because a spy on a method is often called as one, and
     // `mock.instances` is how a test asserts on the receiver.
     instances.push(this);
@@ -114,8 +114,8 @@ function makeSpy(implementation: mixed, restore: Restore, name: string): $FlowFi
       const out = body();
       // An async body has to put the implementation back when it settles, not
       // when it starts, or the next test runs against this one's stand-in.
-      if (out != null && typeof (out: $FlowFixMe).then === "function") {
-        return (out: $FlowFixMe).finally(() => {
+      if (out != null && typeof (out as $FlowFixMe).then === "function") {
+        return (out as $FlowFixMe).finally(() => {
           current = previous;
         });
       }
@@ -136,7 +136,7 @@ function makeSpy(implementation: mixed, restore: Restore, name: string): $FlowFi
   spy.mockRejectedValueOnce = (reason: mixed) =>
     spy.mockImplementationOnce(() => Promise.reject(reason));
   spy.mockReturnThis = () =>
-    spy.mockImplementation(function () {
+    spy.mockImplementation(function (this: mixed) {
       return this;
     });
 
@@ -203,7 +203,7 @@ export function spyOn(object: mixed, method: string): $FlowFixMe {
 
 /** Whether `value` is one of these spies. */
 export function isSpy(value: mixed): boolean {
-  return typeof value === "function" && (value: $FlowFixMe).mock != null;
+  return typeof value === "function" && (value as $FlowFixMe).mock != null;
 }
 
 /** Forget every spy's calls, keeping their implementations. */

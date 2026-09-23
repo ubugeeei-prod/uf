@@ -50,6 +50,7 @@ import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 // must not change what this binding holds, and the only way to assert that is
 // to have the binding.
 import * as staticallyImported from "../../tests/library/fixtures/module-mock/client.js";
+import typeof * as Client from "../../tests/library/fixtures/module-mock/client.js";
 
 import { moduleMockingUnavailable, unsupportedReason } from "./internal/modules.js";
 
@@ -109,7 +110,7 @@ describe("when a mock takes effect", () => {
   it("reaches an import that begins after the call", async () => {
     await uft.mock(CLIENT, stubClient);
 
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
 
     expect(client.send("/hello")).toBe("stubbed");
     expect(client.BASE).toBe("https://stub.test");
@@ -121,7 +122,7 @@ describe("when a mock takes effect", () => {
     // the real `send` returned.
     await uft.mock(CLIENT, stubClient);
 
-    const consumer = await import(CONSUMER);
+    const consumer = await import("../../tests/library/fixtures/module-mock/consumer.js");
 
     expect(consumer.greeting).toBe("stubbed");
     expect(consumer.base).toBe("https://stub.test");
@@ -129,14 +130,20 @@ describe("when a mock takes effect", () => {
 
   it("stops at unmock, for imports that begin after that", async () => {
     await uft.mock(CLIENT, stubClient);
-    expect((await import(CLIENT)).send("/hello")).toBe("stubbed");
+    expect(
+      (await import("../../tests/library/fixtures/module-mock/client.js")).send("/hello"),
+    ).toBe("stubbed");
 
     uft.unmock(CLIENT);
 
-    expect((await import(CLIENT)).send("/hello")).toBe("real https://api.test/hello");
+    expect(
+      (await import("../../tests/library/fixtures/module-mock/client.js")).send("/hello"),
+    ).toBe("real https://api.test/hello");
     // And the module that computed its exports from the mocked one is
     // evaluated again too, rather than keeping what the stand-in gave it.
-    expect((await import(CONSUMER)).greeting).toBe("real https://api.test/hello");
+    expect((await import("../../tests/library/fixtures/module-mock/consumer.js")).greeting).toBe(
+      "real https://api.test/hello",
+    );
   });
 
   it("is a function rather than something that throws to say it is missing", () => {
@@ -152,7 +159,7 @@ describe("when a mock takes effect", () => {
       "importMock",
       "resetModules",
     ]) {
-      expect(typeof (uft: $FlowFixMe)[binding]).toBe("function");
+      expect(typeof (uft as $FlowFixMe)[binding]).toBe("function");
     }
   });
 
@@ -169,36 +176,40 @@ describe("the factory", () => {
   it("exports exactly what it returned, and nothing the real module has", async () => {
     await uft.mock(CLIENT, () => ({ send: () => "stubbed" }));
 
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
 
-    expect(client.send()).toBe("stubbed");
+    expect(client.send("/hello")).toBe("stubbed");
     expect(Object.keys(client)).toEqual(["send"]);
   });
 
   it("keeps an export name that is not an identifier", async () => {
     await uft.mock(CLIENT, () => ({ "content-type": "application/json" }));
 
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
 
     expect(Object.keys(client)).toEqual(["content-type"]);
-    expect((client: $FlowFixMe)["content-type"]).toBe("application/json");
+    expect((client as $FlowFixMe)["content-type"]).toBe("application/json");
   });
 
   it("carries a default export", async () => {
     await uft.mock(CLIENT, () => ({ default: () => "the default" }));
 
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
 
-    expect((client: $FlowFixMe).default()).toBe("the default");
+    expect((client as $FlowFixMe).default()).toBe("the default");
   });
 
   it("may be asynchronous, which is why the call is awaited", async () => {
-    await uft.mock(CLIENT, async () => {
+    // The module's type is named because an async factory's return is a
+    // promise, and inferred from it `Module` would be the promise.
+    await uft.mock<Client>(CLIENT, async () => {
       await Promise.resolve();
       return { send: () => "asynchronously stubbed" };
     });
 
-    expect((await import(CLIENT)).send()).toBe("asynchronously stubbed");
+    expect((await import("../../tests/library/fixtures/module-mock/client.js")).send("/")).toBe(
+      "asynchronously stubbed",
+    );
   });
 
   it("refuses to register something that is not a set of exports", () => {
@@ -216,18 +227,20 @@ describe("the factory", () => {
     await uft.mock(CLIENT, () => exports);
     exports.origin = () => "too late";
 
-    expect(Object.keys(await import(CLIENT))).toEqual(["send"]);
+    expect(Object.keys(await import("../../tests/library/fixtures/module-mock/client.js"))).toEqual(
+      ["send"],
+    );
   });
 });
 
 describe("a partial mock", () => {
   it("keeps every export the factory did not name", async () => {
-    await uft.mock(CLIENT, async () => ({
-      ...(await uft.importActual<$FlowFixMe>(CLIENT)),
+    await uft.mock<Client>(CLIENT, async () => ({
+      ...(await uft.importActual<Client>(CLIENT)),
       send: () => "stubbed",
     }));
 
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
 
     expect(client.send("/hello")).toBe("stubbed");
     // Untouched, and still the real implementation rather than a stand-in.
@@ -240,16 +253,16 @@ describe("the automatic form", () => {
   it("turns every exported function into a spy that records and returns nothing", async () => {
     await uft.mock(SHAPES);
 
-    const shapes = await import(SHAPES);
+    const shapes = await import("../../tests/library/fixtures/module-mock/shapes.js");
 
     expect(shapes.greet("uf")).toBe(undefined);
-    expect((shapes.greet: $FlowFixMe).mock.calls[0].args).toEqual(["uf"]);
+    expect((shapes.greet as $FlowFixMe).mock.calls[0].args).toEqual(["uf"]);
   });
 
   it("empties an array and keeps a primitive", async () => {
     await uft.mock(SHAPES);
 
-    const shapes = await import(SHAPES);
+    const shapes = await import("../../tests/library/fixtures/module-mock/shapes.js");
 
     expect(shapes.ROLES).toEqual([]);
     expect(shapes.RETRIES).toBe(3);
@@ -258,7 +271,7 @@ describe("the automatic form", () => {
   it("follows a nested object", async () => {
     await uft.mock(SHAPES);
 
-    const shapes = await import(SHAPES);
+    const shapes = await import("../../tests/library/fixtures/module-mock/shapes.js");
 
     expect(shapes.config.name).toBe("production");
     expect(shapes.config.load()).toBe(undefined);
@@ -267,11 +280,11 @@ describe("the automatic form", () => {
   it("keeps a class constructible, with its methods replaced", async () => {
     await uft.mock(SHAPES);
 
-    const shapes = await import(SHAPES);
-    const session = new (shapes.Session: $FlowFixMe)("abc");
+    const shapes = await import("../../tests/library/fixtures/module-mock/shapes.js");
+    const session = new (shapes.Session as $FlowFixMe)("abc");
 
     expect(session.identify()).toBe(undefined);
-    expect((shapes.Session: $FlowFixMe).mock.calls.length).toBe(1);
+    expect((shapes.Session as $FlowFixMe).mock.calls.length).toBe(1);
   });
 });
 
@@ -282,7 +295,9 @@ describe("uft.importActual", () => {
     const actual = await uft.importActual<$FlowFixMe>(CLIENT);
 
     expect(actual.send("/hello")).toBe("real https://api.test/hello");
-    expect((await import(CLIENT)).send("/hello")).toBe("stubbed");
+    expect(
+      (await import("../../tests/library/fixtures/module-mock/client.js")).send("/hello"),
+    ).toBe("stubbed");
   });
 
   it("reaches past the stand-in for the module it names and for no other", async () => {
@@ -315,29 +330,31 @@ describe("uft.importMock", () => {
 
     expect(mocked.send("/hello")).toBe(undefined);
     // Nothing was registered, so everyone else still gets the real module.
-    expect((await import(CLIENT)).send("/hello")).toBe("real https://api.test/hello");
+    expect(
+      (await import("../../tests/library/fixtures/module-mock/client.js")).send("/hello"),
+    ).toBe("real https://api.test/hello");
   });
 });
 
 describe("uft.resetModules", () => {
   it("makes the next import evaluate the module again", async () => {
-    const before = await import(COUNTER);
+    const before = await import("../../tests/library/fixtures/module-mock/counter.js");
     before.bump();
     before.bump();
     expect(before.current()).toBe(2);
 
     uft.resetModules();
 
-    const after = await import(COUNTER);
+    const after = await import("../../tests/library/fixtures/module-mock/counter.js");
     expect(after.current()).toBe(0);
     expect(after).not.toBe(before);
   });
 
   it("does nothing of the sort without the call", async () => {
-    const before = await import(COUNTER);
+    const before = await import("../../tests/library/fixtures/module-mock/counter.js");
     before.bump();
 
-    const again = await import(COUNTER);
+    const again = await import("../../tests/library/fixtures/module-mock/counter.js");
 
     expect(again).toBe(before);
     expect(again.current()).toBe(before.current());
@@ -366,10 +383,10 @@ describe("uft.resetModules", () => {
       factories += 1;
       return { send: () => "stubbed" };
     });
-    const before = await import(CLIENT);
+    const before = await import("../../tests/library/fixtures/module-mock/client.js");
 
     uft.resetModules();
-    const after = await import(CLIENT);
+    const after = await import("../../tests/library/fixtures/module-mock/client.js");
 
     expect(factories).toBe(1);
     expect(after.send).toBe(before.send);
@@ -384,30 +401,34 @@ describe("clear, reset and restore, over a module mock", () => {
 
   it("clearAllMocks forgets the calls and keeps the stand-in", async () => {
     await uft.mock(CLIENT, stubClient);
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
     client.send("/hello");
 
     uft.clearAllMocks();
 
-    expect((client.send: $FlowFixMe).mock.calls).toEqual([]);
+    expect((client.send as $FlowFixMe).mock.calls).toEqual([]);
     expect(client.send("/hello")).toBe("stubbed");
-    expect((await import(CLIENT)).send("/hello")).toBe("stubbed");
+    expect(
+      (await import("../../tests/library/fixtures/module-mock/client.js")).send("/hello"),
+    ).toBe("stubbed");
   });
 
   it("resetAllMocks forgets the implementation too, and still does not unmock", async () => {
     await uft.mock(CLIENT, stubClient);
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
 
     uft.resetAllMocks();
 
     // The spy is still the module's `send`; it has just forgotten what to do.
     expect(client.send("/hello")).toBe(undefined);
-    expect((await import(CLIENT)).send).toBe(client.send);
+    expect((await import("../../tests/library/fixtures/module-mock/client.js")).send).toBe(
+      client.send,
+    );
   });
 
   it("restoreAllMocks puts back what spyOn took, and leaves the module mocked", async () => {
     await uft.mock(CLIENT, stubClient);
-    const client = await import(CLIENT);
+    const client = await import("../../tests/library/fixtures/module-mock/client.js");
     const object = { greet: () => "real" };
     uft.spyOn(object, "greet").mockReturnValue("spied");
     expect(object.greet()).toBe("spied");
@@ -415,16 +436,22 @@ describe("clear, reset and restore, over a module mock", () => {
     uft.restoreAllMocks();
 
     expect(object.greet()).toBe("real");
-    expect((await import(CLIENT)).send).toBe(client.send);
+    expect((await import("../../tests/library/fixtures/module-mock/client.js")).send).toBe(
+      client.send,
+    );
   });
 
   it("unmock is the one that puts the module back", async () => {
     await uft.mock(CLIENT, stubClient);
-    expect((await import(CLIENT)).send("/hello")).toBe("stubbed");
+    expect(
+      (await import("../../tests/library/fixtures/module-mock/client.js")).send("/hello"),
+    ).toBe("stubbed");
 
     uft.unmock(CLIENT);
 
-    expect((await import(CLIENT)).send("/hello")).toBe("real https://api.test/hello");
+    expect(
+      (await import("../../tests/library/fixtures/module-mock/client.js")).send("/hello"),
+    ).toBe("real https://api.test/hello");
   });
 });
 

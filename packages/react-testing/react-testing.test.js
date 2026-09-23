@@ -1253,6 +1253,22 @@ describe("element matchers", () => {
     expect(field).toBeRequired();
   });
 
+  it("says what a negated DOM matcher found, rather than failing to", () => {
+    // `.not` reads a verdict's `negatedFailure`, and these four built their
+    // verdict without one: a failing `.not.toHaveClass` threw "negatedFailure
+    // is not a function" instead of saying which class was there. The checker
+    // found it, as a return type that did not match `Verdict`.
+    render(<input aria-label="field" className="a b" defaultValue="typed" placeholder="hint" />);
+    const field = screen.getByLabelText("field");
+    expect(() => expect(field).not.toHaveClass("a")).toThrow("not to include");
+    expect(() => expect(field).not.toHaveAttribute("placeholder", "hint")).toThrow("not to be");
+    expect(() => expect(field).not.toHaveValue("typed")).toThrow("not to be");
+    render(<p>Save all of your changes</p>);
+    expect(() => expect(screen.getByText(/Save/)).not.toHaveTextContent("Save")).toThrow(
+      "not to contain",
+    );
+  });
+
   it("collapses whitespace before comparing text", () => {
     render(<p>Save all of your changes</p>);
     expect(screen.getByText(/Save/)).toHaveTextContent("Save all of your changes");
