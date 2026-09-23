@@ -1963,17 +1963,18 @@ pub enum ConfigError {
     },
     /// A `rendering.modes` that leaves the build with nothing it can do.
     ///
-    /// The list is an allowlist, so naming a strategy uf has not written is
-    /// not itself an error — `["ssg", "ppr"]` permits one thing that never
-    /// happens and one that does. A list that permits *only* strategies uf
-    /// has not written is different: there is no build behind it, and the two
-    /// honest readings of it — "prerender anyway" and "produce nothing" — are
-    /// both the silent semantic change the guide forbids.
+    /// The list is an allowlist, so naming a strategy no route ends up needing
+    /// is not itself an error. A list that permits nothing — `[]`, or only
+    /// strategies uf has not written, should one be declared before it is —
+    /// is different: there is no build behind it, and the two honest readings
+    /// of it — "prerender anyway" and "produce nothing" — are both the silent
+    /// semantic change the guide forbids.
     #[error(
         "{path}: app.rendering.modes is [{modes}], and uf implements none of them. \
          `ssg` prerenders a route, `isr` prerenders it and regenerates it once its \
-         lifetime passes, and `ssr` renders it per request; `ppr` is planned and is never \
-         selected. Allow at least one of `ssg`, `isr` and `ssr`."
+         lifetime passes, `ppr` prerenders its static shell and leaves the parts that read \
+         the request to a server, and `ssr` renders it per request. Allow at least one of \
+         them."
     )]
     NoImplementedRenderingMode { path: Utf8PathBuf, modes: String },
     /// `build.staticBuild` beside a `rendering.modes` that forbids `ssg`.

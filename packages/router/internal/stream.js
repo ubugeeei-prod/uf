@@ -883,6 +883,161 @@ export async function prerenderDocument(node: React.Node, options: RenderOptions
 }
 
 /**
+ * A page's static shell, and what React needs to finish it per request.
+ *
+ * What `uf build` writes for a page it prerenders partially (`ppr`): the whole
+ * document React could render without a request, with each `<Suspense>`
+ * boundary that waited on one written as its fallback, and React's record of
+ * where those holes are.
+ */
+export type PrerenderedShell = {|
+  /**
+   * The document as far as a server sends it before it renders anything: the
+   * head, uf's tags in it, and every byte React finished. It stops where the
+   * request's part begins, which is before the closing tags.
+   */
+  readonly html: string,
+  /**
+   * What follows the request's part: the closing tags of a document uf wraps
+   * around the application. Empty for a document the application renders
+   * itself, because React's `resume` writes `</body></html>` for that one.
+   */
+  readonly close: string,
+  /** See [`Layout`]'s field of the same name. */
+  readonly rootDepth: number,
+  /**
+   * React's postponed state: which boundaries are holes and how to find them
+   * again. Plain JSON, which is what lets a build write it to a file and a
+   * server read it back. `null` when the prerender left nothing for the
+   * request, and `html` is then a whole document.
+   */
+  readonly postponed: mixed,
+|};
+
+/**
+ * Prerender `node` to a static shell, leaving whatever is still waiting when
+ * `settle` resolves as a hole.
+ *
+ * React's `prerender` with an abort. A boundary whose content is waiting on
+ * something when the render is stopped is written as its fallback, and React
+ * returns its postponed state beside the markup; [`resumeDocument`] hands that
+ * state back to React per request and streams only what was left.
+ *
+ * `settle` decides what is waiting, and it can only ever make a hole larger:
+ * stopped early, a boundary that would have finished is a hole instead, which
+ * the request then renders — slower, never wrong. The router waits until the
+ * payload it feeds this render has been read and every module it names has
+ * loaded, so what is left waiting is what was left out on purpose.
+ *
+ * Like [`prerenderDocument`], it is never given a nonce: what it writes is a
+ * file every request is sent.
+ */
+export async function prerenderShell(
+  node: React.Node,
+  options: {|
+    readonly shell: DocumentShell,
+    readonly onError: (error: mixed) => void,
+    readonly settle: () => Promise<void>,
+  |},
+): Promise<PrerenderedShell> {
+  const controller = new AbortController();
+  // The reason every hole is reported with when the render stops. Stopping is
+  // the point rather than a failure, so it is not passed on.
+  const stopped = new Error("@uniflowed/router: the static shell is complete");
+  const settings = {
+    onError: (error: mixed) => {
+      if (error !== stopped) options.onError(error);
+    },
+    signal: controller.signal,
+  };
+  const pending =
+    typeof ReactDOMStatic.prerenderToNodeStream === "function"
+      ? ReactDOMStatic.prerenderToNodeStream(node, settings)
+      : ReactDOMStatic.prerender(node, settings);
+  await options.settle();
+  controller.abort(stopped);
+  const result = await pending;
+  const layout: Layout = { rootDepth: 0 };
+  const text = await bodyOf(
+    assembled(preludeChunks(result.prelude), options.shell, undefined, layout),
+  ).text();
+  const postponed = result.postponed ?? null;
+  if (postponed == null) {
+    return { html: text, close: "", rootDepth: layout.rootDepth, postponed: null };
+  }
+  // A shell uf wrapped ends in uf's closing tags, which `resume` does not write;
+  // a document React wrote ends in its own, which `resume` writes again.
+  if (text.endsWith(options.shell.close)) {
+    return {
+      html: text.slice(0, text.length - options.shell.close.length),
+      close: options.shell.close,
+      rootDepth: layout.rootDepth,
+      postponed,
+    };
+  }
+  return {
+    html: text.replace(/<\/body>\s*<\/html>\s*$/i, ""),
+    close: "",
+    rootDepth: layout.rootDepth,
+    postponed,
+  };
+}
+
+/**
+ * A page's static shell, then what the request fills its holes with.
+ *
+ * The shell goes out as the first chunk, before React has rendered anything for
+ * this request — that is the whole of what partial prerendering buys, and it is
+ * why the shell is text the build wrote rather than a render. React's `resume`
+ * then renders the holes, and its output follows the shell unchanged: each
+ * hole's content in a hidden element and the script that moves it into place,
+ * which is what a streamed `<Suspense>` boundary always was.
+ *
+ * `payload` is the request's Flight payload, the one the holes were rendered
+ * from, and it is written into the document by [`interleaved`] under the same
+ * rules as a streamed render's. The shell ends between elements at the root's
+ * own level, so the payload may follow it as soon as it exists.
+ */
+export function resumeDocument(
+  node: React.Node,
+  shell: PrerenderedShell,
+  options: {|
+    readonly onError: (error: mixed) => void,
+    readonly payload: ReadableStream<Uint8Array>,
+    readonly nonce?: string | null,
+    readonly onStream?: (record: StreamRecord) => void,
+  |},
+): DocumentBody {
+  const controller = new AbortController();
+  // Begun now and awaited only after the shell has gone: the shell must not
+  // wait for anything React does for this request, and React must not wait
+  // for the shell to be read before it starts on the holes.
+  const resuming: Promise<ByteSource> = ReactDOMServer.resume(node, shell.postponed, {
+    onError: options.onError,
+    signal: controller.signal,
+    nonce: options.nonce ?? undefined,
+  });
+  // A resume that fails before its first byte fails the stream below, once it
+  // is read; this keeps the rejection from being reported as unhandled while
+  // the shell is still being written.
+  resuming.catch(() => {});
+  async function* chunks(): AsyncGenerator<string, void, void> {
+    yield shell.html;
+    yield* decoded(await resuming);
+    if (shell.close !== "") {
+      yield shell.close;
+    }
+  }
+  const layout: Layout = { rootDepth: shell.rootDepth };
+  return bodyOf(
+    outgoing(interleaved(chunks(), options.payload, options.nonce, layout), options.onStream),
+    () => {
+      controller.abort();
+    },
+  );
+}
+
+/**
  * What [`assembled`] learns about a document that [`interleaved`] needs.
  *
  * Which shape a document has is decided on its opening bytes, inside

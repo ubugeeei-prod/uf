@@ -34,6 +34,7 @@ fn rendered(url: &str) -> Prerendered {
         file: format!("dist{url}/index.html"),
         status: 200,
         regenerates: false,
+        partial: false,
     }
 }
 
@@ -236,4 +237,23 @@ fn a_regenerated_page_is_named_with_its_route_module() {
         message.contains("regenerates once its lifetime passes"),
         "{message}"
     );
+}
+
+/// A page the build wrote as a static shell is refused the same way: the build
+/// reported it, and what it wrote is the server's record rather than a document.
+#[test]
+fn a_partially_prerendered_page_is_named_with_its_route_module() {
+    let routes = [page("/", &[]), page("/account", &[])];
+    let mut account = rendered("/account");
+    account.file = String::from(".uf/build/server/partial-prerender.json");
+    account.partial = true;
+
+    let found = unservable(&root(), &routes, &[], &[rendered("/"), account], &[]);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].subject, "/account");
+    assert_eq!(found[0].file, "app/account/$page.js");
+    assert_eq!(found[0].reason, Reason::PartiallyPrerendered);
+    let message = refusal(&found);
+    assert!(message.contains("static shell"), "{message}");
 }

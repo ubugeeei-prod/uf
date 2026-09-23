@@ -298,6 +298,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &[
                 "DraftModeError",
                 "OutsideRequestError",
+                "PostponedReadError",
                 "after",
                 "authorizeNativeAction",
                 "cookies",

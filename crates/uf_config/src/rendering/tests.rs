@@ -81,28 +81,28 @@ fn the_docs_site_configuration_still_builds() {
 }
 
 #[test]
-fn a_planned_mode_beside_an_implemented_one_is_allowed() {
-    // `modes` is an allowlist: naming `ppr` permits something that never gets
-    // selected, which changes nothing and is worth no error.
-    let config = with_modes(&[RenderingMode::Ssg, RenderingMode::Ppr]);
-    check(Utf8Path::new("uf.config.js"), &config).unwrap();
-    assert_eq!(
-        RenderingPlan::resolve(&config).prerender(),
-        Prerender::Everything
-    );
+fn ppr_is_implemented_and_prerenders_what_ssg_does() {
+    // A partially prerendered page is a prerendered shell with holes a server
+    // fills, and a page that reads nothing has none. So `["ppr"]` alone is a
+    // build that prerenders every route and keeps a server for the holes.
+    assert!(RenderingMode::Ppr.is_implemented());
+    let alone = with_modes(&[RenderingMode::Ppr]);
+    check(Utf8Path::new("uf.config.js"), &alone).unwrap();
+    let plan = RenderingPlan::resolve(&alone);
+    assert_eq!(plan.prerender(), Prerender::Everything);
+    assert!(plan.emits_a_server());
+
+    let beside = RenderingPlan::resolve(&with_modes(&[RenderingMode::Ssg, RenderingMode::Ppr]));
+    assert_eq!(beside.prerender(), Prerender::Everything);
 }
 
 #[test]
-fn a_list_of_only_planned_modes_is_refused() {
-    let config = with_modes(&[RenderingMode::Ppr]);
-    let error = check(Utf8Path::new("uf.config.js"), &config).unwrap_err();
-    assert!(matches!(
-        error,
-        ConfigError::NoImplementedRenderingMode { .. }
-    ));
+fn a_list_that_allows_nothing_names_every_mode() {
+    let error = check(Utf8Path::new("uf.config.js"), &with_modes(&[])).unwrap_err();
     let message = error.to_string();
-    assert!(message.contains("ppr"), "{message}");
-    assert!(message.contains("ssg"), "{message}");
+    for mode in ["ssg", "isr", "ppr", "ssr"] {
+        assert!(message.contains(mode), "{mode}: {message}");
+    }
 }
 
 #[test]

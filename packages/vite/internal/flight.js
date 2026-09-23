@@ -726,6 +726,9 @@ export const render = (url, assets, options = {}) => instrumentRender(
   (onError) => renderer.render(url, assets, { ...options, onError }), options.onError,
 );
 export const prerender = renderer.prerender;
+export const resume = (url, assets, shell, options = {}) => instrumentRender(
+  (onError) => renderer.resume(url, assets, shell, { ...options, onError }), options.onError,
+);
 export const flight = (url, options = {}) => instrumentRender(
   (onError) => renderer.flight(url, { ...options, onError }), options.onError,
 );

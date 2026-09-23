@@ -21,6 +21,7 @@ fn page(url: &str, status: u16) -> Prerendered {
         file: format!("dist{url}/index.html"),
         status,
         regenerates: false,
+        partial: false,
     }
 }
 

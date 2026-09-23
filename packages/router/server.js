@@ -30,10 +30,13 @@ import * as React from "react";
 
 import {
   type DocumentBody,
+  type PrerenderedShell,
   type WritableLike,
   prerenderDocument,
   renderDocument,
 } from "./internal/stream.js";
+
+export type { PrerenderedShell } from "./internal/stream.js";
 
 import {
   type AppProps,
@@ -118,6 +121,17 @@ export type PrerenderResult = {|
    * navigation at all. Absent for a document rendered from its modules.
    */
   readonly payload?: Uint8Array,
+  /**
+   * The page's static shell, when the prerender was partial and the page read
+   * the request inside a `<Suspense>` boundary.
+   *
+   * `html` is then the shell's markup and not a document to write at the
+   * page's URL: a server answers the page by sending the shell and rendering
+   * the holes per request, through [`Renderer`]'s `resume`. No payload comes
+   * with it, because the browser hydrates from the request's. Only a renderer
+   * for React Server Components writes one.
+   */
+  readonly shell?: PrerenderedShell,
 |};
 
 /**
@@ -203,6 +217,19 @@ export type RenderOptions = {|
    * vocabulary of the report belongs on this side of that line.
    */
   readonly onStream?: (diagnostic: StreamDiagnostic) => void,
+  /**
+   * For `prerender` only: whether a read of the request may be left for the
+   * request rather than fail the page.
+   *
+   * `uf build` passes it when `app.rendering.modes` allows `ppr` and the build
+   * leaves a server behind. A page that reads `cookies()`, `headers()` or
+   * `draftMode()` inside a `<Suspense>` boundary is then written as a static
+   * shell with that boundary as a hole — [`PrerenderResult`]'s `shell` — and a
+   * read outside every boundary still fails the page, naming what it read.
+   * The renderer for React Server Components honours it; a route rendered from
+   * its modules (`app.rsc: false`) is prerendered whole or not at all.
+   */
+  readonly partial?: boolean,
 |};
 
 /** The two ids the server writes and the client reads. */
@@ -300,6 +327,17 @@ export type Renderer = {|
       readonly interceptedFrom?: string,
     |},
   ) => Promise<FlightResponse>,
+  /**
+   * A page `prerender` wrote as a static shell: the shell first, then its holes
+   * as this request renders them. Only a renderer for React Server Components
+   * has one, because only it writes a shell.
+   */
+  readonly resume?: (
+    url: string,
+    assets: RenderAssets,
+    shell: PrerenderedShell,
+    options?: RenderOptions,
+  ) => Promise<RenderResult>,
 |};
 
 export function createRenderer(options: {|

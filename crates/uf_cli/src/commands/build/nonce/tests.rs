@@ -21,6 +21,7 @@ fn page(url: &str, file: &str) -> Prerendered {
         file: file.to_owned(),
         status: 200,
         regenerates: false,
+        partial: false,
     }
 }
 
@@ -187,6 +188,7 @@ fn the_not_found_document_is_named_too() {
         file: "dist/404.html".to_owned(),
         status: 404,
         regenerates: false,
+        partial: false,
     }];
     let rules = vec![rule("/:path*", &[("content-security-policy", POLICY)])];
 
