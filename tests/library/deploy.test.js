@@ -358,6 +358,44 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
     expect(stylesheet.headers.get("content-type")).toBe("text/css");
   });
 
+  it("asks the platform not to compress what the application streams", async () => {
+    // A compressor holds a streamed document's early chunks until the body
+    // ends, so the shell the Worker sent at once reached the browser with the
+    // hole it was sent ahead of (#1494). Assets and every other type keep
+    // whatever the platform does to them.
+    const handle = createWorkerFetch({
+      handle: createFetchHandler({
+        app: appWith({
+          handler: (incoming) =>
+            new URL(incoming.url).pathname === "/api/data" ? Response.json({ ok: true }) : null,
+        }),
+        document: assets,
+      }),
+      beginRequest,
+    });
+    const binding = {
+      fetch: async (incoming: Request): Promise<Response> =>
+        new URL(incoming.url).pathname === "/assets/site.css"
+          ? new Response("body{}", { headers: { "content-type": "text/css" } })
+          : new Response("not found", { status: 404 }),
+    };
+
+    const page = await handle(request("/guide"), { ASSETS: binding }, executionContext());
+    expect(page.headers.get("content-type")).toContain("text/html");
+    expect(page.headers.get("content-encoding")).toBe("identity");
+    expect(await page.text()).toContain("/guide");
+
+    const data = await handle(request("/api/data"), { ASSETS: binding }, executionContext());
+    expect(data.headers.get("content-encoding")).toBe(null);
+
+    const stylesheet = await handle(
+      request("/assets/site.css"),
+      { ASSETS: binding },
+      executionContext(),
+    );
+    expect(stylesheet.headers.get("content-encoding")).toBe(null);
+  });
+
   it("follows the assets binding's directory redirect for a prerendered page", async () => {
     const asked: Array<string> = [];
     const handle = createWorkerFetch({

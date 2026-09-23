@@ -291,6 +291,47 @@ export type WorkerHandlerOptions = {|
 |};
 
 /**
+ * The content types uf streams: a document, a navigation's RSC payload, and an
+ * event stream. Each is written a piece at a time on purpose.
+ */
+const STREAMED_TYPES: $ReadOnlyArray<string> = Object.freeze([
+  "text/html",
+  "text/x-component",
+  "text/event-stream",
+]);
+
+/**
+ * `response`, marked so the platform does not compress it on the way out.
+ *
+ * A Worker's response is compressed for a client that accepts it unless it
+ * says what its encoding is, and a compressor holds small chunks until it has
+ * enough to emit or the body ends. For a streamed document that is the whole
+ * point lost: under `wrangler dev` the deploy matrix measured a `ppr` shell
+ * that left the Worker at 4 ms reach a browser-like client at 1.2 s, together
+ * with the hole it was sent ahead of, while `accept-encoding: identity` got the
+ * shell at 4 ms (ubugeeei-prod/uf#1494; cloudflare/workers-sdk#5614 is the
+ * local half). `Content-Encoding: identity` is the documented way to ask for
+ * the bytes as written.
+ *
+ * The trade is compression, for the three streamed types only and only for what
+ * the application answers: assets, JSON and everything else keep whatever the
+ * platform does to them, and a response that already names an encoding keeps
+ * it.
+ */
+function uncompressedStream(response: Response): Response {
+  if (response.body == null || response.headers.has("content-encoding")) return response;
+  const type = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (!STREAMED_TYPES.includes(type)) return response;
+  const headers = new Headers(response.headers);
+  headers.set("content-encoding", "identity");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
  * A built uf application as a Worker's `fetch`.
  *
  * Static assets first, then the application — the order `uf preview` cannot
@@ -370,7 +411,7 @@ export function createWorkerFetch(
         if (assets != null) {
           lifecycle.context.buildFile = (pathname) => assetFile(assets, addressed, pathname);
         }
-        return await handle(addressed);
+        return uncompressedStream(await handle(addressed));
       };
       const response = await lifecycle.run(async () =>
         withHeaders(await answer(), headersFor(routing, request)),
