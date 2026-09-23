@@ -135,19 +135,21 @@ async function ufDriver(): Promise<Driver> {
 
   component UfApp(store: Store) {
     const frame = React.useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
-    return React.createElement(
-      tui.Box,
-      { flexDirection: "column" },
-      ...lines(frame).map((line, index) =>
-        React.createElement(tui.Text, { key: String(index), wrap: "none" }, line),
-      ),
+    return (
+      <tui.Box flexDirection="column">
+        {lines(frame).map((line, index) => (
+          <tui.Text key={String(index)} wrap="none">
+            {line}
+          </tui.Text>
+        ))}
+      </tui.Box>
     );
   }
 
   return {
     name: "@uniflowed/tui",
     async start(sink: Sink, store: Store) {
-      const handle = tui.render(React.createElement(UfApp, { store }), {
+      const handle = tui.render(<UfApp store={store} />, {
         stdout: sink,
         // Nothing is typed at this, and a renderer holding the real stdin open
         // would keep the process alive after the benchmark finished.
