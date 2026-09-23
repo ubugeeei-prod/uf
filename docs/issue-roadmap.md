@@ -286,6 +286,9 @@
 - [x] Start self-hosted `@uniflowed/test` runner planning.
 - [x] Execute the first native source-level assertion subset in `uf test`.
 - [x] Replace that subset with real execution on a Capability JS Host.
+- [x] Report each test file as it finishes — failures with their frames
+      included — under a live progress line, instead of the whole run at the
+      end; a pipe or a CI log gets the same lines as plain text.
 - [x] Make `@uniflowed/test` execute full Flow suites through Capability JS
       Hosts while keeping scheduling and reporting in Rust.
 - [x] Benchmark `@uniflowed/test` against Bun Test and Vitest and keep the faster-than-Bun target visible.
