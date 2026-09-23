@@ -12,12 +12,12 @@ a client, and none of them implements a language feature.
 | --- | --- | --- |
 | [VS Code](vscode) | An extension: `package.json`, four source files, a `.vscodeignore` | Yes. CI packages it; each release publishes it as `uniflowed.uf` to the Visual Studio Marketplace (with `VSCE_PAT`) and Open VSX (with `OVSX_PAT`). |
 | [Cursor](cursor) | Nothing of its own — it installs the VS Code extension, from Open VSX | Yes |
-| [Neovim](neovim) | [`lua/uf.lua`](neovim/lua/uf.lua), using core `vim.lsp.start` | Yes |
-| [Vim](vim) | [`uf.vim`](vim/uf.vim), a vim-lsp registration | Yes |
-| [Helix](helix) | [`languages.toml`](helix/languages.toml) | Yes |
-| [Emacs](emacs) | [`uf.el`](emacs/uf.el), for Eglot or lsp-mode | Yes |
-| [Zed](zed) | [`extension.toml`](zed/extension.toml) and a `zed_extension_api` Rust extension, installed as a dev extension | CI tests it on the host and builds the WASM; not yet in Zed's registry, and not run in Zed by CI. |
-| [JetBrains](jetbrains) | An [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) template to import | Through LSP4IJ rather than a native plugin; not run in an IDE by CI. |
+| [Neovim](neovim) | [`lua/uf.lua`](neovim/lua/uf.lua), using core `vim.lsp.start`; keeps `ts_ls`/`vtsls` off uf projects | Yes. CI runs it in headless Neovim against a stand-in server. |
+| [Vim](vim) | [`uf.vim`](vim/uf.vim), a vim-lsp registration | Yes; not run by CI. A TypeScript server vim-lsp also registers has to be disabled per project by hand. |
+| [Helix](helix) | [`languages.toml`](helix/languages.toml), per project, replacing `typescript-language-server` | Yes; not run by CI. |
+| [Emacs](emacs) | [`uf.el`](emacs/uf.el), for Eglot or lsp-mode; uf in a uf project, the usual server elsewhere | Yes. CI byte-compiles it and runs its ERT tests in batch Emacs. |
+| [Zed](zed) | [`extension.toml`](zed/extension.toml) and a `zed_extension_api` Rust extension, installed as a dev extension; serves only worktrees with `uf.config.js` | CI tests it on the host and builds the WASM; not yet in Zed's registry, and not run in Zed by CI. |
+| [JetBrains](jetbrains) | An [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) template to import | Through LSP4IJ rather than a native plugin; not run in an IDE by CI. The IDE's own JavaScript checking stays on beside uf's. |
 
 VS Code and Zed are packages. The rest are configuration: a file to copy, four
 to eighty lines long, or an editor plugin configured to start `uf lsp`.
@@ -55,6 +55,15 @@ Not rename, references, document symbols, signature help, inlay hints,
 organize imports or auto-imports. The server advertises none of them;
 `tests/library/lsp.test.js` asserts that it does not, so a README here cannot
 quietly start over-claiming.
+
+## Keeping TypeScript's server off Flow files
+
+Every editor here that ships or commonly runs a JavaScript language server —
+VS Code's built-in service, Zed's vtsls, Neovim's `ts_ls`, Helix's and Emacs's
+typescript-language-server — reads a Flow file as TypeScript and reports
+`component`, `hook`, `match` and every type annotation as errors. Each
+integration turns that off **in a uf project only**, so the same editor keeps
+it in a TypeScript project; its README says how, and what it cannot turn off.
 
 ## The one thing every integration has to get right
 

@@ -79,8 +79,41 @@ opened is not picked up. Editing `uf.config.js` needs **editor: restart
 language server**.
 
 Zed calls every `.js`, `.jsx`, `.mjs` and `.cjs` file JavaScript, so that is the
-one language the server is attached to. Zed's own JavaScript servers keep
-running beside it.
+one language the server is attached to.
+
+## Only in a uf project, and without Zed's TypeScript servers there
+
+Zed's default `language_servers` for JavaScript is `["!typescript-language-server",
+"vtsls", "..."]`, and `"..."` means every other server registered for the
+language — which, once this extension is installed, includes `uf`. So Zed asks
+the extension for a command in *every* JavaScript worktree. The extension
+answers only in a worktree with `uf.config.js` at its root; anywhere else it
+declines, with a message saying so, and the worktree keeps the servers it would
+have had. (To stop Zed asking at all, add `"!uf"` to
+`languages.JavaScript.language_servers` in your user settings; a project's own
+list, below, names `uf` explicitly and wins.)
+
+In a uf project, vtsls — Zed's TypeScript server for JavaScript — reads a Flow
+file as TypeScript and reports `component`, `hook`, `match` and every
+annotation as errors. Commit `.zed/settings.json` to turn it off for that
+project only:
+
+```jsonc
+// .zed/settings.json
+{
+  "languages": {
+    "JavaScript": {
+      "language_servers": ["uf", "!vtsls", "!typescript-language-server", "..."],
+      "formatter": { "language_server": { "name": "uf" } },
+      "format_on_save": "on"
+    }
+  }
+}
+```
+
+A project's list replaces the user's rather than merging with it. Zed's worktree
+trust applies: until you trust the project, Zed does not start language servers
+its `.zed/settings.json` asks for.
 
 ## What it gives you
 
@@ -97,6 +130,10 @@ server and asserts each one:
   anything else in a Flow file, the type as Flow infers it.
 * **Go to definition** and **go to type definition**, from Flow's inference:
   across files, into `node_modules`, and into `flow-typed/`.
+* **Syntax highlighting** is Zed's own for JavaScript, a tree-sitter grammar
+  that does not know Flow's `component`, `hook`, `match` or `renders`; there
+  is no maintained tree-sitter grammar for modern Flow to ship instead, so
+  those lines are highlighted as the JavaScript grammar parses them.
 * **Completion**: in `uf.config.js`, the keys valid at the cursor with their
   documentation and type, the values of a key whose type is a fixed set, and a
   tool spec's names and, after `@`, its versions; in any other Flow file, after
@@ -110,7 +147,8 @@ Not rename, references or signature help. `uf lsp` advertises none of them.
 The Editors workflow (`.github/workflows/editors.yml`) runs on every change
 here. It checks formatting, runs `cargo test` on the host — which binary is
 chosen and why, the arguments, the environment, and that the settings key and
-the language name agree with `extension.toml` — runs clippy for the host and
+the language name agree with `extension.toml`, and that only a worktree with
+`uf.config.js` is served — runs clippy for the host and
 for `wasm32-wasip1`, and builds the release `.wasm`.
 
 No Zed runs in CI. That Zed loads the extension, starts `uf lsp` for a uf

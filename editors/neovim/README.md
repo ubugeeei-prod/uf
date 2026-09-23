@@ -20,8 +20,41 @@ require("uf").setup({
   -- A binary that is not on PATH: this project's own copy, say.
   cmd = { "./node_modules/.bin/uf", "lsp" },
   format_on_save = true,
+  -- Clients kept off buffers in a uf project. The default is
+  -- ts_ls, tsserver, vtsls, denols and typescript-tools; {} keeps them.
+  exclude = { "ts_ls", "vtsls" },
 })
 ```
+
+`:UfRestart` restarts the server, which is how an edit to `uf.config.js` takes
+effect.
+
+## TypeScript's server, in a uf project only
+
+Most Neovim configurations also start `ts_ls` or `vtsls` for `javascript`
+buffers, and it reads a Flow file as TypeScript: `component`, `hook`, `match`
+and every annotation come back as errors beside uf's. `setup` detaches the
+clients named in `exclude` from a buffer **in a uf project**, and drops what
+they publish about files there, whatever started them — nvim-lspconfig,
+`vim.lsp.enable`, a plugin. In any other project they attach as before.
+
+On Neovim 0.11 and later you can instead keep `ts_ls` from starting in a uf
+project at all, with the `root_dir` contract: a `root_dir` function that never
+calls `on_dir` does not start the client for that buffer.
+
+```lua
+vim.lsp.config("ts_ls", {
+  root_dir = function(bufnr, on_dir)
+    if vim.fs.root(bufnr, { "uf.config.js" }) then
+      return -- a uf project: uf serves it
+    end
+    on_dir(vim.fs.root(bufnr, { "tsconfig.json", "jsconfig.json", "package.json", ".git" }))
+  end,
+})
+```
+
+This replaces nvim-lspconfig's own `root_dir` for `ts_ls` (which also skips Deno
+projects), so the markers above are yours to keep in step.
 
 A buffer gets a client when its file is `javascript` or `javascriptreact` **and**
 a `uf.config.js` is found in it or above it. Nothing starts in a project that is
@@ -39,7 +72,7 @@ vim.lsp.enable("uf")
 ```
 
 Note that this form does not set `cmd_cwd`, so start Neovim in the project
-root — see below.
+root — see below — or add `"--cwd"` and the root to `cmd` in a function.
 
 ## What you get
 
@@ -79,8 +112,13 @@ of getting it wrong is quiet: formatting to uf's defaults rather than to yours.
 
 ## Editing `uf.config.js`
 
-The server reads it once. After changing it, restart the client:
+The server reads it once. After changing it, `:UfRestart` (or `:LspRestart uf`
+with nvim-lspconfig).
 
-```lua
-vim.cmd("LspRestart uf")
-```
+## What is tested
+
+`test/run.lua` runs in headless Neovim in the Editors workflow, with
+`editors/test/fake-lsp.cjs` standing in for both `uf lsp` and `ts_ls`: uf
+attaches in a uf project and is started in its root, `ts_ls` is detached there
+and its diagnostics dropped, neither changes outside a uf project, and
+`:UfRestart` starts a new client. It has been run on Neovim 0.8, 0.11 and 0.12.

@@ -11,7 +11,12 @@ Per project, which is where it belongs — uf is a per-project toolchain:
 mkdir -p .helix && cp path/to/uf/editors/helix/languages.toml .helix/languages.toml
 ```
 
-Or globally, merged into `~/.config/helix/languages.toml`.
+Globally, merged into `~/.config/helix/languages.toml`, it would replace the
+JavaScript servers of every project — keep it per project.
+
+Helix after 25.07 (its master branch at the time of writing) asks before it
+reads a project's `.helix/` or starts the language servers it names:
+`:workspace-trust` once per project. 25.07.1 reads it without asking.
 
 Then, from the project root:
 
@@ -47,9 +52,12 @@ support the request. Hover and `gd` answer nothing while the file does not
 parse, since there is no inference to ask.
 
 The `language-servers = ["uf"]` lines **replace** Helix's defaults for
-JavaScript and JSX. If you want `typescript-language-server` alongside uf,
-list both — and expect them to disagree about formatting and types, since only
-one of them reads your `uf.config.js` and only one of them is Flow.
+JavaScript and JSX, which are `typescript-language-server` alone — the server
+that reads a Flow file as TypeScript and reports its syntax as errors. That is
+the point, and it is why the file belongs in the project: in `.helix/` it
+replaces the list for this project only. `required-root-patterns` on the uf
+server keeps it from starting in a workspace without `uf.config.js`, if the
+file does end up in the global configuration.
 
 ## Working directory
 

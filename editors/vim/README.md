@@ -43,6 +43,17 @@ server and asserts each of these.
 
 Format on save is off; the one-line autocommand is at the bottom of `uf.vim`.
 
+## TypeScript's server
+
+Vim has no JavaScript language server of its own. If your vim-lsp setup also
+registers `typescript-language-server` for `javascript` (vim-lsp-settings
+does), it reads a Flow file as TypeScript and reports `component`, `hook`,
+`match` and every annotation as errors beside uf's. vim-lsp chooses servers
+by file type, not by project, so `uf.vim` cannot turn it off for uf projects
+only; with vim-lsp-settings, disable it for a uf project in that project's
+local vimrc (`let g:lsp_settings = {'typescript-language-server': {'disabled': 1}}`).
+That is vim-lsp-settings' documented option, and not checked here.
+
 ## What you do not get
 
 `:LspRename` and `:LspReferences` have no server behind them — `uf lsp`

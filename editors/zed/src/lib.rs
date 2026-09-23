@@ -25,6 +25,10 @@ impl zed::Extension for UfExtension {
         _: &zed::LanguageServerId,
         worktree: &zed::Worktree,
     ) -> zed::Result<zed::Command> {
+        if !command::is_uf_project(|relative| worktree.read_text_file(relative).is_ok()) {
+            return Err(command::NOT_A_UF_PROJECT.to_owned());
+        }
+
         let binary = LspSettings::for_worktree(SERVER_ID, worktree)
             .ok()
             .and_then(|settings| settings.binary);

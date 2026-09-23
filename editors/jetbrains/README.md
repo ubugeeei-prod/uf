@@ -42,6 +42,32 @@ command to name it:
 $PROJECT_DIR$/node_modules/.bin/uf lsp --cwd $PROJECT_DIR$
 ```
 
+## The IDE's own JavaScript support
+
+WebStorm and IntelliJ IDEA Ultimate parse and check JavaScript themselves, and
+LSP4IJ adds uf's diagnostics beside theirs; it cannot take the IDE's away. What
+the IDE offers for Flow, from JetBrains' documentation (2026.2):
+
+1. **Settings → Languages & Frameworks → JavaScript → JavaScript language
+   version: Flow**, so Flow's type annotations parse. Stored per project in
+   `.idea/misc.xml` (`JavaScriptSettings`, `languageLevel`), which is the file
+   to commit.
+2. On the same page, leave **Flow package or executable** empty and **Use Flow
+   server for** unchecked: uf, through LSP4IJ, is the server, and a Flow
+   server of its own would need a `.flowconfig` and a `flow-bin` this project
+   does not have.
+3. **Settings → Languages & Frameworks → TypeScript → TypeScript language
+   service**: turning it off stops the service for the project.
+
+Not verified, because the JavaScript plugin is closed source and no IDE runs
+here: the exact `languageLevel` value the Flow choice writes, whether turning
+off the TypeScript service silences it for `.js` files as well as `.ts`, and
+whether WebStorm's Flow parser accepts `component`, `hook`, `match` and
+`renders`. If it does not, the IDE marks those lines as syntax errors itself,
+and no language server can take that back. LSP4IJ's own settings are
+application-wide, not per project, so the uf server is configured once per IDE,
+not committed.
+
 ## Why `--cwd`
 
 `uf lsp` reads `uf.config.js` once, when it starts, from the directory `--cwd`

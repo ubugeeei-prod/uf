@@ -150,3 +150,39 @@ jobs:
           name: uf-zed-wasm
           path: editors/zed/target/wasm32-wasip1/release/uf_zed.wasm
           if-no-files-found: error
+
+  # The configuration-only integrations, run in the editors themselves. Each
+  # test starts `editors/test/fake-lsp.cjs` in place of `uf lsp` (and of a
+  # TypeScript server): what is checked is what the configuration decides —
+  # which buffers get uf, in which directory, and that the TypeScript server
+  # stays off a uf project and on everywhere else — not uf's answers, which
+  # `tests/library/lsp.test.js` checks against the real server.
+  neovim:
+    name: Neovim
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: sudo apt-get update -q && sudo apt-get install -y -q neovim
+      - run: nvim --version | head -1
+      - run: nvim --headless -n -u NONE -i NONE -c "luafile editors/neovim/test/run.lua"
+
+  emacs:
+    name: Emacs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update -q && sudo apt-get install -y -q emacs-nox
+      - run: emacs --version | head -1
+      # Warnings are errors: a free variable or an undefined function in a
+      # file people `require` is a bug that only shows at the wrong moment.
+      - run: emacs --batch -L editors/emacs --eval "(setq byte-compile-error-on-warn t)" -f batch-byte-compile editors/emacs/uf.el
+      - run: emacs --batch -L editors/emacs -l ert -l editors/emacs/test/uf-tests.el -f ert-run-tests-batch-and-exit
+      - run: rm -f editors/emacs/uf.elc
