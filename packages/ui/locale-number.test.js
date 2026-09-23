@@ -21,7 +21,7 @@ component Probe() {
   const filter = useFilter();
   const collator = useCollator({ sensitivity: "base" });
   return (
-    <output>{`${locale} ${direction} ${filter.startsWith("İzmir", "i")} ${collator.compare("İ", "i")}`}</output>
+    <output>{`${locale} ${direction} ${String(filter.startsWith("İzmir", "i"))} ${collator.compare("İ", "i")}`}</output>
   );
 }
 
@@ -81,13 +81,14 @@ describe("locale propagation", () => {
 
 describe("NumberField", () => {
   it("parses currency, percent, units and Arabic digits without accepting junk", () => {
-    for (const [locale, options, value] of [
+    const cases: $ReadOnlyArray<[string, Intl$NumberFormatOptions, number]> = [
       ["de-DE", { style: "currency", currency: "EUR" }, -1234.5],
       ["ar-EG", { style: "decimal" }, 1234.5],
       ["en-US", { style: "percent" }, 0.25],
       ["fr-FR", { style: "unit", unit: "kilogram" }, 12.5],
       ["en-US", { style: "currency", currency: "USD", currencySign: "accounting" }, -12.5],
-    ]) {
+    ];
+    for (const [locale, options, value] of cases) {
       const format: $FlowFixMe = new Intl.NumberFormat(locale, options);
       expect(parseNumber(format.format(value), format)).toBe(value);
       expect(Number.isNaN(parseNumber("abc12", format))).toBe(true);
@@ -115,10 +116,10 @@ describe("NumberField", () => {
     const input = screen.getByRole("spinbutton", { name: "Weight" });
     input.focus();
     await userEvent.keyboard("{ArrowUp}");
-    expect(input.value).toBe("1,5");
+    expect(input).toHaveValue("1,5");
     await userEvent.click(screen.getByRole("button", { name: "Increase" }));
-    expect(input.value).toBe("2");
-    expect(screen.getByRole("button", { name: "Increase" }).disabled).toBe(true);
+    expect(input).toHaveValue("2");
+    expect(screen.getByRole("button", { name: "Increase" })).toBeDisabled();
     expect(input.getAttribute("aria-describedby")).toBe(screen.getByText("In kilograms").id);
     expect(changed).toHaveBeenLastCalledWith(2);
     await expect(container).toHaveNoAxeViolations();
@@ -155,6 +156,6 @@ it("stops stepping at the last valid value below an unaligned maximum", async ()
   );
   const button = screen.getByRole("button", { name: "Increase" });
   await userEvent.click(button);
-  expect(screen.getByRole("spinbutton").value).toBe("0.8");
-  expect(button.disabled).toBe(true);
+  expect(screen.getByRole("spinbutton")).toHaveValue("0.8");
+  expect(button).toBeDisabled();
 });

@@ -12,7 +12,7 @@ it("edits locale-ordered date segments and constrains leap days with the keyboar
   year.focus();
   await userEvent.keyboard("{ArrowUp}{Enter}");
   expect(change).toHaveBeenLastCalledWith("2025-02-28");
-  expect(screen.getByRole("spinbutton", { name: "day" }).value).toBe("28");
+  expect(screen.getByRole("spinbutton", { name: "day" })).toHaveValue("28");
 });
 it("rejects incomplete and out-of-range dates without changing the value", async () => {
   const change = fn();
@@ -39,7 +39,7 @@ it("uses Arabic digits and mirrored segment navigation", async () => {
     </I18nProvider>,
   );
   const segments = screen.getAllByRole("spinbutton");
-  expect(segments[0].value).toBe("٢٠");
+  expect(segments[0]).toHaveValue("٢٠");
   segments[0].focus();
   await userEvent.keyboard("{ArrowLeft}");
   expect(document.activeElement).toBe(segments[1]);

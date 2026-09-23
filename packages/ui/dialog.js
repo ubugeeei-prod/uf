@@ -500,7 +500,7 @@ function concealOutside(element: HTMLElement): () => void {
       }
       restore.push({
         element: sibling,
-        hidden: sibling.getAttribute("aria-hidden"),
+        hidden: sibling.getAttribute("aria-hidden") ?? null,
         inert: sibling.hasAttribute("inert"),
       });
       sibling.setAttribute("aria-hidden", "true");
