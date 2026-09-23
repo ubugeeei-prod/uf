@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/query",
-  "version": "0.0.0-alpha.48",
+  "version": "0.1.0",
   "description": "A query cache with de-duplication, structural sharing and stale-while-revalidate, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -29,8 +29,8 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/hooks": "0.0.0-alpha.48",
-    "@uniflowed/react": "0.0.0-alpha.48"
+    "@uniflowed/hooks": "0.1.0",
+    "@uniflowed/react": "0.1.0"
   },
   "peerDependencies": {
     "react": ">=19"
