@@ -138,6 +138,17 @@ export function isChunkLoadFailure(error: mixed): boolean {
 }
 
 /**
+ * Whether a route resolved to an error because one of its modules could not be
+ * fetched — `isChunkLoadFailure` applied to a resolution's error, which is where
+ * a navigation meets it. A route whose module threw is not one of these.
+ */
+export function failedOnAMissingChunk(
+  failed: ?{ readonly kind: string, readonly error?: mixed, ... },
+): boolean {
+  return failed?.kind === "thrown" && isChunkLoadFailure(failed.error);
+}
+
+/**
  * Leave this page for `href` by loading its document.
  *
  * `assign` rather than the history API, because the point is to stop running

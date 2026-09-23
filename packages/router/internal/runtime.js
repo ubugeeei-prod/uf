@@ -86,7 +86,12 @@ import {
   routeState,
 } from "./flight.js";
 import { Head } from "./head.js";
-import { fromAnotherDeployment, isChunkLoadFailure, loadDocument } from "./deployment.js";
+import {
+  failedOnAMissingChunk,
+  fromAnotherDeployment,
+  isChunkLoadFailure,
+  loadDocument,
+} from "./deployment.js";
 import { addressOf, applicationPathOf, canonicalAddress } from "./base-path.js";
 import {
   clearNavigationCache,
@@ -734,8 +739,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       // this URL, so that is what is loaded — an error boundary would be a page
       // that works after a reload, reported as though it were broken. See
       // `./deployment.js`.
-      const failed = nextResolved.error;
-      if (failed?.kind === "thrown" && isChunkLoadFailure(failed.error)) {
+      if (failedOnAMissingChunk(nextResolved.error)) {
         setPending(false);
         loadDocument(target.href);
         return;
@@ -807,8 +811,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       // A chunk this page's build had and the server no longer does; the
       // history entry has already moved, so reloading loads its document. See
       // `navigateTo` above.
-      const failed = nextResolved.error;
-      if (failed?.kind === "thrown" && isChunkLoadFailure(failed.error)) {
+      if (failedOnAMissingChunk(nextResolved.error)) {
         window.location.reload();
         return;
       }
