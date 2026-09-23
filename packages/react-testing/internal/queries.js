@@ -158,7 +158,7 @@ export function textOf(element: Element): string {
 
 /** Text that contributes to a name from content. */
 function contentNameText(element: Element): string {
-  const parts = [];
+  const parts: Array<string> = [];
   collectContentNameText(element, parts);
   return normalize(parts.join(""));
 }
@@ -264,7 +264,9 @@ export function allByRole(root: Element, role: string, options?: RoleOptions): A
  */
 function exposed(element: Element): boolean {
   let child: Element | null = null;
-  let current: Element | null = element;
+  // `?Element` rather than `Element | null`: the libdef types `parentElement`
+  // as maybe-void, and the loop below stops on either.
+  let current: ?Element = element;
   while (current != null) {
     if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
       return false;
