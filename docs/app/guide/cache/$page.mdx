@@ -452,8 +452,9 @@ times without exposing loader values. A component inside a `Link` can use
 
 ## What is not here
 
-- **The data cache and the action cache.** `rendering.cache.data` and
-  `rendering.cache.actions` are refused rather than ignored.
+- **The action cache.** `rendering.cache.actions` is refused rather than
+  ignored: writes are not cached implicitly. `rendering.cache.data` is the
+  function cache above.
 - **`uf build --compile`.** A compiled binary answers from bytes it carries
   rather than from a directory, so it has its own copy of the resolution order
   and not its own copy of the cache — and a regenerating page, whose document is

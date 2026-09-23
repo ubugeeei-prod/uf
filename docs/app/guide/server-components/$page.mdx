@@ -43,7 +43,7 @@ covers and what it does not yet.
 | Area | Today | Still missing |
 | --- | --- | --- |
 | Directive parsing | `"use client"` and `"use server"` are read by the same directive-prologue rules React and bundlers use | no known gap |
-| Diagnostics | invalid directives, server-only imports in client graphs and client APIs in server modules are named | binding custom hooks to the browser APIs they call |
+| Diagnostics | invalid directives, server-only imports in client graphs, client APIs in server modules, and project hooks that reach one are named | a hook from a package the analysis cannot read is a warning, not a verdict |
 | The split | a Server Component never reaches the browser: the browser gets the payload it rendered and the `"use client"` modules that payload names | no known gap |
 | HTML streaming | the document streams, and carries the Flight payload its tree was rendered from; a Suspense boundary resolves from the rows that arrive later in the same response | no known gap |
 | Navigation | a navigation fetches the next route's payload at `<route>/__uf.flight`; a prerendered route has that file beside its `index.html`; an intercepted navigation asks for the page underneath with the interception in its slot | no known gap |
@@ -240,15 +240,16 @@ fixed by bundling it. The one exception is the last row.
 | `rsc/client-directive-in-function` | `"use client"` inside a function body, which React does not support |
 | `rsc/unclassified-hook-in-server` | **A warning.** The check matched names and this hook is not one of them |
 
-That last row is the only thing in the analysis that is not a verdict, and it is
-a warning because it is a statement that the analysis *stopped*. The client-only
-check matches identifiers against two name lists, so `useState` in a Server
-Component is caught and `useRoute` — which is built on `useContext` — is not,
-and neither is any hook you wrote yourself. Deciding it properly means binding
-an export to the APIs its body reaches; that is
-[#388](https://github.com/ubugeeei-prod/uf/issues/388). Until then the honest
-output is the question rather than silence, because silence reads as "checked
-and fine", which is the one thing it is not.
+That last row is the only thing in the analysis that is not a verdict. It is
+a warning because it is a statement that the analysis *stopped*. A hook you
+wrote in the project is followed into its body: one that reaches `useState` or
+another client-only API is `rsc/client-only-hook-in-server`, naming the module
+that defines it, whatever it was imported as
+([#388](https://github.com/ubugeeei-prod/uf/issues/388)). A hook whose body the
+analysis cannot read, such as `useRoute` from a package that is not on the name
+lists, gets the warning instead. Asking the question is more honest than
+staying silent, because silence reads as "checked and fine", which is the one
+thing it is not.
 
 `uf dev` prints the same list and changes no exit code. A dev server that
 refused to serve a module over a contract violation would be a dev server you
