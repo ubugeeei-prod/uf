@@ -290,20 +290,21 @@ describe("the audit itself", () => {
     // real audit makes every case after it wait on this one. A stand-in that
     // answers "nothing wrong" costs nothing and pins the same thing.
     const axe = (await import("axe-core")).default;
-    const real = axe.run;
     let started = 0;
     let finished = 0;
     let release = () => {};
     const held = new Promise((resolve) => {
       release = resolve;
     });
-    axe.run = async () => {
+    // Through `spyOn`, which puts the real `run` back in `finally`: the
+    // module's export is not something to assign over.
+    const run = uft.spyOn(axe, "run").mockImplementation(async () => {
       started += 1;
       // Only the first run is held; the rest answer at once.
       if (started === 1) await held;
       finished += 1;
       return { violations: [] };
-    };
+    });
 
     try {
       const stop = start({ endpoint: ENDPOINT, settleMs: 1, axe: {} });
@@ -333,7 +334,7 @@ describe("the audit itself", () => {
         expect(finished).toBe(started);
       });
     } finally {
-      axe.run = real;
+      run.mockRestore();
     }
   });
 

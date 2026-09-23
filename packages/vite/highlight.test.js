@@ -407,9 +407,9 @@ describe("Flow's syntax shown to the JavaScript grammar", () => {
     // that the position mapping exists for: the stand-in cut in half, and the
     // stand-in swallowed into a longer token.
     const splits = [
-      (line) => [line],
-      (line) => line.split(/(?<=\s)/u),
-      (line) => [line.slice(0, 11), line.slice(11)],
+      (line: string) => [line],
+      (line: string) => line.split(/(?<=\s)/u),
+      (line: string) => [line.slice(0, 11), line.slice(11)],
     ];
     for (const split of splits) {
       const lines = shim.code.split("\n").map((line) =>

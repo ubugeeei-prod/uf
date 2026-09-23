@@ -115,7 +115,7 @@ describe("the hook uf installs", () => {
     // document, and it is the end of the connection to the panel — replacing it
     // with a stub is a page DevTools can see and never hear from.
     const win = emptyWindow();
-    const extension = { renderers: new Map(), supportsFiber: true, inject: () => 7 };
+    const extension = { renderers: new Map<number, mixed>(), supportsFiber: true, inject: () => 7 };
     win[DEVTOOLS_HOOK] = extension;
 
     runPreamble(win);
