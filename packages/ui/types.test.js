@@ -33,9 +33,16 @@ import { describe, expect, it } from "@uniflowed/test";
 import type { CheckReport } from "../../tests/library/type-tests.js";
 import {
   everyMisuseIsReported,
+  oneCheckPerCommand,
   repositoryRoot as repository,
   ufBinary as UF,
 } from "../../tests/library/type-tests.js";
+
+// The three fixture blocks below are one command — `uf check tests/type-tests
+// packages/ui` — read three ways, so the file runs it once and each block
+// reads its own fixture out of the answer. `oneCheckPerCommand` says why it is
+// made here rather than shared between files.
+const checker = oneCheckPerCommand();
 
 describe("the props a part spreads onto its element", () => {
   // A type is a promise the same way a role is, and this is the only test here
@@ -122,6 +129,7 @@ describe("a side and an alignment are unions, not strings", () => {
       fixture: path.join("tests", "type-tests", "anchoring.js"),
       alongside: ["packages/ui"],
       atLeast: 4,
+      checker,
     });
   });
 });
@@ -154,6 +162,7 @@ describe("a wrong child is a type error and not a review comment", () => {
       fixture: path.join("tests", "type-tests", "composition.js"),
       alongside: ["packages/ui"],
       atLeast: 4,
+      checker,
     });
   });
 });
@@ -173,6 +182,7 @@ describe("an edge, a role, an alphabet and an orientation are unions too", () =>
       fixture: path.join("tests", "type-tests", "overlays.js"),
       alongside: ["packages/ui"],
       atLeast: 4,
+      checker,
     });
   });
 });
