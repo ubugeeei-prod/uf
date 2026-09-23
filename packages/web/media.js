@@ -33,6 +33,13 @@
 // `public/` — and for it the author supplies `width`, `height` and `srcSet`
 // themselves, as they always did.
 //
+// With one exception, which a project opts into: when
+// `app.builtins.images.remotePatterns` lists hosts, an absolute `http(s)` URL
+// is routed through `/__uf/image` — `@uniflowed/server/image` — which fetches,
+// resizes and re-encodes it on request. `Image` then writes the `srcset` for
+// it, one rung per width the endpoint accepts, because now something does
+// know which sizes exist. `unoptimized` keeps one image out of it.
+//
 // # What belongs in this module
 //
 // Anything a page renders in order to make the browser fetch bytes while the
@@ -52,6 +59,9 @@
 // an instant (`time.js`) or about a stored value (`cookie.js`).
 
 import * as React from "@uniflowed/react";
+
+import { IMAGE_ENDPOINT } from "./internal/image-endpoint.js";
+import { remoteSources } from "./internal/remote-image.js";
 
 /** How an image should be fetched relative to the rest of the page. */
 export type Loading = "eager" | "lazy";
@@ -215,6 +225,14 @@ function defaultSizes(width: number): string {
  * gives it a high fetch priority, and preloads it — a `srcSet` behind a lazy
  * `<img>` is discovered late, and for the largest image on the page that is
  * usually the whole of the Largest Contentful Paint.
+ *
+ * A remote `src` — an absolute `http(s)` URL — is sent through `/__uf/image`
+ * when the project lists remote hosts in `app.builtins.images.remotePatterns`:
+ * `src` and `srcSet` then name the endpoint, one rung per width it accepts,
+ * at `quality` or the project's own. `width` and `height` are still required,
+ * because the endpoint is asked for the image only after the page has laid it
+ * out. A `srcSet` of the author's own, or `unoptimized`, leaves the URL as it
+ * was written.
  */
 export component Image(
   src: string | ImageAsset,
@@ -226,6 +244,8 @@ export component Image(
   sizes?: string,
   srcSet?: string,
   placeholder?: boolean = true,
+  quality?: number,
+  unoptimized?: boolean = false,
   className?: string,
   style?: { readonly [string]: string | number },
   ...rest: { readonly [string]: mixed }
@@ -255,7 +275,14 @@ export component Image(
     throw new Error("<Image> was given an imported image with no emitted file.");
   }
 
-  const finalSrcSet = srcSet ?? asset?.srcSet;
+  // A remote URL goes through `/__uf/image` when the project has one, the
+  // author wrote no `srcSet` of their own, and did not opt this image out.
+  const remote =
+    asset == null && srcSet == null && !unoptimized
+      ? remoteSources(IMAGE_ENDPOINT, url, finalWidth, quality ?? IMAGE_ENDPOINT.quality)
+      : null;
+  const finalUrl = remote?.src ?? url;
+  const finalSrcSet = srcSet ?? remote?.srcSet ?? asset?.srcSet;
   const finalSizes =
     sizes ?? (finalSrcSet != null && finalSrcSet !== "" ? defaultSizes(finalWidth) : undefined);
   const finalLoading: Loading = loading ?? (priority ? "eager" : "lazy");
@@ -263,7 +290,7 @@ export component Image(
 
   const image = (
     <img
-      src={url}
+      src={finalUrl}
       alt={alt}
       width={finalWidth}
       height={finalHeight}
@@ -307,7 +334,7 @@ export component Image(
       <link
         rel="preload"
         as="image"
-        href={url}
+        href={finalUrl}
         imageSrcSet={finalSrcSet}
         imageSizes={finalSizes}
         fetchPriority="high"

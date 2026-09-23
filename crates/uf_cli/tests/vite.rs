@@ -9185,3 +9185,304 @@ fn explain_build(root: &Path) -> String {
     assert!(output.status.success(), "{said}");
     said
 }
+
+/// How many requests the image fixture's "remote" origin has answered.
+static ORIGIN_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A remote image host for `/__uf/image` to fetch from, on loopback.
+///
+/// The endpoint's whole purpose is fetching from somewhere else, and a test
+/// that depended on somewhere else being up would be a test of the internet.
+/// So this is the somewhere else: one PNG at `/photo.png`, a 404 for anything
+/// else, and a count of what reached it — which is how the test knows the
+/// second request for a variant was answered without asking again. Detached,
+/// because it has to outlive every server the test starts and nothing needs to
+/// stop it before the test binary exits.
+fn serve_remote_image(listener: std::net::TcpListener, png: Vec<u8>) {
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut head = Vec::new();
+            let mut byte = [0u8; 1];
+            while !head.ends_with(b"\r\n\r\n") {
+                match stream.read(&mut byte) {
+                    Ok(1) => head.push(byte[0]),
+                    _ => break,
+                }
+            }
+            ORIGIN_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let found = head.starts_with(b"GET /photo.png ");
+            let _ = if found {
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\n\
+                     Connection: close\r\n\r\n",
+                    png.len()
+                )
+                .and_then(|()| stream.write_all(&png))
+            } else {
+                write!(
+                    stream,
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+            };
+        }
+    });
+}
+
+/// One `GET`, with the head lowercased and the body kept as bytes.
+///
+/// The other helpers here read a response into a `String`, which is right for
+/// documents and wrong for an image: an AVIF is not UTF-8.
+fn http_bytes(port: u16, path: &str, accept: &str) -> (String, Vec<u8>) {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(120)))
+        .unwrap();
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: {accept}\r\n\
+         Connection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    let split = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .unwrap_or_else(|| {
+            panic!(
+                "no header block in {:?}",
+                String::from_utf8_lossy(&response)
+            )
+        });
+    let head = String::from_utf8_lossy(&response[..split]).to_ascii_lowercase();
+    let mut body = response[split + 4..].to_vec();
+    if head.contains("transfer-encoding: chunked") {
+        body = dechunk(&body);
+    }
+    (head, body)
+}
+
+/// The payload of a chunked body.
+fn dechunk(mut chunked: &[u8]) -> Vec<u8> {
+    let mut body = Vec::new();
+    loop {
+        let Some(end) = chunked.windows(2).position(|window| window == b"\r\n") else {
+            return body;
+        };
+        let size_text = String::from_utf8_lossy(&chunked[..end]);
+        let size = usize::from_str_radix(size_text.split(';').next().unwrap_or("0").trim(), 16)
+            .unwrap_or(0);
+        if size == 0 {
+            return body;
+        }
+        let start = end + 2;
+        body.extend_from_slice(&chunked[start..start + size]);
+        chunked = &chunked[start + size + 2..];
+    }
+}
+
+/// The width and height an AVIF declares, from its `ispe` property.
+///
+/// Read from the container rather than decoded, because `uf` compiles no AVIF
+/// decoder: the image spatial extents box is where every AVIF says how large
+/// its primary image is.
+fn avif_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    let at = bytes.windows(4).position(|window| window == b"ispe")?;
+    let field = |offset: usize| -> Option<u32> {
+        let slice = bytes.get(at + offset..at + offset + 4)?;
+        Some(u32::from_be_bytes(slice.try_into().ok()?))
+    };
+    Some((field(8)?, field(12)?))
+}
+
+/// A URL as `encodeURIComponent` writes the ones this test uses.
+fn component(url: &str) -> String {
+    url.replace(':', "%3A").replace('/', "%2F")
+}
+
+/// A remote image, resized, in AVIF for a browser that takes it, and from the
+/// cache the second time — under both servers that serve a build.
+///
+/// The fixture ubugeeei-prod/uf#958's "done when" names. A project lists one
+/// remote host — a server this test starts, on loopback, which is why it also
+/// sets `dangerouslyAllowPrivateAddresses`: the refusal of a loopback address
+/// is the default, and `packages/server/image.test.js` holds it — and its page
+/// renders an `Image` whose `src` is on that host. So the same run proves
+/// `Image` writes the endpoint's URLs for a remote `src` into the document the
+/// build prerendered, and that `uf start` and `uf preview` answer them: the
+/// 64px source at 32px, as an AVIF with an `Accept` naming AVIF and as a PNG
+/// without one, the repeat answered without the origin being asked again, and
+/// a host the list does not name refused.
+#[test]
+fn the_image_endpoint_resizes_a_remote_image_and_answers_it_from_the_cache() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let origin = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let origin_port = origin.local_addr().unwrap().port();
+    let mut photo = image::RgbImage::new(64, 48);
+    for (x, y, pixel) in photo.enumerate_pixels_mut() {
+        *pixel = image::Rgb([
+            u8::try_from(x * 4).unwrap(),
+            u8::try_from(y * 5).unwrap(),
+            120,
+        ]);
+    }
+    let mut png = Vec::new();
+    image::DynamicImage::ImageRgb8(photo)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    serve_remote_image(origin, png);
+
+    let remote = format!("http://127.0.0.1:{origin_port}/photo.png");
+    let page = format!(
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\
+         import {{ Image }} from \"@uniflowed/web\";\n\n\
+         export component Page() {{\n  return (\n    <main>\n      \
+         <Image src=\"{remote}\" alt=\"A remote photo\" width={{64}} height={{48}} />\n    \
+         </main>\n  );\n}}\n"
+    );
+    let config = format!(
+        "// @flow\nimport {{ defineConfig }} from \"@uniflowed/config\";\n\n\
+         export default defineConfig({{\n  app: {{\n    \
+         router: {{ entry: \"app.js\", root: \"app\" }},\n    builtins: {{\n      images: {{\n        \
+         widths: [32, 640],\n        \
+         remotePatterns: [{{ protocol: \"http\", hostname: \"127.0.0.1\", port: \"{origin_port}\" }}],\n        \
+         dangerouslyAllowPrivateAddresses: true,\n      }},\n    }},\n  }},\n  \
+         build: {{ entries: [\"app.js\"], outDir: \"dist\" }},\n}});\n"
+    );
+    let mut files = minimal_app();
+    files.retain(|(name, _)| *name != "app/$page.js");
+    let project = Project::new(&files);
+    project.write("app/$page.js", &page);
+    project.write("uf.config.js", &config);
+    let root = project.path();
+
+    let build = uf().arg("--cwd").arg(root).arg("build").output().unwrap();
+    assert!(
+        build.status.success(),
+        "the image fixture must build\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let document = fs::read_to_string(root.join("dist/index.html")).unwrap();
+    let encoded = component(&remote);
+    for rung in [
+        format!("/__uf/image?url={encoded}&amp;w=32&amp;q=75 32w"),
+        format!("/__uf/image?url={encoded}&amp;w=640&amp;q=75 64w"),
+    ] {
+        assert!(
+            document.contains(&rung),
+            "`Image` did not write the endpoint's `{rung}` for a remote src:\n{document}"
+        );
+    }
+
+    let path = format!("/__uf/image?url={encoded}&w=32&q=75");
+    let elsewhere = component(&format!("http://127.0.0.2:{origin_port}/photo.png"));
+    let unlisted = format!("/__uf/image?url={elsewhere}&w=32&q=75");
+    for command in ["start", "preview"] {
+        let mut answered = false;
+        for _ in 1..=PORT_ATTEMPTS {
+            let port = free_port();
+            let said = Mutex::new(String::new());
+            let port_text = port.to_string();
+            let args = [command, "--host", "127.0.0.1", "--port", port_text.as_str()];
+            answered = std::thread::scope(|scope| {
+                let server = Server::start(root, &args, scope, &said);
+                if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+                    drop(server);
+                    return false;
+                }
+                assert_image_endpoint(port, command, &path, &unlisted, &said);
+                true
+            });
+            if answered {
+                break;
+            }
+        }
+        assert!(
+            answered,
+            "`uf {command}` never answered on {PORT_ATTEMPTS} ports"
+        );
+    }
+}
+
+/// What one server has to answer for the image fixture.
+fn assert_image_endpoint(
+    port: u16,
+    command: &str,
+    path: &str,
+    unlisted: &str,
+    said: &Mutex<String>,
+) {
+    let context =
+        |what: &str, head: &str| format!("`uf {command}` {what}\n{head}\n{}", server_said(said));
+    let before = ORIGIN_HITS.load(std::sync::atomic::Ordering::SeqCst);
+
+    let (head, body) = http_bytes(port, path, "image/avif,image/webp,*/*");
+    assert!(
+        head.starts_with("http/1.1 200"),
+        "{}",
+        context("refused the image", &head)
+    );
+    assert!(
+        head.contains("content-type: image/avif") && head.contains("x-uf-cache: miss"),
+        "{}",
+        context("did not encode an AVIF for a browser that takes one", &head)
+    );
+    assert_eq!(
+        body.get(4..12),
+        Some(&b"ftypavif"[..]),
+        "{}",
+        context("sent no AVIF", &head)
+    );
+    assert_eq!(
+        avif_dimensions(&body),
+        Some((32, 24)),
+        "{}",
+        context("did not resize the 64x48 source to 32px", &head)
+    );
+
+    let (again, repeat) = http_bytes(port, path, "image/avif,image/webp,*/*");
+    assert!(
+        again.contains("x-uf-cache: hit"),
+        "{}",
+        context("did not answer the second request from the cache", &again)
+    );
+    assert_eq!(
+        repeat,
+        body,
+        "{}",
+        context("answered the repeat with other bytes", &again)
+    );
+
+    let (older, fallback) = http_bytes(port, path, "image/png,image/*");
+    assert!(
+        older.contains("content-type: image/png"),
+        "{}",
+        context("sent something other than the source's own format", &older)
+    );
+    let decoded = image::load_from_memory(&fallback).unwrap();
+    assert_eq!((decoded.width(), decoded.height()), (32, 24));
+    assert_eq!(
+        ORIGIN_HITS.load(std::sync::atomic::Ordering::SeqCst) - before,
+        2,
+        "{}",
+        context("asked the origin again for a variant it had cached", &older)
+    );
+
+    let (refused, _) = http_bytes(port, unlisted, "image/avif");
+    assert!(
+        refused.starts_with("http/1.1 403"),
+        "{}",
+        context("fetched from a host the allow-list does not name", &refused)
+    );
+    let (wide, _) = http_bytes(port, &path.replace("w=32", "w=33"), "image/avif");
+    assert!(
+        wide.starts_with("http/1.1 400"),
+        "{}",
+        context("encoded a width the project did not declare", &wide)
+    );
+}

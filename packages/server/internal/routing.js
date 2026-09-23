@@ -396,10 +396,15 @@ export function admit(rules: ?RoutingRules, request: Request): Admission {
   }
 
   const method = request.method.toUpperCase();
+  // Not for `/__uf/`, which is uf's rather than the application's: the image
+  // endpoint's URLs are written by `Image` and would otherwise be redirected
+  // to a spelling the endpoint does not answer, once per image, under
+  // `trailingSlash: "always"`.
   if (
     compiled.slash !== "ignore" &&
     (method === "GET" || method === "HEAD") &&
-    flightDocumentPath(application) == null
+    flightDocumentPath(application) == null &&
+    !application.startsWith("/__uf/")
   ) {
     const address = `${compiled.base}${spellPath(application, compiled.slash, compiled.base !== "")}`;
     if (address !== url.pathname) {

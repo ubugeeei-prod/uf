@@ -144,6 +144,14 @@ export type FetchHandlerOptions = {|
    * prerendered pages stated no lifetime and no tag. See [`Regeneration`].
    */
   readonly regeneration?: Regeneration,
+  /**
+   * `/__uf/image`, from `@uniflowed/server/image`'s `createImageEndpoint`.
+   *
+   * Absent unless `app.builtins.images.remotePatterns` lists something, and
+   * absent is no endpoint: the path is an ordinary 404 like any other. Asked
+   * before the middleware, for the reason given where it is asked.
+   */
+  readonly images?: (request: Request) => Promise<Response | null>,
 |};
 
 /**
@@ -253,7 +261,7 @@ type CachedDocument = {|
 export function createFetchHandler(
   options: FetchHandlerOptions,
 ): (request: Request) => Promise<Response> {
-  const { app, cache, capabilities, document } = options;
+  const { app, cache, capabilities, document, images } = options;
 
   async function answer(arrived: Request): Promise<Response> {
     // Before the guard, not after it. A route handler and a server action both
@@ -279,6 +287,16 @@ export function createFetchHandler(
     // what it can do is a fact about the host rather than about the route.
     if (context != null && capabilities != null) {
       context.capabilities = capabilities;
+    }
+
+    // The image endpoint, before anything of the application's. It is uf's,
+    // like the action endpoint, and it reads nothing from the request but its
+    // query and its `Accept`; a project's middleware guarding `/` would
+    // otherwise refuse every image on a signed-out page, and a rewrite could
+    // move the one path uf reserves. It declines every other path.
+    if (images != null) {
+      const imaged = await images(arrived);
+      if (imaged != null) return imaged;
     }
 
     // `app.router.rewrites` first, where the application begins: after the
