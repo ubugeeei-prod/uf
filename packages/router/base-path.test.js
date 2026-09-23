@@ -29,7 +29,7 @@
 
 import * as React from "@uniflowed/react";
 import { act, cleanup, userEvent, waitFor } from "@uniflowed/react-testing";
-import { afterEach, describe, expect, it } from "@uniflowed/test";
+import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 
 import { installDom } from "../../packages/react-testing/internal/dom.js";
 import { flightClientSource } from "../../packages/vite/internal/flight.js";
@@ -59,9 +59,31 @@ import {
   useRouter,
 } from "./internal/runtime.js";
 
+import { createServerReference } from "./action.js";
+import { ACTION_OUTCOME_HEADER } from "./internal/action-wire.js";
+
 const POLICIES: $ReadOnlyArray<TrailingSlash> = ["never", "always"];
 
-afterEach(() => {
+/**
+ * The root the last `hydrateWith` created, unmounted after each test.
+ *
+ * `hydrate` mounts an application for the life of the document, and a worker
+ * runs many files in one: left mounted, this file's router, its `popstate`
+ * listener and its effects outlive the file, and the next file's server action
+ * redirect was answered by pushing this router rather than by loading the
+ * document it asked for (the failure in `action-outcomes.test.js` that only a
+ * shared worker showed).
+ */
+let hydrated: { unmount(): void } | null = null;
+
+afterEach(async () => {
+  const root = hydrated;
+  hydrated = null;
+  if (root != null) {
+    await act(async () => {
+      root.unmount();
+    });
+  }
   // Module state, like the navigation mode: a worker runs many files out of one
   // module registry, and a base left installed here would be written into the
   // links of whichever file the scheduler ran next.
@@ -346,7 +368,7 @@ async function hydrateWith(settings: {|
 |}): Promise<void> {
   const { hydrate } = await clientModule();
   await act(async () => {
-    await hydrate({
+    hydrated = await hydrate({
       App: routerView("./app"),
       routes: routes(),
       notFound: [],
@@ -501,5 +523,42 @@ describe("a loader's redirect under a base path", () => {
     expect(answered.status).toBe(307);
     expect(answered.headers?.Location).toBe("/docs/other");
     expect(answered.html).toContain('href="/docs/other"');
+  });
+});
+
+// The other half of the unmount above, and the product rule under it: taking
+// an application down forgets its router. A server action that redirects after
+// that has no router to push, and loads the document instead — which is what
+// the next file in a worker, or a page that unmounted its root, is owed.
+describe("an application whose root was unmounted", () => {
+  it("leaves no router for a server action's redirect to push", async () => {
+    installRouting({ basePath: "/docs" });
+    await serve("/", "/docs");
+    await hydrateWith({ basePath: "/docs" });
+    expect(heading()).toBe("home");
+
+    const root = hydrated;
+    hydrated = null;
+    await act(async () => {
+      root?.unmount();
+    });
+
+    const loaded: Array<string> = [];
+    uft.spyOn(globalThis.window.location, "assign").mockImplementation((href: string) => {
+      loaded.push(String(href));
+    });
+    uft.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(null, {
+          status: 204,
+          headers: { [ACTION_OUTCOME_HEADER]: "redirect", location: "/docs/other" },
+        }),
+    );
+    try {
+      await createServerReference("a".repeat(64), "app/_actions.js#save")();
+    } finally {
+      uft.restoreAllMocks();
+    }
+    expect(loaded).toEqual(["http://localhost/docs/other"]);
   });
 });

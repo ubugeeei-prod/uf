@@ -123,11 +123,25 @@ import { hydrationOptions } from "./internal/hydrate-options.js";
 import { readFormState } from "./internal/form-action.js";
 
 /**
+ * The React root `hydrate` and `render` mounted, as far as a caller needs it:
+ * a way to take the application down again. See `hydrate` for who needs that.
+ */
+export type ApplicationRoot = { readonly unmount: () => void, ... };
+
+/**
  * Hydrate the current document.
  *
  * Resolves without mounting anything when the current route ships no client
  * page — see the header. The promise settling is not a claim that React is on
  * the document.
+ *
+ * Resolves with the React root it created, or `null` when it mounted nothing.
+ * A page never needs it: its root lives as long as the document. It is for
+ * whoever has to take the application down again — a test that hydrates one
+ * page and then another in the same process, where an application left
+ * mounted keeps its router, its `popstate` listener and its effects running
+ * under the next one. `root.unmount()` runs every cleanup, including the one
+ * that stops a server action from navigating a router that is gone.
  */
 export async function hydrate(options: {|
   readonly App: React.ComponentType<AppProps>,
@@ -139,7 +153,7 @@ export async function hydrate(options: {|
   readonly basePath?: string,
   readonly trailingSlash?: TrailingSlash,
   readonly staleTime?: number,
-|}): Promise<void> {
+|}): Promise<ApplicationRoot | null> {
   const table: RouteTable = {
     routes: options.routes,
     notFound: options.notFound,
@@ -160,7 +174,7 @@ export async function hydrate(options: {|
   // would go looking for a page module that is not in this bundle.
   const matched = matchRoute(table.routes, applicationPath);
   if (matched != null && !hasClientPage(matched.route)) {
-    return;
+    return null;
   }
 
   const url = applicationPath + window.location.search;
@@ -213,8 +227,9 @@ export async function hydrate(options: {|
   // be a development-only difference without being a hydration difference.
   const tree = <App url={url} initial={resolved} />;
 
+  let root: ApplicationRoot | null = null;
   startTransition(() => {
-    hydrateRoot(
+    root = hydrateRoot(
       container,
       options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
       hydrationOptions(recovery, readFormState(document)),
@@ -235,6 +250,7 @@ export async function hydrate(options: {|
     const { reportDevtools } = await import("./internal/devtools.js");
     reportDevtools(window);
   }
+  return root;
 }
 
 /**
@@ -265,6 +281,9 @@ export async function hydrate(options: {|
  *   * **A redirect is the browser's.** `redirect()` from a loader throws before
  *     anything is rendered; on a server that becomes a 307 and here it becomes
  *     `location.replace`, which is the same instruction to the same browser.
+ *
+ * Resolves with the React root, or `null` when a loader redirected and nothing
+ * was mounted — for the reason `hydrate` gives.
  */
 export async function render(options: {|
   readonly App: React.ComponentType<AppProps>,
@@ -276,7 +295,7 @@ export async function render(options: {|
   readonly basePath?: string,
   readonly trailingSlash?: TrailingSlash,
   readonly staleTime?: number,
-|}): Promise<void> {
+|}): Promise<ApplicationRoot | null> {
   const table: RouteTable = {
     routes: options.routes,
     notFound: options.notFound,
@@ -296,7 +315,7 @@ export async function render(options: {|
   } catch (error) {
     if (error instanceof RedirectError) {
       window.location.replace(addressOf(error.to));
-      return;
+      return null;
     }
     // The error boundary, chosen the same way the server chooses it. A throw
     // from a loader is a page that cannot render, and rendering the boundary is
@@ -321,7 +340,7 @@ export async function render(options: {|
     );
   }
   const tree = <App url={url} initial={resolved} />;
-  createRoot(container).render(
-    options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
-  );
+  const root = createRoot(container);
+  root.render(options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree);
+  return root;
 }
