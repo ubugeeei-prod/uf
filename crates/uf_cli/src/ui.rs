@@ -152,6 +152,13 @@ impl Ui {
         Ok(())
     }
 
+    /// What stderr can show: whether it is a terminal, how much colour, which
+    /// glyphs. For a caller composing text a progress line on stderr will
+    /// draw, which has to be in the vocabulary the line is drawn in.
+    pub(crate) fn stderr_capabilities(&self) -> Capabilities {
+        self.stderr.capabilities()
+    }
+
     /// A progress reporter on stderr, silent unless stderr is a terminal and
     /// the command is rendering for a person.
     pub(crate) fn progress(&self) -> Progress<io::Stderr> {

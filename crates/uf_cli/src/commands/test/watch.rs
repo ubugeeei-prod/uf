@@ -282,6 +282,7 @@ fn run_and_report(
         // because a report over the files one edit invalidated is not the
         // project's coverage.
         None,
+        true,
     );
 }
 

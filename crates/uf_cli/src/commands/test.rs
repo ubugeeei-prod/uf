@@ -6,9 +6,9 @@
 //!   in watch mode the set the import graph says an edit invalidated.
 //! * **In what order** — longest-first, from durations the previous run wrote to
 //!   `.uf/test-timings.json`. A cold suite falls back to file size.
-//! * **How to say it** — a live progress line on stderr, code frames under the
-//!   failures, and a summary; or, under `--json`, one machine-readable document
-//!   on stdout and nothing else.
+//! * **How to say it** — a line per file as each one finishes, with code frames
+//!   under its failures, a live progress line on stderr, and a summary; or,
+//!   under `--json`, one machine-readable document on stdout and nothing else.
 //!
 //! Executing a test body is not one of them. That happens on the project's
 //! JavaScript host, in `@uniflowed/test`'s worker, which imports each file
@@ -28,9 +28,9 @@ use uf_project::{ProjectFile, scan_existing_selected_source_files, scan_selected
 use uf_runtime::RuntimeHost;
 use uf_term::PhaseTimer;
 use uf_test::{
-    Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
-    PlannedTestFile, RetryPolicy, RunOptions, TestApplicationTarget, TestFile, TestFilter,
-    TestPlan, TestRunReport, TestRunner, TestTimings, WatchOptions, load_timings, save_timings,
+    Bail, Concurrency, FileStatus, HostCommand, HostKind, NativeTestRunnerPlan, PlannedTestFile,
+    RetryPolicy, RunOptions, TestApplicationTarget, TestFile, TestFilter, TestPlan, TestRunReport,
+    TestRunner, TestTimings, WatchOptions, load_timings, save_timings,
 };
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
@@ -51,6 +51,7 @@ mod coverage;
 mod payload;
 mod render;
 mod shards;
+mod stream;
 mod watch;
 
 use payload::test_payload;
@@ -568,6 +569,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             timing_note.as_deref(),
             recorded.as_deref(),
             collected.as_ref().map(|(_, section)| section),
+            true,
         );
         if let Some(shown) = &shard_record {
             shards::announce(ui, shown);
@@ -1126,9 +1128,10 @@ fn worker_permissions(
         .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
-/// Run the suite once, drawing a progress line while it goes.
+/// Run the suite once, drawing each file as it finishes and a progress line
+/// while it goes. See [`stream`].
 pub(crate) fn run_once(
-    ui: &Ui,
+    ui: &mut Ui,
     root: &Utf8Path,
     host: &HostCommand,
     files: &[ProjectFile],
@@ -1142,27 +1145,18 @@ pub(crate) fn run_once(
         .with_timings(timings)
         .with_host(host.clone());
 
-    let mut progress = ui.progress();
-    if !progress.is_enabled() {
-        return Ok(runner.run(&sources)?);
-    }
-
-    let mut line = String::new();
-    let observer = LockedObserver::new(move |completed: usize, total: usize, report: &_| {
-        let report: &uf_test::FileReport = report;
-        line.clear();
-        line.push_str(&completed.to_string());
-        line.push('/');
-        line.push_str(&total.to_string());
-        line.push(' ');
-        line.push_str(&report.file);
-        progress.tick(&line);
-    });
-    Ok(runner.run_observed(&sources, &observer)?)
+    let stream = stream::Stream::start(
+        ui,
+        files
+            .iter()
+            .map(|file| (file.relative_path.as_str(), file.source.as_str())),
+        crate::support::project_label(root),
+    );
+    Ok(stream.drive(|| runner.run_observed(&sources, &stream))?)
 }
 
 fn run_once_planned(
-    ui: &Ui,
+    ui: &mut Ui,
     root: &Utf8Path,
     host: &HostCommand,
     files: &[PlannedProjectFile],
@@ -1176,23 +1170,17 @@ fn run_once_planned(
         .with_timings(timings)
         .with_host(host.clone());
 
-    let mut progress = ui.progress();
-    if !progress.is_enabled() {
-        return Ok(runner.run_planned(&sources)?);
-    }
-
-    let mut line = String::new();
-    let observer = LockedObserver::new(move |completed: usize, total: usize, report: &_| {
-        let report: &uf_test::FileReport = report;
-        line.clear();
-        line.push_str(&completed.to_string());
-        line.push('/');
-        line.push_str(&total.to_string());
-        line.push(' ');
-        line.push_str(&report.file);
-        progress.tick(&line);
-    });
-    Ok(runner.run_planned_observed(&sources, &observer)?)
+    let stream = stream::Stream::start(
+        ui,
+        files.iter().map(|planned| {
+            (
+                planned.file.relative_path.as_str(),
+                planned.file.source.as_str(),
+            )
+        }),
+        crate::support::project_label(root),
+    );
+    Ok(stream.drive(|| runner.run_planned_observed(&sources, &stream))?)
 }
 
 /// The files that declare at least one test.
