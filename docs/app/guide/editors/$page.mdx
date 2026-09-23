@@ -40,6 +40,11 @@ Each page also says what the editor keeps doing that no setting turns off.
 | [Helix](/guide/editors/helix) | typescript-language-server | `.helix/languages.toml`: `language-servers = ["uf"]` | `auto-format` | nothing | no |
 | [Emacs](/guide/editors/emacs) | typescript-language-server, from Eglot or lsp-mode | `uf.el`, which serves uf projects with uf and everything else as before | `uf-format-on-save` | nothing | batch Emacs |
 
+From a terminal, `uf editor install <editor>` installs the integration, and
+`uf editor setup <editor>` writes the project's file from the table. Setup adds
+what is missing, keeps anything the project already sets, and with `--check`
+writes nothing and fails when something is missing.
+
 Every one of them gets uf's diagnostics, hover, go to definition, go to type
 definition, completion, quick fixes, fix-all and formatting, because they all
 come from `uf lsp`. None of them gets rename or references, because `uf lsp`

@@ -22,6 +22,9 @@ diagnostics, hover, definitions, completion, code actions and formatting.
 
 ## 1. Load `uf.el`
 
+`uf editor install emacs` writes `uf.el` to `~/.local/share/uf/editors/emacs`
+and prints the `load-path` line. `uf.el` is also in a uf checkout:
+
 ```elisp
 (add-to-list 'load-path "/path/to/uf/editors/emacs")
 (require 'uf)
@@ -46,7 +49,8 @@ Eglot starts the server, and the command names it again with `--cwd`.
   the highest-priority client that accepts a buffer, and `ts-ls` is -2, so a uf
   project gets uf and every other project is unchanged.
 
-To say it per project for lsp-mode as well, commit a `.dir-locals.el`.
+To say it per project for lsp-mode as well, commit a `.dir-locals.el`
+(`uf editor setup emacs` writes it when the project has none).
 `lsp-disabled-clients` is marked safe as a directory-local variable, so Emacs
 applies it without asking:
 

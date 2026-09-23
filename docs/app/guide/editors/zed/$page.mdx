@@ -27,9 +27,11 @@ extension itself).
 Zed has no setting that adds a language server of your own. A server has to
 come from an extension, so uf's lives in
 [`editors/zed`](https://github.com/ubugeeei-prod/uf/tree/main/editors/zed).
-It is not in Zed's extension registry yet. Install it as a dev extension from a
-uf checkout: open the command palette, run **zed: install dev extension**, and
-select `editors/zed`.
+It is not in Zed's extension registry yet, so install it as a dev extension.
+`uf editor install zed` writes its sources to `~/.local/share/uf/editors/zed`
+(under `$XDG_DATA_HOME` when that is set). Zed has no command-line install, so
+then open the command palette, run **zed: install dev extension**, and select
+that directory, or `editors/zed` in a uf checkout.
 
 The extension starts `uf lsp --cwd <worktree>`, using the project's
 `node_modules/.bin/uf` before one on `PATH`. `lsp.uf.binary.path` in Zed's
@@ -40,7 +42,8 @@ saying why.
 
 ## 2. Keep vtsls off this project
 
-Commit this as `.zed/settings.json` in the project:
+`uf editor setup zed` writes this, keeping anything the project's file already
+says. By hand, commit it as `.zed/settings.json` in the project:
 
 ```jsonc
 {
