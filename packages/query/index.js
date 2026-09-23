@@ -126,7 +126,12 @@ export type {
   MutationState,
   MutationStatus,
 } from "./mutation.js";
-export type { QueryOptions, QueryResult, ResolvedQueryOptions } from "./observer.js";
+export type {
+  PlaceholderData,
+  QueryOptions,
+  QueryResult,
+  ResolvedQueryOptions,
+} from "./observer.js";
 export type { PresenceEvent } from "./presence.js";
 export type {
   FetchContext,
