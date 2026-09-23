@@ -66,6 +66,7 @@ import { createServer } from "node:http";
 
 import { pinHeaders, reportMalformedRequests, send } from "./node.js";
 
+import type { FormState } from "./internal/application.js";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import { refuseOtherDeployment } from "./internal/deployment.js";
@@ -158,7 +159,11 @@ export type StandaloneApp = {|
   readonly render: (
     url: string,
     assets: DocumentAssets,
-    options?: {| readonly onError?: (error: mixed) => void |},
+    options?: {|
+      readonly onError?: (error: mixed) => void,
+      /** See `./internal/application.js`. */
+      readonly formState?: FormState,
+    |},
   ) => Promise<{|
     readonly status: number,
     readonly headers?: { readonly [string]: string },
@@ -177,7 +182,10 @@ export type StandaloneApp = {|
    * binary whose bundle predates this is a `TypeError` on the first request
    * rather than one whose actions quietly answer 404.
    */
-  readonly callAction: (request: Request) => Promise<Response | null>,
+  readonly callAction: (
+    request: Request,
+    settings?: {| readonly postback?: (formState: FormState) => Promise<Response> |},
+  ) => Promise<Response | null>,
   /**
    * The guard on the path, run before anything under it answers.
    *
@@ -517,7 +525,29 @@ export function createHandler(
         // A server action between the guard and the handlers, exactly where
         // the other three hosts put it. It declines a request that carries no
         // action id, and answers every one that does.
-        const acted = await app.callAction(current);
+        // A form posted before its page hydrated is answered with the page,
+        // rendered with the action's result as the submitting
+        // `useActionState`'s state.
+        const posted = current;
+        const acted = await app.callAction(current, {
+          postback: async (formState) => {
+            const at = new URL(posted.url);
+            const rendered = await app.render(at.pathname + at.search, document, {
+              onError: (error) => {
+                console.error(error);
+              },
+              formState,
+            });
+            return new Response(rendered.stream(), {
+              status: rendered.status,
+              headers: {
+                ...rendered.headers,
+                "content-type": "text/html; charset=utf-8",
+                "cache-control": DOCUMENT_CACHE_CONTROL,
+              },
+            });
+          },
+        });
         if (acted != null) {
           await sendUnlessHead(response, method, acted);
           return;

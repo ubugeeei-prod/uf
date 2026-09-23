@@ -66,7 +66,7 @@ decisions are:
 | A deserializer that reconstructs attacker-chosen objects — the class every "RCE through a serialization format" advisory is | A server action's arguments are plain JSON data, under the closed grammar below, plus at most one submitted form written beside them rather than inside one. No tag in a payload names a constructor, a module, a function or a reference; the single constructor the decoder can call is fixed in the source, so there is nothing for a payload to *become* | `tests/library/server-actions.test.js` |
 | Prototype pollution through a request body — `__proto__` as an own property, which `JSON.parse` produces and the next spread applies | `__proto__`, `constructor` and `prototype` are refused as keys anywhere in a payload, in the one place a payload is decoded, rather than left for each action to remember | `tests/library/server-actions.test.js` |
 | CSRF against a state-changing endpoint: a cross-site page posting an action with the visitor's cookies | Three independent guards, any one of which would do. The call carries `uf-action`, which is not a header a simple request may set, so a cross-origin caller needs a preflight and uf answers none; the content type must be `application/json`, which no `<form>` can produce; and `Origin` must be present and equal `Host`. `Host` alone, never `X-Forwarded-*` — a forwarded header is a string the caller wrote, so a proxy in front of a uf application has to preserve `Host` and one that rewrites it turns every action call into a `403` | `tests/library/server-actions.test.js`, `crates/uf_cli/tests/vite.rs` |
-| A form post as a CSRF vehicle: a `<form>` submit is a *simple* cross-origin request, so an endpoint that accepts one accepts it from any page on the internet | `<form action={fn}>` never produces a native form post. React hands the reference a `FormData`, and the reference sends the same `application/json` request with the id in a header, with the form's entries beside the values — so all three guards above hold for a form call unchanged and no multipart parser exists to be reached. What that costs is stated rather than hidden: React writes `action="javascript:throw …"` for a form whose action carries no `$$FORM_ACTION`, so a submit before the page has hydrated throws in the page instead of calling — nothing reaches a server that was not meant to, and nothing happens either | `tests/library/server-actions.test.js`, `crates/uf_cli/tests/vite.rs` |
+| A form post as a CSRF vehicle: a `<form>` submit is a *simple* cross-origin request, so an endpoint that accepts one accepts it from any page on the internet | On a hydrated page `<form action={fn}>` never produces a native form post: the reference sends the same `application/json` request with the id in a header, so all three guards above hold. Before hydration a form *does* post natively (ubugeeei-prod/uf#1358), and that post reaches a second, narrower door rather than the first: `application/x-www-form-urlencoded` only (no multipart parser exists to be reached), recognised by a `$uf_ref_` field and otherwise left to the route handlers untouched, and refused with a `403` unless `Origin` is present and equals `Host` and `Sec-Fetch-Site`, when the browser sends it, is `same-origin`. That is one guard where the JSON door has three, and it is stated rather than hidden: the door rests on the browser telling the truth about `Origin`, which every current browser sends on a `POST` and no page can forge; a request without one is refused rather than trusted. The id lookup, the argument grammar and the fixed-body refusals are the JSON door's own | `packages/router/form-action.test.js`, `tests/library/server-actions.test.js`, `crates/uf_cli/tests/vite.rs` |
 | An action endpoint used as an enumeration oracle | Every failed lookup is the same `404` with the same body, and the table is scanned whole with a constant-time comparison, so neither the answer nor the time says whether the id existed. The payload is decoded *before* the id is resolved, so a malformed body cannot be used to tell a real id from a guess | `tests/library/server-actions.test.js` |
 | An application's internals in an error response — a message, a name, a stack | An action that throws is a `500` with a fixed body; the exception goes to the host's error reporting. The same in development as in production, because `uf dev` and `uf build` have to agree about what this endpoint answers | `tests/library/server-actions.test.js` |
 | Unbounded work from a request body: an enormous payload, deep nesting, non-UTF-8 bytes | A byte ceiling counted as the body arrives rather than trusted from `Content-Length`, a depth ceiling, a value-count ceiling, an argument-count ceiling, an entry-count and field-name ceiling for a submitted form, and `TextDecoder(…, { fatal: true })` so invalid UTF-8 is refused rather than replaced. The walk that applies them is iterative, so the sender's hand is not on the stack depth. A file in a form is refused at the call site rather than base64-encoded into a body with no ceiling of its own | `tests/library/server-actions.test.js` |
@@ -164,16 +164,15 @@ admitting a tag in the payload that says which constructor to call:
   application's and is checked.
 - **Cycles and shared references**, which are a reference format by another
   name.
-- **Multipart, a file upload, and a form that submits before hydration.** A
-  form call is an ordinary `application/json` request carrying the id in a
-  header, so all three of the CSRF guards above hold for it unchanged. Making a
-  form work before its JavaScript has arrived would mean accepting a *native*
-  form post — `multipart/form-data`, a simple cross-origin request that reaches
-  a server with the visitor's cookies and no preflight — and that is a
-  multipart parser plus a different CSRF story, not a smaller version of this
-  one. So a `File` entry is refused at the call site, and a submit before the
-  page has hydrated throws in the page — React's own answer for a form action
-  with no `$$FORM_ACTION` — rather than posting anywhere.
+- **Multipart and a file upload.** A form call from a hydrated page is an
+  ordinary `application/json` request carrying the id in a header, so all
+  three of the CSRF guards above hold for it unchanged. A form that submits
+  before hydration posts natively, but only as
+  `application/x-www-form-urlencoded`, whose fields are decoded into the same
+  envelope and held to the same grammar; the CSRF table above says what guards
+  that door. `multipart/form-data` is never parsed for an action, so a `File`
+  entry is refused at the call site and a multipart post naming an action is
+  left to the route handlers, which answer a page's `POST` with a `404`.
 
 The grammar is enforced twice, and the second time is what makes it a
 *contract* rather than a runtime check: Flow holds every action's parameters

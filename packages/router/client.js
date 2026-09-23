@@ -119,6 +119,8 @@ import { decodePayload } from "./internal/payload.js";
 import { createPayloadReader, domObserver } from "./internal/payload-rows.js";
 import { prepareDocumentForHydration } from "./internal/prepare-document.js";
 import { type TrailingSlash, addressOf, applicationPathOf } from "./internal/base-path.js";
+import { hydrationOptions } from "./internal/hydrate-options.js";
+import { readFormState } from "./internal/form-action.js";
 
 /**
  * Hydrate the current document.
@@ -215,7 +217,7 @@ export async function hydrate(options: {|
     hydrateRoot(
       container,
       options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
-      recovery == null ? undefined : { onRecoverableError: recovery },
+      hydrationOptions(recovery, readFormState(document)),
     );
     if (restoreDevHead != null) {
       setTimeout(restoreDevHead, 250);

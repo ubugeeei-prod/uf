@@ -408,6 +408,65 @@ export function actionReferenceSource(actions) {
 }
 
 /**
+ * The query that names a `"use server"` module's own source in a server graph.
+ *
+ * In a server graph the plain id of such a module answers with
+ * {@link serverActionSource}, which imports the file under this query, so the
+ * file itself is still one module and the wrapper is another.
+ */
+export const SERVER_ACTION_IMPL_QUERY = "?uf-server-impl";
+
+/**
+ * Whether a module's source declares a default export.
+ *
+ * Read off the text because the wrapper below has to decide whether to
+ * re-export `default` before anything has parsed the file — and Flow's
+ * `component` syntax is not something Rollup's parser reads. A default export
+ * is `export default …` or a name exported `as default`; a false negative
+ * leaves a non-callable default export unreachable from the server graph, and
+ * the RSC graph already refuses a `"use server"` export that is not an async
+ * function, so what is at stake is small and written down.
+ *
+ * @param {string} source
+ */
+export function declaresDefaultExport(source) {
+  return (
+    /(^|[\n;])\s*export\s+default\b/.test(source) ||
+    /export\s*\{[^}]*\b(as\s+default|default)\b[^}]*\}/.test(source)
+  );
+}
+
+/**
+ * A server graph's stand-in for one `"use server"` module.
+ *
+ * Re-exports the file's own module — every binding, the same functions — and
+ * on the way past gives each callable export the property React reads to write
+ * a form that posts before hydration (`registerServerAction` in
+ * `@uniflowed/router/action`). Nothing about calling the functions changes;
+ * the endpoint, a route handler and a server component call exactly what they
+ * called before. See ubugeeei-prod/uf#1358.
+ *
+ * @param {string} file absolute path of the module
+ * @param {Array<{id: string, module: string, export: string}>} actions its callable exports
+ * @param {boolean} hasDefault whether the file declares a default export
+ */
+export function serverActionSource(file, actions, hasDefault) {
+  const impl = JSON.stringify(`${file}${SERVER_ACTION_IMPL_QUERY}`);
+  const lines = [
+    'import { registerServerAction } from "@uniflowed/router/action";',
+    `import * as impl from ${impl};`,
+    `export * from ${impl};`,
+  ];
+  if (hasDefault) lines.push(`export { default } from ${impl};`);
+  for (const action of actions) {
+    lines.push(
+      `registerServerAction(impl[${JSON.stringify(action.export)}], ${JSON.stringify(action.id)});`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
  * The source of `virtual:uf/actions`: the table the endpoint dials into.
  *
  * One `import()` thunk per file rather than one per action, so a module with

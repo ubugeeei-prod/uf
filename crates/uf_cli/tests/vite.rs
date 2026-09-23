@@ -7966,20 +7966,29 @@ fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
         script_names(&scripts)
     );
 
-    // 4. And the prerendered document, for the one thing the form deliberately
-    //    does not do. A reference carries no `$$FORM_ACTION`, so React writes
-    //    the form it writes for any client action — one whose `action` is a
-    //    `javascript:` URL that throws — and a submit before hydration does
-    //    nothing rather than sending a native `multipart/form-data` post at an
-    //    endpoint that refuses one. Giving a reference a `$$FORM_ACTION` would
-    //    change this line, and would need `docs/security.md`'s CSRF row
-    //    changed with it; that is what this assertion is for.
+    // 4. And the prerendered document: a form that posts before hydration.
+    //    The server graph gives every callable export of a `"use server"`
+    //    module a `$$FORM_ACTION` (ubugeeei-prod/uf#1358), so React writes a
+    //    real form — a urlencoded `POST` to the page, with the action named in
+    //    a hidden field — instead of the `javascript:` URL it writes for a
+    //    client action. The endpoint's second door is what answers it, and
+    //    `docs/security.md`'s CSRF row says what guards that door.
     let counter = fs::read_to_string(dist.join("counter/index.html"))
         .expect("the counter route is prerendered");
     assert!(
-        counter.contains("<form action=\"javascript:throw"),
-        "the form's pre-hydration behaviour is not React's client-action one:\n{counter}"
+        !counter.contains("javascript:throw"),
+        "the form still throws before hydration instead of posting:\n{counter}"
     );
+    for expected in [
+        "encType=\"application/x-www-form-urlencoded\" method=\"POST\"",
+        "name=\"$uf_ref_",
+        "name=\"$ACTION_KEY\"",
+    ] {
+        assert!(
+            counter.contains(expected),
+            "the prerendered form is missing {expected:?}:\n{counter}"
+        );
+    }
 
     // The server bundle is the other half of the same sentence: what the
     // browser does not have, the server does, and it is the same build. Read

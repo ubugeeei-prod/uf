@@ -540,8 +540,8 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
   ([#956](https://github.com/ubugeeei-prod/uf/issues/956)), `serverless` buffers
   a streamed document, and there is no adapter for Vercel or Netlify.
 - **Server functions.** A server function passed to a client component as a
-  prop, an inline `"use server"` closure, a file upload, and a form that submits
-  before its page hydrates do not work; an action's arguments are JSON data plus
+  prop, an inline `"use server"` closure and a file upload do not work (a form
+  that submits before its page hydrates does); an action's arguments are JSON data plus
   at most one form ([What is not here](/guide/server-actions#what-is-not-here),
   [uf and Next.js](/guide/nextjs#server-actions)).
 - **A slot is not a request boundary.** It holds no `$not-found.js`,

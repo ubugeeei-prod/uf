@@ -180,11 +180,10 @@ in `uf`.
   async function and the grammar carries one `FormData` per call beside the
   values. **Not done**: an inline `"use server"` closure, which has no export
   name to refer to; a file upload, which wants a multipart read this endpoint
-  deliberately does not have; and a form that submits before the page has
-  hydrated, which would need React's `$$FORM_ACTION` and therefore a native
-  form post — the content type the endpoint refuses as one of its three CSRF
-  guards. Without it React writes `action="javascript:throw …"`, so such a
-  submit throws in the page rather than posting anywhere.
+  deliberately does not have. **Done for a form before hydration**
+  (ubugeeei-prod/uf#1358): a server action answers React's `$$FORM_ACTION`,
+  so the form is a urlencoded native post, answered by a second, narrower door
+  that accepts only that content type and only from the page's own origin.
 - StyleX transform as the default style engine.
 - React Compiler syntax-mode pass.
 - Vite-backed server entry generation, RSC streaming, and server action bridge

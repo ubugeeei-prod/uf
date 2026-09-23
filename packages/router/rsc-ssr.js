@@ -40,6 +40,7 @@ import {
   runPartialPrerender,
 } from "@uniflowed/server/host";
 
+import type { FormState } from "./internal/form-action.js";
 import { redirectDocument, redirectResult, shellFor } from "./internal/shell.js";
 import {
   type DocumentBody,
@@ -113,6 +114,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       readonly onError: (error: mixed) => void,
       readonly transformHead?: (html: string) => Promise<string>,
       readonly onStream?: (record: StreamRecord) => void,
+      readonly formState?: FormState,
     |},
   ): Promise<DocumentBody> {
     const [forHtml, forBrowser] = stream.tee();
@@ -123,12 +125,13 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     const nonce = currentNonce();
     try {
       return await renderDocument(<App url={url} flight={readPayload(forHtml)} />, {
-        shell: shellFor(assets, nonce),
+        shell: shellFor(assets, nonce, settings.formState),
         onError: settings.onError,
         transformHead: settings.transformHead,
         onStream: settings.onStream,
         payload: forBrowser,
         nonce,
+        formState: settings.formState,
       });
     } catch (error) {
       void forBrowser.cancel();
@@ -189,6 +192,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
         },
         transformHead,
         onStream,
+        formState: settings?.formState,
       });
       streaming = true;
       for (const error of held) {

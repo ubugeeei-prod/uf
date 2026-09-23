@@ -44,6 +44,7 @@ import * as ReactDOMServer from "react-dom/server";
 import * as ReactDOMStatic from "react-dom/static";
 
 import { createChunkEncoder } from "./flight-chunks.js";
+import type { FormState } from "./form-action.js";
 import { type StreamRecord, inspected } from "./inspector.js";
 
 /**
@@ -693,6 +694,14 @@ export type RenderOptions = {|
    * `prerenderDocument` is deliberately never given one. See its own paragraph.
    */
   readonly nonce?: string | null,
+  /**
+   * React's `formState`, for a document that answers a form posted before
+   * hydration: the `useActionState` that submitted starts from the action's
+   * result, and React marks it so the browser's hydration picks the same one.
+   * The shell carries the same value for `hydrateRoot`; see
+   * `./form-action.js`. Absent for every other render.
+   */
+  readonly formState?: FormState,
 |};
 
 /**
@@ -751,6 +760,7 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
         // and the bootstrap. uf nonces the scripts it writes itself; these are
         // React's, and there is no other way to reach them.
         nonce: options.nonce ?? undefined,
+        formState: options.formState ?? null,
       });
       return;
     }
@@ -779,6 +789,7 @@ type ReadableStreamRenderer = (
     readonly onError: (error: mixed) => void,
     readonly signal: AbortSignal,
     readonly nonce?: string,
+    readonly formState?: FormState | null,
   |},
 ) => Promise<ByteSource>;
 
@@ -808,6 +819,7 @@ export function renderWithReadableStream(
     onError: options.onError,
     signal: controller.signal,
     nonce: options.nonce ?? undefined,
+    formState: options.formState ?? null,
   }).then((stream: ByteSource) =>
     bodyOf(
       outgoing(

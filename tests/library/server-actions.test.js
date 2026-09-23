@@ -41,6 +41,8 @@ import {
   RSC_MANIFEST_ENV,
   actionReferenceSource,
   actionsModuleSource,
+  declaresDefaultExport,
+  serverActionSource,
   serverActionModules,
   serverActionTable,
 } from "../../packages/vite/internal/rsc.js";
@@ -952,7 +954,7 @@ describe("the module the browser is given in place of a `use server` file", () =
     }
   }
 
-  it("hands the client a reference and the server the file itself", () => {
+  it("hands the client a reference and the server the file itself, re-exported", () => {
     const forBrowser = loaded(action, false);
     expect(typeof forBrowser).toBe("string");
     expect(String(forBrowser)).toContain(
@@ -964,9 +966,32 @@ describe("the module the browser is given in place of a `use server` file", () =
     expect(String(forBrowser)).not.toContain("tally-marker");
     expect(String(forBrowser)).not.toContain("@uniflowed/server");
 
-    // `null` is Vite's "read the file", which is what the server wants: the
-    // server executes the action, so the server gets the function.
-    expect(loaded(action, true)).toBe(null);
+    // The server executes the action, so the server gets the function: the
+    // file itself, under a query, re-exported whole by a module that gives each
+    // callable export what React reads to write a form that posts before
+    // hydration (ubugeeei-prod/uf#1358).
+    const forServer = String(loaded(action, true));
+    expect(forServer).toContain(
+      `import * as impl from ${JSON.stringify(`${action}?uf-server-impl`)};`,
+    );
+    expect(forServer).toContain(`export * from ${JSON.stringify(`${action}?uf-server-impl`)};`);
+    expect(forServer).toContain(`registerServerAction(impl["recordCount"], "${RECORD}");`);
+    expect(forServer).not.toContain("tally-marker");
+    // The file under the query is Vite's to read, as it always was.
+    expect(loaded(`${action}?uf-server-impl`, true)).toBe(null);
+  });
+
+  it("re-exports a default export only when the file declares one", () => {
+    const rows = [{ id: RECORD, module: "app/a.js", export: "go" }];
+    expect(serverActionSource("/p/app/a.js", rows, false)).not.toContain("export { default }");
+    expect(serverActionSource("/p/app/a.js", rows, true)).toContain(
+      'export { default } from "/p/app/a.js?uf-server-impl";',
+    );
+    expect(declaresDefaultExport('"use server";\nexport default async function go() {}')).toBe(
+      true,
+    );
+    expect(declaresDefaultExport("export { go as default };")).toBe(true);
+    expect(declaresDefaultExport("export async function go() {}")).toBe(false);
   });
 
   it("leaves every other module alone in both environments", () => {

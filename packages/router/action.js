@@ -66,26 +66,19 @@
 // still reads `submitNote`'s own declaration, so a form action whose first
 // parameter is not the state it was given `null` for is a `uf check` error.
 //
-// **This needs the page to be hydrated.** React's progressive enhancement —
-// the form that submits before its JavaScript has arrived — works through a
-// `$$FORM_ACTION` property that turns the submit into a *native* form post,
-// and a native form post is `multipart/form-data`: the content type this
-// endpoint refuses, deliberately, as one of the three things standing between
-// it and a cross-site call. Supporting the pre-hydration submit would mean
-// accepting that content type, so a reference carries no `$$FORM_ACTION`, and
-// React writes the form it writes for any client action —
-// `action="javascript:throw new Error('React form unexpectedly submitted.')"`
-// — so a submit before hydration throws in the page rather than posting
-// anywhere. Nothing reaches a server that was not meant to; what is missing is
-// the submit working at all. See ubugeeei-prod/uf#252.
-//
-// The refusal is why the property is withheld, not what would stop it: no
-// request is made, so nothing is refused. Nor would a native form post aimed
-// at a page by hand be refused as multipart — `createActionDispatcher` reads
-// the `uf-action` header before it looks at the method or the content type and
-// returns `null` when it is absent, so the request is not an action call at
-// all and falls through to the route handlers. The `415` answers a request
-// that claims to be an action, which is the only kind that reaches it.
+// **It works before the page has hydrated, too.** React's progressive
+// enhancement — the form that submits before its JavaScript has arrived — asks
+// the function for `$$FORM_ACTION` while rendering to HTML, and a reference
+// has one: `method="POST"`, `application/x-www-form-urlencoded`, and hidden
+// fields naming the action and carrying its bound arguments. The server
+// renders with the real function, which `@uniflowed/vite` gives the same
+// property through `registerServerAction` below, so the markup is the same
+// whichever side wrote it. A native post is not the JSON call: it is a
+// separate door in `./internal/action-endpoint.js`, which accepts only that
+// content type, only from the page's own origin, and only with the fields
+// `./internal/form-action.js` writes. `useActionState` works there as well
+// — the answer is the page rendered with the action's result as the hook's
+// state. See ubugeeei-prod/uf#1358.
 //
 // # After a deploy
 //
@@ -122,6 +115,7 @@ import {
   encodeActionArguments,
 } from "./internal/action-wire.js";
 import { loadDocument, refusedAsAnotherDeployment, withDeployment } from "./internal/deployment.js";
+import { withFormAction } from "./internal/form-action.js";
 import { clearNavigationCache } from "./internal/navigation-cache.js";
 
 export type { ActionArgument, ActionValue } from "./internal/action-wire.js";
@@ -248,11 +242,37 @@ export class ServerActionError extends Error {
  * outside the wire grammar throws an `ActionValueError` naming the argument's
  * position, at the call site, rather than becoming a `400` with nothing in it.
  *
- * It carries no `$$FORM_ACTION`, which is deliberate and is the header's last
- * section: React uses that property to make a form submit *natively* before
- * hydration, and a native submit is a content type this endpoint refuses.
+ * It carries `$$FORM_ACTION`, so a form bound to it is a real form before the
+ * page hydrates; see the header and `./internal/form-action.js`.
  */
 export function createServerReference(id: string, name: string): ServerActionFunction {
+  return withFormAction(callServerActionFor(id, name), id, []);
+}
+
+/**
+ * Give a server action, on the server, what its reference has in the browser.
+ *
+ * `@uniflowed/vite` calls this on every callable export of a `"use server"`
+ * module in the server graphs, with the id the build derived for it, so that a
+ * client component rendered to HTML writes a form that posts without
+ * JavaScript. It changes nothing about calling the function: the properties it
+ * defines are ones only React reads, and `bind` still binds. Anything that is
+ * not a function is returned untouched, because the RSC graph has already
+ * refused a `"use server"` export that is not one and this is not the place to
+ * say it twice.
+ */
+export function registerServerAction<T>(fn: T, id: string): T {
+  if (typeof fn !== "function") {
+    return fn;
+  }
+  // `typeof` refines `T` to a function whose parameters Flow cannot name, and
+  // `withFormAction` changes nothing about calling it; the cast says that.
+  withFormAction(fn as $FlowFixMe, id, []);
+  return fn;
+}
+
+/** The network call one reference makes. */
+function callServerActionFor(id: string, name: string): ServerActionFunction {
   return async function callServerAction(
     ...args: Array<ActionArgument>
   ): Promise<ActionValue | void> {

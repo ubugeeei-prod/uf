@@ -15,6 +15,7 @@ import type { PrerenderResult, RenderAssets, RenderResult } from "../server.js";
 import { addressOf } from "./base-path.js";
 import { DEPLOYMENT_META } from "./deployment.js";
 import { ROOT_ID } from "./document.js";
+import { type FormState, formStateScript } from "./form-action.js";
 import type { RedirectError } from "./routing.js";
 import { type DocumentShell, bodyOfText } from "./stream.js";
 
@@ -79,8 +80,14 @@ export function redirectDocument(error: RedirectError): RenderResult {
  * carried two of them, one in each place, and only one was where a browser
  * looks. Hoisting the rendered one leaves the metadata with a single source.
  */
-export function shellFor(assets: RenderAssets, nonce?: string | null): DocumentShell {
-  const head = headTags(assets, nonce);
+export function shellFor(
+  assets: RenderAssets,
+  nonce?: string | null,
+  formState?: FormState,
+): DocumentShell {
+  // A postback's form state goes first, before the client entry that reads it:
+  // data rather than a script, so it needs no nonce. See `./form-action.js`.
+  const head = (formState == null ? "" : formStateScript(formState)) + headTags(assets, nonce);
   return {
     head,
     open: `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`,
