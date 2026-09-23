@@ -62,14 +62,24 @@ impl<'a> Tree<'a> {
         root
     }
 
-    /// Sort children so directories come before files, then alphabetically.
+    /// Sort every level by the bytes of its labels, which is code-point order
+    /// and the order `LC_ALL=C ls` lists a directory in.
+    ///
+    /// Directories and files are interleaved as that order puts them, rather
+    /// than directories first. A route file is spelled `$page.js` so that `$`
+    /// (U+0024, below every digit and letter) lists it first in its directory;
+    /// grouping directories first would put `settings/` above `$layout.js` and
+    /// undo that. The same rule holds the trees drawn in the documentation
+    /// (`tools/docs/trees.js`), so what `uf new` prints matches both the
+    /// manual and the reader's own `ls`.
+    ///
+    /// `str`'s `Ord` is byte order, so this is a plain comparison: no locale,
+    /// no case folding, and a label that is a prefix of another (`app` beside
+    /// `app.js`) comes first. The sort is stable, so equal labels keep their
+    /// insertion order, though [`Tree::child`] never creates two.
     pub fn sort(&mut self) {
-        self.children.sort_by(|left, right| {
-            left.children
-                .is_empty()
-                .cmp(&right.children.is_empty())
-                .then_with(|| left.label.cmp(right.label))
-        });
+        self.children
+            .sort_by(|left, right| left.label.cmp(right.label));
         for child in &mut self.children {
             child.sort();
         }

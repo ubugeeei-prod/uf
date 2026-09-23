@@ -1334,6 +1334,53 @@ fn creates_react_app_from_cli() {
     // Eight source files and the `.gitignore` that keeps uf's output
     // out of the first commit.
     assert!(stdout.contains("✓ created 10 files"));
+
+    // In the order `LC_ALL=C ls` lists them, files and directories
+    // interleaved — the order the manual draws this tree in, and the reason
+    // route files start with `$`. Directories used to be lifted above files,
+    // which printed `app` above `.gitignore` and `AGENTS.md`.
+    assert_eq!(
+        tree_rows(&stdout),
+        [
+            ".gitignore",
+            "AGENTS.md",
+            "app",
+            "$layout.js",
+            "$page.js",
+            "$page.test.js",
+            "Counter.js",
+            "useCounter.js",
+            "app.js",
+            "package.json",
+            "uf.config.js",
+        ],
+        "{stdout}"
+    );
+}
+
+/// The labels of the tree `uf create` prints, in the order it prints them.
+///
+/// A row is a lead of spaces and trunks, a branch glyph, and the label; the
+/// root label and every other line of output have no branch glyph and are
+/// skipped. Both glyph sets are read, so the order is checked whichever one
+/// the test's environment selects.
+fn tree_rows(stdout: &str) -> Vec<&str> {
+    const BRANCHES: [&str; 4] = ["├─ ", "└─ ", "|- ", "`- "];
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let (at, glyph) = BRANCHES
+                .iter()
+                .filter_map(|glyph| line.find(glyph).map(|at| (at, *glyph)))
+                .min_by_key(|(at, _)| *at)?;
+            let (lead, rest) = line.split_at(at);
+            if lead.chars().all(|c| matches!(c, ' ' | '│' | '|')) {
+                rest.strip_prefix(glyph).map(str::trim_end)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// The one-word form, which is what the site tells a reader to type.

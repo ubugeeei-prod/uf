@@ -28,20 +28,22 @@ The default template is `react`. Use `uf new my-site monorepo` for an applicatio
 and a shared library, or `uf new my-library --lib` for a library.
 [The CLI reference](/reference/cli) also covers remote templates.
 
-The React template writes:
+The React template writes these files, listed in the order `LC_ALL=C ls` lists
+them. Route files start with `$` so that they come first in their directory:
 
 ```text
 my-site/
-  uf.config.js       project configuration and tasks
-  app.js             application entry
+  .gitignore         generated files to exclude from Git
+  AGENTS.md          guidance for coding agents, matched to this uf version
   app/
     $layout.js       document layout
     $page.js         home page
+    $page.test.js    example test
     Counter.js       example client component
     useCounter.js    example hook
-    $page.test.js    example test
+  app.js             application entry
   package.json       dependencies
-  .gitignore         generated files to exclude from Git
+  uf.config.js       project configuration and tasks
 ```
 
 Replace the example counter, hook and test as you build your application.
