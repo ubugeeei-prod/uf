@@ -1,7 +1,16 @@
 # Changelog
 
-## uf@0.0.0-alpha.48
+## uf@0.1.0
 
+The first `0.x.0` release, after the `0.0.0-alpha.N` series. `0.x` still means
+commands, configuration and package APIs may change between releases; a minor
+release says in its notes what changed and how to move. `0.0.0-alpha.48` merged
+to `main` outside the merge queue and was never published, so this release
+covers everything since `0.0.0-alpha.47`, alpha.48's changes included (#1350).
+
+- chore(release): move the release process to 0.x.0 (#1351) (23c3b893)
+- chore(release): uf@0.0.0-alpha.48 (#1348) (a64d6b26)
+- test(deno): wait for the failure message, not the count, in the watch test (#1349) (fec039f2)
 - feat(cli): a compact lint summary, a doctor about the project, and one modern look across commands (#1347) (33504c47)
 - docs(test): make the testing guide example one consistent run (#1346) (372d08d6)
 - feat(run): declare task arguments and pick them from a list (#1345) (ac4e7cca)
