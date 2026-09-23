@@ -355,4 +355,21 @@ process.on("unhandledRejection", (reason: mixed) => {
   process.exit(1);
 });
 
+// The same for an exception nothing caught — a server's `error` event with no
+// listener, a throw from a timer callback. Node's default prints the stack to
+// stderr and exits, and all `uf` could then say was that the worker had died:
+// the file that did it went unnamed, and the message was somewhere above the
+// report, unattributed. Reported the way a rejection is, it is the failure of
+// the file whose work threw, with its message and stack in the file's result.
+process.on("uncaughtException", (thrown: mixed) => {
+  const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+  write({
+    event: "file",
+    status: "run-failed",
+    message: `uncaught exception: ${error.message}`,
+    stack: error.stack ?? null,
+  });
+  process.exit(1);
+});
+
 serve();
