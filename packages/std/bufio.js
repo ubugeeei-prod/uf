@@ -217,13 +217,16 @@ export class Scanner {
       const buffered = this._reader._buffer;
       const result = this._split(buffered, this._atEof);
       validateSplit(result, buffered.length);
-      if (result.token != null) {
-        if (result.token.length > this._maxTokenSize) {
+      // A constant, because a property refinement does not survive the
+      // `await` below.
+      const token = result.token;
+      if (token != null) {
+        if (token.length > this._maxTokenSize) {
           this._error = new TokenTooLongError(this._maxTokenSize);
           return false;
         }
         await this._reader.discard(result.advance);
-        this._token = result.token;
+        this._token = token;
         return true;
       }
       if (result.advance > 0) {

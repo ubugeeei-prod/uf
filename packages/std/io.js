@@ -220,35 +220,34 @@ type StreamReadStep = {
   ...
 };
 
-type StreamReader = {
-  readonly read: () => Promise<StreamReadStep>,
-  readonly cancel: (reason?: mixed) => Promise<void> | void,
-  ...
-};
+// Interfaces rather than object types, because what a host hands over is a
+// class instance (`ReadableStreamDefaultReader`, `WritableStream`, a
+// controller) and Flow does not count a class instance as a subtype of an
+// object type.
+interface StreamReader {
+  read(): Promise<StreamReadStep>;
+  cancel(reason?: mixed): Promise<void> | void;
+}
 
-type ReadableStreamLike = {
-  readonly getReader: () => StreamReader,
-  ...
-};
+interface ReadableStreamLike {
+  getReader(): StreamReader;
+}
 
-type StreamWriter = {
-  readonly write: (chunk: Uint8Array) => Promise<void> | void,
-  readonly close: () => Promise<void> | void,
-  readonly abort: (reason?: mixed) => Promise<void> | void,
-  ...
-};
+interface StreamWriter {
+  write(chunk: Uint8Array): Promise<void> | void;
+  close(): Promise<void> | void;
+  abort(reason?: mixed): Promise<void> | void;
+}
 
-type WritableStreamLike = {
-  readonly getWriter: () => StreamWriter,
-  ...
-};
+interface WritableStreamLike {
+  getWriter(): StreamWriter;
+}
 
-type ReadableController = {
-  readonly enqueue: (chunk: Uint8Array) => mixed,
-  readonly close: () => mixed,
-  readonly error: (reason: mixed) => mixed,
-  ...
-};
+interface ReadableController {
+  enqueue(chunk: Uint8Array): mixed;
+  close(): mixed;
+  error(reason: mixed): mixed;
+}
 
 export type ReadableSource = {
   readonly pull: (controller: ReadableController) => Promise<void>,
@@ -282,14 +281,16 @@ export function readerFromReadableStream(stream: ReadableStreamLike): Reader {
       if (next.done === true) {
         return { done: true };
       }
-      if (!(next.value instanceof Uint8Array)) {
+      // A constant: assigning `pending` would drop a refinement of `next.value`.
+      const value = next.value;
+      if (!(value instanceof Uint8Array)) {
         throw new TypeError("io reader expected Uint8Array stream chunks");
       }
-      if (requested != null && next.value.length > requested) {
-        pending = next.value.subarray(requested);
-        return { done: false, value: next.value.subarray(0, requested) };
+      if (requested != null && value.length > requested) {
+        pending = value.subarray(requested);
+        return { done: false, value: value.subarray(0, requested) };
       }
-      return { done: false, value: next.value };
+      return { done: false, value };
     },
     async cancel(reason?: mixed): Promise<void> {
       await reader.cancel(reason);
@@ -380,24 +381,16 @@ export function writableStreamFromWriter<Made>(
 }
 
 async function cancelReader(reader: Reader, reason?: mixed): Promise<void> {
-  const cancel = reader.cancel;
-  if (cancel != null) {
-    await cancel.call(reader, reason);
-  }
+  // An optional call is a method call, so the method stays bound to `reader`.
+  await reader.cancel?.(reason);
 }
 
 async function closeWriter(writer: Writer): Promise<void> {
-  const close = writer.close;
-  if (close != null) {
-    await close.call(writer);
-  }
+  await writer.close?.();
 }
 
 async function abortWriter(writer: Writer, reason?: mixed): Promise<void> {
-  const abort = writer.abort;
-  if (abort != null) {
-    await abort.call(writer, reason);
-  }
+  await writer.abort?.(reason);
 }
 
 function checkedSize(value: number, name: string): number {

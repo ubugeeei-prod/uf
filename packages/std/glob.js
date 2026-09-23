@@ -73,7 +73,7 @@ export function matchGlob(pattern: string | GlobPattern, path: string): boolean 
 
 function compilePattern(pattern: string): CompiledPattern {
   const absolute = pattern.startsWith("/");
-  const tokens = [];
+  const tokens: Array<Token> = [];
   for (const segment of patternSegments(pattern)) {
     tokens.push(
       segment === "**"
@@ -89,7 +89,7 @@ function patternSegments(pattern: string): Array<string> {
 }
 
 function compileSegment(segment: string, pattern: string): Array<SegmentPart> {
-  const parts = [];
+  const parts: Array<SegmentPart> = [];
   const chars = Array.from(segment);
   for (let index = 0; index < chars.length; index += 1) {
     const char = chars[index];
@@ -130,7 +130,7 @@ function readClass(chars: Array<string>, start: number, pattern: string): ClassR
     index += 1;
   }
 
-  const ranges = [];
+  const ranges: Array<CharRange> = [];
   let first = true;
 
   while (index < chars.length) {
@@ -172,7 +172,7 @@ function readClassCharacter(chars: Array<string>, index: number, pattern: string
 
 function matchTokens(tokens: Array<Token>, parts: Array<string>): boolean {
   const work = [{ partIndex: 0, tokenIndex: 0 }];
-  const seen = new Set();
+  const seen: Set<string> = new Set();
 
   while (work.length > 0) {
     const state = work.pop();

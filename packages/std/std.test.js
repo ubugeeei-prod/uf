@@ -184,7 +184,7 @@ describe("errors", () => {
     // The failure mode the hand-written `while (e) e = e.cause` loop has, and
     // the reason this module exists rather than being three lines at each call
     // site. A retry that wraps its own last failure builds this by accident.
-    const first: { cause?: mixed } = new Error("first");
+    const first = new Error("first");
     const second = new Error("second", { cause: first });
     first.cause = second;
 
@@ -1307,7 +1307,11 @@ describe("io", () => {
   it("adapts readers into web readable streams", async () => {
     const stream = readableStreamFromReader(
       readerFromBytes(b(1, 2, 3), { chunkSize: 2 }),
-      (source) => new ReadableStream(source),
+      (source) =>
+        new ReadableStream({
+          pull: (controller) => source.pull(controller),
+          cancel: (reason) => source.cancel(reason),
+        }),
     );
     const reader = stream.getReader();
 
@@ -1336,7 +1340,15 @@ describe("io", () => {
 
   it("adapts writers into web writable streams", async () => {
     const out = new BufferWriter();
-    const stream = writableStreamFromWriter(out, (sink) => new WritableStream(sink));
+    const stream = writableStreamFromWriter(
+      out,
+      (sink) =>
+        new WritableStream({
+          write: (chunk) => sink.write(chunk),
+          close: () => sink.close(),
+          abort: (reason) => sink.abort(reason),
+        }),
+    );
     const writer = stream.getWriter();
 
     await writer.write(b(1));
@@ -1348,7 +1360,15 @@ describe("io", () => {
 
   it("rejects non-byte chunks from web writable streams", async () => {
     const out = new BufferWriter();
-    const stream = writableStreamFromWriter(out, (sink) => new WritableStream(sink));
+    const stream = writableStreamFromWriter(
+      out,
+      (sink) =>
+        new WritableStream({
+          write: (chunk) => sink.write(chunk),
+          close: () => sink.close(),
+          abort: (reason) => sink.abort(reason),
+        }),
+    );
     const writer = stream.getWriter();
 
     await expect(writer.write("not bytes")).rejects.toThrow(TypeError);
@@ -1417,7 +1437,7 @@ describe("bufio", () => {
   });
 
   it("accepts custom split functions", async () => {
-    const splitSemicolon = (data, atEof) => {
+    const splitSemicolon = (data: Uint8Array, atEof: boolean) => {
       const separator = data.indexOf(0x3b);
       if (separator >= 0) {
         return { advance: separator + 1, token: data.subarray(0, separator) };
@@ -1914,9 +1934,9 @@ describe("what ships is one list in three places", () => {
     const end = page.indexOf("\n## ", start + 1);
     const table = page.slice(start, end === -1 ? page.length : end);
 
-    const documented = [];
-    for (const match of table.matchAll(/`(@uniflowed\/std\/[a-z0-9-]+)`/g)) {
-      if (!documented.includes(match[1])) documented.push(match[1]);
+    const documented: Array<string> = [];
+    for (const named of table.matchAll(/`(@uniflowed\/std\/[a-z0-9-]+)`/g)) {
+      if (!documented.includes(named[1])) documented.push(named[1]);
     }
     expect(documented.sort()).toEqual(ships());
   });
