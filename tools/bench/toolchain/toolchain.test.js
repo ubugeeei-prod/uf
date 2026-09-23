@@ -31,7 +31,15 @@ import {
 import { clientReferences, parseTimes, summarise } from "./measure.js";
 import { compare, failures } from "./regress.js";
 import { formatDuration } from "./report.js";
-import { flowFiles, rivalFiles, testsPassed, versionIn } from "./rivals.js";
+import {
+  NATIVE_TYPESCRIPT,
+  RIVAL_TOOLS,
+  flowFiles,
+  locateTool,
+  rivalFiles,
+  testsPassed,
+  versionIn,
+} from "./rivals.js";
 import type { RivalFixture } from "./rivals.js";
 
 const VERSIONS = { uniflowed: "0.0.0-test", react: "19.3.0" };
@@ -126,7 +134,7 @@ function cases(
 describe("the comparison tools' copies of the fixture", () => {
   it("are the same files every time they are generated", () => {
     const preset = presetNamed("small");
-    const kinds: $ReadOnlyArray<RivalFixture> = ["vite", "next", "vitest", "bun"];
+    const kinds: $ReadOnlyArray<RivalFixture> = ["vite", "next", "vitest", "rstest", "bun"];
     for (const kind of kinds) {
       expect(rivalFiles(preset, kind)).toEqual(rivalFiles(preset, kind));
     }
@@ -138,6 +146,7 @@ describe("the comparison tools' copies of the fixture", () => {
       const runners: $ReadOnlyArray<[RivalFixture, string]> = [
         ["vite", "vite-plus/test"],
         ["vitest", "vitest"],
+        ["rstest", "@rstest/core"],
         ["bun", "bun:test"],
       ];
       for (const [kind, runner] of runners) {
@@ -198,14 +207,39 @@ describe("what the harness reads from other tools' output", () => {
     expect(versionIn("nothing")).toBe("unknown");
   });
 
-  it("reads the passing tests Vitest and Bun report", () => {
+  it("reads the passing tests Vitest, Rstest and Bun report", () => {
     expect(testsPassed(" Test Files  20 passed (20)\n      Tests  200 passed (200)")).toBe(200);
+    expect(
+      testsPassed(" Test Files 20 passed\n      Tests 200 passed\n   Duration 1.25s (build 85ms)"),
+    ).toBe(200);
     expect(testsPassed(" 200 pass\n 0 fail\n 320 expect() calls")).toBe(200);
     expect(testsPassed("no tests found")).toBe(null);
     // As a CI runner prints it, in colour.
     expect(
       testsPassed("\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m200 passed\u001b[39m"),
     ).toBe(200);
+  });
+});
+
+describe("where a comparison tool is found", () => {
+  const repo = path.join(os.tmpdir(), "uf-bench-no-such-checkout");
+
+  it("is the pinned install's .bin entry for a tool with a launcher of its own", () => {
+    const rstest = RIVAL_TOOLS.find((tool) => tool.name === "rstest");
+    expect(rstest).not.toBe(undefined);
+    const located = locateTool(rstest as $FlowFixMe, repo, "");
+    expect(located.program).toBe(null);
+    expect(located.skipped).toContain(path.join(".bin", "rstest"));
+  });
+
+  it("is the native executable for tsgo, not the Node launcher in front of it", () => {
+    const tsgo = RIVAL_TOOLS.find((tool) => tool.name === "tsgo");
+    expect(tsgo?.module).toBe(NATIVE_TYPESCRIPT);
+    expect(NATIVE_TYPESCRIPT).toBe(
+      path.join("@typescript", `typescript-${process.platform}-${process.arch}`, "lib", "tsc"),
+    );
+    const located = locateTool(tsgo as $FlowFixMe, repo, "");
+    expect(located.skipped).toContain(NATIVE_TYPESCRIPT);
   });
 });
 

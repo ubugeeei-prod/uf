@@ -1,6 +1,6 @@
 ---
 title: "Benchmarks · uf"
-description: "Every uf command timed beside Vite+, Next.js, Bun, Vitest, ESLint, Prettier, Biome, Flow and pnpm, with the machine and the versions."
+description: "Every uf command timed beside Vite+, Next.js, Bun, Vitest, Rstest, ESLint, Prettier, Biome, Flow, tsc, tsgo and pnpm, with the machine and the versions."
 ---
 
 import { Losses, Provenance, Results } from "./results.js";
@@ -63,13 +63,13 @@ the same values and assertions.
 | Copy | Written as | Tools |
 | --- | --- | --- |
 | the uf application | Flow, `component` syntax, `match`, Flow enums, `@uniflowed/test` | `uf` |
-| Vite | TypeScript and TSX, `index.html` and `src/main.tsx`, routes lazily imported, tests against `vite-plus/test` | `vp dev`, `vp build`, `vp test`, `vp lint`, `eslint .`, `biome lint .`, `tsc --noEmit` |
+| Vite | TypeScript and TSX, `index.html` and `src/main.tsx`, routes lazily imported, tests against `vite-plus/test` | `vp dev`, `vp build`, `vp test`, `vp lint`, `eslint .`, `biome lint .`, `tsc --noEmit`, `tsgo --noEmit` |
 | Next.js | App Router: `app/layout.tsx`, `app/rNNN/page.tsx`, the toggles marked `"use client"` | `next dev`, `next build` |
-| Vitest, Bun | the library modules and their tests against `vitest` and `bun:test` | `vitest run`, `bun test` |
+| Vitest, Rstest, Bun | the library modules and their tests against `vitest`, `@rstest/core` and `bun:test` | `vitest run`, `rstest run`, `bun test` |
 | one copy per formatter | the Vite copy, formatted by that formatter first | `vp fmt --check`, `prettier --check .`, `biome format .` |
 | Flow | the uf application with a `.flowconfig`, `mixed` spelled `unknown`, and `flow-typed` stubs for `@uniflowed/*` | `flow full-check` |
 | install | the pinned third-party dependencies of a scaffolded application | `uf install`, `pnpm install`, `bun install` |
-| many small test files | 50 files × 20 cases × 2 assertions, from `tools/bench/testing/suite.js` | `uf test`, `bun test`, `vitest run` |
+| many small test files | 50 files × 20 cases × 2 assertions, from `tools/bench/testing/suite.js` | `uf test`, `bun test`, `vitest run`, `rstest run` |
 
 Where a row is not the same work, it says so here rather than in a footnote:
 
@@ -88,12 +88,18 @@ Where a row is not the same work, it says so here rather than in a footnote:
   what `flow check` was before it became a question put to a server.
 - **`tsc --noEmit` is not in the issue's table**, and is here because it is
   what the TypeScript copies would be type-checked with.
+- **`tsgo --noEmit` is TypeScript 7's native compiler**, the Go port, pinned
+  as `typescript@7` and run as the executable its `tsc` launcher starts. The
+  launcher is a Node script that only `execve`s that executable, so timing it
+  would charge TypeScript for a Node start-up it does not need. `tsc` stays on
+  TypeScript 6, the JavaScript compiler, beside it.
 - **ESLint** runs `@eslint/js` and `typescript-eslint`'s recommended rules, the
   configuration `npm init @eslint/config` writes. Biome and Vite+ run with no
   configuration of their own.
 - **Cold** removes a tool's own caches before every run: `.uf`, `dist` and
   `node_modules/.vite` for uf, `.next` for Next.js, `node_modules/.vite` for Vite+
-  and Vitest. Prettier, ESLint, Biome and `tsc` keep no cache unless asked to,
+  and Vitest, `node_modules/.cache` for Rstest. Prettier, ESLint, Biome, `tsc`
+  and `tsgo` keep no cache unless asked to,
   so their cold and warm rows are the same command run twice. **Warm** keeps
   what the previous run left behind.
 - **CPU** is the user and system time of the command and every process it

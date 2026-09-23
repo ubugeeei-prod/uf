@@ -128,7 +128,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/benchmarks",
         title: "Benchmarks",
         blurb:
-          "Every uf command timed beside Vite+, Next.js, Bun, Vitest, ESLint, Prettier, Biome, Flow and pnpm, with the machine and the versions.",
+          "Every uf command timed beside Vite+, Next.js, Bun, Vitest, Rstest, ESLint, Prettier, Biome, Flow, tsc, tsgo and pnpm, with the machine and the versions.",
       },
       {
         href: "/guide/scope",

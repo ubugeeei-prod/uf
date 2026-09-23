@@ -1,7 +1,7 @@
 // @flow
 //
 // The suite the testing guide's "Where it stands" table is measured on,
-// written out in three idiomatic copies.
+// written out in one idiomatic copy per runner.
 //
 //   node tools/bench/testing/suite.js /tmp/uf-bench-testing
 //
@@ -12,16 +12,17 @@
 // the repository said what those files were — so the numbers could not be
 // reproduced, only re-quoted. This writes them.
 //
-// Three copies, because each runner is measured on the input a project would
-// actually give it, and a copy is the only honest way to do that: uf's is Flow
-// and imports `@uniflowed/test`, Bun's is plain JavaScript and imports
-// `bun:test`, Vitest's is plain JavaScript and imports `vitest`. Only the
-// import line and the type annotations differ; every assertion is the same
-// assertion, so the three runs do the same work.
+// A copy per runner, because each runner is measured on the input a project
+// would actually give it, and a copy is the only honest way to do that: uf's is
+// Flow and imports `@uniflowed/test`, Bun's is plain JavaScript and imports
+// `bun:test`, Vitest's and Rstest's are plain JavaScript and import `vitest`
+// and `@rstest/core`. Only the import line and the type annotations differ;
+// every assertion is the same assertion, so every run does the same work.
 //
 //   <outDir>/uf       uf test
 //   <outDir>/bun      bun test
 //   <outDir>/vitest   vitest run
+//   <outDir>/rstest   rstest run
 //
 // # What is deliberately true of the files
 //
@@ -38,9 +39,9 @@
 //
 // # What it does not do
 //
-// It does not run anything, and it installs nothing. Vitest is not a
-// dependency of this repository and Bun is not a dependency of anything, so
-// the three commands are the reader's to run, against whatever versions they
+// It does not run anything, and it installs nothing. Vitest and Rstest are not
+// dependencies of this repository and Bun is not a dependency of anything, so
+// the commands are the reader's to run, against whatever versions they
 // have — which the guide asks them to state beside the numbers.
 
 import fs from "node:fs";
@@ -48,7 +49,7 @@ import path from "node:path";
 
 import { refuseInsideRepository } from "../toolchain/fixture.js";
 
-export type Dialect = "uf" | "bun" | "vitest";
+export type Dialect = "uf" | "bun" | "vitest" | "rstest";
 
 export type SuiteFile = { readonly path: string, readonly contents: string };
 
@@ -64,6 +65,7 @@ export const COPIES: $ReadOnlyArray<Copy> = [
   { name: "uf", importFrom: "@uniflowed/test", flow: true },
   { name: "bun", importFrom: "bun:test", flow: false },
   { name: "vitest", importFrom: "vitest", flow: false },
+  { name: "rstest", importFrom: "@rstest/core", flow: false },
 ];
 
 function pad(n: number): string {
