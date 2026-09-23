@@ -25,7 +25,64 @@ pub(crate) mod config_file;
 mod hover;
 pub(crate) mod native;
 mod rsc;
+#[cfg(feature = "upstream-typecheck")]
 mod types;
+/// A build without the checker has nothing to ask: every type answer is
+/// `null`, and [`capabilities`] advertises none of the requests that need one.
+#[cfg(not(feature = "upstream-typecheck"))]
+mod types {
+    use camino::Utf8PathBuf;
+    use serde_json::Value;
+    use uf_config::UniflowedConfig;
+    use uf_infra::FxHashMap;
+
+    use super::Document;
+
+    pub(super) struct Types;
+
+    impl Types {
+        pub(super) fn new(_root: Utf8PathBuf, _config: UniflowedConfig) -> Self {
+            Self
+        }
+
+        pub(super) fn prepare(&mut self) {}
+
+        pub(super) fn changed(&mut self, _uri: &str, _text: &str) {}
+
+        pub(super) fn closed(&mut self, _uri: &str) {}
+
+        pub(super) fn hover(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Option<Value> {
+            None
+        }
+
+        pub(super) fn definition(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+            _of_type: bool,
+        ) -> Value {
+            Value::Null
+        }
+
+        pub(super) fn completion(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Value {
+            Value::Null
+        }
+    }
+}
 
 use std::cell::OnceCell;
 use std::io::{BufRead, IsTerminal, Read, Write};
@@ -447,7 +504,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 id,
                 json!({
                     "serverInfo": { "name": "uf-lsp", "version": env!("CARGO_PKG_VERSION") },
-                    "capabilities": capabilities(uf_check::is_available()),
+                    "capabilities": capabilities(cfg!(feature = "upstream-typecheck")),
                 }),
             )?,
             // Every editor sends this right after `initialize`, which makes it
@@ -512,7 +569,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 answer_request(&mut stdout, id, answer)?;
             }
             "textDocument/definition" | "textDocument/typeDefinition"
-                if uf_check::is_available() =>
+                if cfg!(feature = "upstream-typecheck") =>
             {
                 let answer = position_params(&message, method).map(|(uri, line, requested)| {
                     types.definition(

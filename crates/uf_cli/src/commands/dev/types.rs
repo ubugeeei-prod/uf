@@ -88,7 +88,7 @@ impl Types {
 
     /// Start assembling the batch, unless that has already started.
     pub(super) fn prepare(&mut self) {
-        if !uf_check::is_available() || !matches!(self.state, State::Idle) {
+        if !matches!(self.state, State::Idle) {
             return;
         }
         let root = self.root.clone();
@@ -358,7 +358,6 @@ impl Types {
 ///
 /// The same scan `uf lint` makes and the same batch `uf check` checks, so a
 /// hover is answered against exactly the modules a check is.
-#[cfg(feature = "upstream-typecheck")]
 fn assemble(root: &Utf8Path, config: &UniflowedConfig) -> Result<Prepared, String> {
     let scanned =
         crate::commands::lint::project_sources(root, config).map_err(|error| error.to_string())?;
@@ -377,13 +376,6 @@ fn assemble(root: &Utf8Path, config: &UniflowedConfig) -> Result<Prepared, Strin
         .load(batch.clone())
         .map_err(|error| error.to_string())?;
     Ok(Prepared { session, batch })
-}
-
-/// A build without the checker has no session to load; [`Types::prepare`]
-/// never gets this far in one.
-#[cfg(not(feature = "upstream-typecheck"))]
-fn assemble(_root: &Utf8Path, _config: &UniflowedConfig) -> Result<Prepared, String> {
-    Err(String::from("this build has no type checker"))
 }
 
 /// A span as a protocol range over `text`: one-based byte columns become
