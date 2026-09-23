@@ -559,6 +559,39 @@ describe("writing a `Response` to a Node response", () => {
     expect(response.listening("close")).toBe(0);
   });
 
+  it("keeps every Set-Cookie separate", async () => {
+    // Iterating `Headers` yields each `Set-Cookie` as its own pair, and
+    // `setHeader` replaces: copying pair by pair sent only the last cookie,
+    // under `uf start`, `uf preview`, `uf dev` and `node server.js` alike.
+    // Found by the deploy matrix's `cookies` row (ubugeeei-prod/uf#1478).
+    const headers: Map<string, mixed> = new Map();
+    const response = {
+      ...outgoing(),
+      setHeader: (name: string, value: mixed) => headers.set(name, value),
+    };
+    const answer = new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+    answer.headers.append("set-cookie", "a=1; Path=/; HttpOnly");
+    answer.headers.append("set-cookie", "b=2; Path=/; Expires=Wed, 21 Oct 2037 07:28:00 GMT");
+    await send(response, answer);
+
+    expect(headers.get("set-cookie")).toEqual([
+      "a=1; Path=/; HttpOnly",
+      "b=2; Path=/; Expires=Wed, 21 Oct 2037 07:28:00 GMT",
+    ]);
+    expect(headers.get("content-type")).toBe("text/plain");
+  });
+
+  it("sets no Set-Cookie when the response has none", async () => {
+    const headers: Map<string, mixed> = new Map();
+    const response = {
+      ...outgoing(),
+      setHeader: (name: string, value: mixed) => headers.set(name, value),
+    };
+    await send(response, new Response("ok", { status: 200 }));
+
+    expect(headers.has("set-cookie")).toBe(false);
+  });
+
   it("still ends a response whose body finished normally", async () => {
     // The half that keeps the two above from being a wall: an ordinary body
     // is written and the response is closed, exactly as before.

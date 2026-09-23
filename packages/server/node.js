@@ -128,7 +128,7 @@ export type NodeResponse = {
   statusCode: number,
   statusMessage: string,
   headersSent: boolean,
-  setHeader(name: string, value: string): mixed,
+  setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed,
   write(chunk: Uint8Array | string): boolean,
   end(chunk?: Uint8Array | string): mixed,
   destroy(error?: mixed): mixed,
@@ -178,15 +178,43 @@ export function toRequest(
   return new Request(url, init);
 }
 
+/**
+ * Copy `headers` onto `outgoing`, keeping every `Set-Cookie` separate.
+ *
+ * Iterating a `Headers` yields each `Set-Cookie` as its own pair — the one
+ * header the Fetch standard does not join — and `setHeader` replaces rather
+ * than appends, so copying pair by pair kept only the last cookie: a response
+ * that set a session and a CSRF cookie reached the browser with one of them.
+ * Node takes an array for a header sent more than once, which is what
+ * `getSetCookie()` answers. The adapter contract's rule 5 (`docs/app/guide/deploy`)
+ * is this sentence; the deploy matrix's `cookies` row is what found it
+ * broken under `node server.js` (ubugeeei-prod/uf#1478).
+ *
+ * Every other header is copied as the `Headers` iteration gives it, which for
+ * a repeated header is already the comma-joined value HTTP allows.
+ */
+export function copyHeaders(
+  outgoing: { setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed, ... },
+  headers: Headers,
+): void {
+  for (const [name, value] of headers) {
+    if (name !== "set-cookie") {
+      outgoing.setHeader(name, value);
+    }
+  }
+  const cookies = headers.getSetCookie();
+  if (cookies.length > 0) {
+    outgoing.setHeader("set-cookie", cookies);
+  }
+}
+
 /** Write a `Response` to a Node response. */
 export async function send(outgoing: NodeResponse, result: Response): Promise<void> {
   outgoing.statusCode = result.status;
   if (result.statusText !== "") {
     outgoing.statusMessage = result.statusText;
   }
-  for (const [name, value] of result.headers) {
-    outgoing.setHeader(name, value);
-  }
+  copyHeaders(outgoing, result.headers);
   if (result.body == null) {
     outgoing.end();
     return;
