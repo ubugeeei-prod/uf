@@ -32,7 +32,11 @@ async function main() {
   const page = path.join(app, "app/$page.js");
   const original = fs.readFileSync(page, "utf8");
   const base = `http://localhost:${port}`;
-  async function until(probe, what, budget = 90000) {
+  async function until(
+    probe /*: () => boolean | Promise<boolean> */,
+    what /*: string */,
+    budget /*: number */ = 90000,
+  ) /*: Promise<void> */ {
     const deadline = Date.now() + budget;
     while (Date.now() < deadline) {
       if (child.exitCode != null) throw new Error(`native server exited: ${child.exitCode}`);
@@ -83,6 +87,7 @@ async function main() {
       (event) =>
         event.type === "update" && JSON.stringify(event.body).includes("native-edited-page"),
     );
+    if (update == null) throw new Error("the edit sent no update over /hot");
     assert(
       JSON.stringify(update.body).includes("$RefreshReg$"),
       "the edit has no refresh boundary",
