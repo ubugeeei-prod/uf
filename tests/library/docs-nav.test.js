@@ -41,6 +41,7 @@ import {
   currentHref,
   entryFor,
   nextAfter,
+  openSectionFor,
   pages,
   previousBefore,
   sections,
@@ -229,5 +230,22 @@ describe("the manual's navigation", () => {
     expect(currentHref("/guide/routing/requests/")).toBe("/guide/routing/requests");
     expect(currentHref("/guide/routing/somewhere-unlisted")).toBe("/guide/routing");
     expect(currentHref("/elsewhere")).toBe(null);
+  });
+
+  // The sidebar opens one section and closes the rest (#1404). The one it opens
+  // has to be the one holding the entry it marks, or the marked link is inside
+  // a closed disclosure and the reader cannot see where they are.
+  it("opens the section holding the marked entry, and only for pages in the manual", () => {
+    for (const section of sections) {
+      for (const page of [section.landing, ...section.pages]) {
+        expect(openSectionFor(page.href)?.title).toBe(section.title);
+        expect(openSectionFor(`${page.href}/`)?.title).toBe(section.title);
+      }
+    }
+    expect(openSectionFor("/guide/routing/somewhere-unlisted")?.title).toBe(
+      openSectionFor("/guide/routing")?.title,
+    );
+    expect(openSectionFor("/")).toBe(null);
+    expect(openSectionFor("/elsewhere")).toBe(null);
   });
 });
