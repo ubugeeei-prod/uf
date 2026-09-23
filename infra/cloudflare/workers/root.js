@@ -608,14 +608,29 @@ async function policy() {
   return policyText;
 }
 
-async function withHeaders(response, extra) {
+// Types in comments, because this file is deployed as it is: Wrangler bundles
+// it with esbuild, which does not strip Flow, and `tools/ci` imports it into
+// Node. `uf check` reads the comments, and the runtime never sees them.
+/*::
+// The static-assets binding a Worker is given, as much of it as this uses.
+type Fetcher = { readonly fetch: (request: Request) => Promise<Response>, ... };
+// The bindings this Worker reads; `ASSETS` is absent where it is not bound.
+type Env = ?{ readonly ASSETS?: Fetcher, ... };
+*/
+
+async function withHeaders(
+  response /*: Response */,
+  extra /*: ?{ readonly [string]: string } */,
+) /*: Promise<Response> */ {
   const headers = new Headers(response.headers);
   headers.set("content-security-policy", await policy());
   headers.set("x-content-type-options", "nosniff");
   headers.set("referrer-policy", "strict-origin-when-cross-origin");
   headers.set("permissions-policy", "interest-cohort=()");
-  for (const [name, value] of Object.entries(extra ?? {})) {
-    headers.set(name, value);
+  if (extra != null) {
+    for (const name of Object.keys(extra)) {
+      headers.set(name, extra[name]);
+    }
   }
   return new Response(response.body, {
     status: response.status,
@@ -625,7 +640,7 @@ async function withHeaders(response, extra) {
 }
 
 /** Where a path goes when the apex does not answer it itself. */
-function docsRedirect(url) {
+function docsRedirect(url /*: URL */) /*: Response */ {
   return new Response(null, {
     status: 308,
     headers: {
@@ -636,7 +651,7 @@ function docsRedirect(url) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request /*: Request */, env /*: Env */) /*: Promise<Response> */ {
     const url = new URL(request.url);
 
     // `www` is the apex, one hop away. Before anything else, because a `www`
@@ -691,11 +706,12 @@ export default {
     // and the path everything already written points to. A name that is not
     // there — and every path when there is no `ASSETS` binding at all — falls
     // through to the redirect, which is what answered it before.
-    if (url.pathname.startsWith("/brand/") && readOnly && env?.ASSETS != null) {
-      const asset = new URL(url);
+    const assets = env?.ASSETS;
+    if (url.pathname.startsWith("/brand/") && readOnly && assets != null) {
+      const asset = new URL(url.href);
       asset.pathname = url.pathname.slice("/brand".length);
       asset.search = "";
-      const response = await env.ASSETS.fetch(new Request(asset, { method: "GET" }));
+      const response = await assets.fetch(new Request(asset, { method: "GET" }));
       if (response.status === 200) {
         return withHeaders(response, { "cache-control": "public, max-age=3600" });
       }

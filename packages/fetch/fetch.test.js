@@ -10,11 +10,16 @@ import { describe, expect, it } from "@uniflowed/test";
 import { FetchError, createFetch } from "@uniflowed/fetch";
 import { parser, v } from "@uniflowed/validator";
 
+/** One scripted answer: a response, or a function that makes one from the request. */
+type Answer =
+  | Response
+  | ((url: RequestInfo, init?: RequestOptions) => Response | Promise<Response>);
+
 /** A `fetch` that answers from a script, recording what it was asked. */
-function scripted(answers) {
-  const calls = [];
+function scripted(answers: $ReadOnlyArray<Answer>) {
+  const calls: Array<{| url: RequestInfo, init?: RequestOptions |}> = [];
   let at = 0;
-  const impl = async (url, init) => {
+  const impl = async (url: RequestInfo, init?: RequestOptions): Promise<Response> => {
     calls.push({ url, init });
     const answer = answers[Math.min(at, answers.length - 1)];
     at += 1;
@@ -27,7 +32,22 @@ function scripted(answers) {
   return impl;
 }
 
-const json = (body, status = 200) =>
+/**
+ * The headers a recorded call was made with. `createFetch` passes a plain
+ * object, which is what these tests assert on; anything else fails loudly
+ * rather than reading as a missing header.
+ */
+function headersOf(call: {| url: RequestInfo, init?: RequestOptions |}): {
+  readonly [string]: string,
+} {
+  const headers = call.init?.headers;
+  if (headers == null || headers instanceof Headers || Array.isArray(headers)) {
+    throw new Error(`expected the headers as a plain object, got ${String(headers)}`);
+  }
+  return headers;
+}
+
+const json = (body: mixed, status: number = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -42,39 +62,39 @@ describe("requests", () => {
   it("joins the base URL and the path", async () => {
     const impl = scripted([json({})]);
     const client = createFetch({ baseURL: "https://api.example.com/v1/", fetch: impl });
-    await client.request("/users");
+    await client.request<mixed>("/users");
     expect(impl.calls[0].url).toBe("https://api.example.com/v1/users");
   });
 
   it("leaves an absolute URL alone", async () => {
     const impl = scripted([json({})]);
     const client = createFetch({ baseURL: "https://api.example.com", fetch: impl });
-    await client.request("https://elsewhere.example.com/thing");
+    await client.request<mixed>("https://elsewhere.example.com/thing");
     expect(impl.calls[0].url).toBe("https://elsewhere.example.com/thing");
   });
 
   it("appends search parameters", async () => {
     const impl = scripted([json({})]);
     const client = createFetch({ fetch: impl });
-    await client.request("/search", { searchParams: { q: "flow", page: 2 } });
+    await client.request<mixed>("/search", { searchParams: { q: "flow", page: 2 } });
     expect(impl.calls[0].url).toBe("/search?q=flow&page=2");
   });
 
   it("sends a plain object as JSON, and says so", async () => {
     const impl = scripted([json({})]);
     const client = createFetch({ fetch: impl });
-    await client.request("/users", { method: "POST", body: { name: "ada" } });
-    expect(impl.calls[0].init.body).toBe('{"name":"ada"}');
-    expect(impl.calls[0].init.headers["content-type"]).toBe("application/json");
+    await client.request<mixed>("/users", { method: "POST", body: { name: "ada" } });
+    expect(impl.calls[0].init?.body).toBe('{"name":"ada"}');
+    expect(headersOf(impl.calls[0])["content-type"]).toBe("application/json");
   });
 
   it("leaves a body the platform already accepts", async () => {
     const impl = scripted([json({})]);
     const client = createFetch({ fetch: impl });
     const form = new URLSearchParams({ a: "1" });
-    await client.request("/x", { method: "POST", body: form });
-    expect(impl.calls[0].init.body).toBe(form);
-    expect(impl.calls[0].init.headers["content-type"]).toBe(undefined);
+    await client.request<mixed>("/x", { method: "POST", body: form });
+    expect(impl.calls[0].init?.body).toBe(form);
+    expect(headersOf(impl.calls[0])["content-type"]).toBe(undefined);
   });
 
   it("merges headers, with the request's winning", async () => {
@@ -83,9 +103,9 @@ describe("requests", () => {
       fetch: impl,
       headers: { authorization: "token", accept: "application/json" },
     });
-    await client.request("/x", { headers: { accept: "text/plain" } });
-    expect(impl.calls[0].init.headers.authorization).toBe("token");
-    expect(impl.calls[0].init.headers.accept).toBe("text/plain");
+    await client.request<mixed>("/x", { headers: { accept: "text/plain" } });
+    expect(headersOf(impl.calls[0]).authorization).toBe("token");
+    expect(headersOf(impl.calls[0]).accept).toBe("text/plain");
   });
 
   it("returns text for a text body and nothing for a 204", async () => {
@@ -116,7 +136,7 @@ describe("failures", () => {
   it("says what kind of failure it was", async () => {
     const client = createFetch({ fetch: scripted([json({}, 404)]) });
     try {
-      await client.request("/x");
+      await client.request<mixed>("/x");
       throw new Error("expected a rejection");
     } catch (error) {
       expect(error instanceof FetchError).toBe(true);
@@ -135,7 +155,7 @@ describe("failures", () => {
       ]),
     });
     try {
-      await client.request("/x");
+      await client.request<mixed>("/x");
       throw new Error("expected a rejection");
     } catch (error) {
       expect(error.failure.kind).toBe("network");
@@ -149,11 +169,11 @@ describe("failures", () => {
       fetch: (url, init) =>
         new Promise((resolve, reject) => {
           // Answers the abort, the way the platform's fetch does.
-          init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
         }),
     });
     try {
-      await client.request("/x");
+      await client.request<mixed>("/x");
       throw new Error("expected a rejection");
     } catch (error) {
       expect(error.failure.kind).toBe("timeout");
@@ -165,7 +185,7 @@ describe("failures", () => {
     const client = createFetch({ fetch: scripted([json({ id: "not a number" })]) });
     const parse = parser(v.object({ id: v.number() }));
     try {
-      await client.request("/x", { parse });
+      await client.request<mixed>("/x", { parse });
       throw new Error("expected a rejection");
     } catch (error) {
       // Here, where the value came from outside — not three frames later as a
@@ -238,10 +258,10 @@ describe("QUERY", () => {
   it("sends the body the URL could not hold", async () => {
     const impl = scripted([json({ hits: 0 })]);
     const client = createFetch({ fetch: impl });
-    await client.request("/search", { method: "QUERY", body: { filters: ["a", "b"] } });
+    await client.request<mixed>("/search", { method: "QUERY", body: { filters: ["a", "b"] } });
 
-    expect(impl.calls[0].init.method).toBe("QUERY");
-    expect(impl.calls[0].init.body).toBe('{"filters":["a","b"]}');
+    expect(impl.calls[0].init?.method).toBe("QUERY");
+    expect(impl.calls[0].init?.body).toBe('{"filters":["a","b"]}');
   });
 
   it("says a 405 to a QUERY is probably not the application", async () => {
@@ -268,8 +288,8 @@ describe("extend", () => {
     const impl = scripted([json({})]);
     const base = createFetch({ fetch: impl, headers: { authorization: "token" } });
     const child = base.extend({ headers: { "x-trace": "1" } });
-    await child.request("/x");
-    expect(impl.calls[0].init.headers).toEqual({
+    await child.request<mixed>("/x");
+    expect(headersOf(impl.calls[0])).toEqual({
       authorization: "token",
       "x-trace": "1",
     });
