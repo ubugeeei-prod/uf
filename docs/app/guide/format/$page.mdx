@@ -344,6 +344,34 @@ Anything whose path contains one of the arguments is read and nothing else, so
 `uf fmt dialog.js` is a way to format the file in front of you. A pattern that
 matches nothing is an error rather than a clean run.
 
+### Suppressing a finding
+
+A finding you have decided to keep is silenced by a comment naming its rule,
+with the reason beside it:
+
+```js
+// The payload is JSON the server serialized, and React escapes a text child.
+// uf-lint-disable-next-line security/no-dangerously-set-inner-html
+<script type="application/json" dangerouslySetInnerHTML={html} />
+```
+
+`uf-lint-disable-next-line` covers the line below it. `uf-lint-disable` covers
+everything after it until a `uf-lint-enable` naming the same rule, or the end of
+the file. Both take one rule or several, separated by commas or spaces.
+
+Two rules keep these comments honest. `uniflowed/unknown-lint-suppression`
+(`error`) reports a comment naming a rule that does not exist, since a typo
+silences nothing. `uniflowed/unused-lint-suppression` (`warn`) reports a comment
+whose rule found nothing on the lines it covers. That is usually a finding that
+went away: the code changed, or the rule stopped reporting a false positive. Left
+in place, the comment would silence the next real finding on its line without
+anyone reading it. Delete the comment.
+
+The second rule only judges a comment whose rule ran with everything it needs.
+It skips rules that are off, rules that wait on type inference, and, when an
+editor lints one file on its own, the `import/*` rules that read the rest of
+the project.
+
 ### Project rules
 
 A rule your team writes is a JavaScript module listed in `plugins` and switched

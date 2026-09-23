@@ -21,6 +21,9 @@ use crate::scan::{FileScan, next_non_space};
 /// Rule id reported when a suppression comment names an unknown rule.
 pub(crate) const UNKNOWN_SUPPRESSION_RULE: &str = "uniflowed/unknown-lint-suppression";
 
+/// Rule id reported when a suppression comment silences nothing.
+pub(crate) const UNUSED_SUPPRESSION_RULE: &str = "uniflowed/unused-lint-suppression";
+
 const DISABLE_NEXT_LINE: &str = "uf-lint-disable-next-line";
 const DISABLE: &str = "uf-lint-disable";
 const ENABLE: &str = "uf-lint-enable";
@@ -36,13 +39,21 @@ pub(crate) struct BadSuppression {
     pub message: String,
 }
 
+/// Where a suppression names its rule: the comment's line and the rule id's
+/// column, both 1-based. What `uniflowed/unused-lint-suppression` points at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct Named {
+    pub line: usize,
+    pub column: usize,
+}
+
 /// Resolved suppressions for one file.
 #[derive(Debug, Default)]
 pub(crate) struct Suppressions {
     /// `(rule id, 1-based line)` pairs from `uf-lint-disable-next-line`.
-    single: Vec<(&'static str, usize)>,
+    single: Vec<(&'static str, usize, Named)>,
     /// `(rule id, first line, last line)` inclusive ranges from block form.
-    ranges: Vec<(&'static str, usize, usize)>,
+    ranges: Vec<(&'static str, usize, usize, Named)>,
 }
 
 impl Suppressions {
@@ -53,17 +64,57 @@ impl Suppressions {
     }
 
     /// Whether `rule` is suppressed on the given 1-based `line`.
+    #[cfg(test)]
     pub fn is_suppressed(&self, rule: &str, line: usize) -> bool {
-        if self.is_empty() {
-            return false;
-        }
-        self.single
+        self.matching(rule, line).next().is_some()
+    }
+
+    /// Every suppression that silences `rule` on `line`, by the place it is
+    /// named. One finding can be silenced twice over, and both did work.
+    fn matching<'a>(&'a self, rule: &'a str, line: usize) -> impl Iterator<Item = Named> + 'a {
+        let single = self
+            .single
             .iter()
-            .any(|&(suppressed, at)| at == line && suppressed == rule)
-            || self
-                .ranges
-                .iter()
-                .any(|&(suppressed, start, end)| line >= start && line <= end && suppressed == rule)
+            .filter(move |&&(suppressed, at, _)| at == line && suppressed == rule)
+            .map(|&(_, _, named)| named);
+        let ranges = self
+            .ranges
+            .iter()
+            .filter(move |&&(suppressed, start, end, _)| {
+                line >= start && line <= end && suppressed == rule
+            })
+            .map(|&(_, _, _, named)| named);
+        single.chain(ranges)
+    }
+
+    /// Drop every diagnostic a suppression silences, and return the
+    /// suppressions that silenced nothing, with the rule each one names.
+    ///
+    /// A suppression that silences nothing is either a typo'd line — it sits
+    /// above the wrong statement — or a leftover from a finding that has gone
+    /// away, most often because the rule stopped reporting a false positive.
+    /// Either way it is a comment arguing for an exception nobody is taking,
+    /// and the next real finding on that line would be silenced unread.
+    pub fn apply(&self, diagnostics: &mut Vec<crate::Diagnostic>) -> Vec<(&'static str, Named)> {
+        let mut used: uf_infra::FxHashSet<Named> = uf_infra::FxHashSet::default();
+        diagnostics.retain(|diagnostic| {
+            let mut silenced = false;
+            for named in self.matching(diagnostic.rule, diagnostic.line) {
+                silenced = true;
+                used.insert(named);
+            }
+            !silenced
+        });
+        let mut unused: Vec<(&'static str, Named)> = self
+            .single
+            .iter()
+            .map(|&(rule, _, named)| (rule, named))
+            .chain(self.ranges.iter().map(|&(rule, _, _, named)| (rule, named)))
+            .filter(|(_, named)| !used.contains(named))
+            .collect();
+        unused.sort_by_key(|&(_, named)| (named.line, named.column));
+        unused.dedup();
+        unused
     }
 }
 
@@ -75,7 +126,7 @@ pub(crate) fn collect(scan: &FileScan<'_>) -> (Suppressions, Vec<BadSuppression>
     let mut suppressions = Suppressions::default();
     let mut bad = Vec::new();
     // Block-form directives that have not seen a matching `uf-lint-enable`.
-    let mut open: SmallVec<[(&'static str, usize); 4]> = SmallVec::new();
+    let mut open: SmallVec<[(&'static str, usize, Named); 4]> = SmallVec::new();
 
     for (position, line) in scan.lines.iter().enumerate() {
         let comment = line.trailing_comment();
@@ -120,13 +171,19 @@ pub(crate) fn collect(scan: &FileScan<'_>) -> (Suppressions, Vec<BadSuppression>
                 });
                 continue;
             };
+            let named = Named {
+                line: number,
+                column,
+            };
             match kind {
-                Directive::DisableNextLine => suppressions.single.push((rule, number + 1)),
-                Directive::Disable => open.push((rule, number)),
+                Directive::DisableNextLine => {
+                    suppressions.single.push((rule, number + 1, named));
+                }
+                Directive::Disable => open.push((rule, number, named)),
                 Directive::Enable => {
-                    if let Some(index) = open.iter().rposition(|&(open, _)| open == rule) {
-                        let (rule, start) = open.remove(index);
-                        suppressions.ranges.push((rule, start, number));
+                    if let Some(index) = open.iter().rposition(|&(open, _, _)| open == rule) {
+                        let (rule, start, named) = open.remove(index);
+                        suppressions.ranges.push((rule, start, number, named));
                     }
                 }
             }
@@ -141,8 +198,8 @@ pub(crate) fn collect(scan: &FileScan<'_>) -> (Suppressions, Vec<BadSuppression>
         }
     }
 
-    for (rule, start) in open {
-        suppressions.ranges.push((rule, start, usize::MAX));
+    for (rule, start, named) in open {
+        suppressions.ranges.push((rule, start, usize::MAX, named));
     }
 
     (suppressions, bad)
