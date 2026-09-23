@@ -300,7 +300,6 @@ export function createStaticHandler(options: {|
     // a buffer rather than the file. This line is the whole of what is
     // host-specific about serving a directory — see `./internal/static.js`,
     // and `./bun.js` for the same function with the other body.
-    // $FlowFixMe[incompatible-call] - a Node web stream is a `BodyInit`.
     return new Response(Readable.toWeb(createReadStream(found.path)), { headers: found.headers });
   };
 }
