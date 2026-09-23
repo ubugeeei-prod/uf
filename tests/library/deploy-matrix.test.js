@@ -47,7 +47,7 @@ describe("the deployment compatibility matrix", () => {
     // `static` included: a target that can only refuse is still a column, and
     // its refusals are cells.
     expect(matrix.targets.map((target) => target.adapter).sort()).toEqual(
-      ["bun", "container", "deno", "edge", "node", "serverless", "static"].sort(),
+      ["bun", "container", "deno", "edge", "node", "serverless", "static", "vercel"].sort(),
     );
   });
 

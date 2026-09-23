@@ -1187,7 +1187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [node, bun, deno, container, edge, serverless, static]
+        target: [node, bun, deno, container, edge, serverless, static, vercel]
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
@@ -1215,7 +1215,7 @@ jobs:
       - run: chmod +x target/release/uf
         if: needs.changes.outputs.deploy == 'true'
       - name: Install the pinned emulators
-        if: needs.changes.outputs.deploy == 'true' && (matrix.target == 'edge' || matrix.target == 'static' || matrix.target == 'serverless')
+        if: needs.changes.outputs.deploy == 'true' && (matrix.target == 'edge' || matrix.target == 'static' || matrix.target == 'serverless' || matrix.target == 'vercel')
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -1223,6 +1223,7 @@ jobs:
           case "$TARGET" in
             edge|static) tools/deploy-matrix/install-tools.sh "$RUNNER_TEMP/deploy-matrix-tools" wrangler ;;
             serverless) tools/deploy-matrix/install-tools.sh "$RUNNER_TEMP/deploy-matrix-tools" kumo lambda-image ;;
+            vercel) tools/deploy-matrix/install-tools.sh "$RUNNER_TEMP/deploy-matrix-tools" kumo ;;
           esac
       - run: sh tools/ci/pinned-browser.sh
         if: needs.changes.outputs.deploy == 'true'

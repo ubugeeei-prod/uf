@@ -261,7 +261,9 @@ async function ppr({ base }) {
 
 /** The instant the build rendered `page` at, from the regeneration copy it wrote. */
 function builtInstant(deployDir, page, label) {
-  const staticRoot = ["static", "."]
+  // `static/` beside the entry for most targets, the directory itself for
+  // `static`, and the one function's `static/` inside Vercel's output.
+  const staticRoot = ["static", ".", ".vercel/output/functions/uf.func/static"]
     .map((dir) => path.join(deployDir, dir, "__uf/regenerate", page, "index.html"))
     .find((file) => {
       try {

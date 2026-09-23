@@ -11,6 +11,7 @@
 // | `edge` | `wrangler dev --local` — workerd, the assets binding, local Workers KV |
 // | `serverless` | Kumo's API Gateway HTTP API, invoking the function in the AWS Lambda Node image (its Runtime Interface Emulator) |
 // | `static` | Workers static assets under `wrangler dev --local`, with no Worker script |
+// | `vercel` | the Build Output API directory, routed and invoked by `./vercel-output.mjs` (emulated), with Kumo's S3 |
 //
 // A host is `{ base, stop, restart, alive, logs }`. `restart` stops the
 // process and starts it again on the same address with the same durable store
@@ -28,6 +29,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 import { waitUntilAnswering } from "./http.mjs";
 
@@ -352,12 +354,17 @@ async function kumoCall(kumo, method, route, body) {
  * Kumo answers an API on. The container uses the host network, so the
  * function reaches Kumo's S3 (the route cache, `s3-cache.js`) on loopback.
  */
-async function serverless(deployDir) {
+/**
+ * Kumo (`KUMO_BIN`), started on a free port and answering; its address and
+ * process. The AWS control and data plane for `serverless`, and the S3 the
+ * `vercel` column's route-cache provider keeps regenerated pages in.
+ */
+async function startKumo(cwd) {
   const kumoBin = process.env.KUMO_BIN ?? "kumo";
   const kumoPort = await freePort();
   const kumo = `http://127.0.0.1:${kumoPort}`;
   const server = startProcess(kumoBin, [], {
-    cwd: deployDir,
+    cwd,
     env: { KUMO_HOST: "127.0.0.1", KUMO_PORT: String(kumoPort), KUMO_LOG_LEVEL: "warn" },
   });
   try {
@@ -365,6 +372,11 @@ async function serverless(deployDir) {
   } catch (error) {
     throw new Error(`Kumo did not start: ${error.message}\n${server.output().slice(-4000)}`);
   }
+  return { kumo, kumoPort, server };
+}
+
+async function serverless(deployDir) {
+  const { kumo, kumoPort, server } = await startKumo(deployDir);
 
   // The Runtime Interface Emulator listens on 8080 inside the container, and
   // with the host network that is 8080 on this machine.
@@ -468,6 +480,44 @@ async function serverless(deployDir) {
   };
 }
 
+/**
+ * `uf build --adapter vercel`'s `.vercel/output`, served by
+ * `./vercel-output.mjs` — uf's emulation of Vercel's router and Node.js
+ * launcher, because Vercel has no offline server for a prebuilt directory and
+ * `vercel dev` needs an account. What that file does and does not emulate is
+ * in its header; the matrix names the cells it backs as emulated.
+ *
+ * Kumo runs beside it for S3, where the fixture's route-cache provider keeps
+ * regenerated pages, so a restart (a new function process) reads them back.
+ */
+async function vercel(deployDir) {
+  const { kumo, server: kumoServer } = await startKumo(deployDir);
+  const port = await freePort();
+  const host = await processHost(
+    "vercel output",
+    [
+      process.execPath,
+      fileURLToPath(new URL("./vercel-output.mjs", import.meta.url)),
+      path.join(deployDir, ".vercel", "output"),
+      String(port),
+    ],
+    {
+      cwd: deployDir,
+      env: { UF_MATRIX_S3_ENDPOINT: kumo, UF_MATRIX_S3_BUCKET: "uf-deploy-matrix" },
+      port,
+    },
+  );
+  return {
+    ...host,
+    alive: () => host.alive() && kumoServer.alive(),
+    logs: () => `${host.logs()}\n--- kumo ---\n${kumoServer.output()}`,
+    async stop() {
+      await host.stop();
+      await kumoServer.stop();
+    },
+  };
+}
+
 /** Every host, by the target id `../matrix.json` uses. */
 export const HOSTS = {
   node: printed,
@@ -477,4 +527,5 @@ export const HOSTS = {
   edge,
   serverless,
   static: staticHost,
+  vercel,
 };

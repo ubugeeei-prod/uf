@@ -400,6 +400,46 @@
           "note": "flight-type"
         }
       }
+    },
+    {
+      "id": "vercel",
+      "title": "Vercel",
+      "adapter": "vercel",
+      "runtime": "Build Output API v3 from `uf build`, served by uf's emulation of Vercel's router and Node.js launcher (`tools/deploy-matrix/lib/vercel-output.mjs`), Node 24; S3 in Kumo 0.30.0 for the route cache. Not deployed: Vercel has no offline server and `vercel dev` needs an account",
+      "build": {
+        "features": [
+          "ssr",
+          "streaming",
+          "ppr",
+          "isr",
+          "actions",
+          "handlers",
+          "middleware",
+          "redirects",
+          "errors",
+          "s3cache"
+        ],
+        "config": "vercel"
+      },
+      "cells": {
+        "isr-time": {
+          "status": "verified",
+          "note": "s3-vercel",
+          "refusal": {
+            "features": ["isr"],
+            "config": "full",
+            "pattern": "regenerates 2 pages \\(/isr, /tagged\\).*--adapter vercel. has nowhere of its own"
+          }
+        },
+        "isr-on-demand": {
+          "status": "verified",
+          "note": "s3-vercel"
+        },
+        "images": {
+          "status": "planned",
+          "note": "images"
+        }
+      }
     }
   ],
   "notes": {
@@ -416,6 +456,7 @@
     "set-cookie": "`@uniflowed/server/node` sends only the last `Set-Cookie` of a response (fixed by #1491).",
     "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type, so the client router loads the document instead: navigation works, as full page loads.",
     "container-cache": "The generated `Dockerfile` cannot write the route cache's directory, so a build with `isr` exits at start-up (fixed by #1499).",
-    "deno-cache": "The Deno command `uf build` prints has no write permission for the route cache, so a build with `isr` exits at start-up (fixed by #1499)."
+    "deno-cache": "The Deno command `uf build` prints has no write permission for the route cache, so a build with `isr` exits at start-up (fixed by #1499).",
+    "s3-vercel": "With a project provider in `rendering.cache.store` (the fixture's `s3-cache.js`, over an S3 bucket in Kumo); the check restarts the function process and reads the page back. Without a provider the build refuses the regenerating pages by name, which is checked too."
   }
 }
