@@ -332,13 +332,18 @@ async function chunksOf(result: {
   const decoder = new TextDecoder();
   const reader = result.stream().getReader();
   const out: Array<{| readonly at: number, readonly text: string |}> = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done === true) {
-      return out;
+  // Until the stream ends. A condition rather than `while (true)` with a
+  // `return` inside: Flow does not treat an infinite loop as ending the
+  // function (facebook/flow#7657), so that left `undefined` a possible result.
+  let done = false;
+  while (!done) {
+    const step = await reader.read();
+    done = step.done === true;
+    if (!done) {
+      out.push({ at: Date.now() - started, text: decoder.decode(step.value, { stream: true }) });
     }
-    out.push({ at: Date.now() - started, text: decoder.decode(value, { stream: true }) });
   }
+  return out;
 }
 
 /**
