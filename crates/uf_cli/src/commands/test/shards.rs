@@ -185,7 +185,7 @@ pub(crate) fn merge(cwd: &Utf8Path, ui: &mut Ui, directory: &str, args: &TestArg
         write_results_report(root, args, &merged.report)?;
     }
     let (timings, timing_note) = read_timings(root);
-    let recorded = record_timings(root, timings, &merged.report, &files);
+    let recorded = record_timings(root, timings, &merged.report, &files, &|_| true);
     if args.json {
         let mut document = test_payload(None, &merged.report, merged.coverage.as_ref());
         document["shards"] = serde_json::json!({

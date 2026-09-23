@@ -265,7 +265,7 @@ fn run_and_report(
             return;
         }
     };
-    let record_note = record_timings(root, timings, &report, all_files);
+    let record_note = record_timings(root, timings, &report, all_files, &|_| true);
 
     render_report(
         ui,

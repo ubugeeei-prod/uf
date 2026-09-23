@@ -540,7 +540,15 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         // What a file costs in a run of the benchmarks is its iterations, and
         // the next run of the tests would be scheduled by them.
         None if args.bench => (None, None),
-        None => (record_timings(&root, timings, &report, &files), None),
+        // A run narrowed by a path or by `--changed` measured part of the
+        // suite, and speaks only for that part: what it recorded before for
+        // every other file is still the best estimate the next full run has.
+        None => (
+            record_timings(&root, timings, &report, &files, &|recorded| {
+                changed.is_none() && selects(&args.paths, recorded)
+            }),
+            None,
+        ),
     };
     let benchmarks = args
         .bench
@@ -1272,6 +1280,14 @@ pub(crate) fn read_timings(root: &Utf8Path) -> (TestTimings, Option<String>) {
 
 /// Record this run's durations for the next one.
 ///
+/// `files` are the test files this run looked at, and `in_scope` says which
+/// recorded paths it looked for: an entry in scope that is not among `files`
+/// was deleted or no longer declares a test, and is dropped. An entry out of
+/// scope is kept while its file exists. Before that distinction, the durations
+/// kept were only the ones this run measured, so `uf test packages/ui` threw
+/// away what the last full run had learned about the other two hundred files,
+/// and the next full run was scheduled blind — its slowest files started last.
+///
 /// Returns a note when the cache could not be written; failing to write a cache
 /// is never a reason to fail a test run.
 pub(crate) fn record_timings(
@@ -1279,6 +1295,7 @@ pub(crate) fn record_timings(
     mut timings: TestTimings,
     report: &TestRunReport,
     files: &[ProjectFile],
+    in_scope: &dyn Fn(&str) -> bool,
 ) -> Option<String> {
     for file in &report.files {
         if file.status == FileStatus::Completed {
@@ -1296,6 +1313,7 @@ pub(crate) fn record_timings(
         files
             .iter()
             .any(|file| file.relative_path.as_str() == recorded)
+            || (!in_scope(recorded) && root.join(recorded).is_file())
     });
 
     save_timings(root, &timings)
