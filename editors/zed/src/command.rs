@@ -30,6 +30,28 @@
 //! reason a configured path is not checked at all: if it is wrong, Zed's own
 //! error names it when the spawn fails.
 
+/// uf's single configuration surface, and therefore the project marker.
+pub const CONFIG_FILE: &str = "uf.config.js";
+
+/// Whether the worktree is a uf project: one with `uf.config.js` at its root.
+///
+/// This is the check that keeps uf out of every other JavaScript project.
+/// Zed's default `language_servers` for JavaScript ends in `"..."`, which
+/// means "and every other server registered for the language" — so once this
+/// extension is installed, Zed asks it for a command in *every* JavaScript
+/// worktree, a TypeScript one included. Answering with `uf lsp` there would
+/// report uf's lint rules against code that never opted into them.
+/// `readable` answers whether Zed can read a worktree-relative path as text,
+/// which is the only question an extension can ask about a file.
+pub fn is_uf_project(readable: impl Fn(&str) -> bool) -> bool {
+    readable(CONFIG_FILE)
+}
+
+/// What Zed is told when a JavaScript worktree is not a uf project.
+pub const NOT_A_UF_PROJECT: &str = "uf: this worktree has no uf.config.js at its root, so uf lsp \
+     is not started here. Add \"!uf\" to languages.JavaScript.language_servers in your user \
+     settings to stop Zed asking.";
+
 /// The machine the language server will run on, as far as a path cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Host {
@@ -309,6 +331,14 @@ mod tests {
                 ("RUST_LOG".to_owned(), "debug".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn only_a_worktree_with_the_config_is_a_uf_project() {
+        assert!(is_uf_project(|path| path == "uf.config.js"));
+        assert!(!is_uf_project(|path| path == "package.json"));
+        assert!(!is_uf_project(|path| path == "app/uf.config.js"));
+        assert!(NOT_A_UF_PROJECT.contains("\"!uf\""), "{NOT_A_UF_PROJECT}");
     }
 
     /// The id Zed files the settings under is the id `extension.toml`
