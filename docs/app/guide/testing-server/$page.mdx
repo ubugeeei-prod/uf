@@ -152,6 +152,7 @@ describe("saveNote", () => {
     );
     expect(await listNotes()).toHaveLength(1);
   });
+});
 ```
 
 `callAction` does what a browser's reference does, in the same order:
@@ -338,7 +339,7 @@ Two things about the host:
 
 <div className="command"><code>buildApp(options)</code></div>
 
-```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
+```js fragment source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
 // @flow
 import { beforeAll, describe, expect, it } from "@uniflowed/test";
 import { type BuiltApp, buildApp } from "@uniflowed/router/testing";
@@ -400,7 +401,7 @@ that is already built.
 
 ### Boundaries and a form before hydration
 
-```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
+```js fragment source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
   it("saves a note from a form posted before hydration, and says so on the page", async () => {
     const page = await app.submit(
       "/notes",
