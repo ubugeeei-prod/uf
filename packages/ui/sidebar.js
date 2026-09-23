@@ -275,11 +275,8 @@ export component SidebarItem(
   ...rest: Rest
 ) {
   const sidebar = useSidebar("Sidebar.Item");
-  // This removes the caller's ref from rest props; it does not read a ref value.
-  // uf-lint-disable-next-line react-compiler/refs
   const passed = withoutComposed(rest, ["ref"]);
   // The forwarded ref is passed through to whichever entry wrapper renders.
-  // uf-lint-disable-next-line react-compiler/refs
   const forwardedRef = rest.ref;
   const mine: Rest = {
     "aria-label": sidebar.collapsed ? label : undefined,

@@ -1798,7 +1798,6 @@ hook useDescription(text: string | void): string | void {
     const entry: SharedDescription = shared;
     entry.users += 1;
     // The id is state because it must render only after the shared DOM node exists.
-    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setId(entry.node.id);
     return () => {
       entry.users -= 1;

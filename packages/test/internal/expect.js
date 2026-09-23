@@ -242,14 +242,6 @@ export type Expectation = Matchers<void> & {
  */
 export type Expect = {
   (received: mixed): Expectation,
-  // `flow/unclear-type` reads source text rather than an AST, and the shape it
-  // recognises as a property key rather than a type is a name at the start of
-  // a line or straight after `{`, `,` or `;`. `readonly any:` is neither, so
-  // the rule reports Jest's, Vitest's and Sinon's name for this matcher as an
-  // `any` type. The rule's own comment already lists `@uniflowed/test`'s
-  // `expect.any` among the false positives it exists to avoid; this is the one
-  // spelling it still cannot see past.
-  // uf-lint-disable-next-line flow/unclear-type
   readonly any: (constructor: mixed) => AsymmetricMatcher,
   readonly anything: () => AsymmetricMatcher,
   readonly objectContaining: (expected: interface {}) => AsymmetricMatcher,

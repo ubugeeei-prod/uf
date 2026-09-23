@@ -278,8 +278,6 @@ export component MenubarTrigger(children: React.Node, render?: RenderProp, ...re
       menu.pendingFocusRef.current = end;
       bar.setOpen(value);
     }),
-    // React calls callback refs during commit; menu focus restoration reads it later.
-    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       // uf-lint-disable-next-line react-compiler/immutability
       menu.triggerRef.current = element;

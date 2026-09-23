@@ -463,19 +463,13 @@ export component ComboboxList(
   // `align="start"` because a list of options belongs under the edge the text
   // starts at, and `--uf-anchor-trigger-width` is what a stylesheet reads to
   // make it exactly as wide as the field.
-  // useAnchor accepts ref objects and reads them from layout/effects.
-  // uf-lint-disable-next-line react-compiler/refs
   const anchored = useAnchor({
     align,
     alignOffset,
-    // uf-lint-disable-next-line react-compiler/refs
     anchorRef: inputRef,
     avoidCollisions,
     collisionPadding,
-    // `open` is combobox metadata; no ref value is read during render.
-    // uf-lint-disable-next-line react-compiler/refs
     open: combobox.open,
-    // uf-lint-disable-next-line react-compiler/refs
     overlayRef: listRef,
     side,
     sideOffset,
@@ -486,8 +480,6 @@ export component ComboboxList(
   // `children` that no dependency list can describe. Every write below is
   // guarded by a comparison, so the effect settles after one extra pass rather
   // than looping.
-  // This effect measures caller-rendered options after commit.
-  // uf-lint-disable-next-line react-compiler/immutability
   useEffect(() => {
     const list = listRef.current;
     if (list == null) {
@@ -505,7 +497,6 @@ export component ComboboxList(
 
     const wanted = pendingActiveRef.current;
     if (wanted != null) {
-      // uf-lint-disable-next-line react-compiler/immutability
       pendingActiveRef.current = null;
       setActiveId(moveTo(items, -1, wanted, false)?.id ?? null);
       return;

@@ -234,7 +234,6 @@ export component PopoverBody(
     // `open` is popover metadata; no ref value is read during render.
     // uf-lint-disable-next-line react-compiler/refs
     open: popover.open,
-    // uf-lint-disable-next-line react-compiler/refs
     overlayRef: bodyRef,
     side,
     sideOffset,

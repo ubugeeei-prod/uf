@@ -359,17 +359,12 @@ export component DrawerHandle(
   // So `Drawer.Body` knows there is a drag to provide an alternative to. A
   // drawer with no handle has no gesture, and requiring a close button of one
   // would be this component inventing a rule WCAG did not write.
-  useEffect(
-    () => {
-      handleCountRef.current += 1;
-      return () => {
-        handleCountRef.current -= 1;
-      };
-    },
-    // The context ref object is stable; the effect registers this part's mount.
-    // uf-lint-disable-next-line react-compiler/refs
-    [handleCountRef],
-  );
+  useEffect(() => {
+    handleCountRef.current += 1;
+    return () => {
+      handleCountRef.current -= 1;
+    };
+  }, [handleCountRef]);
 
   /** Move by one snap point, or close when there is no smaller one. */
   const step = (towardsOpen: boolean) => {

@@ -39,17 +39,6 @@
 // stated origin otherwise. A component that fetches a relative path therefore
 // works under `uf test` unchanged, which is the whole point of testing it.
 
-// uf-lint-disable fetch/no-global-override
-//
-// `fetch/no-global-override` exists to stop a package from silently unhooking
-// the client the rest of the toolchain is instrumented around. This module is
-// the one place in the repository where replacing `fetch` *is* the feature: it
-// is entered only from `listen()`, it refuses to nest, and it puts back what it
-// took. Disabled for the whole file rather than line by line because the rule
-// also fires on *reading* `globalThis.fetch` and on the name appearing inside
-// an error message, and four scattered suppressions would say less than one
-// explained one.
-
 import { isNetworkError } from "../response.js";
 
 /**
