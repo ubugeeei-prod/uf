@@ -126,7 +126,7 @@
       "id": "static",
       "title": "Static host",
       "adapter": "static",
-      "runtime": "Workers static assets under `wrangler dev --local`, no Worker script",
+      "runtime": "Workers static assets under `wrangler dev --local` (`html_handling: drop-trailing-slash`, `404-page`), no Worker script",
       "build": { "features": [], "config": "static" },
       "cells": {
         "ssr": {

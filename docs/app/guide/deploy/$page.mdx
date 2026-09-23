@@ -210,7 +210,7 @@ in the run that passed, not that a deployment to the cloud does — that is the
 | Container | `container` | `docker build` + `docker run` of the generated `Dockerfile` |
 | Cloudflare Workers | `edge` | `wrangler dev --local` (workerd), Wrangler 4.128.0, local Workers KV |
 | AWS Lambda | `serverless` | API Gateway HTTP API in Kumo 0.30.0, function in the AWS Lambda Node 24 image (RIE) |
-| Static host | `static` | Workers static assets under `wrangler dev --local`, no Worker script |
+| Static host | `static` | Workers static assets under `wrangler dev --local` (`html_handling: drop-trailing-slash`, `404-page`), no Worker script |
 
 {/* deploy-matrix:end */}
 
