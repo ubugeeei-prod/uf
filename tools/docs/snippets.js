@@ -147,7 +147,10 @@ function pagesUnder(dir: string): Array<string> {
 }
 
 function main(): void {
-  const uf = process.env.UF_BIN ?? "uf";
+  // `uf lint` runs from the scratch directory, so a path to the binary is made
+  // absolute first; a bare name is still looked up on `PATH`.
+  const named = process.env.UF_BIN ?? "uf";
+  const uf = named.includes("/") ? path.resolve(named) : named;
   const all: Array<Fence> = [];
   for (const file of pagesUnder(PAGES)) {
     all.push(...fences(path.relative(REPO, file), fs.readFileSync(file, "utf8")));
@@ -173,7 +176,7 @@ function main(): void {
         cwd: scratch,
         encoding: "utf8",
         env: { ...process.env, NO_COLOR: "1" },
-        stdio: ["ignore", "pipe", "ignore"],
+        stdio: ["ignore", "pipe", "pipe"],
         maxBuffer: 64 * 1024 * 1024,
       });
     } catch (error) {
@@ -181,9 +184,9 @@ function main(): void {
       // written without their imports' packages is always. The report is on
       // stdout either way.
       out = typeof error?.stdout === "string" ? error.stdout : "";
-    }
-    if (out.trim() === "") {
-      throw new Error("uf lint --json printed nothing");
+      if (out.trim() === "") {
+        throw new Error(`could not run ${uf} lint: ${String(error?.message ?? error)}`);
+      }
     }
     const broken = failures(JSON.parse(out), files);
     process.stdout.write(
