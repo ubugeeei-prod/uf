@@ -26,21 +26,23 @@ detail.
 
 <SectionContents section="Build an app" />
 
-[Flow, the modern parts](/guide/flow) comes first because every example on every
-other page is written in it, and [Routing](/guide/routing) second because a route
-is what the rest attaches to: a loader, a layout, a Suspense boundary, a form
-that posts to an action. [Rendering modes](/guide/rendering) decides what each
-route becomes when you build, which changes what the pages after it can do. From
-there the order is roughly the order an application needs things in: the split
-between server and browser, the libraries that hold state, take input and model
-failure, the interface and what styles it, and last what a deployed application
-needs around it — caching, signing in, logs and measurements.
+The order is what most applications need first. [Routing](/guide/routing) leads
+because a route is what the rest attaches to: a loader, a layout, a Suspense
+boundary, a form that posts to an action. Then the server boundary —
+[Server Components](/guide/server-components) and
+[Server actions](/guide/server-actions) — and the data, input, forms and state
+that cross it; then what the interface looks like and how its controls behave.
+After those come the pages you reach for once the core works:
+[Rendering modes](/guide/rendering) and [Answering requests](/guide/routing/requests)
+for what each route becomes and what answers it, Suspense and transitions,
+assets and caching, signing in, typed effects, GraphQL, and last what a deployed
+application needs around it — logs and measurements. The syntax every example is
+written in is [Flow, the modern parts](/guide/flow), in Start.
 
 ## Which page answers which question
 
 | You want to | Read |
 | --- | --- |
-| write components and hooks with `component` and `hook` | [Flow, the modern parts](/guide/flow) |
 | add a page, a layout or a loader | [Routing](/guide/routing) |
 | add middleware or a route handler | [Answering requests](/guide/routing/requests) |
 | choose between prerendering, rendering per request and a client-side application | [Rendering modes](/guide/rendering) |
@@ -59,6 +61,7 @@ needs around it — caching, signing in, logs and measurements.
 | measure LCP, CLS and INP | [Web vitals](/guide/vitals) |
 | test any of it | [Testing](/guide/testing), in The toolchain |
 | look up a component's parts, or which package exports something | [Components](/reference/ui) and [Packages](/reference/packages) |
+| write components and hooks with `component` and `hook` | [Flow, the modern parts](/guide/flow), in Start |
 
 ## When you are done
 
