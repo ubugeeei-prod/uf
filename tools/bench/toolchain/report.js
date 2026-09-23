@@ -24,22 +24,31 @@
 //     "versions": {                           // every tool a row ran, by name
 //       "uf": "0.0.0-alpha.32", "commit": "45e291e9…", "binary": "target/release/uf",
 //       "node": "v26.8.1", "npm": "11.19.0", "vite": "8.2.2", "react": "19.3.0",
-//       "host": "node"                        // the Capability JS Host uf ran the tests on
+//       "host": "node",                       // the Capability JS Host uf ran the tests on
+//       "vp": "1.0.0-rc.0", "next": "16.3.6", "bun": "1.3.14"   // one per tool measured
 //     },
 //     "settings": { "runs": 5, "warmup": 1, "hmrEdits": 10 },
+//     "tools": ["uf", "vp", "next", "bun"],   // what --tools asked for
+//     "skipped": [                            // what was asked for and not measured
+//       { "tool": "eslint", "stage": null, "reason": "… has no eslint: run `npm ci …`" },
+//       { "tool": "next", "stage": "hmr", "reason": "next dev pushes its updates …" }
+//     ],
 //     "fixtures": {                           // what each row's `fixture` names
 //       "small": { "preset": "small", "routes": 10, "components": 31,
 //                  "clientComponents": 11, "modules": 20, "testFiles": 20,
 //                  "tests": 200, "files": 86, "lines": 4321, "bytes": 123456 }
 //     },
-//     "install": { "dependencies": 14, "manager": "npm" },   // null without install rows
+//     "suite": { "files": 50, "cases": 20, "tests": 1000, "assertions": 2000 },
+//                                             // the fixture called "suite"; null without it
+//     "install": { "dependencies": 14, "manager": "npm" },   // null without install rows;
+//                                             // `manager` is the one `uf install` chose
 //     "results": [
 //       {
 //         "id": "uf/build.cold/small",        // tool/stage/fixture: unique in a file,
 //                                             // and the same row in every file
-//         "tool": "uf",
+//         "tool": "uf",                       // a key of `versions`
 //         "stage": "build.cold",
-//         "fixture": "small",                 // a key of `fixtures`, or "install"
+//         "fixture": "small",                 // a key of `fixtures`, "suite" or "install"
 //         "title": "production build, cold",
 //         "command": "uf build",              // as typed, in the fixture's directory
 //         "cache": "removes .uf, dist and node_modules/.vite before every run",
@@ -48,7 +57,12 @@
 //         "runs": 5,                          // how many `samples` there are
 //         "samples": [3012.4, 2987.1, 3050.9, 2999.0, 3021.7],   // in the order they ran
 //         "median": 3012.4, "min": 2987.1, "max": 3050.9,
-//         "mean": 3014.2, "stddev": 21.9
+//         "mean": 3014.2, "stddev": 21.9,
+//         "cpu": {                            // user + system time of the command and
+//           "samples": [9120.3, …],           // everything under it, for a command that
+//           "median": 9120.3,                 // runs to completion; null for a dev
+//           "min": 8990.0, "max": 9301.2      // server and an HMR edit
+//         }
 //       }
 //     ]
 //   }
@@ -56,7 +70,10 @@
 // `schema` changes when a field changes meaning or goes away. Adding a field
 // does not change it, and a reader of schema 1 ignores fields it does not know.
 // What a regression check or a page reads is `results[].id` and `median`; the
-// rest is there for the person deciding whether to believe it.
+// rest is there for the person deciding whether to believe it. `tools`,
+// `skipped`, `suite` and `cpu` arrived after the first files were written, and
+// a reader treats a file without them as uf alone, nothing skipped, no suite
+// and no CPU time.
 //
 // # The table
 //
@@ -86,6 +103,28 @@ export type Row = {
   readonly max: number,
   readonly mean: number,
   readonly stddev: number,
+  readonly cpu: CpuSummary | null,
+};
+
+export type CpuSummary = {
+  readonly samples: $ReadOnlyArray<number>,
+  readonly median: number,
+  readonly min: number,
+  readonly max: number,
+};
+
+/** A tool, or one stage of it, that was asked for and not measured, and why. */
+export type Skipped = {
+  readonly tool: string,
+  readonly stage: string | null,
+  readonly reason: string,
+};
+
+export type SuiteSummary = {
+  readonly files: number,
+  readonly cases: number,
+  readonly tests: number,
+  readonly assertions: number,
 };
 
 export type Machine = {
@@ -114,7 +153,10 @@ export type Report = {
     readonly warmup: number,
     readonly hmrEdits: number,
   },
+  readonly tools: $ReadOnlyArray<string>,
+  readonly skipped: $ReadOnlyArray<Skipped>,
   readonly fixtures: { readonly [string]: FixtureSummary },
+  readonly suite: SuiteSummary | null,
   readonly install: InstallFixture | null,
   readonly results: $ReadOnlyArray<Row>,
 };
@@ -164,6 +206,13 @@ export function formatTable(report: Report): string {
   for (const name of Object.keys(report.fixtures)) {
     lines.push(`  fixture   ${name}: ${describeFixture(report.fixtures[name])}`);
   }
+  const suite = report.suite;
+  if (suite != null) {
+    lines.push(
+      `  fixture   suite: ${String(suite.tests)} tests in ${String(suite.files)} files, ` +
+        `${String(suite.assertions)} assertions`,
+    );
+  }
   const installed = report.install;
   if (installed != null) {
     lines.push(
@@ -171,9 +220,15 @@ export function formatTable(report: Report): string {
         `installed by ${installed.manager}`,
     );
   }
+  for (const skipped of report.skipped) {
+    lines.push(
+      `  skipped   ${skipped.tool}${skipped.stage == null ? "" : ` ${skipped.stage}`}: ` +
+        skipped.reason,
+    );
+  }
   lines.push("");
 
-  const header = ["stage", "fixture", "command", "median", "min", "max", "runs"];
+  const header = ["stage", "fixture", "command", "median", "min", "max", "cpu", "runs"];
   const body = report.results.map((row) => [
     row.stage,
     row.fixture,
@@ -181,6 +236,7 @@ export function formatTable(report: Report): string {
     formatDuration(row.median),
     formatDuration(row.min),
     formatDuration(row.max),
+    row.cpu == null ? "-" : formatDuration(row.cpu.median),
     String(row.runs),
   ]);
   const widths = header.map((cell, column) =>
