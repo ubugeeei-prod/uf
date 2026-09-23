@@ -4312,7 +4312,7 @@ export const average = (lines: $ReadOnlyArray<Line>): number => total(lines) / l
 
 ```text
 app/cart.js:2:25 this import creates a cycle through `app/pricing.js`
-app/pricing.js:2:27 this import creates a cycle through `app/cart.js`
+app/pricing.js:3:23 this import creates a cycle through `app/cart.js`
 ```
 
 #### Good
@@ -5255,6 +5255,9 @@ app/example.js:5:11 declare the task in uf.config.js; uf projects do not shell o
 import { execSync } from "node:child_process";
 
 execSync("uf run build");
+
+// A manager named as data, not run: a union a config accepts.
+export type Manager = "npm" | "pnpm" | "yarn";
 ```
 
 ### uniflowed/no-tabs

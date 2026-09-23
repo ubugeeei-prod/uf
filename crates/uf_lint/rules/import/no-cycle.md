@@ -24,7 +24,7 @@ export const average = (lines: $ReadOnlyArray<Line>): number => total(lines) / l
 
 ```diagnostics
 app/cart.js:2:25 this import creates a cycle through `app/pricing.js`
-app/pricing.js:2:27 this import creates a cycle through `app/cart.js`
+app/pricing.js:3:23 this import creates a cycle through `app/cart.js`
 ```
 
 ## Good

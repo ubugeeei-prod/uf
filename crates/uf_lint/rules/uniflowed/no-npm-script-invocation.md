@@ -22,4 +22,7 @@ app/example.js:5:11 declare the task in uf.config.js; uf projects do not shell o
 import { execSync } from "node:child_process";
 
 execSync("uf run build");
+
+// A manager named as data, not run: a union a config accepts.
+export type Manager = "npm" | "pnpm" | "yarn";
 ```
