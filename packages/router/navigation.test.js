@@ -99,6 +99,9 @@ async function serverModule() {
 /** How many times each route's module was asked for, by path. */
 const loaded: { [string]: number } = {};
 
+/** What `router.push` rejected with, for the script-URL tests. */
+const refusedNavigations: Array<mixed> = [];
+
 /** The route the prefetch tests aim at, and nothing else does. */
 const PREFETCHED = "/prefetched";
 
@@ -136,6 +139,16 @@ function tables() {
         </button>
         <button type="button" onClick={() => void router.prefetch(PREFETCHED)}>
           prefetch
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            router.push(" javascript:document.title='ran'").catch((error) => {
+              refusedNavigations.push(error);
+            });
+          }}
+        >
+          push a script URL
         </button>
       </section>
     );
@@ -451,5 +464,36 @@ describe("the router under document navigation", () => {
     expect(replaced.length).toBe(1);
     expect(replaced[0].endsWith("/other")).toBe(true);
     expect(assigned.length).toBe(0);
+  });
+});
+
+// `location.assign("javascript:…")` runs the URL in this page. A navigation
+// whose target came from a query parameter must never get there, under either
+// navigation mode, however the scheme is spelled — the leading space here is
+// one `Link`'s own "is this external?" test does not see.
+describe("a navigation to a URL a browser would run as script", () => {
+  async function pushScriptUrl(mode: "client" | "document"): Promise<void> {
+    refusedNavigations.length = 0;
+    await serve("/");
+    await hydrateHere(mode);
+
+    const { assigned, replaced } = await watchingLocation(async () => {
+      await act(async () => {
+        await userEvent.click(buttonSaying("push a script URL"));
+      });
+    });
+
+    expect(assigned).toEqual([]);
+    expect(replaced).toEqual([]);
+    expect(refusedNavigations.length).toBe(1);
+    expect(String(refusedNavigations[0])).toContain("refused a javascript: URL");
+  }
+
+  it("is refused under document navigation, and nothing is handed to the browser", async () => {
+    await pushScriptUrl("document");
+  });
+
+  it("is refused under client navigation, and nothing is handed to the browser", async () => {
+    await pushScriptUrl("client");
   });
 });

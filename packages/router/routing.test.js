@@ -443,3 +443,46 @@ describe("notFound() thrown from a page", () => {
     expect(resolved.layouts).toEqual([rootLayout, guideLayout]);
   });
 });
+
+// `redirect()` with a `javascript:` URL is a DOM XSS sink wherever the browser
+// follows it with `location` — a single-page application's loader, a
+// navigation that resolves in the browser — and `redirect(searchParams.get
+// ("next"))` is how a sign-in flow is usually written. So it is refused where
+// it is built, in every spelling the browser forgives.
+describe("redirect() to a URL a browser would run as script", () => {
+  const refusal = (build: () => mixed): string => {
+    try {
+      build();
+    } catch (error) {
+      return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    }
+    return "no throw";
+  };
+
+  it("is refused, however it is spelled", async () => {
+    const { redirect, permanentRedirect } = await import("@uniflowed/router");
+    for (const to of [
+      "javascript:alert(1)",
+      " javascript:alert(1)",
+      "\tJaVa\nScRiPt:alert(1)",
+      "\u0001javascript:alert(1)",
+      "vbscript:msgbox(1)",
+      "data:text/html,<script>alert(1)</script>",
+    ]) {
+      expect(refusal(() => redirect(to))).toContain("refused a");
+      expect(refusal(() => permanentRedirect(to))).toContain("permanentRedirect()");
+    }
+  });
+
+  it("is still a redirect for a path, another site, or a mail link", async () => {
+    const { redirect } = await import("@uniflowed/router");
+    for (const to of [
+      "/sign-in?next=%2F",
+      "https://example.com/",
+      "mailto:a@example.com",
+      "//cdn.example/x",
+    ]) {
+      expect(refusal(() => redirect(to))).toContain("RedirectError");
+    }
+  });
+});
