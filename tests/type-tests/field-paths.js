@@ -2,20 +2,24 @@
 //
 // What a typed field path refuses, and the test that says so.
 //
-// This file is *supposed* to fail `uf check`. `@uniflowed/form` claims that a
-// per-field read comes back as the type that field actually holds, inferred
-// from the form's values rather than annotated at the call — and a claim about
-// inference cannot be proved by rendering anything. It is proved the only way
-// it can be: by running the checker and reading what it said.
+// Every refusal in this file is a type error `uf check` must raise, suppressed
+// where it stands. `@uniflowed/form` claims that a per-field read comes back as
+// the type that field actually holds, inferred from the form's values rather
+// than annotated at the call — and a claim about inference cannot be proved by
+// rendering anything. It is proved the only way it can be: by running the
+// checker and reading what it said.
 //
 // # How it is read
 //
-// A `// expect:` comment says that the line after it must be reported, and that
-// the report must contain that text. A line without one must not be reported at
-// all — so a change that makes any of these *stop* being an error fails the
-// test, and so does one that makes something else here start being one. The
-// lines with no marker are the other half of the claim: the dotted string form
-// still works, and every correct typed read is silent.
+// A `// $FlowExpectedError[code]` comment says that the line after it must be
+// reported with that code, and the words after the code say what the report is
+// about. Flow suppresses the error, so `uf check` at the repository root stays
+// clean, and a suppression that stops matching an error is reported as unused,
+// which fails the test. A line without one must not be reported at all — so a
+// change that makes any of these *stop* being an error fails the test, and so
+// does one that makes something else here start being one. The lines with no
+// marker are the other half of the claim: the dotted string form still works,
+// and every correct typed read is silent.
 //
 // # Why it is checked with the package rather than on its own
 //
@@ -84,57 +88,57 @@ export component Checked() {
   // The `unknown` is the dotted arm: `"email"` is a key, so the first arm gave
   // `string`, `string` is not a `number`, and the fallback was tried and is
   // `mixed`. That is what the checker is describing when it says so.
-  // expect: unknown is incompatible with number
+  // $FlowExpectedError[incompatible-type] unknown is incompatible with number
   const wrongRead: number = getValues("email");
 
   // Two segments deep, and still the values' answer rather than the call's.
-  // expect: number is incompatible with string
+  // $FlowExpectedError[incompatible-type] number is incompatible with string
   const wrongNested: string = getValues("address", "zip");
 
   // A segment that is not a key of what the segment before it landed on.
-  // expect: property country is missing
+  // $FlowExpectedError[incompatible-type] property country is missing
   const misspelled: mixed = getValues("address", "country");
 
   // Through an array index, which is the case a bare `$Keys` cannot do at all.
-  // expect: number is incompatible with string
+  // $FlowExpectedError[incompatible-type] number is incompatible with string
   const wrongIndexed: string = getValues("items", 0, "price");
 
   // The same, at the fourth segment — the depth this is capped at.
-  // expect: string is incompatible with number
+  // $FlowExpectedError[incompatible-type] string is incompatible with number
   const wrongDeep: number = getValues("items", 0, "tags", 0);
 
   // Writing the wrong type into a field, which no read can tell you about.
-  // expect: "cheap" is incompatible with number
+  // $FlowExpectedError[incompatible-type] "cheap" is incompatible with number
   setValue(["items", 0, "price"], "cheap");
 
-  // expect: 3 is incompatible with string
+  // $FlowExpectedError[incompatible-type] 3 is incompatible with string
   setValue(["address", "city"], 3);
 
   // And writing to a field that is not there.
-  // expect: property country is missing
+  // $FlowExpectedError[incompatible-type] property country is missing
   setValue(["address", "country"], "JP");
 
   // `watch` carries the same bounds as `getValues`, beside its five old shapes.
-  // expect: unknown is incompatible with number
+  // $FlowExpectedError[incompatible-type] unknown is incompatible with number
   const wrongWatch: number = watch("email");
 
-  // expect: property country is missing
+  // $FlowExpectedError[incompatible-type] property country is missing
   const misspelledWatch: mixed = watch("address", "country");
 
   // `getFieldState` has no value type to get wrong, so what it checks is the
   // path — which is the answer to reading a nested field's error with the
   // checker's help, since the errors themselves stay one flat map.
-  // expect: property country is missing
+  // $FlowExpectedError[incompatible-type] property country is missing
   const misspelledState: mixed = getFieldState("address", "country");
 
   // `useWatch`'s `path` is a conditional rather than a bound, so this is where
   // it is caught: the read is the wrong type here…
-  // expect: number is incompatible with string
+  // $FlowExpectedError[incompatible-type] number is incompatible with string
   const wrongSubscribed: string = useWatch({ control, path: ["address", "zip"] });
 
   // …and `mixed` here, because "cty" is not a key and the conditional falls
   // through to the floor rather than naming it.
-  // expect: unknown is incompatible with string
+  // $FlowExpectedError[incompatible-type] unknown is incompatible with string
   const misspelledSubscribed: string = useWatch({ control, path: ["address", "cty"] });
 
   return (

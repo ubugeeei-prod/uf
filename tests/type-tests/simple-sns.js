@@ -4,9 +4,9 @@ import type { ActionResult, Session } from "../../examples/simple-sns/app/_share
 import { PostList } from "../../examples/simple-sns/app/(feed)/timeline.client.js";
 import { FormField } from "../../examples/simple-sns/app/_shared/form-ui.client.js";
 import { EmptyState, ActionLink } from "../../examples/simple-sns/app/_shared/ui.js";
-// expect: value
+// $FlowExpectedError[incompatible-type] value
 export const missingValue: ActionResult<string> = { status: "success", message: "Saved" };
-// expect: value
+// $FlowExpectedError[incompatible-type] value
 export const errorWithValue: ActionResult<string> = {
   status: "error",
   message: "No",
@@ -15,18 +15,18 @@ export const errorWithValue: ActionResult<string> = {
 };
 export component BadField() {
   const control = <input />;
-  // expect: does not render
+  // $FlowExpectedError[incompatible-type] does not render
   return <FormField label="Name">{control}</FormField>;
 }
 export component BadList() {
   const child = <div />;
-  // expect: does not render
+  // $FlowExpectedError[incompatible-type] does not render
   return <PostList>{child}</PostList>;
 }
 export component BadAction() {
   const action = <button type="button">Wrong action</button>;
   return (
-    // expect: does not render
+    // $FlowExpectedError[incompatible-type] does not render
     <EmptyState title="Empty" action={action}>
       No notes
     </EmptyState>
@@ -40,7 +40,7 @@ export component GoodSlot() {
   );
 }
 export function incomplete(session: Session): string {
-  // expect: hasn't checked all possible cases
+  // $FlowExpectedError[match-not-exhaustive] hasn't checked all possible cases
   return match (session) {
     {kind: "guest"} => "Guest",
   };

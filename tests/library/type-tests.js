@@ -14,14 +14,26 @@
 // reading what it said.
 //
 // `tests/type-tests/` holds those files. Each marks a line that must be
-// reported with a `// expect: <text>` comment on the line above it, and this
-// module reads both halves of the claim:
+// reported with a `// $FlowExpectedError[<code>] <what it is about>` comment on
+// the line above it — Flow's own expected-error comment — and this module reads
+// both halves of the claim:
 //
-// * every marked line is reported, with a message containing that text — so a
-//   change that makes one of them *stop* being an error fails here;
+// * every marked line is still an error with that code. Flow suppresses it, and
+//   a suppression that no longer matches an error is reported by `uf check` as
+//   "Unused suppression comment."; any such warning in a fixture fails here, so
+//   a change that makes one of them *stop* being an error fails;
 // * nothing else in the file is reported — so a change that makes a correct
 //   use start failing fails here too, which is the half that says the fixture
 //   is a set of narrow refusals rather than a file that is simply broken.
+//
+// Suppressed rather than left as errors so that `uf check` at the repository
+// root — the command a contributor types, and the one CI gates — reports what
+// is wrong with the code and not the refusals written here on purpose. What
+// that costs is the message: the comment pins the error's *code*, and the words
+// after it say what the error is about but are not compared with what the
+// checker printed. Before this, each marker carried a fragment of the message
+// the line had to produce, and the root check carried 291 errors that were not
+// errors. ubugeeei-prod/uf#1451.
 //
 // # Why it is one module
 //
@@ -113,6 +125,7 @@ export const ufBinary: string = (() => {
  * other than a fixture and read the same shape.
  */
 export type CheckDiagnostic = {
+  severity?: string,
   primary: { path: string, start: { line: number, column: number } },
   message: Array<{ kind: string, text: string }>,
 };
@@ -137,7 +150,7 @@ export type MisuseCheck = {
    */
   readonly alongside: $ReadOnlyArray<string>,
   /**
-   * How many `// expect:` markers the fixture must have more than.
+   * How many `$FlowExpectedError` markers the fixture must have more than.
    *
    * Without it the test would pass on a fixture somebody had emptied, which is
    * the one way a negative type test fails silently: no markers means no
@@ -252,18 +265,17 @@ export type CleanCheck = {
 };
 
 /**
- * Hold one `tests/type-tests` fixture to its own `// expect:` markers.
+ * Hold one `tests/type-tests` fixture to its own `$FlowExpectedError` markers.
  *
  * Runs `uf check tests/type-tests <alongside…> --json` from the repository
- * root and compares the diagnostics reported *against the fixture* with the
- * markers written in it. Throws through `expect`, so it is called from inside
- * an `it`.
+ * root and reads what it reported *against the fixture*: nothing at all is the
+ * only passing answer. Every marked line is an error Flow suppressed, so an
+ * error there is an unmarked line reporting; and a marker that no longer
+ * matches an error is reported as "Unused suppression comment.", which is the
+ * misuse the fixture exists to refuse starting to compile. Throws through
+ * `expect`, so it is called from inside an `it`.
  *
  * # Failure modes it reports rather than swallows
- *
- * A non-zero exit status is expected and ignored: a fixture is a file of
- * deliberate errors, so the checker is supposed to be unhappy. Three things
- * that would otherwise pass as success are not:
  *
  * * `uf check` printing nothing at all — the wrong directory, or a binary that
  *   did not start. `JSON.parse("")` says `Unexpected end of JSON input` and
@@ -272,49 +284,42 @@ export type CleanCheck = {
  *   find rather than a minute. This says all three.
  * * a run that checked nothing — `status` and `filesChecked` are asserted, so
  *   a checker that skipped the files answers a failure rather than an empty
- *   diagnostic list that matches an empty set of expectations.
+ *   diagnostic list, which would otherwise be the passing answer.
  * * a fixture with no markers left in it — see [`MisuseCheck.atLeast`].
  */
 export function everyMisuseIsReported(check: MisuseCheck): void {
   const { fixture, alongside, atLeast, checker = runEveryTime } = check;
   const source = fs.readFileSync(path.join(repositoryRoot, fixture), "utf8").split("\n");
-  const wanted = new Map<number, string>();
+  const markers = new Map<number, string>();
   source.forEach((line, index) => {
-    const marker = line.match(/^\s*\/\/ expect: (.+)$/);
+    const marker = line.match(/^\s*\/\/ \$FlowExpectedError\[([^\]]+)\]/);
     if (marker != null) {
-      // Lines are one-based, and the line that must fail is the next one.
-      wanted.set(index + 2, marker[1]);
+      // One-based, and it is the marker's own line: that is where Flow reports
+      // a suppression that suppressed nothing.
+      markers.set(index + 1, marker[1]);
     }
   });
-  expect(wanted.size).toBeGreaterThan(atLeast);
+  expect(markers.size).toBeGreaterThan(atLeast);
 
   const report = checkReport(["tests/type-tests", ...alongside], checker);
 
-  const reported = new Map<number, string>();
+  const stopped = [];
+  const unexpected = [];
   for (const diagnostic of report.typeCheck.diagnostics) {
-    if (diagnostic.primary.path.endsWith(fixture)) {
-      reported.set(
-        diagnostic.primary.start.line,
-        diagnostic.message.map((span) => span.text).join(""),
-      );
+    if (!diagnostic.primary.path.endsWith(fixture)) continue;
+    const line = diagnostic.primary.start.line;
+    const said = diagnostic.message.map((span) => span.text).join("");
+    const code = markers.get(line);
+    if (code != null && said.startsWith("Unused suppression comment")) {
+      stopped.push(`${fixture}:${String(line + 1)} is no longer reported as ${code}`);
+    } else {
+      unexpected.push(`${fixture}:${String(line)} ${said}`);
     }
   }
-
-  const missing = [];
-  for (const [line, expected] of wanted) {
-    const said = reported.get(line);
-    if (said == null || !said.includes(expected)) {
-      missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
-    }
-  }
-  // Every marked line is an error, with the message the fixture predicted.
-  expect(missing).toEqual([]);
-
+  // Every marked line is still an error with the code its marker names.
+  expect(stopped).toEqual([]);
   // And nothing else in the file is, which is what says the fixture describes
   // the types rather than merely being broken.
-  const unexpected = [...reported.keys()]
-    .filter((line) => !wanted.has(line))
-    .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
   expect(unexpected).toEqual([]);
 }
 

@@ -2,21 +2,24 @@
 //
 // What `@uniflowed/std` infers, and the test that says so.
 //
-// This file is *supposed* to fail `uf check`. The claim these modules make
-// is that a generic container, a typed error walk and a typed context key all
-// come back at the type the *call site* implies, with nothing annotated and no
-// `any` underneath — and a claim about inference cannot be proved by running
-// anything. It is proved the only way it can be: by running the checker and
-// reading what it said.
+// Every refusal in this file is a type error `uf check` must raise, suppressed
+// where it stands. The claim these modules make is that a generic container, a
+// typed error walk and a typed context key all come back at the type the *call
+// site* implies, with nothing annotated and no `any` underneath — and a claim
+// about inference cannot be proved by running anything. It is proved the only
+// way it can be: by running the checker and reading what it said.
 //
 // # How it is read
 //
-// A `// expect:` comment says that the line after it must be reported, and that
-// the report must contain that text. A line without one must not be reported at
-// all — so a change that makes any of these *stop* being an error fails the
-// test, and so does one that makes something else here start being one. The
-// tail of the file is the other half of the claim: every correct use is silent,
-// without which a package whose every export was `any` would pass this too.
+// A `// $FlowExpectedError[code]` comment says that the line after it must be
+// reported with that code, and the words after the code say what the report is
+// about. Flow suppresses the error, so `uf check` at the repository root stays
+// clean, and a suppression that stops matching an error is reported as unused,
+// which fails the test. A line without one must not be reported at all — so a
+// change that makes any of these *stop* being an error fails the test, and so
+// does one that makes something else here start being one. The tail of the file
+// is the other half of the claim: every correct use is silent, without which a
+// package whose every export was `any` would pass this too.
 //
 // # Why it is checked with the package rather than on its own
 //
@@ -100,20 +103,20 @@ const failure: mixed = wrap("loading", new HttpError(429));
 // back as `mixed` a caller would cast, and a cast is what this module exists to
 // remove.
 
-// expect: HttpError
+// $FlowExpectedError[incompatible-type] HttpError
 export const asIsNotANumber: number | null = as(failure, HttpError);
 
 // The field is reachable at the type the class declared it, without a cast.
 const found = as(failure, HttpError);
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const statusIsNotAString: string = found == null ? "" : found.status;
 
 // A question, not a value: `is` answers a boolean and nothing wider.
-// expect: boolean is incompatible with
+// $FlowExpectedError[incompatible-type] boolean is incompatible with
 export const isAnswersABoolean: string = is(failure, failure);
 
 // `join` answers an error or nothing, so a caller has to look before throwing.
-// expect: null
+// $FlowExpectedError[incompatible-type] null
 export const joinCanBeNothing: Error = join(new Error("a"));
 
 // --- heap -------------------------------------------------------------------
@@ -124,17 +127,17 @@ export const joinCanBeNothing: Error = join(new Error("a"));
 
 const numbers = new Heap((a: number, b: number) => a - b);
 
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const heapPopsItsElement: string | void = numbers.pop();
 
 // The comparator's parameters are checked against what the heap holds, so a
 // method the element does not have is refused where it is written.
-// expect: toUpperCase is missing in Number
+// $FlowExpectedError[prop-missing] toUpperCase is missing in Number
 export const comparatorSeesTheElement: mixed = new Heap<number>((a, b) => a.toUpperCase() - b);
 
 // `heapify` infers from the array as well as from the comparator.
 const words = heapify(["b", "a"], (a, b) => (a < b ? -1 : 1));
-// expect: string is incompatible with number
+// $FlowExpectedError[incompatible-type] string is incompatible with number
 export const heapifyKeepsTheElement: number | void = words.peek();
 
 // --- list -------------------------------------------------------------------
@@ -142,10 +145,10 @@ export const heapifyKeepsTheElement: number | void = words.peek();
 const pages = new List<string>(["home"]);
 const page = pages.pushFront("inbox");
 
-// expect: string is incompatible with number
+// $FlowExpectedError[incompatible-type] string is incompatible with number
 export const listElementHasItsValueType: number = page.value();
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const listTakesItsElementType: mixed = pages.pushBack(1);
 
 // --- context ----------------------------------------------------------------
@@ -157,24 +160,24 @@ const TRACE = key<string>("trace");
 const ATTEMPT = key<number>("attempt");
 const root = background();
 
-// expect: string is incompatible with number
+// $FlowExpectedError[incompatible-type] string is incompatible with number
 export const keyReadsAtItsType: number | void = withValue(root, TRACE, "abc").value(TRACE);
 
 // And the write is checked against the same type.
-// expect: 7 is incompatible with string
+// $FlowExpectedError[incompatible-type] 7 is incompatible with string
 export const keyWritesAtItsType: mixed = withValue(root, TRACE, 7);
 
 // Two keys of different types are not interchangeable at a read.
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const keysDoNotUnify: string | void = withValue(root, ATTEMPT, 1).value(ATTEMPT);
 
 // The pair is a context and a cancel, in that order.
 const [scope, cancel] = withCancel(root);
-// expect: void is incompatible with number
+// $FlowExpectedError[incompatible-type] void is incompatible with number
 export const cancelIsNotTheContext: number = cancel(scope);
 
 // A deadline is milliseconds, not a Date.
-// expect: Date
+// $FlowExpectedError[incompatible-type] Date
 export const deadlineTakesMilliseconds: mixed = withTimeout(root, new Date());
 
 // --- sync -------------------------------------------------------------------
@@ -183,69 +186,69 @@ export const deadlineTakesMilliseconds: mixed = withTimeout(root, new Date());
 // to survive the round trip.
 
 const limit = new Semaphore(2);
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const permitReturnsTheTask: Promise<string> = limit.withPermit(() => 1);
 
 const mutex = new Mutex();
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const lockReturnsTheBody: Promise<string> = mutex.withLock(async () => 1);
 
 const connect = once(() => ({ port: 5432 }));
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const onceKeepsItsValue: string = connect().port;
 
 const rows = new Group<number>();
-// expect: "not a number" is incompatible with number
+// $FlowExpectedError[incompatible-type] "not a number" is incompatible with number
 export const groupTakesItsElement: mixed = rows.go(() => "not a number");
 
 // --- bytes and encodings ----------------------------------------------------
 
 const left = new Uint8Array(2);
 
-// expect: string
+// $FlowExpectedError[incompatible-type] string
 export const equalTakesBytes: boolean = equal(left, "not bytes");
 
-// expect: is incompatible with number literal 2
+// $FlowExpectedError[incompatible-type] is incompatible with number literal 2
 export const compareIsAnOrdering: 2 = compare(left, left);
 
 // A split gives views the caller may read and may not grow.
-// expect: push is missing in $ReadOnlyArray
+// $FlowExpectedError[prop-missing] push is missing in $ReadOnlyArray
 export const splitIsReadOnly: mixed = split(left, left).push(left);
 
-// expect: Uint8Array
+// $FlowExpectedError[incompatible-type] Uint8Array
 export const decodeGivesBytes: string = decode("dead");
 
-// expect: string, a primitive, cannot be used as a subtype of Uint8Array
+// $FlowExpectedError[incompatible-type] string, a primitive, cannot be used as a subtype of Uint8Array
 export const encodeGivesText: Uint8Array = encode(left);
 
-// expect: Uint8Array
+// $FlowExpectedError[incompatible-type] Uint8Array
 export const base32DecodeGivesBytes: string = decodeBase32("MY======");
 
-// expect: string, a primitive, cannot be used as a subtype of Uint8Array
+// $FlowExpectedError[incompatible-type] string, a primitive, cannot be used as a subtype of Uint8Array
 export const base32EncodeGivesText: Uint8Array = encodeBase32(left);
 
 // A builder writes bytes; a string is the other method.
-// expect: string
+// $FlowExpectedError[incompatible-type] string
 export const builderWritesBytes: mixed = new Builder().write("text");
 
-// expect: string is incompatible with number
+// $FlowExpectedError[incompatible-type] string is incompatible with number
 export const csvCellsAreText: number = parseCsv("a")[0][0];
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const csvStringifyTakesText: mixed = stringifyCsv([[1]]);
 
 const binaryCursor = new Cursor(left);
 
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const binaryCursorReadsNumbers: string = binaryCursor.getUint16();
 
-// expect: not a number" is incompatible with number
+// $FlowExpectedError[incompatible-type] not a number" is incompatible with number
 export const binaryCursorWritesNumbers: mixed = binaryCursor.putUint32("not a number");
 
-// expect: bigint is incompatible with number
+// $FlowExpectedError[incompatible-type] bigint is incompatible with number
 export const uvarintReadsBigInts: number = uvarint(left).value;
 
-// expect: 1 is incompatible with bigint
+// $FlowExpectedError[incompatible-type] 1 is incompatible with bigint
 export const putVarintTakesBigInts: mixed = putVarint(1);
 
 // --- io ---------------------------------------------------------------------
@@ -253,20 +256,20 @@ export const putVarintTakesBigInts: mixed = putVarint(1);
 const ioReader = readerFromBytes(left);
 const ioWriter = new BufferWriter();
 
-// expect: string
+// $FlowExpectedError[incompatible-type] string
 export const ioReaderNeedsBytes: mixed = readerFromBytes("not bytes");
 
-// expect: Promise
+// $FlowExpectedError[incompatible-type] Promise
 export const ioReadAllAnswersBytes: Uint8Array = readAllBytes(ioReader);
 
-// expect: "ten" is incompatible with number
+// $FlowExpectedError[incompatible-type] "ten" is incompatible with number
 export const ioLimitTakesNumber: mixed = limitReader(ioReader, "ten");
 
-// expect: Promise
+// $FlowExpectedError[incompatible-type] Promise
 export const ioCopyAnswersCount: string = copyBytes(ioWriter, readerFromBytes(left));
 
 const shortWrite = new ShortWriteError(2, 1);
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const ioShortWriteCountsAreNumbers: string = shortWrite.written;
 
 // --- bufio ------------------------------------------------------------------
@@ -274,22 +277,22 @@ export const ioShortWriteCountsAreNumbers: string = shortWrite.written;
 const bufferedReader = new BufferedReader(readerFromBytes(left));
 const scanner = new Scanner(readerFromBytes(left), { split: scanWords });
 
-// expect: Promise
+// $FlowExpectedError[incompatible-type] Promise
 export const bufioPeekIsAsync: Uint8Array = bufferedReader.peek(1);
 
 export const bufioBufferSizeIsNumeric: mixed = new BufferedReader(readerFromBytes(left), {
-  // expect: "large" is incompatible with number
+  // $FlowExpectedError[incompatible-type] "large" is incompatible with number
   bufferSize: "large",
 });
 
-// expect: string is incompatible with number
+// $FlowExpectedError[incompatible-type] string is incompatible with number
 export const bufioScannerTextIsString: number = scanner.text();
 
-// expect: Promise
+// $FlowExpectedError[incompatible-type] Promise
 export const bufioScannerScanIsAsync: boolean = scanner.scan();
 
 const tokenTooLong = new TokenTooLongError(1024);
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const bufioTokenLimitIsNumeric: string = tokenTooLong.limit;
 
 // --- textproto --------------------------------------------------------------
@@ -297,16 +300,16 @@ export const bufioTokenLimitIsNumeric: string = tokenTooLong.limit;
 const headers = parseHeaders("x-trace: one\n\n");
 const headerError = new InvalidHeaderError("bad", 2, 3);
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const textprotoKeyNeedsText: mixed = canonicalHeaderKey(1);
 
-// expect: "" is incompatible with number
+// $FlowExpectedError[incompatible-type] "" is incompatible with number
 export const textprotoGetAnswersText: number = getHeader(headers, "x-trace") ?? "";
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const textprotoSetValueNeedsText: mixed = setHeader(headers, "x-trace", 1);
 
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const textprotoErrorLineIsNumeric: string = headerError.line;
 
 // --- zip --------------------------------------------------------------------
@@ -314,18 +317,18 @@ export const textprotoErrorLineIsNumeric: string = headerError.line;
 const zipReader = new ZipReader(left);
 const zipWriter = new ZipWriter();
 
-// expect: Promise
+// $FlowExpectedError[incompatible-type] Promise
 export const zipReadIsAsync: Uint8Array = zipReader.read("file.txt");
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const zipAddPathNeedsText: mixed = zipWriter.add(1, left);
 
 export const zipAddCompressionIsChecked: mixed = zipWriter.add("file.txt", left, {
-  // expect: "brotli" is incompatible with ZipCompression
+  // $FlowExpectedError[incompatible-type] "brotli" is incompatible with ZipCompression
   compression: "brotli",
 });
 
-// expect: Promise
+// $FlowExpectedError[incompatible-type] Promise
 export const zipDeflateIsAsync: Uint8Array = zipDeflate(left);
 
 // --- tar --------------------------------------------------------------------
@@ -333,20 +336,20 @@ export const zipDeflateIsAsync: Uint8Array = zipDeflate(left);
 const tarReader = new TarReader(left);
 const tarWriter = new TarWriter();
 
-// expect: Uint8Array<ArrayBufferLike> is incompatible with string
+// $FlowExpectedError[incompatible-type] Uint8Array<ArrayBufferLike> is incompatible with string
 export const tarReadAnswersBytes: string = tarReader.read("file.txt");
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const tarAddPathNeedsText: mixed = tarWriter.add(1, left);
 
 export const tarAddKindIsChecked: mixed = tarWriter.add("file.txt", left, {
-  // expect: "symlink" is incompatible with TarEntryKind
+  // $FlowExpectedError[incompatible-type] "symlink" is incompatible with TarEntryKind
   kind: "symlink",
 });
 
 // --- slices -----------------------------------------------------------------
 
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const searchAnswersAnIndex: string = search(4, (index) => index >= 2);
 
 // The sorted array decides the element type, not `any`.
@@ -354,25 +357,25 @@ const sortedNumbers: $ReadOnlyArray<number> = [1, 3, 5];
 const compareNumbers = (left: number, right: number): number => left - right;
 const searchSortedNumbers = (target: number) => binarySearch(sortedNumbers, target, compareNumbers);
 const searchNumbers = binarySearch(sortedNumbers, 3, (left, right) => left - right);
-// expect: boolean is incompatible with number
+// $FlowExpectedError[incompatible-type] boolean is incompatible with number
 export const binarySearchFoundIsBoolean: number = searchNumbers.found;
 
-// expect: "3" is incompatible with number
+// $FlowExpectedError[incompatible-type] "3" is incompatible with number
 export const binarySearchTargetHasElementType: mixed = searchSortedNumbers("3");
 
 const searchRows = binarySearchBy([{ id: "a" }, { id: "b" }], (row) => row.id.localeCompare("b"));
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const binarySearchByIndexIsNumber: string = searchRows.index;
 
 // --- path -------------------------------------------------------------------
 
-// expect: string is incompatible with number
+// $FlowExpectedError[incompatible-type] string is incompatible with number
 export const pathJoinAnswersText: number = joinPath("app", "routes");
 
-// expect: boolean is incompatible with string
+// $FlowExpectedError[incompatible-type] boolean is incompatible with string
 export const pathAbsoluteAnswersBoolean: string = pathIsAbsolute("/app");
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const pathJoinTakesText: mixed = joinPath("app", 1);
 
 // --- glob -------------------------------------------------------------------
@@ -380,21 +383,21 @@ export const pathJoinTakesText: mixed = joinPath("app", 1);
 const javascriptFiles = glob("src/**/*.js");
 const compiledGlob: GlobPattern = javascriptFiles;
 
-// expect: boolean is incompatible with string
+// $FlowExpectedError[incompatible-type] boolean is incompatible with string
 export const globAnswersBoolean: string = javascriptFiles.match("src/index.js");
 
-// expect: 1 is incompatible with string
+// $FlowExpectedError[incompatible-type] 1 is incompatible with string
 export const globPatternNeedsText: mixed = glob(1);
 
 // --- hash -------------------------------------------------------------------
 
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const crc32AnswersANumber: string = crc32(left);
 
-// expect: bigint is incompatible with number
+// $FlowExpectedError[incompatible-type] bigint is incompatible with number
 export const fnv1a64AnswersABigInt: number = fnv1a64("hello");
 
-// expect: 1 is incompatible with
+// $FlowExpectedError[incompatible-type] 1 is incompatible with
 export const hashInputIsBytesOrText: mixed = crc32(1);
 
 // --- time -------------------------------------------------------------------
@@ -403,19 +406,19 @@ const oneSecond = seconds(1);
 const timer = new Timer(milliseconds(10));
 const ticker = new Ticker(milliseconds(10));
 
-// expect: number is incompatible with string
+// $FlowExpectedError[incompatible-type] number is incompatible with string
 export const durationMillisecondsAreNumbers: string = oneSecond.milliseconds();
 
-// expect: number
+// $FlowExpectedError[incompatible-type] number
 export const timerDelayIsDurationOrMillis: mixed = new Timer("soon");
 
-// expect: Promise
+// $FlowExpectedError[incompatible-type] Promise
 export const timerDoneIsAPromise: boolean = timer.done();
 
-// expect: number
+// $FlowExpectedError[incompatible-type] number
 export const tickerTicksCanEnd: Promise<number> = ticker.tick();
 
-// expect: number
+// $FlowExpectedError[incompatible-type] number
 export const afterDelayIsDurationOrMillis: mixed = after("soon");
 
 // --- what is *not* an error -------------------------------------------------
