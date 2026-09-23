@@ -74,8 +74,8 @@ export function createHitGrid(width: number, height: number): HitGrid {
   return {
     width,
     height,
-    nodes: new Array(size).fill(null),
-    text: new Array(size).fill(null),
+    nodes: new Array<TuiNode | null>(size).fill(null),
+    text: new Array<TuiNode | null>(size).fill(null),
   };
 }
 

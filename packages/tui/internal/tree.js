@@ -34,7 +34,18 @@
 // treats them as the same thing, so this does too. The direct prop wins when
 // both are present, which is the rule a reader guesses.
 
-import type { LayoutStyle, ScrollIndex } from "../layout.js";
+import type {
+  AlignContent,
+  AlignItems,
+  AlignSelf,
+  FlexDirection,
+  FlexWrap,
+  JustifyContent,
+  LayoutStyle,
+  Overflow,
+  Position,
+  ScrollIndex,
+} from "../layout.js";
 import type { Color, Style } from "../cells.js";
 import { Attributes, INHERIT, PLAIN, parseColor } from "../cells.js";
 import type { BorderStyle } from "../capability.js";
@@ -163,6 +174,73 @@ export function borderOf(props: TuiProps): BorderStyle | null {
   return prop(props, "border") === true ? "single" : null;
 }
 
+/** The style keys whose value is a cell count or a percentage. */
+const DIMENSION_KEYS = [
+  "width",
+  "height",
+  "minWidth",
+  "minHeight",
+  "maxWidth",
+  "maxHeight",
+  "flexBasis",
+  "top",
+  "right",
+  "bottom",
+  "left",
+] as const;
+
+/** The style keys whose value is a plain number. */
+const NUMBER_KEYS = [
+  "flexGrow",
+  "flexShrink",
+  "padding",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "gap",
+  "rowGap",
+  "columnGap",
+  "scrollTop",
+] as const;
+
+/** The style keys whose value is a margin: cells, or `"auto"`. */
+const MARGIN_KEYS = ["margin", "marginTop", "marginRight", "marginBottom", "marginLeft"] as const;
+
+const FLEX_DIRECTIONS: $ReadOnlyArray<FlexDirection> = [
+  "row",
+  "row-reverse",
+  "column",
+  "column-reverse",
+];
+const JUSTIFY_CONTENTS: $ReadOnlyArray<JustifyContent> = [
+  "flex-start",
+  "center",
+  "flex-end",
+  "space-between",
+  "space-around",
+  "space-evenly",
+];
+const ALIGN_ITEMS: $ReadOnlyArray<AlignItems> = ["flex-start", "center", "flex-end", "stretch"];
+const ALIGN_SELVES: $ReadOnlyArray<AlignSelf> = ["auto", ...ALIGN_ITEMS];
+const OVERFLOWS: $ReadOnlyArray<Overflow> = ["visible", "hidden", "scroll"];
+const POSITIONS: $ReadOnlyArray<Position> = ["relative", "absolute"];
+const FLEX_WRAPS: $ReadOnlyArray<FlexWrap> = ["no-wrap", "wrap", "wrap-reverse"];
+const ALIGN_CONTENTS: $ReadOnlyArray<AlignContent> = [
+  "flex-start",
+  "center",
+  "flex-end",
+  "stretch",
+  "space-between",
+  "space-around",
+  "space-evenly",
+];
+
+/** `value` when it is one of `words`, and `undefined` for anything else. */
+function oneOf<T>(value: mixed, words: $ReadOnlyArray<T>): T | void {
+  return words.find((word) => word === value);
+}
+
 /**
  * The layout style a node's props describe.
  *
@@ -172,57 +250,62 @@ export function borderOf(props: TuiProps): BorderStyle | null {
  * two places and make them disagree the first time one of them changed.
  */
 export function styleFromProps(props: TuiProps): LayoutStyle {
-  const style: { [string]: mixed } = {};
-  const copy = (name: string, read: (mixed) => mixed) => {
-    const value = read(prop(props, name));
+  // Writable while it is being built, and the same keys and value types as the
+  // `LayoutStyle` it is returned as.
+  const style: { [K in $Keys<LayoutStyle>]?: LayoutStyle[K] } = {};
+  for (const name of DIMENSION_KEYS) {
+    const value = asDimension(prop(props, name));
     if (value !== undefined) {
       style[name] = value;
     }
-  };
-  for (const name of [
-    "width",
-    "height",
-    "minWidth",
-    "minHeight",
-    "maxWidth",
-    "maxHeight",
-    "flexBasis",
-    "top",
-    "right",
-    "bottom",
-    "left",
-  ]) {
-    copy(name, asDimension);
   }
-  for (const name of [
-    "flexGrow",
-    "flexShrink",
-    "padding",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft",
-    "gap",
-    "rowGap",
-    "columnGap",
-    "scrollTop",
-  ]) {
-    copy(name, asNumber);
+  for (const name of NUMBER_KEYS) {
+    const value = asNumber(prop(props, name));
+    if (value !== undefined) {
+      style[name] = value;
+    }
   }
-  for (const name of ["margin", "marginTop", "marginRight", "marginBottom", "marginLeft"]) {
-    copy(name, asMargin);
+  for (const name of MARGIN_KEYS) {
+    const value = asMargin(prop(props, name));
+    if (value !== undefined) {
+      style[name] = value;
+    }
   }
-  for (const name of [
-    "flexDirection",
-    "justifyContent",
-    "alignItems",
-    "alignSelf",
-    "overflow",
-    "position",
-    "flexWrap",
-    "alignContent",
-  ]) {
-    copy(name, asString);
+
+  // The keyword props, each read against the words `layout.js` knows. A word
+  // it does not know is left unset, so layout's default applies — which is
+  // what a misspelt keyword already did there, now said here instead.
+  const flexDirection = oneOf(prop(props, "flexDirection"), FLEX_DIRECTIONS);
+  if (flexDirection !== undefined) {
+    style.flexDirection = flexDirection;
+  }
+  const justifyContent = oneOf(prop(props, "justifyContent"), JUSTIFY_CONTENTS);
+  if (justifyContent !== undefined) {
+    style.justifyContent = justifyContent;
+  }
+  const alignItems = oneOf(prop(props, "alignItems"), ALIGN_ITEMS);
+  if (alignItems !== undefined) {
+    style.alignItems = alignItems;
+  }
+  const alignSelf = oneOf(prop(props, "alignSelf"), ALIGN_SELVES);
+  if (alignSelf !== undefined) {
+    style.alignSelf = alignSelf;
+  }
+  const overflow = oneOf(prop(props, "overflow"), OVERFLOWS);
+  if (overflow !== undefined) {
+    style.overflow = overflow;
+  }
+  const position = oneOf(prop(props, "position"), POSITIONS);
+  if (position !== undefined) {
+    style.position = position;
+  }
+  const flexWrap = oneOf(prop(props, "flexWrap"), FLEX_WRAPS);
+  if (flexWrap !== undefined) {
+    style.flexWrap = flexWrap;
+  }
+  const alignContent = oneOf(prop(props, "alignContent"), ALIGN_CONTENTS);
+  if (alignContent !== undefined) {
+    style.alignContent = alignContent;
   }
 
   // `paddingX` and `paddingY`, which OpenTUI documents and which are the two

@@ -42,17 +42,20 @@ export type ColorChoice = "auto" | "always" | "never";
 
 /** The environment variables that influence terminal rendering. */
 export type TerminalEnv = {
-  readonly NO_COLOR?: string,
-  readonly FORCE_COLOR?: string,
-  readonly CLICOLOR?: string,
-  readonly CLICOLOR_FORCE?: string,
-  readonly TERM?: string,
-  readonly COLORTERM?: string,
-  readonly COLUMNS?: string,
-  readonly LINES?: string,
-  readonly LC_ALL?: string,
-  readonly LC_CTYPE?: string,
-  readonly LANG?: string,
+  readonly NO_COLOR?: string | void,
+  readonly FORCE_COLOR?: string | void,
+  readonly CLICOLOR?: string | void,
+  readonly CLICOLOR_FORCE?: string | void,
+  readonly TERM?: string | void,
+  readonly COLORTERM?: string | void,
+  readonly COLUMNS?: string | void,
+  readonly LINES?: string | void,
+  readonly LC_ALL?: string | void,
+  readonly LC_CTYPE?: string | void,
+  readonly LANG?: string | void,
+  // `process.env` names every variable the process has, and this type
+  // only the ones rendering reads.
+  ...
 };
 
 /** The resolved rendering capability of one stream. */
