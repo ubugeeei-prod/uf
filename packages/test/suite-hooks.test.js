@@ -14,7 +14,13 @@
 // other way.
 
 import { afterAll, beforeAll, describe, expect, it } from "@uniflowed/test";
-import { it as registerCase, reset } from "./internal/registry.js";
+import {
+  beforeAll as registerBeforeAll,
+  beforeEach as registerBeforeEach,
+  describe as registerSuite,
+  it as registerCase,
+  reset,
+} from "./internal/registry.js";
 import { type Result, run as runRegistered } from "./internal/run.js";
 
 const order: Array<string> = [];
@@ -83,5 +89,109 @@ describe("a reasoned skip without a body", () => {
       reason: "explicit",
       message: "Deno cannot exercise Node hooks",
     });
+  });
+});
+
+describe("a beforeAll that fails", () => {
+  it("fails every case it was setting up for, and runs none of their bodies", async () => {
+    // The first case used to take the hook's error and every case after it
+    // ran anyway, against a setup that never happened — so a slow machine's
+    // one timed-out hook read as three unrelated failures, two of them
+    // assertions on empty fixtures.
+    const results: Array<Result> = [];
+    const ran: Array<string> = [];
+    reset();
+    registerSuite("needs a server", () => {
+      registerBeforeAll(() => {
+        throw new Error("could not start the server");
+      });
+      registerCase("first", () => {
+        ran.push("first");
+      });
+      registerCase("second", () => {
+        ran.push("second");
+      });
+      registerSuite("nested", () => {
+        registerCase("third", () => {
+          ran.push("third");
+        });
+      });
+    });
+
+    await runRegistered({ file: "virtual.test.js" }, (result) => {
+      results.push(result);
+    });
+
+    expect(ran).toEqual([]);
+    expect(results.map((result) => result.name)).toEqual([
+      "needs a server > first",
+      "needs a server > second",
+      "needs a server > nested > third",
+    ]);
+    for (const { outcome } of results) {
+      expect(outcome.status).toBe("failed");
+      expect(outcome.status === "failed" ? outcome.message : "").toContain(
+        "could not start the server",
+      );
+    }
+  });
+
+  it("runs once, however many cases it fails", async () => {
+    let calls = 0;
+    reset();
+    registerBeforeAll(() => {
+      calls += 1;
+      throw new Error("no");
+    });
+    registerCase("a", () => {});
+    registerCase("b", () => {});
+
+    await runRegistered({ file: "virtual.test.js" }, () => {});
+
+    expect(calls).toBe(1);
+  });
+});
+
+describe("a hook's own timeout", () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const outcomes = async (register: () => void, timeoutMs: number): Promise<Array<string>> => {
+    const results: Array<Result> = [];
+    reset();
+    register();
+    await runRegistered({ file: "virtual.test.js", timeoutMs }, (result) => {
+      results.push(result);
+    });
+    return results.map((result) => String(result.outcome.status));
+  };
+
+  it("lets a slow setup finish where the cases' budget would not", async () => {
+    // `{ timeout }`, the way `it` spells it, and a bare number, the way Jest
+    // and Vitest do.
+    expect(
+      await outcomes(() => {
+        registerBeforeAll(() => sleep(60), { timeout: 5000 });
+        registerBeforeEach(() => sleep(60), 5000);
+        registerCase("fast", () => {});
+      }, 20),
+    ).toEqual(["passed"]);
+  });
+
+  it("holds a hook to its own budget rather than the file's", async () => {
+    expect(
+      await outcomes(() => {
+        registerBeforeAll(() => sleep(200), { timeout: 10 });
+        registerCase("fast", () => {});
+      }, 5000),
+    ).toEqual(["failed"]);
+  });
+
+  it("falls back to the case's budget when it names none", async () => {
+    expect(
+      await outcomes(() => {
+        registerBeforeEach(() => sleep(200));
+        registerCase("fast", () => {}, { timeout: 10 });
+      }, 5000),
+    ).toEqual(["failed"]);
   });
 });

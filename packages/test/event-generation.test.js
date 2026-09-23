@@ -235,16 +235,22 @@ function fixtures(): Array<string> {
 let events: Array<Event> = [];
 let unnumbered: Array<Event> = [];
 
-beforeAll(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-event-generation-"));
-  const [first, second] = fixtures();
-  events = await runInWorker([
-    { file: first, timeoutMs: 5000, generation: 1 },
-    { file: second, timeoutMs: 5000, generation: 2 },
-  ]);
-  // The same first file again, from a `uf` that does not know about the field.
-  unnumbered = await runInWorker([{ file: first, timeoutMs: 5000 }]);
-});
+// Two cold workers, each loading `@uniflowed/test` through the Flow loader
+// before it can answer: seconds on a busy machine, which the cases' default
+// budget was never meant to cover. See ubugeeei-prod/uf#1423.
+beforeAll(
+  async () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-event-generation-"));
+    const [first, second] = fixtures();
+    events = await runInWorker([
+      { file: first, timeoutMs: 5000, generation: 1 },
+      { file: second, timeoutMs: 5000, generation: 2 },
+    ]);
+    // The same first file again, from a `uf` that does not know about the field.
+    unnumbered = await runInWorker([{ file: first, timeoutMs: 5000 }]);
+  },
+  { timeout: 60_000 },
+);
 
 afterAll(() => {
   fs.rmSync(directory, { recursive: true, force: true });

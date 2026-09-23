@@ -13,7 +13,14 @@ import * as output from "./output.js";
 import * as snapshot from "./snapshot.js";
 import { AssertionError } from "./expect.js";
 import { type Site, firstUserSite, siteInFile, userFrames } from "./frames.js";
-import { type BenchOptions, type Body, type Case, type Suite, collected } from "./registry.js";
+import {
+  type BenchOptions,
+  type Body,
+  type Case,
+  type Hook,
+  type Suite,
+  collected,
+} from "./registry.js";
 
 /** How one case ended. */
 export type Outcome =
@@ -186,8 +193,8 @@ function failure(thrown: mixed, file: string | null): Outcome {
 /** Everything one case needs from the suites above it. */
 type Context = {|
   readonly path: $ReadOnlyArray<string>,
-  readonly beforeEach: $ReadOnlyArray<Body>,
-  readonly afterEach: $ReadOnlyArray<Body>,
+  readonly beforeEach: $ReadOnlyArray<Hook>,
+  readonly afterEach: $ReadOnlyArray<Hook>,
   readonly skipped: boolean,
   readonly onlyPath: boolean,
 |};
@@ -268,7 +275,7 @@ async function runCase(
   await output.runInTest(name, async () => {
     try {
       for (const hook of context.beforeEach) {
-        await withTimeout(hook, timeoutMs);
+        await withTimeout(hook.body, hook.timeoutMs ?? timeoutMs);
       }
       if (benchmark) {
         samples = await measure(body, test.bench, timeoutMs);
@@ -282,7 +289,7 @@ async function runCase(
     // when the body had not already failed.
     for (const hook of context.afterEach) {
       try {
-        await withTimeout(hook, timeoutMs);
+        await withTimeout(hook.body, hook.timeoutMs ?? timeoutMs);
       } catch (thrown) {
         if (outcome.status === "passed") {
           outcome = failure(thrown, options.file ?? null);
@@ -396,16 +403,25 @@ async function runSuite(
   // every `beforeAll` in an ordinary file — one where the tests live inside a
   // `describe` — never running at all, silently. The chain is walked outermost
   // first, so an inner suite's setup sees what the outer one did.
+  //
+  // Once, and remembered either way. The outcome is kept rather than a "done"
+  // flag, because a flag raised before the hooks ran let every case after the
+  // first go ahead when setup had failed: the first case reported the hook's
+  // error and the rest ran against a fixture that was never made, failing — or
+  // worse, passing — for reasons that had nothing to do with them.
   let setUp = false;
-  const setUpOnce = async () => {
-    if (setUp) {
-      return;
+  let setup: Promise<void> | null = null;
+  const setUpOnce = (): Promise<void> => {
+    if (setup == null) {
+      setUp = true;
+      setup = (async () => {
+        await setUpAncestors();
+        for (const hook of node.beforeAll) {
+          await withTimeout(hook.body, hook.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+        }
+      })();
     }
-    await setUpAncestors();
-    setUp = true;
-    for (const hook of node.beforeAll) {
-      await withTimeout(hook, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-    }
+    return setup;
   };
 
   let passed = true;
@@ -455,7 +471,7 @@ async function runSuite(
   if (setUp) {
     for (const hook of node.afterAll) {
       try {
-        await withTimeout(hook, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+        await withTimeout(hook.body, hook.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
       } catch {
         // A teardown failure cannot fail a test that already reported, and
         // there is nothing left to attach it to; the file's own status carries
