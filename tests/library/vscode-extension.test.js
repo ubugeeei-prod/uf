@@ -20,6 +20,7 @@
 // covered by `lsp.test.js`, which drives the real server. The first two need a
 // person with VS Code open; `editors/vscode/README.md` says so.
 
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "@uniflowed/test";
@@ -30,6 +31,18 @@ const binary = loadCjs("../../editors/vscode/src/binary.js");
 const client = loadCjs("../../editors/vscode/src/client.js");
 const project = loadCjs("../../editors/vscode/src/project.js");
 const release = loadCjs("../../editors/vscode/release/version.js");
+const version = loadCjs("../../editors/vscode/src/version.js");
+const status = loadCjs("../../editors/vscode/src/status.js");
+const workspace = loadCjs("../../editors/vscode/src/workspace.js");
+
+const EXTENSION = path.join(
+  path.dirname(new URL(import.meta.url).pathname),
+  "..",
+  "..",
+  "editors",
+  "vscode",
+);
+const manifest = JSON.parse(fs.readFileSync(path.join(EXTENSION, "package.json"), "utf8"));
 
 const FOLDER: string = path.join("/home", "dev", "app");
 
@@ -327,6 +340,268 @@ describe("the version the registries are sent", () => {
   it("refuses a version it cannot place rather than guessing", () => {
     for (const uf of ["0.0.0-nightly.1", "0.0.0-alpha.1000", "0.0.0-alpha", "v1.0.0", ""]) {
       expect(() => published(uf)).toThrow("has no extension version");
+    }
+  });
+});
+
+describe("the version a server reports", () => {
+  it("accepts the oldest supported release and anything newer", () => {
+    expect(version.checkVersion(version.MINIMUM_UF).kind).toBe("supported");
+    expect(version.checkVersion("0.2.0").kind).toBe("supported");
+    expect(version.checkVersion("1.0.0-rc.1").kind).toBe("supported");
+  });
+
+  it("calls a release before the minimum old, and says what to do", () => {
+    const check = version.checkVersion("0.0.0-alpha.47");
+    expect(check.kind).toBe("old");
+    expect(check.message).toContain("0.0.0-alpha.47");
+    expect(check.message).toContain(version.MINIMUM_UF);
+    expect(check.message).toContain("uf self-update");
+    // A prerelease of the minimum is older than the minimum.
+    expect(version.checkVersion(`${version.MINIMUM_UF}-rc.1`).kind).toBe("old");
+  });
+
+  it("does not nag about a version it cannot read", () => {
+    // A local build reporting something odd is more likely new than old.
+    expect(version.checkVersion(undefined)).toEqual({ kind: "unknown", version: null });
+    expect(version.checkVersion("dev").kind).toBe("unknown");
+  });
+
+  it("orders prereleases the way semver does", () => {
+    const order = [
+      "0.1.0-alpha.2",
+      "0.1.0-alpha.10",
+      "0.1.0-beta.1",
+      "0.1.0-rc.1",
+      "0.1.0",
+      "0.1.1",
+      "0.10.0",
+    ];
+    for (let index = 1; index < order.length; index++) {
+      const older = version.parseVersion(order[index - 1]);
+      const newer = version.parseVersion(order[index]);
+      expect(
+        `${order[index - 1]} < ${order[index]}: ${String(version.compareVersions(older, newer) < 0)}`,
+      ).toBe(`${order[index - 1]} < ${order[index]}: true`);
+    }
+  });
+});
+
+describe("the status bar", () => {
+  it("is hidden in a window with no uf project", () => {
+    expect(status.statusView([])).toBe(null);
+  });
+
+  it("shows the version of a running server", () => {
+    const view = status.statusView([
+      { kind: "running", folder: "app", version: "0.2.0", old: false },
+    ]);
+    expect(view?.text).toBe("$(check) uf 0.2.0");
+    expect(view?.severity).toBe("ok");
+    expect(view?.tooltip).toContain("app: uf 0.2.0");
+  });
+
+  it("shows the worst folder, and lists every one", () => {
+    const view = status.statusView([
+      { kind: "running", folder: "web", version: "0.2.0", old: false },
+      { kind: "missing", folder: "api" },
+    ]);
+    expect(view?.text).toBe("$(error) uf: not found");
+    expect(view?.severity).toBe("error");
+    expect(view?.tooltip).toContain("web: uf 0.2.0");
+    expect(view?.tooltip).toContain("api: no uf binary found");
+  });
+
+  it("warns about an old server and spins while starting", () => {
+    expect(
+      status.statusView([{ kind: "running", folder: "app", version: "0.0.9", old: true }])
+        ?.severity,
+    ).toBe("warning");
+    expect(status.statusView([{ kind: "starting", folder: "app" }])?.text).toBe("$(sync~spin) uf");
+    expect(
+      status.statusView([{ kind: "stopped", folder: "app", reason: "spawn EACCES" }])?.tooltip,
+    ).toContain("spawn EACCES");
+  });
+});
+
+describe("the settings a uf project gets", () => {
+  const validation = workspace.AUTOMATIC[0];
+  // What VS Code's inspect() says about a registered setting nobody set.
+  const unset = { defaultValue: true };
+
+  it("only turns off JavaScript validation on its own, never TypeScript's", () => {
+    // Both names: 1.110 reads `js/ts.validate.enabled` first, and the old
+    // name only while the new one has no value anywhere. Scoped to
+    // [javascript], the id VS Code reads it under for .jsx as well.
+    expect(workspace.AUTOMATIC.map(workspace.describeSetting)).toEqual([
+      '"javascript.validate.enable": false',
+      '"[javascript]": { "js/ts.validate.enabled": false }',
+    ]);
+    for (const setting of workspace.RECOMMENDED) {
+      expect(setting.key.startsWith("typescript.")).toBe(false);
+      expect(setting.language === "typescript" || setting.language === "typescriptreact").toBe(
+        false,
+      );
+    }
+  });
+
+  it("writes a setting the project has not set", () => {
+    expect(workspace.planSetting(validation, unset).kind).toBe("write");
+    // The user's own setting is theirs for every project; this one still gets its own.
+    expect(workspace.planSetting(validation, { ...unset, globalValue: true }).kind).toBe("write");
+  });
+
+  it("does not write a key this VS Code does not have", () => {
+    // Cursor and VS Code before 1.110 have no `js/ts.validate.enabled`, and
+    // VS Code refuses to write a setting nothing registered.
+    const unified = workspace.AUTOMATIC[1];
+    const step = workspace.planSetting(unified, {});
+    expect(step.kind).toBe("unsupported");
+    expect(workspace.describePlan([step])[0]).toContain("does not have that setting");
+  });
+
+  it("never changes a value the project set, either way", () => {
+    expect(workspace.planSetting(validation, { ...unset, workspaceValue: true })).toEqual({
+      kind: "kept",
+      setting: validation,
+      current: true,
+    });
+    expect(workspace.planSetting(validation, { ...unset, workspaceFolderValue: false }).kind).toBe(
+      "already",
+    );
+  });
+
+  it("reads a language-scoped setting at its language's level", () => {
+    const formatter = workspace.RECOMMENDED.find(
+      (setting) => setting.language === "javascript" && setting.key === "editor.defaultFormatter",
+    );
+    expect(formatter?.value).toBe(workspace.EXTENSION_ID);
+    if (formatter == null) {
+      return;
+    }
+    // `editor.defaultFormatter` is registered with a default of null.
+    const registered = { defaultValue: null };
+    // A top-level `editor.defaultFormatter` is not a JavaScript one.
+    expect(
+      workspace.planSetting(formatter, { ...registered, workspaceValue: "other.formatter" }).kind,
+    ).toBe("write");
+    expect(
+      workspace.planSetting(formatter, { ...registered, workspaceLanguageValue: "other.formatter" })
+        .kind,
+    ).toBe("kept");
+    expect(workspace.describeSetting(formatter)).toBe(
+      `"[javascript]": { "editor.defaultFormatter": "${workspace.EXTENSION_ID}" }`,
+    );
+  });
+
+  it("names itself by the id package.json publishes", () => {
+    expect(workspace.EXTENSION_ID).toBe(`${manifest.publisher}.${manifest.name}`);
+  });
+
+  it("says what it wrote and what it kept", () => {
+    const steps = workspace.plan(workspace.RECOMMENDED, (setting) =>
+      setting.language === "javascriptreact"
+        ? { defaultValue: null, workspaceLanguageValue: "esbenp.prettier-vscode" }
+        : { defaultValue: setting.key === "editor.defaultFormatter" ? null : true },
+    );
+    const lines = workspace.describePlan(steps);
+    expect(lines[0]).toContain('+ "javascript.validate.enable": false');
+    expect(lines[1]).toContain('+ "[javascript]": { "js/ts.validate.enabled": false }');
+    expect(lines[3]).toContain("esbenp.prettier-vscode");
+    expect(lines[3]).toContain("kept");
+  });
+});
+
+describe("the Flow grammar injected into JavaScript", () => {
+  const grammar = JSON.parse(
+    fs.readFileSync(path.join(EXTENSION, "syntaxes", "flow.injection.json"), "utf8"),
+  );
+  // TextMate grammars are Oniguruma; every pattern here is also valid
+  // JavaScript, which is what lets them be tested without an editor.
+  const pattern = (name: string) => new RegExp(grammar.repository[name].match, "g");
+  const matches = (name: string, source: string): Array<string> =>
+    Array.from(source.matchAll(pattern(name)), (match) => match[1]);
+
+  it("is contributed to the grammars VS Code uses for .js and .jsx", () => {
+    const contributed = manifest.contributes.grammars.find(
+      (entry) => entry.scopeName === grammar.scopeName,
+    );
+    expect(contributed?.injectTo).toEqual(["source.js", "source.js.jsx"]);
+    expect(fs.existsSync(path.join(EXTENSION, contributed?.path ?? ""))).toBe(true);
+    for (const include of grammar.patterns) {
+      expect(grammar.repository[include.include.slice(1)] != null).toBe(true);
+    }
+  });
+
+  it("marks component and hook declarations", () => {
+    expect(
+      matches("component-declaration", "export default component Button(label: string) {"),
+    ).toEqual(["component"]);
+    expect(matches("component-declaration", "declare component Icon<T>(name: T);")).toEqual([
+      "component",
+    ]);
+    expect(matches("hook-declaration", "export hook useCounter(start: number) {")).toEqual([
+      "hook",
+    ]);
+  });
+
+  it("marks renders after a signature or a colon", () => {
+    expect(matches("renders", "component List() renders* Item {")).toEqual(["renders*"]);
+    expect(matches("renders", "type Slot = { child: renders? Item };")).toEqual(["renders?"]);
+  });
+
+  it("marks a match expression, not a match call", () => {
+    expect(matches("match", "const label = match (status) {")).toEqual(["match"]);
+    expect(matches("match", "const found = text.match(/a/); match(x);")).toEqual([]);
+  });
+
+  it("leaves ordinary JavaScript alone", () => {
+    const plain = [
+      "const component = load(); component.render();",
+      "function hook(fn) { return fn; } hook(useless);",
+      "const renders = 3; const o = { renders, count: renders };",
+      "const opaque = true;",
+    ].join("\n");
+    for (const name of Object.keys(grammar.repository)) {
+      expect(`${name}: ${JSON.stringify(matches(name, plain))}`).toBe(`${name}: []`);
+    }
+  });
+});
+
+describe("the manifest", () => {
+  const source = fs.readFileSync(path.join(EXTENSION, "src", "extension.js"), "utf8");
+
+  it("registers every command it contributes", () => {
+    for (const command of manifest.contributes.commands) {
+      expect(
+        `${command.command}: ${String(source.includes(`registerCommand("${command.command}"`))}`,
+      ).toBe(`${command.command}: true`);
+    }
+  });
+
+  it("describes every setting it contributes", () => {
+    for (const [key, setting] of Object.entries(manifest.contributes.configuration.properties)) {
+      const described =
+        typeof setting.description === "string" || typeof setting.markdownDescription === "string";
+      expect(`${key}: ${String(described)}`).toBe(`${key}: true`);
+    }
+  });
+
+  it("contributes every uf setting the extension reads", () => {
+    const read = new Set<string>();
+    for (const file of fs.readdirSync(path.join(EXTENSION, "src"))) {
+      const text = fs.readFileSync(path.join(EXTENSION, "src", file), "utf8");
+      for (const match of text.matchAll(
+        /(?:\bget|\baffectsConfiguration)\("((?:uf\.)?[a-zA-Z.]+)"\)/g,
+      )) {
+        read.add(match[1].startsWith("uf.") ? match[1] : `uf.${match[1]}`);
+      }
+    }
+    expect(read.size >= 3).toBe(true);
+    for (const key of read) {
+      expect(`${key}: ${String(key in manifest.contributes.configuration.properties)}`).toBe(
+        `${key}: true`,
+      );
     }
   });
 });

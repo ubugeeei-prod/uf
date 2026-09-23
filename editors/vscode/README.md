@@ -126,6 +126,7 @@ them by, so the server does not advertise `source.organizeImports`.
 | `uf.server.path` | `""` | The `uf` binary. Absolute or relative to the workspace folder; `${workspaceFolder}` and a leading `~` are expanded. Empty means: search. |
 | `uf.formatOnSave` | `false` | Format Flow files with the server's formatter on save. |
 | `uf.trace.server` | `"off"` | `messages` or `verbose` logs the JSON-RPC traffic to the uf output channel. |
+| `uf.workspace.disableBuiltinValidation` | `true` | In a uf project, turn off VS Code's built-in JavaScript validation for that folder, once. See below. |
 
 `uf.formatOnSave` is off because an extension that reformats a file the moment
 it is installed is an extension people uninstall. The other route is VS Code's
@@ -139,6 +140,61 @@ JavaScript.
   build of your own, needs this and not a window reload.
 * **uf: Show Language Server Log** — the output channel, which lists every path
   that was searched for the binary.
+* **uf: Configure Workspace for Flow** — writes the per-project settings below
+  to the folder's `.vscode/settings.json`, after listing them: the two
+  validation switches and uf as the default formatter for `javascript` and
+  `javascriptreact`. A value the project already set is kept and reported.
+  `uf editor setup vscode` writes the same file from a terminal.
+* **uf: Show Status and Commands** — the menu behind the status bar item.
+
+## The status bar
+
+One item, on the right, while the window has a uf project: `✓ uf 0.2.0` with the
+version the server reported in `initialize`, a spinner while it starts, a
+warning when that version is older than the extension supports (0.1.0), and an
+error when the server stopped or no binary was found. With several uf folders it
+shows the worst of them and lists each in its tooltip. Clicking it opens the
+commands above.
+
+An old `uf` still starts: lint findings and formatting from it are better than
+none. The extension says so once, with the version it found and what to do.
+
+## VS Code's own JavaScript service, in a uf project
+
+VS Code runs TypeScript's language service over JavaScript, so a Flow file gets
+TypeScript's errors — `component`, `hook`, `match`, `renders`, every type
+annotation — under uf's findings for the same lines. In a folder with
+`uf.config.js`, the extension turns that off **for that folder** when its server
+first starts, by writing to its `.vscode/settings.json`:
+
+```jsonc
+"javascript.validate.enable": false,
+"[javascript]": { "js/ts.validate.enabled": false }
+```
+
+Two names for one switch: VS Code 1.110 renamed it, and reads the old name only
+while the new one is set nowhere. `"[javascript]"` also covers `.jsx`, because
+that is the language id VS Code reads it under. A VS Code without the new name
+(before 1.110, and Cursor) gets only the old one. It turns off diagnostics only;
+hover, go to definition and suggestions from VS Code's service remain beside
+uf's, since no setting turns those off short of disabling the built-in
+"TypeScript and JavaScript Language Features" extension for the workspace.
+
+It never writes over a value the project set, either way; it writes once per
+folder, so deleting the lines is respected; it never touches `typescript.*` or
+`.ts` files; and the notification it shows has an **Undo**.
+`"uf.workspace.disableBuiltinValidation": false` turns it off.
+
+## Flow syntax highlighting
+
+VS Code's JavaScript grammar does not know Flow's component syntax, so
+`syntaxes/flow.injection.json` is injected into it (and into the JSX grammar)
+and scopes `component` and `hook` declarations with their names, `renders`,
+`renders?` and `renders*` after a signature or a colon, `match (…) {`, and
+`opaque type`. Each pattern is narrow enough to leave ordinary JavaScript
+alone — `text.match(re)`, a variable called `renders` — and the tests hold both
+directions. The rest of the line is still the JavaScript grammar's, so
+parameters of a `component` are coloured as a call's arguments would be.
 
 ## Finding the binary
 
@@ -200,17 +256,35 @@ TypeScript was not used and is not needed here.
 src/binary.js      finding `uf`: the setting, node_modules/.bin, PATH
 src/project.js     what counts as a uf project, and which files it claims
 src/client.js      the process to start, and reading the settings
+src/version.js     whether the uf the server reported is new enough
+src/status.js      what the status bar item says for each server state
+src/workspace.js   the settings a uf project gets, and which to write
 src/extension.js   the glue: VS Code and vscode-languageclient
+syntaxes/          the Flow injection grammar
 release/version.js the version a uf release is published as; not packaged
 ```
 
-The first three are pure and have no `require("vscode")` in them, which is what
-lets them be tested without an editor host.
+Everything but `extension.js` is pure and has no `require("vscode")` in it,
+which is what lets it be tested without an editor host. `extension.js` itself is
+tested by `tests/library/vscode-extension-host.test.js` against a stand-in for
+the `vscode` and `vscode-languageclient` modules: activation starts `uf lsp` in
+the project folder, the status bar shows the reported version, an old `uf` is
+called old once, the validation settings are written once and only where the
+project set nothing, and every contributed command is registered.
 
 ## What no test here covers
 
 An extension host cannot be started in this repository's CI, so these need a
 person with VS Code open:
+
+* that VS Code honours the folder-level validation settings the extension
+  writes (the setting names and scopes are from VS Code's own
+  `typescript-language-features` source, as of 1.110),
+* that the status bar item looks right in each state,
+* that the injection grammar colours a file in a real editor — it was checked
+  by hand with `vscode-textmate` against the JavaScript grammars VS Code ships,
+  which scope `component`, `hook`, `renders*` and `match` as above and add
+  nothing to the extension's own sources,
 
 * that VS Code registers the providers from the server's capabilities,
 * that the suggest widget shows `uf.config.js` completions as you type, and

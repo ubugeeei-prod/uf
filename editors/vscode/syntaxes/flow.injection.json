@@ -1,0 +1,46 @@
+{
+  "$comment": "Flow's component syntax, injected into VS Code's JavaScript grammars. Keywords only: the surrounding code is still scoped by the JavaScript grammar. Each pattern is narrow enough to leave ordinary JavaScript alone (a `match(` call, a variable named `renders`); tests/library/vscode-extension.test.js holds both directions.",
+  "scopeName": "source.flow.injection.uf",
+  "injectionSelector": "L:source.js -comment -string, L:source.js.jsx -comment -string",
+  "patterns": [
+    { "include": "#component-declaration" },
+    { "include": "#hook-declaration" },
+    { "include": "#renders" },
+    { "include": "#match" },
+    { "include": "#opaque" }
+  ],
+  "repository": {
+    "component-declaration": {
+      "match": "(?<![\\w$.])(component)\\s+([A-Za-z_$][\\w$]*)(?=\\s*[<(])",
+      "captures": {
+        "1": { "name": "storage.type.component.flow" },
+        "2": { "name": "entity.name.function.component.flow" }
+      }
+    },
+    "hook-declaration": {
+      "match": "(?<![\\w$.])(hook)\\s+(use[\\w$]*)(?=\\s*[<(])",
+      "captures": {
+        "1": { "name": "storage.type.hook.flow" },
+        "2": { "name": "entity.name.function.hook.flow" }
+      }
+    },
+    "renders": {
+      "match": "(?<=\\)|\\) |:|: )(renders[?*]?)(?=\\s+[A-Za-z_$(])",
+      "captures": {
+        "1": { "name": "keyword.other.renders.flow" }
+      }
+    },
+    "match": {
+      "match": "(?<![\\w$.])(match)(?=\\s*\\([^()]*\\)\\s*\\{)",
+      "captures": {
+        "1": { "name": "keyword.control.match.flow" }
+      }
+    },
+    "opaque": {
+      "match": "(?<![\\w$.])(opaque)(?=\\s+type\\b)",
+      "captures": {
+        "1": { "name": "storage.modifier.opaque.flow" }
+      }
+    }
+  }
+}
