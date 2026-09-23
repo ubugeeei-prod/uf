@@ -26,7 +26,7 @@ export type { ModuleFactory, ModuleNamespace } from "./internal/modules.js";
 export type { Uft } from "./internal/namespace.js";
 export type { Outcome, Result, RunOptions } from "./internal/run.js";
 export type { Site } from "./internal/frames.js";
-export type { SpyCall, SpyResult } from "./internal/spy.js";
+export type { SpyCall, SpyResult, SpySettledResult } from "./internal/spy.js";
 export type { Strictness } from "./internal/equality.js";
 
 export {

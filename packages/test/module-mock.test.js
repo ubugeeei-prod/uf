@@ -256,7 +256,7 @@ describe("the automatic form", () => {
     const shapes = await import("../../tests/library/fixtures/module-mock/shapes.js");
 
     expect(shapes.greet("uf")).toBe(undefined);
-    expect((shapes.greet as $FlowFixMe).mock.calls[0].args).toEqual(["uf"]);
+    expect((shapes.greet as $FlowFixMe).mock.calls[0]).toEqual(["uf"]);
   });
 
   it("empties an array and keeps a primitive", async () => {

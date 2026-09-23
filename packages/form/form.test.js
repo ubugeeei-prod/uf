@@ -670,7 +670,7 @@ describe("handleSubmit", () => {
     // Asserted through `objectContaining` rather than read off a cast: a spy
     // hands its arguments back as `mixed`, and `expect.any`-style matchers are
     // how this suite asks a question of one without claiming to know its type.
-    const [errors] = onInvalid.mock.calls[0].args;
+    const [errors] = onInvalid.mock.calls[0];
     expect(errors).toEqual(
       expect.objectContaining({
         email: expect.objectContaining({ message: "Required", type: "required" }),
@@ -686,7 +686,7 @@ describe("handleSubmit", () => {
     await waitFor(() => {
       expect(onValid).toHaveBeenCalled();
     });
-    expect(onValid.mock.calls[0].args[0]).toEqual({ email: "a@b.com" });
+    expect(onValid.mock.calls[0][0]).toEqual({ email: "a@b.com" });
   });
 
   it("reports isSubmitting across an async submit, and counts the submit", async () => {
@@ -752,7 +752,7 @@ describe("handleSubmit", () => {
     await waitFor(() => {
       expect(caught).toHaveBeenCalled();
     });
-    expect(String(caught.mock.calls[0].args[0])).toContain("the server said no");
+    expect(String(caught.mock.calls[0][0])).toContain("the server said no");
     // The button is usable again, and the form did not claim success.
     await waitFor(() => {
       expect(output.textContent).toBe("false:false");
@@ -1913,7 +1913,7 @@ describe("the validator resolver", () => {
       expect(onValid).toHaveBeenCalled();
     });
     // `age` was `"42"` in the form and is `42` here, because the schema said so.
-    expect(onValid.mock.calls[0].args[0]).toEqual({
+    expect(onValid.mock.calls[0][0]).toEqual({
       email: "a@b.com",
       profile: { city: "Kyoto" },
       age: 42,
@@ -2074,7 +2074,7 @@ describe("disabled", () => {
     await waitFor(() => {
       expect(onValid).toHaveBeenCalled();
     });
-    expect(onValid.mock.calls[0].args[0]).toEqual({ email: "a@b.com" });
+    expect(onValid.mock.calls[0][0]).toEqual({ email: "a@b.com" });
     expect(read()).toEqual({ email: "a@b.com", code: "secret" });
   });
 
@@ -2225,7 +2225,7 @@ describe("disabled", () => {
     await waitFor(() => {
       expect(onValid).toHaveBeenCalled();
     });
-    expect(onValid.mock.calls[0].args[0]).toEqual({ email: "a@b.com" });
+    expect(onValid.mock.calls[0][0]).toEqual({ email: "a@b.com" });
   });
 
   it("tells a controlled field the form was switched off in the commit that switched it", async () => {
@@ -2296,7 +2296,7 @@ describe("disabled", () => {
     await waitFor(() => {
       expect(onValid).toHaveBeenCalled();
     });
-    expect(onValid.mock.calls[0].args[0]).toEqual({ size: "M" });
+    expect(onValid.mock.calls[0][0]).toEqual({ size: "M" });
   });
 });
 

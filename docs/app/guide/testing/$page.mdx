@@ -406,6 +406,25 @@ That shows up as a skipped test with the reason in the terminal report,
 green, and the native-host contract is still visible instead of being translated
 into a TODO comment or a DOM-rendered substitute.
 
+### What a spy records
+
+A spy's `mock` has the same fields as Vitest's, holding the same shapes, so an
+assertion carried over from Vitest or Jest reads what it read there:
+
+| field | one entry per call |
+| --- | --- |
+| `calls` | the arguments, as an array: `spy.mock.calls[0][0]` is the first call's first argument |
+| `results` | `{ type: "return" \| "throw" \| "incomplete", value }` |
+| `settledResults` | `{ type: "fulfilled" \| "rejected" \| "incomplete", value }`, once a returned promise settles |
+| `contexts` | the call's `this` |
+| `instances` | the call's `this`, or what `new` constructed |
+| `invocationCallOrder` | a number counted across every spy, so two spies say which was first |
+
+`lastCall` is the last call's arguments, or `undefined` before the first call.
+Earlier releases kept `{ args, returned }` objects in `calls`. Write
+`spy.mock.calls[0]` where that code wrote `spy.mock.calls[0].args`, and read
+what a call returned from `spy.mock.results[0].value`.
+
 ## Replacing a module
 
 `fn()` and `uft.spyOn` replace a method on an object a test can reach. A
