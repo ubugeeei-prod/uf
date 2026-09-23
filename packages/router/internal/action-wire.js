@@ -249,6 +249,21 @@ function asFormData(value: mixed): FormData | null {
 type Pending = {| readonly value: mixed, readonly path: string, readonly depth: number |};
 
 /**
+ * How many more values a walk may visit before `MAX_ACTION_VALUES` is spent.
+ *
+ * An object rather than a number so that one budget can be handed to the walk
+ * of every argument of a call: the ceiling `docs/security.md` states is on the
+ * *call* — "at most 10,000 values in total" — and a budget per argument would
+ * be `MAX_ACTION_ARGUMENTS` times that.
+ */
+export type ValueBudget = { remaining: number };
+
+/** A fresh budget of `MAX_ACTION_VALUES`, for one call or one result. */
+export function valueBudget(): ValueBudget {
+  return { remaining: MAX_ACTION_VALUES };
+}
+
+/**
  * Refuse a value that cannot cross the wire, naming where it was.
  *
  * An explicit stack rather than recursion, for the reason the RSC graph walk
@@ -257,11 +272,27 @@ type Pending = {| readonly value: mixed, readonly path: string, readonly depth: 
  * hand on the depth. Every bound is checked as the walk runs rather than
  * afterwards, so a payload that busts one is refused before the rest of it is
  * visited.
+ *
+ * That includes the count, which is checked *before* an array's or an
+ * object's members are queued rather than as each is visited. One array of
+ * half a million zeros fits in a 1 MiB body, and queueing every element — each
+ * with a path string of its own — before the counter reached any of them
+ * spent tens of megabytes of heap on a payload that was always going to be
+ * refused.
+ *
+ * `budget` is spent by this walk and may be shared: `decodeActionArguments`
+ * and `encodeActionArguments` hand every argument the same one, so the ceiling
+ * is on the call. Without one, the value has a budget of its own.
  */
-export function checkActionValue(root: mixed, label: string): void {
+export function checkActionValue(
+  root: mixed,
+  label: string,
+  budget?: ValueBudget = valueBudget(),
+): void {
   const stack: Array<Pending> = [{ value: root, path: label, depth: 0 }];
   const seen = new Set<mixed>();
-  let remaining = MAX_ACTION_VALUES;
+  const overBudget = () =>
+    new ActionValueError(label, `holds more than ${String(MAX_ACTION_VALUES)} values`);
 
   while (stack.length > 0) {
     const pending = stack.pop();
@@ -270,9 +301,9 @@ export function checkActionValue(root: mixed, label: string): void {
     }
     const { value, path, depth } = pending;
 
-    remaining -= 1;
-    if (remaining < 0) {
-      throw new ActionValueError(label, `holds more than ${String(MAX_ACTION_VALUES)} values`);
+    budget.remaining -= 1;
+    if (budget.remaining < 0) {
+      throw overBudget();
     }
     if (depth > MAX_ACTION_DEPTH) {
       throw new ActionValueError(path, `is nested deeper than ${String(MAX_ACTION_DEPTH)}`);
@@ -309,6 +340,11 @@ export function checkActionValue(root: mixed, label: string): void {
 
     if (Array.isArray(object)) {
       const items: $ReadOnlyArray<mixed> = object as $FlowFixMe;
+      // Every queued value will be visited and spent, so a queue longer than
+      // what is left is a refusal now rather than after the push.
+      if (stack.length + items.length > budget.remaining) {
+        throw overBudget();
+      }
       for (let index = 0; index < items.length; index += 1) {
         stack.push({ value: items[index], path: `${path}[${String(index)}]`, depth: depth + 1 });
       }
@@ -342,7 +378,11 @@ export function checkActionValue(root: mixed, label: string): void {
     }
 
     const record: { readonly [string]: mixed } = object as $FlowFixMe;
-    for (const key of Object.getOwnPropertyNames(object)) {
+    const keys = Object.getOwnPropertyNames(object);
+    if (stack.length + keys.length > budget.remaining) {
+      throw overBudget();
+    }
+    for (const key of keys) {
       if (FORBIDDEN_KEYS.includes(key)) {
         throw new ActionValueError(`${path}.${key}`, "is a key this grammar never carries");
       }
@@ -407,6 +447,8 @@ export function encodeActionArguments(args: $ReadOnlyArray<mixed>): string {
     );
   }
   const values: Array<mixed> = [];
+  // One budget for the whole call; see `ValueBudget`.
+  const budget = valueBudget();
   let form: {| readonly at: number, readonly entries: Array<Array<string>> |} | null = null;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -420,7 +462,7 @@ export function encodeActionArguments(args: $ReadOnlyArray<mixed>): string {
       values.push(null);
       continue;
     }
-    checkActionValue(argument, label);
+    checkActionValue(argument, label, budget);
     values.push(argument);
   }
   return form == null ? JSON.stringify({ args: values }) : JSON.stringify({ args: values, form });
@@ -460,8 +502,10 @@ export function decodeActionArguments(text: string): Array<ActionArgument> {
       `passes more than ${String(MAX_ACTION_ARGUMENTS)} arguments`,
     );
   }
+  // One budget for the whole call; see `ValueBudget`.
+  const budget = valueBudget();
   for (let index = 0; index < args.length; index += 1) {
-    checkActionValue(args[index], `argument ${String(index + 1)}`);
+    checkActionValue(args[index], `argument ${String(index + 1)}`, budget);
   }
   const decoded: Array<ActionArgument> = args as $FlowFixMe;
   if (keys.length === 2) {
