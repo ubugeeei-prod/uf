@@ -185,7 +185,7 @@ export type Rect = {
 /** A frame of blanks, `width` by `height`. */
 export function createFrame(width: number, height: number): Frame {
   const size = Math.max(0, width * height);
-  const chars = new Array(size);
+  const chars = new Array<string>(size);
   for (let i = 0; i < size; i += 1) {
     chars[i] = " ";
   }

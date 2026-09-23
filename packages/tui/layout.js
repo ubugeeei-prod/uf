@@ -173,7 +173,12 @@ export type LayoutStyle = {
  */
 export type LayoutNode = {
   style: LayoutStyle,
-  children: Array<LayoutNode>,
+  /**
+   * Read-only here because layout never adds or removes a child. That is also
+   * what lets the renderer's `TuiNode`, whose children are `TuiNode`s, be laid
+   * out as a `LayoutNode`: a mutable array would be invariant in its element.
+   */
+  readonly children: $ReadOnlyArray<LayoutNode>,
   /** Cells the node's own frame occupies on each edge; a border is 1. */
   borderWidth: number,
   measure: ((availableWidth: number, availableHeight: number) => Size) | null,
@@ -593,7 +598,7 @@ function clampDimension(
  */
 function distribute(total: number, weights: $ReadOnlyArray<number>): Array<number> {
   const sum = weights.reduce((a, b) => a + b, 0);
-  const out = new Array(weights.length).fill(0);
+  const out = new Array<number>(weights.length).fill(0);
   if (sum <= 0 || total === 0) {
     return out;
   }
@@ -1196,7 +1201,9 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
   const gap = gapOf(node.style, false);
   let stack = node.scrollIndex;
   if (stack == null || stack.width !== width || stack.view !== height || stack.gap !== gap) {
-    stack = {
+    // Annotated rather than inferred: a literal's `from: 0` would otherwise
+    // be typed as the number zero for the rest of this function.
+    const fresh: ScrollIndex = {
       width,
       view: height,
       gap,
@@ -1205,6 +1212,7 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
       heights: [],
       content: 0,
     };
+    stack = fresh;
     node.scrollIndex = stack;
   }
 

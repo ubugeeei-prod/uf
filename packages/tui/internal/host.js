@@ -80,7 +80,7 @@ import { applyProps, createNode, invalidate } from "./tree.js";
 import { measureWidget } from "./widgets.js";
 
 /** A global key handler, as `useKeyboard` registers one. */
-export type KeyHandler = (key: KeyEvent) => void;
+export type KeyHandler = (key: KeyEvent) => mixed;
 
 /**
  * Everything one mounted application owns.
@@ -626,6 +626,23 @@ const WIDGETS: { readonly [string]: Widget } = {
   "uf-textarea": "textarea",
 };
 
+/**
+ * Move or insert `child` before `before` among `parent`'s children, or at the
+ * end when `before` is not one of them.
+ *
+ * A function of its own because two host-config entries need it: the one React
+ * calls for a box and the one it calls for the root. Reaching it through
+ * `hostConfig` from inside `hostConfig` made the object's type depend on
+ * itself.
+ */
+function insertBefore(parent: TuiNode, child: TuiNode, before: TuiNode): void {
+  child.parent = parent;
+  invalidate(parent, 0);
+  remove(parent.children, child);
+  const at = parent.children.indexOf(before);
+  parent.children.splice(at < 0 ? parent.children.length : at, 0, child);
+}
+
 const hostConfig = {
   supportsMutation: true,
   supportsPersistence: false,
@@ -710,15 +727,9 @@ const hostConfig = {
     invalidate(renderer.root, renderer.root.children.length);
     renderer.root.children.push(child);
   },
-  insertBefore: (parent: TuiNode, child: TuiNode, before: TuiNode): void => {
-    child.parent = parent;
-    invalidate(parent, 0);
-    remove(parent.children, child);
-    const at = parent.children.indexOf(before);
-    parent.children.splice(at < 0 ? parent.children.length : at, 0, child);
-  },
+  insertBefore,
   insertInContainerBefore: (renderer: Renderer, child: TuiNode, before: TuiNode): void => {
-    hostConfig.insertBefore(renderer.root, child, before);
+    insertBefore(renderer.root, child, before);
   },
   removeChild: (parent: TuiNode, child: TuiNode): void => {
     invalidate(parent, 0);

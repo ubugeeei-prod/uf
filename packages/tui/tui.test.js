@@ -627,9 +627,9 @@ describe("a box out of the line", () => {
 describe("a window onto more than fits", () => {
   /** `count` numbered lines, which is what a log looks like to a renderer. */
   const log = (count: number) =>
-    Array.from({ length: count }, (_, index) =>
-      React.createElement(Text, { key: String(index), wrap: "none" }, `line ${index}`),
-    );
+    Array.from({ length: count }, (_, index) => (
+      <Text key={String(index)} wrap="none">{`line ${index}`}</Text>
+    ));
 
   it("shows the rows the offset asks for and none of the others", () => {
     const handle = testRender(
@@ -803,13 +803,11 @@ describe("a window onto more than fits", () => {
       useKeyboard(() => setMarker("!"));
       return (
         <ScrollBox height={24} width={80} scrollbar={false} scrollTop={3_990}>
-          {Array.from({ length: 10_000 }, (_, index) =>
-            React.createElement(
-              Text,
-              { key: String(index), wrap: "none" },
-              index === 4_000 ? `line ${index}${marker}` : `line ${index}`,
-            ),
-          )}
+          {Array.from({ length: 10_000 }, (_, index) => (
+            <Text key={String(index)} wrap="none">
+              {index === 4_000 ? `line ${index}${marker}` : `line ${index}`}
+            </Text>
+          ))}
         </ScrollBox>
       );
     }
@@ -1065,12 +1063,15 @@ describe("a window costs the window", () => {
     // A log grows at the end, which is the one mutation whose position is
     // known without looking for it — `internal/tree.js` hands layout that
     // index, and here the stack works out the same thing from the child count.
-    const box = scrolling(100_000, Number.MAX_SAFE_INTEGER);
+    // The children array is kept here because appending to it is the edit
+    // under test: layout reads a node's children and never changes them.
+    const children = Array.from({ length: 100_000 }, () => node({}, [], 1));
+    const box = node({ overflow: "scroll", scrollTop: Number.MAX_SAFE_INTEGER }, children);
     layout(box, 0, 0, 20, 24);
     expect(box.scrollOffset).toBe(99_976);
 
     measured = 0;
-    box.children.push(node({}, [], 1));
+    children.push(node({}, [], 1));
     layout(box, 0, 0, 20, 24);
 
     expect(measured).toBe(1);
@@ -2117,9 +2118,11 @@ describe("a drag selects what it crossed", () => {
 
   it("does not copy the scrollbar a line ran into", () => {
     const wide = (count: number) =>
-      Array.from({ length: count }, (_, index) =>
-        React.createElement(Text, { key: String(index), wrap: "none" }, "abcdefghij"),
-      );
+      Array.from({ length: count }, (_, index) => (
+        <Text key={String(index)} wrap="none">
+          abcdefghij
+        </Text>
+      ));
     const handle = testRender(
       <ScrollBox height={4} width={8} scrollTop={0}>
         {wide(5)}
@@ -3119,7 +3122,7 @@ describe("the width tables match the CLI's", () => {
     expect(start).toBeGreaterThan(-1);
     const end = source.indexOf("\n];", start);
     const body = source.slice(start, end);
-    const out = [];
+    const out: Array<number> = [];
     for (const match of body.matchAll(/\(0x([0-9a-fA-F]+), 0x([0-9a-fA-F]+)\)/g)) {
       out.push(Number.parseInt(match[1], 16), Number.parseInt(match[2], 16));
     }
@@ -3225,7 +3228,7 @@ describe("the capability precedence matches the CLI's", () => {
     const out: { [string]: Array<string> } = {};
     for (const match of source.matchAll(/\n    fn (\w+)\(&self\)/g)) {
       const name = match[1];
-      const read = [];
+      const read: Array<string> = [];
       for (const use of body(source, `fn ${name}(&self)`).matchAll(/self\.(\w+)/g)) {
         read.push(...(fields[use[1]] ?? []));
       }
@@ -3239,7 +3242,7 @@ describe("the capability precedence matches the CLI's", () => {
     const out: { [string]: Array<string> } = {};
     for (const match of source.matchAll(/\nfunction (\w+)\(env: TerminalEnv\)/g)) {
       const name = match[1];
-      const read = [];
+      const read: Array<string> = [];
       for (const use of body(source, `function ${name}(env: TerminalEnv)`).matchAll(
         /env\.([A-Z_]+)/g,
       )) {
@@ -3266,7 +3269,7 @@ describe("the capability precedence matches the CLI's", () => {
     };
     // Every guard in `detect_color`, in order: a `match` on its scrutinee and
     // an `if` on its condition. A `return` payload is a result and not a rule.
-    const rustOrder = [];
+    const rustOrder: Array<string> = [];
     for (const line of body(rustSource, "fn detect_color(").split("\n")) {
       const guard = line.match(/^\s+(?:match|if) (.+?) \{\s*$/);
       if (guard != null) rustOrder.push(...rustInputs(guard[1]));
@@ -3288,7 +3291,7 @@ describe("the capability precedence matches the CLI's", () => {
       }
       return found;
     };
-    const jsOrder = [];
+    const jsOrder: Array<string> = [];
     for (const line of body(jsSource, "function detectColor(").split("\n")) {
       const bound = line.match(/^\s+const (\w+) = (.+);\s*$/);
       if (bound != null) {
@@ -3334,7 +3337,7 @@ describe("the capability precedence matches the CLI's", () => {
     // A variable added to one side and not the other is a disagreement the
     // order check cannot see, because a rule that only one file has is a rule
     // only one file consults.
-    const rustNames = new Set();
+    const rustNames = new Set<string>();
     for (const names of Object.values(rustFields(rust()))) {
       for (const name of names) rustNames.add(name);
     }
@@ -3352,7 +3355,8 @@ describe("the capability precedence matches the CLI's", () => {
     // read `stdout.columns`, so on a forty-column window one of them drew a
     // frame the terminal wrapped. Both now walk the same chain, and this
     // reads that chain out of each file rather than out of the prose above it.
-    const snakeToCamel = (name) => name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    const snakeToCamel = (name: string) =>
+      name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
     const rustChain = [
       ...body(rust(), "fn detect_size(").matchAll(
         /\.(declared_\w+)\(\)|\b(reported_\w+)\(|\b(FALLBACK_\w+)\b/g,
@@ -3412,7 +3416,7 @@ describe("the capability precedence matches the CLI's", () => {
     // `env.is_dumb()` and `env.utf8_locale()` reduced to the variables their
     // `TerminalEnv` fields are filled from.
     const helpers = rustHelpers(rustSource);
-    const rustGlyphs = [];
+    const rustGlyphs: Array<string> = [];
     for (const call of body(rustSource, "fn detect_glyphs(").matchAll(/env\.(\w+)\(\)/g)) {
       rustGlyphs.push(...(helpers[call[1]] ?? [`?${call[1]}`]));
     }
@@ -3625,12 +3629,14 @@ describe("the guide's comparison against React Ink", () => {
     const [step, setStep] = useState<number>(-1);
     useKeyboard(() => setStep((index) => index + 1));
     const state = step < 0 ? START : STEPS[step].to;
-    return React.createElement(
-      Box,
-      { flexDirection: "column" },
-      ...lines(state).map((line, index) =>
-        React.createElement(Text, { key: String(index), wrap: "none" }, line),
-      ),
+    return (
+      <Box flexDirection="column">
+        {lines(state).map((line, index) => (
+          <Text key={String(index)} wrap="none">
+            {line}
+          </Text>
+        ))}
+      </Box>
     );
   }
 

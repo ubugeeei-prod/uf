@@ -148,20 +148,20 @@ export type OutputStream = {
   readonly rows?: number,
   readonly isTTY?: boolean,
   /** A real `process.stdout` emits `"resize"`; a string collector does not. */
-  on?: (event: string, listener: () => mixed) => mixed,
-  off?: (event: string, listener: () => mixed) => mixed,
+  readonly on?: (event: string, listener: () => mixed) => mixed,
+  readonly off?: (event: string, listener: () => mixed) => mixed,
   ...
 };
 
 /** Anything keys arrive from; `process.stdin`. */
 export type InputStream = {
   readonly isTTY?: boolean,
-  setRawMode?: (raw: boolean) => mixed,
-  resume?: () => mixed,
-  pause?: () => mixed,
-  setEncoding?: (encoding: string) => mixed,
-  on?: (event: string, listener: (chunk: string) => mixed) => mixed,
-  off?: (event: string, listener: (chunk: string) => mixed) => mixed,
+  readonly setRawMode?: (raw: boolean) => mixed,
+  readonly resume?: () => mixed,
+  readonly pause?: () => mixed,
+  readonly setEncoding?: (encoding: string) => mixed,
+  readonly on?: (event: string, listener: (chunk: string) => mixed) => mixed,
+  readonly off?: (event: string, listener: (chunk: string) => mixed) => mixed,
   ...
 };
 
@@ -228,7 +228,7 @@ function deliver(renderer: Renderer, event: InputEvent): void {
 /** Mount a tree into a renderer and return the pieces both drivers need. */
 function mount(element: React.Node, renderer: Renderer) {
   const root = createRoot(renderer);
-  root.render(React.createElement(RendererContext.Provider, { value: renderer }, element));
+  root.render(<RendererContext.Provider value={renderer}>{element}</RendererContext.Provider>);
   return root;
 }
 
@@ -317,15 +317,18 @@ export function testRender(
  * that has to call `stop()`.
  */
 export function render(element: React.Node, options: RenderOptions = {}): Handle {
-  // Three casts, and the same reason for all of them: Flow's library
-  // definition for `process` describes Node's classes, and these types
-  // describe the three things this renderer actually needs — so that a test
-  // can pass a string collector, and so that a runtime whose streams are not
-  // Node's is not excluded by a type. The narrowing is checked at run time by
-  // the `!= null` guards below rather than trusted.
-  const stdout: OutputStream = options.stdout ?? (process.stdout: $FlowFixMe);
-  const stdin: InputStream = options.stdin ?? (process.stdin: $FlowFixMe);
-  const env: TerminalEnv = options.env ?? (process.env: $FlowFixMe);
+  // Two casts, and the same reason for both: Flow's library definition for
+  // `process` describes Node's classes, and these types describe the things
+  // this renderer actually needs — so that a test can pass a string collector,
+  // and so that a runtime whose streams are not Node's is not excluded by a
+  // type. A class instance is not a subtype of an object type, and an
+  // interface cannot say that `on` is an optional *method*, which is what a
+  // collector without listeners needs. The narrowing is checked at run time by
+  // the `!= null` guards below rather than trusted. `process.env` needs no
+  // cast: `TerminalEnv` is the inexact subset of it rendering reads.
+  const stdout: OutputStream = options.stdout ?? (process.stdout as $FlowFixMe);
+  const stdin: InputStream = options.stdin ?? (process.stdin as $FlowFixMe);
+  const env: TerminalEnv = options.env ?? process.env;
   const capabilities = detectCapabilities(
     options.color ?? "auto",
     stdout.isTTY === true ? "interactive" : "piped",
@@ -416,7 +419,9 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
     if (stdin.resume != null) {
       stdin.resume();
     }
-    stdin.on("data", onData);
+    // Optional call: the calls above may have changed `stdin`, as far as Flow
+    // knows, so the `!= null` test at the top of this block no longer holds.
+    stdin.on?.("data", onData);
   }
   if (interactive && stdout.on != null) {
     stdout.on("resize", onResize);

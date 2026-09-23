@@ -210,23 +210,23 @@ export type TextStyleProps = {
  */
 export type MouseProps = {
   /** Every mouse event, after the handler for its own type. */
-  readonly onMouse?: (event: MouseEvent) => void,
-  readonly onMouseDown?: (event: MouseEvent) => void,
-  readonly onMouseUp?: (event: MouseEvent) => void,
+  readonly onMouse?: (event: MouseEvent) => mixed,
+  readonly onMouseDown?: (event: MouseEvent) => mixed,
+  readonly onMouseUp?: (event: MouseEvent) => mixed,
   /** The pointer moved over this box with nothing held down. */
-  readonly onMouseMove?: (event: MouseEvent) => void,
+  readonly onMouseMove?: (event: MouseEvent) => mixed,
   /** The pointer moved with a button held, since it was pressed on this box. */
-  readonly onMouseDrag?: (event: MouseEvent) => void,
+  readonly onMouseDrag?: (event: MouseEvent) => mixed,
   /** That drag ended, wherever the pointer had reached. */
-  readonly onMouseDragEnd?: (event: MouseEvent) => void,
+  readonly onMouseDragEnd?: (event: MouseEvent) => mixed,
   /** A drag that began somewhere else ended here; `event.source` says where. */
-  readonly onMouseDrop?: (event: MouseEvent) => void,
+  readonly onMouseDrop?: (event: MouseEvent) => mixed,
   /** The pointer entered this box, or a box inside it. */
-  readonly onMouseOver?: (event: MouseEvent) => void,
+  readonly onMouseOver?: (event: MouseEvent) => mixed,
   /** And left it. */
-  readonly onMouseOut?: (event: MouseEvent) => void,
+  readonly onMouseOut?: (event: MouseEvent) => mixed,
   /** The wheel turned; `event.scroll` says which way. */
-  readonly onMouseScroll?: (event: MouseEvent) => void,
+  readonly onMouseScroll?: (event: MouseEvent) => mixed,
 };
 
 /** Everything a `Box` accepts beyond its children. */
@@ -258,12 +258,12 @@ export type BoxProps = {
   /** Whether it holds focus now. Focus is state, as it is in OpenTUI. */
   readonly focused?: boolean,
   /** Keys delivered to this box while it holds focus. */
-  readonly onKeyDown?: (key: KeyEvent) => void,
+  readonly onKeyDown?: (key: KeyEvent) => mixed,
 };
 
 /** A flex container that can draw a background, a border, and two titles. */
 export component Box(children?: React.Node, ...props: BoxProps) {
-  return React.createElement("uf-box", props, children);
+  return <uf-box {...props}>{children}</uf-box>;
 }
 
 /** Everything a `Text` accepts beyond its children. */
@@ -284,7 +284,7 @@ export type TextProps = {
  * and overrides only what it names.
  */
 export component Text(children?: React.Node, ...props: TextProps) {
-  return React.createElement("uf-text", props, children);
+  return <uf-text {...props}>{children}</uf-text>;
 }
 
 /** Everything a `ScrollBox` accepts beyond its children. */
@@ -402,17 +402,17 @@ export component ScrollBox(
     own.padding ??
     0;
   const paddingRight = scrollbar ? asked + 1 : props.paddingRight;
-  return React.createElement(
-    "uf-box",
-    {
-      ...props,
-      paddingRight,
-      overflow: "scroll",
-      scrollTop,
-      scrollbar,
-      scrollbarColor,
-    },
-    children,
+  return (
+    <uf-box
+      {...props}
+      paddingRight={paddingRight}
+      overflow="scroll"
+      scrollTop={scrollTop}
+      scrollbar={scrollbar}
+      scrollbarColor={scrollbarColor}
+    >
+      {children}
+    </uf-box>
   );
 }
 
@@ -449,7 +449,7 @@ export function useRenderer(): Renderer {
  * run in — which OpenTUI specifies as registration order — would silently
  * become "whichever component rendered last".
  */
-export function useKeyboard(handler: (key: KeyEvent) => void): void {
+export function useKeyboard(handler: (key: KeyEvent) => mixed): void {
   const renderer = useRenderer();
   const latest = useRef(handler);
   useEffect(() => {
@@ -628,31 +628,43 @@ export component Input(
   const body = useMemo(() => {
     if (showPlaceholder) {
       if (!focused) {
-        return React.createElement(Text, { fg: placeholderColor, wrap: "none" }, placeholder);
+        return (
+          <Text fg={placeholderColor} wrap="none">
+            {placeholder}
+          </Text>
+        );
       }
-      return React.createElement(
-        Text,
-        { fg: placeholderColor, wrap: "none" },
-        React.createElement(Text, { inverse: true }, placeholder.slice(0, 1)),
-        placeholder.slice(1),
+      return (
+        <Text fg={placeholderColor} wrap="none">
+          <Text inverse>{placeholder.slice(0, 1)}</Text>
+          {placeholder.slice(1)}
+        </Text>
       );
     }
     if (!focused) {
-      return React.createElement(Text, { fg, bg, wrap: "none" }, text);
+      return (
+        <Text bg={bg} fg={fg} wrap="none">
+          {text}
+        </Text>
+      );
     }
     // Three runs: what is before the cursor, the cell under it, and what is
     // after. The cell under the cursor is a space when the cursor sits past
     // the end of the text, which is where it is while somebody is typing.
-    return React.createElement(
-      Text,
-      { fg, bg, wrap: "none" },
-      text.slice(0, at),
-      React.createElement(Text, { inverse: true }, at < text.length ? text.slice(at, at + 1) : " "),
-      text.slice(at + 1),
+    return (
+      <Text bg={bg} fg={fg} wrap="none">
+        {text.slice(0, at)}
+        <Text inverse>{at < text.length ? text.slice(at, at + 1) : " "}</Text>
+        {text.slice(at + 1)}
+      </Text>
     );
   }, [at, bg, fg, focused, placeholder, placeholderColor, showPlaceholder, text]);
 
-  return React.createElement(Box, { ...layout, focusable: true, focused, onKeyDown }, body);
+  return (
+    <Box {...layout} focusable focused={focused} onKeyDown={onKeyDown}>
+      {body}
+    </Box>
+  );
 }
 
 /**
@@ -839,16 +851,18 @@ export component Select(...props: SelectProps) {
     }
   };
 
-  return React.createElement("uf-select", {
-    ...rest,
-    options,
-    selectedIndex: current,
-    focusable: true,
-    onKeyDown,
-    // What a select draws is a list of choices, not a paragraph: a drag over
-    // one is not a copy of its names, which is also true of OpenTUI's.
-    selectable: false,
-  });
+  return (
+    <uf-select
+      {...rest}
+      options={options}
+      selectedIndex={current}
+      focusable
+      onKeyDown={onKeyDown}
+      // What a select draws is a list of choices, not a paragraph: a drag over
+      // one is not a copy of its names, which is also true of OpenTUI's.
+      selectable={false}
+    />
+  );
 }
 
 /** Everything a `TabSelect` accepts. */
@@ -943,17 +957,19 @@ export component TabSelect(...props: TabSelectProps) {
     }
   };
 
-  return React.createElement("uf-tab-select", {
-    ...rest,
-    options,
-    selectedIndex: current,
-    showUnderline,
-    showDescription,
-    height: tabSelectHeight(showUnderline, showDescription),
-    focusable: true,
-    onKeyDown,
-    selectable: false,
-  });
+  return (
+    <uf-tab-select
+      {...rest}
+      options={options}
+      selectedIndex={current}
+      showUnderline={showUnderline}
+      showDescription={showDescription}
+      height={tabSelectHeight(showUnderline, showDescription)}
+      focusable
+      onKeyDown={onKeyDown}
+      selectable={false}
+    />
+  );
 }
 
 /** Everything a `Textarea` accepts. */
@@ -1274,14 +1290,16 @@ export component Textarea(...props: TextareaProps) {
     }
   };
 
-  return React.createElement("uf-textarea", {
-    ...rest,
-    ref: node,
-    value: text,
-    cursor: at,
-    focused,
-    wrapMode,
-    focusable: true,
-    onKeyDown,
-  });
+  return (
+    <uf-textarea
+      {...rest}
+      ref={node}
+      value={text}
+      cursor={at}
+      focused={focused}
+      wrapMode={wrapMode}
+      focusable
+      onKeyDown={onKeyDown}
+    />
+  );
 }
