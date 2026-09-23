@@ -57,7 +57,7 @@ import { frameFile, isInternalFrame } from "./frames.js";
 import { fn } from "./spy.js";
 
 /** The shape of a module's exports, as far as a type can say it. */
-export type ModuleNamespace = { +[string]: mixed };
+export type ModuleNamespace = { readonly [string]: mixed };
 
 /**
  * What a `uft.mock` factory hands back.
@@ -181,7 +181,7 @@ export function resolveSpecifier(specifier: string, parentURL: string): string {
  * calls and returns `undefined` — the automatic form, for a module whose shape
  * a test wants to keep and whose behaviour it wants gone.
  */
-export function mock<Module: ModuleNamespace>(
+export function mock<Module extends ModuleNamespace>(
   specifier: string,
   factory?: ModuleFactory<Module>,
 ): Promise<void> {
@@ -189,14 +189,14 @@ export function mock<Module: ModuleNamespace>(
   const url = resolveSpecifier(specifier, callerURL("mock"));
 
   if (factory == null) {
-    return importURL(actualUrl(url, isPathSpecifier(specifier))).then((actual) => {
+    return importURL<ModuleNamespace>(actualUrl(url, isPathSpecifier(specifier))).then((actual) => {
       defineModuleMock(url, automock(actual, AUTOMOCK_DEPTH, new Map()));
     });
   }
 
   const produced = factory();
   if (isThenable(produced)) {
-    return (produced: $FlowFixMe).then((namespace) => {
+    return (produced as $FlowFixMe).then((namespace) => {
       defineModuleMock(url, exportsOf(specifier, namespace));
     });
   }
@@ -225,7 +225,7 @@ export function unmock(specifier: string): void {
  * also why `importActual` of a module that imports a mocked one still sees the
  * stand-in.
  */
-export function importActual<Module: ModuleNamespace>(specifier: string): Promise<Module> {
+export function importActual<Module extends ModuleNamespace>(specifier: string): Promise<Module> {
   requireInterception("importActual");
   const url = resolveSpecifier(specifier, callerURL("importActual"));
   return importURL(actualUrl(url, isPathSpecifier(specifier)));
@@ -238,11 +238,11 @@ export function importActual<Module: ModuleNamespace>(specifier: string): Promis
  * is a stand-in the caller holds, and every other importer of that module still
  * gets whatever it got before.
  */
-export function importMock<Module: ModuleNamespace>(specifier: string): Promise<Module> {
+export function importMock<Module extends ModuleNamespace>(specifier: string): Promise<Module> {
   requireInterception("importMock");
   const url = resolveSpecifier(specifier, callerURL("importMock"));
-  return importURL(actualUrl(url, isPathSpecifier(specifier))).then(
-    (actual) => (automock(actual, AUTOMOCK_DEPTH, new Map()): $FlowFixMe),
+  return importURL<ModuleNamespace>(actualUrl(url, isPathSpecifier(specifier))).then(
+    (actual) => automock(actual, AUTOMOCK_DEPTH, new Map()) as $FlowFixMe,
   );
 }
 
@@ -287,7 +287,7 @@ function isPathSpecifier(specifier: string): boolean {
 
 /** `import()`, in one place, so the marker parameter is never spelled twice. */
 function importURL<Module>(url: string): Promise<Module> {
-  return (import(url): $FlowFixMe);
+  return import(url) as $FlowFixMe;
 }
 
 /** Whether `value` is a promise, or near enough for `then` to be meant. */
@@ -295,7 +295,7 @@ function isThenable(value: mixed): boolean {
   return (
     value != null &&
     (typeof value === "object" || typeof value === "function") &&
-    typeof (value: $FlowFixMe).then === "function"
+    typeof (value as $FlowFixMe).then === "function"
   );
 }
 
@@ -314,7 +314,7 @@ function exportsOf(specifier: string, produced: mixed): { [string]: mixed } {
         `object, and it returned ${produced === null ? "null" : typeof produced}`,
     );
   }
-  return { ...(produced: $FlowFixMe) };
+  return { ...(produced as $FlowFixMe) };
 }
 
 /**
@@ -344,10 +344,10 @@ function automock(value: mixed, depth: number, seen: Map<mixed, mixed>): mixed {
   }
 
   if (typeof value === "function") {
-    const spy = fn().mockName((value: $FlowFixMe).name ?? "spy");
+    const spy = fn().mockName((value as $FlowFixMe).name ?? "spy");
     seen.set(value, spy);
     copyProperties(value, spy, depth, seen, false);
-    const prototype = (value: $FlowFixMe).prototype;
+    const prototype = (value as $FlowFixMe).prototype;
     if (prototype != null && typeof prototype === "object") {
       // Every own name, not only the enumerable ones: a class's methods are
       // non-enumerable own properties of its prototype, so `Object.keys` finds
@@ -390,8 +390,8 @@ function copyProperties(
   seen: Map<mixed, mixed>,
   hidden: boolean,
 ): void {
-  const source = (from: $FlowFixMe);
-  const target = (onto: $FlowFixMe);
+  const source = from as $FlowFixMe;
+  const target = onto as $FlowFixMe;
   const names = hidden ? Object.getOwnPropertyNames(source) : Object.keys(source);
   for (const name of names) {
     // `constructor` on a prototype points back at the function being mocked,
@@ -426,5 +426,5 @@ function isPlainish(value: mixed): boolean {
 
 /** Whether `value` is a module namespace object. */
 function isNamespace(value: mixed): boolean {
-  return (value: $FlowFixMe)[Symbol.toStringTag] === "Module";
+  return (value as $FlowFixMe)[Symbol.toStringTag] === "Module";
 }

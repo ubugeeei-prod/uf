@@ -144,17 +144,18 @@ describe("uft.spyOn", () => {
   });
 
   it("records the receiver", () => {
-    const object = {
-      value: 7,
-      read() {
+    class Reader {
+      value: number = 7;
+      read(): number {
         return this.value;
-      },
-    };
-    uft.spyOn(object, "read");
+      }
+    }
+    const object = new Reader();
+    const spy = uft.spyOn(object, "read");
 
     object.read();
 
-    expect(object.read.mock.instances[0]).toBe(object);
+    expect(spy.mock.instances[0]).toBe(object);
   });
 });
 
@@ -190,7 +191,7 @@ describe("stubbing the environment", () => {
 describe("stubbing a global", () => {
   it("replaces and puts back", () => {
     uft.stubGlobal("__ufViProbe", 1);
-    expect((globalThis: $FlowFixMe).__ufViProbe).toBe(1);
+    expect((globalThis as $FlowFixMe).__ufViProbe).toBe(1);
 
     uft.unstubAllGlobals();
     expect(Object.hasOwn(globalThis, "__ufViProbe")).toBe(false);
@@ -220,7 +221,7 @@ describe("uft.waitFor", () => {
     // something did.
     let thrown = null;
     try {
-      await uft.waitFor(
+      await uft.waitFor<void>(
         () => {
           throw new Error("the real reason");
         },

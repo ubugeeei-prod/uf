@@ -87,7 +87,9 @@ export function installFakeClock(): void {
     return;
   }
   const global = host();
-  installed = {
+  // Kept in a local as well as the module's `installed`: the calls below would
+  // otherwise make Flow forget that `installed` was just set.
+  const saved = {
     setTimeout: global.setTimeout,
     clearTimeout: global.clearTimeout,
     setInterval: global.setInterval,
@@ -96,6 +98,7 @@ export function installFakeClock(): void {
     clearImmediate: global.clearImmediate,
     Date: global.Date,
   };
+  installed = saved;
 
   now = Date.now();
   tasks = [];
@@ -116,22 +119,23 @@ export function installFakeClock(): void {
   global.clearTimeout = cancel;
   global.clearInterval = cancel;
   global.clearImmediate = cancel;
-  global.Date = fakeDate(installed.Date as $FlowFixMe);
+  global.Date = fakeDate(saved.Date as $FlowFixMe);
 }
 
 /** Put the real scheduling globals back. */
 export function restoreRealClock(): void {
-  if (installed == null) {
+  const saved = installed;
+  if (saved == null) {
     return;
   }
   const global = host();
-  global.setTimeout = installed.setTimeout;
-  global.clearTimeout = installed.clearTimeout;
-  global.setInterval = installed.setInterval;
-  global.clearInterval = installed.clearInterval;
-  global.setImmediate = installed.setImmediate;
-  global.clearImmediate = installed.clearImmediate;
-  global.Date = installed.Date;
+  global.setTimeout = saved.setTimeout;
+  global.clearTimeout = saved.clearTimeout;
+  global.setInterval = saved.setInterval;
+  global.clearInterval = saved.clearInterval;
+  global.setImmediate = saved.setImmediate;
+  global.clearImmediate = saved.clearImmediate;
+  global.Date = saved.Date;
   installed = null;
   tasks = [];
 }
@@ -167,7 +171,7 @@ function fakeDate(Real: $FlowFixMe): $FlowFixMe {
     construct(target: $FlowFixMe, args: $ReadOnlyArray<mixed>, newTarget: $FlowFixMe) {
       // Only the no-argument form reads the clock; every other form is
       // constructing a specific date and has nothing to do with "now".
-      const actual = args.length === 0 ? [now] : args;
+      const actual: Array<mixed> = args.length === 0 ? [now] : [...args];
       // `newTarget` rather than `Real`, so a subclass of the faked `Date` gets
       // its own prototype instead of the real one's.
       return Reflect.construct(Real, actual, newTarget === undefined ? Real : newTarget);

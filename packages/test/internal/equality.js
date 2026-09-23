@@ -34,7 +34,8 @@ const MAX_RENDER_DEPTH = 6;
 /** Most entries of a collection the renderer shows before eliding. */
 const MAX_RENDER_ENTRIES = 32;
 
-function isObject(value: mixed): boolean {
+/** Whether `value` is an object, as a refinement the checker can follow. */
+function isObject(value: mixed): value is interface {} {
   return typeof value === "object" && value !== null;
 }
 
@@ -51,8 +52,8 @@ function tag(value: mixed): string {
  */
 function ownKeys(value: interface {}, strictness: Strictness): Array<string | symbol> {
   const strings = Object.keys(value).sort();
-  const symbols = Object.getOwnPropertySymbols(value).filter((symbol) =>
-    Object.prototype.propertyIsEnumerable.call(value, symbol),
+  const symbols = Object.getOwnPropertySymbols(value).filter(
+    (symbol) => Object.getOwnPropertyDescriptor(value, symbol)?.enumerable === true,
   );
   const keys: Array<string | symbol> = [...strings, ...symbols];
   if (strictness === "strict") {
@@ -199,7 +200,7 @@ export function equals(
     return false;
   }
   for (const key of leftKeys) {
-    if (!Object.prototype.hasOwnProperty.call(right, key)) {
+    if (!Object.hasOwn(right, key)) {
       return false;
     }
     if (!equals((left as $FlowFixMe)[key], (right as $FlowFixMe)[key], nested, strictness)) {
@@ -233,10 +234,12 @@ export function matchesObject(received: mixed, expected: mixed, seen: Array<Pair
     if (!Array.isArray(received) || received.length !== expected.length) {
       return false;
     }
-    return expected.every((item, index) => matchesObject(received[index], item, nested));
+    return expected.every((item: mixed, index: number) =>
+      matchesObject(received[index], item, nested),
+    );
   }
   for (const key of ownKeys(expected as $FlowFixMe, "loose")) {
-    if (!Object.prototype.hasOwnProperty.call(received, key)) {
+    if (!Object.hasOwn(received, key)) {
       return false;
     }
     if (!matchesObject((received as $FlowFixMe)[key], (expected as $FlowFixMe)[key], nested)) {

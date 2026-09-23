@@ -159,7 +159,7 @@ function write(event: { readonly [string]: mixed }): void {
  * run, set once on the worker by `uf`, and not something each request says.
  */
 function benching(): boolean {
-  const value = (globalThis: $FlowFixMe).process?.env?.UF_TEST_BENCH;
+  const value = (globalThis as $FlowFixMe).process?.env?.UF_TEST_BENCH;
   return value != null && value !== "" && value !== "0";
 }
 
