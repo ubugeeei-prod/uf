@@ -122,6 +122,7 @@ type Event = {
   text?: string,
   name?: string,
   status?: string,
+  message?: string,
 };
 
 /**
@@ -286,4 +287,37 @@ describe("a request that carries no generation", () => {
       expect(event.generation).toBe(1);
     }
   });
+});
+
+describe("an exception nothing caught", () => {
+  it(
+    "ends the file whose work threw it, with its message",
+    async () => {
+      // A server's `error` event with no listener, a throw from a timer: Node's
+      // default printed the stack to stderr and exited, and all `uf` could say
+      // was that the worker had died — without the message, above the report.
+      const entry = pathToFileURL(path.join(repository, "packages", "test", "index.js")).href;
+      const file = path.join(directory, "throws.js");
+      fs.writeFileSync(
+        file,
+        `import { it } from "${entry}";
+it("leaves a timer behind that throws", async () => {
+  setTimeout(() => {
+    throw new Error("nobody caught this");
+  }, 0);
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+});
+`,
+      );
+
+      const ended = (await runInWorker([{ file, timeoutMs: 5000, generation: 1 }])).filter(
+        (event) => event.event === "file",
+      );
+
+      expect(ended.map((event) => [event.status, event.generation, event.message])).toEqual([
+        ["run-failed", 1, "uncaught exception: nobody caught this"],
+      ]);
+    },
+    { timeout: 60_000 },
+  );
 });
