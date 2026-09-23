@@ -1242,10 +1242,21 @@ pub(crate) struct ImportGraph {
     used_all_named_exports: Vec<bool>,
 }
 
+/// One relative import from a module to another in the batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ImportEdge {
+    /// The imported module.
     to: usize,
+    /// Byte offset of the specifier in the importer, where a finding points.
     source_at: usize,
+    /// Whether the import survives to run time.
+    ///
+    /// `import type` and `import typeof` are erased when Flow is stripped, so
+    /// they never make one module evaluate before another. A cycle made only
+    /// of them is not a cycle the program has, and `import/no-cycle` does not
+    /// follow them. They still count as the module being used, which is what
+    /// `import/no-unused-modules` asks.
+    runtime: bool,
 }
 
 impl ImportGraph {
@@ -1310,6 +1321,7 @@ impl ImportGraph {
                     self.resolve(source, &importer).map(|to| ImportEdge {
                         to,
                         source_at: import.source_at,
+                        runtime: import.kind == ImportKind::Value,
                     })
                 } else {
                     None
@@ -1325,6 +1337,7 @@ impl ImportGraph {
                     self.resolve(source, &importer).map(|to| ImportEdge {
                         to,
                         source_at: import.source_at,
+                        runtime: true,
                     })
                 } else {
                     None
@@ -1372,22 +1385,30 @@ impl ImportGraph {
         self.deprecated_default_exports[module] |= facts.deprecated_default;
     }
 
+    /// The first import of `file` that leads back to `file`, following only
+    /// imports that exist at run time (see [`ImportEdge::runtime`]).
+    ///
+    /// `None` when `file` is not in the graph or no such path exists.
     fn cycle_from(&self, file: &str) -> Option<Cycle> {
         if self.paths.is_empty() {
             return None;
         }
         let start = *self.by_path.get(&normalize_graph_path(file))?;
-        self.edges[start].iter().find_map(|edge| {
-            if edge.to != start && self.reaches(edge.to, start, &mut vec![false; self.paths.len()])
-            {
-                Some(Cycle {
-                    source_at: edge.source_at,
-                    target_path: self.paths[edge.to].clone(),
-                })
-            } else {
-                None
-            }
-        })
+        self.edges[start]
+            .iter()
+            .filter(|edge| edge.runtime)
+            .find_map(|edge| {
+                if edge.to != start
+                    && self.reaches(edge.to, start, &mut vec![false; self.paths.len()])
+                {
+                    Some(Cycle {
+                        source_at: edge.source_at,
+                        target_path: self.paths[edge.to].clone(),
+                    })
+                } else {
+                    None
+                }
+            })
     }
 
     fn reaches(&self, current: usize, target: usize, seen: &mut [bool]) -> bool {
@@ -1400,6 +1421,7 @@ impl ImportGraph {
         seen[current] = true;
         self.edges[current]
             .iter()
+            .filter(|edge| edge.runtime)
             .any(|edge| self.reaches(edge.to, target, seen))
     }
 

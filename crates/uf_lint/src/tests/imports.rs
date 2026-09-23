@@ -111,6 +111,56 @@ fn no_cycle_rejects_a_relative_import_cycle() {
     assert!(diagnostics[0].message.contains("src/b.js"));
 }
 
+/// `import type` and `import typeof` are erased with the rest of Flow's types,
+/// so modules joined only by them are never evaluated in a cycle. Two modules
+/// that share types both ways are the ordinary case in a Flow codebase, and
+/// this repository had several reported (the `import/no-cycle` warnings in
+/// `packages/router` and `packages/query`).
+#[test]
+fn no_cycle_ignores_imports_that_flow_erases() {
+    let diagnostics = lint_many(
+        "import/no-cycle",
+        &[
+            (
+                "src/cart.js",
+                "// @flow\nimport { priceOf } from \"./pricing.js\";\nexport type Line = { sku: string };\n",
+            ),
+            (
+                "src/pricing.js",
+                "// @flow\nimport type { Line } from \"./cart.js\";\nimport typeof * as Cart from \"./cart.js\";\nexport const priceOf = (line: Line): number => 1;\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+/// And a cycle with one value import in each direction is still one, even
+/// when a type import stands beside it.
+#[test]
+fn no_cycle_still_reports_a_value_cycle_beside_type_imports() {
+    let diagnostics = lint_many(
+        "import/no-cycle",
+        &[
+            (
+                "src/cart.js",
+                "// @flow\nimport { priceOf } from \"./pricing.js\";\nexport const total = 1;\n",
+            ),
+            (
+                "src/pricing.js",
+                "// @flow\nimport type { Line } from \"./cart.js\";\nimport { total } from \"./cart.js\";\nexport const priceOf = (): number => total;\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:#?}");
+    let pricing = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.path.as_deref() == Some("src/pricing.js"))
+        .expect("pricing.js is in the cycle");
+    assert_eq!(pricing.line, 3, "the finding is on the value import");
+}
+
 #[test]
 fn no_cycle_accepts_acyclic_relative_imports_and_packages() {
     let diagnostics = lint_many(
