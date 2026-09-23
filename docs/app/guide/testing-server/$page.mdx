@@ -38,10 +38,11 @@ and pre-hydration form against a real `uf build`.
 
 Every example below is a file in
 `crates/uf_cli/tests/fixtures/rsc-test-app`, a small notes application. CI's
-"RSC and browser testing" job type-checks it and runs its tests. Each sample on
-this page is checked to be a verbatim excerpt of the file it names
-(`tests/library/docs-sources.test.js`), so the page cannot drift from what
-passes.
+"RSC and browser testing" job type-checks it and runs its tests whenever the
+pipeline runs in full. Each sample on this page is checked on every pull request
+to be a verbatim excerpt of the file it names
+(`tests/library/docs-sources.test.js`), so the page cannot drift from those
+files.
 
 ## The action under test
 
@@ -335,7 +336,7 @@ Two things about the host:
 
 ## A route, built
 
-<div className="command"><code>buildApp({ root })</code></div>
+<div className="command"><code>buildApp(options)</code></div>
 
 ```js source=crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js
 // @flow
