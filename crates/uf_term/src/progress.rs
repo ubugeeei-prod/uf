@@ -387,8 +387,7 @@ impl Live<io::Stderr> {
     pub fn stderr(capabilities: Capabilities) -> Self {
         let region = Self::new(capabilities, io::stderr());
         if !region.enabled {
-            // Nothing will be drawn, so nothing needs measuring, and a spawn
-            // in a CI log's code path is a spawn for no reason at all.
+            // Nothing will be drawn, so nothing needs measuring.
             return region;
         }
         let size = TerminalSize::detect(Tty::Interactive, &TerminalEnv::from_process());

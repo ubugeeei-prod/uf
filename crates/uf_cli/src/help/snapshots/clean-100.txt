@@ -1,0 +1,19 @@
+uf clean
+────────
+Remove what a rebuild would write again.
+
+The build's output, uf's own per-project state under `.uf/`, and the caches. Not `node_modules`
+unless asked, and never a lockfile: the line is the network, and a lockfile is an input.
+
+Usage
+  uf clean [OPTIONS]
+
+Options
+  --deps     Also remove `node_modules`, which costs a network round trip
+
+  --dry-run  Print what would be removed, and remove nothing
+
+Global options
+      --cwd <DIR>     Run as if uf had been started in DIR instead of the current directory
+      --color <WHEN>  When to colourise output [values: auto, always, never] [default: auto]
+  -h, --help          Print help: `-h` for a summary, `--help` for everything

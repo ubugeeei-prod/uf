@@ -241,6 +241,39 @@ impl Ui {
     }
 }
 
+impl Ui {
+    /// Render a command line uf could not make sense of, on stderr: what was
+    /// wrong, what was probably meant, and where the list is.
+    ///
+    /// ```text
+    /// error: `biuld` is not a `uf` command
+    ///   › did you mean `uf build`?
+    ///   › `uf --help` lists them
+    /// ```
+    pub(crate) fn usage_error(&mut self, headline: &str, suggestions: &[String], hint: &str) {
+        let meant = match suggestions {
+            [] => None,
+            [one] => Some(format!("did you mean {one}?")),
+            many => Some(format!("did you mean one of {}?", many.join(", "))),
+        };
+        let width = crate::help::width_for(self.stderr.capabilities());
+        self.render_err(|renderer, out| {
+            renderer
+                .theme()
+                .error
+                .bold()
+                .paint(renderer.color(), "error", out);
+            out.push_str(": ");
+            renderer.prose(out, headline, renderer.theme().value, 7, 7, width);
+            out.push('\n');
+            if let Some(meant) = &meant {
+                renderer.hint_within(out, 2, width, meant);
+            }
+            renderer.hint_within(out, 2, width, hint);
+        });
+    }
+}
+
 /// Write a rendered block, ignoring a closed pipe.
 ///
 /// A CLI that panics because `head` closed its stdout is a broken CLI.

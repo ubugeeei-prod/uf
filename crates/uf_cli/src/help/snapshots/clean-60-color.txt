@@ -1,0 +1,26 @@
+\e[1;96muf clean\e[0m
+\e[90m────────\e[0m
+Remove what a rebuild would write again.
+
+The build's output, uf's own per-project state under \e[96m.uf/\e[0m,
+and the caches. Not \e[96mnode_modules\e[0m unless asked, and never a
+lockfile: the line is the network, and a lockfile is an
+input.
+
+\e[1mUsage\e[0m
+  \e[96muf\e[0m \e[96mclean\e[0m \e[90m[OPTIONS]\e[0m
+
+\e[1mOptions\e[0m
+  \e[96m--deps\e[0m     Also remove \e[96mnode_modules\e[0m, which costs a network
+             round trip
+
+  \e[96m--dry-run\e[0m  Print what would be removed, and remove nothing
+
+\e[1mGlobal options\e[0m
+      \e[96m--cwd\e[0m \e[90m<DIR>\e[0m     Run as if uf had been started in DIR
+                      instead of the current directory
+      \e[96m--color\e[0m \e[90m<WHEN>\e[0m  When to colourise output
+                      \e[90m[values:\e[0m \e[90mauto,\e[0m \e[90malways,\e[0m \e[90mnever]\e[0m
+                      \e[90m[default:\e[0m \e[90mauto]\e[0m
+  \e[96m-h\e[0m, \e[96m--help\e[0m          Print help: \e[96m-h\e[0m for a summary, \e[96m--help\e[0m
+                      for everything

@@ -155,7 +155,7 @@ const COVERAGE: &[(&str, &str)] = &[
         "dependencies.rs: asks the package manager, or says it cannot",
     ),
     ("why", "dependencies.rs: asks the package manager"),
-    // Last, because `uf --help` prints clap's own `help` last.
+    // clap's own `help`, which the page's foot points at rather than lists.
     ("help", "here"),
 ];
 
@@ -243,31 +243,43 @@ fn without_a_config() -> tempfile::TempDir {
     dir
 }
 
-/// The command names `uf --help` prints, in the order it prints them.
+/// The command names `uf --help` prints, in alphabetical order.
+///
+/// The help groups them by what they are for; the checklist is kept by name,
+/// so the two are compared as sets.
 fn commands_in_the_help() -> Vec<String> {
     let output = uf().arg("--help").output().expect("uf started");
     let stdout = String::from_utf8(output.stdout).expect("UTF-8 help");
-    stdout
-        .split_once("Commands:")
-        .expect("the help lists commands")
+    let mut names: Vec<String> = stdout
+        .split_once("\nUsage\n")
+        .expect("the help has a usage section")
         .1
-        .split_once("\nOptions:")
+        .split_once("\n\n")
+        .expect("the usage block ends")
+        .1
+        .split_once("\nOptions\n")
         .expect("commands come before options")
         .0
         .lines()
-        .filter(|line| line.starts_with("  ") && !line.starts_with("     "))
+        .filter(|line| line.starts_with("  ") && !line.starts_with("   "))
         .filter_map(|line| line.split_whitespace().next().map(str::to_owned))
-        .collect()
+        .collect();
+    // clap's `help` is not a row of the page; its foot says how to ask for a
+    // command's help, and it is exercised with the rest below.
+    names.push("help".to_owned());
+    names.sort();
+    names
 }
 
 /// The checklist is the help, not a list somebody remembered to update.
 #[test]
 fn every_command_the_help_lists_is_checked_here() {
     let listed = commands_in_the_help();
-    let covered = COVERAGE
+    let mut covered = COVERAGE
         .iter()
         .map(|(name, _)| (*name).to_owned())
         .collect::<Vec<_>>();
+    covered.sort();
 
     assert_eq!(
         listed, covered,

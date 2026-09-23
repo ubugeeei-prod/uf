@@ -46,13 +46,41 @@ Options:
           Print help
 `;
 
+// The same screen as uf draws it: headings without colons, descriptions
+// wrapped beside their names, and a wrapped line that starts with a flag's
+// name without being one.
+const UF_HELP = `uf test
+───────
+Run the project's tests
+
+Usage
+  uf test [OPTIONS] [PATH]...
+
+Commands
+  watch  Rerun on change
+
+Arguments
+  [PATH]...  Only these files
+
+Options
+  -t, --test-name-pattern <PATTERN>  Only tests whose name contains PATTERN, which
+                                     --shard splits after
+      --shard <INDEX/COUNT>          One part of the suite
+
+Global options
+      --cwd <DIR>  Run as if uf had been started in DIR
+  -h, --help       Print help: \`-h\` for a summary, \`--help\` for everything
+`;
+
 describe("parseHelp", () => {
   it("reads subcommands, leaving out clap's own help", () => {
     expect(parseHelp(HELP).subcommands).toEqual(["watch"]);
+    expect(parseHelp(UF_HELP).subcommands).toEqual(["watch"]);
   });
 
   it("reads every long flag, short-aliased or not", () => {
     expect(parseHelp(HELP).flags).toEqual(["--test-name-pattern", "--shard", "--cwd", "--help"]);
+    expect(parseHelp(UF_HELP).flags).toEqual(["--test-name-pattern", "--shard", "--cwd", "--help"]);
   });
 });
 

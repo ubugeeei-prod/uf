@@ -10,8 +10,6 @@
 //! more: see [`TerminalSize::detect`].
 
 use std::io::IsTerminal;
-use std::path::Path;
-use std::process::{Command, Stdio};
 
 use crate::image::{ImageEnv, ImageProtocol};
 
@@ -387,10 +385,11 @@ pub const FALLBACK_ROWS: usize = 24;
 ///
 /// Colour, glyphs and interactivity are answered by reading environment
 /// variables and one `isatty`, which is free, so every command resolves them
-/// at start-up whether it draws a spinner or not. Size is not free — see
-/// [`TerminalSize::detect`] — and only the handful of commands that redraw a
-/// region in place need it. Folding it into `Capabilities` would put a process
-/// spawn in front of `uf --version`.
+/// at start-up whether it draws a spinner or not. Size costs an `open` and a
+/// system call — see [`TerminalSize::detect`] — and only the commands that
+/// lay text out to the window need it: a region redrawn in place, and the
+/// help. Folding it into `Capabilities` would put both in front of
+/// `uf --version`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalSize {
     columns: usize,
@@ -407,7 +406,7 @@ impl TerminalSize {
     /// A size stated directly.
     ///
     /// A zero in either dimension is a terminal that has not finished being
-    /// created — `stty` reports `0 0` inside some CI shells — and is replaced
+    /// created — some CI shells report `0 0` — and is replaced
     /// by the fallback rather than propagated as a region nothing fits in.
     pub fn new(columns: usize, rows: usize) -> Self {
         Self {
@@ -453,12 +452,11 @@ impl TerminalSize {
     ///
     /// # What "asking the terminal" costs
     ///
-    /// One `stty size` on `/dev/tty`, which is a process spawn — about a
-    /// millisecond. It is the same trade `prompt::RawMode` made for the same
-    /// reason: `uf_term` has no third-party dependencies, and reading a
-    /// `winsize` out of an `ioctl` needs either `libc` or a hand-written
-    /// struct whose layout differs between macOS and Linux. A spawn is asked
-    /// for once per process, by the one command that redraws a region.
+    /// One `ioctl(TIOCGWINSZ)` on `/dev/tty`: an `open` and a system call,
+    /// a few microseconds. It used to be a `stty size` spawn, about a
+    /// millisecond on an idle machine and several on a busy one, which was a
+    /// fair price for the one command that redraws a region and not for every
+    /// help page, which is laid out to the terminal too. See [`probe_size`].
     ///
     /// It is also the reason this is not re-asked per frame, and therefore the
     /// reason a terminal resized *during* an install is not noticed: seeing
@@ -468,12 +466,10 @@ impl TerminalSize {
     pub fn detect(tty: Tty, env: &TerminalEnv) -> Self {
         let answered = env.declared_columns().is_some() && env.declared_rows().is_some();
         let reported = match tty {
-            // Nobody is watching, so there is nothing to measure — and paying
-            // a process spawn to discover that would be a spawn in the code
-            // path of every piped command.
+            // Nobody is watching, so there is nothing to measure.
             Tty::Piped => None,
-            // The environment already said both, so the spawn would be for an
-            // answer that loses anyway.
+            // The environment already said both, so the terminal's answer
+            // would lose anyway.
             Tty::Interactive if answered => None,
             Tty::Interactive => probe_size(),
         };
@@ -516,75 +512,77 @@ fn reported_rows(reported: Option<(usize, usize)>) -> Option<usize> {
 
 /// Ask the controlling terminal how big it is.
 ///
-/// `/dev/tty` rather than this process's standard input, because the stream a
+/// `/dev/tty` rather than one of this process's streams, because the stream a
 /// region is drawn on is not the stream a caller piped something into: `echo y
-/// | uf install` still draws on the terminal the reader is looking at, and
-/// `stty` reads the terminal attached to *its* standard input. On a platform
-/// with no `/dev/tty`, or none that has `stty` at one of [`STTY_PROGRAMS`],
-/// this answers `None` and the fallback applies.
+/// | uf install` still draws on the terminal the reader is looking at. With no
+/// `/dev/tty` — no controlling terminal, or a platform without one — this
+/// answers `None` and the fallback applies.
+///
+/// `TIOCGWINSZ` is read with a hand-written declaration rather than through
+/// `libc`, because `uf_term` has no third-party dependencies. What that takes
+/// is small and fixed: `struct winsize` is four `unsigned short`s, rows first,
+/// on macOS and on Linux alike, and only the request number differs between
+/// them. A target this does not name answers `None`, the same as a terminal
+/// that could not be asked.
+#[cfg(any(
+    target_os = "macos",
+    all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )
+))]
 fn probe_size() -> Option<(usize, usize)> {
-    let program = stty_program()?;
-    let terminal = std::fs::File::open("/dev/tty").ok()?;
-    let output = Command::new(program)
-        .arg("size")
-        .stdin(Stdio::from(terminal))
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
+    use std::os::fd::AsRawFd;
+    use std::os::raw::{c_int, c_ulong};
+
+    /// `struct winsize`, from `<sys/ttycom.h>` on macOS and
+    /// `<asm-generic/termios.h>` on Linux.
+    #[repr(C)]
+    #[derive(Default)]
+    struct WinSize {
+        rows: u16,
+        columns: u16,
+        x_pixels: u16,
+        y_pixels: u16,
     }
-    let reported = String::from_utf8(output.stdout).ok()?;
-    parse_stty_size(&reported)
+
+    /// `_IOR('t', 104, struct winsize)` on macOS.
+    #[cfg(target_os = "macos")]
+    const TIOCGWINSZ: c_ulong = 0x4008_7468;
+    /// The generic `TIOCGWINSZ`, which x86-64 and AArch64 Linux both use.
+    #[cfg(target_os = "linux")]
+    const TIOCGWINSZ: c_ulong = 0x5413;
+
+    unsafe extern "C" {
+        fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
+    }
+
+    let terminal = std::fs::File::open("/dev/tty").ok()?;
+    let mut size = WinSize::default();
+    // SAFETY: the descriptor is open for as long as `terminal` lives, and
+    // `TIOCGWINSZ` writes exactly one `struct winsize` through the pointer,
+    // which points at one.
+    let status = unsafe { ioctl(terminal.as_raw_fd(), TIOCGWINSZ, &raw mut size) };
+    let WinSize {
+        rows,
+        columns,
+        x_pixels: _,
+        y_pixels: _,
+    } = size;
+    (status == 0).then_some((usize::from(columns), usize::from(rows)))
 }
 
-/// The absolute paths this crate will run `stty` from, in the order tried.
-///
-/// Naming a program by its bare name resolves it through the `PATH` this
-/// process inherited, and [`probe_size`] runs during ordinary terminal
-/// probing — so a `stty` planted anywhere earlier on a user's `PATH` than the
-/// system one would be executed, as that user, by a command that only wanted
-/// to know how wide the window is. That is CWE-426, and the answer is to not
-/// ask `PATH` at all.
-///
-/// These two are POSIX's own default utility path, `/bin:/usr/bin` — what
-/// `confstr(_CS_PATH)` answers on macOS and on glibc — and between them they
-/// cover the platforms uf supports: macOS ships `/bin/stty`, the GNU
-/// distributions ship `/usr/bin/stty` with `/bin` a symlink to it or a copy,
-/// and BusyBox ships `/bin/stty`. What makes them trustworthy is not that the
-/// file is usually there but that the *directory* is root-owned on all of
-/// them, which is the entire vulnerability: an attacker who can write to
-/// `/bin` does not need this bug.
-///
-/// A system that keeps its utilities somewhere else entirely — NixOS, whose
-/// are under `/run/current-system/sw/bin` — matches neither, and gets `None`:
-/// the size falls back to `COLUMNS`/`LINES` and then to 80×24. That is a
-/// deliberate trade. A terminal measured wrongly costs a worse layout; a
-/// terminal measured by whatever `PATH` happened to point at costs more than
-/// a layout, and `COLUMNS`/`LINES` are already the documented way to say how
-/// big the window is when it cannot be asked.
-///
-/// The alternative that needs no subprocess at all is `TIOCGWINSZ`, and it is
-/// tracked rather than done here: it needs either a `libc` dependency this
-/// crate does not have or a hand-written `winsize` whose layout differs
-/// between macOS and Linux, which is the same reason [`TerminalSize::detect`]
-/// gives for spawning in the first place.
-const STTY_PROGRAMS: [&str; 2] = ["/bin/stty", "/usr/bin/stty"];
-
-/// The `stty` this process will run, or nothing when no trusted one is there.
-fn stty_program() -> Option<&'static Path> {
-    STTY_PROGRAMS
-        .iter()
-        .map(Path::new)
-        .find(|program| program.is_file())
-}
-
-/// `stty size` prints rows first, then columns, separated by a space.
-fn parse_stty_size(reported: &str) -> Option<(usize, usize)> {
-    let mut parts = reported.split_ascii_whitespace();
-    let rows: usize = parts.next()?.parse().ok()?;
-    let columns: usize = parts.next()?.parse().ok()?;
-    Some((columns, rows))
+/// Ask the controlling terminal how big it is: on this target, nothing can be
+/// asked, and the fallback applies.
+#[cfg(not(any(
+    target_os = "macos",
+    all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )
+)))]
+fn probe_size() -> Option<(usize, usize)> {
+    None
 }
 
 /// Which inline-image protocol may be used on a stream.
