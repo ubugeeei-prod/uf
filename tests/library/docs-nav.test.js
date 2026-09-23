@@ -48,6 +48,7 @@ import {
   sections,
   sourceFor,
 } from "../../docs/app/_design/nav.js";
+import type { Section } from "../../docs/app/_design/nav.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = path.join(REPO, "docs/app");
@@ -146,8 +147,8 @@ describe("the manual's navigation", () => {
     expect(dangling).toEqual([]);
 
     for (const section of sections) {
-      const route = [];
-      let at = section;
+      const route: Array<string> = [];
+      let at: ?Section = section;
       while (at != null && !route.includes(at.title)) {
         route.push(at.title);
         at = at.then == null ? null : byLanding.get(at.then);

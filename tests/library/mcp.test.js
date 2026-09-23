@@ -94,7 +94,7 @@ const answered = (messages: Array<Wire>, id: number): Result => {
     throw new Error(`no answer for id ${id} in ${JSON.stringify(messages)}`);
   }
   if (found.result == null) {
-    throw new Error(`id ${id} answered with an error: ${JSON.stringify(found.error)}`);
+    throw new Error(`id ${id} answered with an error: ${String(JSON.stringify(found.error))}`);
   }
   return found.result;
 };

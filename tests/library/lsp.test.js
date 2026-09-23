@@ -185,11 +185,25 @@ const answer = (messages: Array<Wire>, id: number): Wire => {
   return found;
 };
 
+/**
+ * `value`, which the protocol makes optional and this reply has to carry, or a
+ * failure that names what was missing. The reply types say what *may* be
+ * there; a test that reads a field is also the assertion that it *is*.
+ */
+function present<T>(value: ?T, what: string): T {
+  if (value == null) {
+    throw new Error(`the reply has no ${what}`);
+  }
+  return value;
+}
+
 /** One request's `result`, as the object shape `initialize` and `hover` send. */
 const answered = (messages: Array<Wire>, id: number): Answer => {
   const result = answer(messages, id).result;
   if (result == null || Array.isArray(result)) {
-    throw new Error(`expected an object result for id ${id}, got ${JSON.stringify(result)}`);
+    throw new Error(
+      `expected an object result for id ${id}, got ${String(JSON.stringify(result))}`,
+    );
   }
   return result;
 };
@@ -198,7 +212,7 @@ const answered = (messages: Array<Wire>, id: number): Answer => {
 const listed = (messages: Array<Wire>, id: number): Array<Entry> => {
   const result = answer(messages, id).result;
   if (!Array.isArray(result)) {
-    throw new Error(`expected a list result for id ${id}, got ${JSON.stringify(result)}`);
+    throw new Error(`expected a list result for id ${id}, got ${String(JSON.stringify(result))}`);
   }
   return result;
 };
@@ -219,10 +233,15 @@ const published = (messages: Array<Wire>): Array<Array<Diagnostic>> =>
  */
 const apply = (source: string, edits: Array<Entry>): string => {
   const lines = source.split("\n");
-  const ordered = edits.slice().sort((a, b) => {
-    const line = b.range.start.line - a.range.start.line;
-    return line !== 0 ? line : b.range.start.character - a.range.start.character;
-  });
+  const ordered = edits
+    .map((edit) => ({
+      range: present(edit.range, "edit range"),
+      newText: present(edit.newText, "edit text"),
+    }))
+    .sort((a, b) => {
+      const line = b.range.start.line - a.range.start.line;
+      return line !== 0 ? line : b.range.start.character - a.range.start.character;
+    });
 
   for (const edit of ordered) {
     const startLine = edit.range.start.line;
@@ -251,20 +270,21 @@ describe("what uf lsp tells an editor it can do", () => {
     // Full-document sync: every integration in `editors/` sends whole
     // documents, and an incremental client would be sending edits the server
     // does not read.
-    expect(result.capabilities.textDocumentSync).toBe(1);
-    expect(result.capabilities.documentFormattingProvider).toBe(true);
-    expect(result.capabilities.hoverProvider).toBe(true);
-    expect(result.capabilities.codeActionProvider.codeActionKinds).toEqual([
+    const capabilities = present(result.capabilities, "capabilities");
+    expect(capabilities.textDocumentSync).toBe(1);
+    expect(capabilities.documentFormattingProvider).toBe(true);
+    expect(capabilities.hoverProvider).toBe(true);
+    expect(present(capabilities.codeActionProvider, "codeActionProvider").codeActionKinds).toEqual([
       "quickfix",
       "source.fixAll.uf",
     ]);
     // Completion. `"` opens a value or a quoted key in `uf.config.js`; `@`
     // separates a tool from its version; `.` is a member access, whose members
     // Flow's inference knows.
-    expect(result.capabilities.completionProvider?.triggerCharacters).toEqual(['"', "@", "."]);
+    expect(capabilities.completionProvider?.triggerCharacters).toEqual(['"', "@", "."]);
     // Both answered by the checker; see "types" below.
-    expect(result.capabilities?.definitionProvider).toBe(true);
-    expect(result.capabilities?.typeDefinitionProvider).toBe(true);
+    expect(capabilities.definitionProvider).toBe(true);
+    expect(capabilities.typeDefinitionProvider).toBe(true);
   });
 
   it("does not advertise what it cannot do", () => {
@@ -280,7 +300,9 @@ describe("what uf lsp tells an editor it can do", () => {
     expect(capabilities.renameProvider).toBe(undefined);
     expect(capabilities.referencesProvider).toBe(undefined);
     expect(capabilities.documentSymbolProvider).toBe(undefined);
-    expect(capabilities.codeActionProvider.codeActionKinds).not.toContain("source.organizeImports");
+    expect(
+      present(capabilities.codeActionProvider, "codeActionProvider").codeActionKinds,
+    ).not.toContain("source.organizeImports");
   });
 
   it("answers a request it does not serve instead of leaving the editor waiting", () => {
@@ -438,9 +460,9 @@ describe("code actions", () => {
     expect(fix.title).toBe("Replace `bool` with `boolean`");
     // The action carries the diagnostic it answers, so the editor can attach
     // it to the right squiggle.
-    expect(fix.diagnostics[0].code).toBe("flow/deprecated-type");
+    expect(present(fix.diagnostics, "diagnostics")[0].code).toBe("flow/deprecated-type");
 
-    const fixed = apply(source, fix.edit.changes[URI]);
+    const fixed = apply(source, present(fix.edit, "edit").changes[URI]);
     expect(fixed).toBe("// @flow\ntype B = boolean;\n");
     // And the linter agrees, because it is the one asked.
     expect(published(session([didOpen(fixed), EXIT]))[0]).toEqual([]);
@@ -458,7 +480,7 @@ describe("code actions", () => {
     expect(actions).toHaveLength(1);
     expect(actions[0].kind).toBe("source.fixAll.uf");
     // Every occurrence in the file, not only the one under the cursor.
-    expect(apply(source, actions[0].edit.changes[URI])).toBe(
+    expect(apply(source, present(actions[0].edit, "edit").changes[URI])).toBe(
       "// @flow\ntype A = boolean;\ntype B = ?boolean;\n",
     );
   });
@@ -1027,7 +1049,7 @@ describe("completion in uf.config.js", () => {
       const rows = NODE_RELEASES.map((release) => ({
         version: `v${release.version}`,
         date: release.date,
-        files: [],
+        files: [] as Array<string>,
         lts: release.lts ?? false,
       }));
       fs.writeFileSync(path.join(publisher, "index.json"), JSON.stringify(rows));

@@ -74,20 +74,6 @@ import path from "node:path";
 
 import { describe, expect, it, uft } from "@uniflowed/test";
 
-/**
- * The half of a `ReadableStream` controller these fixtures use.
- *
- * `ReadableStream`'s own controller type is not among the libdefs uf ships,
- * and the fixture below used to reach for `(controller: any)` — two casts,
- * which `flow/unclear-type` rejects. Naming the two methods the fixture
- * actually calls says more than `any` did and costs one line.
- */
-type StreamController = {
-  readonly enqueue: (chunk: Uint8Array) => mixed,
-  readonly close: () => mixed,
-  ...
-};
-
 import { createWorkerFetch, installWorkerLogger } from "@uniflowed/server/edge";
 import { createFetchHandler } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
@@ -95,6 +81,7 @@ import { createLambdaHandler } from "@uniflowed/server/lambda";
 import { installLogger, processLogger, recordingLogger } from "@uniflowed/server/log";
 import { type RoutingRules, createServeHandler, createStaticHandler } from "@uniflowed/server/node";
 import { createHandler as createStandaloneHandler } from "@uniflowed/server/standalone";
+import type { Application } from "@uniflowed/server/fetch";
 
 // The other front door, for the comparison. Reached by path rather than by
 // specifier because `@uniflowed/vite` deliberately does not export it: it is
@@ -110,7 +97,7 @@ const assets = {
   deployment: "build-n1",
 };
 
-const request = (url: string, init?: mixed) => new Request(`http://localhost${url}`, init);
+const request = (url: string, init?: RequestOptions) => new Request(`http://localhost${url}`, init);
 
 /** A directory holding `files`, in the system's temporary directory. */
 function directoryWith(files: { [string]: string }): string {
@@ -126,21 +113,19 @@ function directoryWith(files: { [string]: string }): string {
 /**
  * A server bundle, as `handler.js` imports one.
  *
- * The same shape `serve.test.js` builds, and deliberately so: both files are
- * about the module `uf build` writes, and a second idea of what that module
- * looks like would let one of them pass against something the other could not.
+ * Typed as the `Application` the doors are handed, so this fixture and the
+ * module `uf build` writes are held to one idea of what that module is: an
+ * extra export here would be a property no door reads, and a missing one an
+ * error at this line rather than an `undefined is not a function` in a case.
+ * (The binary's door types its bundle as `StandaloneApp`, which is not yet the
+ * same type; ubugeeei-prod/uf#1451 tracks the three calls that disagree.)
  */
 function appWith(options: {
   guard?: (request: Request) => Promise<Response | null> | Response | null,
   handler?: (request: Request) => Promise<Response | null> | Response | null,
   render?: (url: string) => { status: number, html: string },
-}) {
+}): Application {
   return {
-    routes: [],
-    handlers: [],
-    middleware: [],
-    notFound: [],
-    errors: [],
     // The real one, because a bundle's own is what a host must be handed: the
     // request lives in an `AsyncLocalStorage` belonging to a module instance,
     // and `handler.js` re-exports this beside `fetch` so `server.js` has the
@@ -158,13 +143,17 @@ function appWith(options: {
         : { status: 200, html: `<!doctype html><p>${url}</p>` };
       return {
         status: answer.status,
-        pipe: (destination: { write: (chunk: string) => mixed, end: () => mixed, ... }) => {
+        pipe: (destination: {
+          readonly write: (chunk: string | Uint8Array) => mixed,
+          readonly end: () => mixed,
+          ...
+        }) => {
           destination.write(answer.html);
           destination.end();
         },
         stream: () =>
           new ReadableStream({
-            start(controller: StreamController) {
+            start: (controller: ReadableStreamDefaultController<Uint8Array>) => {
               controller.enqueue(new TextEncoder().encode(answer.html));
               controller.close();
             },
@@ -764,16 +753,18 @@ describe("the front doors", () => {
     // catch. The Worker's static half is the platform's, standing in as an
     // `ASSETS` binding; the Lambda's is the package's own copy; the binary's is
     // the bytes inside it.
-    const doors = {
-      "uf start": async (url: string, init?: mixed) => {
+    const doors: {
+      readonly [door: string]: (url: string, init?: RequestOptions) => Promise<string>,
+    } = {
+      "uf start": async (url: string, init?: RequestOptions) => {
         const response = await started(request(url, init));
         return `${String(response.status)} ${await response.text()}`;
       },
-      "adapter node": async (url: string, init?: mixed) => {
+      "adapter node": async (url: string, init?: RequestOptions) => {
         const response = await deployed(request(url, init));
         return `${String(response.status)} ${await response.text()}`;
       },
-      "adapter edge": async (url: string, init?: mixed) => {
+      "adapter edge": async (url: string, init?: RequestOptions) => {
         const response = await worker(
           request(url, init),
           { ASSETS: assetsBinding(distDir) },
@@ -781,24 +772,25 @@ describe("the front doors", () => {
         );
         return `${String(response.status)} ${await response.text()}`;
       },
-      "adapter serverless": async (url: string, init?: mixed) => {
+      "adapter serverless": async (url: string, init?: RequestOptions) => {
         const result = await invoked(await eventFor(request(url, init)));
         return `${String(result.statusCode)} ${result.body}`;
       },
-      "uf build --compile": async (url: string, init?: mixed) => {
+      "uf build --compile": async (url: string, init?: RequestOptions) => {
         const response = nodeResponse();
         const method = String(init?.method ?? "GET");
         const body = String(init?.body ?? "");
-        // As an `IncomingMessage` carries them: lower-cased, one object.
-        const sent: { [string]: string } = {};
-        for (const [name, value] of new Headers((init?.headers: $FlowFixMe))) {
-          sent[name] = value;
+        // As an `IncomingMessage` carries them: lower-cased, one object, with the
+        // request's own over the host this door stands in for.
+        const headers: { [string]: string } = { host: "localhost" };
+        for (const [name, value] of new Headers(init?.headers)) {
+          headers[name] = value;
         }
         await compiled(
           {
             method,
             url,
-            headers: { host: "localhost", ...sent },
+            headers,
             // The handler hands a non-`GET` body straight to `Request`, so what
             // stands in for the socket has to be async-iterable the way an
             // `IncomingMessage` is. A `GET` carries none, and passing one would
@@ -818,7 +810,7 @@ describe("the front doors", () => {
       },
     };
 
-    for (const [url, init] of [
+    const questions: $ReadOnlyArray<[string, RequestOptions | void]> = [
       ["/", undefined],
       ["/api/health", undefined],
       ["/api/health", { method: "POST", body: "{}" }],
@@ -834,12 +826,13 @@ describe("the front doors", () => {
       ["/posts/hello", { headers: { "uf-deployment": "build-n" } }],
       // And the same tab's request once it names the build that is live.
       ["/posts/hello", { headers: { "uf-deployment": "build-n1" } }],
-    ]) {
+    ];
+    for (const [url, init] of questions) {
       const said = `${String(init?.method ?? "GET")} ${String(url)}`;
       const reference = await doors["uf start"](String(url), init);
       // The reference itself, for the previous build's questions: the file is
       // served, and the application is refused.
-      if (new Headers((init?.headers: $FlowFixMe)).get("uf-deployment") === "build-n") {
+      if (new Headers(init?.headers).get("uf-deployment") === "build-n") {
         expect(`${said}: ${reference.slice(0, 3)}`).toBe(`${said}: ${url === "/" ? "200" : "409"}`);
       }
       for (const name of [
@@ -924,7 +917,9 @@ describe("the front doors", () => {
         header("cache-control") === "no-store" ? "no-store" : "-"
       } csp=${nonceShape(header("content-security-policy"))} ${body.replace(/\s+/g, " ")}`;
 
-    const doors = {
+    const doors: {
+      readonly [door: string]: (url: string, init?: RequestOptions) => Promise<string>,
+    } = {
       "uf start": async (url: string) => {
         const response = await started(request(url));
         return described(
@@ -964,7 +959,7 @@ describe("the front doors", () => {
       },
     };
 
-    const expectations = {
+    const expectations: { readonly [url: string]: string } = {
       // A redirect, before anything else answers, with the headers on it too.
       "/moved/hello": "308 location=/posts/hello x-served-by=served-app",
       // A navigating browser's payload request lands on the target's payload.
@@ -1044,7 +1039,9 @@ describe("the front doors", () => {
     const described = (status: number, location: ?string, body: string): string =>
       `${String(status)} location=${location ?? "-"} ${body.replace(/\s+/g, " ")}`.trimEnd();
 
-    const doors = {
+    const doors: {
+      readonly [door: string]: (url: string, init?: RequestOptions) => Promise<string>,
+    } = {
       "uf start": async (url: string) => {
         const response = await started(request(url));
         return described(response.status, response.headers.get("location"), await response.text());
@@ -1072,7 +1069,7 @@ describe("the front doors", () => {
       },
     };
 
-    const expectations = {
+    const expectations: { readonly [url: string]: string } = {
       // The application's root is the base itself, and the other spelling of
       // it is a redirect.
       "/docs": "200 location=- <!doctype html><p>home</p>",
