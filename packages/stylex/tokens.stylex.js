@@ -127,11 +127,17 @@ export const ufTokens = stylex.defineVars({
   // The size of a control a finger or a pointer aims at.
   sizeControl: "18px",
 
-  // Motion. There is no elevation: a surface in front of another is told
-  // apart by a 1px `border` and its own background, never by a shadow, and
-  // `crates/uf_stylex/src/tests/defaults.rs` fails a default style that
-  // casts one or paints a gradient.
+  // Motion. Two short durations and one easing: `durationFast` for a colour
+  // or a chevron, `durationBase` for something that travels, such as a
+  // switch's thumb or a drawer. The easing decelerates and never overshoots,
+  // so nothing bounces. A transition names the properties it moves, never
+  // `all`, and is `0s` under `prefers-reduced-motion: reduce`;
+  // `crates/uf_stylex/src/tests/defaults.rs` holds every default style to
+  // that.
+  //
+  // There is no elevation either: a surface in front of another is told
+  // apart by a 1px `border` and its own background, never by a shadow.
   durationFast: "120ms",
-  durationBase: "200ms",
+  durationBase: "160ms",
   easing: "cubic-bezier(0.2, 0, 0, 1)",
 });

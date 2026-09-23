@@ -95,8 +95,10 @@ const styles = stylex.create({
     height: "8px",
     borderRadius: ufTokens.radiusPill,
     backgroundColor: ufTokens.accent,
-    transform: "scale(var(--uf-radio-dot))",
-    transitionProperty: "transform",
+    // Fades in rather than growing from nothing: a dot that scales up reads
+    // as a pop, and the change is the same without the motion.
+    opacity: "var(--uf-radio-dot)",
+    transitionProperty: "opacity",
     transitionDuration: {
       default: ufTokens.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",

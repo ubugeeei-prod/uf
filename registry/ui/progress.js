@@ -45,13 +45,18 @@ const styles = stylex.create({
     borderRadius: ufTokens.radiusSm,
     backgroundColor: { default: ufTokens.sunken, ":not([aria-valuenow])": ufTokens.accentSoft },
   },
+  // Full width, scaled along the inline axis to the fraction done: moving a
+  // transform repaints the bar, where moving `width` laid it out again on
+  // every frame.
   fill: {
     display: "block",
-    width: "calc(var(--uf-progress, 0) * 100%)",
+    width: "100%",
     height: "100%",
     borderRadius: ufTokens.radiusSm,
     backgroundColor: ufTokens.accent,
-    transitionProperty: "width",
+    transform: "scaleX(var(--uf-progress, 0))",
+    transformOrigin: { default: "left", ":dir(rtl)": "right" },
+    transitionProperty: "transform",
     transitionDuration: {
       default: ufTokens.durationBase,
       "@media (prefers-reduced-motion: reduce)": "0s",

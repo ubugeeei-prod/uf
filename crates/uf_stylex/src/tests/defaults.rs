@@ -14,13 +14,20 @@
 //!   `drop-shadow()`, no `*-gradient()`, in a rule or in a token;
 //! * **restrained corners**: a `border-radius` is a radius token, `0`, `50%`
 //!   for a thing that is a circle, or `inherit`, and the radius tokens other
-//!   than the pill are 6px or less.
+//!   than the pill are 6px or less;
+//! * **quiet motion**: a transition or animation lasts a duration token (both
+//!   180ms or less), names its properties rather than `all`, moves no layout
+//!   property, does not scale a thing up from nothing, and is `0s` under
+//!   `prefers-reduced-motion: reduce`; the easing never overshoots.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::compile::{CompiledModule, compile_module};
+use crate::condition::StyleCondition;
+use crate::sheet::StyleRule;
 use crate::variable_name;
+use uf_infra::FxHashMap;
 
 /// The namespace the preset's tokens are declared under.
 const NAMESPACE: &str = "ufTokens";
@@ -191,6 +198,186 @@ fn every_default_corner_is_a_radius_token() {
         found.is_empty(),
         "a default corner is `radiusSm`, `radiusMd`, `radiusLg`, `radiusPill` for a thing that \
          is round, or `50%` for a circle:\n  {}",
+        found.join("\n  ")
+    );
+}
+
+/// The at-rule a reduced-motion override is written under.
+const REDUCED_MOTION: &str = "@media (prefers-reduced-motion: reduce)";
+
+/// The longest a default transition may take, in milliseconds.
+const LONGEST_MOTION_MS: u32 = 180;
+
+/// Properties whose animation lays the page out again on every frame.
+const LAYOUT: &[&str] = &[
+    "width",
+    "height",
+    "min-width",
+    "min-height",
+    "max-width",
+    "max-height",
+    "top",
+    "right",
+    "bottom",
+    "left",
+    "inset",
+    "margin",
+    "padding",
+    "flex-basis",
+    "grid-template-columns",
+    "grid-template-rows",
+];
+
+/// Where a default style animates a layout property on purpose, and why.
+const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[(
+    "registry/ui/drawer.js",
+    "a drawer is a fixed overlay on its own edge, and moving between snap points resizes \
+     it; nothing else on the page moves",
+)];
+
+/// The milliseconds a duration token declares.
+fn token_milliseconds(module: &CompiledModule, key: &str) -> u32 {
+    let name = variable_name(NAMESPACE, key);
+    let value = module
+        .sheet
+        .variables()
+        .find(|variable| variable.name == name)
+        .map(|variable| variable.value.to_string())
+        .unwrap_or_else(|| panic!("the preset declares no `{key}`"));
+    value
+        .strip_suffix("ms")
+        .and_then(|number| number.parse().ok())
+        .unwrap_or_else(|| panic!("`{key}` is `{value}`, not milliseconds"))
+}
+
+#[test]
+fn the_motion_tokens_are_short_and_never_overshoot() {
+    let source = fs::read_to_string(repository().join("packages/stylex/tokens.stylex.js"))
+        .expect("the token module");
+    let module = compiled("packages/stylex/tokens.stylex.js", &source);
+    let fast = token_milliseconds(&module, "durationFast");
+    let base = token_milliseconds(&module, "durationBase");
+    assert!(
+        (80..=base).contains(&fast) && base <= LONGEST_MOTION_MS,
+        "durations are {fast}ms and {base}ms; the defaults move in {LONGEST_MOTION_MS}ms or less"
+    );
+
+    let name = variable_name(NAMESPACE, "easing");
+    let easing = module
+        .sheet
+        .variables()
+        .find(|variable| variable.name == name)
+        .map(|variable| variable.value.to_string())
+        .expect("the preset declares an easing");
+    let points: Vec<f64> = easing
+        .strip_prefix("cubic-bezier(")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .unwrap_or_else(|| panic!("the easing is `{easing}`, not a cubic-bezier()"))
+        .split(',')
+        .map(|number| number.trim().parse().expect("a number"))
+        .collect();
+    assert_eq!(points.len(), 4, "`{easing}` has four control values");
+    // The y values are the second and fourth; outside 0..1 the curve
+    // overshoots its end or pulls back before its start, which is a bounce.
+    assert!(
+        [points[1], points[3]]
+            .iter()
+            .all(|y| (0.0..=1.0).contains(y)),
+        "the easing `{easing}` overshoots, and the defaults do not bounce"
+    );
+}
+
+#[test]
+fn every_default_transition_is_quiet_and_honours_reduced_motion() {
+    let tokens = [
+        format!("var({})", variable_name(NAMESPACE, "durationFast")),
+        format!("var({})", variable_name(NAMESPACE, "durationBase")),
+    ];
+    let mut found = Vec::new();
+    let mut checked = 0usize;
+    for (path, source) in defaults() {
+        let module = compiled(&path, &source);
+        let value_of: FxHashMap<&str, &StyleRule> = module
+            .sheet
+            .rules()
+            .map(|rule| (rule.class.as_str(), rule))
+            .collect();
+        for style in &module.styles {
+            let values = |key: &str| -> Vec<(&StyleCondition, String)> {
+                style
+                    .property(key)
+                    .map(|property| {
+                        property
+                            .classes
+                            .iter()
+                            .filter_map(|class| {
+                                value_of
+                                    .get(class.class.as_str())
+                                    .map(|rule| (&class.condition, rule.value.to_string()))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            let at = format!("{path} `{}`", style.name);
+            for duration in ["transitionDuration", "animationDuration"] {
+                let entries = values(duration);
+                if entries.is_empty() {
+                    continue;
+                }
+                checked += 1;
+                for (_, value) in &entries {
+                    let still = value == "0s" || value == "0ms";
+                    if !still && !tokens.contains(value) {
+                        found.push(format!(
+                            "{at}: {duration} is `{value}`, not a duration token"
+                        ));
+                    }
+                }
+                let reduced = entries.iter().any(|(condition, value)| {
+                    condition.at_rule() == Some(REDUCED_MOTION) && (value == "0s" || value == "0ms")
+                });
+                if !reduced {
+                    found.push(format!(
+                        "{at}: {duration} is not `0s` under {REDUCED_MOTION}"
+                    ));
+                }
+            }
+            if !values("animationName").is_empty() || !values("animation").is_empty() {
+                found.push(format!("{at}: a default style runs a keyframe animation"));
+            }
+            for (_, value) in values("transitionProperty") {
+                let moved: Vec<&str> = value.split(',').map(str::trim).collect();
+                if moved.contains(&"all") {
+                    found.push(format!("{at}: transitions `all`"));
+                }
+                let allowed = LAYOUT_MOTION_ALLOWED.iter().any(|(file, _)| *file == path);
+                for property in &moved {
+                    if !allowed && LAYOUT.iter().any(|layout| property.starts_with(layout)) {
+                        found.push(format!("{at}: animates `{property}`, a layout property"));
+                    }
+                }
+                if moved.contains(&"transform") {
+                    for (_, transform) in values("transform") {
+                        if transform.contains("scale(") {
+                            found.push(format!(
+                                "{at}: animates `transform: {transform}`, which grows a thing \
+                                 from nothing"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        checked >= 10,
+        "only {checked} transitions were found, so this is not checking the registry"
+    );
+    assert!(
+        found.is_empty(),
+        "default motion is a duration token, specific properties, no bounce or pop, and nothing \
+         under reduced motion:\n  {}",
         found.join("\n  ")
     );
 }

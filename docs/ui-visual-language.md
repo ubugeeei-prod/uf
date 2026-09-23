@@ -77,6 +77,23 @@ both date pickers.
   2px outline that stays visible on a filled day.
 - The frame is 278px wide, which fits a 320px screen.
 
+## Motion
+
+- **Short, with one easing.** `durationFast` is 120ms, for a colour or a
+  chevron. `durationBase` is 160ms, for something that travels, such as a
+  switch thumb, a drawer or a progress bar. There is one easing,
+  `cubic-bezier(0.2, 0, 0, 1)`. It decelerates and never overshoots, so
+  nothing bounces.
+- **Named properties only.** A transition lists what it moves, never `all`.
+  Nothing scales up from nothing: the radio dot fades in instead of popping.
+  Nothing animates a layout property: the progress bar moves a `transform`,
+  not its `width`. The one exception is the drawer, a fixed overlay that
+  resizes between snap points without moving anything else.
+- **Reduced motion is still.** Every transition is `0s` under
+  `prefers-reduced-motion: reduce`.
+- `crates/uf_stylex/src/tests/defaults.rs` enforces each of these rules on the
+  compiled styles and on the tokens.
+
 ## Where this does not apply
 
 `@uniflowed/brand` holds uf's logo identity, including the cyan-to-magenta
