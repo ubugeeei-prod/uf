@@ -179,10 +179,13 @@ else
   echo "  tools/release/trust-npm.sh"
 fi
 
-cat <<MESSAGE
+# A release went out on `latest` itself; only a prerelease leaves it behind.
+if [ "$tag" != latest ]; then
+  cat <<MESSAGE
 
 And point 'latest' at them, which publishing on the prerelease tag above does
 not do — it is the tag 'npm install <name>' asks for:
 
   tools/release/promote-latest.sh
 MESSAGE
+fi

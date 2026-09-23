@@ -5,6 +5,18 @@ const { execFileSync } = require("node:child_process");
 const { VERSION, assertMaintainer, gh, api, git } = require("./policy.cjs");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Releases are `0.x.0`: a minor bump unless the command names another. The
+// `0.0.0-alpha.N` series ended with alpha.47 (alpha.48 merged without a queue
+// run and was never published), and the owner chose `0.1.0` as the next one.
+// `patch` is for a fix-only release; `alpha`, `major` and an exact version
+// still work.
+const DEFAULT_BUMP = "minor";
+const USAGE =
+  "Usage: uf run release -- [minor|patch|major|alpha|<version>] [--dry-run] (default: minor)";
+function requestedBump(argv) {
+  return argv.find((arg) => arg !== "--dry-run") || DEFAULT_BUMP;
+}
+
 function nextVersion(current, bump) {
   if (VERSION.test(bump)) {
     const parts = (version) => {
@@ -34,7 +46,7 @@ function nextVersion(current, bump) {
   if (bump === "patch") return `${major}.${minor}.${Number(patch) + 1}`;
   if (bump === "minor") return `${major}.${Number(minor) + 1}.0`;
   if (bump === "major") return `${Number(major) + 1}.0.0`;
-  throw new Error("Usage: uf run release -- <alpha|patch|minor|major|version>");
+  throw new Error(USAGE);
 }
 function writeNotes(state) {
   const tag = git("describe", "--tags", "--match", "uf@*", "--abbrev=0", "origin/main");
@@ -221,7 +233,7 @@ async function main() {
     throw new Error("Saved release belongs to another repository.");
   const save = () => fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
   if (!state) {
-    const bump = process.argv.slice(2).find((arg) => arg !== "--dry-run") || "alpha";
+    const bump = requestedBump(process.argv.slice(2));
     git("fetch", "origin", "main", "--tags");
     const current = JSON.parse(git("show", "origin/main:packages/core/package.json")).version;
     const version = nextVersion(current, bump);
@@ -401,7 +413,7 @@ async function main() {
   console.log(`Released ${state.version}: ${release.url}`);
   fs.unlinkSync(stateFile);
 }
-module.exports = { nextVersion };
+module.exports = { nextVersion, requestedBump, DEFAULT_BUMP };
 if (require.main === module)
   main().catch((error) => {
     console.error(error.message);

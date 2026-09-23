@@ -556,9 +556,9 @@ merge requirements are satisfied.
 Never bypass protections, suppress failures, or weaken tests to maintain
 throughput.
 
-Release usable progress frequently. Use versioned **`v0.0.0-alpha.N`**
-prereleases for the initial alpha series, with clear release notes and explicit
-limitations.
+Release usable progress frequently. Use versioned **`0.x.0`** releases (a
+minor bump by default, a patch release when appropriate), with clear release
+notes and explicit limitations.
 
 Verify published packages and binaries, not just the source checkout. Exercise
 installation and representative workflows from the actual release artifacts.

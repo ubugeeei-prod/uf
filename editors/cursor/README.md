@@ -9,9 +9,8 @@ the restart command, drifting apart one fix at a time.
 ## In place
 
 Cursor installs extensions from [Open VSX](https://open-vsx.org/extension/uniflowed/uf),
-where each uf release publishes the extension as `uniflowed.uf` (a pre-release
-while uf is in alpha; see `editors/vscode/README.md` for the version it
-carries). Search for **uf** in Cursor's Extensions view, or:
+where each uf release publishes the extension as `uniflowed.uf` (see
+`editors/vscode/README.md` for the version it carries). Search for **uf** in Cursor's Extensions view, or:
 
 ```sh
 cursor --install-extension uniflowed.uf

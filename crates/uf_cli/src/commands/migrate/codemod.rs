@@ -5,6 +5,8 @@ use camino::Utf8Path;
 use serde_json::{Value, json};
 
 pub(super) const TOOL_DECLARATIONS: &str = "tool-declarations-940";
+/// The release that moved the tool declarations out of `env.toolchain`.
+const TOOL_DECLARATIONS_SINCE: Release = Release::alpha(41);
 
 pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan> {
     let installed = root.join("node_modules/@uniflowed/core/package.json");
@@ -13,14 +15,14 @@ pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan
         .and_then(|s| serde_json::from_str(&s).ok());
     let from = from.or_else(|| installed.as_ref()?.get("version")?.as_str())
         .ok_or_else(|| anyhow::anyhow!("installed @uniflowed/core version unavailable; pass --from with the project's previous uf version"))?;
-    let from_number = alpha(from)?;
-    let to_number = alpha(to)?;
+    let from_number = Release::parse(from)?;
+    let to_number = Release::parse(to)?;
     ensure!(
         from_number <= to_number,
         "codemod does not downgrade a project"
     );
     ensure!(
-        to_number <= alpha(env!("CARGO_PKG_VERSION"))?,
+        to_number <= Release::parse(env!("CARGO_PKG_VERSION"))?,
         "target is newer than this uf binary; install the target uf first"
     );
     let mut plan = Plan::new("codemod");
@@ -30,7 +32,7 @@ pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan
     let before = std::fs::read_to_string(&file)?;
     let mut after = before.clone();
     source::object(&after)?;
-    if from_number < 41 && to_number >= 41 {
+    if from_number < TOOL_DECLARATIONS_SINCE && to_number >= TOOL_DECLARATIONS_SINCE {
         for (name, migration) in [
             ("env.toolchain", toolchain as fn(&mut String) -> Result<()>),
             ("builder.module", builder),
@@ -51,15 +53,66 @@ pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan
     Ok(plan)
 }
 
-fn alpha(version: &str) -> Result<u32> {
-    version
-        .strip_prefix("0.0.0-alpha.")
-        .and_then(|v| v.parse().ok())
-        .ok_or_else(|| {
+/// A uf release, ordered the way SemVer orders them: `0.0.0-alpha.48` below
+/// `0.1.0`, a prerelease below the release it precedes. The catalog used to
+/// read only `0.0.0-alpha.N`, so the first `0.x.0` binary refused every
+/// codemod, including the default `--to`, which is its own version.
+///
+/// The shapes are the ones `tools/release/policy.cjs` lets a release have:
+/// `major.minor.patch`, optionally `-alpha.N`, `-beta.N` or `-rc.N`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct Release {
+    core: [u64; 3],
+    /// `alpha`, `beta`, `rc` as 0, 1, 2 with their number; a release is
+    /// `(3, 0)`, above every prerelease of the same core.
+    stage: (u8, u64),
+}
+
+impl Release {
+    const fn alpha(number: u64) -> Self {
+        Self {
+            core: [0, 0, 0],
+            stage: (0, number),
+        }
+    }
+
+    pub(super) fn parse(version: &str) -> Result<Self> {
+        let unsupported = || {
             anyhow::anyhow!(
-                "unsupported migration version {version}; this catalog covers 0.0.0-alpha releases"
+                "unsupported migration version {version}; expected a uf release such as 0.1.0 or 0.0.0-alpha.41"
             )
-        })
+        };
+        let number = |text: &str| -> Option<u64> {
+            let canonical = !text.is_empty()
+                && text.bytes().all(|byte| byte.is_ascii_digit())
+                && (text == "0" || !text.starts_with('0'));
+            if canonical { text.parse().ok() } else { None }
+        };
+        let (core, prerelease) = match version.split_once('-') {
+            Some((core, prerelease)) => (core, Some(prerelease)),
+            None => (version, None),
+        };
+        let parts: Vec<u64> = core
+            .split('.')
+            .map(number)
+            .collect::<Option<_>>()
+            .ok_or_else(unsupported)?;
+        let core: [u64; 3] = parts.try_into().map_err(|_| unsupported())?;
+        let stage = match prerelease {
+            None => (3, 0),
+            Some(prerelease) => {
+                let (word, count) = prerelease.split_once('.').ok_or_else(unsupported)?;
+                let rank = match word {
+                    "alpha" => 0,
+                    "beta" => 1,
+                    "rc" => 2,
+                    _ => return Err(unsupported()),
+                };
+                (rank, number(count).ok_or_else(unsupported)?)
+            }
+        };
+        Ok(Self { core, stage })
+    }
 }
 
 fn toolchain(source: &mut String) -> Result<()> {

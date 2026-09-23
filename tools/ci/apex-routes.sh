@@ -240,7 +240,7 @@ async function main() {
       ['class="skip"', "a skip link, which is the first thing a keyboard reaches"],
       ['id="content"', "the element the skip link skips to"],
       ["curl -fsSL https://setup.uniflowed.dev | sh", "the install command"],
-      ["0.0.0-alpha", "the version, which is the one fact that decides whether to install it"],
+      ["0.x", "the version, which is the one fact that decides whether to install it"],
       ["prefers-color-scheme: dark", "a dark scheme"],
     ];
     for (const [needle, what] of required) {

@@ -17,8 +17,9 @@ uf provides development builds, production builds, tests, formatting, linting
 and type checking through one native CLI and one `uf.config.js`.
 It uses the official Flow parser, React Compiler and Vite.
 
-uf is in alpha. Commands, configuration and package APIs may change between
-releases. See the [release notes](https://github.com/ubugeeei-prod/uf/releases)
+uf is at `0.x`, and that still means commands, configuration and package APIs
+may change between releases; a minor release (`0.1.0` to `0.2.0`) may break
+them, and its notes say how. See the [release notes](https://github.com/ubugeeei-prod/uf/releases)
 and [current capabilities](https://docs.uniflowed.dev/guide/scope).
 
 ## Install

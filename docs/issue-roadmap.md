@@ -129,7 +129,8 @@
       LSP4IJ template in `editors/jetbrains`. Each release publishes the VS Code
       extension as `uniflowed.uf` to the Visual Studio Marketplace and Open VSX
       (#977), mapping uf's version onto one the Marketplace accepts
-      (`0.0.0-alpha.46` is the pre-release `0.0.46`); that needs the owner's
+      (`0.1.0` is `0.1.9999`, and `0.0.0-alpha.46` was the pre-release
+      `0.0.46`); that needs the owner's
       `VSCE_PAT` and `OVSX_PAT`, and no release has gone out with them yet.
       Nobody has yet confirmed in Zed or a JetBrains IDE that the server starts
       and shows diagnostics.
@@ -386,6 +387,12 @@
       and a daily audit that every version on npm has a release with binaries
       ([#1328](https://github.com/ubugeeei-prod/uf/issues/1328)). alpha.9 and
       alpha.44 have none and are recorded as known gaps.
+- [x] Leave the `0.0.0-alpha.N` series: the owner decided that the release
+      after alpha.47 is `0.1.0`, and that releases are `0.x.0` from then on —
+      `uf run release` bumps the minor by default, and `patch` is there for a
+      fix-only release. `0.0.0-alpha.48` merged to `main` outside the merge
+      queue, so no queue validation exists for it and it was never published;
+      `0.1.0`'s notes cover everything since alpha.47.
 - [x] Support sh, bash, zsh, Windows x86-64, macOS, and Linux installer targets.
 - [x] Start napi-rs-style native target package generation contracts.
 - [x] Start generated TypeScript declaration to Flow declaration conversion.

@@ -9,7 +9,7 @@ const {
   assertQueueTree,
   assertArtifacts,
 } = require("./policy.cjs");
-const { nextVersion } = require("./open-release.cjs");
+const { nextVersion, requestedBump, DEFAULT_BUMP } = require("./open-release.cjs");
 const repository = "owner/project";
 const commit = "a".repeat(40);
 const request = { version: "0.0.0-alpha.46", branch: "release/v0.0.0-alpha.46" };
@@ -86,6 +86,23 @@ test("release versions are calculated from the checkout, without the installed C
   assert.throws(() => nextVersion("1.2.3", "1.2.3"));
   assert.throws(() => nextVersion("1.2.3", "1.2.2"));
   assert.throws(() => nextVersion("1.2.3", "01.3.0"));
+});
+
+test("a release is a minor bump unless another is named, and leaves the alpha series for 0.1.0", () => {
+  assert.equal(DEFAULT_BUMP, "minor");
+  assert.equal(requestedBump([]), "minor");
+  assert.equal(requestedBump(["--dry-run"]), "minor");
+  assert.equal(requestedBump(["--dry-run", "patch"]), "patch");
+  assert.equal(requestedBump(["alpha"]), "alpha");
+  assert.equal(requestedBump(["0.2.0", "--dry-run"]), "0.2.0");
+  assert.equal(nextVersion("0.0.0-alpha.48", requestedBump([])), "0.1.0");
+  assert.equal(nextVersion("0.0.0-alpha.48", "0.1.0"), "0.1.0");
+  assert.equal(nextVersion("0.1.0", requestedBump([])), "0.2.0");
+  assert.equal(nextVersion("0.1.0", "patch"), "0.1.1");
+  assert.equal(nextVersion("0.1.1", "minor"), "0.2.0");
+  assert.throws(() => nextVersion("0.1.0", "0.1.0"));
+  assert.throws(() => nextVersion("0.1.0", "0.0.0-alpha.49"));
+  assert.throws(() => nextVersion("0.1.0", "nope"), /default: minor/);
 });
 
 test("queue validation rejects an older main base", () => {

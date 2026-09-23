@@ -16,13 +16,15 @@ Cursor, VSCodium and other VS Code forks install from:
 code --install-extension uniflowed.uf
 ```
 
-or search for **uf** in the Extensions view. While uf is in alpha, every release
-of the extension is a **pre-release**: VS Code installs it as one (the
-Extensions view offers "Install Pre-Release"), and keeps it updated from later
-ones.
+or search for **uf** in the Extensions view. A uf release such as `0.1.0`
+publishes an ordinary release of the extension; the extensions published for
+the `0.0.0-alpha.N` series were **pre-releases** (the Extensions view offers
+"Install Pre-Release" for those), and VS Code updates from them to the newer
+releases.
 
 The extension's version is not uf's, because the Marketplace takes no semver
-prerelease: uf `0.0.0-alpha.46` is extension `0.0.46`. `release/version.js` has
+prerelease: uf `0.1.0` is extension `0.1.9999`, and uf `0.0.0-alpha.46` was the
+pre-release `0.0.46`. `release/version.js` has
 the mapping; it keeps the order of uf's versions, a release after its
 prereleases. The extension starts whichever `uf` it finds (below), not a copy of
 its own, so the two need not match.

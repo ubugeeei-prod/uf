@@ -400,10 +400,10 @@ code {
  * It does not restate the documentation home page. That page argues the
  * toolchain: five claims, each with the page that proves it, and a pasted
  * `uf build` run. This one is a door — the sentence, the command, and the
- * shape of the word "alpha" — and its own section is the one the manual only
+ * shape of the word "0.x" — and its own section is the one the manual only
  * has room for a two-line notice about.
  *
- * No version number smaller than `0.0.0-alpha` appears anywhere on it. The
+ * No version number more precise than `0.x` appears anywhere on it. The
  * README's list of rough edges is scoped to a release on purpose and says so;
  * a second copy of it here is a second thing to keep true, and this one deploys
  * on a different schedule from the file it was copied from.
@@ -415,7 +415,7 @@ const PAGE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>uf — Unified Toolchain for Flow</title>
-<meta name="description" content="uf runs, builds, tests, formats and lints a React application written in Flow, from one native binary. It is 0.0.0-alpha and nothing in it is stable yet.">
+<meta name="description" content="uf runs, builds, tests, formats and lints a React application written in Flow, from one native binary. It is 0.x, and its APIs may still change between releases.">
 <link rel="canonical" href="${SITE_ORIGIN}/">
 <link rel="icon" href="/brand/favicon.svg">
 <meta property="og:type" content="website">
@@ -436,7 +436,7 @@ const PAGE = `<!doctype html>
   <a class="masthead-brand" href="/">
     <img src="/brand/uniflowed-mark.svg" alt="" width="22" height="22">
     uf
-    <span class="version">0.0.0-alpha</span>
+    <span class="version">0.x</span>
   </a>
   <nav class="masthead-nav" aria-label="Site">
     <a href="${DOCS_ORIGIN}">Documentation</a>
@@ -481,8 +481,9 @@ const PAGE = `<!doctype html>
     </p>
     <p>
       The command is <code>uf</code>. The package scope on npm is
-      <code>@uniflowed</code>, and every release there so far is a prerelease
-      under the <code>alpha</code> tag.
+      <code>@uniflowed</code>. From <code>0.1.0</code> releases are published
+      on <code>latest</code>; the <code>0.0.0-alpha.N</code> prereleases before
+      it are under the <code>alpha</code> tag.
     </p>
     <div class="actions">
       <a class="button" href="${DOCS_ORIGIN}">Read the manual</a>
@@ -493,7 +494,7 @@ const PAGE = `<!doctype html>
   <section class="section">
     <h2 class="seam-mark">Before you spend an afternoon on it</h2>
     <p>
-      uf is <code>0.0.0-alpha</code>. It installs in seconds and scaffolds a
+      uf is <code>0.x</code>. It installs in seconds and scaffolds a
       project that builds, and it changes under you. These four things are true
       of every version so far; what is broken in the current one is in the
       README, which is written per release rather than copied here.
