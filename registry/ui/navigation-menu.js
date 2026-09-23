@@ -114,6 +114,17 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
+    // Enter: it fades in while dropping 4px out of the bar, the way every
+    // other anchored surface leaves its trigger. Under reduced motion it only
+    // fades.
+    opacity: { default: 1, "@starting-style": 0 },
+    transform: { default: "none", "@starting-style": "translateY(-4px)" },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   link: {
     display: "block",

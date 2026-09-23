@@ -74,6 +74,18 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
+    // Enter: it rises 16px into its place in the stack as it fades in, over
+    // `durationSlow`, so a notification arriving in a corner is noticed
+    // without being startling. Vertical, so it reads the same in a
+    // right-to-left page. Under reduced motion it only fades.
+    opacity: { default: 1, "@starting-style": 0 },
+    transform: { default: "none", "@starting-style": "translateY(16px)" },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   title: {
     gridColumn: "1",

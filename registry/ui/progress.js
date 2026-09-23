@@ -56,11 +56,11 @@ const styles = stylex.create({
     backgroundColor: ufTokens.accent,
     transform: "scaleX(var(--uf-progress, 0))",
     transformOrigin: { default: "left", ":dir(rtl)": "right" },
-    transitionProperty: "transform",
-    transitionDuration: {
-      default: ufTokens.durationBase,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
+    // `durationSlow` on the standard curve: a step of progress is seen to
+    // fill in rather than jump, and a run of quick updates still reads as one
+    // steady movement. Under reduced motion the bar is set, not moved.
+    transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
+    transitionDuration: ufTokens.durationSlow,
     transitionTimingFunction: ufTokens.easing,
   },
 });

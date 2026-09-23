@@ -132,11 +132,21 @@ const buttons = stylex.create({
     borderStyle: "solid",
     borderColor: "transparent",
     cursor: "pointer",
-    transitionProperty: "background-color, border-color, color",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
+    // Press: the button gives a little under the pointer, to 97% of its size
+    // in `durationFast`, and comes back on release without passing 1. Under
+    // reduced motion it does not move; only the colours still change.
+    transform: {
+      default: "none",
+      ":active": "scale(0.97)",
+      "@media (prefers-reduced-motion: reduce)": "none",
     },
+    // The focus ring draws itself outward from the edge (`outline-width`
+    // 0 → 2px) rather than blinking on, in `durationFast`.
+    transitionProperty: {
+      default: "background-color, border-color, color, outline-width, transform",
+      "@media (prefers-reduced-motion: reduce)": "background-color, border-color, color",
+    },
+    transitionDuration: ufTokens.durationFast,
     transitionTimingFunction: ufTokens.easing,
     // The ring is drawn only for a keyboard focus, which is the whole reason
     // `:focus-visible` exists: a mouse click should not light the control up.
@@ -319,11 +329,13 @@ const controls = stylex.create({
     backgroundColor: ufTokens.surface,
     color: ufTokens.accentInk,
     cursor: "pointer",
-    transitionProperty: "background-color, border-color",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
+    // Colours, and the focus ring drawing outward; only the colours stay
+    // under reduced motion.
+    transitionProperty: {
+      default: "background-color, border-color, outline-width",
+      "@media (prefers-reduced-motion: reduce)": "background-color, border-color",
     },
+    transitionDuration: ufTokens.durationFast,
     transitionTimingFunction: ufTokens.easing,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",

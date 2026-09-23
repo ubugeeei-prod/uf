@@ -36,9 +36,11 @@
 // * **Colour comes from tokens, in measured pairs.** `ink` and `muted` on
 //   `surface`, which `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in
 //   the light default and the dark theme.
-// * **There is no slide.** uf's StyleX has no `@keyframes` yet, and a
-//   transition needs the panel mounted while closed, which `@uniflowed/ui` does
-//   not do.
+// * **It slides in from its edge, and does not yet slide out.** The panel
+//   travels its own size from `data-side` over `durationSlow` on the
+//   decelerating curve, from a `@starting-style`, and the scrim fades in with
+//   it; under reduced motion the panel fades instead. Closing is a cut until
+//   `@uniflowed/ui` keeps a closing panel mounted for its exit transition.
 
 import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
@@ -65,6 +67,13 @@ const styles = stylex.create({
     inset: 0,
     zIndex: 50,
     backgroundColor: ufTokens.scrim,
+    // Enter: the page dims as the panel arrives, over the panel's duration,
+    // rather than going dark first and then showing a dialog. Opacity only, so
+    // it is the same under reduced motion.
+    opacity: { default: 1, "@starting-style": 0 },
+    transitionProperty: "opacity",
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   panel: {
     position: "fixed",
@@ -116,6 +125,32 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "-2px",
+    // Enter: it slides in from the edge it is attached to, the whole of its
+    // own size, on the decelerating curve over `durationSlow`: it is fast
+    // off the edge and settles against the page. Under reduced motion it does
+    // not travel; it fades in instead (`--uf-enter-opacity`).
+    "--uf-enter-x": {
+      default: "0px",
+      ":is([data-side=left])": "-100%",
+      ":is([data-side=right])": "100%",
+    },
+    "--uf-enter-y": {
+      default: "0px",
+      ":is([data-side=top])": "-100%",
+      ":is([data-side=bottom])": "100%",
+    },
+    "--uf-enter-opacity": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": "var(--uf-enter-opacity)" },
+    transform: {
+      default: "none",
+      "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+    },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   header: {
     display: "grid",

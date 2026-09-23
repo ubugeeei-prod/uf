@@ -79,20 +79,74 @@ both date pickers.
 
 ## Motion
 
-- **Short, with one easing.** `durationFast` is 120ms, for a colour or a
-  chevron. `durationBase` is 160ms, for something that travels, such as a
-  switch thumb, a drawer or a progress bar. There is one easing,
-  `cubic-bezier(0.2, 0, 0, 1)`. It decelerates and never overshoots, so
-  nothing bounces.
-- **Named properties only.** A transition lists what it moves, never `all`.
-  Nothing scales up from nothing: the radio dot fades in instead of popping.
-  Nothing animates a layout property: the progress bar moves a `transform`,
-  not its `width`. The one exception is the drawer, a fixed overlay that
-  resizes between snap points without moving anything else.
-- **Reduced motion is still.** Every transition is `0s` under
-  `prefers-reduced-motion: reduce`.
+Motion is **present and quiet**. Every state change the eye should follow
+moves, visibly and briefly, and nothing performs. The first defaults animated
+`all` loosely. #1414 fixed that by cutting motion until it was nearly absent,
+which was a different failure. The rules below are the middle.
+
+- **Three durations, by how far the eye has to follow.**
+  - `durationFast` (120ms) is for a change in place: a colour, a pressed
+    button, a focus ring.
+  - `durationBase` (200ms) is for something small that arrives or travels: a
+    popover, a menu, a tooltip, a switch's thumb, a drawn check.
+  - `durationSlow` (280ms) is for something large: a dialog, a sheet, a
+    drawer, a toast, a progress fill.
+
+  Under about 100ms a transition is not seen. Past about 300ms the interface
+  starts to perform.
+- **Three easings, none of which overshoots.**
+  - `easing` is `cubic-bezier(0.2, 0, 0, 1)`, for moving between two resting
+    places.
+  - `easingEnter` is `cubic-bezier(0, 0, 0.2, 1)`, a decelerate for arriving.
+    It is half-way at a fifth of the time, so the content is legible at once,
+    and the settle is still seen.
+  - `easingExit` is `cubic-bezier(0.4, 0, 1, 1)`, an accelerate for leaving.
+
+  Nothing bounces, and no `scale()` goes below 0.9 or above 1.
+- **What moves, and how:**
+
+  | Part | Enter | Duration, easing |
+  | --- | --- | --- |
+  | Dialog, alert dialog | scrim fades in; panel fades in from `scale(0.96)` | slow, enter |
+  | Sheet, drawer | scrim fades in; panel slides its own size in from `data-side` | slow, enter |
+  | Popover, menu, select and combobox lists, hover card, tooltip, date pickers | fade in and travel 4px out of the trigger, from `data-side` | base, enter |
+  | Navigation menu panel | fades in and drops 4px out of the bar | base, enter |
+  | Toast | fades in and rises 16px into the stack | slow, enter |
+  | Button | gives to `scale(0.97)` while pressed | fast, standard |
+  | Focus ring | draws outward, `outline-width` 0 to 2px | fast, standard |
+  | Switch | thumb slides, track colour turns with it | base, standard |
+  | Checkbox | box fills; the tick is drawn from its short arm (`stroke-dashoffset`) | fast / base, standard |
+  | Radio | ring colour, then the dot fades in | fast / base |
+  | Tabs | underline and label colour change together | base, standard |
+  | Progress | the fill's `scaleX` moves to the new value | slow, standard |
+  | Chevrons (accordion, collapsible, select) | a half turn | base, standard |
+
+- **Enter comes from a `@starting-style`.** uf's StyleX has no `@keyframes`.
+  An entrance does not need them: a `@starting-style` value is the style an
+  element is taken to have had before it was inserted, so the transition runs
+  from it as soon as the part mounts. An anchored surface reads the side
+  `@uniflowed/ui` put it on (`data-side`) and starts 4px back towards its
+  trigger.
+- **Exit is Planned.** Every overlay part in `@uniflowed/ui` unmounts the
+  moment it closes, so there is nothing left to animate, and leaving is still
+  a cut. Exit transitions need the behaviour layer to keep a closing part
+  mounted, marked `data-state="closed"`, until its transitions finish. The
+  same work gives accordion and collapsible height and a sliding tabs
+  indicator. `easingExit` is declared for that work.
+- **Named properties only.** A transition lists what it moves, never `all`,
+  and a duration never appears without a property list. Nothing animates a
+  layout property: the progress bar moves a `transform`, not its `width`. The
+  one exception is the drawer, a fixed overlay that resizes between snap
+  points without moving anything else. A slider's thumb follows the pointer
+  exactly and does not ease.
+- **Reduced motion fades or stops.** Under `prefers-reduced-motion: reduce`
+  nothing travels, grows or is drawn. A transition either becomes `0s` or
+  keeps only opacity and colour, so an overlay still fades in rather than
+  cutting, and a sheet fades where it would have slid.
 - `crates/uf_stylex/src/tests/defaults.rs` enforces each of these rules on the
-  compiled styles and on the tokens.
+  compiled styles and on the tokens. `what_deserves_motion_has_it` is the
+  other half: it fails if an overlay loses its entrance or a control stops
+  moving, so the defaults cannot go quiet again unnoticed.
 
 ## Where this does not apply
 

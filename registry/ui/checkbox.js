@@ -75,6 +75,15 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // The focus ring draws itself outward from the edge (`outline-width`
+    // 0 → 2px) rather than blinking on, in `durationFast`: it is where a
+    // keyboard reader's eye is, so it should arrive, not flash.
+    transitionProperty: {
+      default: "outline-width",
+      "@media (prefers-reduced-motion: reduce)": "none",
+    },
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   box: {
     position: "relative",
@@ -91,14 +100,35 @@ const styles = stylex.create({
     borderRadius: ufTokens.radiusSm,
     backgroundColor: "var(--uf-checkbox-fill)",
     color: ufTokens.accentInk,
+    // Fills as the tick is drawn. Colour, so it stays under reduced motion.
+    transitionProperty: "background-color, border-color",
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   tick: {
     position: "absolute",
     opacity: "var(--uf-checkbox-tick)",
+    // Checked, the tick is drawn from its short arm to its long one, the way
+    // a pen makes it, rather than appearing. The path `M20 6 9 17l-5-5` is
+    // 22.6 units long, so a dash of 23 covers it; a negative offset of the
+    // same length hides it with the gap and walks the dash in from the end the
+    // short arm is at. Unchecked, it fades out rather than being undrawn.
+    // Under reduced motion it only fades.
+    strokeDasharray: "23",
+    strokeDashoffset: "calc((var(--uf-checkbox-tick) - 1) * 23)",
+    transitionProperty: {
+      default: "opacity, stroke-dashoffset",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easing,
   },
   dash: {
     position: "absolute",
     opacity: "var(--uf-checkbox-dash)",
+    transitionProperty: "opacity",
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
 });
 

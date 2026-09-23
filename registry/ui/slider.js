@@ -121,6 +121,17 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // Only its colour and its ring move. Its position is where the pointer
+    // is, and a thumb that eased after the finger would feel disconnected.
+    // The focus ring draws itself outward from the edge (`outline-width`
+    // 0 → 2px) rather than blinking on, in `durationFast`: it is where a
+    // keyboard reader's eye is, so it should arrive, not flash.
+    transitionProperty: {
+      default: "border-color, outline-width",
+      "@media (prefers-reduced-motion: reduce)": "border-color",
+    },
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   thumbVertical: {
     insetBlockStart: "auto",
