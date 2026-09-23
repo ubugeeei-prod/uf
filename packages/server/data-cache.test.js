@@ -186,4 +186,20 @@ describe("cached arguments", () => {
     }
     expect(calls).toBe(0);
   });
+
+  it("refuses oversized arguments rather than keying on megabytes of them", () => {
+    // `docs/app/guide/cache/$page.mdx`: "oversized arguments are refused". Three
+    // separate bounds, and each is a way a caller could make a key the store
+    // then holds and hashes on every call (ubugeeei-prod/uf#1501).
+    const wide: { [string]: number } = {};
+    for (let index = 0; index <= 10_000; index += 1) wide[`k${String(index)}`] = index;
+    expect(() => dataKey([wide])).toThrow("too large");
+    expect(() => dataKey([new Array<number>(10_001).fill(1)])).toThrow("bounded");
+    let deep: mixed = null;
+    for (let depth = 0; depth < 70; depth += 1) deep = [deep];
+    expect(() => dataKey([deep])).toThrow("too large");
+    expect(() => dataKey(["x".repeat(70_000)])).toThrow("64 KiB");
+    // And a key just inside all three is still a key.
+    expect(typeof dataKey([new Array<number>(100).fill(1), "x".repeat(1000)])).toBe("string");
+  });
 });
