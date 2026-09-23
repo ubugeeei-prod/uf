@@ -101,10 +101,10 @@ export const goals: $ReadOnlyArray<Goal> = [
   {
     title: "Build the interface",
     outcome:
-      "Accessible headless components, styled with CSS or StyleX, with images and fonts handled.",
+      "Accessible components from `uf ui add`, styled with CSS or StyleX, with images and fonts handled.",
     status: "Implemented",
     steps: [
-      { label: "Headless components", href: "/guide/ui" },
+      { label: "UI components", href: "/guide/ui" },
       { label: "Component reference", href: "/reference/ui" },
       { label: "Styling", href: "/guide/styling" },
       { label: "Images and fonts", href: "/guide/assets" },
