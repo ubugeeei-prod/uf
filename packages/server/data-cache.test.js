@@ -169,7 +169,7 @@ describe("cached arguments", () => {
 
   it("rejects cycles, accessors and non-data without evaluating user code", () => {
     let calls = 0;
-    const accessor = {};
+    const accessor: { [string]: mixed } = {};
     Object.defineProperty(accessor, "secret", {
       enumerable: true,
       get: () => {
@@ -179,7 +179,7 @@ describe("cached arguments", () => {
     });
     const cycle: Array<mixed> = [];
     cycle.push(cycle);
-    const inherited = [];
+    const inherited: Array<mixed> = [];
     Object.setPrototypeOf(inherited, { 0: "private" });
     for (const value of [accessor, cycle, inherited, new Date(), () => 1, Infinity, Symbol("x")]) {
       expect(() => dataKey([value])).toThrow();

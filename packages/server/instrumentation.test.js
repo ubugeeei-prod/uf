@@ -10,6 +10,32 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { createFetch } from "@uniflowed/fetch";
+
+/**
+ * `value`, which the test expects to be there; a failure naming it when it is
+ * not. `find` answers `undefined` for a span that was never recorded, and
+ * reading a field off that would fail with a message about `undefined`.
+ */
+function required<T>(value: ?T, what: string): T {
+  if (value == null) {
+    throw new Error(`expected ${what}, found none`);
+  }
+  return value;
+}
+
+/**
+ * Stand in for a property the platform owns, the way an assignment would.
+ * Flow types `console.error` as read-only, and for application code it is.
+ */
+function replaceProperty(target: interface {}, name: string, value: mixed): void {
+  const existing = Object.getOwnPropertyDescriptor(target, name);
+  Object.defineProperty(target, name, {
+    configurable: true,
+    enumerable: existing?.enumerable ?? true,
+    value,
+    writable: true,
+  });
+}
 import { after } from "./index.js";
 import { noteRoute } from "./host.js";
 import {
@@ -72,12 +98,27 @@ describe("request instrumentation", () => {
       const children = spans.filter(
         (span) => span.spanContext().traceId === request.spanContext().traceId,
       );
-      const render = children.find((span) => span.name === "uf.render");
-      const loader = children.find((span) => span.name === "uf.loader");
-      const fetch = children.find((span) => span.name === "uf.fetch");
-      expect(render.parentSpanContext.spanId).toBe(request.spanContext().spanId);
-      expect(loader.parentSpanContext.spanId).toBe(render.spanContext().spanId);
-      expect(fetch.parentSpanContext.spanId).toBe(loader.spanContext().spanId);
+      const render = required(
+        children.find((span) => span.name === "uf.render"),
+        "uf.render",
+      );
+      const loader = required(
+        children.find((span) => span.name === "uf.loader"),
+        "uf.loader",
+      );
+      const fetch = required(
+        children.find((span) => span.name === "uf.fetch"),
+        "uf.fetch",
+      );
+      expect(required(render.parentSpanContext, "the parent of " + render.name).spanId).toBe(
+        request.spanContext().spanId,
+      );
+      expect(required(loader.parentSpanContext, "the parent of " + loader.name).spanId).toBe(
+        render.spanContext().spanId,
+      );
+      expect(required(fetch.parentSpanContext, "the parent of " + fetch.name).spanId).toBe(
+        loader.spanContext().spanId,
+      );
       expect(request.attributes["http.request.method"]).toBe("GET");
       expect(request.attributes["http.response.status_code"]).toBe(200);
       expect(fetch.attributes["server.address"]).toBe("upstream.example");
@@ -92,7 +133,7 @@ describe("request instrumentation", () => {
     let outgoing = null;
     const client = createFetch({
       fetch: async (_url, options) => {
-        outgoing = new Headers(options.headers).get("traceparent");
+        outgoing = new Headers(options?.headers).get("traceparent");
         return new Response("ok");
       },
     });
@@ -107,12 +148,24 @@ describe("request instrumentation", () => {
 
     const spans = exporter.getFinishedSpans();
     expect(spans.length).toBe(2);
-    const request = spans.find((span) => span.name === "uf.request");
-    const fetch = spans.find((span) => span.name === "uf.fetch");
-    expect(request.parentSpanContext.spanId).toBe(parentId);
-    expect(request.parentSpanContext.isRemote).toBe(true);
+    const request = required(
+      spans.find((span) => span.name === "uf.request"),
+      "uf.request",
+    );
+    const fetch = required(
+      spans.find((span) => span.name === "uf.fetch"),
+      "uf.fetch",
+    );
+    expect(required(request.parentSpanContext, "the parent of " + request.name).spanId).toBe(
+      parentId,
+    );
+    expect(required(request.parentSpanContext, "the parent of " + request.name).isRemote).toBe(
+      true,
+    );
     expect(request.spanContext().traceId).toBe(traceId);
-    expect(fetch.parentSpanContext.spanId).toBe(request.spanContext().spanId);
+    expect(required(fetch.parentSpanContext, "the parent of " + fetch.name).spanId).toBe(
+      request.spanContext().spanId,
+    );
     expect(outgoing).toBe(`00-${traceId}-${fetch.spanContext().spanId}-01`);
   });
 
@@ -148,9 +201,9 @@ describe("request instrumentation", () => {
     const failure = new Error("render failure");
     const logged = [];
     const original = console.error;
-    console.error = (error) => {
+    replaceProperty(console, "error", (error: mixed) => {
       logged.push(error);
-    };
+    });
     try {
       await instrumentRender(async (onError) => {
         expect(onError(failure)).toBe(undefined);
@@ -165,7 +218,7 @@ describe("request instrumentation", () => {
       );
       expect(logged).toEqual([failure]);
     } finally {
-      console.error = original;
+      replaceProperty(console, "error", original);
     }
   });
 
@@ -237,9 +290,17 @@ describe("request instrumentation", () => {
     expect(await response.text()).toBe("streamed");
     const spans = exporter.getFinishedSpans();
     expect(spans.length).toBe(2);
-    const request = spans.find((span) => span.name === "uf.request");
-    const fetch = spans.find((span) => span.name === "uf.fetch");
-    expect(fetch.parentSpanContext.spanId).toBe(request.spanContext().spanId);
+    const request = required(
+      spans.find((span) => span.name === "uf.request"),
+      "uf.request",
+    );
+    const fetch = required(
+      spans.find((span) => span.name === "uf.fetch"),
+      "uf.fetch",
+    );
+    expect(required(fetch.parentSpanContext, "the parent of " + fetch.name).spanId).toBe(
+      request.spanContext().spanId,
+    );
     expect(request.attributes["http.route"]).toBe("/stream");
   });
 
@@ -300,7 +361,7 @@ describe("request instrumentation", () => {
         ),
     );
     await cancelled.settle();
-    await stream.body.cancel();
+    await required(stream.body, "response body").cancel();
     expect(cancellations).toBe(1);
     expect(exporter.getFinishedSpans().length).toBe(2);
   });

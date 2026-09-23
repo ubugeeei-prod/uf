@@ -37,14 +37,17 @@ import { createFilesystemCache } from "@uniflowed/server/cache/filesystem";
 import { KvBindingMissingError, createKvCache } from "@uniflowed/server/cache/kv";
 import { createWorkerFetch } from "@uniflowed/server/edge";
 import { createFetchHandler } from "@uniflowed/server/fetch";
+import type { Application } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 import { createServeHandler } from "@uniflowed/server/node";
 
+import type { WritableLike } from "./internal/application.js";
 import { END_OF_TIME } from "./internal/cache-store.js";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
-const request = (url: string, init?: mixed) => new Request(`http://localhost${url}`, init);
+const request = (url: string, init?: RequestOptions): Request =>
+  new Request(`http://localhost${url}`, init);
 
 /** The clock a test drives: milliseconds out, seconds in. */
 function clock(): {| now: () => number, advance: (seconds: number) => void |} {
@@ -64,21 +67,26 @@ async function settled(): Promise<void> {
   }
 }
 
-/** The half of a `ReadableStream` controller the fixture uses. */
-type StreamController = {
-  readonly enqueue: (chunk: Uint8Array) => mixed,
-  readonly close: () => mixed,
-  ...
-};
+/**
+ * The URLs each fixture app has rendered, in order.
+ *
+ * Kept beside the app rather than on it: `Application` is an exact type, and a
+ * double with an extra field is no longer the thing a host is given.
+ */
+const rendered: WeakMap<Application, Array<string>> = new WeakMap();
+
+/** What `app` has rendered so far. */
+function rendersOf(app: Application): $ReadOnlyArray<string> {
+  return rendered.get(app) ?? [];
+}
 
 /**
  * A server bundle whose every render states a one-minute lifetime and a tag,
  * the way a page written for regeneration does, and counts itself.
  */
-function regeneratingApp() {
+function regeneratingApp(): Application {
   const renders: Array<string> = [];
-  return {
-    renders,
+  const app: Application = {
     beginRequest,
     runMiddleware: async (_request: Request) => null,
     callAction: async (_request: Request) => null,
@@ -91,13 +99,13 @@ function regeneratingApp() {
       return {
         status: 200,
         headers: undefined,
-        pipe: (destination: { write: (chunk: string) => mixed, end: () => mixed, ... }) => {
+        pipe: (destination: WritableLike) => {
           destination.write(html);
           destination.end();
         },
         stream: () =>
           new ReadableStream({
-            start(controller: StreamController) {
+            start(controller: ReadableStreamDefaultController<Uint8Array>) {
               controller.enqueue(new TextEncoder().encode(html));
               controller.close();
             },
@@ -105,10 +113,15 @@ function regeneratingApp() {
       };
     },
   };
+  rendered.set(app, renders);
+  return app;
 }
 
 /** Answer one request the way every host does: begin, run, settle. */
-async function serve(handle, url: string): Promise<Response> {
+async function serve(
+  handle: (request: Request) => Promise<Response>,
+  url: string,
+): Promise<Response> {
   const asRequest = request(url);
   const { run, settle } = beginRequest(asRequest);
   try {
@@ -143,7 +156,7 @@ function buildDirectory(): string {
 }
 
 /** A stored entry, for a seed or a provider. */
-function entryOf(value: mixed, storedAt: number, revalidateAt: number, tags: Array<string> = []) {
+function entryOf(value: string, storedAt: number, revalidateAt: number, tags: Array<string> = []) {
   return { value, storedAt, revalidateAt, expiresAt: END_OF_TIME, tags, path: null };
 }
 
@@ -212,7 +225,11 @@ describe("a key started from a seed", () => {
 
   it("renders when the seed fails, and says why", async () => {
     const failures: Array<mixed> = [];
-    const store = createCacheStore({ onError: (error) => failures.push(error) });
+    const store = createCacheStore({
+      onError: (error) => {
+        failures.push(error);
+      },
+    });
     const result = await store.resolve(
       {
         key: ["page"],
@@ -395,14 +412,14 @@ describe("a regenerated page", () => {
     // The same page, however it was spelled.
     expect(await (await serve(handle, "/clock/")).text()).toContain("the build's copy");
     expect(await (await serve(handle, "/clock?ref=feed")).text()).toContain("the build's copy");
-    expect(app.renders).toEqual([]);
+    expect(rendersOf(app)).toEqual([]);
 
     time.advance(61);
     const stale = await serve(handle, "/clock");
     expect(await stale.text()).toContain("the build's copy");
     expect(stale.headers.get("x-uf-cache")).toBe("STALE");
     await settled();
-    expect(app.renders).toEqual(["/clock"]);
+    expect(rendersOf(app)).toEqual(["/clock"]);
 
     const regenerated = await serve(handle, "/clock");
     expect(await regenerated.text()).toContain("rendered /clock");
@@ -612,7 +629,7 @@ describe("the Workers KV provider", () => {
 });
 
 /** The regenerating app, with the route an application invalidates the page's tag from. */
-function invalidatingApp() {
+function invalidatingApp(): Application {
   return {
     ...regeneratingApp(),
     dispatch: async (incoming: Request) =>
@@ -656,7 +673,7 @@ function nodeProcess(
 }
 
 /** Invalidate the page's tag through the application, the way a mutation does. */
-async function invalidate(handle): Promise<mixed> {
+async function invalidate(handle: (request: Request) => Promise<Response>): Promise<mixed> {
   const asRequest = request("/revalidate", { method: "POST" });
   const { run, settle } = beginRequest(asRequest);
   try {
@@ -787,7 +804,9 @@ describe("an invalidation a restart remembers", () => {
       staticDir: buildDirectory(),
       renderedAt: time.now(),
       provider: unreachable,
-      onError: (error) => failures.push(error),
+      onError: (error) => {
+        failures.push(error);
+      },
     });
 
     const answer = await serve(server.handle, "/clock");
@@ -823,7 +842,7 @@ describe("an invalidation a restart remembers", () => {
         }),
         beginRequest,
       });
-      return async (url: string, init?: mixed): Promise<Response> => {
+      return async (url: string, init?: RequestOptions): Promise<Response> => {
         const waiting: Array<Promise<mixed>> = [];
         const response = await handle(
           request(url, init),

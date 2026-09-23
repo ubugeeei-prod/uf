@@ -13,17 +13,13 @@
 import { describe, expect, it } from "@uniflowed/test";
 
 import { DEPLOYMENT_HEADER, createFetchHandler } from "./fetch.js";
+import type { Application } from "./fetch.js";
 import { beginRequest } from "./host.js";
 
 /** A server bundle that counts what ran. */
-function countingApp() {
+function countingApp(): {| app: Application, ran: Array<string> |} {
   const ran: Array<string> = [];
-  const app = {
-    routes: [],
-    handlers: [],
-    middleware: [],
-    notFound: [],
-    errors: [],
+  const app: Application = {
     beginRequest,
     runMiddleware: async () => {
       ran.push("middleware");
@@ -43,7 +39,7 @@ function countingApp() {
         pipe: () => {},
         stream: () =>
           new ReadableStream({
-            start(controller: { enqueue: (chunk: Uint8Array) => mixed, close: () => mixed, ... }) {
+            start(controller: ReadableStreamDefaultController<Uint8Array>) {
               controller.enqueue(new TextEncoder().encode(html));
               controller.close();
             },
@@ -66,17 +62,23 @@ async function answer(handle: (request: Request) => Promise<Response>, request: 
   }
 }
 
-const actionCall = (headers: { [string]: string }) =>
-  new Request("http://localhost/counter", {
+const actionCall = (extra: { [string]: string }) => {
+  // Key by key rather than spread after named keys, which Flow cannot type
+  // for an indexer. `extra` still wins.
+  const headers: { [string]: string } = {
+    origin: "http://localhost",
+    "content-type": "application/json",
+    "uf-action": "a".repeat(64),
+  };
+  for (const name of Object.keys(extra)) {
+    headers[name] = extra[name];
+  }
+  return new Request("http://localhost/counter", {
     method: "POST",
-    headers: {
-      origin: "http://localhost",
-      "content-type": "application/json",
-      "uf-action": "a".repeat(64),
-      ...headers,
-    },
+    headers,
     body: JSON.stringify({ args: [4] }),
   });
+};
 
 describe("a request from another build", () => {
   it("is refused with a 409 that names this build, and nothing of this build runs", async () => {
