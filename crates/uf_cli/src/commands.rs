@@ -16,6 +16,7 @@ pub(crate) mod deploy;
 pub(crate) mod dev;
 pub(crate) mod dev_state;
 pub(crate) mod doc;
+pub(crate) mod editor;
 pub(crate) mod env;
 pub(crate) mod explain;
 pub(crate) mod fmt;

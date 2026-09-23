@@ -32,6 +32,8 @@ jobs:
   vscode:
     name: VS Code
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,11 +88,11 @@ jobs:
           if [ "$PRE_RELEASE" = "true" ]; then
             flags="--pre-release"
           fi
-          ./node_modules/.bin/vsce package $flags --out "../../uf-${{ steps.version.outputs.version }}.vsix"
+          ./node_modules/.bin/vsce package $flags --out "../../uf-vscode-${{ steps.version.outputs.version }}.vsix"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uf-vscode-${{ steps.version.outputs.version }}
-          path: uf-${{ steps.version.outputs.version }}.vsix
+          path: uf-vscode-${{ steps.version.outputs.version }}.vsix
           if-no-files-found: error
       # A step without its token says so by name and succeeds, so a release
       # made before the owner has created the tokens is not red for it.
@@ -106,7 +108,7 @@ jobs:
             echo "::notice::VSCE_PAT is not set; skipping Visual Studio Marketplace publish"
             exit 0
           fi
-          editors/vscode/node_modules/.bin/vsce publish --skip-duplicate --packagePath "uf-${{ steps.version.outputs.version }}.vsix" --pat "$VSCE_PAT"
+          editors/vscode/node_modules/.bin/vsce publish --skip-duplicate --packagePath "uf-vscode-${{ steps.version.outputs.version }}.vsix" --pat "$VSCE_PAT"
       - name: Publish to Open VSX
         if: startsWith(github.ref, 'refs/tags/uf@') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
         env:
@@ -117,7 +119,43 @@ jobs:
             echo "::notice::OVSX_PAT is not set; skipping Open VSX publish"
             exit 0
           fi
-          editors/vscode/node_modules/.bin/ovsx publish "uf-${{ steps.version.outputs.version }}.vsix" --skip-duplicate -p "$OVSX_PAT"
+          editors/vscode/node_modules/.bin/ovsx publish "uf-vscode-${{ steps.version.outputs.version }}.vsix" --skip-duplicate -p "$OVSX_PAT"
+
+  # `uf editor install vscode` downloads the .vsix from the GitHub release of
+  # the uf running it, and refuses one whose digest does not match the
+  # .sha256 beside it. So a release run attaches both. The release itself is
+  # created by release.yml; this job adds to it and never creates one, because
+  # a release with only an extension on it would be a uf version with no uf.
+  release-assets:
+    name: Attach the VS Code extension to the release
+    needs: vscode
+    if: startsWith(github.ref, 'refs/tags/uf@') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Upload assets to the existing release.
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: uf-vscode-${{ needs.vscode.outputs.version }}
+          path: assets
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.vscode.outputs.version }}
+        run: |
+          set -eu
+          tag="uf@${VERSION}"
+          vsix="uf-vscode-${VERSION}.vsix"
+          cd assets
+          test -f "$vsix"
+          sha256sum "$vsix" > "${vsix}.sha256"
+          cat "${vsix}.sha256"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $tag does not exist yet; run release.yml first, then this workflow with version ${VERSION}"
+            exit 1
+          fi
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "$vsix" "${vsix}.sha256"
 
   zed:
     name: Zed

@@ -91,6 +91,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("lint", "here, and output.rs for the report"),
     ("lsp", "cli.rs: speaks a protocol over stdio"),
     (
+        "editor",
+        "editor.rs: installs through stand-in editor launchers and a release served from a directory",
+    ),
+    (
         "mcp",
         "tests/library/mcp.test.js: speaks MCP over stdio, against this binary",
     ),

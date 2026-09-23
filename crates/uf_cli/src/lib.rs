@@ -518,6 +518,27 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Clean { deps, dry_run } => commands::clean::clean(&cwd, ui, deps, dry_run),
         Commands::Lsp => commands::dev::lsp(&cwd),
         Commands::Mcp => commands::mcp::mcp(&cwd),
+        Commands::Editor { command } => match command {
+            cli::EditorCommand::Install {
+                editor,
+                version,
+                vsix,
+                force,
+                dry_run,
+            } => commands::editor::install(
+                ui,
+                editor,
+                &commands::editor::InstallOptions {
+                    version,
+                    vsix,
+                    force,
+                    dry_run,
+                },
+            ),
+            cli::EditorCommand::Setup { editor, check } => {
+                commands::editor::setup(&cwd, ui, editor, check)
+            }
+        },
         Commands::Migrate { dry_run, .. } => commands::migrate::migrate(&cwd, ui, dry_run),
         Commands::Codemod {
             from, to, dry_run, ..

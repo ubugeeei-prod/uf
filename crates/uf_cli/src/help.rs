@@ -74,7 +74,7 @@ pub(crate) const GROUPS: &[(&str, &[&str])] = &[
             "completion",
         ],
     ),
-    ("Editors and agents", &["lsp", "mcp"]),
+    ("Editors and agents", &["lsp", "editor", "mcp"]),
 ];
 
 /// Where the documentation lives, printed at the foot of `uf --help`.
