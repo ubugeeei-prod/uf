@@ -14,15 +14,20 @@ import * as Primitive from "@uniflowed/ui";
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 import { CalendarHeader, CalendarMonth, CalendarNext, CalendarPrevious } from "./calendar.js";
 const styles = stylex.create({
+  // The same frame as `Calendar`'s. A block, because the month buttons hang
+  // on the caption's line from a zero-height row; `calendar.js` says why.
   root: {
+    display: "inline-block",
     boxSizing: "border-box",
+    padding: ufTokens.space3,
     fontFamily: ufTokens.fontSans,
     fontSize: ufTokens.textSm,
     color: ufTokens.ink,
     backgroundColor: ufTokens.surface,
-    borderRadius: ufTokens.radiusSm,
-    display: "inline-block",
-    padding: ufTokens.space3,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: ufTokens.border,
+    borderRadius: ufTokens.radiusMd,
   },
 });
 export component RangeCalendar(

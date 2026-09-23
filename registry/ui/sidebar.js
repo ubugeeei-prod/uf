@@ -81,7 +81,6 @@ const styles = stylex.create({
     overflowY: "auto",
     backgroundColor: ufTokens.surface,
     color: ufTokens.ink,
-    boxShadow: ufTokens.shadowPanel,
     borderWidth: 0,
     borderStyle: "solid",
     borderColor: ufTokens.border,
@@ -193,7 +192,6 @@ const styles = stylex.create({
     lineHeight: ufTokens.leadingTight,
     overflowWrap: "break-word",
     borderRadius: ufTokens.radiusSm,
-    boxShadow: ufTokens.shadowCard,
   },
 });
 

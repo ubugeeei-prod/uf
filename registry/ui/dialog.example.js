@@ -33,7 +33,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,

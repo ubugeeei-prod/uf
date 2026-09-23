@@ -25,7 +25,7 @@ const styles = stylex.create({
     fontSize: ufTokens.textSm,
     color: ufTokens.ink,
     backgroundColor: ufTokens.surface,
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     display: "inline-flex",
     alignItems: "center",
     gap: ufTokens.space1,
@@ -49,7 +49,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
   },
   channel: { width: "12rem", accentColor: ufTokens.accent },
   swatch: {

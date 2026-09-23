@@ -13,8 +13,8 @@
  *
  * Shared by `VisuallyHidden` and by the parts that keep a live region of their
  * own beside what they render — the table's sort announcement, the
- * collections', the range calendar's and the segmented fields'. Frozen,
- * because every one of them holds the same object.
+ * collections', the calendar's and the range calendar's, and the segmented
+ * fields'. Frozen, because every one of them holds the same object.
  */
 export const visuallyHiddenStyle: {|
   readonly border: number,

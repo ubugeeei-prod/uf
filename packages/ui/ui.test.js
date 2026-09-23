@@ -5218,6 +5218,21 @@ describe("Calendar", () => {
     expect(danglingReferences()).toEqual([]);
   });
 
+  it("takes a class for the caption and the weekday headings it renders itself", () => {
+    // They are the part's own elements, so a stylesheet has no other way to
+    // reach them; the class changes nothing a reader is told.
+    render(
+      <Calendar.Root defaultValue="2026-10-14" locale="en-GB" today="2026-10-01" weekStartsOn={1}>
+        <Calendar.Month captionClassName="month-name" columnHeaderClassName="weekday" />
+      </Calendar.Root>,
+    );
+    const grid = screen.getByRole("grid");
+    expect(grid.querySelector("caption")?.className).toBe("month-name");
+    const columns = screen.getAllByRole("columnheader");
+    expect(columns.every((column) => column.className === "weekday")).toBe(true);
+    expect(accessibleName(grid)).toBe("October 2026");
+  });
+
   it("says which month it is showing, as the grid's own name", () => {
     render(<Booking />);
     expect(accessibleName(screen.getByRole("grid"))).toBe("October 2026");
@@ -5307,6 +5322,10 @@ describe("Calendar", () => {
     // is the same constraint.
     const status = screen.getByRole("status");
     expect(status.textContent).toBe("");
+    // Heard, not drawn: the caption already shows the month, and an unhidden
+    // region printed it a second time under the grid after the first page.
+    expect(status.style.position).toBe("absolute");
+    expect(status.style.clipPath).toBe("inset(50%)");
 
     act(() => {
       screen.getByRole("gridcell", { name: "14" }).focus();
@@ -5343,6 +5362,12 @@ describe("Calendar", () => {
     expect(today).not.toHaveAttribute("aria-selected");
     expect(chosen).toHaveAttribute("aria-selected", "true");
     expect(chosen).not.toHaveAttribute("aria-current");
+    // One chosen day is a run of one, so a stylesheet that rounds a range's
+    // ends rounds it on both sides; no other day carries either mark.
+    expect(chosen).toHaveAttribute("data-selection-start", "true");
+    expect(chosen).toHaveAttribute("data-selection-end", "true");
+    expect(today).not.toHaveAttribute("data-selection-start");
+    expect(today).not.toHaveAttribute("data-selection-end");
   });
 
   it("chooses a day when it is pressed, and moves the tab stop to it", async () => {

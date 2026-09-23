@@ -21,7 +21,7 @@
 //
 // 1. **A token set that already exists.** `@uniflowed/stylex/tokens.stylex.js`
 //    is a real `stylex.defineVars` module — colour roles, a type scale,
-//    spacing, radii, elevation and motion — so a project has a coherent palette
+//    spacing, radii and motion — so a project has a coherent palette
 //    without authoring one, and gets it as `:root` custom properties the build
 //    inlined rather than as anything computed in a browser.
 // 2. **A base layer over those tokens.** `@uniflowed/stylex/preset` is
@@ -67,14 +67,17 @@
 //
 // # Where the token values come from
 //
-// `@uniflowed/brand` owns uf's visual identity — the palette, the type,
-// spacing and radius scales — and it stays there. It cannot own the token
-// module: a StyleX token's name is computed by the compiler from the binding
-// and key it was declared under, `defineVars` accepts only literals, and
-// brand's `--uf-*` names are hand-written for a different consumer. So brand
-// holds the identity values and `./tokens.stylex.js` is their StyleX-shaped
-// projection into semantic roles — `accent`, `ink`, `canvas` — which is the
-// layer a design system needs and an identity does not have.
+// `@uniflowed/brand` owns uf's visual identity — the logo, its spectrum, the
+// type and spacing scales — and it stays there. The interface borrows brand's
+// type and spacing, and chooses its own colours and corners: a UI dressed in
+// the logo's cyan-to-magenta spectrum and round corners looks generated, so
+// `./tokens.stylex.js` holds a neutral-first palette of its own
+// (`docs/ui-visual-language.md` says why). Brand could not own the token
+// module anyway: a StyleX token's name is computed by the compiler from the
+// binding and key it was declared under, and `defineVars` accepts only
+// literals. So `./tokens.stylex.js` is where the semantic roles — `accent`,
+// `ink`, `canvas` — get their values, which is the layer a design system needs
+// and an identity does not have.
 //
 // # Readiness
 //
