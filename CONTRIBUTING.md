@@ -266,7 +266,13 @@ merge. The command updates the PR with current `main` when needed.
 
 After merge, the command publishes and verifies npm packages, then publishes
 the tested native archives. The GitHub Release creates the tag only after the
-archives are ready. It then runs the editor packaging and publication workflow.
+archives are ready. It then runs the editor packaging and publication workflow,
+which publishes the VS Code extension as `uniflowed.uf`. That step needs two
+repository secrets: `VSCE_PAT`, an Azure DevOps token with the Marketplace
+**Manage** scope for the `uniflowed` publisher, and `OVSX_PAT`, an Open VSX
+token for the `uniflowed` namespace (created once with
+`npx ovsx create-namespace uniflowed -p <token>`). Without one, its step says
+by name which registry it skipped and the release carries on.
 The command never pushes a tag to start validation.
 Publication requires successful queue validation for that exact commit and
 checks the PR author's permissions again.

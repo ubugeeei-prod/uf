@@ -1,0 +1,24 @@
+{
+  "id": "uf",
+  "name": "uf",
+  "programArgs": {
+    "default": "sh -c \"uf lsp --cwd '$PROJECT_DIR$'\"",
+    "windows": "cmd /c uf lsp --cwd \"$PROJECT_DIR$\""
+  },
+  "fileTypeMappings": [
+    {
+      "fileType": {
+        "name": "JavaScript",
+        "patterns": ["*.js", "*.mjs", "*.cjs"]
+      },
+      "languageId": "javascript"
+    },
+    {
+      "fileType": {
+        "name": "JavaScript-React",
+        "patterns": ["*.jsx"]
+      },
+      "languageId": "javascriptreact"
+    }
+  ]
+}
