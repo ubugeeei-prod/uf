@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- No codemod (fix(test)!: give every test file its own copy of the project's modules): only tests that share state between files through a project module are affected, and moving that state to globalThis depends on what the files share.
+
 ## uf@0.2.0
 
 This minor release changes the default `uf ui` styles and adds an experimental sqlc target.
