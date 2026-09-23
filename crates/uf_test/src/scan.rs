@@ -188,6 +188,14 @@ pub(crate) fn call_shape_at<'a>(
         return None;
     }
 
+    // `function describe(value) {…}` declares a function that happens to share
+    // the name; it calls nothing. Read as a call it made every module with a
+    // helper called `describe` a test file with an unreadable declaration in
+    // it — eleven of them in this repository, each run and reported as such.
+    if previous_word(source, offset) == Some("function") {
+        return None;
+    }
+
     let after_ident = offset + ident.len();
     let (next, next_offset) = next_significant(source, after_ident)?;
     if next == '(' {
@@ -212,6 +220,76 @@ pub(crate) fn call_shape_at<'a>(
         name: &source[property_start..property_end],
         end: property_end,
     })
+}
+
+/// The identifier that ends just before `offset`, skipping whitespace and a
+/// generator's `*`, when there is one.
+fn previous_word(source: &str, offset: usize) -> Option<&str> {
+    let before = source[..offset].trim_end().trim_end_matches('*').trim_end();
+    let start = before
+        .char_indices()
+        .rev()
+        .take_while(|(_, ch)| is_identifier_char(*ch))
+        .last()
+        .map(|(index, _)| index)?;
+    Some(&before[start..])
+}
+
+/// Whether `source` declares a function called `name` itself, in code.
+///
+/// Only a `function` declaration. A `const it = …` may well be uf's own `it`
+/// under a local binding — `const it = import.meta.uf.test.it` — so it proves
+/// nothing, and a file whose only registrations were read as a helper's calls
+/// would not be run at all. A declaration anywhere in the file counts, and
+/// discovery consults this only for a call whose name it cannot read.
+pub(crate) fn declares_locally(source: &str, mask: &[bool], name: &str) -> bool {
+    source.match_indices(name).any(|(offset, _)| {
+        mask.get(offset).copied().unwrap_or(false)
+            && !source[..offset]
+                .chars()
+                .next_back()
+                .is_some_and(is_identifier_char)
+            && !source[offset + name.len()..]
+                .chars()
+                .next()
+                .is_some_and(is_identifier_char)
+            && previous_word(source, offset) == Some("function")
+    })
+}
+
+/// Whether the argument list opening at or after `from` holds more than one
+/// argument.
+///
+/// Counts top-level commas in code, so a comma inside a nested call, an array,
+/// an object, a string or a comment does not count. A trailing comma after a
+/// single argument is not a second argument.
+pub(crate) fn has_second_argument(source: &str, mask: &[bool], from: usize) -> bool {
+    let Some(open) = source
+        .get(from..)
+        .and_then(|tail| tail.find('('))
+        .map(|open| from + open)
+    else {
+        return false;
+    };
+    let Some(close) = matching_delimiter(source, open, b'(', b')') else {
+        return false;
+    };
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    for index in open + 1..close {
+        if !mask.get(index).copied().unwrap_or(false) {
+            continue;
+        }
+        match bytes[index] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b',' if depth == 0 => {
+                return !source[index + 1..close].trim().is_empty();
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// The next non-whitespace character at or after `from`, with its offset.

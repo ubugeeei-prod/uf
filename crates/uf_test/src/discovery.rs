@@ -17,8 +17,8 @@ use uf_infra::LineIndex;
 
 use crate::plan::{TestCase, TestKind, TestModifier, TestPlan, UnsupportedDeclaration};
 use crate::scan::{
-    CallShape, call_shape_at, code_byte_mask, extract_first_string_arg, matching_delimiter,
-    value_imports,
+    CallShape, call_shape_at, code_byte_mask, declares_locally, extract_first_string_arg,
+    has_second_argument, matching_delimiter, value_imports,
 };
 
 /// Largest source file discovery will scan, in bytes.
@@ -83,6 +83,9 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
     let code_mask = code_byte_mask(source);
     let imports = value_imports(source, &code_mask);
     let foreign = REGISTRATIONS.map(|(call, _)| foreign_runner(&imports, call));
+    // A registration name the file declares for itself — `function describe(…)`
+    // — is that function wherever the file calls it, not uf's.
+    let local = REGISTRATIONS.map(|(call, _)| declares_locally(source, &code_mask, call));
     let mut cases = Vec::new();
     let mut unsupported = Vec::new();
 
@@ -144,6 +147,19 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
         };
 
         let Some(name) = extract_first_string_arg(&source[args_from..]) else {
+            // Nor is a call to a function this file declares under the
+            // same name: `packages/router/internal/hydration.js` calls its own
+            // `describe(node, index)`.
+            //
+            // One argument that is not a name is not a registration at all:
+            // every form that registers takes a body as well, and the ones
+            // that do not (`.todo`) take a name. `describe(schema)` is a
+            // helper that happens to be called `describe`, and recording it
+            // made a validator module a test file with an unreadable
+            // declaration in it.
+            if local[registration] || !has_second_argument(source, &code_mask, args_from) {
+                continue;
+            }
             // A registration whose name is not a literal — `it(name, …)`
             // inside a loop, a template with a substitution. Discovery
             // cannot read it, and dropping it silently made the file look

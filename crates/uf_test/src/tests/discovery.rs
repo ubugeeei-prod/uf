@@ -182,6 +182,59 @@ fn a_name_that_is_not_a_literal_is_recorded_rather_than_dropped() {
 }
 
 #[test]
+fn a_helper_that_shares_a_registrations_name_declares_nothing() {
+    // `packages/validator` has `export function describe(schema)` and calls it
+    // everywhere; `packages/hmr` has a local `function describe(update)`. Both
+    // were read as unreadable `describe` declarations, so every such module
+    // was run as a test file and listed in every report.
+    let source = "export function describe(schema) {\n  return schema;\n}\n\
+                  const inner = describe(schema);\n\
+                  report(describe(update, ));\n\
+                  async function* it(x) {}\n";
+    let plan = discover_tests("schema.js", source);
+
+    assert!(plan.is_empty(), "{:?}", plan.unsupported);
+}
+
+#[test]
+fn a_call_to_a_function_the_file_declares_under_that_name_declares_nothing() {
+    // `packages/router/internal/hydration.js` and `packages/fetch/internal/
+    // client.js`: two arguments, neither a name, and the function is the
+    // file's own.
+    let source = "const step = describe(node, index);\n\
+                  function describe(node, index) {\n  return `${index}`;\n}\n";
+    let plan = discover_tests("hydration.js", source);
+
+    assert!(plan.is_empty(), "{:?}", plan.unsupported);
+}
+
+#[test]
+fn a_binding_of_a_registration_name_is_not_taken_for_a_helper() {
+    // `const it = import.meta.uf.test.it` is uf's `it` under a local name, and
+    // an in-source block that registers with computed names must still make
+    // its file a test file.
+    let source = "const it = import.meta.uf.test.it;\nfor (const n of names) it(n, () => {});\n";
+    let plan = discover_tests("math.js", source);
+
+    assert_eq!(plan.unsupported.len(), 1, "{:?}", plan.unsupported);
+}
+
+#[test]
+fn a_registration_with_a_computed_name_and_a_body_is_still_recorded() {
+    // The line above must not cost the case it was written to keep: a name
+    // discovery cannot read, with a body, is a registration.
+    let source = "describe(set.title, () => {\n  it(story.name, storyTest(story, [a, b]));\n});\n";
+    let plan = discover_tests("runner.js", source);
+
+    let calls: Vec<&str> = plan
+        .unsupported
+        .iter()
+        .map(|entry| entry.call.as_str())
+        .collect();
+    similar_asserts::assert_eq!(calls, vec!["describe", "it"]);
+}
+
+#[test]
 fn several_unexpandable_forms_are_all_recorded() {
     let source = "describe.concurrent('a', () => {});\ntest.failing('b', () => {});\n";
     let plan = discover_tests("a.test.js", source);
