@@ -41,6 +41,7 @@ import { directionOf } from "./roving-focus.js";
 import { clearAll, extendTo, orderedKeys, replaceWith, selectAll, toggleKey } from "./selection.js";
 import type { SelectionBehavior, SelectionMode, SelectionPolicy } from "./selection.js";
 import { startsWithLocale, useLocale } from "../i18n-provider.js";
+import { visuallyHiddenStyle } from "./visually-hidden-style.js";
 
 export type CollectionItem = {
   readonly key: string,
@@ -513,7 +514,8 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
   return (
     <>
       {render != null ? render(props) : <div {...props} />}
-      <span role="status" aria-live="polite">
+      {/* For a screen reader; a sighted reader sees the selection itself. */}
+      <span role="status" aria-live="polite" style={visuallyHiddenStyle}>
         {drag.announcement || announcement}
       </span>
     </>

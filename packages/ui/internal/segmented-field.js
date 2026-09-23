@@ -9,6 +9,7 @@ import { composeHandlers, withProps } from "./merge-props.js";
 import type { RenderProp, Rest } from "./merge-props.js";
 import { directionOf } from "./roving-focus.js";
 import { useLocale } from "../i18n-provider.js";
+import { visuallyHiddenStyle } from "./visually-hidden-style.js";
 
 type Segment = "year" | "month" | "day" | "hour" | "minute" | "second" | "dayPeriod";
 type Fields = { [string]: string };
@@ -306,7 +307,7 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     children: (
       <>
         {segments}
-        <span role="status" aria-live="polite">
+        <span role="status" aria-live="polite" style={visuallyHiddenStyle}>
           {announcement}
         </span>
       </>

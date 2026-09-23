@@ -116,6 +116,11 @@ pub fn ui_components() -> Vec<UiComponent> {
         UiComponent::new("TagGroup", &["Root"], UiRuntime::Client),
         UiComponent::new("TimeField", &["Root"], UiRuntime::Client),
         UiComponent::new("Tree", &["Root"], UiRuntime::Client),
+        // Implemented in `packages/ui/visually-hidden.js`, which also holds
+        // `announce()`: the document's one pair of live regions, which
+        // `dialog.js` leaves readable while a modal hides everything else.
+        // Client, because `focusable` shows the content while focus is inside.
+        UiComponent::new("VisuallyHidden", &["Root"], UiRuntime::Client),
         // Implemented in `packages/ui/accordion.js`. `Header` is a part rather
         // than something the trigger renders for itself, because the heading
         // level belongs to the caller: an accordion inside an `<h2>` section

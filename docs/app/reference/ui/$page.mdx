@@ -66,6 +66,7 @@ import { Select, SelectRoot } from "@uniflowed/ui";
 | `Avatar` | Loading, loaded, failed — and the `alt` that is empty on purpose | `avatar.js` |
 | `Separator` | A rule a reader is told about, or one that is only a rule | `separator.js` |
 | `Skeleton` | Grey boxes nobody hears, in a region that says it is loading | `skeleton.js` |
+| `VisuallyHidden`, `announce` | Text only a screen reader gets, a skip link that appears on focus, and one live announcer for the whole document | `visually-hidden.js` |
 
 Composition is type-checked. `Tabs.List` declares `renders* Tabs.Tab`, so a
 `<button>` in a tab list is a *type error* rather than a review comment;
@@ -307,6 +308,42 @@ shows the current color. Channels support arrows, PageUp/Down and Home/End;
 horizontal arrows mirror in RTL. Alpha is announced as a percentage. Supply
 labels for `Input` and `Field`; named channels have default labels. Named CSS
 colors, HSL and wide-gamut color spaces are not accepted by this hex contract.
+
+## Screen-reader-only text and announcements
+
+`VisuallyHidden` keeps its content in the accessibility tree and takes it off
+the screen: a one-pixel clipped box, not `display: none`, which would hide it
+from both. `focusable` makes it the skip-link pattern — hidden until focus
+lands inside it, on screen while focus stays:
+
+```js
+<button type="button">
+  <TrashIcon aria-hidden="true" />
+  <VisuallyHidden>Delete draft</VisuallyHidden>
+</button>
+
+<VisuallyHidden focusable>
+  <a href="#main">Skip to content</a>
+</VisuallyHidden>
+```
+
+`announce(message, { politeness, timeout })` speaks through one pair of
+`role="log"` live regions that uf keeps at the top of `<body>`. It is a function
+rather than a component, so a Server Action's error path, an effect or a click
+handler can call it without rendering a region first:
+
+```js
+announce(`${results.length} results`);
+announce("Could not save the draft", { politeness: "assertive" });
+```
+
+It works like React Aria's LiveAnnouncer. Every message is added as a new
+node, so the same text sent twice is heard twice, and it is removed after
+`timeout`: 7 seconds by default, or never with `0`. The first message waits
+100 ms after the regions are created, because a region inserted together with
+its content is silent. A modal `Dialog` leaves the announcer readable while it
+hides the rest of the page. `clearAnnouncements()` empties the regions. On the
+server `announce` does nothing.
 
 ## Import shapes
 

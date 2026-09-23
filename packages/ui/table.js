@@ -75,6 +75,7 @@ import {
   withoutComposed,
 } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 
 /** Which column a table is sorted by, and which way. */
 export type Sort = {|
@@ -103,19 +104,6 @@ const TableContext: React.Context<TableState | null> = createContext(null);
 
 /** Whether the rows below are header rows, which decides `th` versus `td`. */
 const HeaderContext: React.Context<boolean> = createContext(false);
-
-const VISUALLY_HIDDEN_STYLE = Object.freeze({
-  border: 0,
-  clip: "rect(0, 0, 0, 0)",
-  clipPath: "inset(50%)",
-  height: 1,
-  margin: -1,
-  overflow: "hidden",
-  padding: 0,
-  position: "absolute",
-  whiteSpace: "nowrap",
-  width: 1,
-});
 
 hook useTable(part: string): TableState {
   const state = useContext(TableContext);
@@ -222,7 +210,7 @@ export component TableRoot(
         aria-live="polite"
         data-uf-table-status=""
         role="status"
-        style={VISUALLY_HIDDEN_STYLE}
+        style={visuallyHiddenStyle}
       >
         {message}
       </div>

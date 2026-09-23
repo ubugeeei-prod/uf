@@ -1171,6 +1171,9 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "TooltipProvider",
                 "TooltipRoot",
                 "TooltipTrigger",
+                "VisuallyHidden",
+                "announce",
+                "clearAnnouncements",
                 "dismissAllToasts",
                 "dismissToast",
                 "getInteractionModality",
@@ -1445,6 +1448,7 @@ pub const CLIENT_MODULE_SUBPATHS: &[&str] = &[
     "toggle-group",
     "tooltip",
     "tree",
+    "visually-hidden",
 ];
 
 /// Whether `@uniflowed/ui/<module>`, the name uf gives one of the package's
@@ -1497,6 +1501,8 @@ const BARREL_EXPORT_MODULES: &[(&str, &[&str])] = &[
     ("useLongPress", &["interactions"]),
     ("useMove", &["interactions"]),
     ("usePress", &["interactions"]),
+    ("announce", &["visually-hidden"]),
+    ("clearAnnouncements", &["visually-hidden"]),
 ];
 
 /// The client modules a name imported from the [`CLIENT_MODULE_PACKAGE`] barrel

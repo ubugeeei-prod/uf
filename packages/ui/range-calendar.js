@@ -8,6 +8,7 @@ import type { Rest } from "./internal/merge-props.js";
 import type { DateRange } from "./internal/date-range.js";
 import { validateRange, unavailableInRange } from "./internal/date-range.js";
 import { CalendarRoot, CalendarMonth } from "./calendar.js";
+import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 export type { DateRange } from "./internal/date-range.js";
 
 export component RangeCalendarRoot(
@@ -70,7 +71,7 @@ export component RangeCalendarRoot(
       >
         {children}
       </CalendarRoot>
-      <span role="status" aria-live="polite">
+      <span role="status" aria-live="polite" style={visuallyHiddenStyle}>
         {announcement}
       </span>
     </div>

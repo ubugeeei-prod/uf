@@ -471,6 +471,11 @@ export component DialogClose(children: React.Node, render?: RenderProp, ...rest:
  * hiding body's children would hide nothing new and the outer dialog's own
  * content would stay readable behind the inner one.
  *
+ * The one sibling left alone is the live announcer `visually-hidden.js`
+ * creates, which lives in `<body>` and would otherwise go silent for as long as
+ * any dialog is open. React Aria's `ariaHideOutside` keeps its announcer for the
+ * same reason.
+ *
  * Both attributes, because they address different audiences. `aria-hidden`
  * removes the subtree from the accessibility tree; `inert` also stops clicks
  * and takes it out of the tab order, which is the browser's own enforcement of
@@ -488,7 +493,9 @@ function concealOutside(element: HTMLElement): () => void {
       break;
     }
     for (const sibling of Array.from(parent.children)) {
-      if (sibling === node) {
+      // `announce()`'s regions stay readable: a message about what the dialog
+      // just did ("Saved", "3 results") is exactly what a modal needs to say.
+      if (sibling === node || sibling.hasAttribute("data-uf-live-announcer")) {
         continue;
       }
       restore.push({
