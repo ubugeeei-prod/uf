@@ -19,6 +19,7 @@
 
 import type { FetchClient } from "@uniflowed/fetch";
 import { Environment, Network, Observable, RecordSource, Store } from "relay-runtime";
+import type { GraphQLResponse, RequestParameters, Variables } from "relay-runtime";
 
 export type { Environment } from "relay-runtime";
 
@@ -80,17 +81,16 @@ export function createEnvironment(options: EnvironmentOptions): Environment {
  * function and not one uf guesses at.
  */
 function fetchOperation(options: EnvironmentOptions) {
-  return async function run(operation: mixed, variables: mixed): Promise<mixed> {
-    const request = operation as $FlowFixMe;
+  return async function run(
+    request: RequestParameters,
+    variables: Variables,
+  ): Promise<GraphQLResponse> {
     // `raw` rather than `request`: a GraphQL endpoint answers 200 with an
     // `errors` array, so the status is not the outcome and the body has to be
     // read either way.
     const response = await options.fetch.raw(options.endpoint, {
       method: "POST",
-      headers: {
-        accept: "application/graphql-response+json, application/json",
-        ...(options.headers ?? {}),
-      },
+      headers: requestHeaders(options.headers),
       body: {
         query: request.text,
         variables,
@@ -108,6 +108,22 @@ function fetchOperation(options: EnvironmentOptions) {
     }
     return payload;
   };
+}
+
+/**
+ * GraphQL's `accept`, then the caller's headers, which win on a clash — a
+ * gateway that wants a different media type says so.
+ */
+function requestHeaders(given: { readonly [string]: string } | void): { [string]: string } {
+  const headers: { [string]: string } = {
+    accept: "application/graphql-response+json, application/json",
+  };
+  if (given != null) {
+    for (const name of Object.keys(given)) {
+      headers[name] = given[name];
+    }
+  }
+  return headers;
 }
 
 export { Observable };
