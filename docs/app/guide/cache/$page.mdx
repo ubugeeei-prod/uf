@@ -160,6 +160,12 @@ reported in the response's `x-uf-cache` header as `BYPASS`:
 - the render answered `200`;
 - the render set no cookie.
 
+The header is written before the document ends, because the document streams,
+so it says what was known when the shell was ready. For a page that does not
+suspend that is the whole answer. For one that does, a boundary that resolves
+later can still state a lifetime or read the request; the store decides on the
+whole document either way, and the header is what the shell said.
+
 The second is the one that matters most and the one that is easiest to get
 wrong. Those three functions are how a document comes to be about one person,
 and a document about one person in a cache shared by every person is the worst
@@ -424,9 +430,12 @@ M-series laptop:
 | no cache | 52.35 ms | 52.41 ms | 2 | 10 |
 | route cache | 52.45 ms | 0.16 ms | 1 | 1 |
 
-The cold request is fractionally slower, and that is the trade a cached route
-makes: the document has to be whole before it can be an entry, so the fill
-buffers rather than streams. An uncached route streams exactly as it did before.
+The cold request is fractionally slower: it renders the document and keeps a
+copy. It still streams — the request that fills the entry is answered as the
+document is produced, and a copy is drained into the store behind it, so a
+`$loading.js` fallback reaches the browser before the page it stands in for
+whether or not the page is ever kept. A request that arrives while the entry is
+being filled joins the fill and is answered with the whole document.
 
 The last column is the half a median cannot show. Ten simultaneous requests for a
 page nobody has asked for yet are one render, because a request that arrives
