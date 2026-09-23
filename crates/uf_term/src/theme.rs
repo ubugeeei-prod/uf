@@ -34,8 +34,10 @@ pub enum Tone {
 /// The style palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Theme {
-    /// Command banners and section headings.
+    /// Section headings.
     pub title: Style,
+    /// The command a banner names: `uf lint`, `uf build`.
+    pub banner: Style,
     /// The text beside a banner title.
     pub subtitle: Style,
     /// Secondary text.
@@ -68,6 +70,9 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             title: Style::new().bold(),
+            // In the accent, so the line naming the command reads as the top
+            // of its report at a glance rather than as one more bold line.
+            banner: Style::new().bold().fg(Color::Rgb(0x5f, 0xaf, 0xff)),
             subtitle: Style::new().fg(Color::BrightBlack),
             muted: Style::new().fg(Color::BrightBlack),
             key: Style::new().fg(Color::BrightBlack),

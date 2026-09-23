@@ -50,6 +50,53 @@ impl<'a> KeyValue<'a> {
     }
 }
 
+/// One row of a status list: a mark, then a label, a value and a detail in
+/// three aligned columns, and what to do about it on the line beneath.
+///
+/// ```text
+///   ✓ node  24.3.0  runtime · found on PATH
+///   ✗ pnpm  missing package manager · packageManager
+///     › install pnpm, or write a version and uf installs it
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusRow<'a> {
+    /// The outcome the mark reports.
+    pub status: Status,
+    /// What was looked at.
+    pub label: &'a str,
+    /// What was found.
+    pub value: &'a str,
+    /// What qualifies it, receding.
+    pub detail: &'a str,
+    /// What to do about it, when anything.
+    pub hint: Option<&'a str>,
+}
+
+impl<'a> StatusRow<'a> {
+    /// A row with no detail and no hint.
+    pub fn new(status: Status, label: &'a str, value: &'a str) -> Self {
+        Self {
+            status,
+            label,
+            value,
+            detail: "",
+            hint: None,
+        }
+    }
+
+    /// The same row with a detail.
+    pub fn with_detail(mut self, detail: &'a str) -> Self {
+        self.detail = detail;
+        self
+    }
+
+    /// The same row with a hint beneath it.
+    pub fn with_hint(mut self, hint: &'a str) -> Self {
+        self.hint = Some(hint);
+        self
+    }
+}
+
 /// Renders the primitives with one fixed set of capabilities.
 #[derive(Debug, Clone, Copy)]
 pub struct Renderer {
@@ -115,10 +162,10 @@ impl Renderer {
         out.push('\n');
     }
 
-    /// Append a command banner: a bold title, an optional subtitle, and a rule
-    /// as wide as the title line.
+    /// Append a command banner: the command in the banner style, an optional
+    /// subtitle, and a rule as wide as the title line.
     pub fn banner(&self, out: &mut String, title: &str, subtitle: Option<&str>) {
-        self.theme.title.paint(self.color(), title, out);
+        self.theme.banner.paint(self.color(), title, out);
         let mut width = display_width(title);
         if let Some(subtitle) = subtitle {
             // A separator rather than spacing: the command and what it is
@@ -158,6 +205,129 @@ impl Renderer {
         out.push(' ');
         out.push_str(message);
         out.push('\n');
+    }
+
+    /// Append the line a command ends on: a status mark, the verdict in the
+    /// status colour, and the facts that qualify it, receding.
+    ///
+    /// `✗ 3 errors, 1 warning · 10 files checked · 41ms`
+    ///
+    /// One line rather than a block of counts, because it is the line a reader
+    /// scrolls to, and every number on it should be readable at a glance.
+    /// Empty facts are skipped, so a caller can leave out what does not apply
+    /// without building a second list.
+    pub fn summary(&self, out: &mut String, status: Status, headline: &str, facts: &[&str]) {
+        let style = self.status_style(status);
+        style.paint(self.color(), status.glyph(self.glyph_set()), out);
+        out.push(' ');
+        style.bold().paint(self.color(), headline, out);
+        for fact in facts.iter().filter(|fact| !fact.is_empty()) {
+            self.theme.muted.paint(self.color(), self.separator(), out);
+            self.theme.muted.paint(self.color(), fact, out);
+        }
+        out.push('\n');
+    }
+
+    /// Append a hint: what to do next, marked `›` and receding behind the
+    /// output it qualifies.
+    ///
+    /// Text between backticks is a command or a key a reader types. With
+    /// colour it is drawn in the accent colour and the backticks are dropped,
+    /// because the colour already sets it apart; without colour the backticks
+    /// stay, since they are then the only thing that does.
+    pub fn hint(&self, out: &mut String, indent: usize, text: &str) {
+        push_spaces(out, indent);
+        self.theme
+            .info
+            .paint(self.color(), Status::Info.glyph(self.glyph_set()), out);
+        out.push(' ');
+        // A hint that runs to several lines — an error quoting the line it
+        // failed on — keeps every line under the first one's text, so it reads
+        // as one hint rather than a hint and some stray output.
+        for (index, line) in text.lines().enumerate() {
+            if index > 0 {
+                out.push('\n');
+                push_spaces(out, indent + 2);
+            }
+            self.push_marked_up(out, line);
+        }
+        out.push('\n');
+    }
+
+    /// Append `text` muted, with its backticked spans in the accent colour.
+    fn push_marked_up(&self, out: &mut String, text: &str) {
+        if !self.color().is_enabled() {
+            out.push_str(text);
+            return;
+        }
+        // An odd count means an unmatched backtick, which is text rather than
+        // markup; drawing everything after it as code would be a guess.
+        if !text.matches('`').count().is_multiple_of(2) {
+            self.theme.muted.paint(self.color(), text, out);
+            return;
+        }
+        for (index, part) in text.split('`').enumerate() {
+            if part.is_empty() {
+                continue;
+            }
+            let style = if !index.is_multiple_of(2) {
+                self.theme.accent
+            } else {
+                self.theme.muted
+            };
+            style.paint(self.color(), part, out);
+        }
+    }
+
+    /// The separator between facts on one line: a middle dot, or a comma
+    /// where the dot cannot be drawn.
+    pub fn separator(&self) -> &'static str {
+        match self.glyph_set() {
+            GlyphSet::Unicode => " · ",
+            GlyphSet::Ascii => ", ",
+        }
+    }
+
+    /// Append a status list, its labels and values in aligned columns.
+    ///
+    /// A value is drawn in the colour of its row's mark when the row is not a
+    /// success, so what is wrong is the thing that stands out; a successful
+    /// value is a plain measurement.
+    pub fn status_rows(&self, out: &mut String, indent: usize, rows: &[StatusRow<'_>]) {
+        let label_width = rows
+            .iter()
+            .map(|row| display_width(row.label))
+            .max()
+            .unwrap_or(0);
+        let value_width = rows
+            .iter()
+            .map(|row| display_width(row.value))
+            .max()
+            .unwrap_or(0);
+        for row in rows {
+            push_spaces(out, indent);
+            let style = self.status_style(row.status);
+            style.paint(self.color(), row.status.glyph(self.glyph_set()), out);
+            out.push(' ');
+            out.push_str(row.label);
+            if !row.value.is_empty() || !row.detail.is_empty() {
+                push_spaces(out, label_width - display_width(row.label) + 2);
+                let value_style = match row.status {
+                    Status::Success | Status::Info => self.theme.number,
+                    Status::Skip => self.theme.muted,
+                    Status::Warn | Status::Error => style,
+                };
+                value_style.paint(self.color(), row.value, out);
+            }
+            if !row.detail.is_empty() {
+                push_spaces(out, value_width - display_width(row.value) + 2);
+                self.theme.muted.paint(self.color(), row.detail, out);
+            }
+            out.push('\n');
+            if let Some(hint) = row.hint {
+                self.hint(out, indent + 2, hint);
+            }
+        }
     }
 
     /// The style a status mark is drawn in.

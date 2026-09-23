@@ -79,7 +79,7 @@ pub use crate::diagnostic::{CodeFrame, DiagnosticLevel};
 pub use crate::glyph::{ASCII_GLYPHS, Glyphs, Status, UNICODE_GLYPHS};
 pub use crate::image::{ImageEnv, ImageProtocol, Placement, inline_image};
 pub use crate::progress::{DEFAULT_TICK, LIVE_WIDTH, Live, Progress};
-pub use crate::render::{KeyValue, Renderer};
+pub use crate::render::{KeyValue, Renderer, StatusRow};
 pub use crate::style::{Attributes, Color, Style};
 pub use crate::table::{Cell, Column, Table};
 pub use crate::text::{
