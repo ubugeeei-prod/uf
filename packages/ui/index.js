@@ -1872,3 +1872,21 @@ export {
 } from "./date-range-picker.js";
 export type { Locale } from "./i18n-provider.js";
 export { startsWithLocale } from "./i18n-provider.js";
+
+/**
+ * For a screen reader and nobody else.
+ *
+ * `VisuallyHidden` is text that stays in the accessibility tree and off the
+ * screen — an icon button's name, a skip link (`focusable`) that appears when a
+ * keyboard reaches it. `announce` says something through one pair of live
+ * regions shared by the whole document, from an event handler, an effect or a
+ * `catch`, without the caller rendering a region of their own:
+ *
+ *     announce(`${results.length} results`);
+ *     announce("Could not save", { politeness: "assertive" });
+ *
+ * `visually-hidden.js` says why a region rendered with its message is silent,
+ * and why these regions stay readable while a dialog hides the rest of the page.
+ */
+export { VisuallyHidden, announce, clearAnnouncements } from "./visually-hidden.js";
+export type { AnnounceOptions, Politeness } from "./visually-hidden.js";

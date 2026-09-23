@@ -9281,6 +9281,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
   /** Parts that take `render` and hand their props to the caller. */
   const RENDER: $ReadOnlyArray<string> = [
     "I18nProvider",
+    "VisuallyHidden",
     "ColorPicker.Root",
     "ColorPicker.Input",
     "ColorPicker.Field",
@@ -9548,6 +9549,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
       "TagGroup",
       "DateField",
       "TimeField",
+      "VisuallyHidden",
     ]) {
       parts.set(alone, alone);
     }
