@@ -7764,6 +7764,291 @@ fn every_adapter_answers_the_same_server_action_call() {
     }
 }
 
+/// A tab opened on build N, after build N+1 is what `uf start` serves.
+///
+/// ubugeeei-prod/uf#956's second box, end to end. `rsc-split-app` is built
+/// three times in place — which is what a deploy does to an output directory —
+/// and what a tab on the first build would ask of the second is asked over a
+/// socket. Two outcomes are acceptable and each question here has exactly one
+/// of them:
+///
+/// * **it keeps working.** Every hashed file build N wrote is still served:
+///   the client entry, and the counter's own chunk, whose name changes every
+///   build because it carries the action ids. `uf build` carried them forward.
+/// * **it loads the document again.** An action call naming build N is refused
+///   with a `409` that names build N+1 — and the action does not run, which is
+///   the half that matters: an id from build N must not be looked up in build
+///   N+1's table. The router turns that answer into a hard navigation, and
+///   `packages/router/deployment.test.js` is where that half is driven.
+///
+/// The counter's payload is the case a server cannot refuse: it was
+/// prerendered, so it is a file, answered before any application code runs.
+/// So the payload says which build rendered it, and the router compares.
+///
+/// Then a third build, for the window: build N's files are gone once build
+/// N+2 exists, and build N+1's are still there.
+#[test]
+fn a_tab_on_the_previous_build_keeps_working_or_loads_the_document_again() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let _split = split_lock();
+    let root = rsc_split_app_root();
+    let dist = root.join("dist");
+
+    // Build N, and what a tab opened on it holds.
+    build_in_place(&root);
+    let first = deployment_of(&dist);
+    let first_files = manifest_files(&dist);
+    let first_action = deployed_action_id(&root, "recordCount");
+    assert!(
+        first_files.iter().any(|file| file.ends_with(".js")),
+        "build N wrote no chunks, so nothing below is about chunks: {first_files:?}"
+    );
+
+    // Build N+1, over the same directory.
+    let summary = build_in_place(&root);
+    let second = deployment_of(&dist);
+    let second_action = deployed_action_id(&root, "recordCount");
+    assert_ne!(first, second, "two builds published one deployment id");
+    assert_ne!(
+        first_action, second_action,
+        "an action id outlived its build, so there is nothing to protect"
+    );
+    let carried: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/carried-assets.json"))
+            .expect("`uf build` records what it carried forward"),
+    )
+    .unwrap();
+    assert_eq!(carried["window"], "one build", "{carried}");
+    let changed: Vec<&String> = first_files
+        .iter()
+        .filter(|file| !manifest_files(&dist).contains(file))
+        .collect();
+    assert!(
+        !changed.is_empty(),
+        "build N+1 wrote every file build N did, byte for byte, so no file had to be carried"
+    );
+    for file in &changed {
+        assert!(
+            carried["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|kept| kept == file.as_str()),
+            "{file} was build N's and was not carried: {carried}"
+        );
+    }
+    assert!(
+        summary.contains("kept from the last build"),
+        "the summary does not say the previous build's files were kept:\n{summary}"
+    );
+
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+        let port_text = port.to_string();
+        let answered = std::thread::scope(|scope| {
+            let mut server = Server::start(
+                &root,
+                &["start", "--host", "127.0.0.1", "--port", port_text.as_str()],
+                scope,
+                &said,
+            );
+            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+                refused.push(format!(
+                    "attempt {attempt} on port {port}: {}",
+                    server.evidence(&said)
+                ));
+                return false;
+            }
+            let origin = format!("http://127.0.0.1:{port}");
+
+            // Keeps working: every file build N wrote is still a file.
+            for file in &first_files {
+                let answer = get(&mut server, port, &format!("/{file}"), &said);
+                assert!(
+                    status_of(&answer) == 200,
+                    "a tab on build N asked for /{file} and got:\n{}",
+                    head_of(&answer)
+                );
+            }
+
+            // Loads the document again: build N's action, refused before it
+            // ran, with the build that is live named in the answer.
+            let stale = http_request_with(
+                "127.0.0.1",
+                port,
+                "POST",
+                "/counter",
+                Some("{\"args\":[4]}"),
+                &[
+                    ("Origin", origin.as_str()),
+                    ("uf-action", first_action.as_str()),
+                    ("uf-deployment", first.as_str()),
+                ],
+            );
+            assert_eq!(
+                status_of(&stale),
+                409,
+                "an action call from build N was not refused:\n{stale}"
+            );
+            assert!(
+                stale
+                    .to_ascii_lowercase()
+                    .contains(&format!("uf-deployment: {second}")),
+                "the refusal does not name the live build:\n{stale}"
+            );
+            assert!(
+                !stale.contains("tally-marker-only-the-server-runs-this"),
+                "build N's call ran an action on build N+1:\n{stale}"
+            );
+
+            // The prerendered payload is a file, so it is served whatever the
+            // tab says — and it says which build rendered it.
+            let payload = http_get_with(
+                "127.0.0.1",
+                port,
+                "/counter/__uf.flight",
+                &[
+                    ("Accept", "text/x-component"),
+                    ("uf-deployment", first.as_str()),
+                ],
+            );
+            assert!(
+                payload.contains(&format!("\"deployment\":\"{second}\"")),
+                "the counter's payload does not say which build rendered it:\n{}",
+                head_of(&payload)
+            );
+
+            // And the page the hard navigation lands on is build N+1's, whose
+            // call is answered.
+            let document = get(&mut server, port, "/counter", &said);
+            assert!(
+                document.contains(&format!(
+                    "<meta name=\"uf:deployment\" content=\"{second}\">"
+                )),
+                "the counter's document does not name build N+1:\n{}",
+                head_of(&document)
+            );
+            let live = http_request_with(
+                "127.0.0.1",
+                port,
+                "POST",
+                "/counter",
+                Some("{\"args\":[4]}"),
+                &[
+                    ("Origin", origin.as_str()),
+                    ("uf-action", second_action.as_str()),
+                    ("uf-deployment", second.as_str()),
+                ],
+            );
+            assert!(
+                status_of(&live) == 200 && live.contains("\"total\":9"),
+                "build N+1's own call was not answered:\n{live}\n{}",
+                server.evidence(&said)
+            );
+            true
+        });
+        if answered {
+            break;
+        }
+        assert!(
+            attempt < PORT_ATTEMPTS,
+            "`uf start` never answered, on {PORT_ATTEMPTS} different ports\n{}",
+            refused.join("\n\n")
+        );
+    }
+
+    // Build N+2: the window is one build.
+    let second_files = manifest_files(&dist);
+    build_in_place(&root);
+    let third_files = manifest_files(&dist);
+    for file in &changed {
+        if third_files.contains(file) || second_files.contains(file) {
+            continue;
+        }
+        assert!(
+            !dist.join(file.as_str()).exists(),
+            "{file} is two builds old and is still in the output directory"
+        );
+    }
+    for file in &second_files {
+        assert!(
+            dist.join(file.as_str()).is_file(),
+            "{file} was build N+1's and did not survive into build N+2"
+        );
+    }
+}
+
+/// `uf build` in `root`, which must succeed; its standard output.
+fn build_in_place(root: &Path) -> String {
+    let output = uf().arg("--cwd").arg(root).arg("build").output().unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// The deployment id the build's prerendered counter publishes.
+fn deployment_of(dist: &Path) -> String {
+    const OPEN: &str = "<meta name=\"uf:deployment\" content=\"";
+    let document = fs::read_to_string(dist.join("counter/index.html")).unwrap();
+    let start = document
+        .find(OPEN)
+        .unwrap_or_else(|| panic!("the counter's document names no deployment:\n{document}"))
+        + OPEN.len();
+    let end = document[start..].find('"').unwrap();
+    document[start..start + end].to_owned()
+}
+
+/// Every file the output directory's Vite manifest names.
+fn manifest_files(dist: &Path) -> Vec<String> {
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dist.join(".vite/manifest.json")).unwrap())
+            .unwrap();
+    let mut files: Vec<String> = Vec::new();
+    for chunk in manifest.as_object().unwrap().values() {
+        let named = chunk["file"].as_str().into_iter().chain(
+            ["css", "assets"]
+                .into_iter()
+                .filter_map(|key| chunk[key].as_array())
+                .flatten()
+                .filter_map(serde_json::Value::as_str),
+        );
+        for name in named {
+            if !files.iter().any(|file| file == name) {
+                files.push(name.to_owned());
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// The status code of a raw HTTP response.
+fn status_of(response: &str) -> u16 {
+    response
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse().ok())
+        .unwrap_or(0)
+}
+
+/// The start of a raw response, for a failure message that stays readable.
+fn head_of(response: &str) -> &str {
+    let end = response
+        .char_indices()
+        .nth(1200)
+        .map_or(response.len(), |(at, _)| at);
+    &response[..end]
+}
+
 /// One output directory, one test building it — with the lock the other two
 /// fixtures have, because the next test written against this one will race it.
 static SPLIT: Mutex<()> = Mutex::new(());
