@@ -20,9 +20,9 @@
 //
 // It is the only module in the package that has opinions. `props` is a merge,
 // the tokens are names, the themes are values; this is where uf says a card has
-// a 16px radius. A project that wants its own look drops this import and keeps
-// everything else, and a bundler drops the rules with it because nothing else
-// references them.
+// a 6px radius and a 1px border rather than a shadow. A project that wants its
+// own look drops this import and keeps everything else, and a bundler drops
+// the rules with it because nothing else references them.
 //
 // # Why functions rather than exported namespaces
 //
@@ -84,13 +84,14 @@ const surfaces = stylex.create({
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusLg,
     padding: ufTokens.space6,
-    boxShadow: ufTokens.shadowCard,
   },
   panel: {
     backgroundColor: ufTokens.surface,
-    borderRadius: ufTokens.radiusXl,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: ufTokens.border,
+    borderRadius: ufTokens.radiusLg,
     padding: ufTokens.space6,
-    boxShadow: ufTokens.shadowPanel,
   },
   sunken: {
     backgroundColor: ufTokens.sunken,
@@ -191,7 +192,7 @@ const fields = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: ufTokens.border,
-    borderRadius: ufTokens.radiusSm,
+    borderRadius: ufTokens.radiusMd,
     paddingBlock: ufTokens.space2,
     paddingInline: ufTokens.space3,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
@@ -226,9 +227,11 @@ const overlays = stylex.create({
     backgroundColor: ufTokens.surface,
     color: ufTokens.ink,
     fontFamily: ufTokens.fontSans,
-    borderRadius: ufTokens.radiusXl,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: ufTokens.border,
+    borderRadius: ufTokens.radiusLg,
     padding: ufTokens.space6,
-    boxShadow: ufTokens.shadowPanel,
   },
 });
 
@@ -243,7 +246,6 @@ const menus = stylex.create({
     borderStyle: "solid",
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
-    boxShadow: ufTokens.shadowPanel,
   },
   item: {
     display: "flex",
@@ -325,7 +327,7 @@ const controls = stylex.create({
   box: {
     width: ufTokens.sizeControl,
     height: ufTokens.sizeControl,
-    borderRadius: "5px",
+    borderRadius: ufTokens.radiusSm,
   },
   // A switch's track is the one piece of geometry here that is not a token:
   // nothing but a switch reads it, and a theme that changed it would leave the

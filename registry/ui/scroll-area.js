@@ -57,7 +57,7 @@ const styles = stylex.create({
   },
   scrollbar: {
     position: "absolute",
-    borderRadius: "9999px",
+    borderRadius: ufTokens.radiusPill,
     pointerEvents: "none",
   },
   scrollbarVertical: {

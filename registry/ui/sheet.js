@@ -80,7 +80,6 @@ const styles = stylex.create({
     fontFamily: ufTokens.fontSans,
     fontSize: ufTokens.textSm,
     lineHeight: ufTokens.leadingBase,
-    boxShadow: ufTokens.shadowPanel,
     // Attached to every edge except the one opposite `side`, which is what
     // makes a side sheet as tall as the screen and a top one as wide as it.
     top: { default: 0, ":is([data-side=bottom])": "auto" },
@@ -99,7 +98,8 @@ const styles = stylex.create({
       ":is([data-side=top])": "min(32rem, calc(100% - 48px))",
       ":is([data-side=bottom])": "min(32rem, calc(100% - 48px))",
     },
-    // A line on the edge that meets the page, and rounded corners on it.
+    // A line on the edge that meets the page, which is what sets the panel
+    // apart from it: there is no shadow.
     borderWidth: 0,
     borderStyle: "solid",
     borderColor: ufTokens.border,
@@ -107,10 +107,10 @@ const styles = stylex.create({
     borderRightWidth: { default: 0, ":is([data-side=left])": "1px" },
     borderTopWidth: { default: 0, ":is([data-side=bottom])": "1px" },
     borderBottomWidth: { default: 0, ":is([data-side=top])": "1px" },
-    borderTopLeftRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusXl },
-    borderTopRightRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusXl },
-    borderBottomLeftRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusXl },
-    borderBottomRightRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusXl },
+    borderTopLeftRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
+    borderTopRightRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
+    borderBottomLeftRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
+    borderBottomRightRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
     // The panel takes focus itself when it holds nothing focusable.
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",

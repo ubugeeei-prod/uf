@@ -21,7 +21,7 @@
 //
 // 1. **A token set that already exists.** `@uniflowed/stylex/tokens.stylex.js`
 //    is a real `stylex.defineVars` module — colour roles, a type scale,
-//    spacing, radii, elevation and motion — so a project has a coherent palette
+//    spacing, radii and motion — so a project has a coherent palette
 //    without authoring one, and gets it as `:root` custom properties the build
 //    inlined rather than as anything computed in a browser.
 // 2. **A base layer over those tokens.** `@uniflowed/stylex/preset` is
@@ -67,8 +67,9 @@
 //
 // # Where the token values come from
 //
-// `@uniflowed/brand` owns uf's visual identity — the palette, the type,
-// spacing and radius scales — and it stays there. It cannot own the token
+// `@uniflowed/brand` owns uf's visual identity — the palette, the type and
+// spacing scales — and it stays there. (The interface's corners are the token
+// module's own, smaller than brand's.) It cannot own the token
 // module: a StyleX token's name is computed by the compiler from the binding
 // and key it was declared under, `defineVars` accepts only literals, and
 // brand's `--uf-*` names are hand-written for a different consumer. So brand

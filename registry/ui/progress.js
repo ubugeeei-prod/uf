@@ -42,14 +42,14 @@ const styles = stylex.create({
     width: "100%",
     height: "8px",
     overflow: "hidden",
-    borderRadius: ufTokens.radiusPill,
+    borderRadius: ufTokens.radiusSm,
     backgroundColor: { default: ufTokens.sunken, ":not([aria-valuenow])": ufTokens.accentSoft },
   },
   fill: {
     display: "block",
     width: "calc(var(--uf-progress, 0) * 100%)",
     height: "100%",
-    borderRadius: ufTokens.radiusPill,
+    borderRadius: ufTokens.radiusSm,
     backgroundColor: ufTokens.accent,
     transitionProperty: "width",
     transitionDuration: {

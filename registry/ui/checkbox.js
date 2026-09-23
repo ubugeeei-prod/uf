@@ -88,7 +88,7 @@ const styles = stylex.create({
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: "var(--uf-checkbox-edge)",
-    borderRadius: "5px",
+    borderRadius: ufTokens.radiusSm,
     backgroundColor: "var(--uf-checkbox-fill)",
     color: ufTokens.accentInk,
   },

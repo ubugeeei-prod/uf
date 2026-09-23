@@ -67,7 +67,6 @@ const styles = stylex.create({
     lineHeight: ufTokens.leadingTight,
     overflowWrap: "break-word",
     borderRadius: ufTokens.radiusSm,
-    boxShadow: ufTokens.shadowCard,
   },
 });
 

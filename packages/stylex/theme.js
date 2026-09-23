@@ -79,8 +79,6 @@ export const ufAutoTheme = stylex.createTheme(ufTokens, {
   dangerSoft: { "@media (prefers-color-scheme: dark)": "#2a1512" },
   focus: { "@media (prefers-color-scheme: dark)": "#7fb0ff" },
   scrim: { "@media (prefers-color-scheme: dark)": "rgba(2, 6, 16, 0.62)" },
-  shadowCard: { "@media (prefers-color-scheme: dark)": "0 1px 2px rgba(0, 0, 0, 0.40)" },
-  shadowPanel: { "@media (prefers-color-scheme: dark)": "0 16px 48px rgba(0, 0, 0, 0.55)" },
 });
 
 /**
@@ -107,6 +105,4 @@ export const ufDarkTheme = stylex.createTheme(ufTokens, {
   dangerSoft: "#2a1512",
   focus: "#7fb0ff",
   scrim: "rgba(2, 6, 16, 0.62)",
-  shadowCard: "0 1px 2px rgba(0, 0, 0, 0.40)",
-  shadowPanel: "0 16px 48px rgba(0, 0, 0, 0.55)",
 });
