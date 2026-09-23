@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 142] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 143] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -230,6 +230,10 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 142] = [
     ("uniflowed/no-npm-script-invocation", RuleLevel::Error),
     // A typo'd suppression silently stops enforcing a rule.
     ("uniflowed/unknown-lint-suppression", RuleLevel::Error),
+    // A suppression that silences nothing is left over from a finding that went
+    // away — often a false positive the rule no longer reports — and would
+    // silence the next real finding on its line unread.
+    ("uniflowed/unused-lint-suppression", RuleLevel::Warn),
     // An image with no text alternative is unreadable to the people who need
     // the alternative, and the fix is mechanical: the words the image carries,
     // or `alt=""` when it carries none.

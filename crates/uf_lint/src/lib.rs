@@ -56,7 +56,7 @@ use crate::runner::{
     run_server_use_server_actions, run_structure_rules,
 };
 use crate::scan::FileScan;
-use crate::suppression::UNKNOWN_SUPPRESSION_RULE;
+use crate::suppression::{UNKNOWN_SUPPRESSION_RULE, UNUSED_SUPPRESSION_RULE};
 
 /// How loudly a diagnostic is reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,7 +258,9 @@ pub fn lint_sources_with_context(
     config: &UniflowedConfig,
 ) -> Result<LintReport, LintError> {
     let context = LintContext::from_sources(context_files, config);
-    let per_file = uf_infra::parallel::map(files, |file| lint_file(file, config, &context))?;
+    let per_file = uf_infra::parallel::map(files, |file| {
+        lint_file(file, config, &context, Scope::Project)
+    })?;
 
     let mut diagnostics = per_file.into_iter().flatten().collect::<Vec<_>>();
     sort_diagnostics(&mut diagnostics);
@@ -273,7 +275,7 @@ pub fn lint_sources_with_context(
 /// Lint a single file.
 pub fn lint_source(file: &SourceFile, config: &UniflowedConfig) -> Result<LintReport, LintError> {
     let context = LintContext::default();
-    let mut diagnostics = lint_file(file, config, &context)?;
+    let mut diagnostics = lint_file(file, config, &context, Scope::File)?;
     sort_diagnostics(&mut diagnostics);
 
     Ok(LintReport {
@@ -315,6 +317,7 @@ fn lint_file(
     file: &SourceFile,
     config: &UniflowedConfig,
     context: &LintContext,
+    scope: Scope,
 ) -> Result<Vec<Diagnostic>, LintError> {
     // Blanked before anything reads a line, so no rule has to know that a
     // comment can sit in the middle of one. See `scan::mask_inline_comments`.
@@ -385,11 +388,66 @@ fn lint_file(
     run_security_no_eval(&scan, config, &mut diagnostics);
 
     if !suppressions.is_empty() {
-        diagnostics
-            .retain(|diagnostic| !suppressions.is_suppressed(diagnostic.rule, diagnostic.line));
+        let unused = suppressions.apply(&mut diagnostics);
+        if let Some(severity) = severity(config, UNUSED_SUPPRESSION_RULE) {
+            for (rule, named) in unused {
+                if !suppression_can_be_judged(config, rule, scope) {
+                    continue;
+                }
+                push(
+                    &mut diagnostics,
+                    file,
+                    UNUSED_SUPPRESSION_RULE,
+                    severity,
+                    named.line,
+                    named.column,
+                    format!(
+                        "`{rule}` reports nothing here, so this suppression silences nothing; remove it"
+                    ),
+                );
+            }
+        }
     }
 
     Ok(diagnostics)
+}
+
+/// How much of the project a lint run can see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Scope {
+    /// The whole project: every manifest and the import graph.
+    Project,
+    /// One file on its own, as an editor asks about it.
+    File,
+}
+
+/// The rules whose findings depend on files other than the one being linted,
+/// through [`LintContext`].
+const PROJECT_RULES: [&str; 5] = [
+    "import/no-cycle",
+    "import/no-deprecated",
+    "import/no-extraneous-dependencies",
+    "import/no-named-as-default",
+    "import/no-unused-modules",
+];
+
+/// Whether a suppression of `rule` that silenced nothing in this run proves
+/// it silences nothing at all.
+///
+/// Only when the rule ran, and ran with everything it needs. A rule that is
+/// off, or that needs type inference uf has not built, reported nothing
+/// because it did not look; and a single file linted without its project
+/// cannot see the cycle or the manifest a project rule would have found.
+/// Saying "unused" in any of those cases would be the linter mistaking its
+/// own blindness for the code's innocence.
+fn suppression_can_be_judged(config: &UniflowedConfig, rule: &'static str, scope: Scope) -> bool {
+    if severity(config, rule).is_none() {
+        return false;
+    }
+    if !crate::rules::rule(rule).is_some_and(|descriptor| descriptor.requirement.is_available()) {
+        return false;
+    }
+    scope == Scope::Project || !PROJECT_RULES.contains(&rule)
 }
 
 /// Level configured for `rule`, honouring deprecated aliases.

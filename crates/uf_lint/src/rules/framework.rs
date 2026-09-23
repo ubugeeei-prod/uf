@@ -399,6 +399,17 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         requirement: SourceText,
         description: "`uf-lint-disable` comments must name a rule this linter knows",
     },
+    // `warn`, as ESLint's `reportUnusedDisableDirectives` is: a suppression
+    // left behind when a rule stopped reporting a false positive is noise to
+    // remove, not a defect in the program, and upgrading uf must not fail a
+    // project's lint for the linter having got better.
+    RuleDescriptor {
+        id: "uniflowed/unused-lint-suppression",
+        category: RuleCategory::Uniflowed,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "a `uf-lint-disable` comment must silence a finding",
+    },
     // The official React Compiler's categories, each at the level
     // `eslint-plugin-react-hooks`' `recommended-latest` preset gives it, except
     // `hooks` (`error`) and `memo-dependencies` (`warn`), which the plugin also

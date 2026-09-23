@@ -323,7 +323,6 @@ export component MenuBody(
     // `open` is menu-tree metadata; no ref value is read during render.
     // uf-lint-disable-next-line react-compiler/refs
     open: menu.open,
-    // uf-lint-disable-next-line react-compiler/refs
     overlayRef: bodyRef,
     side: placement,
     sideOffset,

@@ -643,9 +643,6 @@ describe("a story's mocked requests", () => {
     }
   });
 
-  // uf-lint-disable fetch/no-global-override
-  //
-  // The rule is right about application code and wrong about these two tests.
   // Whether a registry was installed, and whether it was taken back out, is a
   // fact about `globalThis.fetch` and there is no other way to observe it —
   // the alternative is a test that asserts the interception worked by using
@@ -675,8 +672,6 @@ describe("a story's mocked requests", () => {
     expect(() => mountStory(set.stories[0])).toThrow("this component is broken");
     expect(globalThis.fetch).toBe(before);
   });
-
-  // uf-lint-enable fetch/no-global-override
 });
 
 // --- Play functions ----------------------------------------------------

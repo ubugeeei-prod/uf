@@ -48,7 +48,6 @@ export component Outline(path: string) {
     // exist until after hydration; there is no render-time source for it.
     // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setHeadings(found);
-    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setCurrent(null);
   }, [path]);
 

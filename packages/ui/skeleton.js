@@ -114,7 +114,6 @@ export component SkeletonRoot(
       return;
     }
     // The live-region text changes after commit so assistive tech can announce it.
-    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setMessage(waited.current ? doneLabel : "");
   }, [busy, doneLabel, label]);
 

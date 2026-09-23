@@ -550,7 +550,6 @@ export component SelectTrigger(children: React.Node, ...rest: Rest) {
           event.preventDefault();
           // The options are not in the document yet, so the keystroke travels
           // to the commit that renders them.
-          // uf-lint-disable-next-line react-compiler/immutability
           select.pendingLandingRef.current = { kind: "typed", key: event.key };
           select.setOpen(true);
           return;
@@ -666,8 +665,6 @@ export component SelectList(
   // render — a change to `children` that no dependency list can describe. Every
   // write is guarded by a comparison, so it settles after one extra pass rather
   // than looping.
-  // This effect measures caller-rendered options after commit.
-  // uf-lint-disable-next-line react-compiler/immutability
   useEffect(() => {
     const list = listRef.current;
     if (list == null) {
@@ -677,7 +674,6 @@ export component SelectList(
 
     const wanted = pendingLandingRef.current;
     if (wanted != null) {
-      // uf-lint-disable-next-line react-compiler/immutability
       pendingLandingRef.current = null;
       // An `if` rather than a `match` on `wanted.kind`, because matching on a
       // property does not refine the object that property came from: inside
