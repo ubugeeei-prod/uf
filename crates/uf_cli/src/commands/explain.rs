@@ -92,6 +92,7 @@ pub(crate) const KNOWN: &[&str] = &[
     "lsp",
     "mcp",
     "ui",
+    "sqlc",
 ];
 
 pub(crate) fn explain(
@@ -340,6 +341,7 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
         "lsp" => lsp_stages(resolved),
         "mcp" => mcp_stages(),
         "ui" => ui_stages(resolved),
+        "sqlc" => sqlc_stages(),
         _ => return None,
     })
 }
@@ -927,6 +929,35 @@ fn mcp_stages() -> Vec<Stage> {
                 "{} tools over the same commands this CLI runs; {writes} of them write",
                 tools.len()
             ),
+        },
+    ]
+}
+
+/// `uf sqlc`: sqlc reads the SQL, and uf, as the plugin sqlc starts, writes
+/// the Flow.
+///
+/// sqlc is the project's own. uf finds it as `$SQLC` or `sqlc` on `PATH` and
+/// does not download it, so the first provider shows which one a run will use.
+fn sqlc_stages() -> Vec<Stage> {
+    let sqlc = std::env::var("SQLC").map_or_else(
+        |_| "sqlc (on PATH)".to_string(),
+        |path| format!("sqlc ($SQLC = {path})"),
+    );
+    vec![
+        Stage {
+            name: "SQL",
+            provider: sqlc,
+            detail: "parses the schema and the queries that `sqlc.yaml` names, and checks them \
+                     against its catalog; `uf sqlc diff` fails when the generated files are \
+                     out of date"
+                .to_string(),
+        },
+        Stage {
+            name: "Flow",
+            provider: "uf (sqlc's process plugin, this binary first on PATH)".to_string(),
+            detail: "turns sqlc's GenerateRequest into Flow modules that import \
+                     @uniflowed/sql, printed with `uf fmt`'s defaults"
+                .to_string(),
         },
     ]
 }
