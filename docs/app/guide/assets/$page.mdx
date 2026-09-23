@@ -1,6 +1,6 @@
 ---
 title: "Images, fonts, icons and cards · uf"
-description: "Resized, self-hosted, subsetted and drawn at build time — and what that stops short of."
+description: "Resized, self-hosted, subsetted and drawn at build time, remote images on request — and what that stops short of."
 ---
 
 <p className="eyebrow">Build an app</p>
@@ -18,7 +18,8 @@ the pipeline cannot do as about what it can.
 
 **What you will be able to do:** import images, fonts, icons and Open Graph
 cards and get them resized, self-hosted, collected into a sprite or drawn at
-build time, and know where that pipeline stops.
+build time; serve remote images resized on request from the hosts you list;
+and know where that pipeline stops.
 
 **What you need first:** a project with routes to put them on —
 [Routing](/guide/routing).
@@ -87,6 +88,159 @@ small the image is drawn. When you say nothing, uf writes
 `(max-width: <intrinsic>px) 100vw, <intrinsic>px`, which at least never asks for
 more pixels than exist — but it is a guess about a layout uf cannot see, and
 yours is better.
+
+## A remote image
+
+An image whose URL is only known when the page renders — a CMS asset, a user
+upload — was never imported, so `uf assets` never saw it. For those there is an
+endpoint, and it is **off until you list the hosts it may fetch from**:
+
+```js
+export default defineConfig({
+  app: {
+    builtins: {
+      images: {
+        remotePatterns: [
+          { hostname: "images.example.com", pathname: "/uploads/**" },
+          { hostname: "*.cdn.example.com" },
+        ],
+      },
+    },
+  },
+});
+```
+
+Then pass the URL to `Image` as a string, with its dimensions:
+
+```js
+<Image src={post.cover.url} alt={post.cover.alt} width={1600} height={900} />
+```
+
+`Image` sends it through `/__uf/image` and writes the `srcset` for you — one
+rung per width in `app.builtins.images.widths` that is narrower than the image,
+and one that covers it, described at the width it will actually come back at:
+
+```html
+<img src="/__uf/image?url=https%3A%2F%2Fimages.example.com%2Fuploads%2Fa.jpg&w=1920&q=75"
+     srcset="/__uf/image?url=…&w=640&q=75 640w, … , /__uf/image?url=…&w=1920&q=75 1600w" …>
+```
+
+`width` and `height` are still required: the image is fetched only after the
+page has been laid out, so nothing else can reserve its box. Pass
+`quality={60}` for another quality — one the project allows, see below — and
+`unoptimized` to leave one image's URL exactly as written. A `srcSet` of your
+own is left alone too.
+
+### What the endpoint does
+
+One request is one width of one image: `url`, `w` and `q`.
+
+- It fetches the source, resizes it to `w` — never wider than the source —
+  and re-encodes it at `q`: as **AVIF when the browser's `Accept` names
+  `image/avif`**, and in the source's own family otherwise (a JPEG stays a
+  JPEG, a PNG a PNG, a WebP becomes a PNG). EXIF orientation is applied and
+  the rest of the metadata, GPS position included, is dropped.
+- The answer is **cached**, keyed on the URL, the width, the quality and the
+  format that was negotiated, for as long as the origin's `Cache-Control`
+  `max-age` says — held between a minute and a year, an hour when it says
+  nothing — and not at all when it says `no-store` or `private`. The response
+  says which it was in `x-uf-cache`, and carries `Vary: Accept`.
+- The cache is the route cache's store: in memory by default, and under the
+  provider [`rendering.cache.store`](/guide/cache) names when it names one, so
+  a durable store keeps variants across restarts and between processes too.
+
+### What it refuses
+
+It is a server fetching a URL a stranger chose, so it refuses a great deal,
+and says why in a plain-text response:
+
+| Request | Answer |
+| --- | --- |
+| A host, port, protocol or path no pattern admits, or a URL with credentials in it | `403` |
+| A redirect to anywhere no pattern admits — every hop is checked, three at most | `403` |
+| A host that resolves to a loopback, private or link-local address | `403` |
+| A `w` not in `widths`, a `q` not in `quality` or `qualities`, a relative `url` | `400` |
+| A source larger than 32 MiB, counted as it arrives | `413` |
+| Anything but a PNG, a JPEG or a WebP, judged by its bytes — an SVG above all | `415` |
+| More than four encodes running and sixty-four waiting | `503` |
+
+The address check is made after the name is resolved, against **every**
+address it resolves to, and the connection goes to the address that was
+checked rather than to the name a second time — so a hostname you listed
+cannot be pointed at `169.254.169.254` by whoever controls its DNS.
+
+`http` has to be said in a pattern; a pattern without `protocol` admits HTTPS
+only. A pattern without `port` admits the protocol's default port and no other.
+`*.example.com` is exactly one more label and `**.example.com` any number;
+neither matches `example.com` itself. A bare `*` is refused when the config is
+read: an allow-list that admits every host is not an allow-list.
+
+### Where it runs, and what encodes
+
+| Door | Encoder |
+| --- | --- |
+| `uf dev`, `uf preview`, `uf start` | `uf` itself, pure Rust: `rav1e` for AVIF, the same PNG and JPEG encoders as the build |
+| `uf build --adapter edge` | Cloudflare's Images binding, declared in the `wrangler.json` uf writes |
+| `--adapter node`, `bun`, `deno`, `container`, `serverless` | the module `app.builtins.images.transformer` names |
+| `uf build --compile` | none: refused while `remotePatterns` lists a host |
+
+A deployed directory has no `uf` in it, so it cannot encode the way `uf start`
+does. A Worker has an image service of its own, and uf hands it the bytes it
+already fetched and checked — not the URL, because a service that fetched the
+URL itself would follow redirects uf never saw. A process target has no image
+service, so it gets the encoder you name:
+
+```js
+// image-transformer.js
+import sharp from "sharp";
+
+export function createImageTransformer() {
+  return async ({ bytes, width, quality, avif, type }) => {
+    const resized = sharp(bytes).rotate().resize({ width, withoutEnlargement: true });
+    const encoded = avif
+      ? await resized.avif({ quality }).toBuffer()
+      : type === "image/jpeg"
+        ? await resized.jpeg({ quality }).toBuffer()
+        : await resized.png().toBuffer();
+    return {
+      bytes: new Uint8Array(encoded),
+      type: avif ? "image/avif" : type === "image/jpeg" ? "image/jpeg" : "image/png",
+    };
+  };
+}
+```
+
+```js
+images: { remotePatterns: [/* … */], transformer: "./image-transformer.js" },
+```
+
+Without one, `uf build --adapter node` with remote patterns **fails**, naming
+the key, rather than writing a server whose endpoint fetches every image and
+then cannot encode it. The allow-list, the redirect check, the byte bound, the
+format check and the cache are uf's on every target; only the encode is
+delegated. On a Worker the address check is the one that does not exist — a
+Worker has no resolver, and it fetches from Cloudflare's network rather than
+from the one your databases sit in.
+
+`uf build --compile` has no endpoint at all — the standalone server is its own
+front door and carries no encoder — so it refuses a project with remote
+patterns rather than writing a binary whose remote images are all 404s.
+
+### Testing against your own machine
+
+A test that serves its own images from `127.0.0.1` needs the private-address
+refusal turned off:
+
+```js
+images: {
+  remotePatterns: [{ protocol: "http", hostname: "127.0.0.1", port: "4100" }],
+  dangerouslyAllowPrivateAddresses: true,
+},
+```
+
+The name is the documentation. Never set it on anything another person can
+reach: it is what stops the endpoint being a way into the network the server
+runs in.
 
 ## A font
 
@@ -337,6 +491,9 @@ export default defineConfig({
         widths: [640, 750, 828, 1080, 1200, 1440, 1920],
         quality: 75,
         placeholder: true,
+        remotePatterns: [],
+        qualities: [],
+        dangerouslyAllowPrivateAddresses: false,
       },
       fonts: { display: "swap", fallback: "Arial", subset: "none", preload: true },
       icons: { dir: "icons" },
@@ -346,7 +503,10 @@ export default defineConfig({
 });
 ```
 
-Those are the defaults. `fallback` is the local face uf scales, and it has to be
+Those are the defaults. `widths` and `quality` are also the only width and
+quality the request-time endpoint answers, together with anything in
+`qualities`: every other value would be one more encode of every image a
+stranger can name. `transformer` has no default. `fallback` is the local face uf scales, and it has to be
 one uf has measured — `Arial`, `Times New Roman` or `Courier New`. A face uf
 cannot measure is a face uf declines to scale, and it says so rather than
 guessing: a confident, wrong `size-adjust` moves text just as much as none.
@@ -392,11 +552,13 @@ letting you discover it in a Lighthouse report. The same decisions are recorded
 as refusals in [What uf does not do](/guide/scope); [#997](https://github.com/ubugeeei-prod/uf/issues/997)
 is the issue that stopped treating them as open-ended gaps:
 
-- **No AVIF.** It needs an AV1 encoder. A pure-Rust one exists and is not
-  bundled: it is around eighty more crates compiled under a whole-program-LTO
-  release profile, which is a decision to make deliberately rather than as a
-  side effect of an asset pipeline.
-- **No lossy WebP.** There is no pure-Rust encoder for it; `libwebp` is C.
+- **No AVIF at build time.** `uf` links an AV1 encoder — `rav1e`, pure Rust,
+  through `ravif` — for the request-time endpoint, where a lossy modern format
+  is the point. The build does not use it yet: it keeps an alternative format
+  only when it is smaller at every width, and adding a candidate changes what
+  every existing project's build writes, which deserves its own measurement.
+- **No lossy WebP.** There is no pure-Rust encoder for it under a licence uf can
+  ship; `libwebp` is C.
 
 So the modern format uf can emit is **lossless** WebP, and where that wins is
 not obvious: a logo or a gradient comes out roughly half the size of the PNG, a
@@ -433,10 +595,13 @@ correct answer, and you can see the numbers behind it.
   variable font, which is one file covering the range, is unaffected. The
   `uf assets` protocol already carries `weight` and `style`; what is missing is
   a way for an import to say them.
-- **There is no request-time endpoint**, so a remote or user-supplied image is
-  not handled. That is deliberate: an endpoint that resizes whatever a query
-  string names is a denial-of-service amplifier, and the allow-list that makes
-  one safe belongs in its first commit rather than after it. See
+- **The request-time endpoint answers remote images only**, and only from
+  the hosts you list. An image in `public/` or one a module imports is the
+  build's work, and a relative `url` is refused rather than fetched back from
+  the same server. Nothing is fetched until `remotePatterns` names a host: an
+  endpoint that resizes whatever a query string names is a denial-of-service
+  amplifier, which is why the allow-list arrived in the same commit as the
+  endpoint. See
   [security](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
 
 An image uf has no decoder for — a GIF, an existing AVIF — is copied through

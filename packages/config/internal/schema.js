@@ -423,6 +423,34 @@ export type UniflowedConfig = {
         readonly widths?: $ReadOnlyArray<number>,
         readonly quality?: number,
         readonly placeholder?: boolean,
+        // The remote images `/__uf/image` may fetch, resize and re-encode —
+        // Next.js's `images.remotePatterns`, with its four keys and its
+        // wildcards. Empty, the default, means there is no endpoint at all. A
+        // redirect is followed only to a URL that matches too. See
+        // docs/app/guide/assets.
+        readonly remotePatterns?: $ReadOnlyArray<{
+          // `"https"` when absent; `"http"` has to be said.
+          readonly protocol?: "https" | "http",
+          // A name, or one under a leading `*.` (one more label) or `**.`
+          // (any number). A bare `*` is refused: it is not an allow-list.
+          readonly hostname: string,
+          // The protocol's default port when absent, and no other.
+          readonly port?: string,
+          // `*` is one segment and `**` any number. Any path when absent.
+          readonly pathname?: string,
+        }>,
+        // Qualities the endpoint answers besides `quality`. Each one is one
+        // more encode of every remote image a stranger can ask for, so the
+        // endpoint takes the listed ones and no others.
+        readonly qualities?: $ReadOnlyArray<number>,
+        // Fetch from loopback, private and link-local addresses too. For a
+        // test that serves its own images; never for a deployment.
+        readonly dangerouslyAllowPrivateAddresses?: boolean,
+        // A module exporting `createImageTransformer`, for a deploy target
+        // with no encoder of its own: `--adapter node`, `bun`, `deno`,
+        // `container` and `serverless`. `uf start` and `uf preview` encode
+        // with uf, and `--adapter edge` with Cloudflare's image binding.
+        readonly transformer?: string,
       },
       readonly fonts?: {
         readonly enabled?: boolean,

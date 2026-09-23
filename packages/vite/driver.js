@@ -49,6 +49,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { COMPILE_ASSETS_ID, compileAssetsPlugin } from "./internal/compile-assets.js";
+import { servesRemoteImages } from "./internal/image-endpoint.js";
 import {
   survivingImports,
   unavailableOnWorkers,
@@ -474,7 +475,13 @@ async function preview() {
   // and because it is the same handler the two give the same answer — which is
   // the whole reason `uf preview` exists.
   const handle =
-    build == null ? null : createServeHandler({ ...build, cache: config.app?.rendering?.cache });
+    build == null
+      ? null
+      : createServeHandler({
+          ...build,
+          cache: config.app?.rendering?.cache,
+          images: config.app?.builtins?.images,
+        });
   const answer = (previewServer) => async (request, response, next) => {
     try {
       const asRequest = await toRequest(request, previewServer.config);
@@ -634,7 +641,11 @@ async function start() {
   const port = Number(argument("--port") ?? process.env.PORT ?? 3000);
   const server = createHttpServer(
     nodeListener(
-      createServeHandler({ ...build, cache: config.app?.rendering?.cache }),
+      createServeHandler({
+        ...build,
+        cache: config.app?.rendering?.cache,
+        images: config.app?.builtins?.images,
+      }),
       build.entry,
     ),
   );
@@ -1233,6 +1244,18 @@ async function compile() {
   }
   const assets = path.resolve(root, assetsArgument);
   const bundleDir = path.resolve(root, bundleArgument);
+  // The compiled binary answers from `@uniflowed/server/standalone`, which has
+  // no `/__uf/image` — and it would still carry pages whose `Image` writes the
+  // endpoint's URLs. Refused by name rather than compiled into a binary whose
+  // remote images are all 404s. See docs/app/guide/assets.
+  if (servesRemoteImages(config.app?.builtins?.images)) {
+    throw new Error(
+      "uf: app.builtins.images.remotePatterns lists remote hosts, and a `--compile` binary " +
+        "has no /__uf/image to answer them: it carries neither the `uf` encoder nor a place " +
+        "to name one. Serve the build with `uf start` or an `--adapter`, or remove the remote " +
+        "patterns. See docs/app/guide/assets.",
+    );
+  }
 
   emit("phase", { name: "standalone" });
 
@@ -1302,8 +1325,8 @@ async function compile() {
  */
 const ADAPTERS = {
   node: {
-    entries: (document, cache, build, schedules, regeneration) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration),
+    entries: (document, cache, build, schedules, regeneration, images) => ({
+      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration, images),
       server: nodeEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
@@ -1323,15 +1346,15 @@ const ADAPTERS = {
   // nobody here. `edge` pays that price because it must: there is no
   // `node:stream` in a Worker.
   bun: {
-    entries: (document, cache, build, schedules, regeneration) => ({
-      handler: handlerEntrySource(document, cache, BUN_CAPABILITIES, build, regeneration),
+    entries: (document, cache, build, schedules, regeneration, images) => ({
+      handler: handlerEntrySource(document, cache, BUN_CAPABILITIES, build, regeneration, images),
       server: bunEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
   },
   deno: {
-    entries: (document, cache, build, schedules, regeneration) => ({
-      handler: handlerEntrySource(document, cache, DENO_CAPABILITIES, build, regeneration),
+    entries: (document, cache, build, schedules, regeneration, images) => ({
+      handler: handlerEntrySource(document, cache, DENO_CAPABILITIES, build, regeneration, images),
       server: denoEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
@@ -1341,15 +1364,15 @@ const ADAPTERS = {
   // output rather than anything the bundler produces — see `uf_cli`'s
   // `commands::deploy`.
   container: {
-    entries: (document, cache, build, schedules, regeneration) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration),
+    entries: (document, cache, build, schedules, regeneration, images) => ({
+      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration, images),
       server: nodeEntrySource("./handler.js", schedules),
     }),
     regenerationStore: "filesystem",
   },
   edge: {
-    entries: (document, cache, build, schedules, regeneration) => ({
-      handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES, build, regeneration),
+    entries: (document, cache, build, schedules, regeneration, images) => ({
+      handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES, build, regeneration, images),
       worker: workerEntrySource("./handler.js", schedules),
     }),
     // Workers KV, through the same module seam a project's own provider goes
@@ -1373,8 +1396,15 @@ const ADAPTERS = {
     workerBuiltins: true,
   },
   serverless: {
-    entries: (document, cache, build, _schedules, regeneration) => ({
-      handler: handlerEntrySource(document, cache, SERVERLESS_CAPABILITIES, build, regeneration),
+    entries: (document, cache, build, _schedules, regeneration, images) => ({
+      handler: handlerEntrySource(
+        document,
+        cache,
+        SERVERLESS_CAPABILITIES,
+        build,
+        regeneration,
+        images,
+      ),
       lambda: lambdaEntrySource("./handler.js"),
     }),
     // A Lambda's memory lasts one instance and its disk is that instance's
@@ -1541,7 +1571,8 @@ async function deploy() {
     }
     cacheConfig = { ...declaredCache, store: shape.regenerationStore };
   }
-  const entries = shape.entries(document, cacheConfig, buildId, schedules, regeneration);
+  const images = await imageEndpointFor(adapter, config.app?.builtins?.images);
+  const entries = shape.entries(document, cacheConfig, buildId, schedules, regeneration, images);
   const input = {};
   for (const name of Object.keys(entries)) {
     writeFileSync(path.join(work, `${name}.js`), entries[name]);
@@ -1687,7 +1718,7 @@ async function deploy() {
  * `buildIdentity` is where it came from and
  * `packages/server/internal/cache-key.js` is why it exists.
  */
-function handlerEntrySource(document, cache, capabilities, build, regeneration) {
+function handlerEntrySource(document, cache, capabilities, build, regeneration, images) {
   const route = cache?.route === true;
   const fetchCache = cache?.fetch === true;
   const dataCache = cache?.data === true;
@@ -1706,15 +1737,26 @@ function handlerEntrySource(document, cache, capabilities, build, regeneration) 
     // the same reason: the manifest exists on the machine doing the build, and
     // the deployed directory has only what this file carries.
     ...(store && regeneration != null ? [`regeneration: ${JSON.stringify(regeneration)}`] : []),
+    ...(images == null ? [] : ["images"]),
   ].join(", ");
-  const cacheImport = store ? 'import { createCacheStore } from "@uniflowed/server/cache";\n' : "";
-  const providerImport = durable == null ? "" : `${durable.import}\n`;
+  // The image endpoint keeps its variants over the same durable provider when
+  // there is one, so it needs the store constructor even for a build whose
+  // route cache is off; `imageEndpointSource` argues the rest.
+  const imageDurable =
+    images == null || store ? null : durableStoreSource(root, cache, build, { required: false });
+  const linkedDurable = durable ?? imageDurable;
+  const cacheImport =
+    store || imageDurable != null
+      ? 'import { createCacheStore } from "@uniflowed/server/cache";\n'
+      : "";
+  const providerImport = linkedDurable == null ? "" : `${linkedDurable.import}\n`;
+  const imageSource = images == null ? null : imageEndpointSource(images, linkedDurable, build);
   const from = JSON.stringify(capabilities.module);
   const capabilityImport = `import { ${capabilities.name} } from ${from};`;
   return `// Generated by \`uf build --adapter\`. Not checked in, not edited.
 import { createFetchHandler } from "@uniflowed/server/fetch";
 ${cacheImport}${providerImport}${capabilityImport}
-import * as app from ${JSON.stringify(VIRTUAL.server)};
+${imageSource == null ? "" : imageSource.imports}import * as app from ${JSON.stringify(VIRTUAL.server)};
 
 ${
   store
@@ -1741,7 +1783,7 @@ const cache = { store: createCacheStore(${
 // passed for the upgrade or the queue — uf defines both and implements
 // neither. See \`@uniflowed/server/socket\` and \`@uniflowed/server/queue\`.
 const capabilities = ${capabilities.name}();
-
+${imageSource == null ? "" : `\n${imageSource.declaration}`}
 export const fetch = createFetchHandler({ ${options} });
 export const beginRequest = app.beginRequest;
 // \`app.router\`'s redirects and headers, for the entry beside this file to put
@@ -1776,10 +1818,14 @@ export default { fetch, beginRequest, routing };
  * @param {{store?: string, storeDir?: string}} cache
  * @param {string | null} build
  */
-function durableStoreSource(root, cache, build) {
+function durableStoreSource(root, cache, build, { required = true } = {}) {
   const named = cache?.store ?? "memory";
   if (named === "memory") return null;
   if (build == null) {
+    // Only the image endpoint asks without requiring one: its variants are a
+    // cache of somebody else's images rather than of this build's documents,
+    // and memory is a correct, colder, answer for them.
+    if (!required) return null;
     throw new Error(
       `uf: rendering.cache.store is ${JSON.stringify(named)}, which keeps entries between ` +
         "restarts, and this build has no identity to key them by. Run `uf build` so one is " +
@@ -1801,6 +1847,103 @@ function durableStoreSource(root, cache, build) {
     provider: `createCacheProvider({ build: ${JSON.stringify(build)}, directory: ${directory} })`,
     what: `${named}'s provider`,
   };
+}
+
+/**
+ * What `--adapter` links for `/__uf/image`, or `null` for a project with no
+ * remote images.
+ *
+ * A deployed directory has no `uf` in it, so the encoder `uf start` uses is
+ * not there to link, and each target gets the one it has:
+ *
+ * * **`edge`**: Cloudflare's Images binding, through
+ *   `@uniflowed/server/image/edge` — the platform's own image service, handed
+ *   bytes uf fetched and checked rather than a URL it would fetch itself.
+ *   `uf` declares the binding in `wrangler.json` when it finds this linked.
+ * * **Every other target**: the module `app.builtins.images.transformer`
+ *   names, exporting `createImageTransformer`. `node`, `bun`, `deno`,
+ *   `container` and `serverless` have no image service to delegate to, and a
+ *   project that deploys to one names the encoder it has — `sharp`, a WASM
+ *   codec, a call to a service it runs — behind the same seam `uf` sits behind.
+ *
+ * A target with neither is refused here, by name, rather than linked with an
+ * endpoint that fetches every image and then fails to encode it.
+ *
+ * @param {string} adapter
+ * @param {object | undefined} images `app.builtins.images`
+ */
+async function imageEndpointFor(adapter, images) {
+  if (!servesRemoteImages(images)) return null;
+  const defaults = await import("@uniflowed/server/image");
+  const settings = {
+    remotePatterns: images.remotePatterns,
+    widths: images.widths ?? defaults.DEFAULT_WIDTHS,
+    quality: images.quality ?? defaults.DEFAULT_QUALITY,
+    qualities: images.qualities ?? [],
+  };
+  if (adapter === "edge") {
+    return { kind: "edge", settings };
+  }
+  const named = images.transformer;
+  if (typeof named !== "string" || named === "") {
+    throw new Error(
+      `uf: app.builtins.images.remotePatterns lists remote hosts, and \`--adapter ${adapter}\` ` +
+        "has no image encoder to link: uf encodes with the `uf` binary under `uf start` and " +
+        "`uf preview`, and a deployed directory does not carry it. Name a module exporting " +
+        "`createImageTransformer` in app.builtins.images.transformer, deploy with " +
+        "`--adapter edge` to use Cloudflare's image binding, or remove the remote patterns. " +
+        "See docs/app/guide/assets.",
+    );
+  }
+  return {
+    kind: "module",
+    settings,
+    specifier: providerSpecifier(root, named),
+    // Never on a deployment: a switch for a test that serves its own images.
+    allowPrivateAddresses: images.dangerouslyAllowPrivateAddresses === true,
+  };
+}
+
+/**
+ * The lines `handler.js` needs for the endpoint [`imageEndpointFor`] chose.
+ *
+ * `durable` is the provider the route cache links, when it links one, so the
+ * variants live where the project already said entries survive a restart; a
+ * Worker with none keeps them in the isolate's memory.
+ *
+ * @param {{kind: "edge" | "module", settings: object, specifier?: string, allowPrivateAddresses?: boolean}} images
+ * @param {{provider: string} | null} durable
+ * @param {string | null} build
+ */
+function imageEndpointSource(images, durable, build) {
+  const imports =
+    images.kind === "edge"
+      ? 'import { createImageEndpoint, MAX_MEMORY_VARIANTS } from "@uniflowed/server/image";\n' +
+        'import { cloudflareImageTransform, edgeImageFetch } from "@uniflowed/server/image/edge";\n'
+      : 'import { createImageEndpoint, MAX_MEMORY_VARIANTS } from "@uniflowed/server/image";\n' +
+        'import { nodeImageFetch } from "@uniflowed/server/image/node";\n' +
+        `import { createImageTransformer } from ${JSON.stringify(images.specifier)};\n`;
+  const fetch =
+    images.kind === "edge"
+      ? "edgeImageFetch()"
+      : `nodeImageFetch(${images.allowPrivateAddresses ? "{ allowPrivateAddresses: true }" : ""})`;
+  const transform =
+    images.kind === "edge" ? "cloudflareImageTransform()" : "createImageTransformer()";
+  const store =
+    durable == null
+      ? ""
+      : `\n  store: createCacheStore({ provider: ${durable.provider}, build: ${JSON.stringify(
+          build,
+        )}, maxEntries: MAX_MEMORY_VARIANTS }),`;
+  const declaration = `// \`/__uf/image\`, for the remote hosts app.builtins.images.remotePatterns
+// lists. See \`@uniflowed/server/image\` and ubugeeei-prod/uf#958.
+const images = createImageEndpoint({
+  ...${JSON.stringify(images.settings)},
+  fetch: ${fetch},
+  transform: ${transform},${store}
+});
+`;
+  return { imports, declaration };
 }
 
 /**

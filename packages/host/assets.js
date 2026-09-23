@@ -274,6 +274,42 @@ export class AssetService {
   }
 
   /**
+   * Encode one width of a fetched remote image.
+   *
+   * The request-time half of the protocol: `id` is a file the image endpoint
+   * wrote the bounded source into, and the reply is one encoded file under
+   * `outDir`. Resolves to `{ file, format, mime, width, height, bytes }`, every
+   * field named for the reason [`image`] gives.
+   *
+   * @param {string} id absolute path to the fetched source
+   * @param {object} options
+   * @param {string} options.outDir where the variant is written
+   * @param {number} options.width the width asked for
+   * @param {number} options.quality 1–100
+   * @param {boolean} options.avif whether the browser accepts AVIF
+   */
+  async variant(id, options) {
+    const reply = await this.#send({
+      kind: "variant",
+      id,
+      outDir: options.outDir,
+      width: options.width,
+      quality: options.quality,
+      avif: options.avif,
+    });
+    const variant = reply.variant;
+    if (variant == null) throw new AssetError(id, "uf assets returned no variant");
+    return {
+      file: variant.file,
+      format: variant.format,
+      mime: variant.mime,
+      width: variant.width,
+      height: variant.height,
+      bytes: variant.bytes,
+    };
+  }
+
+  /**
    * Self-host one font and describe it.
    *
    * Resolves to `{ file, mime, bytes, family, fallbackFamily, container,

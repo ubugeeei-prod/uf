@@ -136,8 +136,10 @@ linting](/guide/format) has the rest.
 pipeline shippable as one toolchain with no C compiler, no native codec
 install, and no release-time system dependency. The price is deliberate:
 
-- no AVIF, because the practical pure-Rust path is an AV1 encoder large enough
-  to deserve its own decision rather than arriving as an asset side effect;
+- no AVIF at build time. The AV1 encoder is linked — pure Rust, for the
+  request-time endpoint, where a lossy modern format is the point — and making
+  it a build-time candidate changes what every existing build writes, which is
+  its own decision rather than a side effect of the endpoint;
 - no lossy WebP, because the encoder is `libwebp`, a C library;
 - no WOFF2 output for a subsetted face, because uf reads WOFF2 and does not
   ship a WOFF2 encoder;

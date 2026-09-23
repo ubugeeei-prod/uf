@@ -75,6 +75,8 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { localImageEndpoint, servesRemoteImages } from "./image-endpoint.js";
+
 /**
  * `@uniflowed/server`'s two halves, loaded once.
  *
@@ -125,6 +127,29 @@ async function cacheFor(declared, createCacheStore, where) {
   const store =
     provider == null ? createCacheStore() : createCacheStore({ provider, build: where.build });
   return { store, route, fetch: fetchCache, data };
+}
+
+/**
+ * Where `/__uf/image` keeps its variants: over the provider
+ * `rendering.cache.store` names, or `undefined` for the endpoint's own memory.
+ *
+ * The same provider as the route cache, because it is the one a project
+ * already said survives a restart and is shared between processes — a second
+ * setting for "where do image variants go" would be a second answer to a
+ * question the project answered once. Asked only when a store is named, so a
+ * project that names none needs no build identity for its images.
+ *
+ * @param {{store?: string, storeDir?: string} | undefined} declared
+ * @param {(options?: object) => object} createCacheStore
+ * @param {{root: string, build: string | null}} where
+ */
+async function imageStoreFor(declared, createCacheStore, where) {
+  const named = declared?.store ?? "memory";
+  if (named === "memory") return undefined;
+  const provider = await providerFor(declared, where);
+  if (provider == null) return undefined;
+  const { MAX_MEMORY_VARIANTS } = await import("@uniflowed/server/image");
+  return createCacheStore({ provider, build: where.build, maxEntries: MAX_MEMORY_VARIANTS });
 }
 
 /**
@@ -524,9 +549,20 @@ export async function beginRequest(entry, request) {
  * keyed by. Both are `undefined` for a caller that constructs a handler by
  * hand, which is the memory-only store and needs neither.
  *
- * @param {{entry: object, assets: object, cache?: object, root?: string, build?: string | null}} build
+ * `images` is `app.builtins.images`, and it adds `/__uf/image` to what the
+ * handler answers when it lists remote hosts; see `./image-endpoint.js`.
+ *
+ * @param {{entry: object, assets: object, cache?: object, root?: string, build?: string | null, images?: object}} build
  */
-export function createApplicationHandler({ entry, assets, cache, root, build, regeneration }) {
+export function createApplicationHandler({
+  entry,
+  assets,
+  cache,
+  root,
+  build,
+  regeneration,
+  images,
+}) {
   const ready = deployment().then(
     async ({ createFetchHandler, createCacheStore, nodeCapabilities }) =>
       createFetchHandler({
@@ -537,6 +573,20 @@ export function createApplicationHandler({ entry, assets, cache, root, build, re
           build: build ?? null,
           regenerates: regeneration != null,
         }),
+        // `/__uf/image`, for a project that listed remote hosts. See
+        // `./image-endpoint.js`.
+        ...(servesRemoteImages(images)
+          ? {
+              images: await localImageEndpoint({
+                images,
+                root: root ?? process.cwd(),
+                store: await imageStoreFor(cache, createCacheStore, {
+                  root: root ?? process.cwd(),
+                  build: build ?? null,
+                }),
+              }),
+            }
+          : {}),
         // The pages this build regenerates, from the manifest beside the server
         // bundle. Absent for a build with none, which then serves exactly as it
         // did before regeneration existed.
@@ -591,8 +641,25 @@ export function createStaticHandler({ root }) {
  *
  * @param {{entry: object, assets: object, distDir: string, cache?: object, root?: string, build?: string | null, regeneration?: object}} build
  */
-export function createServeHandler({ entry, assets, distDir, cache, root, build, regeneration }) {
-  const application = createApplicationHandler({ entry, assets, cache, root, build, regeneration });
+export function createServeHandler({
+  entry,
+  assets,
+  distDir,
+  cache,
+  root,
+  build,
+  regeneration,
+  images,
+}) {
+  const application = createApplicationHandler({
+    entry,
+    assets,
+    cache,
+    root,
+    build,
+    regeneration,
+    images,
+  });
   const ready = deployment().then(({ createServeHandler: create }) =>
     create({ staticDir: distDir, handle: application, routing: entry.routing }),
   );

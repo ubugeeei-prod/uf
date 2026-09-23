@@ -39,6 +39,37 @@ pub struct ImagesConfig {
     pub quality: u8,
     /// Whether to generate the blur placeholder.
     pub placeholder: bool,
+    /// The remote images the request-time endpoint may fetch.
+    ///
+    /// Empty by default, and empty means there is no endpoint at all: no
+    /// server uf starts or links answers `/__uf/image`. A remote image is
+    /// fetched only when its URL matches one of these, and so is every
+    /// redirect on the way to it. See `@uniflowed/server/image`.
+    pub remote_patterns: Vec<RemotePattern>,
+    /// The qualities the endpoint accepts, besides [`quality`](Self::quality).
+    ///
+    /// A bound rather than a range: every quality a query string may name is
+    /// one more encode of every remote image a stranger can ask for, so the
+    /// endpoint answers only the ones listed here and the project's own.
+    pub qualities: Vec<u8>,
+    /// Let the endpoint fetch from loopback, private and link-local addresses.
+    ///
+    /// Off, and meant to stay off anywhere but a test or a machine nobody else
+    /// can reach. An image proxy that can be pointed at `127.0.0.1` or
+    /// `169.254.169.254` is a way into the network the server sits on, which
+    /// is why the default refuses them after resolving the name rather than
+    /// by reading it.
+    pub dangerously_allow_private_addresses: bool,
+    /// A module exporting `createImageTransformer`, for a deploy target that
+    /// has no encoder of its own.
+    ///
+    /// `uf start` and `uf preview` encode with `uf` itself, and
+    /// `--adapter edge` with Cloudflare's image binding. A directory
+    /// `--adapter node`, `bun`, `deno`, `container` or `serverless` writes
+    /// carries neither, so a project that wants the endpoint there names the
+    /// encoder it has — a module specifier resolved from the project, the same
+    /// shape as `rendering.cache.store`.
+    pub transformer: Option<String>,
 }
 
 impl Default for ImagesConfig {
@@ -48,8 +79,110 @@ impl Default for ImagesConfig {
             widths: DEFAULT_WIDTHS.to_vec(),
             quality: DEFAULT_QUALITY,
             placeholder: true,
+            remote_patterns: Vec::new(),
+            qualities: Vec::new(),
+            dangerously_allow_private_addresses: false,
+            transformer: None,
         }
     }
+}
+
+/// One entry in the endpoint's allow-list.
+///
+/// Next.js's `images.remotePatterns`, with the same four keys and the same
+/// wildcard grammar, because a project moving across should not have to
+/// translate its list. `@uniflowed/server`'s `internal/remote-patterns.js` is
+/// the matcher every host runs; [`check_remote_pattern`] refuses at the config
+/// file what that matcher would not read.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct RemotePattern {
+    /// `"https"` or `"http"`. Absent means `"https"` only.
+    pub protocol: Option<String>,
+    /// The host: a name, or a name under a leading `*.` (exactly one more
+    /// label) or `**.` (any number).
+    pub hostname: String,
+    /// The port, as digits. Absent means the protocol's default port and no
+    /// other.
+    pub port: Option<String>,
+    /// A path the image must be under: `*` is one segment and `**` any number.
+    /// Absent means any path.
+    pub pathname: Option<String>,
+}
+
+/// Why a remote pattern cannot be matched the way it reads, or `Ok`.
+///
+/// The refusals are the spellings that would widen the list past what the
+/// author meant — a bare `*` host, a wildcard in the middle of a name — and
+/// the ones that would match nothing at all, which is the quieter failure of
+/// an allow-list and the reason this is a refusal rather than a best effort.
+///
+/// # Errors
+///
+/// A sentence naming what is wrong with the pattern.
+pub fn check_remote_pattern(pattern: &RemotePattern) -> Result<(), String> {
+    if let Some(protocol) = pattern.protocol.as_deref()
+        && protocol != "https"
+        && protocol != "http"
+    {
+        return Err(format!(
+            "protocol {protocol:?} is not `\"https\"` or `\"http\"`; the endpoint fetches nothing else"
+        ));
+    }
+    let hostname = pattern.hostname.as_str();
+    if hostname.is_empty() {
+        return Err(String::from("has no `hostname`"));
+    }
+    let named = hostname
+        .strip_prefix("**.")
+        .or_else(|| hostname.strip_prefix("*."))
+        .unwrap_or(hostname);
+    if named.is_empty() || named.contains('*') {
+        return Err(format!(
+            "hostname {hostname:?} puts a wildcard somewhere other than a leading `*.` or `**.`, \
+             or is nothing but one; an allow-list that admits every host is not an allow-list"
+        ));
+    }
+    if !named.split('.').all(|label| {
+        !label.is_empty()
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    }) {
+        return Err(format!(
+            "hostname {hostname:?} is not a host name: labels of letters, digits and `-` \
+             separated by dots, lowercase as a URL parser writes them"
+        ));
+    }
+    if named.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        return Err(format!(
+            "hostname {hostname:?} has capitals, and a URL's host never does once parsed, \
+             so it would match nothing"
+        ));
+    }
+    if let Some(port) = pattern.port.as_deref()
+        && (port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return Err(format!("port {port:?} is not a port number"));
+    }
+    if let Some(pathname) = pattern.pathname.as_deref() {
+        if !pathname.starts_with('/') {
+            return Err(format!(
+                "pathname {pathname:?} does not start with `/`, and every URL's path does"
+            ));
+        }
+        if pathname
+            .split('/')
+            .any(|segment| segment.contains('*') && segment != "*" && segment != "**")
+        {
+            return Err(format!(
+                "pathname {pathname:?} puts a wildcard inside a segment; a wildcard is a whole \
+                 segment, `*` for one and `**` for any number"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// What a project declares about its fonts.

@@ -1699,3 +1699,85 @@ fn a_very_long_expression_is_cut() {
     );
     assert!(refusal.snippet.ends_with('…'));
 }
+
+#[test]
+fn parses_the_remote_image_allow_list() {
+    let source = r#"
+        export default defineConfig({
+          app: {
+            builtins: {
+              images: {
+                remotePatterns: [
+                  { hostname: "images.example.com", pathname: "/uploads/**" },
+                  { protocol: "http", hostname: "**.cdn.example.com", port: "8080" },
+                ],
+                qualities: [50, 90],
+                transformer: "./image-transformer.js",
+              },
+            },
+          },
+        });
+    "#;
+    let object = extract_config_object(source).expect("object");
+    let parsed = parse_config_object(Utf8Path::new("uf.config.js"), &object).expect("config");
+    let images = &parsed.app.builtins.images;
+    assert_eq!(images.remote_patterns.len(), 2);
+    assert_eq!(images.remote_patterns[0].hostname, "images.example.com");
+    assert_eq!(
+        images.remote_patterns[0].pathname.as_deref(),
+        Some("/uploads/**")
+    );
+    assert_eq!(images.remote_patterns[1].protocol.as_deref(), Some("http"));
+    assert_eq!(images.remote_patterns[1].port.as_deref(), Some("8080"));
+    assert_eq!(images.qualities, vec![50, 90]);
+    assert!(!images.dangerously_allow_private_addresses);
+    assert_eq!(
+        images.transformer.as_deref(),
+        Some("./image-transformer.js")
+    );
+
+    // And the default is no endpoint at all.
+    assert!(ImagesConfig::default().remote_patterns.is_empty());
+}
+
+#[test]
+fn refuses_a_remote_pattern_wider_or_narrower_than_it_reads() {
+    for (pattern, says) in [
+        (r#"{ hostname: "*" }"#, "every host"),
+        (r#"{ hostname: "**" }"#, "every host"),
+        (r#"{ hostname: "images.*.com" }"#, "wildcard"),
+        (r#"{ hostname: "" }"#, "no `hostname`"),
+        (r#"{ pathname: "/a" }"#, "no `hostname`"),
+        (r#"{ hostname: "Images.example.com" }"#, "capitals"),
+        (r#"{ hostname: "example.com/path" }"#, "not a host name"),
+        (
+            r#"{ protocol: "ftp", hostname: "example.com" }"#,
+            "protocol",
+        ),
+        (r#"{ hostname: "example.com", port: "80a" }"#, "port"),
+        (
+            r#"{ hostname: "example.com", pathname: "uploads/**" }"#,
+            "start with `/`",
+        ),
+        (
+            r#"{ hostname: "example.com", pathname: "/img-*.png" }"#,
+            "inside a segment",
+        ),
+    ] {
+        let object =
+            format!("{{ app: {{ builtins: {{ images: {{ remotePatterns: [{pattern}] }} }} }} }}");
+        let error = parse_config_object(Utf8Path::new("uf.config.js"), &object)
+            .expect_err(pattern)
+            .to_string();
+        assert!(
+            error.contains("app.builtins.images.remotePatterns[0]") && error.contains(says),
+            "{pattern}: {error}"
+        );
+    }
+
+    let object = "{ app: { builtins: { images: { qualities: [75, 0] } } } }";
+    let error = parse_config_object(Utf8Path::new("uf.config.js"), object)
+        .expect_err("quality 0")
+        .to_string();
+    assert!(error.contains("qualities[1]"), "{error}");
+}

@@ -21,6 +21,7 @@
   },
   "files": [
     "*.js",
+    "internal/*.js",
     "!*.test.js"
   ],
   "dependencies": {
