@@ -9,6 +9,7 @@ mod changelog;
 mod cli;
 mod commands;
 mod fix;
+mod help;
 mod menu;
 mod suggest;
 mod support;
@@ -18,8 +19,8 @@ use std::process::ExitCode;
 
 use anyhow::{Result, anyhow};
 use camino::Utf8PathBuf;
-use clap::Parser;
 use clap::error::ErrorKind;
+use clap::{CommandFactory, FromArgMatches, Parser};
 use uf_term::ColorChoice;
 
 use crate::cli::{ColorOption, Commands};
@@ -33,18 +34,17 @@ use crate::ui::{OutputMode, Ui};
 // `uf_cli 0.0.0-alpha.2`, naming something no user has heard of. The usage
 // line still comes from `argv[0]`, so `ufr --help` keeps saying `ufr`.
 //
-// `styles` gives the help the colours the rest of uf's output uses — headings
-// in the accent, what you type in cyan, placeholders receding — rather than
-// clap's plain bold. clap decides whether to colour at all by itself, from the
-// same signals uf reads: not a terminal, `NO_COLOR`, `TERM=dumb`.
+// The help pages themselves are uf's (`help.rs`); `styles` colours what clap
+// still prints itself — the argument errors — the way the rest of uf's output
+// is coloured, rather than in clap's plain bold. clap decides whether to
+// colour at all by itself, from the same signals uf reads: not a terminal,
+// `NO_COLOR`, `TERM=dumb`.
 #[derive(Debug, Parser)]
 #[command(
     name = "uf",
     version,
     about = "Unified Toolchain for Flow (React)",
-    styles = HELP_STYLES,
-    after_help = "Run `uf <COMMAND> --help` for a command's options, or `uf` on its own to pick \
-                  one from a menu.\nDocumentation: https://docs.uniflowed.dev"
+    styles = HELP_STYLES
 )]
 struct Cli {
     /// Run as if uf had been started in DIR instead of the current directory.
@@ -86,12 +86,12 @@ pub fn main() -> ExitCode {
         Ok(parsed) => parsed,
         Err(error) if is_bare_uf(&error) => match ask_what_to_run() {
             Asked::Run(parsed) => *parsed,
-            Asked::Help => return report_startup_error(&error),
+            Asked::Help => return report_startup_error(error),
             // The reader opened the menu and closed it. Nothing happened, and
             // saying so would be one more line to dismiss.
             Asked::Nothing => return ExitCode::SUCCESS,
         },
-        Err(error) => return report_startup_error(&error),
+        Err(error) => return report_startup_error(error),
     };
     let mode = if cli.command.wants_json() || cli.command.owns_stdout() {
         OutputMode::Json
@@ -131,7 +131,7 @@ enum Asked {
 /// a command in another would be answering a question it had not been asked.
 /// The flag is rare and the help is a fine answer to it.
 fn is_bare_uf(error: &anyhow::Error) -> bool {
-    let Some(error) = error.downcast_ref::<clap::Error>() else {
+    let Some(Refused { error, .. }) = error.downcast_ref::<Refused>() else {
         return false;
     };
     if !matches!(
@@ -229,29 +229,106 @@ fn retired_command(args: &[std::ffi::OsString]) -> Option<&'static str> {
 }
 
 /// Report an error raised before the output surface exists, i.e. while parsing
-/// arguments. clap renders its own help and version output.
-fn report_startup_error(error: &anyhow::Error) -> ExitCode {
+/// arguments. The help pages are uf's; clap renders its own version output and
+/// the argument errors uf does not draw itself.
+///
+/// It takes the error by value because a refused command line carries the
+/// parser's command tree, and the help is drawn from that tree in place.
+fn report_startup_error(error: anyhow::Error) -> ExitCode {
     if error.downcast_ref::<Retired>().is_some() {
         let mut ui = Ui::new(ColorChoice::Auto, OutputMode::Human);
-        ui.error(error);
+        ui.error(&error);
         return ExitCode::from(COULD_NOT_RUN);
     }
-    if let Some(error) = error.downcast_ref::<clap::Error>() {
-        let _ = error.print();
-        return if matches!(
-            error.kind(),
-            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-        ) {
-            ExitCode::SUCCESS
-        } else {
-            // An argument uf could not parse is the documented `2`: nothing
-            // ran, so there is no result to report a problem about.
-            ExitCode::from(COULD_NOT_RUN)
-        };
-    }
+    let error = match error.downcast::<Refused>() {
+        Ok(Refused { error, mut command }) => {
+            if let Some(code) = report_with_uf_help(&error, &mut command) {
+                return code;
+            }
+            let _ = error.print();
+            return if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) {
+                ExitCode::SUCCESS
+            } else {
+                // An argument uf could not parse is the documented `2`:
+                // nothing ran, so there is no result to report a problem about.
+                ExitCode::from(COULD_NOT_RUN)
+            };
+        }
+        Err(error) => error,
+    };
     let mut ui = Ui::new(ColorChoice::Auto, OutputMode::Human);
-    ui.error(error);
+    ui.error(&error);
     ExitCode::FAILURE
+}
+
+/// Answer a parse outcome with uf's own help page or error, when it is one
+/// uf draws itself; `None` leaves it to clap.
+///
+/// Three kinds are uf's. A request for help (`--help`, `-h`, `uf help lint`)
+/// is the page on stdout and `0`. A command that needs a subcommand and was
+/// given none (`uf env`) is the same page on stderr and the documented `2`,
+/// because nothing ran. And a subcommand that does not exist (`uf biuld`) is
+/// `2` with a suggestion that only names commands — clap's ranks aliases
+/// alongside them and offered `i`.
+fn report_with_uf_help(error: &clap::Error, root: &mut clap::Command) -> Option<ExitCode> {
+    use clap::error::{ContextKind, ContextValue};
+
+    let args = command_line();
+    let request = help::Request::from_args(&args, root);
+    match error.kind() {
+        ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+            let stderr = error.kind() != ErrorKind::DisplayHelp;
+            let renderer = request.renderer(stderr);
+            let width = help::width_for(renderer.capabilities());
+            let page = help::render(root, &request, &renderer, width);
+            let mut ui = Ui::new(request.color, OutputMode::Human);
+            if stderr {
+                ui.plain_err(&page);
+                Some(ExitCode::from(COULD_NOT_RUN))
+            } else {
+                ui.plain(&page);
+                Some(ExitCode::SUCCESS)
+            }
+        }
+        ErrorKind::InvalidSubcommand => {
+            let Some(ContextValue::String(typed)) = error.get(ContextKind::InvalidSubcommand)
+            else {
+                return None;
+            };
+            let mut parent: &clap::Command = root;
+            for name in &request.path {
+                parent = parent.find_subcommand(name)?;
+            }
+            let names: Vec<&str> = parent
+                .get_subcommands()
+                // clap's own `help` is added to a tree once it is built, and
+                // the tree clap refused the line with is; it is not a command
+                // anyone mistyped.
+                .filter(|sub| !sub.is_hide_set() && sub.get_name() != "help")
+                .map(clap::Command::get_name)
+                .collect();
+            let mut command = request.bin.clone();
+            for name in &request.path {
+                command.push(' ');
+                command.push_str(name);
+            }
+            let suggestions = crate::suggest::closest(typed, names.iter().copied());
+            let mut ui = Ui::new(request.color, OutputMode::Human);
+            ui.usage_error(
+                &format!("`{typed}` is not a `{command}` command"),
+                &suggestions
+                    .iter()
+                    .map(|name| format!("`{command} {name}`"))
+                    .collect::<Vec<_>>(),
+                &format!("`{command} --help` lists them"),
+            );
+            Some(ExitCode::from(COULD_NOT_RUN))
+        }
+        _ => None,
+    }
 }
 
 /// The two `--fix` flags as the one thing they mean.
@@ -638,6 +715,87 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
 /// and `ufx --version` must never be interpreted as `uf run --version` or
 /// `uf exec --version`.
 fn parse_cli() -> Result<(Cli, Option<String>)> {
+    let mut args = command_line();
+    let target = take_workspace_selector(&mut args);
+    // Before clap, so the answer is uf's three sentences rather than clap's
+    // "unrecognized subcommand" and whatever its edit distance suggests.
+    if let Some(message) = retired_command(&args) {
+        return Err(Retired(message).into());
+    }
+    // `Cli::try_parse_from`, taken apart so that a refused command line keeps
+    // the tree it was refused by: the help is drawn from it rather than from a
+    // second `Cli::command()`, which would allocate every flag of every
+    // command again on the way to printing one page.
+    let mut command = Cli::command();
+    silence_clap_help(&mut command, &args);
+    let parsed = match command.try_get_matches_from_mut(args) {
+        Ok(mut matches) => {
+            Cli::from_arg_matches_mut(&mut matches).map_err(|error| error.format(&mut command))
+        }
+        Err(error) => Err(error),
+    };
+    match parsed {
+        Ok(cli) => Ok((cli, target)),
+        Err(error) => Err(Refused {
+            error,
+            command: Box::new(command),
+        }
+        .into()),
+    }
+}
+
+/// Give the commands a help page could be drawn for an empty clap template.
+///
+/// clap renders its own page into the error it answers `--help` with, before
+/// uf has a say, and uf prints [`help`]'s page instead and drops clap's. With
+/// an empty template clap's copy is empty, so rendering it costs nothing. The
+/// commands are the ones on the path `help::Request` reads off the line — the
+/// same walk that picks the page uf draws — and setting a template on them is
+/// a move of each, so a line that does not ask for help pays nothing
+/// measurable for it either.
+fn silence_clap_help(root: &mut clap::Command, args: &[std::ffi::OsString]) {
+    let path = help::Request::from_args(args, root).path;
+    let mut command = root;
+    *command = std::mem::take(command).help_template("");
+    for name in &path {
+        let Some(sub) = command.find_subcommand_mut(name) else {
+            return;
+        };
+        *sub = std::mem::take(sub).help_template("");
+        command = sub;
+    }
+}
+
+/// A command line clap refused, and the command tree that refused it.
+///
+/// The tree comes along because the answer to most refusals is a help page,
+/// drawn from the same tree; see [`report_with_uf_help`]. Boxed because a
+/// `Command` is large and this travels inside an `anyhow::Error`.
+#[derive(Debug)]
+struct Refused {
+    error: clap::Error,
+    command: Box<clap::Command>,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.error, out)
+    }
+}
+
+impl std::error::Error for Refused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+/// The process's arguments as the parser sees them: with `run` or `exec`
+/// spelled out for the `ufr` and `ufx` binaries.
+///
+/// Its own function because the help is drawn from it too, after clap has
+/// refused it: which page was asked for is a question about these arguments,
+/// not about the ones the shell passed.
+fn command_line() -> Vec<std::ffi::OsString> {
     let mut args = std::env::args_os().collect::<Vec<_>>();
     let bin_name = args
         .first()
@@ -650,14 +808,7 @@ fn parse_cli() -> Result<(Cli, Option<String>)> {
         "ufx" if !args_request_root_version(&args) => args.insert(1, "exec".into()),
         _ => {}
     }
-
-    let target = take_workspace_selector(&mut args);
-    // Before clap, so the answer is uf's three sentences rather than clap's
-    // "unrecognized subcommand" and whatever its edit distance suggests.
-    if let Some(message) = retired_command(&args) {
-        return Err(Retired(message).into());
-    }
-    Ok((Cli::try_parse_from(args)?, target))
+    args
 }
 
 /// Split a `#member` selector off the subcommand, if there is one.

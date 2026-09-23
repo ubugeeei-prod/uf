@@ -49,3 +49,26 @@ only as intent does not belong in this document.
   `·`, for example `✗ 1 error · 4 files checked · 8ms`.
 - **What to do next is a hint:** `›` followed by muted text, with commands in
   backticks drawn in the accent.
+
+## Help pages
+
+- **uf draws its own help.** clap still parses every command line and decides
+  when help was asked for; `crates/uf_cli/src/help.rs` draws the page from the
+  same command tree the parser used, so a name, flag, default or sentence on
+  the page cannot drift from what the parser accepts.
+- **`uf --help` groups the commands** under headings, in the order a project
+  meets them (`help::GROUPS`). A test fails when a visible command is in no
+  section or in two, so a new command cannot fall off the front page.
+- **A page is wrapped to the terminal**, and never wider than 100 columns. A
+  pipe has no width, so it gets 100, and what a script reads is the same on
+  every machine. A description that wraps continues under itself; on a
+  terminal too narrow for two columns it goes under its name instead.
+- `-h` shows the first paragraph of each flag's help, `--help` all of it.
+- Help follows the same colour and glyph rules as every other screen:
+  `--color`, `NO_COLOR` and `TERM=dumb` reach it, and so does the ASCII frame.
+  What a reader types is in the accent; placeholders, defaults and values
+  recede.
+- A mistyped command is a uf error on stderr with exit code `2`, and its
+  suggestion names commands only, never an alias.
+- Snapshots of whole pages live in `crates/uf_cli/src/help/snapshots/`, at
+  100, 60 and 32 columns, in colour and in ASCII.

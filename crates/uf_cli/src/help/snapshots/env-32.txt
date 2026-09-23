@@ -1,0 +1,57 @@
+uf env
+──────
+Check, install and switch the
+runtimes and package manager
+this project runs on
+
+Usage
+  uf env [OPTIONS] <COMMAND>
+
+Commands
+  doctor
+      Check that this machine
+      has the runtimes and
+      package manager this
+      project runs on, and say
+      what to do about any that
+      are missing
+  use
+      Set the active `.env`
+      profile
+  install
+      Install the runtimes and
+      package managers
+      `uf.config.js` declares
+  list
+      List each tool this
+      project declares, what it
+      is for, and what the store
+      holds
+  update
+      Resolve every version
+      prefix — `node@26` —
+      against its publisher's
+      current release list, and
+      move `uf.lock` to the
+      newest release of each
+  exec
+      Run a command with this
+      project's toolchain in
+      front of `PATH`
+  gc
+      Delete store entries no
+      repository is using
+
+Global options
+  --cwd <DIR>
+      Run as if uf had been
+      started in DIR instead of
+      the current directory
+  --color <WHEN>
+      When to colourise output
+      [values: auto, always,
+      never] [default: auto]
+  -h, --help
+      Print help: `-h` for a
+      summary, `--help` for
+      everything

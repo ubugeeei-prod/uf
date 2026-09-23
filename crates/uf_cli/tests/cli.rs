@@ -17,10 +17,64 @@ fn uf_prints_help() {
     assert!(stdout.contains("--color"));
 }
 
+/// The help keeps the exit codes clap gave it: asked for, it is `0` on
+/// stdout; shown because a command needs a subcommand and got none, it is the
+/// documented `2` on stderr, because nothing ran.
+#[test]
+fn help_keeps_its_exit_codes_and_streams() {
+    let asked = uf().args(["env", "--help"]).output().unwrap();
+    assert_eq!(asked.status.code(), Some(0));
+    assert!(asked.stderr.is_empty());
+    assert!(String::from_utf8_lossy(&asked.stdout).contains("\nCommands\n"));
+
+    let missing = uf().arg("env").output().unwrap();
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(missing.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("\nCommands\n"));
+
+    let unknown_flag = uf().args(["lint", "--frobnicate"]).output().unwrap();
+    assert_eq!(unknown_flag.status.code(), Some(2));
+}
+
+/// A mistyped command is answered in uf's voice, on stderr with `2`, and the
+/// suggestion names commands only: clap ranked the alias `i` beside `build`
+/// for `biuld`, and the tree the help is drawn from carries clap's own `help`,
+/// which nobody mistypes.
+#[test]
+fn a_mistyped_command_suggests_commands_only() {
+    let output = uf().arg("biuld").output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("error: `biuld` is not a `uf` command\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("did you mean `uf build`?"), "{stderr}");
+    assert!(!stderr.contains("`uf i`"), "{stderr}");
+
+    let output = uf().arg("hepl").output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!stderr.contains("`uf help`"), "{stderr}");
+}
+
+/// `--color` reaches the help: clap printed its page before the flag was read.
+#[test]
+fn the_color_flag_reaches_the_help() {
+    let always = uf().args(["--color", "always", "--help"]).output().unwrap();
+    assert!(
+        always.stdout.contains(&0x1b),
+        "no escape in a coloured page"
+    );
+
+    let piped = uf().arg("--help").output().unwrap();
+    assert!(!piped.stdout.contains(&0x1b), "an escape in a piped page");
+}
+
 /// Every command `uf --help` lists must say what it does.
 ///
-/// clap prints the first line of a command's doc comment beside its name, and
-/// prints nothing at all when there is no doc comment. Fifteen of the twenty
+/// The help prints the first line of a command's doc comment beside its name,
+/// and nothing at all when there is no doc comment. Fifteen of the twenty
 /// commands had none, so the front door of the toolchain was a list of bare
 /// verbs — `build`, `check`, `create`, `dev` — with a description beside
 /// exactly one of them.
@@ -29,11 +83,15 @@ fn every_command_in_the_help_says_what_it_does() {
     let output = uf().arg("--help").output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
 
+    // The command sections sit between the usage block and the options.
     let commands = stdout
-        .split_once("Commands:")
-        .expect("help lists commands")
+        .split_once("\nUsage\n")
+        .expect("help has a usage section")
         .1
-        .split_once("\nOptions:")
+        .split_once("\n\n")
+        .expect("the usage block ends")
+        .1
+        .split_once("\nOptions\n")
         .expect("commands come before options")
         .0;
 
@@ -831,7 +889,7 @@ fn alias_binaries_print_the_root_version() {
     // And the aliases still say what they are in their usage line, which
     // comes from `argv[0]` rather than from the name.
     let usage = String::from_utf8(binary("ufr").arg("--help").output().unwrap().stdout).unwrap();
-    assert!(usage.contains("Usage: ufr run"), "{usage}");
+    assert!(usage.contains("\nUsage\n  ufr run "), "{usage}");
 }
 
 #[test]

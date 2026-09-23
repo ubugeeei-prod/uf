@@ -55,27 +55,38 @@ export type Help = {|
 /**
  * The subcommands and long flags one `--help` screen lists.
  *
- * clap's layout: a `Commands:` block of two-space-indented names, and option
- * blocks whose entries start with `-x, --long` or `--long`. `help` is clap's
- * own and is not a uf command.
+ * uf's layout (`crates/uf_cli/src/help.rs`): headings in the first column over
+ * two-space-indented entries. A command entry is its name — under `Commands`
+ * on a command's page, under the section headings (`Develop`, `Verify`, …) on
+ * `uf --help` — and a flag entry starts `-x, --long` or `--long`, a long flag
+ * padded by four under a short one. Descriptions are wrapped, so a
+ * continuation line is indented further than any entry and is not read as
+ * one. Only the usage block has two-space lines that are neither. clap's older
+ * layout, with a colon after each heading, reads the same way. `help` is
+ * clap's own and is not a uf command.
  */
 export function parseHelp(screen: string): Help {
   const subcommands: Array<string> = [];
   const flags: Array<string> = [];
-  let block: "commands" | "other" = "other";
+  let usage = false;
   for (const line of screen.split("\n")) {
-    if (/^\S.*:\s*$/.test(line)) {
-      block = /^(Commands|Subcommands):/.test(line) ? "commands" : "other";
+    // Anything in the first column — a heading, the title, a sentence of the
+    // description — ends the block above it.
+    if (/^\S/.test(line)) {
+      usage = /^Usage\b/.test(line);
       continue;
     }
-    if (block === "commands") {
-      const name = line.match(/^ {2}([a-z][\w-]*)(?:\s|$)/);
-      if (name != null && name[1] !== "help") {
+    if (usage) {
+      continue;
+    }
+    const name = line.match(/^ {2}([a-z][\w-]*)(?:\s|$)/);
+    if (name != null) {
+      if (name[1] !== "help" && !subcommands.includes(name[1])) {
         subcommands.push(name[1]);
       }
       continue;
     }
-    const flag = line.match(/^\s+(?:-\w, )?(--[a-z][\w-]*)/);
+    const flag = line.match(/^ {2}(?:-\w, | {4})?(--[a-z][\w-]*)/);
     if (flag != null && !flags.includes(flag[1])) {
       flags.push(flag[1]);
     }
