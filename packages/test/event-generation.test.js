@@ -55,25 +55,31 @@ const repository = path.resolve(here, "..", "..");
  * after the case that wrote it returned — but it cannot now run until the
  * second file has started, and the second file cannot finish until it has run.
  *
- * Both files import this module *without* the cache-busting query the worker
- * puts on a test file, so both get the one instance the worker's registry
- * already holds. That sharing is the whole mechanism.
+ * The switch lives on the global object, which the two files share, rather
+ * than in the module's own state: each test file gets its own copy of the
+ * project's modules (ubugeeei-prod/uf#1443), so two files that import
+ * `./switch.js` get two instances of it, and a promise one of them resolves is
+ * not the promise the other is waiting on. The global is the one thing a
+ * worker's files do share, which is exactly what this race needs.
  */
 const SWITCH = `
-let release;
-export const begun = new Promise((resolve) => {
-  release = resolve;
-});
+const shared = (globalThis.__ufEventGenerationSwitch ??= (() => {
+  const state = {};
+  state.begun = new Promise((resolve) => {
+    state.release = resolve;
+  });
+  state.printed = new Promise((resolve) => {
+    state.settle = resolve;
+  });
+  return state;
+})());
+export const begun = shared.begun;
 export function begin() {
-  release();
+  shared.release();
 }
-
-let settle;
-export const printed = new Promise((resolve) => {
-  settle = resolve;
-});
+export const printed = shared.printed;
 export function donePrinting() {
-  settle();
+  shared.settle();
 }
 `;
 
