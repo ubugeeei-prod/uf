@@ -77,11 +77,10 @@ const styles = stylex.create({
   chevron: {
     flexShrink: 0,
     transform: "rotate(var(--uf-collapsible-turn))",
-    transitionProperty: "transform",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
+    // A half turn is travel, so it takes `durationBase`; under reduced
+    // motion the chevron is simply the other way up.
+    transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
+    transitionDuration: ufTokens.durationBase,
     transitionTimingFunction: ufTokens.easing,
   },
   content: {

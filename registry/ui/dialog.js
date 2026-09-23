@@ -38,9 +38,14 @@
 // * **Colour comes from tokens, in measured pairs.** `ink` and `muted` on
 //   `surface`, which `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in
 //   the light default and the dark theme.
-// * **There is no enter animation.** uf's StyleX has no `@keyframes` yet, and a
-//   transition would need the dialog mounted while closed, which
-//   `@uniflowed/ui` deliberately does not do.
+// * **It enters, and does not yet leave.** The scrim fades in and the panel
+//   fades in from 96% of its size, over `durationSlow`, from a
+//   `@starting-style` — a transition from the style the element is taken to
+//   have had before it was inserted, which needs neither `@keyframes` (uf's
+//   StyleX has none) nor the panel mounted while closed. Leaving is a cut for
+//   now: an exit transition needs `@uniflowed/ui` to keep the closing panel
+//   mounted until it finishes, which it does not do yet. Under reduced motion
+//   the panel only fades.
 
 import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
@@ -63,6 +68,13 @@ const styles = stylex.create({
     inset: 0,
     zIndex: 50,
     backgroundColor: ufTokens.scrim,
+    // Enter: the page dims as the panel arrives, over the panel's duration,
+    // rather than going dark first and then showing a dialog. Opacity only, so
+    // it is the same under reduced motion.
+    opacity: { default: 1, "@starting-style": 0 },
+    transitionProperty: "opacity",
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   // Centred by `inset: 0` and `margin: auto` rather than by a translate, which
   // leaves text on a half pixel and blurs it on a screen with no scaling.
@@ -95,6 +107,20 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // Enter: it fades in and comes forward from 96% of its size, as if it
+    // rose out of the page. 0.96 is enough to be seen at this size and too
+    // little to read as growing from nothing, and there is no overshoot back
+    // past 1. `durationSlow`, because a surface this large moving as fast as
+    // a menu looks thrown. The scale is gone when it settles (`none`), so the
+    // text is not left on a half pixel. Under reduced motion it only fades.
+    opacity: { default: 1, "@starting-style": 0 },
+    transform: { default: "none", "@starting-style": "scale(0.96)" },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   header: {
     display: "grid",

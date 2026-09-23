@@ -43,8 +43,10 @@
 //   the light default and the dark theme. `ufAutoTheme`, `ufDarkTheme` and a
 //   theme of your own restyle every tone without an edit here; a literal colour
 //   is where that stops being true.
-// * **Motion stops for a reader who asked.** The colour transition is instant
-//   under `prefers-reduced-motion: reduce`.
+// * **A press is felt.** The button gives to 97% of its size while it is held
+//   and comes back on release, and a keyboard focus ring draws outward from
+//   its edge; both in `durationFast`. Under `prefers-reduced-motion: reduce`
+//   neither moves, and only the colours still change.
 
 import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
@@ -92,18 +94,32 @@ const styles = stylex.create({
       ":disabled": 0.55,
       ":is([aria-disabled=true])": 0.55,
     },
-    transitionProperty: "background-color, border-color, color",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: ufTokens.easing,
     // The ring is drawn for a keyboard focus only, which is what
     // `:focus-visible` is for: a click should not light the control up.
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // Press: the button gives a little under the pointer, to 97% of its size
+    // in `durationFast`, and comes back on release without passing 1. A
+    // disabled button does not move, and under reduced motion none does: only
+    // the colours still change.
+    transform: {
+      default: "none",
+      ":active": "scale(0.97)",
+      ":disabled": "none",
+      ":is([aria-disabled=true])": "none",
+      "@media (prefers-reduced-motion: reduce)": "none",
+    },
+    // The focus ring draws itself outward from the edge (`outline-width`
+    // 0 → 2px) rather than blinking on, in `durationFast`: it is where a
+    // keyboard reader's eye is, so it should arrive, not flash.
+    transitionProperty: {
+      default: "background-color, border-color, color, outline-width, transform",
+      "@media (prefers-reduced-motion: reduce)": "background-color, border-color, color",
+    },
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   // Each tone restates its resting colour for both disabled states, because
   // `:hover` would otherwise still repaint a button that does nothing.

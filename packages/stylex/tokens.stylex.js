@@ -127,17 +127,64 @@ export const ufTokens = stylex.defineVars({
   // The size of a control a finger or a pointer aims at.
   sizeControl: "18px",
 
-  // Motion. Two short durations and one easing: `durationFast` for a colour
-  // or a chevron, `durationBase` for something that travels, such as a
-  // switch's thumb or a drawer. The easing decelerates and never overshoots,
-  // so nothing bounces. A transition names the properties it moves, never
-  // `all`, and is `0s` under `prefers-reduced-motion: reduce`;
-  // `crates/uf_stylex/src/tests/defaults.rs` holds every default style to
-  // that.
+  // There is no elevation: a surface in front of another is told apart by a
+  // 1px `border` and its own background, never by a shadow.
+
+  // # Motion
   //
-  // There is no elevation either: a surface in front of another is told
-  // apart by a 1px `border` and its own background, never by a shadow.
+  // Three durations and three easings, and every default transition is one of
+  // each. `docs/ui-visual-language.md` has the table of what moves how; the
+  // values are argued here, where a theme that wants to change them will look.
+  //
+  // **Durations, by how far the eye has to follow.**
+  //
+  //   * `durationFast`, 120ms: a change *in place* — a colour, a pressed
+  //     button giving way, a focus ring drawing itself, a chevron turning.
+  //     Nothing travels, so anything longer reads as lag between the press
+  //     and the answer; anything under ~100ms is not seen at all, which is
+  //     how #1414's defaults came to look like they had no motion.
+  //   * `durationBase`, 200ms: something small *arriving* or *travelling* — a
+  //     popover, menu or listbox leaving its trigger, a switch's thumb, a
+  //     check being drawn. Long enough to see where it came from, short enough
+  //     that a reader who opens a menu to act in it is never waiting for it.
+  //   * `durationSlow`, 280ms: something *large* — a dialog, a sheet, a
+  //     drawer, a toast, a progress bar's fill. A surface that covers a third
+  //     of the screen and moves as fast as a menu looks thrown. It stops short
+  //     of the ~300ms where an interface starts to feel like it is performing.
+  //
+  // **Easings, by where the motion starts and ends.** All three are
+  // cubic-béziers with both y values inside 0..1, so nothing overshoots its
+  // destination and nothing bounces; `defaults.rs` holds them to that.
+  //
+  //   * `easing`, `cubic-bezier(0.2, 0, 0, 1)`: the standard curve, for
+  //     something moving between two places it rests at — a switch's thumb, a
+  //     progress fill, a drawer between snap points, a colour. It eases out of
+  //     rest a little and settles for a long time, so it never stops abruptly.
+  //   * `easingEnter`, `cubic-bezier(0, 0, 0.2, 1)`: a decelerate, for
+  //     something *arriving*. It leaves at full speed and spends its second
+  //     half settling: half the distance is covered by a fifth of the time,
+  //     so the content is legible almost at once, while the settle is long
+  //     enough to be seen. A stronger curve (Material's emphasised
+  //     `0.05, 0.7, 0.1, 1`) was tried and rejected: it is 78% there by a
+  //     fifth of the time, which on a 200ms popover is the "almost no motion"
+  //     this replaces.
+  //   * `easingExit`, `cubic-bezier(0.4, 0, 1, 1)`: an accelerate, for
+  //     something *leaving*. It starts slowly, so the eye registers that it is
+  //     going, then gets out of the way at full speed. Exits pair it with a
+  //     shorter duration than the matching enter, because nobody watches a
+  //     thing leave. (Exit transitions need the behaviour layer to keep a
+  //     closing part mounted until they finish; until it does, this token is
+  //     declared and not yet read — see `docs/ui-visual-language.md`.)
+  //
+  // A transition names the properties it moves, never `all`. Under
+  // `prefers-reduced-motion: reduce` nothing travels, grows or is drawn:
+  // either the duration is `0s`, or only opacity and colour still transition,
+  // so an overlay still fades rather than cutting. `defaults.rs` checks every
+  // default style for each of these.
   durationFast: "120ms",
-  durationBase: "160ms",
+  durationBase: "200ms",
+  durationSlow: "280ms",
   easing: "cubic-bezier(0.2, 0, 0, 1)",
+  easingEnter: "cubic-bezier(0, 0, 0.2, 1)",
+  easingExit: "cubic-bezier(0.4, 0, 1, 1)",
 });

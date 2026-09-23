@@ -66,6 +66,15 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // The focus ring draws itself outward from the edge (`outline-width`
+    // 0 → 2px) rather than blinking on, in `durationFast`: it is where a
+    // keyboard reader's eye is, so it should arrive, not flash.
+    transitionProperty: {
+      default: "outline-width",
+      "@media (prefers-reduced-motion: reduce)": "none",
+    },
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   track: {
     position: "relative",
@@ -75,11 +84,11 @@ const styles = stylex.create({
     height: "20px",
     borderRadius: ufTokens.radiusPill,
     backgroundColor: "var(--uf-switch-track)",
+    // The track's colour turns with the thumb, over the same time and curve,
+    // so the two read as one movement. Colour, so it stays under reduced
+    // motion.
     transitionProperty: "background-color",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
+    transitionDuration: ufTokens.durationBase,
     transitionTimingFunction: ufTokens.easing,
   },
   thumb: {
@@ -91,11 +100,11 @@ const styles = stylex.create({
     borderRadius: ufTokens.radiusPill,
     backgroundColor: "var(--uf-switch-thumb)",
     transform: "translateX(var(--uf-switch-shift))",
-    transitionProperty: "transform",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
+    // The thumb travels 16px, which at `durationFast` was a jump; at
+    // `durationBase` on the standard curve it is seen to slide and settle.
+    // Under reduced motion it moves at once.
+    transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
+    transitionDuration: ufTokens.durationBase,
     transitionTimingFunction: ufTokens.easing,
   },
 });

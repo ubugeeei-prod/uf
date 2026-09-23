@@ -67,6 +67,13 @@ const styles = stylex.create({
     inset: 0,
     zIndex: 50,
     backgroundColor: ufTokens.scrim,
+    // Enter: the page dims as the panel arrives, over the panel's duration,
+    // rather than going dark first and then showing a dialog. Opacity only, so
+    // it is the same under reduced motion.
+    opacity: { default: 1, "@starting-style": 0 },
+    transitionProperty: "opacity",
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   panel: {
     position: "fixed",
@@ -95,6 +102,20 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // Enter: it fades in and comes forward from 96% of its size, as if it
+    // rose out of the page. 0.96 is enough to be seen at this size and too
+    // little to read as growing from nothing, and there is no overshoot back
+    // past 1. `durationSlow`, because a surface this large moving as fast as
+    // a menu looks thrown. The scale is gone when it settles (`none`), so the
+    // text is not left on a half pixel. Under reduced motion it only fades.
+    opacity: { default: 1, "@starting-style": 0 },
+    transform: { default: "none", "@starting-style": "scale(0.96)" },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   header: {
     display: "grid",

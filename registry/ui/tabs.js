@@ -124,17 +124,20 @@ const styles = stylex.create({
     },
     cursor: { default: "pointer", ":is([aria-disabled=true])": "not-allowed" },
     opacity: { default: 1, ":is([aria-disabled=true])": 0.55 },
-    transitionProperty: "border-color, color",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: ufTokens.easing,
     // Inside the tab, so the list's edge never clips the ring.
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "-2px",
+    // The underline and the label change together in `durationBase`: long
+    // enough to see which tab took the mark from which. Colours, so they stay
+    // under reduced motion; the ring does not.
+    transitionProperty: {
+      default: "border-color, color, outline-width",
+      "@media (prefers-reduced-motion: reduce)": "border-color, color",
+    },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easing,
   },
   tabVertical: {
     justifyContent: "flex-start",

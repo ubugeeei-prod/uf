@@ -75,6 +75,15 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // The focus ring draws itself outward from the edge (`outline-width`
+    // 0 → 2px) rather than blinking on, in `durationFast`: it is where a
+    // keyboard reader's eye is, so it should arrive, not flash.
+    transitionProperty: {
+      default: "outline-width",
+      "@media (prefers-reduced-motion: reduce)": "none",
+    },
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   circle: {
     display: "inline-flex",
@@ -89,6 +98,9 @@ const styles = stylex.create({
     borderColor: "var(--uf-radio-ring)",
     borderRadius: ufTokens.radiusPill,
     backgroundColor: ufTokens.surface,
+    transitionProperty: "border-color",
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   dot: {
     width: "8px",
@@ -99,11 +111,8 @@ const styles = stylex.create({
     // as a pop, and the change is the same without the motion.
     opacity: "var(--uf-radio-dot)",
     transitionProperty: "opacity",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: ufTokens.easing,
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
 });
 

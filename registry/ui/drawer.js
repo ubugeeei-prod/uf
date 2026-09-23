@@ -74,6 +74,13 @@ const styles = stylex.create({
     inset: 0,
     zIndex: 50,
     backgroundColor: ufTokens.scrim,
+    // Enter: the page dims as the panel arrives, over the panel's duration,
+    // rather than going dark first and then showing a dialog. Opacity only, so
+    // it is the same under reduced motion.
+    opacity: { default: 1, "@starting-style": 0 },
+    transitionProperty: "opacity",
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   panel: {
     position: "fixed",
@@ -117,6 +124,22 @@ const styles = stylex.create({
       ":is([data-side=left])": "calc(min(24rem, 100vw - 48px) * var(--uf-drawer-snap, 1))",
       ":is([data-side=right])": "calc(min(24rem, 100vw - 48px) * var(--uf-drawer-snap, 1))",
     },
+    // Enter: it slides in from the edge it is attached to, the whole of its
+    // own size, on the decelerating curve over `durationSlow`: it is fast
+    // off the edge and settles against the page. Under reduced motion it does
+    // not travel; it fades in instead (`--uf-enter-opacity`).
+    "--uf-enter-x": {
+      default: "0px",
+      ":is([data-side=left])": "-100%",
+      ":is([data-side=right])": "100%",
+    },
+    "--uf-enter-y": {
+      default: "0px",
+      ":is([data-side=top])": "-100%",
+      ":is([data-side=bottom])": "100%",
+    },
+    "--uf-enter-opacity": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": "var(--uf-enter-opacity)" },
     // And the drag is how far the finger has pulled it towards its edge.
     transform: {
       default: "none",
@@ -124,14 +147,8 @@ const styles = stylex.create({
       ":is([data-side=top])": "translateY(calc(-1 * var(--uf-drawer-drag, 0px)))",
       ":is([data-side=right])": "translateX(var(--uf-drawer-drag, 0px))",
       ":is([data-side=left])": "translateX(calc(-1 * var(--uf-drawer-drag, 0px)))",
+      "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
     },
-    transitionProperty: "height, width, transform",
-    transitionDuration: {
-      default: ufTokens.durationBase,
-      ":has([data-dragging=true])": "0s",
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: ufTokens.easing,
     borderTopLeftRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
     borderTopRightRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
     borderBottomLeftRadius: { default: 0, ":is([data-side=top])": ufTokens.radiusLg },
@@ -140,6 +157,17 @@ const styles = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "-2px",
+    transitionProperty: {
+      default: "opacity, transform, height, width",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    // Still while a finger holds it, so the panel stays under the finger;
+    // released, it settles on the same decelerating curve it entered with.
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":has([data-dragging=true])": "0s",
+    },
+    transitionTimingFunction: ufTokens.easingEnter,
   },
   handle: {
     // Read by the grip inside, which is drawn along the axis the drag runs on.

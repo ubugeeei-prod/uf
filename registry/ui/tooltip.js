@@ -67,6 +67,32 @@ const styles = stylex.create({
     lineHeight: ufTokens.leadingTight,
     overflowWrap: "break-word",
     borderRadius: ufTokens.radiusSm,
+    // Enter: it fades in while travelling 4px out of its trigger, from the
+    // side `data-side` says it opened on, so the eye is led from the button
+    // to what it opened. `durationBase` on the decelerating curve: most of
+    // the distance is covered at once, so it is legible before it has
+    // settled. Under reduced motion it only fades.
+    "--uf-enter-x": {
+      default: "0px",
+      ":is([data-side=left])": "4px",
+      ":is([data-side=right])": "-4px",
+    },
+    "--uf-enter-y": {
+      default: "0px",
+      ":is([data-side=top])": "4px",
+      ":is([data-side=bottom])": "-4px",
+    },
+    opacity: { default: 1, "@starting-style": 0 },
+    transform: {
+      default: "none",
+      "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+    },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
 });
 

@@ -67,16 +67,19 @@ const styles = stylex.create({
     },
     cursor: { default: "pointer", ":disabled": "not-allowed" },
     opacity: { default: 1, ":disabled": 0.55 },
-    transitionProperty: "background-color, color",
-    transitionDuration: {
-      default: ufTokens.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: ufTokens.easing,
     outlineWidth: { default: "0", ":focus-visible": "2px" },
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
+    // The focus ring draws itself outward from the edge (`outline-width`
+    // 0 → 2px) rather than blinking on, in `durationFast`: it is where a
+    // keyboard reader's eye is, so it should arrive, not flash.
+    transitionProperty: {
+      default: "background-color, color, outline-width",
+      "@media (prefers-reduced-motion: reduce)": "background-color, color",
+    },
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   ghost: {
     borderColor: "transparent",

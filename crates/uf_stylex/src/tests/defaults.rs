@@ -15,10 +15,15 @@
 //! * **restrained corners**: a `border-radius` is a radius token, `0`, `50%`
 //!   for a thing that is a circle, or `inherit`, and the radius tokens other
 //!   than the pill are 6px or less;
-//! * **quiet motion**: a transition or animation lasts a duration token (both
-//!   180ms or less), names its properties rather than `all`, moves no layout
-//!   property, does not scale a thing up from nothing, and is `0s` under
-//!   `prefers-reduced-motion: reduce`; the easing never overshoots.
+//! * **crafted motion, present and restrained**: every transition lasts one of
+//!   the three duration tokens (100ms to 320ms, in order) on one of the three
+//!   easing tokens (none of which overshoots), names its properties rather than
+//!   `all`, moves no layout property, and never scales a thing below 0.9 or
+//!   above 1 — no pop from nothing, no bounce past the end. Under
+//!   `prefers-reduced-motion: reduce` it either stops (`0s`) or only fades and
+//!   changes colour. And the other half, which #1414 lost: every overlay has an
+//!   enter transition from a `@starting-style`, and every control that changes
+//!   state in a way the eye should follow transitions it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -205,8 +210,46 @@ fn every_default_corner_is_a_radius_token() {
 /// The at-rule a reduced-motion override is written under.
 const REDUCED_MOTION: &str = "@media (prefers-reduced-motion: reduce)";
 
-/// The longest a default transition may take, in milliseconds.
-const LONGEST_MOTION_MS: u32 = 180;
+/// The at-rule an enter transition starts from.
+///
+/// uf's StyleX has no `@keyframes`, and does not need them for an entrance: a
+/// `@starting-style` value is the style an element is taken to have had before
+/// it was first rendered, so a transition runs from it to the resting value
+/// the moment the element is inserted.
+const STARTING_STYLE: &str = "@starting-style";
+
+/// The duration tokens, shortest first.
+const DURATIONS: &[&str] = &["durationFast", "durationBase", "durationSlow"];
+
+/// The easing tokens.
+const EASINGS: &[&str] = &["easing", "easingEnter", "easingExit"];
+
+/// The shortest a duration token may be: below about 100ms a transition is not
+/// seen at all, which is how the defaults came to look motionless.
+const SHORTEST_MOTION_MS: u32 = 100;
+
+/// The longest a duration token may be: past about 300ms an interface starts
+/// to feel like it is performing rather than answering.
+const LONGEST_MOTION_MS: u32 = 320;
+
+/// What may still transition under reduced motion: nothing that travels, grows
+/// or is drawn, only what fades or changes colour.
+const STILL: &[&str] = &[
+    "none",
+    "opacity",
+    "color",
+    "background-color",
+    "border-color",
+    "outline-color",
+    "text-decoration-color",
+    "fill",
+    "stroke",
+];
+
+/// The smallest and largest a default `scale()` may be. Below the first a
+/// thing grows out of nothing, which reads as a pop; above the second it has
+/// passed its own size, which is a bounce.
+const SCALE_RANGE: (f64, f64) = (0.9, 1.0);
 
 /// Properties whose animation lays the page out again on every frame.
 const LAYOUT: &[&str] = &[
@@ -235,64 +278,164 @@ const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[(
      it; nothing else on the page moves",
 )];
 
-/// The milliseconds a duration token declares.
-fn token_milliseconds(module: &CompiledModule, key: &str) -> u32 {
+/// What deserves motion and must have it: `(file, style, property)` where the
+/// style transitions `property`, and — for an overlay, marked `true` — enters
+/// from a `@starting-style`.
+///
+/// This is the half of the rules that keeps the defaults from going quiet
+/// again. #1414 made motion so restrained it was nearly absent, and a rule
+/// that only limits motion cannot notice that.
+const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
+    ("registry/ui/dialog.js", "overlay", "opacity", true),
+    ("registry/ui/dialog.js", "panel", "transform", true),
+    ("registry/ui/alert-dialog.js", "overlay", "opacity", true),
+    ("registry/ui/alert-dialog.js", "panel", "transform", true),
+    ("registry/ui/sheet.js", "overlay", "opacity", true),
+    ("registry/ui/sheet.js", "panel", "transform", true),
+    ("registry/ui/drawer.js", "overlay", "opacity", true),
+    ("registry/ui/drawer.js", "panel", "transform", true),
+    ("registry/ui/popover.js", "content", "transform", true),
+    ("registry/ui/menu.js", "content", "transform", true),
+    ("registry/ui/select.js", "list", "transform", true),
+    ("registry/ui/combobox.js", "list", "transform", true),
+    ("registry/ui/hover-card.js", "content", "transform", true),
+    ("registry/ui/tooltip.js", "content", "transform", true),
+    (
+        "registry/ui/navigation-menu.js",
+        "content",
+        "transform",
+        true,
+    ),
+    ("registry/ui/date-picker.js", "content", "transform", true),
+    (
+        "registry/ui/date-range-picker.js",
+        "panel",
+        "transform",
+        true,
+    ),
+    ("registry/ui/toast.js", "toast", "transform", true),
+    ("registry/ui/button.js", "base", "transform", false),
+    ("registry/ui/button.js", "base", "outline-width", false),
+    ("registry/ui/switch.js", "thumb", "transform", false),
+    (
+        "registry/ui/checkbox.js",
+        "tick",
+        "stroke-dashoffset",
+        false,
+    ),
+    ("registry/ui/radio-group.js", "dot", "opacity", false),
+    ("registry/ui/tabs.js", "tab", "border-color", false),
+    ("registry/ui/progress.js", "fill", "transform", false),
+    ("registry/ui/accordion.js", "chevron", "transform", false),
+];
+
+/// The value a token declares.
+fn token(module: &CompiledModule, key: &str) -> String {
     let name = variable_name(NAMESPACE, key);
-    let value = module
+    module
         .sheet
         .variables()
         .find(|variable| variable.name == name)
         .map(|variable| variable.value.to_string())
-        .unwrap_or_else(|| panic!("the preset declares no `{key}`"));
+        .unwrap_or_else(|| panic!("the preset declares no `{key}`"))
+}
+
+/// The milliseconds a duration token declares.
+fn token_milliseconds(module: &CompiledModule, key: &str) -> u32 {
+    let value = token(module, key);
     value
         .strip_suffix("ms")
         .and_then(|number| number.parse().ok())
         .unwrap_or_else(|| panic!("`{key}` is `{value}`, not milliseconds"))
 }
 
-#[test]
-fn the_motion_tokens_are_short_and_never_overshoot() {
-    let source = fs::read_to_string(repository().join("packages/stylex/tokens.stylex.js"))
-        .expect("the token module");
-    let module = compiled("packages/stylex/tokens.stylex.js", &source);
-    let fast = token_milliseconds(&module, "durationFast");
-    let base = token_milliseconds(&module, "durationBase");
-    assert!(
-        (80..=base).contains(&fast) && base <= LONGEST_MOTION_MS,
-        "durations are {fast}ms and {base}ms; the defaults move in {LONGEST_MOTION_MS}ms or less"
-    );
-
-    let name = variable_name(NAMESPACE, "easing");
-    let easing = module
-        .sheet
-        .variables()
-        .find(|variable| variable.name == name)
-        .map(|variable| variable.value.to_string())
-        .expect("the preset declares an easing");
+/// The four control values of a `cubic-bezier()` token.
+fn bezier(module: &CompiledModule, key: &str) -> [f64; 4] {
+    let easing = token(module, key);
     let points: Vec<f64> = easing
         .strip_prefix("cubic-bezier(")
         .and_then(|rest| rest.strip_suffix(')'))
-        .unwrap_or_else(|| panic!("the easing is `{easing}`, not a cubic-bezier()"))
+        .unwrap_or_else(|| panic!("`{key}` is `{easing}`, not a cubic-bezier()"))
         .split(',')
         .map(|number| number.trim().parse().expect("a number"))
         .collect();
-    assert_eq!(points.len(), 4, "`{easing}` has four control values");
-    // The y values are the second and fourth; outside 0..1 the curve
-    // overshoots its end or pulls back before its start, which is a bounce.
-    assert!(
-        [points[1], points[3]]
-            .iter()
-            .all(|y| (0.0..=1.0).contains(y)),
-        "the easing `{easing}` overshoots, and the defaults do not bounce"
-    );
+    points
+        .try_into()
+        .unwrap_or_else(|_| panic!("`{key}` is `{easing}`, which needs four control values"))
+}
+
+/// The token module, compiled.
+fn tokens() -> CompiledModule {
+    let source = fs::read_to_string(repository().join("packages/stylex/tokens.stylex.js"))
+        .expect("the token module");
+    compiled("packages/stylex/tokens.stylex.js", &source)
 }
 
 #[test]
-fn every_default_transition_is_quiet_and_honours_reduced_motion() {
-    let tokens = [
-        format!("var({})", variable_name(NAMESPACE, "durationFast")),
-        format!("var({})", variable_name(NAMESPACE, "durationBase")),
-    ];
+fn the_motion_tokens_are_ordered_visible_and_never_overshoot() {
+    let module = tokens();
+    let durations: Vec<u32> = DURATIONS
+        .iter()
+        .map(|key| token_milliseconds(&module, key))
+        .collect();
+    assert!(
+        durations.windows(2).all(|pair| pair[0] < pair[1]),
+        "{DURATIONS:?} are {durations:?}ms; each step is longer than the one before"
+    );
+    assert!(
+        durations[0] >= SHORTEST_MOTION_MS && durations[2] <= LONGEST_MOTION_MS,
+        "durations are {durations:?}ms; a default moves in {SHORTEST_MOTION_MS}ms to \
+         {LONGEST_MOTION_MS}ms, visible and never slow"
+    );
+
+    for key in EASINGS {
+        let [_, y1, _, y2] = bezier(&module, key);
+        // Outside 0..1 the curve passes its end or pulls back before its start,
+        // which is a bounce.
+        assert!(
+            (0.0..=1.0).contains(&y1) && (0.0..=1.0).contains(&y2),
+            "`{key}` overshoots, and the defaults do not bounce"
+        );
+    }
+    // An enter decelerates: both control points sit on or above the diagonal,
+    // so the curve is concave — fast away, then settling. An exit accelerates:
+    // both sit on or below it. A linear curve is neither.
+    let [x1, y1, x2, y2] = bezier(&module, "easingEnter");
+    assert!(
+        y1 >= x1 && y2 >= x2 && (y1 > x1 || y2 > x2),
+        "`easingEnter` must decelerate: it starts fast and settles"
+    );
+    let [x1, y1, x2, y2] = bezier(&module, "easingExit");
+    assert!(
+        y1 <= x1 && y2 <= x2 && (y1 < x1 || y2 < x2),
+        "`easingExit` must accelerate: it starts slowly and gets out of the way"
+    );
+}
+
+/// Every `scale()` argument in a transform value.
+fn scales(value: &str) -> Vec<f64> {
+    value
+        .match_indices("scale(")
+        .filter_map(|(at, call)| {
+            let rest = &value[at + call.len()..];
+            rest.split(')').next()
+        })
+        .flat_map(|arguments| arguments.split(',').map(str::trim))
+        .filter_map(|number| number.parse().ok())
+        .collect()
+}
+
+#[test]
+fn every_default_transition_is_crafted_and_honours_reduced_motion() {
+    let durations: Vec<String> = DURATIONS
+        .iter()
+        .map(|key| format!("var({})", variable_name(NAMESPACE, key)))
+        .collect();
+    let easings: Vec<String> = EASINGS
+        .iter()
+        .map(|key| format!("var({})", variable_name(NAMESPACE, key)))
+        .collect();
+    let still = |value: &str| value == "0s" || value == "0ms";
     let mut found = Vec::new();
     let mut checked = 0usize;
     for (path, source) in defaults() {
@@ -319,65 +462,176 @@ fn every_default_transition_is_quiet_and_honours_reduced_motion() {
                     })
                     .unwrap_or_default()
             };
+            let under_reduced = |entries: &[(&StyleCondition, String)]| -> Option<String> {
+                entries
+                    .iter()
+                    .find(|(condition, _)| condition.at_rule() == Some(REDUCED_MOTION))
+                    .or_else(|| {
+                        entries
+                            .iter()
+                            .find(|(condition, _)| **condition == StyleCondition::Base)
+                    })
+                    .map(|(_, value)| value.clone())
+            };
             let at = format!("{path} `{}`", style.name);
-            for duration in ["transitionDuration", "animationDuration"] {
-                let entries = values(duration);
-                if entries.is_empty() {
-                    continue;
-                }
-                checked += 1;
-                for (_, value) in &entries {
-                    let still = value == "0s" || value == "0ms";
-                    if !still && !tokens.contains(value) {
+
+            if !values("animationName").is_empty() || !values("animation").is_empty() {
+                found.push(format!(
+                    "{at}: runs a keyframe animation; enter from a `@starting-style` instead"
+                ));
+            }
+            for (_, transform) in values("transform") {
+                for scale in scales(&transform) {
+                    if !(SCALE_RANGE.0..=SCALE_RANGE.1).contains(&scale) {
                         found.push(format!(
-                            "{at}: {duration} is `{value}`, not a duration token"
+                            "{at}: `transform: {transform}` scales to {scale}, outside \
+                             {SCALE_RANGE:?}: a pop from nothing or a bounce past the end"
                         ));
                     }
                 }
-                let reduced = entries.iter().any(|(condition, value)| {
-                    condition.at_rule() == Some(REDUCED_MOTION) && (value == "0s" || value == "0ms")
-                });
-                if !reduced {
+            }
+
+            let duration = values("transitionDuration");
+            let property = values("transitionProperty");
+            let timing = values("transitionTimingFunction");
+            if duration.is_empty() {
+                if !property.is_empty() {
+                    found.push(format!("{at}: names a transition but gives it no duration"));
+                }
+                continue;
+            }
+            checked += 1;
+            if property.is_empty() {
+                found.push(format!(
+                    "{at}: has a transition duration and no property list, which transitions `all`"
+                ));
+            }
+            for (_, value) in &duration {
+                if !still(value) && !durations.contains(value) {
                     found.push(format!(
-                        "{at}: {duration} is not `0s` under {REDUCED_MOTION}"
+                        "{at}: transitionDuration is `{value}`, not a duration token"
                     ));
                 }
             }
-            if !values("animationName").is_empty() || !values("animation").is_empty() {
-                found.push(format!("{at}: a default style runs a keyframe animation"));
+            if timing.is_empty() {
+                found.push(format!(
+                    "{at}: has no easing token, so it moves on the browser's `ease`"
+                ));
             }
-            for (_, value) in values("transitionProperty") {
+            for (_, value) in &timing {
+                if !easings.contains(value) {
+                    found.push(format!(
+                        "{at}: transitionTimingFunction is `{value}`, not an easing token"
+                    ));
+                }
+            }
+            let allowed = LAYOUT_MOTION_ALLOWED.iter().any(|(file, _)| *file == path);
+            for (_, value) in &property {
                 let moved: Vec<&str> = value.split(',').map(str::trim).collect();
                 if moved.contains(&"all") {
                     found.push(format!("{at}: transitions `all`"));
                 }
-                let allowed = LAYOUT_MOTION_ALLOWED.iter().any(|(file, _)| *file == path);
-                for property in &moved {
-                    if !allowed && LAYOUT.iter().any(|layout| property.starts_with(layout)) {
-                        found.push(format!("{at}: animates `{property}`, a layout property"));
+                for moved in &moved {
+                    if !allowed && LAYOUT.iter().any(|layout| moved.starts_with(layout)) {
+                        found.push(format!("{at}: animates `{moved}`, a layout property"));
                     }
                 }
-                if moved.contains(&"transform") {
-                    for (_, transform) in values("transform") {
-                        if transform.contains("scale(") {
-                            found.push(format!(
-                                "{at}: animates `transform: {transform}`, which grows a thing \
-                                 from nothing"
-                            ));
-                        }
-                    }
-                }
+            }
+            let stops = under_reduced(&duration).is_some_and(|value| still(&value));
+            let only_fades = under_reduced(&property).is_some_and(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .all(|moved| STILL.contains(&moved))
+            });
+            if !stops && !only_fades {
+                found.push(format!(
+                    "{at}: under {REDUCED_MOTION} it still moves `{}`; stop it (`0s`) or \
+                     transition only opacity and colour",
+                    under_reduced(&property).unwrap_or_default()
+                ));
             }
         }
     }
     assert!(
-        checked >= 10,
+        checked >= 30,
         "only {checked} transitions were found, so this is not checking the registry"
     );
     assert!(
         found.is_empty(),
-        "default motion is a duration token, specific properties, no bounce or pop, and nothing \
-         under reduced motion:\n  {}",
+        "default motion is a duration and an easing token, named properties, no pop or bounce, \
+         and only a fade under reduced motion:\n  {}",
+        found.join("\n  ")
+    );
+}
+
+#[test]
+fn what_deserves_motion_has_it() {
+    let mut found = Vec::new();
+    let sources: FxHashMap<String, String> = defaults().into_iter().collect();
+    for (path, name, moved, enters) in MUST_MOVE {
+        let source = sources
+            .get(*path)
+            .unwrap_or_else(|| panic!("{path} is not a default style"));
+        let module = compiled(path, source);
+        let value_of: FxHashMap<&str, &StyleRule> = module
+            .sheet
+            .rules()
+            .map(|rule| (rule.class.as_str(), rule))
+            .collect();
+        let Some(style) = module.styles.iter().find(|style| style.name == *name) else {
+            found.push(format!("{path} has no `{name}` style"));
+            continue;
+        };
+        let rules = |key: &str| -> Vec<(&StyleCondition, &str)> {
+            style
+                .property(key)
+                .map(|property| {
+                    property
+                        .classes
+                        .iter()
+                        .filter_map(|class| {
+                            value_of
+                                .get(class.class.as_str())
+                                .map(|rule| (&class.condition, rule.value.as_str()))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let transitions = rules("transitionProperty")
+            .iter()
+            .any(|(condition, value)| {
+                **condition == StyleCondition::Base
+                    && value.split(',').map(str::trim).any(|each| each == *moved)
+            });
+        let lasts = rules("transitionDuration")
+            .iter()
+            .any(|(condition, value)| **condition == StyleCondition::Base && *value != "0s");
+        if !transitions || !lasts {
+            found.push(format!("{path} `{name}` does not transition `{moved}`"));
+        }
+        if *enters {
+            let key = if *moved == "opacity" {
+                "opacity"
+            } else {
+                "transform"
+            };
+            let starts = rules(key)
+                .iter()
+                .any(|(condition, _)| condition.at_rule() == Some(STARTING_STYLE));
+            if !starts {
+                found.push(format!(
+                    "{path} `{name}` has no `{STARTING_STYLE}` for `{key}`, so it appears \
+                     rather than entering"
+                ));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "every overlay enters and every control that changes state moves; quiet is not \
+         absent:\n  {}",
         found.join("\n  ")
     );
 }
