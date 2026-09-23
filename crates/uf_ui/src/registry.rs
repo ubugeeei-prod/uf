@@ -112,6 +112,31 @@ impl Component {
         format!("{}.js", self.name)
     }
 
+    /// The components this file exports, by the names a page imports: every
+    /// capitalised value, from `export component X(` and from the export lists
+    /// (`export { DialogRoot as Root }`, `export { Item } from "./menu.js"`).
+    ///
+    /// Types and functions are not components and are left out — `ButtonTone`
+    /// and `toast` are exported beside the parts and imported by name.
+    pub fn components(&self) -> Vec<&'static str> {
+        exported_components(self.source)
+    }
+
+    /// How a page imports this component, the way the registry's documentation
+    /// and `uf ui add` spell it (ubugeeei-prod/uf#1453): a component with parts
+    /// is one namespace, `import * as Dialog from "./components/ui/dialog.js"`,
+    /// and one with a single part is that name,
+    /// `import { Button } from "./components/ui/button.js"`.
+    ///
+    /// `from` is the path to the component's file as the importing page writes
+    /// it, which the caller knows and this crate does not.
+    pub fn import_statement(&self, from: &str) -> String {
+        match self.components().as_slice() {
+            [one] => format!("import {{ {one} }} from \"{from}\";"),
+            _ => format!("import * as {} from \"{from}\";", namespace_name(self.name)),
+        }
+    }
+
     fn read(name: &'static str, source: &'static str) -> Result<Self, RegistryError> {
         let description =
             description(source).ok_or(RegistryError::NoDescription { component: name })?;
@@ -348,6 +373,69 @@ pub(crate) fn imports(source: &str) -> Vec<&str> {
         };
         if let Some(end) = rest.find('"') {
             found.push(&rest[..end]);
+        }
+    }
+    found
+}
+
+/// `alert-dialog` as `AlertDialog`: the name a component's namespace is
+/// imported under, which is its module's name in PascalCase — the same rule
+/// `@uniflowed/ui`'s barrel follows, so `Dialog` means the same thing in both.
+pub fn namespace_name(component: &str) -> String {
+    component
+        .split('-')
+        .map(|word| {
+            let mut letters = word.chars();
+            letters.next().map_or_else(String::new, |first| {
+                first.to_ascii_uppercase().to_string() + letters.as_str()
+            })
+        })
+        .collect()
+}
+
+/// Every capitalised value a registry source exports, in source order.
+///
+/// A line reader, for [`imports`]'s reason: `uf fmt --check` holds every file
+/// in `registry/ui/` to one shape per statement, and the suite checks what
+/// this reads against what each component's example imports.
+pub(crate) fn exported_components(source: &str) -> Vec<&str> {
+    let mut found: Vec<&str> = Vec::new();
+    let mut list: Option<String> = None;
+    fn push<'a>(found: &mut Vec<&'a str>, name: &'a str) {
+        if name.chars().next().is_some_and(char::is_uppercase) && !found.contains(&name) {
+            found.push(name);
+        }
+    }
+    for line in source.lines() {
+        if let Some(rest) = line.strip_prefix("export component ") {
+            let name = rest.split(['(', '<', ' ']).next().unwrap_or_default();
+            push(&mut found, name);
+            continue;
+        }
+        let opens = line.starts_with("export {") && !line.starts_with("export type");
+        if opens || list.is_some() {
+            let text = list.get_or_insert_with(String::new);
+            text.push_str(line);
+            text.push('\n');
+            if !line.contains('}') {
+                continue;
+            }
+            let text = list.take().unwrap_or_default();
+            let inner = text
+                .split_once('{')
+                .and_then(|(_, rest)| rest.split_once('}'))
+                .map_or("", |(inner, _)| inner);
+            for entry in inner.split(',') {
+                let entry = entry.trim();
+                if entry.is_empty() || entry.starts_with("type ") {
+                    continue;
+                }
+                let exported = entry.rsplit(" as ").next().unwrap_or(entry).trim();
+                // Borrowed from `source`, not from the joined list.
+                if let Some(at) = source.find(exported) {
+                    push(&mut found, &source[at..at + exported.len()]);
+                }
+            }
         }
     }
     found

@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { TagGroup as HeadlessTagGroup } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 import type { CollectionItem, CollectionItemState } from "@uniflowed/ui";
@@ -64,7 +64,7 @@ export component TagGroup(
   ...rest: Rest
 ) {
   return (
-    <Primitive.TagGroup
+    <HeadlessTagGroup
       {...forwarded(rest)}
       items={items}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -79,7 +79,7 @@ export component TagGroup(
           {children?.(item, state) ?? item.textValue}
         </span>
       )}
-    </Primitive.TagGroup>
+    </HeadlessTagGroup>
   );
 }
 

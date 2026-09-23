@@ -3,18 +3,7 @@
 import { useState } from "@uniflowed/react";
 
 import type { Sort } from "./table.js";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableRowHeader,
-  TableRowSelect,
-  TableSelectAll,
-} from "./table.js";
+import * as Table from "./table.js";
 
 type Invoice = {|
   readonly id: string,
@@ -35,42 +24,42 @@ export component Example() {
   const [chosen, setChosen] = useState<$ReadOnlySet<string>>(new Set());
   const all = chosen.size === INVOICES.length ? true : chosen.size === 0 ? false : "mixed";
   return (
-    <Table onSortChange={setSort} sort={sort}>
-      <TableCaption>Invoices this month</TableCaption>
-      <TableHeader>
-        <TableRow>
-          <TableHead>
-            <TableSelectAll
+    <Table.Root onSortChange={setSort} sort={sort}>
+      <Table.Caption>Invoices this month</Table.Caption>
+      <Table.Header>
+        <Table.Row>
+          <Table.Head>
+            <Table.SelectAll
               checked={all}
               onCheckedChange={(on) => {
                 setChosen(new Set(on ? INVOICES.map((invoice) => invoice.id) : []));
               }}
             />
-          </TableHead>
-          <TableHead column="customer">Customer</TableHead>
-          <TableHead column="amount">Amount</TableHead>
-          <TableHead>Status</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
+          </Table.Head>
+          <Table.Head column="customer">Customer</Table.Head>
+          <Table.Head column="amount">Amount</Table.Head>
+          <Table.Head>Status</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
         {sorted(INVOICES, sort).map((invoice) => (
-          <TableRow key={invoice.id}>
-            <TableCell>
-              <TableRowSelect
+          <Table.Row key={invoice.id}>
+            <Table.Cell>
+              <Table.RowSelect
                 checked={chosen.has(invoice.id)}
                 label={`Select ${invoice.customer}`}
                 onCheckedChange={(on) => {
                   setChosen(toggled(chosen, invoice.id, on));
                 }}
               />
-            </TableCell>
-            <TableRowHeader>{invoice.customer}</TableRowHeader>
-            <TableCell>{`$${invoice.amount}`}</TableCell>
-            <TableCell>{invoice.status}</TableCell>
-          </TableRow>
+            </Table.Cell>
+            <Table.RowHeader>{invoice.customer}</Table.RowHeader>
+            <Table.Cell>{`$${invoice.amount}`}</Table.Cell>
+            <Table.Cell>{invoice.status}</Table.Cell>
+          </Table.Row>
         ))}
-      </TableBody>
-    </Table>
+      </Table.Body>
+    </Table.Root>
   );
 }
 

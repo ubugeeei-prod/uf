@@ -29,7 +29,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { Skeleton as UiSkeleton } from "@uniflowed/ui";
+import { Skeleton } from "@uniflowed/ui";
 
 /** The shape a box stands in for. */
 export type SkeletonShape = "line" | "block" | "circle";
@@ -65,7 +65,7 @@ const styles = stylex.create({
 });
 
 /** The region a skeleton stands in for. `busy` goes false once the content is there. */
-export component Skeleton(
+component SkeletonRoot(
   children: React.Node,
   busy?: boolean = true,
   label?: string = "Loading…",
@@ -75,7 +75,7 @@ export component Skeleton(
   ...rest: Rest
 ) {
   return (
-    <UiSkeleton.Root
+    <Skeleton.Root
       {...forwarded(rest)}
       busy={busy}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -83,12 +83,12 @@ export component Skeleton(
       label={label}
     >
       {children}
-    </UiSkeleton.Root>
+    </Skeleton.Root>
   );
 }
 
 /** One shape. Size it with `xstyle` when the content it stands in for is another size. */
-export component SkeletonBox(
+component SkeletonBox(
   shape?: SkeletonShape = "line",
   xstyle?: StyleArgument,
   className?: string,
@@ -103,9 +103,7 @@ export component SkeletonBox(
     },
     xstyle,
   );
-  return (
-    <UiSkeleton.Box {...forwarded(rest)} className={classNames(styled.className, className)} />
-  );
+  return <Skeleton.Box {...forwarded(rest)} className={classNames(styled.className, className)} />;
 }
 
 /**
@@ -124,3 +122,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Skeleton from "./skeleton.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Skeleton.Root>`
+ * and `<Skeleton.Box>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `SkeletonRoot` rather than `Root`.
+ */
+export { SkeletonRoot as Root, SkeletonBox as Box };

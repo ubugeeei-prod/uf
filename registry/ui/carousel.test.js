@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 
-import { Carousel, CarouselContent, CarouselItem, CarouselPause } from "./carousel.js";
+import * as Carousel from "./carousel.js";
 import { Example } from "./carousel.example.js";
 
 afterEach(() => {
@@ -53,13 +53,13 @@ describe("Carousel", () => {
 
   it("stops turning on its own from the pause button, and says so", async () => {
     render(
-      <Carousel autoplay={60000} count={2} label="Tips">
-        <CarouselContent>
-          <CarouselItem index={0}>Keep a lockfile.</CarouselItem>
-          <CarouselItem index={1}>Pin your toolchain.</CarouselItem>
-        </CarouselContent>
-        <CarouselPause />
-      </Carousel>,
+      <Carousel.Root autoplay={60000} count={2} label="Tips">
+        <Carousel.Content>
+          <Carousel.Item index={0}>Keep a lockfile.</Carousel.Item>
+          <Carousel.Item index={1}>Pin your toolchain.</Carousel.Item>
+        </Carousel.Content>
+        <Carousel.Pause />
+      </Carousel.Root>,
     );
     const pause = html(screen.getByRole("button", { name: "Stop the carousel" }));
     expect(pause).toHaveAttribute("aria-pressed", "false");

@@ -20,11 +20,11 @@
 //
 // # What to keep true when you change it
 //
-// * **A dialog needs a name.** `DialogTitle` is what `aria-labelledby` points
+// * **A dialog needs a name.** `Dialog.Title` is what `aria-labelledby` points
 //   at, and a dialog without one is announced as "dialog" and nothing else. A
-//   design with no visible title passes `aria-label` to `DialogContent`.
+//   design with no visible title passes `aria-label` to `Dialog.Content`.
 // * **The description is read when focus arrives.** "This cannot be undone"
-//   belongs in `DialogDescription`, which a screen reader reads with the name,
+//   belongs in `Dialog.Description`, which a screen reader reads with the name,
 //   rather than in body text further down.
 // * **The close button is last in the markup and first on the screen.** Focus
 //   moves to the first thing worth acting on when the dialog opens, and that
@@ -51,7 +51,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Dialog } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
@@ -167,16 +167,16 @@ const styles = stylex.create({
 });
 
 /** The dialog, open or closed. Uncontrolled unless `open` is given. */
-export component Dialog(
+component DialogRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.Dialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Dialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.Dialog.Root>
+    </Dialog.Root>
   );
 }
 
@@ -184,7 +184,7 @@ export component Dialog(
  * The button that opens the dialog, and that focus comes back to when it
  * closes. It is a `Button`, so it takes a `tone` and a `size`.
  */
-export component DialogTrigger(
+component DialogTrigger(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -193,7 +193,7 @@ export component DialogTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Dialog.Trigger
+    <Dialog.Trigger
       {...forwarded(rest)}
       render={(trigger) => (
         <Button
@@ -206,7 +206,7 @@ export component DialogTrigger(
       )}
     >
       {children}
-    </Primitive.Dialog.Trigger>
+    </Dialog.Trigger>
   );
 }
 
@@ -216,7 +216,7 @@ export component DialogTrigger(
  * Everything it does not name reaches `Dialog.Body`: `aria-label` for a dialog
  * with no visible title, `initialFocus`, `dismissOnOutsidePress`.
  */
-export component DialogContent(
+component DialogContent(
   children: React.Node,
   closeLabel?: string = "Close",
   hideClose?: boolean = false,
@@ -226,53 +226,53 @@ export component DialogContent(
 ) {
   return (
     <>
-      <Primitive.Dialog.Overlay className={props(styles.overlay).className} />
-      <Primitive.Dialog.Body
+      <Dialog.Overlay className={props(styles.overlay).className} />
+      <Dialog.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
         {hideClose ? null : (
-          <Primitive.Dialog.Close aria-label={closeLabel} className={props(styles.close).className}>
+          <Dialog.Close aria-label={closeLabel} className={props(styles.close).className}>
             <CloseIcon />
-          </Primitive.Dialog.Close>
+          </Dialog.Close>
         )}
-      </Primitive.Dialog.Body>
+      </Dialog.Body>
     </>
   );
 }
 
 /** The title and description, stacked. */
-export component DialogHeader(
+component DialogHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Dialog.Header
+    <Dialog.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.Dialog.Header>
+    </Dialog.Header>
   );
 }
 
 /** The row the actions sit in, at the end of the reading direction. */
-export component DialogFooter(
+component DialogFooter(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Dialog.Footer
+    <Dialog.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.Dialog.Footer>
+    </Dialog.Footer>
   );
 }
 
@@ -280,41 +280,41 @@ export component DialogFooter(
  * The dialog's name. An `<h2>` unless `render` says which heading it is, which
  * is a fact about the page around the dialog rather than about the dialog.
  */
-export component DialogTitle(
+component DialogTitle(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Dialog.Title
+    <Dialog.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.Dialog.Title>
+    </Dialog.Title>
   );
 }
 
 /** What the dialog is for, read with its name when focus arrives. */
-export component DialogDescription(
+component DialogDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Dialog.Description
+    <Dialog.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.Dialog.Description>
+    </Dialog.Description>
   );
 }
 
 /** A button that closes the dialog: Cancel, Done, or the action itself. */
-export component DialogClose(
+component DialogClose(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -323,7 +323,7 @@ export component DialogClose(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Dialog.Close
+    <Dialog.Close
       {...forwarded(rest)}
       render={(close) => (
         <Button
@@ -336,7 +336,7 @@ export component DialogClose(
       )}
     >
       {children}
-    </Primitive.Dialog.Close>
+    </Dialog.Close>
   );
 }
 
@@ -379,3 +379,22 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Dialog from "./dialog.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Dialog.Root>`
+ * and `<Dialog.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `DialogRoot` rather than `Root`.
+ */
+export {
+  DialogRoot as Root,
+  DialogTrigger as Trigger,
+  DialogContent as Content,
+  DialogHeader as Header,
+  DialogFooter as Footer,
+  DialogTitle as Title,
+  DialogDescription as Description,
+  DialogClose as Close,
+};

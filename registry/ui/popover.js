@@ -43,7 +43,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Popover } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
@@ -110,16 +110,16 @@ const styles = stylex.create({
 });
 
 /** The popover, open or closed. Uncontrolled unless `open` is given. */
-export component Popover(
+component PopoverRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.Popover.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Popover.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.Popover.Root>
+    </Popover.Root>
   );
 }
 
@@ -127,7 +127,7 @@ export component Popover(
  * The button that opens the popover, names it, and gets focus back. It is a
  * `Button` unless `render` says otherwise.
  */
-export component PopoverTrigger(
+component PopoverTrigger(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -137,7 +137,7 @@ export component PopoverTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Popover.Trigger
+    <Popover.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -153,7 +153,7 @@ export component PopoverTrigger(
       }
     >
       {children}
-    </Primitive.Popover.Trigger>
+    </Popover.Trigger>
   );
 }
 
@@ -161,7 +161,7 @@ export component PopoverTrigger(
  * The panel, under its trigger unless it does not fit. `side`, `align` and
  * `initialFocus` reach `Popover.Body` untouched; `sideOffset` is the gap.
  */
-export component PopoverContent(
+component PopoverContent(
   children: React.Node,
   sideOffset?: number = 8,
   collisionPadding?: number = 8,
@@ -170,14 +170,14 @@ export component PopoverContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Popover.Body
+    <Popover.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       collisionPadding={collisionPadding}
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.Popover.Body>
+    </Popover.Body>
   );
 }
 
@@ -201,3 +201,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Popover from "./popover.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Popover.Root>`
+ * and `<Popover.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `PopoverRoot` rather than `Root`.
+ */
+export { PopoverRoot as Root, PopoverTrigger as Trigger, PopoverContent as Content };

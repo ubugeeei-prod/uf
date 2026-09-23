@@ -45,7 +45,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Calendar } from "@uniflowed/ui";
 
 export type { DateValue } from "@uniflowed/ui";
 
@@ -234,77 +234,77 @@ const styles = stylex.create({
  * `defaultValue`, `onValueChange`, `locale`, `today`, `isDateDisabled` and the
  * rest.
  */
-export component Calendar(
+component CalendarRoot(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Calendar.Root
+    <Calendar.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children}
-    </Primitive.Calendar.Root>
+    </Calendar.Root>
   );
 }
 
 /** The row over the month that holds the buttons to the months either side. */
-export component CalendarHeader(children: React.Node, xstyle?: StyleArgument, className?: string) {
+component CalendarHeader(children: React.Node, xstyle?: StyleArgument, className?: string) {
   return (
     <div className={classNames(props(styles.header, xstyle).className, className)}>{children}</div>
   );
 }
 
 /** The button to the month before. */
-export component CalendarPrevious(
+component CalendarPrevious(
   label?: string = "Previous month",
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Calendar.Previous
+    <Calendar.Previous
       {...forwarded(rest)}
       aria-label={label}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       <Chevron path="m15 18-6-6 6-6" />
-    </Primitive.Calendar.Previous>
+    </Calendar.Previous>
   );
 }
 
 /** The button to the month after. */
-export component CalendarNext(
+component CalendarNext(
   label?: string = "Next month",
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Calendar.Next
+    <Calendar.Next
       {...forwarded(rest)}
       aria-label={label}
       className={classNames(props(styles.step, xstyle).className, className)}
     >
       <Chevron path="m9 18 6-6-6-6" />
-    </Primitive.Calendar.Next>
+    </Calendar.Next>
   );
 }
 
 /** The month shown: its caption, its weekday headings, and a cell for every day. */
-export component CalendarMonth(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component CalendarMonth(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   const day = props(styles.day).className;
   return (
-    <Primitive.Calendar.Month
+    <Calendar.Month
       {...forwarded(rest)}
       captionClassName={props(styles.caption).className}
       className={classNames(props(styles.month, xstyle).className, className)}
       columnHeaderClassName={props(styles.weekday).className}
     >
-      {(date) => <Primitive.Calendar.Day className={day} date={date} />}
-    </Primitive.Calendar.Month>
+      {(date) => <Calendar.Day className={day} date={date} />}
+    </Calendar.Month>
   );
 }
 
@@ -345,3 +345,19 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Calendar from "./calendar.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Calendar.Root>`
+ * and `<Calendar.Header>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `CalendarRoot` rather than `Root`.
+ */
+export {
+  CalendarRoot as Root,
+  CalendarHeader as Header,
+  CalendarPrevious as Previous,
+  CalendarNext as Next,
+  CalendarMonth as Month,
+};

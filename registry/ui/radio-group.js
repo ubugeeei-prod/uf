@@ -20,7 +20,7 @@
 //
 // * **Name the group.** `aria-label` on `RadioGroup`, or `aria-labelledby`
 //   pointing at the question it answers.
-// * **Each answer's words are its name.** Put them inside `RadioGroupItem`.
+// * **Each answer's words are its name.** Put them inside `RadioGroup.Item`.
 // * **The circle is an edge a reader can see.** A `muted` ring on `surface`,
 //   and an `accent` ring and dot when chosen; `muted` on `surface` is a pair
 //   `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in both themes.
@@ -31,7 +31,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { RadioGroup } from "@uniflowed/ui";
 
 /** Which way the answers are listed, and which arrow keys move between them. */
 export type RadioGroupOrientation = "horizontal" | "vertical";
@@ -117,7 +117,7 @@ const styles = stylex.create({
 });
 
 /** The group. Uncontrolled from `defaultValue` unless `value` is given. */
-export component RadioGroup(
+component RadioGroupRoot(
   children: React.Node,
   defaultValue?: string | null = null,
   value?: string | null,
@@ -129,7 +129,7 @@ export component RadioGroup(
   ...rest: Rest
 ) {
   return (
-    <Primitive.RadioGroup.Root
+    <RadioGroup.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultValue={defaultValue}
@@ -139,12 +139,12 @@ export component RadioGroup(
       value={value}
     >
       {children}
-    </Primitive.RadioGroup.Root>
+    </RadioGroup.Root>
   );
 }
 
 /** One answer and its words. */
-export component RadioGroupItem(
+component RadioGroupItem(
   value: string,
   children?: React.Node,
   disabled?: boolean = false,
@@ -153,7 +153,7 @@ export component RadioGroupItem(
   ...rest: Rest
 ) {
   return (
-    <Primitive.RadioGroup.Item
+    <RadioGroup.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       disabled={disabled}
@@ -163,7 +163,7 @@ export component RadioGroupItem(
         <span {...props(styles.dot)} />
       </span>
       {children}
-    </Primitive.RadioGroup.Item>
+    </RadioGroup.Item>
   );
 }
 
@@ -183,3 +183,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as RadioGroup from "./radio-group.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<RadioGroup.Root>`
+ * and `<RadioGroup.Item>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `RadioGroupRoot` rather than `Root`.
+ */
+export { RadioGroupRoot as Root, RadioGroupItem as Item };

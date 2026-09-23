@@ -8,7 +8,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen } from "@uniflowed/react-testing";
 
-import { Alert, AlertDescription, AlertTitle } from "./alert.js";
+import * as Alert from "./alert.js";
 import { Example } from "./alert.example.js";
 
 afterEach(() => {
@@ -24,10 +24,10 @@ describe("Alert", () => {
 
   it("announces itself when it is live", () => {
     render(
-      <Alert live tone="danger">
-        <AlertTitle>Could not save</AlertTitle>
-        <AlertDescription>The connection dropped.</AlertDescription>
-      </Alert>,
+      <Alert.Root live tone="danger">
+        <Alert.Title>Could not save</Alert.Title>
+        <Alert.Description>The connection dropped.</Alert.Description>
+      </Alert.Root>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Could not save");
   });

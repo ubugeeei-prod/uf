@@ -37,7 +37,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { InputOtpKind } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { InputOtp } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -113,7 +113,7 @@ const styles = stylex.create({
  * The row. `label` names the one field under the boxes; `length` is how many
  * characters the code has.
  */
-export component InputOtp(
+component InputOtpRoot(
   children: React.Node,
   label: string,
   length: number,
@@ -131,7 +131,7 @@ export component InputOtp(
   return (
     <DisabledContext.Provider value={disabled}>
       <div className={classNames(props(styles.root, xstyle).className, className)}>
-        <Primitive.InputOtp.Root
+        <InputOtp.Root
           {...forwarded(rest)}
           className={props(styles.input).className}
           defaultValue={defaultValue}
@@ -145,40 +145,35 @@ export component InputOtp(
           value={value}
         >
           {children}
-        </Primitive.InputOtp.Root>
+        </InputOtp.Root>
       </div>
     </DisabledContext.Provider>
   );
 }
 
 /** Boxes kept together, such as the two halves of a six-digit code. */
-export component InputOtpGroup(
+component InputOtpGroup(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.InputOtp.Group
+    <InputOtp.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.InputOtp.Group>
+    </InputOtp.Group>
   );
 }
 
 /** The box that shows the character at `index`. */
-export component InputOtpSlot(
-  index: number,
-  xstyle?: StyleArgument,
-  className?: string,
-  ...rest: Rest
-) {
+component InputOtpSlot(index: number, xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   const disabled = useContext(DisabledContext);
   const styled = props(styles.slot, disabled && styles.slotDisabled, xstyle);
   return (
-    <Primitive.InputOtp.Slot
+    <InputOtp.Slot
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       index={index}
@@ -187,9 +182,9 @@ export component InputOtpSlot(
 }
 
 /** A short dash between groups, silent to a reader. */
-export component InputOtpSeparator(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component InputOtpSeparator(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.InputOtp.Separator
+    <InputOtp.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     />
@@ -212,3 +207,18 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as InputOtp from "./input-otp.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<InputOtp.Root>`
+ * and `<InputOtp.Group>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `InputOtpRoot` rather than `Root`.
+ */
+export {
+  InputOtpRoot as Root,
+  InputOtpGroup as Group,
+  InputOtpSlot as Slot,
+  InputOtpSeparator as Separator,
+};

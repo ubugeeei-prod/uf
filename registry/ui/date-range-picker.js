@@ -9,10 +9,10 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { DateRangePicker } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
-import { CalendarHeader, CalendarMonth, CalendarNext, CalendarPrevious } from "./calendar.js";
+import * as Calendar from "./calendar.js";
 const styles = stylex.create({
   root: { display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: ufTokens.space2 },
   field: {
@@ -99,78 +99,70 @@ const styles = stylex.create({
     transitionTimingFunction: ufTokens.easingEnter,
   },
 });
-export component DateRangePicker(
+component DateRangePickerRoot(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePicker.Root {...forwarded(rest)}>
+    <DateRangePicker.Root {...forwarded(rest)}>
       <div className={classNames(props(styles.root, xstyle).className, className)}>{children}</div>
-    </Primitive.DateRangePicker.Root>
+    </DateRangePicker.Root>
   );
 }
-export component DateRangePickerStartField(
-  xstyle?: StyleArgument,
-  className?: string,
-  ...rest: Rest
-) {
+component DateRangePickerStartField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.DateRangePicker.StartField
+    <DateRangePicker.StartField
       {...forwarded(rest)}
       className={classNames(props(styles.field, xstyle).className, className)}
     />
   );
 }
-export component DateRangePickerEndField(
-  xstyle?: StyleArgument,
-  className?: string,
-  ...rest: Rest
-) {
+component DateRangePickerEndField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.DateRangePicker.EndField
+    <DateRangePicker.EndField
       {...forwarded(rest)}
       className={classNames(props(styles.field, xstyle).className, className)}
     />
   );
 }
-export component DateRangePickerTrigger(
+component DateRangePickerTrigger(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePicker.Trigger
+    <DateRangePicker.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
       {children}
-    </Primitive.DateRangePicker.Trigger>
+    </DateRangePicker.Trigger>
   );
 }
-export component DateRangePickerCalendar(
+component DateRangePickerCalendar(
   children?: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePicker.Calendar
+    <DateRangePicker.Calendar
       {...forwarded(rest)}
       className={classNames(props(styles.panel, xstyle).className, className)}
     >
       {children ?? (
         <>
-          <CalendarHeader>
-            <CalendarPrevious />
-            <CalendarNext />
-          </CalendarHeader>
-          <CalendarMonth />
+          <Calendar.Header>
+            <Calendar.Previous />
+            <Calendar.Next />
+          </Calendar.Header>
+          <Calendar.Month />
         </>
       )}
-    </Primitive.DateRangePicker.Calendar>
+    </DateRangePicker.Calendar>
   );
 }
 
@@ -181,3 +173,19 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as DateRangePicker from "./date-range-picker.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<DateRangePicker.Root>`
+ * and `<DateRangePicker.StartField>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `DateRangePickerRoot` rather than `Root`.
+ */
+export {
+  DateRangePickerRoot as Root,
+  DateRangePickerStartField as StartField,
+  DateRangePickerEndField as EndField,
+  DateRangePickerTrigger as Trigger,
+  DateRangePickerCalendar as Calendar,
+};

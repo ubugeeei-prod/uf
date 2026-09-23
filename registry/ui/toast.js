@@ -20,12 +20,12 @@
 //
 // # What to keep true when you change it
 //
-// * **Render `Toaster` once.** Notices raised with `toast()` show wherever a
-//   `Toaster` is rendered, so two would show every notice twice.
+// * **Render `Toast.Region` once.** Notices raised with `toast()` show wherever a
+//   `Toast.Region` is rendered, so two would show every notice twice.
 // * **Nothing only a toast can do.** A notice can go before a reader reaches it,
 //   so what its action does must also be reachable somewhere else on the page.
 // * **Name the close button for what it closes** when the notice's title does
-//   not make it obvious: `ToastClose` says "Dismiss" unless told otherwise.
+//   not make it obvious: `Toast.Close` says "Dismiss" unless told otherwise.
 // * **Text stays on measured pairs.** `ink` and `muted` on `surface`, which
 //   `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in both themes.
 
@@ -33,7 +33,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Toast } from "@uniflowed/ui";
 
 export { dismissAllToasts, dismissToast, toast, updateToast } from "@uniflowed/ui";
 
@@ -143,7 +143,7 @@ const styles = stylex.create({
  * Where notices raised with `toast()` show: a stack in the page's bottom inline
  * end corner, each with a close button.
  */
-export component Toaster(
+component Toaster(
   label?: string = "Notifications",
   limit?: number = 3,
   xstyle?: StyleArgument,
@@ -151,100 +151,100 @@ export component Toaster(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Toast.Region
+    <Toast.Region
       {...forwarded(rest)}
       className={classNames(props(styles.region, xstyle).className, className)}
       label={label}
       limit={limit}
     >
       {(notification) => (
-        <Toast>
+        <ToastRoot>
           {notification.content}
           <ToastClose />
-        </Toast>
+        </ToastRoot>
       )}
-    </Primitive.Toast.Region>
+    </Toast.Region>
   );
 }
 
-/** One notice's card. `Toaster` draws one for every notice. */
-export component Toast(
+/** One notice's card. `Toast.Region` draws one for every notice. */
+component ToastRoot(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Toast.Root {
+) renders Toast.Root {
   return (
-    <Primitive.Toast.Root
+    <Toast.Root
       {...forwarded(rest)}
       className={classNames(props(styles.toast, xstyle).className, className)}
     >
       {children}
-    </Primitive.Toast.Root>
+    </Toast.Root>
   );
 }
 
 /** What happened, in a few words. It names the notice. */
-export component ToastTitle(
+component ToastTitle(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Toast.Title
+    <Toast.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.Toast.Title>
+    </Toast.Title>
   );
 }
 
 /** The detail under the title. It describes the notice. */
-export component ToastDescription(
+component ToastDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Toast.Description
+    <Toast.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.Toast.Description>
+    </Toast.Description>
   );
 }
 
 /** A button that acts on the notice and then dismisses it. */
-export component ToastAction(
+component ToastAction(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Toast.Action
+    <Toast.Action
       {...forwarded(rest)}
       className={classNames(props(styles.action, xstyle).className, className)}
       type="button"
     >
       {children}
-    </Primitive.Toast.Action>
+    </Toast.Action>
   );
 }
 
 /** The button in the corner that dismisses the notice. */
-export component ToastClose(
+component ToastClose(
   label?: string = "Dismiss",
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Toast.Close
+    <Toast.Close
       {...forwarded(rest)}
       className={classNames(props(styles.close, xstyle).className, className)}
       label={label}
@@ -263,7 +263,7 @@ export component ToastClose(
       >
         <path d="M18 6 6 18M6 6l12 12" />
       </svg>
-    </Primitive.Toast.Close>
+    </Toast.Close>
   );
 }
 
@@ -283,3 +283,20 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Toast from "./toast.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Toast.Region>`
+ * and `<Toast.Root>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `Toaster` rather than `Region`.
+ */
+export {
+  Toaster as Region,
+  ToastRoot as Root,
+  ToastTitle as Title,
+  ToastDescription as Description,
+  ToastAction as Action,
+  ToastClose as Close,
+};

@@ -21,7 +21,7 @@
 //
 // # What to keep true when you change it
 //
-// * **Name the navigation.** `label` on `SidebarContent` says which navigation
+// * **Name the navigation.** `label` on `Sidebar.Content` says which navigation
 //   this is, such as "Main".
 // * **Give every item a `label`.** It is the item's name while only its icon
 //   shows.
@@ -36,7 +36,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { SidebarSide } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Sidebar } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -199,7 +199,7 @@ const styles = stylex.create({
  * The sidebar and the page beside it. Open unless `defaultOpen` or `open` says
  * otherwise; `narrowQuery` is the media query under which it is a sheet.
  */
-export component Sidebar(
+component SidebarRoot(
   children: React.Node,
   defaultOpen?: boolean = true,
   open?: boolean,
@@ -210,7 +210,7 @@ export component Sidebar(
   className?: string,
 ) {
   return (
-    <Primitive.Sidebar.Root
+    <Sidebar.Root
       defaultOpen={defaultOpen}
       narrowQuery={narrowQuery}
       onOpenChange={onOpenChange}
@@ -220,12 +220,12 @@ export component Sidebar(
       <div className={classNames(props(styles.layout, xstyle).className, className)}>
         {children}
       </div>
-    </Primitive.Sidebar.Root>
+    </Sidebar.Root>
   );
 }
 
 /** The column itself, a `<nav>` named by `label`. */
-export component SidebarContent(
+component SidebarContent(
   children: React.Node,
   label: string,
   panelXstyle?: StyleArgument,
@@ -235,7 +235,7 @@ export component SidebarContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sidebar.Body
+    <Sidebar.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       label={label}
@@ -244,41 +244,41 @@ export component SidebarContent(
       }}
     >
       {children}
-    </Primitive.Sidebar.Body>
+    </Sidebar.Body>
   );
 }
 
 /** The top of the column, such as the product's name. */
-export component SidebarHeader(
+component SidebarHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sidebar.Header
+    <Sidebar.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.Sidebar.Header>
+    </Sidebar.Header>
   );
 }
 
 /** The bottom of the column, such as the signed-in account. */
-export component SidebarFooter(
+component SidebarFooter(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sidebar.Footer
+    <Sidebar.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.Sidebar.Footer>
+    </Sidebar.Footer>
   );
 }
 
@@ -287,7 +287,7 @@ export component SidebarFooter(
  * collapsed. It is a button unless `render` gives it another element, such as
  * a link.
  */
-export component SidebarItem(
+component SidebarItem(
   children: React.Node,
   label: string,
   icon?: React.Node,
@@ -299,7 +299,7 @@ export component SidebarItem(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sidebar.Item
+    <Sidebar.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       label={label}
@@ -314,19 +314,19 @@ export component SidebarItem(
         </span>
       )}
       <span {...props(styles.label)}>{children}</span>
-    </Primitive.Sidebar.Item>
+    </Sidebar.Item>
   );
 }
 
 /** The button that opens and collapses the column. `label` says what it does. */
-export component SidebarTrigger(
+component SidebarTrigger(
   label?: string = "Toggle sidebar",
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sidebar.Trigger
+    <Sidebar.Trigger
       {...forwarded(rest)}
       aria-label={label}
       className={classNames(props(styles.trigger, xstyle).className, className)}
@@ -346,7 +346,7 @@ export component SidebarTrigger(
         <rect height="18" rx="2" width="18" x="3" y="3" />
         <path d="M9 3v18" />
       </svg>
-    </Primitive.Sidebar.Trigger>
+    </Sidebar.Trigger>
   );
 }
 
@@ -366,3 +366,20 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Sidebar from "./sidebar.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Sidebar.Root>`
+ * and `<Sidebar.Content>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `SidebarRoot` rather than `Root`.
+ */
+export {
+  SidebarRoot as Root,
+  SidebarContent as Content,
+  SidebarHeader as Header,
+  SidebarFooter as Footer,
+  SidebarItem as Item,
+  SidebarTrigger as Trigger,
+};

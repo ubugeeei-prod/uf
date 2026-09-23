@@ -14,7 +14,7 @@
 // follows a drag. The behaviour is imported from `@uniflowed/ui`'s `Drawer`: every
 // modal promise a sheet makes, a handle that is a `role="slider"` over the snap
 // points with `Home`, `End` and the arrow keys, the closing key at the smallest
-// snap point, and the refusal to render a handle with no `DrawerClose` beside
+// snap point, and the refusal to render a handle with no `Drawer.Close` beside
 // it. A fix to any of that reaches this project by upgrading `@uniflowed/ui`.
 //
 // The part writes two numbers straight onto the panel rather than rendering
@@ -26,7 +26,7 @@
 //
 // * **A drag is never the only way.** WCAG 2.2 SC 2.5.7 asks for everything a
 //   drag does to be possible without one, so a drawer with a handle needs a
-//   `DrawerClose`, and the part raises without one. The handle's arrow keys are
+//   `Drawer.Close`, and the part raises without one. The handle's arrow keys are
 //   the keyboard's half of the same rule.
 // * **The handle is a control, so it looks like one.** It is in the tab order,
 //   it has a focus ring, and its target is at least 24px across. Its name is
@@ -47,7 +47,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { Edge } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Drawer } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
@@ -231,7 +231,7 @@ const styles = stylex.create({
  * `snapPoints` are fractions of the full size in ascending order: `[0.5, 1]` is
  * "half, then all of it". `snapPoint` is an index into them.
  */
-export component Drawer(
+component DrawerRoot(
   children: React.Node,
   side?: Edge = "bottom",
   snapPoints?: $ReadOnlyArray<number>,
@@ -244,7 +244,7 @@ export component Drawer(
 ) {
   return (
     <SideContext.Provider value={side}>
-      <Primitive.Drawer.Root
+      <Drawer.Root
         defaultOpen={defaultOpen}
         defaultSnapPoint={defaultSnapPoint}
         onOpenChange={onOpenChange}
@@ -255,13 +255,13 @@ export component Drawer(
         snapPoints={snapPoints}
       >
         {children}
-      </Primitive.Drawer.Root>
+      </Drawer.Root>
     </SideContext.Provider>
   );
 }
 
 /** The button that opens the drawer. It is a `Button` unless `render` says otherwise. */
-export component DrawerTrigger(
+component DrawerTrigger(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -271,7 +271,7 @@ export component DrawerTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Drawer.Trigger
+    <Drawer.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -287,16 +287,16 @@ export component DrawerTrigger(
       }
     >
       {children}
-    </Primitive.Drawer.Trigger>
+    </Drawer.Trigger>
   );
 }
 
 /**
  * The scrim and the panel, with the handle at the edge that faces the page.
  * `hideHandle` for a drawer that does not move, which then needs no
- * `DrawerClose` either.
+ * `Drawer.Close` either.
  */
-export component DrawerContent(
+component DrawerContent(
   children: React.Node,
   handleLabel?: string = "Resize the drawer",
   hideHandle?: boolean = false,
@@ -307,14 +307,14 @@ export component DrawerContent(
   const side = useContext(SideContext);
   return (
     <>
-      <Primitive.Drawer.Overlay className={props(styles.overlay).className} />
-      <Primitive.Drawer.Body
+      <Drawer.Overlay className={props(styles.overlay).className} />
+      <Drawer.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
         {hideHandle ? null : (
-          <Primitive.Drawer.Handle
+          <Drawer.Handle
             className={props(styles.handle).className}
             data-side={side}
             label={handleLabel}
@@ -325,76 +325,76 @@ export component DrawerContent(
             )}
           />
         )}
-      </Primitive.Drawer.Body>
+      </Drawer.Body>
     </>
   );
 }
 
 /** The title and description, stacked. */
-export component DrawerHeader(
+component DrawerHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Drawer.Header
+    <Drawer.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.Drawer.Header>
+    </Drawer.Header>
   );
 }
 
 /** The row the actions sit in, pushed to the far end of the panel. */
-export component DrawerFooter(
+component DrawerFooter(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Drawer.Footer
+    <Drawer.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.Drawer.Footer>
+    </Drawer.Footer>
   );
 }
 
 /** The drawer's name. */
-export component DrawerTitle(
+component DrawerTitle(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Drawer.Title
+    <Drawer.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.Drawer.Title>
+    </Drawer.Title>
   );
 }
 
 /** What the drawer is for, read with its name when focus arrives. */
-export component DrawerDescription(
+component DrawerDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Drawer.Description
+    <Drawer.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.Drawer.Description>
+    </Drawer.Description>
   );
 }
 
@@ -402,7 +402,7 @@ export component DrawerDescription(
  * A button that closes the drawer, and the single-pointer alternative to the
  * drag that WCAG 2.5.7 asks for.
  */
-export component DrawerClose(
+component DrawerClose(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -412,7 +412,7 @@ export component DrawerClose(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Drawer.Close
+    <Drawer.Close
       {...forwarded(rest)}
       render={
         render ??
@@ -428,7 +428,7 @@ export component DrawerClose(
       }
     >
       {children}
-    </Primitive.Drawer.Close>
+    </Drawer.Close>
   );
 }
 
@@ -452,3 +452,22 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Drawer from "./drawer.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Drawer.Root>`
+ * and `<Drawer.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `DrawerRoot` rather than `Root`.
+ */
+export {
+  DrawerRoot as Root,
+  DrawerTrigger as Trigger,
+  DrawerContent as Content,
+  DrawerHeader as Header,
+  DrawerFooter as Footer,
+  DrawerTitle as Title,
+  DrawerDescription as Description,
+  DrawerClose as Close,
+};

@@ -8,7 +8,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen } from "@uniflowed/react-testing";
 
-import { Card, CardContent, CardTitle } from "./card.js";
+import * as Card from "./card.js";
 import { Example } from "./card.example.js";
 
 afterEach(() => {
@@ -29,9 +29,9 @@ describe("Card", () => {
 
     cleanup();
     render(
-      <Card>
-        <CardTitle>Plain</CardTitle>
-      </Card>,
+      <Card.Root>
+        <Card.Title>Plain</Card.Title>
+      </Card.Root>,
     );
     expect(screen.getByRole("heading", { level: 3, name: "Plain" }).tagName).toBe("H3");
   });
@@ -44,9 +44,9 @@ describe("Card", () => {
 
   it("puts every attribute it does not name on the element", () => {
     render(
-      <Card aria-labelledby="t" data-kind="plan" id="plan">
-        <CardContent data-part="body">Body</CardContent>
-      </Card>,
+      <Card.Root aria-labelledby="t" data-kind="plan" id="plan">
+        <Card.Content data-part="body">Body</Card.Content>
+      </Card.Root>,
     );
     const body = screen.getByText("Body");
     expect(body).toHaveAttribute("data-part", "body");

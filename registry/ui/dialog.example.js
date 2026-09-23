@@ -3,16 +3,7 @@ import * as React from "@uniflowed/react";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "./dialog.js";
+import * as Dialog from "./dialog.js";
 
 const styles = stylex.create({
   field: {
@@ -44,22 +35,22 @@ const styles = stylex.create({
 /** A rename: a title, a description, one field, and the two ways out. */
 export component Example() {
   return (
-    <Dialog>
-      <DialogTrigger>Rename project</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rename project</DialogTitle>
-          <DialogDescription>The new name is what everyone on the team sees.</DialogDescription>
-        </DialogHeader>
+    <Dialog.Root>
+      <Dialog.Trigger>Rename project</Dialog.Trigger>
+      <Dialog.Content>
+        <Dialog.Header>
+          <Dialog.Title>Rename project</Dialog.Title>
+          <Dialog.Description>The new name is what everyone on the team sees.</Dialog.Description>
+        </Dialog.Header>
         <label {...props(styles.field)}>
           Name
           <input {...props(styles.input)} defaultValue="Atlas" name="name" type="text" />
         </label>
-        <DialogFooter>
-          <DialogClose>Cancel</DialogClose>
-          <DialogClose tone="primary">Save</DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <Dialog.Footer>
+          <Dialog.Close>Cancel</Dialog.Close>
+          <Dialog.Close tone="primary">Save</Dialog.Close>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog.Root>
   );
 }

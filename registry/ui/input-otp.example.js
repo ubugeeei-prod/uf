@@ -1,21 +1,21 @@
 // @flow
-import { InputOtp, InputOtpGroup, InputOtpSeparator, InputOtpSlot } from "./input-otp.js";
+import * as InputOtp from "./input-otp.js";
 
 /** A six-digit code in two groups of three. */
 export component Example() {
   return (
-    <InputOtp label="Verification code" length={6} name="code">
-      <InputOtpGroup>
-        <InputOtpSlot index={0} />
-        <InputOtpSlot index={1} />
-        <InputOtpSlot index={2} />
-      </InputOtpGroup>
-      <InputOtpSeparator />
-      <InputOtpGroup>
-        <InputOtpSlot index={3} />
-        <InputOtpSlot index={4} />
-        <InputOtpSlot index={5} />
-      </InputOtpGroup>
-    </InputOtp>
+    <InputOtp.Root label="Verification code" length={6} name="code">
+      <InputOtp.Group>
+        <InputOtp.Slot index={0} />
+        <InputOtp.Slot index={1} />
+        <InputOtp.Slot index={2} />
+      </InputOtp.Group>
+      <InputOtp.Separator />
+      <InputOtp.Group>
+        <InputOtp.Slot index={3} />
+        <InputOtp.Slot index={4} />
+        <InputOtp.Slot index={5} />
+      </InputOtp.Group>
+    </InputOtp.Root>
   );
 }

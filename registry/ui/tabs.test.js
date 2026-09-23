@@ -8,7 +8,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 
-import { Tabs, TabsList, TabsPanel, TabsTab } from "./tabs.js";
+import * as Tabs from "./tabs.js";
 import { Example } from "./tabs.example.js";
 
 afterEach(() => {
@@ -70,14 +70,14 @@ describe("Tabs", () => {
 
   it("runs the other way when it is vertical, and says so", async () => {
     render(
-      <Tabs defaultValue="a" orientation="vertical">
-        <TabsList aria-label="Settings">
-          <TabsTab value="a">Account</TabsTab>
-          <TabsTab value="b">Billing</TabsTab>
-        </TabsList>
-        <TabsPanel value="a">Account settings.</TabsPanel>
-        <TabsPanel value="b">Billing settings.</TabsPanel>
-      </Tabs>,
+      <Tabs.Root defaultValue="a" orientation="vertical">
+        <Tabs.List aria-label="Settings">
+          <Tabs.Tab value="a">Account</Tabs.Tab>
+          <Tabs.Tab value="b">Billing</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="a">Account settings.</Tabs.Panel>
+        <Tabs.Panel value="b">Billing settings.</Tabs.Panel>
+      </Tabs.Root>,
     );
     expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "vertical");
     await userEvent.click(html(screen.getByRole("tab", { name: "Account" })));

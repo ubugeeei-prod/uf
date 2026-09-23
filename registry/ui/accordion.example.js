@@ -1,24 +1,24 @@
 // @flow
 import * as React from "@uniflowed/react";
 
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./accordion.js";
+import * as Accordion from "./accordion.js";
 
 /** Three questions, one answer open at a time. */
 export component Example() {
   return (
-    <Accordion defaultValue={["shipping"]}>
-      <AccordionItem value="shipping">
-        <AccordionTrigger>How long does shipping take?</AccordionTrigger>
-        <AccordionContent>Two working days within the country, five abroad.</AccordionContent>
-      </AccordionItem>
-      <AccordionItem value="returns">
-        <AccordionTrigger>Can I return an order?</AccordionTrigger>
-        <AccordionContent>Within thirty days, in the box it came in.</AccordionContent>
-      </AccordionItem>
-      <AccordionItem disabled value="gifts">
-        <AccordionTrigger>Can I send it as a gift?</AccordionTrigger>
-        <AccordionContent>Not yet.</AccordionContent>
-      </AccordionItem>
-    </Accordion>
+    <Accordion.Root defaultValue={["shipping"]}>
+      <Accordion.Item value="shipping">
+        <Accordion.Trigger>How long does shipping take?</Accordion.Trigger>
+        <Accordion.Content>Two working days within the country, five abroad.</Accordion.Content>
+      </Accordion.Item>
+      <Accordion.Item value="returns">
+        <Accordion.Trigger>Can I return an order?</Accordion.Trigger>
+        <Accordion.Content>Within thirty days, in the box it came in.</Accordion.Content>
+      </Accordion.Item>
+      <Accordion.Item disabled value="gifts">
+        <Accordion.Trigger>Can I send it as a gift?</Accordion.Trigger>
+        <Accordion.Content>Not yet.</Accordion.Content>
+      </Accordion.Item>
+    </Accordion.Root>
   );
 }

@@ -32,21 +32,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
-
-import {
-  MenuCheckboxItem,
-  MenuContent,
-  MenuGroup,
-  MenuItem,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuShortcut,
-  MenuSub,
-  MenuSubTrigger,
-} from "./menu.js";
+import { Menubar } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -99,58 +85,63 @@ const styles = stylex.create({
   },
 });
 
-/** The bar. Every child is a `MenubarMenu`. */
-export component Menubar(
+/** The bar. Every child is a `Menubar.Menu`. */
+component MenubarRoot(
   children: renders* MenubarMenu,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Menubar.Root
+    <Menubar.Root
       {...forwarded(rest)}
       className={classNames(props(styles.bar, xstyle).className, className)}
     >
       {children}
-    </Primitive.Menubar.Root>
+    </Menubar.Root>
   );
 }
 
-/** One menu on the bar: a `MenubarTrigger` and the `MenubarContent` it opens. */
-export component MenubarMenu(children: React.Node, value: string) renders Primitive.Menubar.Menu {
-  return <Primitive.Menubar.Menu value={value}>{children}</Primitive.Menubar.Menu>;
+/** One menu on the bar: a `Menubar.Trigger` and the `Menubar.Content` it opens. */
+component MenubarMenu(children: React.Node, value: string) renders Menubar.Menu {
+  return <Menubar.Menu value={value}>{children}</Menubar.Menu>;
 }
 
 /** The button on the bar that opens its menu and names it. */
-export component MenubarTrigger(
+component MenubarTrigger(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Menubar.Trigger
+    <Menubar.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
       {children}
-    </Primitive.Menubar.Trigger>
+    </Menubar.Trigger>
   );
 }
 
+/**
+ * The menu parts, which are `menu.js`'s own: a menubar is a menu opened another
+ * way, so `<Menubar.Item>` is the styled `Menu.Item` and a change to it there
+ * reaches both.
+ */
 export {
-  MenuCheckboxItem as MenubarCheckboxItem,
-  MenuContent as MenubarContent,
-  MenuGroup as MenubarGroup,
-  MenuItem as MenubarItem,
-  MenuLabel as MenubarLabel,
-  MenuRadioGroup as MenubarRadioGroup,
-  MenuRadioItem as MenubarRadioItem,
-  MenuSeparator as MenubarSeparator,
-  MenuShortcut as MenubarShortcut,
-  MenuSub as MenubarSub,
-  MenuSubTrigger as MenubarSubTrigger,
-};
+  CheckboxItem,
+  Content,
+  Group,
+  Item,
+  Label,
+  RadioGroup,
+  RadioItem,
+  Separator,
+  Shortcut,
+  Sub,
+  SubTrigger,
+} from "./menu.js";
 
 /**
  * A caller's props on their way into a part rather than onto an element. Flow
@@ -168,3 +159,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Menubar from "./menubar.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Menubar.Root>`
+ * and `<Menubar.Menu>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `MenubarRoot` rather than `Root`.
+ */
+export { MenubarRoot as Root, MenubarMenu as Menu, MenubarTrigger as Trigger };

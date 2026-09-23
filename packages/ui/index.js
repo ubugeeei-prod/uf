@@ -60,9 +60,9 @@
 // `@uniflowed/ui` and owns the scrim, the spacing and the tone of the
 // trigger — what a person means when they say "our dialog". None of the four
 // arguments above is reopened by it, because none of them is about the look:
-// the focus trap still arrives by upgrade, and the copied `TabsList` still takes
-// `renders* TabsTab` over a `TabsTab` that renders this package's tab, so the
-// constraint holds in the application's own file. `crates/uf_ui`'s header is
+// the focus trap still arrives by upgrade, and the copied `Tabs.List` still
+// takes `renders*` over a copied `Tabs.Tab` that renders this package's tab, so
+// the constraint holds in the application's own file. `crates/uf_ui`'s header is
 // the decision in full.
 //
 // **What a caller gets without copying anything.** The reason people copy
