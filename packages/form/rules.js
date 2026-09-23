@@ -244,7 +244,7 @@ function lengthOf(value: mixed): number {
  */
 export function whenSettled<TValue, TNext>(
   value: TValue | Promise<TValue>,
-  next: (value: TValue) => TNext,
+  next: (value: TValue) => TNext | Promise<TNext>,
 ): TNext | Promise<TNext> {
   if (value != null && typeof (value as $FlowFixMe).then === "function") {
     return (value as $FlowFixMe).then(next);
@@ -288,42 +288,46 @@ export function runRules(
   }
 
   if (!blank) {
-    if (rules.min != null) {
-      const limit = limitOf(rules.min);
+    // Each rule is read into a local before it is used: a refinement of
+    // `rules.min` does not survive the calls between the check and the use.
+    const { min, max, minLength, maxLength } = rules;
+    if (min != null) {
+      const limit = limitOf<number | string>(min);
       if (scaleOf(value) < scaleOf(limit)) {
-        return { type: "min", message: messageOf(rules.min, `Must be at least ${String(limit)}`) };
+        return { type: "min", message: messageOf(min, `Must be at least ${String(limit)}`) };
       }
     }
 
-    if (rules.max != null) {
-      const limit = limitOf(rules.max);
+    if (max != null) {
+      const limit = limitOf<number | string>(max);
       if (scaleOf(value) > scaleOf(limit)) {
-        return { type: "max", message: messageOf(rules.max, `Must be at most ${String(limit)}`) };
+        return { type: "max", message: messageOf(max, `Must be at most ${String(limit)}`) };
       }
     }
 
-    if (rules.minLength != null) {
-      const limit = limitOf(rules.minLength);
+    if (minLength != null) {
+      const limit = limitOf<number>(minLength);
       if (lengthOf(value) < limit) {
         return {
           type: "minLength",
-          message: messageOf(rules.minLength, `Must be at least ${String(limit)} characters`),
+          message: messageOf(minLength, `Must be at least ${String(limit)} characters`),
         };
       }
     }
 
-    if (rules.maxLength != null) {
-      const limit = limitOf(rules.maxLength);
+    if (maxLength != null) {
+      const limit = limitOf<number>(maxLength);
       if (lengthOf(value) > limit) {
         return {
           type: "maxLength",
-          message: messageOf(rules.maxLength, `Must be at most ${String(limit)} characters`),
+          message: messageOf(maxLength, `Must be at most ${String(limit)} characters`),
         };
       }
     }
 
-    if (rules.pattern != null) {
-      const pattern = limitOf(rules.pattern);
+    const rulePattern = rules.pattern;
+    if (rulePattern != null) {
+      const pattern = limitOf<RegExp>(rulePattern);
       // A global regular expression carries `lastIndex` between calls, so the
       // same value tests true, then false, then true. Testing a copy without
       // the flag makes the rule a function of its input, which is what every
@@ -334,7 +338,7 @@ export function runRules(
       if (!stateless.test(String(value ?? ""))) {
         return {
           type: "pattern",
-          message: messageOf(rules.pattern, "This is not in the right format"),
+          message: messageOf(rulePattern, "This is not in the right format"),
         };
       }
     }
@@ -353,7 +357,10 @@ function runValidate(
   values: FieldValues,
 ): FieldError | null | Promise<FieldError | null> {
   if (typeof validate === "function") {
-    return whenSettled(validate(value, values), (result) => interpret("validate", result));
+    return whenSettled<boolean | string | void, FieldError | null>(
+      validate(value, values),
+      (result) => interpret("validate", result),
+    );
   }
   return runValidateEntries(Object.keys(validate), validate, value, values, 0);
 }
@@ -376,10 +383,13 @@ function runValidateEntries(
     return null;
   }
   const key = keys[at];
-  return whenSettled(validate[key](value, values), (result) => {
-    const failure = interpret(key, result);
-    return failure ?? runValidateEntries(keys, validate, value, values, at + 1);
-  });
+  return whenSettled<boolean | string | void, FieldError | null>(
+    validate[key](value, values),
+    (result) => {
+      const failure = interpret(key, result);
+      return failure ?? runValidateEntries(keys, validate, value, values, at + 1);
+    },
+  );
 }
 
 /**

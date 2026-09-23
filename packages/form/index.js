@@ -84,7 +84,11 @@
 // `defaultValues`, `getValues()`, `reset()` and the values `handleSubmit` hands
 // `onValid` are all `TValues` — or the resolver's output type, where a schema
 // coerces. Inference flows through `useForm({ defaultValues })` without an
-// annotation.
+// annotation, as far as the component that called it. Where the `control` is
+// handed to a component typed `Control<Values>`, name the values at the call,
+// `useForm<Values>({ … })`: Flow does not apply a type parameter's default
+// while inferring, so an unnamed resolver output would otherwise be left
+// unconstrained, and `Control<Values>` would not accept it.
 //
 // So does a *per-field* read, if the path is given as segments:
 //
@@ -163,7 +167,8 @@
 // render:
 //
 //   // The record is fetched, and the form is usable while it is in flight.
-//   useForm({ defaultValues: () => fetchRecord(id) })
+//   // Named, because Flow would try the thunk itself as the values.
+//   useForm<Record>({ defaultValues: () => fetchRecord(id) })
 //
 //   // The record is owned by something else, and the form follows it.
 //   useForm({ values: record, resetOptions: { keepDirtyValues: true } })
