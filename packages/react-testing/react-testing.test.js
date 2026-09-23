@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { useState } from "@uniflowed/react";
-import { describe, expect, it } from "@uniflowed/test";
+import { describe, expect, it, uft } from "@uniflowed/test";
 import {
   accessibleName,
   act,
@@ -824,6 +824,9 @@ describe("an option a query does not take", () => {
     render(<button type="button">Save</button>);
     let message = "";
     try {
+      // The typo is rejected by the type as well, and what is asserted here is
+      // what an untyped caller gets at run time.
+      // $FlowExpectedError[incompatible-type] `nmae` is not a RoleOptions key
       screen.getByRole("button", { nmae: "Save" });
     } catch (error) {
       message = String(error);
@@ -836,6 +839,7 @@ describe("an option a query does not take", () => {
     render(<p>hello</p>);
     let message = "";
     try {
+      // $FlowExpectedError[incompatible-type] `hidden` is not a MatcherOptions key
       screen.queryAllByText("hello", { hidden: true });
     } catch (error) {
       message = String(error);
@@ -849,6 +853,7 @@ describe("an option a query does not take", () => {
     const started = Date.now();
     let message = "";
     try {
+      // $FlowExpectedError[incompatible-type] `ignore` is not a MatcherOptions key
       await screen.findByText("hello", { ignore: "script" });
     } catch (error) {
       message = String(error);
@@ -898,7 +903,8 @@ describe("fireEvent", () => {
       );
     }
     render(<Field />);
-    const field = screen.getByLabelText("name") as HTMLInputElement;
+    const field = screen.getByLabelText("name");
+    if (!(field instanceof HTMLInputElement)) throw new Error("the label names an input");
 
     fireEvent.focus(field);
     expect(field.value).toBe("focused");
@@ -911,7 +917,8 @@ describe("fireEvent", () => {
     // Anything listening on the element directly — which is what a `focus`
     // listener has to do — must still hear it.
     const { container } = render(<input aria-label="name" />);
-    const field = container.querySelector("input") as HTMLInputElement;
+    const field = container.querySelector("input");
+    if (!(field instanceof HTMLInputElement)) throw new Error("the render holds an input");
     const heard: Array<string> = [];
     field.addEventListener("focus", () => heard.push("focus"));
     field.addEventListener("focusin", () => heard.push("focusin"));
@@ -1318,16 +1325,17 @@ describe("the act environment", () => {
     // `IS_REACT_ACT_ENVIRONMENT`. Every render here goes through `act`, so
     // the warning arrived once per assertion and drowned the ones worth
     // reading.
-    const original = console.error;
     const said: Array<string> = [];
-    console.error = (...args: $ReadOnlyArray<mixed>) => {
-      said.push(args.map((value) => String(value)).join(" "));
-    };
+    const error = uft
+      .spyOn(console, "error")
+      .mockImplementation((...args: $ReadOnlyArray<mixed>) => {
+        said.push(args.map((value) => String(value)).join(" "));
+      });
     try {
       render(<Greeting name="world" />);
       fireEvent.click(screen.getByText(/Hello/));
     } finally {
-      console.error = original;
+      error.mockRestore();
     }
 
     expect(said.filter((line) => line.includes("act("))).toEqual([]);
@@ -1343,18 +1351,19 @@ describe("the act environment", () => {
     // Asserted through `act` rather than by reading the flag directly,
     // because reading it says only that some earlier test in this file
     // rendered.
-    const original = console.error;
     const said: Array<string> = [];
-    console.error = (...args: $ReadOnlyArray<mixed>) => {
-      said.push(args.map((value) => String(value)).join(" "));
-    };
+    const error = uft
+      .spyOn(console, "error")
+      .mockImplementation((...args: $ReadOnlyArray<mixed>) => {
+        said.push(args.map((value) => String(value)).join(" "));
+      });
     try {
       act(() => {});
     } finally {
-      console.error = original;
+      error.mockRestore();
     }
 
-    expect(globalThis.IS_REACT_ACT_ENVIRONMENT).toBe(true);
+    expect(actEnvironment()).toBe(true);
     expect(said.filter((line) => line.includes("act("))).toEqual([]);
   });
 
@@ -1390,7 +1399,7 @@ describe("the act environment", () => {
     // environment is stood down instead, and the update the test is waiting
     // for is allowed to arrive unacted.
     render(<Greeting name="world" />);
-    expect(globalThis.IS_REACT_ACT_ENVIRONMENT).toBe(true);
+    expect(actEnvironment()).toBe(true);
 
     let insideWait = null;
     let insideOuterWait = null;
@@ -1401,19 +1410,31 @@ describe("the act environment", () => {
       // wait was quiet.
       screen.getByText(/Hello/);
       await waitFor(() => {
-        insideWait = globalThis.IS_REACT_ACT_ENVIRONMENT;
+        insideWait = actEnvironment();
       });
       // The inner wait has returned; the outer one has not, so the
       // environment is still down. Every `findBy…` is a `waitFor`, so this
       // nesting is what a test does by accident rather than on purpose.
-      insideOuterWait = globalThis.IS_REACT_ACT_ENVIRONMENT;
+      insideOuterWait = actEnvironment();
     });
 
     expect(insideWait).toBe(false);
     expect(insideOuterWait).toBe(false);
-    expect(globalThis.IS_REACT_ACT_ENVIRONMENT).toBe(true);
+    expect(actEnvironment()).toBe(true);
   });
 });
+
+/**
+ * The flag React reads to decide whether an update outside `act` deserves a
+ * warning.
+ *
+ * Read through the global object as a table because it is React's global and
+ * no library definition declares it on `globalThis`.
+ */
+function actEnvironment(): mixed {
+  const globals: { readonly [string]: mixed } = globalThis;
+  return globals.IS_REACT_ACT_ENVIRONMENT;
+}
 
 // Where a failing query is reported, driven through a real worker.
 //

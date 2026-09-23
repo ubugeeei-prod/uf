@@ -54,78 +54,120 @@ import { waitFor } from "./render.js";
  * say.
  */
 type Forms<TTarget, TOptions> = {|
-  readonly get: (target: TTarget, options?: TOptions) => Element,
-  readonly getAll: (target: TTarget, options?: TOptions) => Array<Element>,
-  readonly query: (target: TTarget, options?: TOptions) => Element | null,
-  readonly queryAll: (target: TTarget, options?: TOptions) => Array<Element>,
-  readonly find: (target: TTarget, options?: TOptions) => Promise<Element>,
-  readonly findAll: (target: TTarget, options?: TOptions) => Promise<Array<Element>>,
+  readonly get: (target: TTarget, options?: TOptions) => HTMLElement,
+  readonly getAll: (target: TTarget, options?: TOptions) => Array<HTMLElement>,
+  readonly query: (target: TTarget, options?: TOptions) => HTMLElement | null,
+  readonly queryAll: (target: TTarget, options?: TOptions) => Array<HTMLElement>,
+  readonly find: (target: TTarget, options?: TOptions) => Promise<HTMLElement>,
+  readonly findAll: (target: TTarget, options?: TOptions) => Promise<Array<HTMLElement>>,
 |};
 
 /**
  * The queries available on `screen` and on `within(element)`.
  *
  * Read down one column and the four questions of the module comment are the
- * four return types: `getBy…` is an `Element` because it throws rather than
- * hand back nothing, `queryBy…` is `Element | null` because its whole purpose
- * is asking about absence, and the `findBy…` pair are promises because they
- * wait.
+ * four return types: `getBy…` is an `HTMLElement` because it throws rather
+ * than hand back nothing, `queryBy…` is `HTMLElement | null` because its whole
+ * purpose is asking about absence, and the `findBy…` pair are promises because
+ * they wait. [`queried`] says why `HTMLElement` rather than `Element`.
  */
 export type Queries = {|
-  readonly getByText: (matcher: Matcher, options?: MatcherOptions) => Element,
-  readonly getAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly queryByText: (matcher: Matcher, options?: MatcherOptions) => Element | null,
-  readonly queryAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly findByText: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
-  readonly findAllByText: (matcher: Matcher, options?: MatcherOptions) => Promise<Array<Element>>,
+  readonly getByText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly queryByText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
+  readonly queryAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly findByText: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
+  readonly findAllByText: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Promise<Array<HTMLElement>>,
 
-  readonly getByRole: (role: string, options?: RoleOptions) => Element,
-  readonly getAllByRole: (role: string, options?: RoleOptions) => Array<Element>,
-  readonly queryByRole: (role: string, options?: RoleOptions) => Element | null,
-  readonly queryAllByRole: (role: string, options?: RoleOptions) => Array<Element>,
-  readonly findByRole: (role: string, options?: RoleOptions) => Promise<Element>,
-  readonly findAllByRole: (role: string, options?: RoleOptions) => Promise<Array<Element>>,
+  readonly getByRole: (role: string, options?: RoleOptions) => HTMLElement,
+  readonly getAllByRole: (role: string, options?: RoleOptions) => Array<HTMLElement>,
+  readonly queryByRole: (role: string, options?: RoleOptions) => HTMLElement | null,
+  readonly queryAllByRole: (role: string, options?: RoleOptions) => Array<HTMLElement>,
+  readonly findByRole: (role: string, options?: RoleOptions) => Promise<HTMLElement>,
+  readonly findAllByRole: (role: string, options?: RoleOptions) => Promise<Array<HTMLElement>>,
 
-  readonly getByLabelText: (matcher: Matcher, options?: MatcherOptions) => Element,
-  readonly getAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly queryByLabelText: (matcher: Matcher, options?: MatcherOptions) => Element | null,
-  readonly queryAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly findByLabelText: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  readonly getByLabelText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly queryByLabelText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
+  readonly queryAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly findByLabelText: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
   readonly findAllByLabelText: (
     matcher: Matcher,
     options?: MatcherOptions,
-  ) => Promise<Array<Element>>,
+  ) => Promise<Array<HTMLElement>>,
 
-  readonly getByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Element,
-  readonly getAllByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly queryByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Element | null,
+  readonly getByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getAllByPlaceholderText: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Array<HTMLElement>,
+  readonly queryByPlaceholderText: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => HTMLElement | null,
   readonly queryAllByPlaceholderText: (
     matcher: Matcher,
     options?: MatcherOptions,
-  ) => Array<Element>,
-  readonly findByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  ) => Array<HTMLElement>,
+  readonly findByPlaceholderText: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Promise<HTMLElement>,
   readonly findAllByPlaceholderText: (
     matcher: Matcher,
     options?: MatcherOptions,
-  ) => Promise<Array<Element>>,
+  ) => Promise<Array<HTMLElement>>,
 
-  readonly getByTestId: (matcher: Matcher, options?: MatcherOptions) => Element,
-  readonly getAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly queryByTestId: (matcher: Matcher, options?: MatcherOptions) => Element | null,
-  readonly queryAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly findByTestId: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
-  readonly findAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Promise<Array<Element>>,
+  readonly getByTestId: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly queryByTestId: (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
+  readonly queryAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly findByTestId: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
+  readonly findAllByTestId: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Promise<Array<HTMLElement>>,
 
-  readonly getByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Element,
-  readonly getAllByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly queryByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Element | null,
-  readonly queryAllByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
-  readonly findByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  readonly getByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => HTMLElement,
+  readonly getAllByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Array<HTMLElement>,
+  readonly queryByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => HTMLElement | null,
+  readonly queryAllByDisplayValue: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Array<HTMLElement>,
+  readonly findByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Promise<HTMLElement>,
   readonly findAllByDisplayValue: (
     matcher: Matcher,
     options?: MatcherOptions,
-  ) => Promise<Array<Element>>,
+  ) => Promise<Array<HTMLElement>>,
 |};
+
+/**
+ * An element a query found, as the `HTMLElement` the queries answer.
+ *
+ * A query walks `Element`s, because that is what a root's `querySelectorAll`
+ * hands back, and answers `HTMLElement`, which is what a test does something
+ * with: `.focus()`, `.style`, `.click()`. That is also what DOM Testing
+ * Library's types say, and it is sound against Flow's DOM model, where
+ * `SVGElement` extends `HTMLElement`: an SVG icon found by its role is
+ * returned as it is. Before this, every `screen.getByRole(…).focus()` in a
+ * uf test was a type error (218 of them in `@uniflowed/ui`'s suite alone).
+ *
+ * The one element Flow's model has no class for is MathML's. A query that
+ * reaches one throws, naming the tag, rather than handing back a value whose
+ * type would be a lie.
+ */
+function queried(element: Element): HTMLElement {
+  if (element instanceof HTMLElement) return element;
+  if (element instanceof SVGElement) return element;
+  throw new Error(
+    `@uniflowed/react-testing: a query found <${element.tagName.toLowerCase()}>, which is ` +
+      "neither an HTML nor an SVG element; query the HTML element around it",
+  );
+}
 
 /**
  * The six forms of one finder, bound to a root.
@@ -152,7 +194,8 @@ function forms<TTarget extends Matcher, TOptions>(
   root: () => Element,
   known: $ReadOnlyArray<string>,
 ): Forms<TTarget, TOptions> {
-  const all = (target: TTarget, options?: TOptions) => find(root(), target, options);
+  const all = (target: TTarget, options?: TOptions): Array<HTMLElement> =>
+    find(root(), target, options).map(queried);
   const check = (form: string, options?: TOptions) => {
     rejectUnknownOptions(`${form}By${name}`, options, known);
   };
