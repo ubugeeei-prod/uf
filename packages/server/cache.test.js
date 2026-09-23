@@ -699,6 +699,31 @@ describe("the route cache", () => {
     expect(app.renders.length).toBe(2);
   });
 
+  for (const [read, during] of [
+    ["headers()", () => headers().get("accept-language")],
+    ["draftMode()", () => draftMode().isEnabled],
+  ]) {
+    it(`stores nothing when the render read ${read}, as it does for cookies()`, async () => {
+      // `docs/app/guide/cache/$page.mdx` names all three reads; `cookies()` has
+      // its own case above, and these are the other two (ubugeeei-prod/uf#1501).
+      // `draftMode()` here is a read on an ordinary request, not a draft one:
+      // the render asked whether it was a draft, so its answer depends on it.
+      const { app, handle } = servingWith({
+        render: () => {
+          cacheLife({ revalidate: 60 });
+          during();
+        },
+      });
+
+      const first = await serve(handle, app, "/account");
+      const second = await serve(handle, app, "/account");
+
+      expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
+      expect(second.headers.get("x-uf-cache")).toBe("BYPASS");
+      expect(app.renders.length).toBe(2);
+    });
+  }
+
   it("is bypassed entirely for a request in draft mode", async () => {
     // The other direction from every case above. Those are about what the
     // cache refuses to *store*; this is about what it refuses to *answer* with.

@@ -30,7 +30,14 @@ import path from "node:path";
 import * as React from "@uniflowed/react";
 import { use } from "@uniflowed/react";
 import { act, render, screen } from "@uniflowed/react-testing";
-import { RouteView, RouterProvider, resolveMatch, routerView } from "@uniflowed/router";
+import {
+  NotFoundError,
+  RedirectError,
+  RouteView,
+  RouterProvider,
+  resolveMatch,
+  routerView,
+} from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
@@ -539,6 +546,44 @@ function loaderTable(
     errors: [],
   };
 }
+
+describe("a deferred loader that decides the response", () => {
+  // `docs/app/guide/routing/$page.mdx`: "notFound() and redirect() thrown from a
+  // loader that was deferred arrive at the error boundary rather than at the
+  // 404 page, and the document is a 200. Nothing can undo bytes that have
+  // already been sent." (ubugeeei-prod/uf#1501)
+  //
+  // The server's half is what is asserted here: the status stays the 200 the
+  // shell went out with, no `Location` appears, and the boundary the loader was
+  // under is handed to the browser to render (React's `$RX`), where the error
+  // boundary above it catches the throw.
+  for (const [name, thrown] of [
+    ["notFound()", () => new NotFoundError()],
+    ["redirect()", () => new RedirectError("/elsewhere", false)],
+  ]) {
+    it(`cannot turn a streamed 200 into anything else with ${name}`, async () => {
+      let fail: () => void = () => {};
+      const waited = new Promise<string>((_, reject) => {
+        fail = () => reject(thrown());
+      });
+      const renderer = createRenderer({ App: routerView("./app"), ...loaderTable(waited) });
+
+      setTimeout(fail, 30);
+      const result = await renderer.render("/slow", assets);
+
+      expect(result.status).toBe(200);
+      expect(result.headers?.location ?? null).toBe(null);
+      const chunks = await chunksOf(result);
+      expect(chunks[0].text).toContain("the fallback is here");
+      const rest = chunks
+        .slice(1)
+        .map((chunk) => chunk.text)
+        .join("");
+      expect(rest).toContain('$RX("B:0"');
+      expect(rest).not.toContain("<p>no data</p>");
+    });
+  }
+});
 
 describe("rendering a route whose loader is slow", () => {
   it("sends the layout and the fallback before the loader resolves", async () => {
