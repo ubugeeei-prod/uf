@@ -636,8 +636,12 @@ describe("the compiled binary", () => {
 
     const response = {
       statusCode: 0,
+      statusMessage: "",
+      headersSent: false,
       setHeader() {},
-      write() {},
+      write(): boolean {
+        return true;
+      },
       end() {},
       destroy() {},
       on() {},

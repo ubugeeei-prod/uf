@@ -1146,6 +1146,9 @@ function nodeResponse() {
   };
   return {
     statusCode: 0,
+    // A real `ServerResponse` has both, and `send` reads and writes them.
+    statusMessage: "",
+    headersSent: false,
     headers,
     setHeader(name: string, value: string) {
       headers[name.toLowerCase()] = value;

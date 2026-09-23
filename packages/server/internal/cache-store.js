@@ -375,7 +375,7 @@ function assertProvider(provider: CacheProvider): void {
         "the entries is something a log can say rather than something a reader has to infer.",
     );
   }
-  const methods: { readonly [string]: mixed } = (provider: $FlowFixMe);
+  const methods: { readonly [string]: mixed } = provider as $FlowFixMe;
   for (const method of PROVIDER_METHODS) {
     if (typeof methods[method] !== "function") {
       throw new TypeError(
@@ -501,7 +501,7 @@ export class CacheStore {
   readonly invalidated: Map<string, number> = new Map();
 
   constructor(options?: CacheStoreOptions) {
-    this.now = options?.now ?? Date.now;
+    this.now = options?.now ?? (() => Date.now());
     this.maxEntries = options?.maxEntries ?? 1024;
     this.onError =
       options?.onError ??
@@ -710,7 +710,7 @@ export class CacheStore {
       } else if (at < existing.revalidateAt) {
         this.hits += 1;
         this.touch(hash, existing);
-        return { value: (existing.value: $FlowFixMe), outcome: "hit", stored: false };
+        return { value: existing.value as $FlowFixMe, outcome: "hit", stored: false };
       } else {
         // Stale and inside the stale-while-revalidate window the caller asked
         // for: the old value now, a refresh behind it. `void` and a `catch`
@@ -720,14 +720,14 @@ export class CacheStore {
         this.staleServed += 1;
         this.touch(hash, existing);
         this.refresh(hash, request, produce);
-        return { value: (existing.value: $FlowFixMe), outcome: "stale", stored: false };
+        return { value: existing.value as $FlowFixMe, outcome: "stale", stored: false };
       }
     }
 
     const inflight = this.filling.get(hash);
     if (inflight != null) {
       this.coalesced += 1;
-      const value: T = (await inflight: $FlowFixMe);
+      const value: T = (await inflight) as $FlowFixMe;
       return { value, outcome: "coalesced", stored: false };
     }
 
@@ -795,14 +795,14 @@ export class CacheStore {
       const entry = await this.restore(hash, request);
       if (entry != null) {
         attempt.restored = this.now() < entry.revalidateAt ? "hit" : "stale";
-        return (entry.value: $FlowFixMe);
+        return entry.value as $FlowFixMe;
       }
     }
     if (request.seed != null) {
       const seeded = await this.seedFrom(hash, request);
       if (seeded != null) {
         attempt.restored = this.now() < seeded.revalidateAt ? "hit" : "stale";
-        return (seeded.value: $FlowFixMe);
+        return seeded.value as $FlowFixMe;
       }
     }
     return this.fill(hash, request, scope, produce);

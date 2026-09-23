@@ -439,7 +439,7 @@ describe("writing a `Response` to a Node response", () => {
     return {
       statusCode: 0,
       statusMessage: "",
-      written: ([]: Array<string>),
+      written: [] as Array<string>,
       ended: false,
       setHeader() {},
       write(chunk: Uint8Array): boolean {

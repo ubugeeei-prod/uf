@@ -107,7 +107,7 @@ describe("parsing a cookie header", () => {
     const out = parseCookies("__proto__=polluted");
 
     expect(Object.getPrototypeOf(out)).toBe(null);
-    expect(({}: mixed).polluted).toBe(undefined);
+    expect(({} as mixed).polluted).toBe(undefined);
   });
 
   it("ignores entries with no value and an empty header", () => {

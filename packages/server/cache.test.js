@@ -267,7 +267,7 @@ function tempDirectory(): string {
 function durableStore(provider: mixed, options?: {| now?: () => number, build?: string |}) {
   return createCacheStore({
     now: options?.now,
-    provider: (provider: $FlowFixMe),
+    provider: provider as $FlowFixMe,
     build: options?.build ?? "build-one",
     // Collected rather than printed: several of these tests make a provider
     // fail on purpose, and a suite that prints a stack per deliberate failure
@@ -1363,7 +1363,7 @@ describe("a durable store", () => {
     const failures = [];
     const store = createCacheStore({
       now: clock().now,
-      provider: (provider: $FlowFixMe),
+      provider: provider as $FlowFixMe,
       build: "b",
       onError: (error) => {
         failures.push(error);
@@ -1395,7 +1395,7 @@ describe("a durable store", () => {
     const failures = [];
     const store = createCacheStore({
       now: clock().now,
-      provider: (provider: $FlowFixMe),
+      provider: provider as $FlowFixMe,
       build: "b",
       onError: (error) => {
         failures.push(error);

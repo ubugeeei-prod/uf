@@ -314,11 +314,15 @@ export function logger(): Logger {
  * called.
  */
 function boundLogger(context: RequestContext, extra: LogFields): Logger {
-  const fields = () => ({
-    requestId: context.id,
-    ...(context.route == null ? {} : { route: context.route }),
-    ...extra,
-  });
+  // Built key by key rather than spread: `LogFields` has an indexer, and Flow
+  // cannot type a spread of one after named keys. `extra` still wins over the
+  // two named here, as it did.
+  const fields = (): LogFields => {
+    const out: { [string]: mixed } = { requestId: context.id };
+    if (context.route != null) out.route = context.route;
+    for (const name of Object.keys(extra)) out[name] = extra[name];
+    return out;
+  };
   return {
     // Read now rather than per line: a threshold is what a caller checks to
     // decide whether building a field is worth it, and one that changed under

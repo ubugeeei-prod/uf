@@ -81,7 +81,7 @@ async function withTokenEndpoint<T>(
 ): Promise<T> {
   const calls: Array<Call> = [];
   const real = globalThis.fetch;
-  (globalThis: $FlowFixMe).fetch = async (url: mixed, init: $FlowFixMe) => {
+  (globalThis as $FlowFixMe).fetch = async (url: mixed, init: $FlowFixMe) => {
     const headers: { [string]: string } = {};
     for (const name of Object.keys(init.headers ?? {})) {
       headers[name] = init.headers[name];
@@ -95,7 +95,7 @@ async function withTokenEndpoint<T>(
   try {
     return await body(calls);
   } finally {
-    (globalThis: $FlowFixMe).fetch = real;
+    (globalThis as $FlowFixMe).fetch = real;
   }
 }
 

@@ -138,7 +138,10 @@ export function handlerModule(loaded: mixed): HandlerModule {
         "Rebuild with `uf build --adapter`.",
     );
   }
-  // $FlowFixMe[incompatible-type] each field was checked above; `mixed` cannot say so.
+  // Each field was checked above; `mixed` cannot say so. Two codes, because a
+  // `mixed` object also has no indexer that could match an exact type's.
+  // $FlowFixMe[incompatible-type]
+  // $FlowFixMe[incompatible-indexer]
   const checked: HandlerModule = candidate;
   return checked;
 }

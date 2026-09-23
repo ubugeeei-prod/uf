@@ -101,6 +101,6 @@ export function isPostponedRead(error: mixed): boolean {
   if (error == null || typeof error !== "object") {
     return false;
   }
-  // $FlowFixMe[invalid-computed-prop] read by the symbol the constructor wrote.
+  // $FlowFixMe[incompatible-type] read by the symbol the constructor wrote.
   return error[POSTPONED] === true;
 }

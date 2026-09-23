@@ -132,7 +132,7 @@ export function createKvCache(options?: KvCacheOptions): CacheProvider {
     if (bound == null || typeof bound !== "object") {
       throw new KvBindingMissingError(binding, context != null);
     }
-    return (bound: $FlowFixMe);
+    return bound as $FlowFixMe;
   };
   const entryKey = (key: string) => `${prefix}entry/${key}`;
   const tagPrefix = (tag: string) => `${prefix}tag/${encodeURIComponent(tag)}/`;
@@ -237,7 +237,7 @@ function parseEntry(text: string): DurableCacheEntry | null {
     typeof revalidateAt !== "number" ||
     typeof expiresAt !== "number" ||
     !Array.isArray(tags) ||
-    !tags.every((tag) => typeof tag === "string") ||
+    !tags.every((tag: mixed) => typeof tag === "string") ||
     (path != null && typeof path !== "string")
   ) {
     return null;

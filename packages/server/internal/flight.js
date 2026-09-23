@@ -70,7 +70,9 @@ export function flightPath(documentPath: string): string {
  * passes its cache scope, for the reason it renders a document inside one.
  */
 export async function flightResponse(
-  app: Application,
+  // Only the half that renders a payload: a compiled binary's bundle is not a
+  // whole `Application`, and this reads nothing else off it.
+  app: { readonly flight?: Application["flight"], ... },
   request: Request,
   options: {|
     readonly onError: (error: mixed) => void,

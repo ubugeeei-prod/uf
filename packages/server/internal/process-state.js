@@ -65,7 +65,7 @@ export function processWide<T>(name: string, create: () => T): T {
   const key = Symbol.for(`${NAMESPACE}${name}`);
   const existing = Object.getOwnPropertyDescriptor(globalThis, key);
   if (existing != null) {
-    // $FlowFixMe[incompatible-return] a slot is only ever written below, by `create` for the same name.
+    // $FlowFixMe[incompatible-type] a slot is only ever written below, by `create` for the same name.
     return existing.value;
   }
   const value = create();

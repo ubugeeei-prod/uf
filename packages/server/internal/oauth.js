@@ -42,7 +42,7 @@ import type { Instant } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
 
 /** The pieces of a session or a half-finished authorization, as stored. */
-export type StoredValue = { +[string]: mixed };
+export type StoredValue = { readonly [string]: mixed };
 
 /**
  * Where uf keeps what it may not put in a cookie.
