@@ -82,6 +82,11 @@ are there, with `.only`, `.skip`, `.todo` and `.each` on `it` and `describe`.
 belongs in the suite but cannot run on this host yet. `expect` has 42 matchers,
 `.not`, `.resolves`, `.rejects`, and `fn()` for spies.
 
+A hook runs under the budget of the case it sets up for unless it names its
+own, as `it` does — `beforeAll(startServer, { timeout: 30_000 })`, or the bare
+number Jest and Vitest take. When a `beforeAll` fails, every case it was setting
+up for fails with its error, and none of their bodies runs.
+
 Use `skipBecause` when the skipped case is a contract, not a TODO:
 
 ```js

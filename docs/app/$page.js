@@ -1,6 +1,6 @@
 // @flow
 //
-// The documentation home page: quick links, reader paths and installation.
+// The documentation home page: what uf is, how to install it, and where to go next.
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
@@ -72,12 +72,6 @@ export default component Home() {
       </section>
 
       <section className="home-section">
-        <h2 className="seam-mark">Where to begin</h2>
-        <p>Choose a guide for your task, or use the reference to look up an API.</p>
-        <ReaderPaths />
-      </section>
-
-      <section className="home-section">
         <h2 className="seam-mark">Install it</h2>
         <p>On macOS or Linux, install the native CLI:</p>
         <Command>curl -fsSL https://setup.uniflowed.dev | sh</Command>
@@ -89,6 +83,14 @@ export default component Home() {
           See the <Link to="/guide/install">installation guide</Link> for Windows, Nix, source
           builds and JavaScript hosts.
         </p>
+      </section>
+      <section className="home-section">
+        <h2 className="seam-mark">Where to begin</h2>
+        <p>
+          Each part of the manual, the question it answers, and the pages most of its readers open
+          first.
+        </p>
+        <ReaderPaths />
       </section>
     </div>
   );

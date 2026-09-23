@@ -27,6 +27,16 @@ const ROW_TOKEN = /%[sjdi]/g;
 /** What a test or hook body may return. */
 export type Body = () => mixed | Promise<mixed>;
 
+/**
+ * One `beforeAll`, `afterAll`, `beforeEach` or `afterEach`.
+ *
+ * `timeoutMs` is the hook's own budget when its registration named one, and
+ * `null` when the hook runs under the budget of the case it belongs to. A hook
+ * that starts a process or a server needs longer than the cases it sets up for,
+ * and without a budget of its own the only lever was the file-wide timeout.
+ */
+export type Hook = {| readonly body: Body, readonly timeoutMs: number | null |};
+
 /** The suffix written on a registration call. */
 export type Modifier = "none" | "only" | "skip" | "todo";
 
@@ -63,10 +73,10 @@ export type Suite = {|
   readonly name: string,
   readonly modifier: Modifier,
   readonly children: Array<Suite | Case>,
-  readonly beforeAll: Array<Body>,
-  readonly afterAll: Array<Body>,
-  readonly beforeEach: Array<Body>,
-  readonly afterEach: Array<Body>,
+  readonly beforeAll: Array<Hook>,
+  readonly afterAll: Array<Hook>,
+  readonly beforeEach: Array<Hook>,
+  readonly afterEach: Array<Hook>,
   readonly line: number,
   readonly column: number,
 |};
@@ -280,22 +290,42 @@ function formatRow(name: string, row: mixed): string {
   });
 }
 
-/** Run once before the first test in this suite that runs. */
-export function beforeAll(body: Body): void {
-  current.beforeAll.push(body);
+/**
+ * A hook's own budget, from the second argument of its registration.
+ *
+ * `{ timeout }` is what `it` takes, and a bare number is what Jest and Vitest
+ * take — a suite moved from either writes `beforeAll(start, 30_000)`, and a
+ * budget that was silently dropped would fail as a timeout the file never
+ * asked for.
+ */
+function hookTimeout(options: ?(TestOptions | number)): number | null {
+  if (typeof options === "number") {
+    return options;
+  }
+  return options?.timeout ?? null;
+}
+
+/**
+ * Run once before the first test in this suite that runs.
+ *
+ * When it fails, every case it was setting up for fails with its error: none
+ * of them runs against a setup that did not happen.
+ */
+export function beforeAll(body: Body, options?: TestOptions | number): void {
+  current.beforeAll.push({ body, timeoutMs: hookTimeout(options) });
 }
 
 /** Run once after the last test in this suite that ran. */
-export function afterAll(body: Body): void {
-  current.afterAll.push(body);
+export function afterAll(body: Body, options?: TestOptions | number): void {
+  current.afterAll.push({ body, timeoutMs: hookTimeout(options) });
 }
 
 /** Run before every test in this suite and its children. */
-export function beforeEach(body: Body): void {
-  current.beforeEach.push(body);
+export function beforeEach(body: Body, options?: TestOptions | number): void {
+  current.beforeEach.push({ body, timeoutMs: hookTimeout(options) });
 }
 
 /** Run after every test in this suite and its children, including failures. */
-export function afterEach(body: Body): void {
-  current.afterEach.push(body);
+export function afterEach(body: Body, options?: TestOptions | number): void {
+  current.afterEach.push({ body, timeoutMs: hookTimeout(options) });
 }

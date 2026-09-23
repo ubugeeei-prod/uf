@@ -1,20 +1,24 @@
 ---
 title: "The toolchain · uf"
-description: "One guide per command: what it runs, what it reads, what it refuses, and how to put it in CI."
+description: "The commands you run every day — dev, build, test, check, fmt and lint — one guide each, and how to put them in CI."
 ---
 
-import { SectionContents } from "../../_design/parts.js";
+import { SectionContents, SectionLead } from "../../_design/parts.js";
 
 <p className="eyebrow">The toolchain</p>
 
 # The toolchain
 
 <div className="lede">
-For a reader who runs uf rather than writes the application: the person who pins
-the runtimes, owns the pipeline, tunes the linter and decides what is cached. One
-guide per command, each saying what the command runs, what it reads and what it
+One binary runs the dev server, the build, the tests, the type checker, the
+formatter and the linter — the same commands in your terminal, your editor and
+CI. One guide per command, each saying what it runs, what it reads and what it
 refuses.
 </div>
+
+## Most read
+
+<SectionLead section="The toolchain" />
 
 ## What you need first
 

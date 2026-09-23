@@ -122,6 +122,7 @@ type Event = {
   text?: string,
   name?: string,
   status?: string,
+  message?: string,
 };
 
 /**
@@ -234,16 +235,22 @@ function fixtures(): Array<string> {
 let events: Array<Event> = [];
 let unnumbered: Array<Event> = [];
 
-beforeAll(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-event-generation-"));
-  const [first, second] = fixtures();
-  events = await runInWorker([
-    { file: first, timeoutMs: 5000, generation: 1 },
-    { file: second, timeoutMs: 5000, generation: 2 },
-  ]);
-  // The same first file again, from a `uf` that does not know about the field.
-  unnumbered = await runInWorker([{ file: first, timeoutMs: 5000 }]);
-});
+// Two cold workers, each loading `@uniflowed/test` through the Flow loader
+// before it can answer: seconds on a busy machine, which the cases' default
+// budget was never meant to cover. See ubugeeei-prod/uf#1423.
+beforeAll(
+  async () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-event-generation-"));
+    const [first, second] = fixtures();
+    events = await runInWorker([
+      { file: first, timeoutMs: 5000, generation: 1 },
+      { file: second, timeoutMs: 5000, generation: 2 },
+    ]);
+    // The same first file again, from a `uf` that does not know about the field.
+    unnumbered = await runInWorker([{ file: first, timeoutMs: 5000 }]);
+  },
+  { timeout: 60_000 },
+);
 
 afterAll(() => {
   fs.rmSync(directory, { recursive: true, force: true });
@@ -286,4 +293,37 @@ describe("a request that carries no generation", () => {
       expect(event.generation).toBe(1);
     }
   });
+});
+
+describe("an exception nothing caught", () => {
+  it(
+    "ends the file whose work threw it, with its message",
+    async () => {
+      // A server's `error` event with no listener, a throw from a timer: Node's
+      // default printed the stack to stderr and exited, and all `uf` could say
+      // was that the worker had died — without the message, above the report.
+      const entry = pathToFileURL(path.join(repository, "packages", "test", "index.js")).href;
+      const file = path.join(directory, "throws.js");
+      fs.writeFileSync(
+        file,
+        `import { it } from "${entry}";
+it("leaves a timer behind that throws", async () => {
+  setTimeout(() => {
+    throw new Error("nobody caught this");
+  }, 0);
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+});
+`,
+      );
+
+      const ended = (await runInWorker([{ file, timeoutMs: 5000, generation: 1 }])).filter(
+        (event) => event.event === "file",
+      );
+
+      expect(ended.map((event) => [event.status, event.generation, event.message])).toEqual([
+        ["run-failed", 1, "uncaught exception: nobody caught this"],
+      ]);
+    },
+    { timeout: 60_000 },
+  );
 });
