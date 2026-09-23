@@ -110,7 +110,15 @@ jobs:
         env:
           VERSION: ${{ inputs.version || github.ref_name }}
         run: tools/release/verify-npm.sh "${VERSION#uf@}"
+      # Only a prerelease leaves `latest` behind. A release such as 0.1.0 is
+      # published on `latest` by the job above, which moves it, and
+      # `promote-latest.sh` leaves a name with a stable release alone.
       - name: The dist-tag move this pipeline cannot make
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
         run: |
           set -eu
-          echo "::notice::While @uniflowed/* has no stable release, publishing on the prerelease tag does not move 'latest'. Run 'uf run release:promote' (tools/release/promote-latest.sh) from an npm session you are logged in to. 'uf run release:preflight' fails on the drift before the next tag."
+          case "${VERSION#uf@}" in
+            *-*) echo "::notice::A prerelease is published on its own dist-tag and does not move 'latest'. While a name has no stable release, run 'uf run release:promote' (tools/release/promote-latest.sh) from an npm session you are logged in to. 'uf run release:preflight' fails on the drift before the next tag." ;;
+            *) echo "${VERSION#uf@} is a release: it was published on 'latest', and there is no dist-tag to move by hand." ;;
+          esac

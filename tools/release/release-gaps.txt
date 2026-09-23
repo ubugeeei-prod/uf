@@ -5,6 +5,12 @@
 # happens. Adding one is a decision that a version will stay without binaries,
 # so it names the issue that made it.
 #
+# Only versions npm has belong here. `0.0.0-alpha.48` is on `main` and was never
+# published anywhere: it merged outside the merge queue, so no queue validation
+# exists for its commit and publication refuses it. The audit reads versions
+# from npm and never asks about it, and a line for it would fail as NOT ON NPM.
+# The next release was 0.1.0.
+#
 # <version> <issue and reason>
 0.0.0-alpha.9 #464 x86_64-apple-darwin timed out; npm published, the release never ran
 0.0.0-alpha.44 #1328 the Windows installer check failed; npm published, the release never ran

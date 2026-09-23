@@ -293,6 +293,9 @@ describe("the version the registries are sent", () => {
   it("publishes a release as a release", () => {
     expect(published("1.2.0")).toEqual({ version: "1.2.9999", preRelease: false });
     expect(published("1.2.1")).toEqual({ version: "1.2.19999", preRelease: false });
+    // The release that ended the alpha series: a plain release, above every
+    // pre-release published for `0.0.0-alpha.N`.
+    expect(published("0.1.0")).toEqual({ version: "0.1.9999", preRelease: false });
   });
 
   it("sorts in the order uf's versions do", () => {

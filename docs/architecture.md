@@ -1509,8 +1509,16 @@ repository and published library surface remain Flow-first.
 
 `uf publish` writes the local/trusted publishing manifest used to bootstrap the
 first release locally. After trusted publishing is configured from the CLI,
-`uf release alpha` computes the next `uf@*` tag metadata and GitHub Actions
+`uf release <bump>` computes the next `uf@*` tag metadata and GitHub Actions
 publishes through OIDC without a long-lived npm token.
+
+uf's own releases are `0.x.0`: `uf run release`
+(`tools/release/open-release.cjs`) bumps the minor by default, and `patch`,
+`major`, `alpha` or an exact version when asked. A stable version is published
+to npm on `latest` and becomes GitHub's latest release, which is what the
+installers resolve `latest` to; a prerelease goes to its own dist-tag and is
+marked a GitHub pre-release. The `0.0.0-alpha.N` series ended with alpha.47
+(alpha.48 merged outside the merge queue and was never published).
 
 `@uniflowed/pm` owns package resolution, `uf.lock`, a content-addressed store,
 and script-free install policy. `@uniflowed/rm` reads `uf.config.js`, infers the

@@ -2142,8 +2142,9 @@ must not be one mistyped verb away from it.
 Plans the next version — `patch`, `minor`, `major` or `alpha` — writes its
 `CHANGELOG.md` section from the commits since the last release tag, and writes
 the plan to `.uf/release.json`. It does not move the version in the workspace
-or publish a release. UF maintainers use `uf run release -- alpha` to create a
-release PR, validate it, and publish after merge. See
+or publish a release. UF maintainers use `uf run release` (a minor bump; uf's
+releases are `0.x.0`) to create a release PR, validate it, and publish after
+merge. See
 [Contributing](https://github.com/ubugeeei-prod/uf/blob/main/CONTRIBUTING.md#release-uf).
 
 The version it plans is the one compiled into the binary running it, which is

@@ -260,6 +260,10 @@ in `uf`.
 - `uf install` and `uf self-update`.
 - First local `uf publish`, tokenless trusted publishing on `uf@*` tag push,
   and `uf release alpha` tag orchestration.
+- uf's own releases are `0.x.0` after the `0.0.0-alpha.N` series: `0.1.0`
+  follows alpha.47, and `uf run release` bumps the minor by default. `0.x`
+  still means APIs may change between minor releases. When `1.0.0` comes is
+  the owner's decision.
 - Hermes-backed `uf index.js` runtime, deferred until after the host runtime
   path is stable.
 - `curl -fsSL https://setup.uniflowed.dev | sh` installer.

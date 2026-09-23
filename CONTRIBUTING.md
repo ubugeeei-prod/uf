@@ -247,12 +247,21 @@ uf migrate in the Library CI lane.
 From this repository, run:
 
 ```sh
-uf run release -- alpha
+uf run release
 ```
 
-Use `patch`, `minor`, `major`, or an exact version instead of `alpha` when
-needed. `node tools/release/open-release.cjs --dry-run alpha` prints the plan
+Releases are `0.x.0`: with no argument the command bumps the minor version
+(`0.1.0` to `0.2.0`). Pass `patch` for a fix-only release, or `major`, `alpha`
+or an exact version when that is what is meant. `0.x` still means APIs may
+change between minor releases, so a minor release's notes say what broke and
+how to move. `node tools/release/open-release.cjs --dry-run` prints the plan
 without creating a PR or publishing.
+
+The `0.0.0-alpha.N` series ended with alpha.47. `0.0.0-alpha.48` merged to
+`main` outside the merge queue, so it has no queue validation and publication
+refuses it; it was never published, and `0.1.0` followed it. A release PR that
+merges any other way than through the queue cannot be published — the only fix
+is the next release.
 
 The command requires GitHub CLI authentication and repository **maintain** or
 **admin** permission. A required policy check runs from trusted workflow code
