@@ -626,17 +626,11 @@ function flowPlugin({
       if (id === resolved(VIRTUAL.server)) {
         return flightState == null
           ? serverModuleSource(entryPath, routing, instrumentationFile(appRoot))
-          : flightServerSource(
-              entryPath,
-              VIRTUAL.routes,
-              VIRTUAL.actions,
-              routing,
-              instrumentationFile(appRoot),
-            );
+          : flightServerSource(entryPath, VIRTUAL.routes, routing, instrumentationFile(appRoot));
       }
       if (flightState != null) {
         if (id === resolved(FLIGHT_VIRTUAL.entry))
-          return rscEntrySource(VIRTUAL.routes, routing, flightState.deployment);
+          return rscEntrySource(VIRTUAL.routes, routing, flightState.deployment, VIRTUAL.actions);
         if (id === resolved(FLIGHT_VIRTUAL.compilerRuntime)) return compilerRuntimeSource();
         if (id === resolved(FLIGHT_VIRTUAL.bridge)) {
           if (server != null) return devBridgeSource();
@@ -657,10 +651,11 @@ function flowPlugin({
             : builtReferencesSource(flightState.chunkUrls);
         }
       }
-      // Only `virtual:uf/server` imports this, so it is only ever asked for in
-      // the server environment — but the table it carries is every callable
-      // endpoint of the build, so it is worth saying that a browser asking for
-      // it gets nothing rather than getting the list.
+      // Only the server entries import this — `virtual:uf/rsc` under React
+      // Server Components, `virtual:uf/server` otherwise — so it is only ever
+      // asked for in a server environment. But the table it carries is every
+      // callable endpoint of the build, so it is worth saying that a browser
+      // asking for it gets nothing rather than getting the list.
       if (id === resolved(VIRTUAL.actions)) {
         if (!isSsr(this, loadOptions))
           return "export const actions = [];\nexport default actions;\n";
@@ -954,12 +949,20 @@ function flowPlugin({
           // depend on a clock.
           forgetActions();
           const nextActions = actionTables().modules;
-          invalidateActionModules(devServer.moduleGraph, previousActions);
-          invalidateActionModules(devServer.moduleGraph, nextActions);
-          const routes = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes));
-          if (routes) devServer.moduleGraph.invalidateModule(routes);
-          const actions = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.actions));
-          if (actions) devServer.moduleGraph.invalidateModule(actions);
+          // The action table and its modules live in the rsc graph too, where
+          // the endpoint is built (#1469), so that graph forgets them as well.
+          const graphs = [
+            devServer.moduleGraph,
+            devServer.environments?.[RSC_ENVIRONMENT]?.moduleGraph,
+          ].filter((graph) => graph != null);
+          for (const graph of graphs) {
+            invalidateActionModules(graph, previousActions);
+            invalidateActionModules(graph, nextActions);
+            const routes = graph.getModuleById(resolved(VIRTUAL.routes));
+            if (routes) graph.invalidateModule(routes);
+            const actions = graph.getModuleById(resolved(VIRTUAL.actions));
+            if (actions) graph.invalidateModule(actions);
+          }
           devServer.ws.send({ type: "full-reload", path: "*" });
         };
         devServer.watcher.on("add", onManifest);

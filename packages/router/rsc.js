@@ -76,6 +76,11 @@ import { withServerRoute } from "./internal/server-route.js";
 export type { FlightRoot, RouteState } from "./internal/flight.js";
 // For `virtual:uf/rsc`, so a Server Component's `basePath()` is the project's.
 export { installRouting } from "./internal/base-path.js";
+// For `virtual:uf/rsc` too: the server-action endpoint is built in this graph,
+// beside the pages, so an action and the page that shows what it wrote run the
+// same instance of every module they share (ubugeeei-prod/uf#1469). The host
+// reaches it through the bridge, as it reaches `renderFlight`.
+export { createActionDispatcher } from "./internal/action-endpoint.js";
 
 /** What a host may tell the renderer about one render. */
 export type FlightOptions = {|

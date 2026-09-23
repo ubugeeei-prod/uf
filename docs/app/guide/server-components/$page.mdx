@@ -286,6 +286,17 @@ client modules. In the `rsc` graph a `"use client"` module is replaced by one
 client reference per export, which is why none of its code runs there and none
 of a server component's code reaches the browser.
 
+**Server actions run in the `rsc` graph**, beside the pages. A module an action
+and a page both import is one instance, so what an action writes to it is what
+the next render reads, including the page a form posted before hydration gets
+back ([#1469](https://github.com/ubugeeei-prod/uf/issues/1469)). Route handlers
+and middleware still run in `ssr`. A module one of them shares with a page is
+evaluated once in each graph, so module-level state (an in-memory store, a
+cache, a connection pool) is not shared between them. Keep state that both
+halves need outside the process, in a database or an upstream service, as a
+deployed application with more than one process has to anyway
+([#1487](https://github.com/ubugeeei-prod/uf/issues/1487)).
+
 **What that asks of a project.**
 
 - **`$error.js` is a client module.** An error boundary catches a throw while
