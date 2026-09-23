@@ -5,9 +5,6 @@
 # is no longer a gap: document the thing, then delete its line (or rerun with
 # --update). The list only shrinks. See tools/docs/coverage.js.
 
-command uf codemod
-command uf completion
-command uf migrate
 config accessibility.axe.disabledRules
 config accessibility.axe.minImpact
 config accessibility.axe.tags
@@ -142,26 +139,3 @@ config vrt.baselines
 config vrt.enabled
 config vrt.module
 config vrt.threshold
-flag uf build --watch
-flag uf dev --json
-flag uf init --force
-flag uf init --integrity
-flag uf init --lib
-flag uf init --name
-flag uf remove --filter
-flag uf remove --workspace-root
-flag uf test --baseline
-flag uf test --bench
-flag uf test --bench-threshold
-flag uf test --browser
-flag uf test --changed
-flag uf test --filter
-flag uf test --host
-flag uf test --merge-shards
-flag uf test --save-baseline
-flag uf test --shard
-flag uf test --update-snapshots
-flag uf update --filter
-flag uf update --workspace-root
-package @uniflowed/form
-package @uniflowed/immer

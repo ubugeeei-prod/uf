@@ -104,6 +104,53 @@ spellings.
 
 `uf create` is still accepted and is no longer listed.
 
+It takes `uf new`'s flags, with the same meaning:
+
+| Flag | Meaning |
+| --- | --- |
+| `--lib` | Scaffold a library rather than an application — see [below](#uf-new-name---lib) |
+| `--name NAME` | The package's name, when it should not be the directory's |
+| `--force` | Write into a directory that already holds files. Without it, a directory with files in it is refused |
+| `--integrity DIGEST` | The digest a remote tarball template must hash to, `sha512-<base64>` or `sha256:<hex>` — see [a template from somewhere else](#uf-new-path-source) |
+
+### uf migrate
+
+Adopts an existing application's tools into `uf.config.js`: Babel, Flow,
+Prettier, ESLint, Jest and Vite configuration are read without running their
+modules, named package scripts become tasks, and the common test, lint, format
+and build scripts become uf commands.
+
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Print the proposed files and the settings it could not map, and write nothing |
+| `--json` | The same plan as JSON, for review or for a script |
+
+What it changed, the original contents and every setting it could not map are
+written to `.uf/migration-report.json`. A JavaScript configuration module is
+left in place for you to remove once its imports and side effects are reviewed;
+only a static file it replaced completely is deleted. A value already in
+`uf.config.js` wins over the one it would have migrated, and the conflict is
+reported. [Migrating to uf](/guide/migrate) is the guide.
+
+### uf codemod
+
+Rewrites a uf project's own source for a newer uf: configuration keys that
+moved, and spellings a release replaced. The edits are made on Flow's syntax
+tree, so comments and unrelated formatting survive, and running the same
+migration twice changes nothing the second time.
+
+| Flag | Meaning |
+| --- | --- |
+| `--from VERSION` | The version the project is on. Defaults to the installed `node_modules/@uniflowed/core` |
+| `--to VERSION` | The version to migrate to, without a `uf@` prefix. Defaults to this binary's own version |
+| `--dry-run` | Print the proposed edits and write nothing |
+| `--json` | The plan as JSON |
+
+A downgrade, or a target newer than the binary, is refused. An edit that needs
+a decision — two values that conflict, a legacy option with no single new
+spelling — is reported and left unchanged. See
+[upgrading an existing uf project](/guide/migrate#upgrading-an-existing-uf-project).
+
 ### uf new NAME --lib
 
 Scaffolds a library rather than an application: no router, no document, and a
@@ -307,6 +354,12 @@ started it, so the bundle is compiled by the same binary. `--host` is refused
 for a native target, because each server spells binding its own way; pass that
 server's flag after `--` instead. See [React Native](/guide/react-native).
 
+`--json` prints one JSON object per line instead of the terminal display, for a
+harness or an editor that drives the server: an `event` field names what
+happened — `config-loaded`, `phase`, `log`, `listening` with the local and
+network URLs, `source-changed`, `env-changed`, `diagnostic`, `error` — and the
+other fields are that event's. Web target only; a native target refuses it.
+
 For the web target, it also runs the server-component analysis, and runs it again whenever a module
 changes, so a Server Component that reaches for `useEffect` or `localStorage`
 is named where it was written rather than in a build days later. It is a report
@@ -450,6 +503,12 @@ not ship a second copy of React to everyone who installs it.
 [`build.lib`](/reference/config#buildlib) is where the entries, the formats and
 any extra externals go, and its defaults are what `uf new --lib` scaffolds, so
 most libraries write none of it.
+
+`--watch` builds once and then again whenever a source file changes —
+JavaScript, declarations, budgets and the manifest, the whole build each time.
+A failed rebuild is reported and the watch goes on, so the next save can repair
+it. It is for libraries only: on an application it is refused with a pointer to
+`uf dev`, which is what watches one.
 
 `--compile` and `--adapter` are refused here, by name and before anything is
 built: both write a deployment that serves an application, and a library is
@@ -1141,12 +1200,22 @@ Runs the test suite. A PATH argument keeps only files whose path contains it.
 
 | Flag | Meaning |
 | --- | --- |
-| `-t PATTERN` | Only tests whose fully qualified name contains PATTERN |
+| `-t PATTERN`, `--filter PATTERN` | Only tests whose fully qualified name contains PATTERN |
 | `-j N`, `--threads N` | At most N files at once; defaults to one per core |
 | `--bail[=N]` | Stop after N failures; N defaults to 1 |
 | `--retry N` | Re-run a failing test up to N more times |
 | `--watch` | Re-run affected tests when a source file changes |
 | `--watch-interval MS` | How often `--watch` looks for changes |
+| `--changed REF` | Only the test files a change since REF reaches: files that import a changed file, directly or through other modules. A change is anything that differs from where `HEAD`'s history left REF, staged or not, and any untracked file git does not ignore. A change to `uf.config.js`, a `package.json`, a lockfile or a `.env` file runs the whole suite |
+| `--host HOST` | Run on this installed JavaScript host — `node`, `bun` or `deno` — instead of `test.runtime` |
+| `--browser` | Run each test file in a page of a real browser instead of on the DOM shim, so layout and computed styles are the engine's. uf downloads no browser: `UF_BROWSER` chooses an installed one, and with none installed the run is refused rather than falling back to the shim |
+| `-u`, `--update-snapshots` | Rewrite each snapshot that did not match. Off unless asked for |
+| `--shard INDEX/COUNT` | Run one part of a suite split across machines, like `2/3`. Every shard cuts the same partition, weighted by `.uf/test-timings.json`, and writes its record to `.uf/test-shards` |
+| `--merge-shards [DIR]` | Run nothing: report the shard records in DIR (default `.uf/test-shards`) as one run — summary, `--json`, JUnit and coverage — and fail if the suite failed |
+| `--bench` | Run the benchmarks `bench()` declares instead of the tests, one file at a time unless `-j` says otherwise, and fail on a median past its baseline |
+| `--baseline FILE` | Read the benchmark baseline from FILE instead of `.uf/bench-baseline.json` |
+| `--save-baseline` | Save this run's medians as the baseline rather than comparing against it |
+| `--bench-threshold PERCENT` | How far past its baseline a median may go before the run fails; 20 unless given |
 | `--list` | Print what would run without running it |
 | `--json` | The whole report on stdout, machine-readable |
 | `--mode MODE` | Run in that mode instead of `test`, which chooses `.env.<mode>` |
@@ -1300,6 +1369,24 @@ project is decided once, when it starts: the working directory, or the one
 There is no tool for `uf build`, `uf dev` or `uf install`, and the server offers
 no resources and no prompts. [Agents](/guide/agents) has registering it with a
 client and what each call returns.
+
+### uf completion SHELL
+
+Prints a completion script for `bash`, `zsh`, `fish`, `elvish` or
+`powershell`. Load it from the shell's startup file:
+
+| Shell | Line |
+| --- | --- |
+| bash | `eval "$(uf completion bash)"` |
+| zsh | `eval "$(uf completion zsh)"` |
+| fish | `uf completion fish \| source` |
+| elvish | `eval (uf completion elvish \| slurp)` |
+| PowerShell | `uf completion powershell \| Out-String \| Invoke-Expression` |
+
+The script decides nothing itself. It hands the words typed so far to the `uf`
+on `PATH`, which answers from the same parser and the project's own
+`uf.config.js` — so a task added to the config completes at once, with nothing
+to regenerate. The same script registers `ufr` and `ufx`.
 
 ## Messages
 
@@ -1542,9 +1629,14 @@ Takes packages out of every dependency field that lists them, out of the
 lockfile and out of `node_modules`. A name the manifest never listed is not an
 error: the project ends up the way it was asked to be either way.
 
+`--filter SELECTOR` and `-w` (`--workspace-root`) choose which workspace
+members it changes, as for `uf add` — see [`--filter` and `-w`](#--filter-and--w).
+
 ### uf update [PACKAGE...]
 
 Two different things go by this name, and `uf update` does both.
+`--filter SELECTOR` and `-w` (`--workspace-root`) choose the workspace members
+it runs for, as for `uf add` — see [`--filter` and `-w`](#--filter-and--w).
 
 With no flag it is the manager's own update: the lockfile moves to the newest
 versions the manifest's ranges **already allow**, and `package.json` is not
