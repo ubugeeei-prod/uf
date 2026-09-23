@@ -75,8 +75,9 @@ import { selectionBetween } from "../selection.js";
 import type { HitGrid } from "./hits.js";
 import { createHitGrid, hitAt, textAt } from "./hits.js";
 import { measureText, paint, paintSelection, selectionText, wrapModeOf } from "./paint.js";
-import type { TuiNode, TuiProps } from "./tree.js";
+import type { TuiNode, TuiProps, Widget } from "./tree.js";
 import { applyProps, createNode, invalidate } from "./tree.js";
+import { measureWidget } from "./widgets.js";
 
 /** A global key handler, as `useKeyboard` registers one. */
 export type KeyHandler = (key: KeyEvent) => void;
@@ -618,6 +619,13 @@ let currentPriority: number = DefaultEventPriority;
 
 const noop = () => {};
 
+/** The host elements `components.js` creates for the three self-drawn widgets. */
+const WIDGETS: { readonly [string]: Widget } = {
+  "uf-select": "select",
+  "uf-tab-select": "tab-select",
+  "uf-textarea": "textarea",
+};
+
 const hostConfig = {
   supportsMutation: true,
   supportsPersistence: false,
@@ -651,6 +659,14 @@ const hostConfig = {
 
   createInstance: (type: string, props: TuiProps): TuiNode => {
     const node = createNode(type === "uf-text" ? "text" : "box", props);
+    const widget = WIDGETS[type];
+    if (widget != null) {
+      // A box that draws itself. Its size is its own to report, the way a
+      // text node's is, and for the same reason: nothing inside it can.
+      node.widget = widget;
+      node.measure = (available: number) => measureWidget(node, widget, available);
+      invalidate(node);
+    }
     if (node.type === "text") {
       // A text node is the only leaf that knows its own size, and it only
       // knows it once it is told how wide it may be. This is Yoga's measure

@@ -138,13 +138,19 @@ pub enum TuiRenderer {
 pub enum TuiLayoutEngine {
     /// Flexbox in whole cells, with OpenTUI's defaults and not Yoga's whole surface.
     ///
-    /// It was `"flexbox-yoga-compatible"`, which claimed more than is true:
-    /// `flexWrap` and `position: absolute` are not implemented
-    /// (ubugeeei-prod/uf#314), and a terminal resolves whole columns where Yoga
-    /// resolves fractional pixels. What *is* compatible is the part a caller
+    /// It was `"flexbox-yoga-compatible"`, which claimed more than was true
+    /// then and is still not quite true now: a terminal resolves whole columns
+    /// where Yoga resolves fractional pixels, there is no `aspectRatio`, and a
+    /// scrolling box reads neither `position` nor `flexWrap`
+    /// (ubugeeei-prod/uf#314). What *is* compatible is the part a caller
     /// writes: the property names, the defaults — a `flexDirection` that starts
-    /// at `column`, an `alignItems` that starts at `stretch`, and a `flexShrink`
-    /// that starts at zero for a numeric dimension — and `auto` margins.
+    /// at `column`, an `alignItems` that starts at `stretch`, an `alignContent`
+    /// that starts at `flex-start`, and a `flexShrink` that starts at zero for
+    /// a numeric dimension — `auto` margins, `flexWrap` with `alignContent`,
+    /// `position: "absolute"` against the parent's padding box with
+    /// `top`/`right`/`bottom`/`left` offsets (and those offsets nudging a
+    /// `"relative"` box), and `zIndex` deciding which of two overlapping
+    /// siblings is drawn on top.
     FlexboxCells,
 }
 
@@ -196,11 +202,13 @@ pub enum TuiFeature {
     /// Mouse input.
     ///
     /// Press, release, motion, hover, drag with capture, drop and the wheel,
-    /// routed to the node under the pointer and bubbling to its parents. Two
-    /// things a reader might expect from the word are not behind it: there is
-    /// no `zIndex`, so "topmost" means "painted last"; and reporting is off
-    /// unless the application asks for it, because a terminal in mouse mode
-    /// stops offering its own click-and-drag selection.
+    /// routed to the node under the pointer and bubbling to its parents.
+    /// "Under the pointer" means the node painted last over that cell, which
+    /// is the one with the highest `zIndex` among overlapping siblings and the
+    /// later one in the tree between equals. One thing a reader might expect
+    /// from the word is not behind it: reporting is off unless the application
+    /// asks for it, because a terminal in mouse mode stops offering its own
+    /// click-and-drag selection.
     Mouse,
     /// Focus management.
     Focus,
@@ -219,8 +227,9 @@ pub enum TuiFeature {
     /// is different. OpenTUI's repeated-press gestures, which widen a
     /// selection to the word or the logical line under the pointer, are not
     /// implemented; there is no `behavior` to report because there is only one.
-    /// And *item* selection — `Select`, `TabSelect` — is a component rather
-    /// than this, and is still ubugeeei-prod/uf#314.
+    /// And *item* selection — `Select`, `TabSelect` — is not this either: those
+    /// are components, keyboard-driven as OpenTUI's are, and are listed under
+    /// [`TuiFeature::Keyboard`] in the component list rather than here.
     Selection,
     /// A window onto content taller than it, and a bar saying where.
     ///
@@ -363,7 +372,7 @@ pub struct ReactInkTarget {
     /// Whether an Ink application could be ported without losing a capability.
     ///
     /// Not yet: Ink has no mouse either, but it does have `<Static>`, a
-    /// spinner ecosystem and a component library uf has four components
+    /// spinner ecosystem and a component library uf has seven components
     /// against. See ubugeeei-prod/uf#314.
     pub replacement_ready: bool,
     /// Whether rendering happens in native code rather than in JavaScript.
@@ -434,13 +443,21 @@ pub fn contract() -> TuiFrameworkContract {
 
 /// The components `@uniflowed/tui` exports today.
 ///
-/// Four, and the list is short on purpose. `Box` is a flex container that can
+/// Seven, and the list is short on purpose. `Box` is a flex container that can
 /// draw a background, a border and two titles; `Text` is styled text that
 /// knows how to wrap; `Input` is a line somebody types into; `ScrollBox` is a
-/// window onto content taller than itself. Everything else OpenTUI offers is
+/// window onto content taller than itself; `Select` and `TabSelect` are a list
+/// and a row of tabs somebody moves through and chooses from; `Textarea` is
+/// several lines somebody edits. Everything else OpenTUI offers is
 /// ubugeeei-prod/uf#314 rather than an entry here — a component named in a
 /// contract and absent from the package is the failure this whole change is
 /// about.
+///
+/// The three that arrived last are interactive in the sense `Input` is: what
+/// they are for is a key somebody presses, so they are not described as safe
+/// to produce anywhere. Their feature is [`TuiFeature::Keyboard`] — the
+/// selects are item selection, which [`TuiFeature::Selection`] explicitly is
+/// not, and a textarea is keyboard editing.
 ///
 /// `ScrollBox` is marked as describing a frame rather than needing a keyboard,
 /// and that is not a slip: its offset is a prop, so a server-rendered
@@ -448,7 +465,7 @@ pub fn contract() -> TuiFrameworkContract {
 /// anywhere. Binding a key to move that offset is the application's, and needs
 /// `useKeyboard` like anything else.
 fn default_components() -> TuiComponentList {
-    use TuiComponentKind::{Display, Input, Scrolling};
+    use TuiComponentKind::{Display, Input, Scrolling, Selection};
 
     smallvec::smallvec![
         TuiComponent::new("Box", &["Root"], Display, TuiFeature::Flexbox, false),
@@ -461,6 +478,15 @@ fn default_components() -> TuiComponentList {
             TuiFeature::Scrollback,
             false,
         ),
+        TuiComponent::new("Select", &["Root"], Selection, TuiFeature::Keyboard, true),
+        TuiComponent::new(
+            "TabSelect",
+            &["Root"],
+            Selection,
+            TuiFeature::Keyboard,
+            true
+        ),
+        TuiComponent::new("Textarea", &["Root"], Input, TuiFeature::Keyboard, true),
     ]
 }
 

@@ -50,6 +50,7 @@ import type { Selection } from "../selection.js";
 import type { HitGrid } from "./hits.js";
 import { recordHit, recordText } from "./hits.js";
 import type { TuiNode } from "./tree.js";
+import { paintWidget } from "./widgets.js";
 import { ROOT_TEXT_STYLE, borderOf, textRuns, textStyleFromProps } from "./tree.js";
 import type { Grapheme } from "../widths.js";
 import { graphemes } from "../widths.js";
@@ -194,7 +195,7 @@ export function paint(
   const inherited = selectableOf(node, selectable);
   switch (node.type) {
     case "root":
-      for (const child of node.children) {
+      for (const child of paintOrder(node.children)) {
         paint(child, frame, capabilities, clip, hits, inherited);
       }
       return;
@@ -211,6 +212,38 @@ export function paint(
       // deliberately, rather than by omission.
       return;
   }
+}
+
+/** A node's `zIndex`, from either spelling; `0` when it has none. */
+function zIndexOf(node: TuiNode): number {
+  const own = node.props.zIndex;
+  if (typeof own === "number" && Number.isFinite(own)) {
+    return own;
+  }
+  const style = node.props.style;
+  const nested = style != null && typeof style === "object" ? style.zIndex : undefined;
+  return typeof nested === "number" && Number.isFinite(nested) ? nested : 0;
+}
+
+/**
+ * The order siblings are painted in: by `zIndex`, and in tree order within one.
+ *
+ * Painting is destructive, so the order *is* the stacking: what is painted
+ * last is on top, both in the frame and in the hit grid, and a higher `zIndex`
+ * is painted later. It is OpenTUI's prop and its rule, and it matters as soon
+ * as `position: "absolute"` lets two siblings share cells. The sort is stable,
+ * so siblings that do not say keep the order the tree gives them, and it is
+ * skipped outright when none of them says anything — the common case pays for
+ * one look at each child and no array.
+ */
+function paintOrder(children: Array<TuiNode>): $ReadOnlyArray<TuiNode> {
+  if (!children.some((child) => zIndexOf(child) !== 0)) {
+    return children;
+  }
+  return children
+    .map((child, index) => ({ child, index, z: zIndexOf(child) }))
+    .sort((a, b) => a.z - b.z || a.index - b.index)
+    .map((entry) => entry.child);
 }
 
 /**
@@ -254,6 +287,14 @@ function paintBox(
     paintBorder(node, frame, capabilities, clip, border, background);
   }
 
+  if (node.widget != null) {
+    // A `Select`, a `TabSelect` or a `Textarea`, which draws what it shows
+    // itself because what it shows depends on the size just laid out. It has
+    // no children to walk; `widgets.js` says why.
+    paintWidget(node, node.widget, frame, capabilities, clip, hits, selectable);
+    return;
+  }
+
   // `overflow: "hidden"` clips children to what is inside the border and
   // padding. `"visible"` — the default — lets them draw over the border,
   // which is how a badge sits on a box's top edge. `"scroll"` clips like
@@ -281,7 +322,7 @@ function paintBox(
       paint(node.children[index], frame, capabilities, childClip, hits, selectable);
     }
   } else {
-    for (const child of node.children) {
+    for (const child of paintOrder(node.children)) {
       paint(child, frame, capabilities, childClip, hits, selectable);
     }
   }

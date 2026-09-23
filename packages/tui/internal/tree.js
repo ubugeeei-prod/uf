@@ -50,6 +50,13 @@ import type { BorderStyle } from "../capability.js";
  */
 export type TuiNodeType = "root" | "box" | "text" | "chars";
 
+/**
+ * The three kinds of box that draw themselves: a `Select`, a `TabSelect` and a
+ * `Textarea`. `widgets.js` draws them and says why they are drawn rather than
+ * composed.
+ */
+export type Widget = "select" | "tab-select" | "textarea";
+
 /** Anything a component put on a node. Read by `paint.js`, not by layout. */
 export type TuiProps = { readonly [string]: mixed };
 
@@ -96,6 +103,18 @@ export type TuiNode = {
   scrollDirtyFrom: number,
   /** A scrolling box's stack of child heights; see `layout.js`. */
   scrollIndex: ScrollIndex | null,
+  /**
+   * What this box draws in place of children, when it is a `Select`, a
+   * `TabSelect` or a `Textarea`; `null` for every other node. See
+   * `widgets.js`, which is also the only reader of the two fields below.
+   */
+  widget: Widget | null,
+  /**
+   * The first line and column a `Textarea` shows, kept between frames so the
+   * window moves only as far as the cursor makes it. Written by the painter.
+   */
+  viewTop: number,
+  viewLeft: number,
 };
 
 /** Read a prop, preferring the direct spelling over the one inside `style`. */
@@ -168,6 +187,10 @@ export function styleFromProps(props: TuiProps): LayoutStyle {
     "maxWidth",
     "maxHeight",
     "flexBasis",
+    "top",
+    "right",
+    "bottom",
+    "left",
   ]) {
     copy(name, asDimension);
   }
@@ -189,7 +212,16 @@ export function styleFromProps(props: TuiProps): LayoutStyle {
   for (const name of ["margin", "marginTop", "marginRight", "marginBottom", "marginLeft"]) {
     copy(name, asMargin);
   }
-  for (const name of ["flexDirection", "justifyContent", "alignItems", "alignSelf", "overflow"]) {
+  for (const name of [
+    "flexDirection",
+    "justifyContent",
+    "alignItems",
+    "alignSelf",
+    "overflow",
+    "position",
+    "flexWrap",
+    "alignContent",
+  ]) {
     copy(name, asString);
   }
 
@@ -313,6 +345,9 @@ export function createNode(type: TuiNodeType, props: TuiProps): TuiNode {
     measuredHeight: 0,
     scrollDirtyFrom: 0,
     scrollIndex: null,
+    widget: null,
+    viewTop: 0,
+    viewLeft: 0,
   };
   applyProps(node, props);
   return node;
