@@ -33,6 +33,7 @@
 //! | [`Session::definition`] | `flow_services_get_def::get_def_js::get_def` |
 //! | [`Session::type_definition`] | the symbols `type_at_pos_type` reports for the type it printed |
 //! | [`Session::completion`] | `flow_services_autocomplete::autocomplete_service_js` |
+//! | [`Session::diagnostics`] | the context's own errors, filtered and printed as `uf check` does |
 //!
 //! # Threads
 //!
@@ -54,7 +55,7 @@
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
-use crate::{CheckError, CheckLimits, Position, Span};
+use crate::{CheckError, CheckLimits, Position, Span, TypeDiagnostic};
 
 /// A source the session owns: a project-relative path and its text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -335,6 +336,37 @@ impl Session {
         #[cfg(not(feature = "upstream-typecheck"))]
         {
             let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// What checking `path` reports — the diagnostics [`crate::check_sources`]
+    /// gives the same file in the same batch, suppressions applied — over the
+    /// text the session holds for it.
+    ///
+    /// Kept until the file or something it imports is [`Session::edit`]ed, so
+    /// asking again about a file nothing changed under costs nothing.
+    ///
+    /// [`None`] when there is no inference to report on: `path` is not in the
+    /// batch, does not parse, or says `@noflow`. Syntax errors are not
+    /// repeated here; they are the parser's, and `uf_lint` reports them.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::type_at`].
+    pub fn diagnostics(&self, path: &str) -> Result<Option<Vec<TypeDiagnostic>>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| {
+                Ok(worker
+                    .diagnostics(&path)?
+                    .map(|found| found.iter().cloned().collect()))
+            })
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = path;
             Err(CheckError::Unavailable)
         }
     }

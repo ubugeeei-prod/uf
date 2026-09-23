@@ -51,6 +51,19 @@ mod types {
 
         pub(super) fn closed(&mut self, _uri: &str) {}
 
+        pub(super) fn recheck<'a>(&mut self, _open: impl Iterator<Item = &'a String>) {}
+
+        pub(super) fn waiting(&self) -> bool {
+            false
+        }
+
+        pub(super) fn settle(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+        ) -> Option<(String, Vec<Value>)> {
+            None
+        }
+
         pub(super) fn hover(
             &mut self,
             _documents: &FxHashMap<String, Document>,
@@ -424,7 +437,32 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
         return Ok(());
     }
 
-    let mut reader = std::io::BufReader::new(stdin.lock());
+    // Frames are read on a thread of their own, so the loop can tell a quiet
+    // pipe from a busy one: type errors are checked for in the pauses between
+    // keystrokes, never in front of a request. See `TYPE_CHECK_PAUSE`.
+    let (frames, incoming) = std::sync::mpsc::channel::<Result<Frame>>();
+    std::thread::Builder::new()
+        .name("uf-lsp-reader".to_owned())
+        .spawn(move || {
+            let mut reader = std::io::BufReader::new(std::io::stdin().lock());
+            loop {
+                let read = read_message(&mut reader);
+                let last = !matches!(read, Ok(Some(_)));
+                let frame = match read {
+                    Ok(Some(frame)) => Ok(frame),
+                    Ok(None) => break,
+                    Err(error) => Err(error),
+                };
+                if frames.send(frame).is_err() || last {
+                    break;
+                }
+            }
+        })
+        .with_context(|| "failed to start the LSP reader")?;
+    // How long the pipe has to be quiet before the next open document is
+    // checked; zero right after one was, so the rest follow at once unless the
+    // editor has something to say in between.
+    let mut pause = TYPE_CHECK_PAUSE;
     let mut documents: FxHashMap<String, Document> = FxHashMap::default();
     let mut shutting_down = false;
     // Once, not once per keystroke. A server lints on every change and formats
@@ -455,7 +493,30 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     // request waits on a publisher.
     let mut releases = config_file::ReleaseLists::from_env();
 
-    while let Some(frame) = read_message(&mut reader)? {
+    loop {
+        let frame = if types.waiting() {
+            match incoming.recv_timeout(pause) {
+                Ok(frame) => frame?,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if let Some((uri, found)) = types.settle(&documents)
+                        && let Some(document) = documents.get_mut(&uri)
+                        && document.types != found
+                    {
+                        document.types = found;
+                        publish_diagnostics(&mut stdout, &uri, document)?;
+                    }
+                    pause = std::time::Duration::ZERO;
+                    continue;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        } else {
+            match incoming.recv() {
+                Ok(frame) => frame?,
+                Err(_) => break,
+            }
+        };
+        pause = TYPE_CHECK_PAUSE;
         let message = match frame {
             Frame::Message(message) => message,
             Frame::Malformed => {
@@ -517,7 +578,8 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
             "exit" => return Ok(()),
             "textDocument/didOpen" => {
                 if let Some((uri, text)) = opened_document(&message) {
-                    let document = Document::lint(&uri, text, &config, &mut project_rules);
+                    let mut document = Document::lint(&uri, text, &config, &mut project_rules);
+                    document.keep_types(documents.get(&uri));
                     publish_diagnostics(&mut stdout, &uri, &document)?;
                     project_rules.tell(&mut stdout)?;
                     types.changed(&uri, &document.text);
@@ -526,10 +588,13 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
             }
             "textDocument/didChange" => {
                 if let Some((uri, text)) = changed_document(&message) {
-                    let document = Document::lint(&uri, text, &config, &mut project_rules);
+                    let mut document = Document::lint(&uri, text, &config, &mut project_rules);
+                    document.keep_types(documents.get(&uri));
                     publish_diagnostics(&mut stdout, &uri, &document)?;
                     project_rules.tell(&mut stdout)?;
                     types.changed(&uri, &document.text);
+                    // Any other open file may import this one.
+                    types.recheck(documents.keys().filter(|open| **open != uri));
                     documents.insert(uri, document);
                 }
             }
@@ -632,6 +697,16 @@ fn capabilities(typed: bool) -> Value {
     capabilities
 }
 
+/// How long the editor has to stop sending before an open document is checked
+/// for type errors.
+///
+/// Lint diagnostics go out on every change, because the linter reads one file.
+/// A type check infers the file against everything it imports, so it waits for
+/// the typing to pause, the way an editor's own TypeScript support waits before
+/// asking for semantic diagnostics. Nothing is checked in front of a request:
+/// a frame that arrives during the pause is served first, and restarts it.
+const TYPE_CHECK_PAUSE: std::time::Duration = std::time::Duration::from_millis(150);
+
 /// JSON-RPC parse error: the body was not JSON.
 const PARSE_ERROR: i64 = -32700;
 /// JSON-RPC invalid request: the body was JSON but not a request.
@@ -680,6 +755,11 @@ fn answer_request(
 /// A file the linter cannot read at all is reported as nothing rather than as
 /// an error: half a keystroke into a rename, the document is often not
 /// anything yet, and a server that fails there is a server that stops.
+///
+/// Flow's type errors for the document, when it has been checked, go out in
+/// the same notification: `publishDiagnostics` replaces everything the editor
+/// holds for a URI, so two sources published apart would each erase the
+/// other.
 fn publish_diagnostics(out: &mut impl Write, uri: &str, document: &Document) -> Result<()> {
     let Some(report) = document.diagnostics.as_deref() else {
         return Ok(());
@@ -689,6 +769,7 @@ fn publish_diagnostics(out: &mut impl Write, uri: &str, document: &Document) -> 
     let diagnostics: Vec<Value> = report
         .iter()
         .map(|diagnostic| encode_diagnostic(&lines, diagnostic))
+        .chain(document.types.iter().cloned())
         .collect();
 
     notify(
@@ -729,6 +810,15 @@ struct Document {
     /// The edits the project's own rules reported with their findings, in
     /// bytes of [`Document::text`].
     project_fixes: Vec<ProjectFix>,
+    /// Flow's type errors, as the protocol's `Diagnostic`s, from the last time
+    /// the checker got to this document.
+    ///
+    /// Checking waits for a pause in the typing (see [`TYPE_CHECK_PAUSE`]), so
+    /// between a keystroke and that pause these are the previous text's. They
+    /// are kept rather than dropped, because clearing them on every keystroke
+    /// and putting them back a moment later makes every marker in the file
+    /// flicker while somebody types.
+    types: Vec<Value>,
 }
 
 mod project_rules;
@@ -765,6 +855,14 @@ impl Document {
             diagnostics,
             config: OnceCell::new(),
             project_fixes: answer.fixes,
+            types: Vec::new(),
+        }
+    }
+
+    /// Carry the type errors over from the text this one replaces.
+    fn keep_types(&mut self, previous: Option<&Self>) {
+        if let Some(previous) = previous {
+            self.types.clone_from(&previous.types);
         }
     }
 

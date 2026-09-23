@@ -88,7 +88,8 @@ running beside it.
 server and asserts each one:
 
 * **Diagnostics**, pushed on open and on every change, source `uf`, code the
-  rule id.
+  rule id; and Flow's type errors once typing pauses, source `flow`, code
+  Flow's own, with every location the message refers to.
 * **Formatting**, from the same `uf_fmt` that `uf fmt` calls.
 * **Quick fixes** and a **fix-all** action (`source.fixAll.uf`).
 * **Hover**: the rule behind a diagnostic, what an import specifier names, what

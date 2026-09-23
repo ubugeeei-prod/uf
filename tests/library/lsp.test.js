@@ -52,6 +52,8 @@ type Diagnostic = {
   source: string,
   code: string,
   message: string,
+  // Flow's type errors carry every location their message refers to.
+  relatedInformation?: Array<{ location: { uri: string, range: Range }, message: string }>,
 };
 
 // One entry of a `result` that is a list. `textDocument/formatting` answers
@@ -794,6 +796,161 @@ describe("types", () => {
       expect(offered).toContainEqual(["name", "string"]);
       // `user.` offers what `User` has, and nothing that is merely in scope.
       expect(offered.map(([label]) => label)).not.toContain("greeting");
+    });
+  });
+
+  describe("type errors", () => {
+    // A server held open the way an editor holds it: type errors are checked
+    // in the pauses between messages, so a conversation written in one go
+    // never has one. Each step writes, then waits for the push it expects.
+    const conversation = async (
+      root: string,
+      steps: (
+        send: (message: Message) => void,
+        pushed: (uri: string, found: (Array<Diagnostic>) => boolean) => Promise<Array<Diagnostic>>,
+      ) => Promise<void>,
+    ): Promise<void> => {
+      const child = spawn(UF, ["lsp"], { cwd: root, stdio: ["pipe", "pipe", "inherit"] });
+      const closed = new Promise((resolve) => child.on("close", resolve));
+      const pushes: Array<{ uri: string, diagnostics: Array<Diagnostic> }> = [];
+      let pending = Buffer.alloc(0);
+      child.stdout.on("data", (chunk: Buffer) => {
+        pending = Buffer.concat([pending, chunk]);
+        for (;;) {
+          const split = pending.indexOf("\r\n\r\n");
+          if (split < 0) {
+            return;
+          }
+          const header = pending.subarray(0, split).toString("utf8");
+          const length = Number.parseInt(header.replace(/^Content-Length:\s*/i, ""), 10);
+          if (pending.length < split + 4 + length) {
+            return;
+          }
+          const message: Wire = JSON.parse(
+            pending.subarray(split + 4, split + 4 + length).toString("utf8"),
+          );
+          pending = pending.subarray(split + 4 + length);
+          if (message.method === "textDocument/publishDiagnostics" && message.params != null) {
+            pushes.push(message.params);
+          }
+        }
+      });
+      const send = (message: Message): void => {
+        child.stdin.write(framed(message));
+      };
+      // The first push for `uri` after this call that `found` accepts.
+      const pushed = async (
+        uri: string,
+        found: (Array<Diagnostic>) => boolean,
+      ): Promise<Array<Diagnostic>> => {
+        const from = pushes.length;
+        for (let waited = 0; waited < 60_000; waited += 20) {
+          const match = pushes
+            .slice(from)
+            .find((push) => push.uri === uri && found(push.diagnostics));
+          if (match != null) {
+            return match.diagnostics;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error(`no matching push for ${uri} in ${JSON.stringify(pushes.slice(from))}`);
+      };
+      try {
+        send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } });
+        send(INITIALIZED);
+        await steps(send, pushed);
+      } finally {
+        child.stdin.end(framed(EXIT));
+        await closed;
+      }
+    };
+
+    const flow = (diagnostics: Array<Diagnostic>): Array<Diagnostic> =>
+      diagnostics.filter((diagnostic) => diagnostic.source === "flow");
+
+    const withProjectAsync = async (
+      run: (root: string, uri: (file: string) => string) => Promise<void>,
+    ): Promise<void> => {
+      const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-errors-")));
+      try {
+        for (const [file, text] of Object.entries(FILES)) {
+          fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+          fs.writeFileSync(path.join(root, file), String(text));
+        }
+        await run(root, (file) => `file://${path.join(root, file)}`);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    };
+
+    // `age` given a string where `User` says number, on the fourth line.
+    const broken = app.replace("age: 36", "age: '36'");
+
+    it("pushes Flow's type errors beside the linter's, with where each reference points", async () => {
+      await withProjectAsync(async (root, uri) => {
+        await conversation(root, async (send, pushed) => {
+          send(open(uri("src/app.js"), broken));
+          const found = flow(
+            await pushed(uri("src/app.js"), (diagnostics) => flow(diagnostics).length > 0),
+          );
+
+          expect(found).toHaveLength(1);
+          const [error] = found;
+          expect(error.code).toBe("incompatible-type");
+          expect(error.severity).toBe(1);
+          // On `'36'`, in UTF-16 units of the line the editor holds.
+          const line = broken.split("\n")[error.range.start.line];
+          expect(line.slice(error.range.start.character, error.range.end.character)).toBe("'36'");
+          // Flow's sentence, numbered the way `uf check` numbers it.
+          expect(error.message).toBe(
+            'Cannot assign object literal to user because in property age: "36" [1] is incompatible with number [2].',
+          );
+          // `[2]` is `age: number` in `src/user.js`, a file the editor never opened.
+          const related = error.relatedInformation ?? [];
+          expect(related.map((entry) => entry.message)).toEqual(['[1] "36"', "[2] number"]);
+          expect(related[0].location.uri).toBe(uri("src/app.js"));
+          expect(related[1].location.uri).toBe(uri("src/user.js"));
+          expect(related[1].location.range.start.line).toBe(1);
+        });
+      });
+    });
+
+    it("clears an error once it is fixed, and finds one an edit to an imported file causes", async () => {
+      await withProjectAsync(async (root, uri) => {
+        await conversation(root, async (send, pushed) => {
+          send(open(uri("src/app.js"), broken));
+          await pushed(uri("src/app.js"), (diagnostics) => flow(diagnostics).length > 0);
+
+          send(change(uri("src/app.js"), app));
+          await pushed(uri("src/app.js"), (diagnostics) => flow(diagnostics).length === 0);
+
+          // `greet` now wants a number. What breaks is the call in
+          // `src/app.js`, which nobody edited — the editor is told anyway.
+          const user = FILES["src/user.js"].replace("greet(user: User)", "greet(user: number)");
+          send(open(uri("src/user.js"), FILES["src/user.js"]));
+          send(change(uri("src/user.js"), user));
+          const found = flow(
+            await pushed(uri("src/app.js"), (diagnostics) => flow(diagnostics).length > 0),
+          );
+          expect(found.every((diagnostic) => diagnostic.range.start.line === 4)).toBe(true);
+        });
+      });
+    });
+
+    it("says nothing about types in a file that does not parse, and leaves that to the linter", async () => {
+      await withProjectAsync(async (root, uri) => {
+        await conversation(root, async (send, pushed) => {
+          send(open(uri("src/app.js"), broken));
+          await pushed(uri("src/app.js"), (diagnostics) => flow(diagnostics).length > 0);
+
+          send(change(uri("src/app.js"), `${broken}const = ;\n`));
+          const found = await pushed(
+            uri("src/app.js"),
+            (diagnostics) => flow(diagnostics).length === 0,
+          );
+          expect(found.map((diagnostic) => diagnostic.code)).toContain("flow/syntax");
+        });
+      });
     });
   });
 });

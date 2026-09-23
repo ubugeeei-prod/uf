@@ -32,7 +32,7 @@ server and asserts each of these.
 
 | | How |
 | --- | --- |
-| Diagnostics | Pushed on open and on every change. Signs in the gutter; `:LspDocumentDiagnostics`. The source is `uf` and the code is the rule id. |
+| Diagnostics | Pushed on open and on every change. Signs in the gutter; `:LspDocumentDiagnostics`. The source is `uf` and the code is the rule id. Flow's type errors join them once typing pauses: source `flow`, the code Flow's own (`incompatible-type`), and every location the message refers to as related information. |
 | Formatting | `:LspDocumentFormat`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `:LspCodeAction` on a diagnostic. |
 | Fix all | `:LspCodeAction`, then pick "Fix all uf lint problems in this file". |

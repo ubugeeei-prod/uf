@@ -38,7 +38,7 @@ server and asserts each of these.
 
 | | How |
 | --- | --- |
-| Diagnostics | Pushed on open and on every change, through Flymake. `M-x flymake-show-buffer-diagnostics`. The source is `uf` and the code is the rule id. |
+| Diagnostics | Pushed on open and on every change, through Flymake. `M-x flymake-show-buffer-diagnostics`. The source is `uf` and the code is the rule id. Flow's type errors join them once typing pauses: source `flow`, the code Flow's own (`incompatible-type`), and every location the message refers to as related information. |
 | Formatting | `M-x eglot-format-buffer`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `M-x eglot-code-actions` on a diagnostic. |
 | Fix all | `(eglot-code-actions (point-min) (point-max) "source.fixAll" t)`, which applies every mechanical fix in the file at once. `M-x eglot-code-actions` also lists it. |

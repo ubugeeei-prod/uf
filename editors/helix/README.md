@@ -30,7 +30,7 @@ server and asserts each of these.
 
 | | How |
 | --- | --- |
-| Diagnostics | Pushed on open and on every change; shown in the gutter, `Space + d` for the picker. The source is `uf` and the code is the rule id. |
+| Diagnostics | Pushed on open and on every change; shown in the gutter, `Space + d` for the picker. The source is `uf` and the code is the rule id. Flow's type errors join them once typing pauses: source `flow`, the code Flow's own (`incompatible-type`), and every location the message refers to as related information. |
 | Formatting | `:format`, and on write, because `auto-format = true`. |
 | Quick fixes | `Space + a` on a diagnostic. |
 | Fix all | `Space + a` offers "Fix all uf lint problems in this file" as a separate action; Helix has no dedicated fix-all binding. |

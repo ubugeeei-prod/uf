@@ -49,7 +49,7 @@ asserts each of them.
 
 | | How |
 | --- | --- |
-| Diagnostics | Pushed on open and on every change. `:lua vim.diagnostic.open_float()` shows the message; the source is `uf` and the code is the rule id. |
+| Diagnostics | Pushed on open and on every change. `:lua vim.diagnostic.open_float()` shows the message; the source is `uf` and the code is the rule id. Flow's type errors join them once typing pauses: source `flow`, the code Flow's own (`incompatible-type`), and every location the message refers to as related information. |
 | Formatting | `:lua vim.lsp.buf.format({ name = "uf" })`, or `format_on_save = true`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `:lua vim.lsp.buf.code_action()` on a diagnostic. Offered only where uf's answer is mechanical — `flow/deprecated-type` has one; a rule that would have to guess at intent deliberately does not. |
 | Fix all | `:lua vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })` |
@@ -62,8 +62,7 @@ asserts each of them.
 
 No rename, no references, no document symbols and no signature help — `uf lsp`
 does not advertise any of them, so `vim.lsp.buf.rename()` will tell you the
-server has no handler. Type errors are not pushed as diagnostics; `uf check`
-reports them. Hover and definitions answer nothing while the file does not
+server has no handler. Hover and definitions answer nothing while the file does not
 parse, since there is no inference to ask.
 
 ## Working directory

@@ -53,7 +53,8 @@ Flow's own lint set · default `error` · decided from the source text
 
 | | What it is | Where it comes from |
 | --- | --- | --- |
-| **Diagnostics** | Pushed when a document opens and on every change, cleared when it closes. The source is `uf` and the code is the rule id | `uf_lint` — the rules `uf lint` runs, at the levels your `uf.config.js` sets. Not type errors: those are [`uf check`](/guide/check)'s |
+| **Diagnostics** | Pushed when a document opens and on every change, cleared when it closes. The source is `uf` and the code is the rule id | `uf_lint` — the rules `uf lint` runs, at the levels your `uf.config.js` sets |
+| **Type errors** | Pushed beside the lint diagnostics once typing pauses for 150 ms, for the edited file first and then every other open file, since any of them may import it. The source is `flow`, the code is Flow's error code (`incompatible-type`), and each location the message refers to is `relatedInformation`, labelled `[1] string`, `[2] number` as `uf check` numbers them. None while the file does not parse: the syntax error is the linter's | the checker [`uf check`](/guide/check) runs, over the same modules and suppression comments, so the editor and the terminal report the same errors |
 | **Formatting** | One edit over the whole document | `uf_fmt`, the printer `uf fmt` uses, with your `fmt` options — not the editor's tab settings |
 | **Quick fixes** | `quickfix` actions for a diagnostic with a mechanical answer, and a "format this document" action where formatting clears a whitespace finding | the fix catalogue `uf lint --fix` uses |
 | **Fix all** | `source.fixAll.uf`: every **safe** fix in the file at once | the same catalogue; the unsafe tier is a quick fix you pick, never part of fix-all |

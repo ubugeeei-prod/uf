@@ -317,3 +317,121 @@ fn a_position_past_the_text_is_no_answer_and_not_a_crash() {
             .is_some()
     );
 }
+
+/// `project()` with a type error in `src/app.js`: a `User` whose `age` is a
+/// string, on line 3.
+fn broken() -> Vec<OwnedSource> {
+    let mut sources = project();
+    sources[1].source = sources[1].source.replace("age: 36", "age: '36'");
+    sources
+}
+
+fn codes(found: &[TypeDiagnostic]) -> Vec<Option<&'static str>> {
+    found.iter().map(|diagnostic| diagnostic.code).collect()
+}
+
+#[test]
+fn a_files_diagnostics_are_the_ones_uf_check_reports_for_it() {
+    require_checker!();
+    let batch = broken();
+    let session = Session::start(Vec::new(), CheckLimits::default()).expect("starts");
+    session.load(batch.clone()).expect("loads");
+
+    let found = session
+        .diagnostics("src/app.js")
+        .expect("runs")
+        .expect("the file is inferred");
+
+    let sources: Vec<Source<'_>> = batch
+        .iter()
+        .map(|source| Source::new(&source.path, &source.source))
+        .collect();
+    let report = check_sources(&sources, &[], &CheckLimits::default()).expect("checks");
+    let expected: Vec<TypeDiagnostic> = report
+        .diagnostics
+        .into_iter()
+        .filter(|diagnostic| diagnostic.primary.path == "src/app.js")
+        .collect();
+    assert!(!expected.is_empty(), "the fixture has an error to find");
+    assert_eq!(found, expected);
+    assert_eq!(found[0].primary.start.line, 3);
+    // And the file without one has nothing to say.
+    assert_eq!(
+        session.diagnostics("src/user.js").expect("runs"),
+        Some(Vec::new())
+    );
+}
+
+#[test]
+fn a_suppression_comment_hides_a_diagnostic_from_the_editor_as_from_uf_check() {
+    require_checker!();
+    let session = Session::start(Vec::new(), CheckLimits::default()).expect("starts");
+    let mut batch = broken();
+    batch[1].source = batch[1].source.replace(
+        "const user: User",
+        "// $FlowFixMe[incompatible-type]\nconst user: User",
+    );
+    session.load(batch).expect("loads");
+
+    assert_eq!(
+        session.diagnostics("src/app.js").expect("runs"),
+        Some(Vec::new())
+    );
+}
+
+#[test]
+fn an_edit_that_fixes_the_error_clears_it_and_one_that_breaks_a_dependency_reports_it() {
+    require_checker!();
+    let session = Session::start(Vec::new(), CheckLimits::default()).expect("starts");
+    session.load(broken()).expect("loads");
+    let before = session
+        .diagnostics("src/app.js")
+        .expect("runs")
+        .expect("inferred");
+    assert_eq!(codes(&before), [Some("incompatible-type")]);
+
+    // Fixed in the editor.
+    session
+        .edit("src/app.js", project()[1].source.clone())
+        .expect("applies");
+    assert_eq!(
+        session.diagnostics("src/app.js").expect("runs"),
+        Some(Vec::new())
+    );
+
+    // Then the file it imports changes under it: `greet` now wants a number,
+    // and the call in `src/app.js` is what is wrong. Asked about `app.js`,
+    // which was not the file edited.
+    session
+        .edit(
+            "src/user.js",
+            "// @flow\n\
+             export type User = { name: string, age: number };\n\
+             export function greet(user: number): string {\n  return String(user);\n}\n"
+                .to_owned(),
+        )
+        .expect("applies");
+    let after = session
+        .diagnostics("src/app.js")
+        .expect("runs")
+        .expect("inferred");
+    assert!(!after.is_empty(), "the call is now wrong");
+    assert!(
+        after
+            .iter()
+            .all(|diagnostic| diagnostic.primary.start.line == 4),
+        "{after:?}"
+    );
+}
+
+#[test]
+fn a_file_that_does_not_parse_leaves_its_syntax_error_to_the_linter() {
+    require_checker!();
+    let session = session();
+    session
+        .edit("src/app.js", "// @flow\nconst = ;\n".to_owned())
+        .expect("applies");
+
+    assert_eq!(session.diagnostics("src/app.js").expect("runs"), None);
+    assert_eq!(session.diagnostics("src/missing.js").expect("runs"), None);
+}

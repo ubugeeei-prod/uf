@@ -1,5 +1,5 @@
-//! Types in the editor: hover, go to definition, go to type definition and
-//! completion, answered by Flow's own inference.
+//! Types in the editor: type errors, hover, go to definition, go to type
+//! definition and completion, answered by Flow's own inference.
 //!
 //! Every answer here comes from a [`uf_check::Session`] — the project checked
 //! the way `uf check` checks it, kept warm for the life of the server. The
@@ -21,6 +21,18 @@
 //! it. What the editor holds unsaved is laid over it: an open document's text
 //! replaces the file's, and a document the scan did not find joins the batch.
 //!
+//! # Type errors
+//!
+//! Every document the editor changes is checked again, and so is every other
+//! open document, since any of them may import it — but not at once. The
+//! server's loop asks [`Types::settle`] for one document at a time, and only
+//! while the pipe is quiet, so a request is never queued behind a check. Most
+//! of those re-checks cost nothing: the session keeps each file's diagnostics
+//! until something it imports changes. They are the same diagnostics
+//! `uf check` prints for the file, published beside the linter's with
+//! `source: "flow"`, Flow's error code, and every location the message
+//! refers to as related information.
+//!
 //! # What is not answered
 //!
 //! * **A file that does not parse**, or says `@noflow`: there is no inference
@@ -35,7 +47,10 @@ use std::sync::mpsc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{Value, json};
-use uf_check::{CheckLimits, Definition, Origin, OwnedSource, Position, Session, Span};
+use uf_check::{
+    CheckLimits, Definition, MessageSegment, Origin, OwnedSource, Position, Session, Severity,
+    Span, TypeDiagnostic,
+};
 use uf_config::UniflowedConfig;
 use uf_infra::FxHashMap;
 
@@ -53,6 +68,9 @@ pub(super) struct Types {
     canonical_root: Option<Utf8PathBuf>,
     config: UniflowedConfig,
     state: State,
+    /// Documents whose type errors are owed to the editor, the one edited
+    /// last first.
+    pending: Vec<String>,
 }
 
 enum State {
@@ -83,6 +101,7 @@ impl Types {
             canonical_root,
             config,
             state: State::Idle,
+            pending: Vec::new(),
         }
     }
 
@@ -115,20 +134,51 @@ impl Types {
             let prepared = waiting
                 .recv()
                 .unwrap_or_else(|_| Err(String::from("the thread assembling it stopped")));
-            self.state = match prepared {
-                Ok(prepared) => State::Ready(prepared),
-                Err(error) => {
-                    eprintln!("uf lsp: types are unavailable: {error}");
-                    State::Failed
-                }
-            };
-            // Everything the editor opened while the batch was being read.
-            let mut uris: Vec<&String> = documents.keys().collect();
-            uris.sort();
-            for uri in uris {
-                self.changed(uri, &documents[uri].text);
+            self.finish(prepared, documents);
+        }
+        self.ready()
+    }
+
+    /// The session if it is ready, without waiting for it: what the pauses
+    /// between keystrokes use, since a pause is no reason to block the loop
+    /// on a project still being read.
+    fn poll(&mut self, documents: &FxHashMap<String, Document>) -> Option<&Session> {
+        if let State::Preparing(waiting) = &self.state {
+            match waiting.try_recv() {
+                Ok(prepared) => self.finish(prepared, documents),
+                Err(mpsc::TryRecvError::Empty) => return None,
+                Err(mpsc::TryRecvError::Disconnected) => self.finish(
+                    Err(String::from("the thread assembling it stopped")),
+                    documents,
+                ),
             }
         }
+        self.ready()
+    }
+
+    /// The batch has been assembled, or could not be.
+    fn finish(
+        &mut self,
+        prepared: Result<Prepared, String>,
+        documents: &FxHashMap<String, Document>,
+    ) {
+        self.state = match prepared {
+            Ok(prepared) => State::Ready(prepared),
+            Err(error) => {
+                eprintln!("uf lsp: types are unavailable: {error}");
+                self.pending.clear();
+                State::Failed
+            }
+        };
+        // Everything the editor opened while the batch was being read.
+        let mut uris: Vec<&String> = documents.keys().collect();
+        uris.sort();
+        for uri in uris {
+            self.changed(uri, &documents[uri].text);
+        }
+    }
+
+    fn ready(&self) -> Option<&Session> {
         match &self.state {
             State::Ready(prepared) => Some(&prepared.session),
             State::Idle | State::Preparing(_) | State::Failed => None,
@@ -140,10 +190,16 @@ impl Types {
     /// Nothing happens before the session is ready: the editor's documents are
     /// laid over the batch when it becomes ready, so a change made while it is
     /// being assembled is not lost.
+    ///
+    /// Either way the document's type errors are owed again, first in line.
     pub(super) fn changed(&mut self, uri: &str, text: &str) {
         let Some(path) = self.path_of(uri) else {
             return;
         };
+        if !matches!(self.state, State::Failed) {
+            self.pending.retain(|pending| pending != uri);
+            self.pending.insert(0, uri.to_owned());
+        }
         let State::Ready(prepared) = &mut self.state else {
             return;
         };
@@ -161,8 +217,117 @@ impl Types {
         }
     }
 
+    /// Owe the editor the type errors of other open documents too, behind
+    /// whatever is already owed: an edit may have changed what they import.
+    pub(super) fn recheck<'a>(&mut self, open: impl Iterator<Item = &'a String>) {
+        if matches!(self.state, State::Failed) {
+            return;
+        }
+        let mut open: Vec<&String> = open
+            .filter(|uri| self.path_of(uri).is_some())
+            .filter(|uri| !self.pending.contains(uri))
+            .collect();
+        open.sort();
+        self.pending.extend(open.into_iter().cloned());
+    }
+
+    /// Whether type errors are owed and can be worked out: the loop's cue to
+    /// wait for a pause rather than for the next message.
+    ///
+    /// Not before the client has said `initialized` or asked a typed
+    /// question — nothing is read before then, and a pause is no reason to
+    /// start.
+    pub(super) fn waiting(&self) -> bool {
+        !self.pending.is_empty() && matches!(self.state, State::Preparing(_) | State::Ready(_))
+    }
+
+    /// In a pause: the type errors of the next document owed them, as the
+    /// protocol's `Diagnostic`s.
+    ///
+    /// [`None`] when nothing could be said this time — the project is still
+    /// being read, the document was closed, or the check failed, which is
+    /// said on stderr once rather than published as a diagnostic about the
+    /// user's code. A document that does not parse gets an empty list: its
+    /// syntax error is the linter's, and type errors about a previous text
+    /// would point at code that is no longer there.
+    pub(super) fn settle(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+    ) -> Option<(String, Vec<Value>)> {
+        self.poll(documents)?;
+        let uri = loop {
+            let uri = self.pending.first()?.clone();
+            self.pending.remove(0);
+            if documents.contains_key(&uri) {
+                break uri;
+            }
+        };
+        let path = self.path_of(&uri)?;
+        let found = match self.ready()?.diagnostics(&path) {
+            Ok(found) => found.unwrap_or_default(),
+            Err(error) => {
+                eprintln!("uf lsp: type errors: {error}");
+                return None;
+            }
+        };
+        let text = &documents[&uri].text;
+        let encoded = found
+            .iter()
+            .map(|diagnostic| self.encode(documents, text, diagnostic))
+            .collect();
+        Some((uri, encoded))
+    }
+
+    /// One type error as the protocol's `Diagnostic`.
+    ///
+    /// The message is Flow's, on one line, with each reference numbered as
+    /// `uf check` numbers it; `relatedInformation` is where each number
+    /// points, labelled with what the message said about it, so an editor can
+    /// list them under the error and jump to each.
+    fn encode(
+        &self,
+        documents: &FxHashMap<String, Document>,
+        text: &str,
+        diagnostic: &TypeDiagnostic,
+    ) -> Value {
+        let related: Vec<Value> = diagnostic
+            .related
+            .iter()
+            .filter_map(|related| {
+                let label = diagnostic
+                    .message
+                    .iter()
+                    .find_map(|segment| match segment {
+                        MessageSegment::Reference { text, id } if *id == related.id => {
+                            Some(text.as_str())
+                        }
+                        _ => None,
+                    })?;
+                Some(json!({
+                    "location": self.span_location(documents, &related.span)?,
+                    "message": format!("[{}] {label}", related.id),
+                }))
+            })
+            .collect();
+        let mut encoded = json!({
+            "range": range_in(text, &diagnostic.primary),
+            "severity": match diagnostic.severity {
+                Severity::Error => 1,
+                Severity::Warning => 2,
+            },
+            "source": "flow",
+            "code": diagnostic.code.unwrap_or(diagnostic.kind.as_str()),
+            "message": diagnostic.message_text(),
+        });
+        if !related.is_empty() {
+            encoded["relatedInformation"] = Value::Array(related);
+        }
+        encoded
+    }
+
     /// The editor closed `uri`: what is on disk is the file again.
     pub(super) fn closed(&mut self, uri: &str) {
+        self.pending.retain(|pending| pending != uri);
         if !matches!(self.state, State::Ready(_)) {
             return;
         }
@@ -286,7 +451,14 @@ impl Types {
         if definition.origin == Origin::Builtin {
             return None;
         }
-        let path = Utf8Path::new(definition.span.path.as_str());
+        self.span_location(documents, &definition.span)
+    }
+
+    /// A span as a `Location`, if it is in a file an editor can open: one it
+    /// holds, or one on disk. A name the checker gave one of its own library
+    /// definitions is neither.
+    fn span_location(&self, documents: &FxHashMap<String, Document>, span: &Span) -> Option<Value> {
+        let path = Utf8Path::new(span.path.as_str());
         let absolute = match path.is_absolute() {
             true => path.to_path_buf(),
             false => self.root.join(path),
@@ -297,10 +469,8 @@ impl Types {
         let open = documents.iter().find_map(|(open, document)| {
             (document_path(open) == absolute.as_str()).then_some(document.text.clone())
         });
-        let text = open
-            .or_else(|| std::fs::read_to_string(&absolute).ok())
-            .unwrap_or_default();
-        Some(json!({ "uri": uri, "range": range_in(&text, &definition.span) }))
+        let text = open.or_else(|| std::fs::read_to_string(&absolute).ok())?;
+        Some(json!({ "uri": uri, "range": range_in(&text, span) }))
     }
 
     /// `textDocument/completion` in a Flow document: after `value.`, the
