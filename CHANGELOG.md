@@ -1,5 +1,88 @@
 # Changelog
 
+## uf@0.2.0
+
+This minor release changes the default `uf ui` styles and adds an experimental sqlc target.
+Commands, configuration and package APIs may still change between `0.x` releases.
+
+- **UI default styles** (#1410, #1413, #1414): a small radius scale, no shadows or
+  gradients, redesigned calendars, range calendars and date pickers, and quieter motion
+  that honours `prefers-reduced-motion`. Components already copied into a project keep
+  their old styles until you run `uf ui update`, which merges the registry's changes into
+  an edited copy (#1369).
+- **sqlc Flow target** (#1417, Experimental): uf works as a sqlc plugin that generates
+  Flow, and `@uniflowed/sql` is the runtime. `@uniflowed/sql` is private in this release
+  and not yet on npm.
+- **uf test** (#1426, #1427, #1431, #1432, #1386, #1436, #1437, #1444): a failed
+  `beforeAll` fails every case it set up, and hooks take a timeout. An uncaught exception
+  in a worker fails its file. A narrowed run keeps the durations it did not measure. A
+  helper whose name matches a registration no longer declares a test. Type-test files
+  run each distinct `uf check` once.
+- **uf check** (#1399): an unchanged project is answered from its records, with no
+  parsing or merging.
+- **Documentation** (#1402, #1405, #1411, #1422, #1425, #1429, #1392): an API reference
+  for every package, a task map, landing pages that lead with what most readers open,
+  a sidebar that opens one section at a time, and previous-page links and copy buttons.
+- **Editors** (#1445, #1450, #1452): the VS Code extension gets a status bar item, a
+  version check and Flow-only validation settings. Zed, Neovim, Helix and Emacs keep
+  their TypeScript servers off uf projects, and each editor has a page on switching its
+  built-in JS/TS support to uf. The VS Code extension is not on the Marketplace or
+  Open VSX yet.
+- **CLI help** (#1398, #1416): uf draws its own help pages, grouped and wrapped to the
+  width of the terminal.
+
+### All changes
+
+- fix(cli): `uf explain` describes `uf sqlc`, the Deno library lane names `build-passes.test.js` and the payload exit's new wording (#1433), and the static-adapter test builds the docs with their API reference; all made in this release PR (#1424)
+- fix(router): run the guards of the page an interception renders over (#1460) (68b68ddc)
+- fix(lint): a11y/autocomplete-valid reads React's autoComplete prop (#1459) (fd647606)
+- fix(lint): import/no-cycle does not follow imports Flow erases (#1457) (c853e72c)
+- docs(trees): sort every directory listing by code point, as `LC_ALL=C ls` does (#1455) (ff1e0ca6)
+- docs(editors): a page per editor on switching its built-in JS/TS support to uf (#1452) (d68d96b6)
+- feat(editors): keep TypeScript servers off uf projects in Zed, Neovim, Helix and Emacs (#1450) (0868fbd9)
+- fix(lint): a package manager name is only a command as a call's first argument (#1447) (0308fcf8)
+- feat(vscode): status bar, version check, Flow-only validation settings and component syntax (#1445) (0025bd4a)
+- fix(test): report a checker that could not start as printing nothing (#1444) (10a5ac55)
+- perf(test): link the transform-cache stand-in compiler to one executable per worker (#1437) (9ecf3eda)
+- perf(test): run each distinct uf check once per type-test file (#1436) (b7ce2b8d)
+- feat(cli): draw uf's own help pages, grouped and wrapped to the terminal (#1416) (7da57f94)
+- feat(sqlc): a Flow target for sqlc, with uf as its plugin and @uniflowed/sql as the runtime (#1417) (fc069603)
+- fix(test): a helper that shares a registration's name declares no test (#1432) (b96cc968)
+- fix(test): a narrowed run keeps the durations it did not measure (#1431) (a3ea64de)
+- feat(docs): a map from what you want to do to the pages that get you there (#1429) (156c7e73)
+- perf(ui): read the package's sources once in ui.test.js (#1428) (e7d0460a)
+- fix(test): a failed beforeAll fails every case it set up for, and hooks take a timeout (#1426) (c9743ab2)
+- fix(test): report a worker's uncaught exception as its file's failure (#1427) (75f2045e)
+- feat(docs): lead the home page and each landing page with what most readers open (#1425) (90ce5504)
+- docs(nav): put the important pages first (#1422) (53e11884)
+- feat(ui): quiet default motion that honours reduced motion (#1414) (9b24a7bd)
+- fix(ui): never let a deferred announce() touch a document that is gone (#1415) (362033f7)
+- feat(ui): redesign the default calendar, range calendar and date pickers (#1413) (3afe8cfb)
+- perf(check): answer an unchanged project from its records without parsing or merging (#1399) (af5e21a8)
+- feat(ui): a small radius scale, and no shadows or gradients in the default styles (#1410) (70fbbe41)
+- feat(docs): a sidebar that opens one section and says when it goes on (#1411) (301006c0)
+- docs(effect): one page per topic between the Effect guide and reference (#1405) (2b7a6d86)
+- feat(docs): a previous-page link, a copy button, and a way to the contents on a phone (#1402) (61685894)
+- feat(docs): an API reference for every package, written from the source by uf doc (#1392) (2eb92726)
+- docs(reference): say which packages a release sends to npm, and check it (#1400) (a38621cc)
+- fix(cli): no blank line under a banner's rule (#1398) (6299900d)
+- docs(guide): mocks and stories (#1395) (0bf93cce)
+- docs(guide): data in the browser, and validating input (#1391) (e588465b)
+- feat(docs): check that every JavaScript sample in the manual parses (#1385) (cd4fa519)
+- docs(reference): document every uf.config.js key, and list the ones nothing reads (#1389) (6775c853)
+- feat(bench): measure uf test against Rstest and uf check against tsgo (#1383) (e689e35d)
+- perf(test): read registration sites from call sites and share expect's matchers (#1386) (b927a4e5)
+- feat(lsp): push Flow type errors to the editor (#1388) (d5110162)
+- perf(vite): compile each module once per uf build (#1384) (9d9b1462)
+- feat(ui): VisuallyHidden, and one live announcer for the whole document (#1379) (21897378)
+- feat(router, server): a form bound to a server action submits before its page hydrates (#1377) (002214b8)
+- feat(ui): uf ui update merges the registry's changes into an edited copy (#1369) (64bbffbe)
+- feat(docs): search the manual, outline each page, and link each page to its source (#1370) (1cb59d33)
+- feat(ui): card, badge, input, textarea and label in the uf ui registry (#1372) (ca69d7f5)
+- docs(reference): document uf migrate, codemod, completion and 21 undocumented flags (#1375) (10b7c106)
+- feat(ui): React Aria's selection model for ListBox, GridList, Tree and TagGroup (#1366) (8caee0f9)
+- docs(framework): the Next.js App Router audit, one feature per row, and intercepting routes under RSC (#1364) (6698a9f4)
+
 ## uf@0.1.0
 
 The first `0.x.0` release, after the `0.0.0-alpha.N` series. `0.x` still means

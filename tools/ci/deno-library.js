@@ -8,6 +8,8 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+// Each exception below is tracked in ubugeeei-prod/uf#1433; remove it there
+// when its cause is fixed.
 const NATIVE =
   "Deno cannot load Rolldown's native addon after registerHooks; the Node library lanes cover these tests.";
 const nativeFiles = new Set([
@@ -17,6 +19,8 @@ const nativeFiles = new Set([
   "packages/router/strict-mode.test.js",
   "packages/vite/a11y-audit.test.js",
   "packages/vite/barrel-imports.test.js",
+  // Added in #1384, after the rest of this list; it imports Vite like them (#1433).
+  "packages/vite/build-passes.test.js",
   "packages/vite/devtools.test.js",
   "packages/vite/flight-dev-urls.test.js",
   "packages/vite/flight.test.js",
@@ -44,7 +48,11 @@ export function classify(report) {
     } else if (
       file.file === "tests/library/payload.test.js" &&
       file.status === "host-failed" &&
-      file.reason === "the host failed: the worker exited (exit status: 1)" &&
+      // Since #1427 the worker reports the exception it died of instead of
+      // its exit status, so the same death has two spellings (#1433).
+      (file.reason === "the host failed: the worker exited (exit status: 1)" ||
+        file.reason ===
+          "the host failed: uncaught exception: The server could not finish this Suspense boundary, likely due to an error during server rendering. Switched to client rendering.") &&
       report.tests.filter((t) => t.file === file.file).at(-1)?.name ===
         "the browser applying a payload > hydrates from the rows the document carried, without running the loader again"
     ) {

@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Request-scoped server functions for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
@@ -63,7 +63,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.1.0",
+    "@uniflowed/core": "0.2.0",
     "@opentelemetry/api": "^1.9.1"
   }
 }

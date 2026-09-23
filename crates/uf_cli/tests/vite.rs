@@ -5368,8 +5368,9 @@ fn the_static_adapter_names_a_server_action_a_static_host_cannot_answer() {
 /// And the project it *can* serve: uf's own documentation.
 ///
 /// The positive half, and it is uf's own site rather than a fixture on
-/// purpose — 37 pages, no route handler, no middleware, no parameter and no
-/// server action, which is what a static deployment is. `rendering.modes` says
+/// purpose — no route handler, no middleware and no server action, and one
+/// parameterised route, `/reference/api/:name`, whose `generateStaticParams`
+/// lists every package, which is what a static deployment is. `rendering.modes` says
 /// `["ssg"]` and this is the command that makes that a checked claim rather
 /// than a field in a config file.
 ///
@@ -5385,6 +5386,12 @@ fn the_static_adapter_names_a_server_action_a_static_host_cannot_answer() {
 ///   server targets need all three. A static host serves whatever is in the
 ///   directory, so a stray `package.json` is a file a visitor can fetch at a
 ///   URL the application never mentioned.
+///
+/// The site is built the way `tools/docs/build.sh` builds it: the API reference
+/// is written first, because the parameterised route is prerendered from it.
+/// Built without it, that route has no pages, and the static adapter refuses
+/// the project. That is right for a project, and it is what this test did
+/// after #1392 added the route.
 #[test]
 fn the_static_adapter_writes_the_site_it_can_serve() {
     if !fixture_ready() {
@@ -5392,6 +5399,7 @@ fn the_static_adapter_writes_the_site_it_can_serve() {
     }
     let _dist = dist_lock();
     let root = docs_root();
+    write_the_api_reference();
 
     let output = uf()
         .arg("--cwd")
@@ -5429,6 +5437,11 @@ fn the_static_adapter_writes_the_site_it_can_serve() {
         deployed.join("guide/routing/index.html").is_file(),
         "a nested page has to arrive at the URL the build gave it"
     );
+    assert!(
+        deployed.join("reference/api/core/index.html").is_file(),
+        "a parameterised page has to arrive once for each value its \
+         `generateStaticParams` listed"
+    );
     for absent in [
         "handler.js",
         "server.js",
@@ -5454,6 +5467,26 @@ fn the_static_adapter_writes_the_site_it_can_serve() {
         built.len() > 30,
         "a docs site of {} files is not the one this asserts about",
         built.len()
+    );
+}
+
+/// Write `docs/.generated/api/`, as `tools/docs/build.sh` does before it
+/// builds the site, using the `uf` under test to read the packages.
+fn write_the_api_reference() {
+    let repository = docs_root().join("..");
+    let output = Command::new("node")
+        .current_dir(&repository)
+        .args(["--import", "@uniflowed/host/register", "tools/docs/api.js"])
+        .env("UF_BIN", uf_path())
+        .env("UF_BINARY", uf_path())
+        .env("UF_PROJECT_ROOT", ".")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "tools/docs/api.js could not write the API reference\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 

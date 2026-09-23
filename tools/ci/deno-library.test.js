@@ -48,3 +48,49 @@ it("does not accept an unexplained worker exit", () => {
   });
   expect(report.failures.length).toBe(1);
 });
+it("accepts the payload hydration exit under the name the worker now gives it", () => {
+  const report = classify({
+    passed: 0,
+    skipped: 0,
+    tests: [
+      {
+        file: "tests/library/payload.test.js",
+        name: "the browser applying a payload > hydrates from the rows the document carried, without running the loader again",
+        status: "passed",
+        failures: [],
+      },
+    ],
+    fileReports: [
+      {
+        file: "tests/library/payload.test.js",
+        status: "host-failed",
+        reason:
+          "the host failed: uncaught exception: The server could not finish this Suspense boundary, likely due to an error during server rendering. Switched to client rendering.",
+      },
+    ],
+  });
+  expect(report.runtimeSkips.length).toBe(1);
+  expect(report.failures.length).toBe(0);
+});
+it("does not accept another uncaught exception in the payload tests", () => {
+  const report = classify({
+    passed: 0,
+    skipped: 0,
+    tests: [
+      {
+        file: "tests/library/payload.test.js",
+        name: "the browser applying a payload > hydrates from the rows the document carried, without running the loader again",
+        status: "passed",
+        failures: [],
+      },
+    ],
+    fileReports: [
+      {
+        file: "tests/library/payload.test.js",
+        status: "host-failed",
+        reason: "the host failed: uncaught exception: something else",
+      },
+    ],
+  });
+  expect(report.failures.length).toBe(1);
+});
