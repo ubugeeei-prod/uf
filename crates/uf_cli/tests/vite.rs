@@ -4617,7 +4617,8 @@ fn the_deno_adapter_writes_a_directory_deno_serves_from_an_empty_one() {
 
     let (stdout, empty) = deploy_and_copy(&root, "deno");
     assert!(
-        stdout.contains("deno run --allow-net --allow-read --allow-env server.js"),
+        stdout
+            .contains("deno run --allow-net --allow-read --allow-env --allow-write=.uf server.js"),
         "the summary must say how to run it; missing Deno run command in:\n{stdout}"
     );
     let deployed = empty.path().join("app");
@@ -4640,6 +4641,7 @@ fn the_deno_adapter_writes_a_directory_deno_serves_from_an_empty_one() {
                     "--allow-net",
                     "--allow-read",
                     "--allow-env",
+                    "--allow-write=.uf",
                     "server.js",
                 ])
                 .args(["--host", "127.0.0.1", "--port", &port.to_string()])

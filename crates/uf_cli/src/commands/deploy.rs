@@ -740,6 +740,9 @@ ENV PORT=3000
 
 WORKDIR /app
 COPY --chown=node:node . .
+# `WORKDIR` creates /app as root, and the server writes beside itself: the
+# route cache keeps regenerated pages in .uf/cache, created at start-up.
+RUN chown node:node /app
 
 USER node
 EXPOSE 3000
@@ -775,9 +778,14 @@ pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &
         // choosing a hosting company on the reader's behalf, which is the one
         // thing `ubugeeei-redundancy.md` says a deployment must never require.
         DeployAdapter::Static => format!("upload the contents of {directory} to a static host"),
-        DeployAdapter::Deno => {
-            format!("cd {directory} && deno run --allow-net --allow-read --allow-env server.js")
-        }
+        // `--allow-write` scoped to `.uf`, the directory uf keeps its own state
+        // in: the route cache's filesystem store is `.uf/cache` in the working
+        // directory, and a build with `isr` creates it at start-up. Without it
+        // Deno refuses the `mkdir` and the server exits before answering (#1497).
+        DeployAdapter::Deno => format!(
+            "cd {directory} && deno run --allow-net --allow-read --allow-env \
+             --allow-write=.uf server.js"
+        ),
     }
 }
 
@@ -918,6 +926,41 @@ mod tests {
                 adapter.as_str()
             );
         }
+    }
+
+    #[test]
+    fn the_deno_command_may_write_the_route_cache_and_nothing_else() {
+        // A build with `isr` creates `.uf/cache/route` in the working
+        // directory at start-up; the printed command has to allow exactly that,
+        // or the server exits before it answers (#1497).
+        let command = next_command(
+            DeployAdapter::Deno,
+            Utf8Path::new("/tmp/my-app"),
+            ".uf/deploy/deno",
+        );
+        assert_eq!(
+            command,
+            "cd .uf/deploy/deno && deno run --allow-net --allow-read --allow-env \
+             --allow-write=.uf server.js"
+        );
+    }
+
+    #[test]
+    fn the_container_image_may_write_its_working_directory() {
+        // `WORKDIR` creates /app as root and the server runs as `node`, so
+        // without this the route cache's directory cannot be created and an
+        // `isr` build's container exits at start-up (#1496). Before `USER`, or
+        // the `chown` itself would be refused.
+        let chown = DOCKERFILE
+            .find("RUN chown node:node /app")
+            .expect("the chown is in the template");
+        let user = DOCKERFILE
+            .find("USER node")
+            .expect("the template runs as node");
+        assert!(
+            chown < user,
+            "the chown has to run before the image drops to `node`"
+        );
     }
 
     #[test]

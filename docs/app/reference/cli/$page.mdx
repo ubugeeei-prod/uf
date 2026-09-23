@@ -661,7 +661,7 @@ the seventh runs none:
 | --- | --- | --- |
 | `node` | `handler.js`, `server.js` (ticking any declared schedule), `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
 | `bun` | the same file names, with `Bun.serve` and `Bun.file` behind them | `cd .uf/deploy/bun && bun server.js` |
-| `deno` | the same file names, with `Deno.serve` and `Deno.open` behind them | `cd .uf/deploy/deno && deno run --allow-net --allow-read --allow-env server.js` |
+| `deno` | the same file names, with `Deno.serve` and `Deno.open` behind them | `cd .uf/deploy/deno && deno run --allow-net --allow-read --allow-env --allow-write=.uf server.js` |
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
 | `edge` | `handler.js`, `worker.js`, `wrangler.json` (with `triggers.crons` and a `scheduled()` for any declared schedule), `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
 | `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
@@ -729,7 +729,8 @@ documentation site is built through this target in the test suite.
 It has no build stage — the build already happened and the directory is its
 result — and nothing to install, because the whole claim of an adapter's output
 is that it needs no `node_modules`. It pins `node:24-alpine`, runs as the
-`node` user, and exposes 3000. uf does not build the image, does not tag it,
+`node` user — who owns `/app`, so the route cache can create `.uf/cache` there —
+and exposes 3000. uf does not build the image, does not tag it,
 does not push it, and does not keep the base image current: it is a file in
 your output that you are expected to read and edit.
 
@@ -890,9 +891,12 @@ the method and the limits.
 
 The same two files as `node`, with `@uniflowed/server/deno` in place of
 `@uniflowed/server/node`: `Deno.serve` for the socket and `Deno.open` for
-static assets. The generated command includes `--allow-net`, `--allow-read`
-and `--allow-env`, because those are the three capabilities the artefact uses:
-take a socket, read `static/`, and honour `HOST`/`PORT`.
+static assets. The generated command includes `--allow-net`, `--allow-read`,
+`--allow-env` and `--allow-write=.uf`, because those are the capabilities
+the artefact uses: take a socket, read `static/`, honour `HOST`/`PORT`, and keep
+the route cache's regenerated pages in `.uf/cache` (a build with `isr` creates
+it at start-up). Writing is scoped to `.uf`, the directory uf keeps its own
+state in.
 
 `app.runtime.deploy.adapters` lists what this toolchain can actually produce,
 and `uf explain build` names the adapter a build will run.

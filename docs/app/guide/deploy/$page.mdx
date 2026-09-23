@@ -130,7 +130,7 @@ half.
 | --- | --- | --- |
 | Node | [`uf build --adapter node`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/node`, 17 files, `cd .uf/deploy/node && node server.js` |
 | Bun | [`uf build --adapter bun`](/reference/cli#uf-build---adapter-target) | refused here: `bun: 1.3.13 is older than 1.3.14` |
-| Deno | [`uf build --adapter deno`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/deno`, 17 files, `deno run --allow-net --allow-read --allow-env server.js` |
+| Deno | [`uf build --adapter deno`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/deno`, 17 files, `deno run --allow-net --allow-read --allow-env --allow-write=.uf server.js` |
 | Container | [`uf build --adapter container`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/container`, 19 files, `docker build -t web-deploy .uf/deploy/container && docker run -p 3000:3000 web-deploy` |
 | Edge | [`uf build --adapter edge`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/edge`, 18 files, `cd .uf/deploy/edge && npx wrangler deploy` |
 | Serverless | [`uf build --adapter serverless`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/serverless`, 17 files, `cd .uf/deploy/serverless && zip -r ../function.zip .` |
