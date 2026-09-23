@@ -27,11 +27,12 @@ CircleCI, and the rules under the recipes apply to any other system.
 <SectionContents section="The toolchain" />
 
 The commands you run all day come first — the dev server and the build, the
-formatter and the linter, the type checker, the tests — then what they run on:
+tests and what they answer requests with, the type checker, the formatter and
+the linter, and the pipeline that runs them on every push — then what they run on:
 the dependencies, and which Node.js, Bun or package manager, pinned. After those
-come the three ways the same commands get run for you: [Tasks](/guide/tasks)
-names them once in `uf.config.js`, [uf in CI](/guide/ci) runs them on a machine,
-and [Agents](/guide/agents) hands them to a coding agent.
+come the two other ways the same commands get run for you: [Tasks](/guide/tasks)
+names them once in `uf.config.js`, and [Agents](/guide/agents) hands them to a
+coding agent.
 
 ## Which page covers which command
 
@@ -54,5 +55,7 @@ flag of the ones that are.
 
 ## When you are done
 
-[Reference](/reference) is the whole surface of each command — every flag, every
-config key and its default — for when a guide has told you which one you need.
+[Build an app](/guide/build-an-app) is next: one guide per thing an application
+does. [Reference](/reference) is the whole surface of each command — every flag,
+every config key and its default — for when a guide has told you which one you
+need.

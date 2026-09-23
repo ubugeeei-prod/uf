@@ -18,6 +18,14 @@
 //
 // A page's section is where it is listed, not where it lives: `href` is the
 // route, and a page changes section without its URL changing.
+//
+// Importance runs top-down, for sections and for the pages inside them. The
+// sections are in the order a reader who has just installed uf needs them —
+// getting it running, the commands run every day, building the application,
+// deploying it, looking things up — and the two sections a reader visits once,
+// to move an application or to decide whether to, come last. Inside a section
+// the pages most applications need come before the ones a few do. A page that
+// is buried under less important ones is a bug in this list (#1419).
 
 /** A page in the manual. `href` is the route, not a file path. */
 export type Entry = {|
@@ -76,12 +84,309 @@ export const sections: $ReadOnlyArray<Section> = [
           "uf lsp in VS Code, Cursor, Neovim, Vim, Helix, Emacs, Zed and JetBrains: what it answers, what it does not, and the config it reads.",
       },
       {
+        href: "/guide/flow",
+        title: "Flow, the modern parts",
+        blurb: "component, hook, renders, match and enums — and what uf does with them.",
+      },
+      {
         href: "/guide/tutorial",
         title: "Build a reading list",
         blurb: "Build a React application with routes, shared state, a form and tests.",
       },
     ],
+    then: "/guide/toolchain",
+  },
+  {
+    title: "The toolchain",
+    question: "How do I pin runtimes, run CI, tune lint and cache tasks?",
+    landing: {
+      href: "/guide/toolchain",
+      title: "The toolchain",
+      blurb:
+        "One guide per command: what it runs, what it reads, what it refuses, and how to put it in CI.",
+    },
+    pages: [
+      {
+        href: "/guide/dev",
+        title: "Dev and build",
+        blurb: "Vite runs both; uf decides what it is handed.",
+      },
+      {
+        href: "/guide/testing",
+        title: "Testing",
+        blurb: "A Rust runner, host workers, and where it stands against Bun.",
+      },
+      {
+        href: "/guide/mocks",
+        title: "Mocks and stories",
+        blurb:
+          "Answer the request instead of stubbing the client, and give a component's states names a test and a baseline share.",
+      },
+      {
+        href: "/guide/check",
+        title: "Type checking",
+        blurb:
+          "uf check: uf lint, then Flow's own inference over the project and the packages that ship Flow.",
+      },
+      {
+        href: "/guide/format",
+        title: "Formatting and linting",
+        blurb: "The official Flow parser, a Rust printer, and Flow's own lints.",
+      },
+      {
+        href: "/guide/ci",
+        title: "uf in CI",
+        blurb:
+          "GitHub Actions, GitLab and CircleCI: one step each, why they all pin, and the install a check is worthless without.",
+      },
+      {
+        href: "/guide/dependencies",
+        title: "Dependencies",
+        blurb:
+          "uf install and the rest: your project's own package manager, with install scripts refused and CI held to the lockfile.",
+      },
+      {
+        href: "/guide/env",
+        title: "Environments",
+        blurb: "A pinned toolchain per repository, in a shared store, with a collector.",
+      },
+      {
+        href: "/guide/tasks",
+        title: "Tasks",
+        blurb: "Define commands, connect dependencies and cache task results.",
+      },
+      {
+        href: "/guide/agents",
+        title: "Agents",
+        blurb:
+          "uf mcp: twelve tools over stdio, the two that write, and what an agent should not assume.",
+      },
+    ],
     then: "/guide/build-an-app",
+  },
+  {
+    title: "Build an app",
+    question: "How do I route, load data, render, style and test?",
+    landing: {
+      href: "/guide/build-an-app",
+      title: "Build an app",
+      blurb:
+        "One guide per thing an application does: routes, data, rendering, state, forms, UI, styling, and what production asks for.",
+    },
+    pages: [
+      {
+        href: "/guide/routing",
+        title: "Routing",
+        blurb: "Files become routes, layouts nest, and Server Components fetch their own data.",
+      },
+      {
+        href: "/guide/server-components",
+        title: "Server Components",
+        blurb:
+          "The boundary a directive draws, the graph that resolves it, and a split at the route, not the module.",
+      },
+      {
+        href: "/guide/server-actions",
+        title: "Server actions",
+        blurb:
+          "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself.",
+      },
+      {
+        href: "/guide/data",
+        title: "Data in the browser",
+        blurb:
+          "A query cache for what the browser fetches after the page has arrived, with requests that fail honestly and answers checked where they enter.",
+      },
+      {
+        href: "/guide/validation",
+        title: "Validating input",
+        blurb:
+          "Schemas that parse untrusted input into typed values, with issue paths, inferred Flow types and a JSON Schema export.",
+      },
+      {
+        href: "/guide/form",
+        title: "Forms",
+        blurb: "Uncontrolled inputs, narrow subscriptions, and no Proxy.",
+      },
+      {
+        href: "/guide/state",
+        title: "State",
+        blurb: "Atoms, a store, and where this parts company with Jotai.",
+      },
+      {
+        href: "/guide/styling",
+        title: "Styling and content",
+        blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
+      },
+      {
+        href: "/guide/ui",
+        title: "Headless components",
+        blurb:
+          "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all.",
+      },
+      {
+        href: "/guide/rendering",
+        title: "Rendering modes",
+        blurb: "Where a document comes from, and what the browser does once it has one.",
+      },
+      {
+        href: "/guide/routing/requests",
+        title: "Answering requests",
+        blurb:
+          "Middleware, route handlers, draft mode, QUERY, and streams, sockets and work that outlives the request.",
+      },
+      {
+        href: "/guide/async-react",
+        title: "Async React",
+        blurb:
+          "Suspense, transitions and optimistic UI: what waits, what stays visible, and what is only temporary.",
+      },
+      {
+        href: "/guide/assets",
+        title: "Images, fonts, icons and cards",
+        blurb:
+          "Resized, self-hosted, subsetted and drawn at build time, remote images on request — and what that stops short of.",
+      },
+      {
+        href: "/guide/cache",
+        title: "Caching",
+        blurb: "Route, function, and fetch caches with explicit lifetimes and pluggable storage.",
+      },
+      {
+        href: "/guide/auth",
+        title: "Signing in",
+        blurb:
+          "A contract rather than a provider: PKCE, a single-use state, and a session store you can replace.",
+      },
+      {
+        href: "/guide/effect",
+        title: "Effects",
+        blurb: "Failures in the type, and what Flow costs against Effect-TS.",
+      },
+      {
+        href: "/guide/graphql-relay",
+        title: "GraphQL and Relay",
+        blurb:
+          "Relay artifacts, typed components, request-scoped RSC preloads, and an independent backend.",
+      },
+      {
+        href: "/guide/logging",
+        title: "Logging",
+        blurb: "A structured logger, and a request id readable from inside a render.",
+      },
+      {
+        href: "/guide/vitals",
+        title: "Web vitals",
+        blurb:
+          "Five numbers the browser already has, and nothing that leaves the machine unless you ask.",
+      },
+    ],
+    then: "/guide/targets",
+  },
+  {
+    title: "Targets",
+    question: "Where does it run: a server, a static host, a phone, a terminal?",
+    landing: {
+      href: "/guide/targets",
+      title: "Targets",
+      blurb:
+        "Where a uf application runs: a server or a static host, a single file, a phone, a terminal.",
+    },
+    pages: [
+      {
+        href: "/guide/deploy",
+        title: "Deploy a web build",
+        blurb:
+          "Choose how to serve a uf web build: preview, start, adapters, static files, or one executable.",
+      },
+      {
+        href: "/guide/react-native",
+        title: "React Native target",
+        blurb: "Native route files, Metro, navigator events and the test-tree surface.",
+      },
+      {
+        href: "/guide/tui",
+        title: "Terminal UI",
+        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
+      },
+    ],
+    then: "/reference",
+  },
+  {
+    title: "Reference",
+    question: "What does this flag, key or export do?",
+    landing: {
+      href: "/reference",
+      title: "Reference",
+      blurb: "Look up commands, configuration, packages and APIs.",
+    },
+    pages: [
+      {
+        href: "/reference/cli",
+        title: "Commands",
+        blurb: "Every subcommand, flag and exit code.",
+      },
+      {
+        href: "/reference/config",
+        title: "uf.config.js",
+        blurb: "Every option, its default, and what reads it.",
+      },
+      {
+        href: "/reference/api",
+        title: "API",
+        blurb:
+          "Every export of every published package: its signature, its doc comment, and the specifier it is imported from.",
+      },
+      {
+        href: "/reference/packages",
+        title: "Packages",
+        blurb: "What each @uniflowed/* package is for.",
+      },
+      {
+        href: "/reference/ui",
+        title: "Components",
+        blurb: "The headless primitives, their parts, and the keys each one owns.",
+      },
+      {
+        href: "/reference/std",
+        title: "Standard library",
+        blurb:
+          "The Go standard library modules JavaScript does not have, and the measurements behind why they are JavaScript.",
+      },
+      {
+        href: "/reference/hooks",
+        title: "Browser hooks",
+        blurb:
+          "What each one renders before hydration, and how the ones with no server answer say so.",
+      },
+      {
+        href: "/reference/effect",
+        title: "Effect API",
+        blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
+      },
+      {
+        href: "/reference/i18n",
+        title: "Internationalisation",
+        blurb:
+          "MessageFormat 2 with typed arguments, the subset uf implements, and where the type system stops.",
+      },
+    ],
+    then: null,
+  },
+  {
+    title: "Migrate",
+    question: "How do I move an application I already have?",
+    // One page, so it is its own landing page: it opens with where each kind of
+    // application is covered, and a second page in front of it would say only
+    // "read the next page".
+    landing: {
+      href: "/guide/migrate",
+      title: "Migrating to uf",
+      blurb:
+        "From CRA, Vite or Next.js: what carries over, the moves in order, and what still differs.",
+    },
+    pages: [],
+    then: "/guide/start",
   },
   {
     title: "Why uf",
@@ -142,303 +447,6 @@ export const sections: $ReadOnlyArray<Section> = [
       },
     ],
     then: "/guide/start",
-  },
-  {
-    title: "Build an app",
-    question: "How do I route, load data, render, style and test?",
-    landing: {
-      href: "/guide/build-an-app",
-      title: "Build an app",
-      blurb:
-        "One guide per thing an application does: routes, data, rendering, state, forms, UI, styling, and what production asks for.",
-    },
-    pages: [
-      {
-        href: "/guide/flow",
-        title: "Flow, the modern parts",
-        blurb: "component, hook, renders, match and enums — and what uf does with them.",
-      },
-      {
-        href: "/guide/routing",
-        title: "Routing",
-        blurb: "Files become routes, layouts nest, and Server Components fetch their own data.",
-      },
-      {
-        href: "/guide/routing/requests",
-        title: "Answering requests",
-        blurb:
-          "Middleware, route handlers, draft mode, QUERY, and streams, sockets and work that outlives the request.",
-      },
-      {
-        href: "/guide/rendering",
-        title: "Rendering modes",
-        blurb: "Where a document comes from, and what the browser does once it has one.",
-      },
-      {
-        href: "/guide/server-components",
-        title: "Server Components",
-        blurb:
-          "The boundary a directive draws, the graph that resolves it, and a split at the route, not the module.",
-      },
-      {
-        href: "/guide/async-react",
-        title: "Async React",
-        blurb:
-          "Suspense, transitions and optimistic UI: what waits, what stays visible, and what is only temporary.",
-      },
-      {
-        href: "/guide/server-actions",
-        title: "Server actions",
-        blurb:
-          "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself.",
-      },
-      {
-        href: "/guide/data",
-        title: "Data in the browser",
-        blurb:
-          "A query cache for what the browser fetches after the page has arrived, with requests that fail honestly and answers checked where they enter.",
-      },
-      {
-        href: "/guide/validation",
-        title: "Validating input",
-        blurb:
-          "Schemas that parse untrusted input into typed values, with issue paths, inferred Flow types and a JSON Schema export.",
-      },
-      {
-        href: "/guide/state",
-        title: "State",
-        blurb: "Atoms, a store, and where this parts company with Jotai.",
-      },
-      {
-        href: "/guide/form",
-        title: "Forms",
-        blurb: "Uncontrolled inputs, narrow subscriptions, and no Proxy.",
-      },
-      {
-        href: "/guide/effect",
-        title: "Effects",
-        blurb: "Failures in the type, and what Flow costs against Effect-TS.",
-      },
-      {
-        href: "/guide/ui",
-        title: "Headless components",
-        blurb:
-          "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all.",
-      },
-      {
-        href: "/guide/styling",
-        title: "Styling and content",
-        blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
-      },
-      {
-        href: "/guide/assets",
-        title: "Images, fonts, icons and cards",
-        blurb:
-          "Resized, self-hosted, subsetted and drawn at build time, remote images on request — and what that stops short of.",
-      },
-      {
-        href: "/guide/cache",
-        title: "Caching",
-        blurb: "Route, function, and fetch caches with explicit lifetimes and pluggable storage.",
-      },
-      {
-        href: "/guide/auth",
-        title: "Signing in",
-        blurb:
-          "A contract rather than a provider: PKCE, a single-use state, and a session store you can replace.",
-      },
-      {
-        href: "/guide/graphql-relay",
-        title: "GraphQL and Relay",
-        blurb:
-          "Relay artifacts, typed components, request-scoped RSC preloads, and an independent backend.",
-      },
-      {
-        href: "/guide/logging",
-        title: "Logging",
-        blurb: "A structured logger, and a request id readable from inside a render.",
-      },
-      {
-        href: "/guide/vitals",
-        title: "Web vitals",
-        blurb:
-          "Five numbers the browser already has, and nothing that leaves the machine unless you ask.",
-      },
-    ],
-    then: "/guide/targets",
-  },
-  {
-    title: "Targets",
-    question: "Where does it run: a server, a static host, a phone, a terminal?",
-    landing: {
-      href: "/guide/targets",
-      title: "Targets",
-      blurb:
-        "Where a uf application runs: a server or a static host, a single file, a phone, a terminal.",
-    },
-    pages: [
-      {
-        href: "/guide/deploy",
-        title: "Deploy a web build",
-        blurb:
-          "Choose how to serve a uf web build: preview, start, adapters, static files, or one executable.",
-      },
-      {
-        href: "/guide/react-native",
-        title: "React Native target",
-        blurb: "Native route files, Metro, navigator events and the test-tree surface.",
-      },
-      {
-        href: "/guide/tui",
-        title: "Terminal UI",
-        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
-      },
-    ],
-    then: "/guide/toolchain",
-  },
-  {
-    title: "The toolchain",
-    question: "How do I pin runtimes, run CI, tune lint and cache tasks?",
-    landing: {
-      href: "/guide/toolchain",
-      title: "The toolchain",
-      blurb:
-        "One guide per command: what it runs, what it reads, what it refuses, and how to put it in CI.",
-    },
-    pages: [
-      {
-        href: "/guide/dev",
-        title: "Dev and build",
-        blurb: "Vite runs both; uf decides what it is handed.",
-      },
-      {
-        href: "/guide/format",
-        title: "Formatting and linting",
-        blurb: "The official Flow parser, a Rust printer, and Flow's own lints.",
-      },
-      {
-        href: "/guide/check",
-        title: "Type checking",
-        blurb:
-          "uf check: uf lint, then Flow's own inference over the project and the packages that ship Flow.",
-      },
-      {
-        href: "/guide/testing",
-        title: "Testing",
-        blurb: "A Rust runner, host workers, and where it stands against Bun.",
-      },
-      {
-        href: "/guide/mocks",
-        title: "Mocks and stories",
-        blurb:
-          "Answer the request instead of stubbing the client, and give a component's states names a test and a baseline share.",
-      },
-      {
-        href: "/guide/dependencies",
-        title: "Dependencies",
-        blurb:
-          "uf install and the rest: your project's own package manager, with install scripts refused and CI held to the lockfile.",
-      },
-      {
-        href: "/guide/env",
-        title: "Environments",
-        blurb: "A pinned toolchain per repository, in a shared store, with a collector.",
-      },
-      {
-        href: "/guide/tasks",
-        title: "Tasks",
-        blurb: "Define commands, connect dependencies and cache task results.",
-      },
-      {
-        href: "/guide/ci",
-        title: "uf in CI",
-        blurb:
-          "GitHub Actions, GitLab and CircleCI: one step each, why they all pin, and the install a check is worthless without.",
-      },
-      {
-        href: "/guide/agents",
-        title: "Agents",
-        blurb:
-          "uf mcp: twelve tools over stdio, the two that write, and what an agent should not assume.",
-      },
-    ],
-    then: "/reference",
-  },
-  {
-    title: "Migrate",
-    question: "How do I move an application I already have?",
-    // One page, so it is its own landing page: it opens with where each kind of
-    // application is covered, and a second page in front of it would say only
-    // "read the next page".
-    landing: {
-      href: "/guide/migrate",
-      title: "Migrating to uf",
-      blurb:
-        "From CRA, Vite or Next.js: what carries over, the moves in order, and what still differs.",
-    },
-    pages: [],
-    then: "/guide/start",
-  },
-  {
-    title: "Reference",
-    question: "What does this flag, key or export do?",
-    landing: {
-      href: "/reference",
-      title: "Reference",
-      blurb: "Look up commands, configuration, packages and APIs.",
-    },
-    pages: [
-      {
-        href: "/reference/cli",
-        title: "Commands",
-        blurb: "Every subcommand, flag and exit code.",
-      },
-      {
-        href: "/reference/config",
-        title: "uf.config.js",
-        blurb: "Every option, its default, and what reads it.",
-      },
-      {
-        href: "/reference/packages",
-        title: "Packages",
-        blurb: "What each @uniflowed/* package is for.",
-      },
-      {
-        href: "/reference/api",
-        title: "API",
-        blurb:
-          "Every export of every published package: its signature, its doc comment, and the specifier it is imported from.",
-      },
-      {
-        href: "/reference/ui",
-        title: "Components",
-        blurb: "The headless primitives, their parts, and the keys each one owns.",
-      },
-      {
-        href: "/reference/hooks",
-        title: "Browser hooks",
-        blurb:
-          "What each one renders before hydration, and how the ones with no server answer say so.",
-      },
-      {
-        href: "/reference/effect",
-        title: "Effect API",
-        blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
-      },
-      {
-        href: "/reference/i18n",
-        title: "Internationalisation",
-        blurb:
-          "MessageFormat 2 with typed arguments, the subset uf implements, and where the type system stops.",
-      },
-      {
-        href: "/reference/std",
-        title: "Standard library",
-        blurb:
-          "The Go standard library modules JavaScript does not have, and the measurements behind why they are JavaScript.",
-      },
-    ],
-    then: null,
   },
 ];
 
