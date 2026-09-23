@@ -82,8 +82,8 @@ const SECOND = Date.UTC(2026, 0, 2);
 
 /** One way a Node host loads Flow, and what `--import` has to name for it. */
 type Loader = {|
-  +name: string,
-  +imports: (root: string) => string,
+  readonly name: string,
+  readonly imports: (root: string) => string,
 |};
 
 /** The hooks `register.js` installs in the thread that is importing. */
@@ -317,7 +317,9 @@ const buildUf = (root: string, marker: string, when: number): string => {
   }
   fs.writeFileSync(binary, compiler(marker));
   fs.chmodSync(binary, 0o755);
-  fs.utimesSync(binary, new Date(when), new Date(when));
+  // In seconds, which is the number `utimes` takes: the same instant as
+  // `new Date(when)`.
+  fs.utimesSync(binary, when / 1000, when / 1000);
   return binary;
 };
 
@@ -335,11 +337,15 @@ const buildUf = (root: string, marker: string, when: number): string => {
  */
 const run = (
   root: string,
-  env: { [string]: string | void },
+  env: { readonly [string]: string | void },
   loader: Loader,
   entry: string = "main.js",
 ): Result => {
-  const environment = { ...process.env, UF_PROJECT_ROOT: root, ...env };
+  const environment: { [string]: string | void } = { ...process.env };
+  environment.UF_PROJECT_ROOT = root;
+  for (const name of Object.keys(env)) {
+    environment[name] = env[name];
+  }
   for (const name of Object.keys(environment)) {
     if (environment[name] == null) delete environment[name];
   }
