@@ -467,6 +467,162 @@ fn arguments_are_part_of_what_is_cached() {
     assert_eq!(lines(dir.path(), "ran.txt").len(), 2);
 }
 
+// --- Declared arguments --------------------------------------------------
+
+/// A task that prints each word it is given on a line of its own, and
+/// declares three arguments: one with choices, one free, one defaulted.
+fn deploy() -> tempfile::TempDir {
+    project(
+        r#"{
+          "deploy": {
+            "command": "printf '%s\\n'",
+            "args": [
+              { "name": "target", "description": "Where to deploy", "choices": ["staging", "production"] },
+              { "name": "tag" },
+              { "name": "region", "choices": ["us", "eu"], "default": "eu" }
+            ]
+          }
+        }"#,
+    )
+}
+
+fn printed(run: &Run) -> Vec<&str> {
+    run.stdout.lines().collect()
+}
+
+/// Positional or by name, the values reach the command in declared order,
+/// the default fills what was not given, and anything undeclared follows.
+#[test]
+fn declared_arguments_are_given_in_order_or_by_name() {
+    let dir = deploy();
+
+    let run = run(dir.path(), &["deploy", "staging", "v1"]);
+    assert!(run.ok, "{}", run.stderr);
+    assert_eq!(printed(&run), ["staging", "v1", "eu"]);
+
+    let run = run_named(dir.path());
+    assert!(run.ok, "{}", run.stderr);
+    assert_eq!(
+        printed(&run),
+        ["production", "two words", "us", "--dry-run"]
+    );
+}
+
+fn run_named(root: &Path) -> Run {
+    run(
+        root,
+        &[
+            "deploy",
+            "--tag",
+            "two words",
+            "--dry-run",
+            "--region=us",
+            "--target",
+            "production",
+        ],
+    )
+}
+
+/// A value outside `choices` is refused by the argument's name, and nothing
+/// runs.
+#[test]
+fn a_value_outside_the_choices_is_refused_by_name() {
+    let dir = deploy();
+
+    let run = run(dir.path(), &["deploy", "prod", "v1"]);
+    assert!(!run.ok);
+    assert!(run.stdout.is_empty(), "{}", run.stdout);
+    assert!(
+        run.stderr.contains(
+            "task \"deploy\": <target> cannot be \"prod\"; it is one of: staging, production"
+        ),
+        "{}",
+        run.stderr
+    );
+}
+
+/// With nobody at a terminal — this test's stdin is not one — a missing
+/// required argument is an error naming it and its choices, not a prompt that
+/// waits for ever. `CI` alone is enough to mean the same.
+#[test]
+fn a_missing_argument_off_a_terminal_is_an_error_that_names_it() {
+    let dir = deploy();
+
+    for ci in [false, true] {
+        let mut command = uf();
+        command.arg("--cwd").arg(dir.path()).args(["run", "deploy"]);
+        if ci {
+            command.env("CI", "true");
+        } else {
+            command.env_remove("CI");
+        }
+        let output = command.output().unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(1), "{stderr}");
+        assert!(output.stdout.is_empty());
+        assert!(stderr.contains("missing <target>, <tag>"), "{stderr}");
+        assert!(
+            stderr.contains("<target>  Where to deploy — one of: staging, production"),
+            "{stderr}"
+        );
+        assert!(
+            stderr.contains("`uf run deploy <target> <tag> [region=eu]`"),
+            "{stderr}"
+        );
+    }
+}
+
+/// A declaration `uf run` could not fill is refused before anything runs.
+#[test]
+fn an_argument_declaration_uf_cannot_fill_is_refused() {
+    let dir = project(
+        r#"{
+          "t": { "command": "printf x", "args": [{ "name": "note", "required": false }, { "name": "then" }] }
+        }"#,
+    );
+    let run = run(dir.path(), &["t", "a", "b"]);
+    assert!(!run.ok);
+    assert!(
+        run.stderr
+            .contains("<note> may be left out and has no default"),
+        "{}",
+        run.stderr
+    );
+}
+
+/// Off a terminal, `uf run` alone still lists — now with what each task takes
+/// — and `--list` lists anywhere.
+#[test]
+fn listing_shows_each_tasks_arguments() {
+    let dir = deploy();
+    for args in [&[][..], &["--list"][..]] {
+        let run = run(dir.path(), args);
+        assert!(run.ok, "{}", run.stderr);
+        assert!(
+            run.stdout
+                .contains("printf '%s\\n' <target> <tag> [region=eu]"),
+            "{}",
+            run.stdout
+        );
+    }
+}
+
+/// `uf explain run` says which tasks declare arguments and what happens to a
+/// missing one.
+#[test]
+fn explain_names_the_tasks_that_declare_arguments() {
+    let dir = deploy();
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "run"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}");
+    assert!(stdout.contains("declared by deploy"), "{stdout}");
+}
+
 // --- What runs the command ------------------------------------------------
 
 /// A command that is a program and its arguments is started by uf.

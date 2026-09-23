@@ -438,32 +438,33 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             why,
             recursive,
             filter,
+            list,
             script,
             args,
-        } => match script {
-            Some(script) => commands::task::run_task(
-                &cwd,
-                ui,
-                mode.as_deref(),
-                &script,
-                &args,
-                commands::task::RunArgs {
-                    concurrency,
-                    force,
-                    why,
-                    recursive,
-                    filter,
-                },
-            ),
-            // Listing is one project's tasks, and a selector over members
-            // that would then be ignored is a flag that silently does
-            // nothing.
-            None if recursive || !filter.is_empty() => Err(anyhow!(
-                "`-r` and `--filter` choose where a task runs, and no task was named\n\n  \
-                 name one — `uf run build -r` — or run `uf run` to see what this project defines"
-            )),
-            None => commands::task::list_tasks(&cwd, ui),
-        },
+        } => {
+            let options = commands::task::RunArgs {
+                concurrency,
+                force,
+                why,
+                recursive,
+                filter,
+                undeclared: false,
+            };
+            match script {
+                Some(script) => {
+                    commands::task::run_task(&cwd, ui, mode.as_deref(), &script, &args, options)
+                }
+                // Listing is one project's tasks, and a selector over members
+                // that would then be ignored is a flag that silently does
+                // nothing.
+                None if options.recursive || !options.filter.is_empty() => Err(anyhow!(
+                    "`-r` and `--filter` choose where a task runs, and no task was named\n\n  \
+                     name one — `uf run build -r` — or run `uf run` to see what this project defines"
+                )),
+                None if list => commands::task::list_tasks(&cwd, ui),
+                None => commands::task::pick_task(&cwd, ui, mode.as_deref(), options),
+            }
+        }
         Commands::Test {
             host,
             list,

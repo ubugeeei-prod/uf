@@ -36,6 +36,7 @@
 //! ```
 
 mod draw;
+mod input;
 mod key;
 mod menu;
 mod raw;
@@ -48,6 +49,7 @@ use std::io::{self, IsTerminal, Write};
 use crate::capability::{Capabilities, ColorChoice, TerminalEnv};
 use crate::theme::Theme;
 
+pub use input::{Answer, Question, input};
 pub use menu::{Choice, VISIBLE};
 
 use key::{Key, read_key};
@@ -113,17 +115,68 @@ pub fn select<'a>(request: &Request<'a>) -> Outcome<'a> {
     };
 
     let mut menu = Menu::new(request.choices);
-    let outcome = run(&mut menu, &frame, &raw);
-
-    // Erase the menu. A chosen command is about to print its own output, and
-    // leaving the picker above it turns the answer into part of the question.
-    clear(&frame, &menu);
+    let mut stderr = io::stderr();
+    let outcome = run(
+        &mut menu,
+        &mut || read_key(&raw),
+        &mut |menu, buffer| draw::frame(menu, &frame, buffer),
+        &mut stderr,
+    );
     drop(raw);
     outcome
 }
 
-/// Read keys and redraw until something ends it.
-fn run<'a>(menu: &mut Menu<'a>, frame: &draw::Frame<'_>, raw: &RawMode) -> Outcome<'a> {
+/// Where keystrokes come from: the terminal, or a test's list of them.
+///
+/// `Ok(None)` is the input ending, which every prompt reads as "cancelled".
+type Keys<'k> = dyn FnMut() -> io::Result<Option<Key>> + 'k;
+
+/// What one key does to a menu, and whether it ends the prompt.
+fn press<'a>(menu: &mut Menu<'a>, key: Key) -> Option<Outcome<'a>> {
+    match key {
+        Key::Escape => return Some(Outcome::Cancelled),
+        // Nothing selected means nothing matches what was typed, and the
+        // frame already says so.
+        Key::Enter => return menu.selected().map(Outcome::Chose),
+        Key::Up => menu.up(),
+        Key::Down => menu.down(),
+        Key::Backspace => menu.backspace(),
+        Key::ClearLine => menu.clear(),
+        Key::Char(character) => menu.push(character),
+        Key::Other => {}
+    }
+    None
+}
+
+/// Read keys and redraw until something ends it, then erase the block.
+///
+/// Generic over where keys come from and where frames go, so the whole loop —
+/// not only the state it drives — runs in a test with no terminal.
+fn run<'a, W: Write + ?Sized>(
+    menu: &mut Menu<'a>,
+    keys: &mut Keys<'_>,
+    draw: &mut dyn FnMut(&Menu<'a>, &mut String),
+    out: &mut W,
+) -> Outcome<'a> {
+    let outcome = redraw_until(menu, keys, draw, out, |menu, key| press(menu, key))
+        .unwrap_or(Outcome::Cancelled);
+    // Erase the menu. A chosen command is about to print its own output, and
+    // leaving the picker above it turns the answer into part of the question.
+    erase(menu, draw, out);
+    outcome
+}
+
+/// The loop every prompt shares: draw a frame, read a key, apply it.
+///
+/// `None` when the input ended or could not be written to — cancelled, as far
+/// as any caller is concerned.
+fn redraw_until<S, T, W: Write + ?Sized>(
+    state: &mut S,
+    keys: &mut Keys<'_>,
+    draw: &mut dyn FnMut(&S, &mut String),
+    out: &mut W,
+    mut apply: impl FnMut(&mut S, Key) -> Option<T>,
+) -> Option<T> {
     let mut drawn = 0usize;
     let mut buffer = String::with_capacity(1024);
 
@@ -136,48 +189,39 @@ fn run<'a>(menu: &mut Menu<'a>, frame: &draw::Frame<'_>, raw: &RawMode) -> Outco
             buffer.push_str("\x1b[J");
         }
         buffer.push_str("\x1b[?25l");
-        draw::frame(menu, frame, &mut buffer);
-        drawn = buffer.matches('\n').count();
+        let start = buffer.len();
+        draw(state, &mut buffer);
+        drawn = buffer[start..].matches('\n').count();
 
-        if write(&buffer).is_err() {
-            return Outcome::Cancelled;
+        if write(out, &buffer).is_err() {
+            return None;
         }
 
-        match read_key(raw) {
-            Ok(None) | Err(_) => return Outcome::Cancelled,
-            Ok(Some(Key::Escape)) => return Outcome::Cancelled,
-            Ok(Some(Key::Enter)) => {
-                // Nothing selected means nothing matches what was typed, and
-                // the frame already says so.
-                if let Some(choice) = menu.selected() {
-                    return Outcome::Chose(choice);
+        match keys() {
+            Ok(Some(key)) => {
+                if let Some(done) = apply(state, key) {
+                    return Some(done);
                 }
             }
-            Ok(Some(Key::Up)) => menu.up(),
-            Ok(Some(Key::Down)) => menu.down(),
-            Ok(Some(Key::Backspace)) => menu.backspace(),
-            Ok(Some(Key::ClearLine)) => menu.clear(),
-            Ok(Some(Key::Char(character))) => menu.push(character),
-            Ok(Some(Key::Other)) => {}
+            Ok(None) | Err(_) => return None,
         }
     }
 }
 
-/// Erase the block the menu was drawing in.
-fn clear(frame: &draw::Frame<'_>, menu: &Menu<'_>) {
+/// Erase the block a prompt was drawing in.
+fn erase<S, W: Write + ?Sized>(state: &S, draw: &mut dyn FnMut(&S, &mut String), out: &mut W) {
     let mut buffer = String::new();
-    draw::frame(menu, frame, &mut buffer);
+    draw(state, &mut buffer);
     let lines = buffer.matches('\n').count();
     // The cursor is put back by `RawMode`'s drop, which runs whichever way
     // this returned, so showing it here as well would only be a second copy.
-    let _ = write(&format!("\x1b[{lines}A\x1b[J"));
+    let _ = write(out, &format!("\x1b[{lines}A\x1b[J"));
 }
 
-/// Write to stderr and flush, so a frame appears before the next key is read.
-fn write(text: &str) -> io::Result<()> {
-    let mut stderr = io::stderr();
-    stderr.write_all(text.as_bytes())?;
-    stderr.flush()
+/// Write and flush, so a frame appears before the next key is read.
+fn write<W: Write + ?Sized>(out: &mut W, text: &str) -> io::Result<()> {
+    out.write_all(text.as_bytes())?;
+    out.flush()
 }
 
 /// Whether there is a person at a terminal to ask.

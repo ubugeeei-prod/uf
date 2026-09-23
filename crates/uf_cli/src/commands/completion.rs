@@ -21,7 +21,7 @@ mod tests;
 use anyhow::Result;
 use camino::Utf8Path;
 use clap::CommandFactory;
-use uf_config::load_config;
+use uf_config::{TaskArgument, load_config};
 
 use crate::Cli;
 use crate::cli::Shell;
@@ -46,9 +46,15 @@ pub(crate) fn completion(ui: &mut Ui, shell: Shell) {
 /// `words` is everything typed after `uf`, with the word being completed last —
 /// possibly empty, which is what "the cursor is at a fresh word" looks like.
 pub(crate) fn complete(cwd: &Utf8Path, ui: &mut Ui, words: &[String]) -> Result<()> {
-    let tasks = task_names(cwd);
-    let names = tasks.iter().map(String::as_str).collect::<Vec<_>>();
-    let candidates = candidates(words, &names);
+    let tasks = project_tasks(cwd);
+    let tasks = tasks
+        .iter()
+        .map(|(name, args)| Task {
+            name: name.as_str(),
+            args,
+        })
+        .collect::<Vec<_>>();
+    let candidates = candidates(words, &tasks);
 
     let mut out = String::new();
     for candidate in &candidates {
@@ -59,29 +65,37 @@ pub(crate) fn complete(cwd: &Utf8Path, ui: &mut Ui, words: &[String]) -> Result<
     Ok(())
 }
 
-/// The project's task names, or nothing when there is no readable project.
+/// The project's tasks and the arguments each declares, or nothing when there
+/// is no readable project.
 ///
 /// A completion that failed loudly would print an error into the middle of
 /// someone's command line. There is nothing to say here: either uf knows the
 /// tasks or it does not, and not knowing them completes to nothing.
-fn task_names(cwd: &Utf8Path) -> Vec<String> {
+fn project_tasks(cwd: &Utf8Path) -> Vec<(String, Vec<TaskArgument>)> {
     load_config(cwd).map_or_else(
         |_| Vec::new(),
         |resolved| {
             resolved
                 .config
                 .tasks
-                .keys()
-                .map(ToString::to_string)
+                .iter()
+                .map(|(name, task)| (name.to_string(), task.args().to_vec()))
                 .collect()
         },
     )
 }
 
+/// One task, as completion needs it.
+#[derive(Debug, Clone, Copy)]
+struct Task<'a> {
+    name: &'a str,
+    args: &'a [TaskArgument],
+}
+
 /// What could come next, given the words typed so far.
 ///
 /// Pure, so the whole surface is testable without a shell or a project on disk.
-fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
+fn candidates(words: &[String], tasks: &[Task<'_>]) -> Vec<String> {
     let (current, before) = match words.split_last() {
         Some((current, before)) => (current.as_str(), before),
         None => ("", &[][..]),
@@ -97,14 +111,11 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         }
     }
 
-    if current.starts_with('-') {
-        return matching(current, GLOBAL_FLAGS.iter().copied());
-    }
-
     // The subcommand: the first word that is not a global flag or its value.
     let mut positional = Vec::new();
+    let mut at = Vec::new();
     let mut skip_next = false;
-    for word in before {
+    for (index, word) in before.iter().enumerate() {
         if skip_next {
             skip_next = false;
             continue;
@@ -115,11 +126,27 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         }
         if !word.starts_with('-') {
             positional.push(word.as_str());
+            at.push(index);
         }
     }
 
+    // After `uf run <task>`, the words belong to the task, and a task that
+    // declares its `args` says what they may be. One that declares none
+    // completes as it always did.
+    if let ["run", name, ..] = positional.as_slice()
+        && let Some(task) = tasks
+            .iter()
+            .find(|task| task.name == *name && !task.args.is_empty())
+    {
+        return task_argument(current, &before[at[1] + 1..], task.args);
+    }
+
+    if current.starts_with('-') {
+        return matching(current, GLOBAL_FLAGS.iter().copied());
+    }
+
     match positional.as_slice() {
-        ["run"] => matching(current, tasks.iter().copied()),
+        ["run"] => matching(current, tasks.iter().map(|task| task.name)),
         ["release"] => matching(current, RELEASE_BUMPS.iter().copied()),
         // `explain::KNOWN` itself, not a copy of part of it. These were two
         // hand-maintained lists and nothing compared them, so completion
@@ -142,6 +169,66 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
             matching(current, names.iter().map(String::as_str))
         }),
     }
+}
+
+/// What the word being typed after `uf run <task> <after...>` could be.
+///
+/// The same rules `uf run` fills a task's arguments by, run over what has been
+/// typed so far: the value of a `--name` just written, a `--name` not yet
+/// given, or the choices of the next argument a bare word would fill. An
+/// argument with no `choices` takes any value, and completes to nothing — the
+/// shell's own file completion is a better guess at it than uf's.
+fn task_argument(current: &str, after: &[String], declared: &[TaskArgument]) -> Vec<String> {
+    let declared_named = |word: &str| {
+        let name = word.strip_prefix("--")?;
+        declared.iter().position(|argument| argument.name == name)
+    };
+    let choices = |at: usize| {
+        matching(
+            current,
+            declared[at]
+                .choices
+                .iter()
+                .map(compact_str::CompactString::as_str),
+        )
+    };
+
+    if let Some(at) = after.last().and_then(|word| declared_named(word)) {
+        return choices(at);
+    }
+
+    let mut filled = vec![false; declared.len()];
+    let mut words = after.iter();
+    while let Some(word) = words.next() {
+        let (name, inline) = match word.split_once('=') {
+            Some((name, _)) => (name, true),
+            None => (word.as_str(), false),
+        };
+        if let Some(at) = declared_named(name) {
+            filled[at] = true;
+            if !inline {
+                words.next();
+            }
+        } else if !word.starts_with('-')
+            && let Some(slot) = filled.iter_mut().find(|slot| !**slot)
+        {
+            *slot = true;
+        }
+    }
+
+    if current.starts_with('-') {
+        let flags: Vec<String> = declared
+            .iter()
+            .zip(&filled)
+            .filter(|(_, filled)| !**filled)
+            .map(|(argument, _)| format!("--{}", argument.name))
+            .collect();
+        return matching(current, flags.iter().map(String::as_str));
+    }
+    filled
+        .iter()
+        .position(|filled| !filled)
+        .map_or_else(Vec::new, choices)
 }
 
 /// Every name the parser accepts for a visible subcommand of the command

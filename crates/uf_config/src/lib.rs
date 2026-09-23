@@ -1734,6 +1734,15 @@ impl TaskDefinition {
         }
     }
 
+    /// The arguments this task declares, in the order `uf run` fills them.
+    #[must_use]
+    pub fn args(&self) -> &[TaskArgument] {
+        match self {
+            Self::Command(_) => &[],
+            Self::Detailed(task) => &task.args,
+        }
+    }
+
     /// The detailed form, for the fields only it has.
     #[must_use]
     pub fn details(&self) -> Option<&TaskCommand> {
@@ -1791,6 +1800,53 @@ pub struct TaskCommand {
     /// that default said out loud, and it is an error on a task that declares
     /// no inputs rather than a silently ignored request.
     pub cache: Option<bool>,
+    /// The arguments the task takes, in the order they are appended to
+    /// `command`. See [`TaskArgument`].
+    pub args: Vec<TaskArgument>,
+}
+
+/// One argument a task declares.
+///
+/// A declaration rather than a template: the value is appended to the task's
+/// command, in the order the arguments are declared, exactly where
+/// `uf run task value` put it before there was anything to declare. What the
+/// declaration adds is a name to pass it by (`--name value`), the values it
+/// may take, what to use when it is left out, and — at a terminal — a list to
+/// pick it from instead of an error. `uf_task::arguments` is the reader.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct TaskArgument {
+    /// What `--name` and the picker call it.
+    pub name: CompactString,
+    /// One line saying what it is for.
+    pub description: Option<CompactString>,
+    /// The only values it may take. Empty means any value.
+    pub choices: Vec<CompactString>,
+    /// The value used when it is not given. An argument with a default is
+    /// never asked for.
+    pub default: Option<CompactString>,
+    /// Whether leaving it out is an error. [`None`] means "unless it has a
+    /// `default`".
+    pub required: Option<bool>,
+}
+
+impl TaskArgument {
+    /// An argument called `name`, with nothing else declared.
+    #[must_use]
+    pub fn named(name: impl Into<CompactString>) -> Self {
+        Self {
+            name: name.into(),
+            ..Self::default()
+        }
+    }
+
+    /// Whether it has to be given — on the command line, by its default, or
+    /// at a terminal by picking one.
+    #[must_use]
+    pub fn is_required(&self) -> bool {
+        self.required.unwrap_or(self.default.is_none())
+    }
 }
 
 impl Default for TaskCommand {
@@ -1803,6 +1859,7 @@ impl Default for TaskCommand {
             inputs: Vec::new(),
             outputs: Vec::new(),
             cache: None,
+            args: Vec::new(),
         }
     }
 }
