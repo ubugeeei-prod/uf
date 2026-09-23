@@ -21,9 +21,40 @@ function needsFullSuite(paths) {
   );
 }
 
+// What "RSC and browser testing" exercises: the RSC fixtures it runs, the
+// packages those fixtures and `createTestApp` load, the RSC analysis, and the
+// scripts that drive the job. A pull request touching any of them runs that
+// job, rather than leaving it to the release queue to be the first to find
+// out (#1434). Kept narrow on purpose: it starts a browser and builds an app,
+// and most code changes cannot reach either.
+const RSC_LANE = [
+  "packages/router/",
+  "packages/server/",
+  "packages/vite/",
+  "packages/test/",
+  "packages/react-testing/",
+  "packages/host/",
+  "crates/uf_rsc/",
+  "crates/uf_cli/tests/fixtures/rsc-test-app/",
+  "crates/uf_cli/tests/fixtures/mcp-dev-app/",
+  "crates/uf_cli/tests/fixtures/browser-interactions/",
+  "tools/ci/test-browser.sh",
+  "tools/ci/pinned-browser.sh",
+  "tools/ci/change-scope.cjs",
+  ".github/workflows/ci.yml",
+];
+
+/** Whether a change reaches what the RSC and browser job tests. */
+function needsRscSuite(paths) {
+  return (
+    paths.length === 0 || paths.some((path) => RSC_LANE.some((prefix) => path.startsWith(prefix)))
+  );
+}
+
 if (require.main === module) {
   let full = true;
   let code = true;
+  let rsc = true;
   let release = false;
   let paths;
   const base = process.env.BASE_SHA;
@@ -41,16 +72,18 @@ if (require.main === module) {
     // Authorization errors fail the job; they must never become a quick run.
     release = require("../release/policy.cjs").checkCandidate(base, paths);
     code = needsFullSuite(paths);
+    rsc = needsRscSuite(paths);
     // The queue validates the final main merge once, before it can land.
     full = release && process.env.GITHUB_EVENT_NAME === "merge_group";
-    console.log(`${paths.length} changed files; code: ${code}; full suite: ${full}`);
+    rsc = rsc || full;
+    console.log(`${paths.length} changed files; code: ${code}; rsc: ${rsc}; full suite: ${full}`);
   }
   const version = release
     ? JSON.parse(require("node:fs").readFileSync("packages/core/package.json", "utf8")).version
     : "";
   appendFileSync(
     process.env.GITHUB_OUTPUT,
-    `full=${full}\ncode=${code}\nrelease=${release}\nversion=${version}\n`,
+    `full=${full}\ncode=${code}\nrsc=${rsc}\nrelease=${release}\nversion=${version}\n`,
   );
 }
-module.exports = { needsFullSuite };
+module.exports = { needsFullSuite, needsRscSuite };
