@@ -128,7 +128,7 @@ hook useCarousel(part: string): CarouselState {
  * hold a `Carousel.Pause`, and that one must be the first thing `Tab` reaches
  * inside it; both are checked.
  */
-export component CarouselRoot(
+component CarouselRoot(
   children: React.Node,
   autoplay?: number | null = null,
   count: number,
@@ -264,7 +264,7 @@ export component CarouselRoot(
  * four seconds is a page a screen reader cannot be used on. `"polite"` the rest
  * of the time, so pressing Next says something.
  */
-export component CarouselContent(children: React.Node, ...rest: Rest) {
+component CarouselContent(children: React.Node, ...rest: Rest) {
   const carousel = useCarousel("Carousel.Content");
 
   return (
@@ -288,7 +288,7 @@ export component CarouselContent(children: React.Node, ...rest: Rest) {
  * takes the subtree out of the accessibility tree, which is what stops a reader
  * being read six slides in a row.
  */
-export component CarouselItem(children: React.Node, index: number, ...rest: Rest) {
+component CarouselItem(children: React.Node, index: number, ...rest: Rest) {
   const carousel = useCarousel("Carousel.Item");
   const current = index === carousel.index;
 
@@ -320,7 +320,7 @@ export component CarouselItem(children: React.Node, index: number, ...rest: Rest
  * for: `aria-pressed` on a pause button is the announcement "pause, pressed",
  * and a reader who has stopped a carousel wants to be told it is stopped.
  */
-export component CarouselPause(
+component CarouselPause(
   children?: React.Node,
   pauseLabel?: string = "Stop the carousel",
   playLabel?: string = "Start the carousel",
@@ -354,7 +354,7 @@ export component CarouselPause(
 }
 
 /** The button that goes back one slide. */
-export component CarouselPrevious(
+component CarouselPrevious(
   children?: React.Node,
   label?: string = "Previous slide",
   ...rest: Rest
@@ -367,7 +367,7 @@ export component CarouselPrevious(
 }
 
 /** The button that goes forward one slide. */
-export component CarouselNext(children?: React.Node, label?: string = "Next slide", ...rest: Rest) {
+component CarouselNext(children?: React.Node, label?: string = "Next slide", ...rest: Rest) {
   return (
     <CarouselStep {...forwarded(rest)} label={label} step={1}>
       {children}
@@ -408,3 +408,21 @@ component CarouselStep(children?: React.Node, label: string, step: number, ...re
     </button>
   );
 }
+
+/**
+ * The parts, under the names the `Carousel` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Carousel from "./carousel.js"` —
+ * so a caller writes `<Carousel.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `CarouselRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  CarouselRoot as Root,
+  CarouselContent as Content,
+  CarouselItem as Item,
+  CarouselPause as Pause,
+  CarouselPrevious as Previous,
+  CarouselNext as Next,
+};

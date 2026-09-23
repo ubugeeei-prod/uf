@@ -24,9 +24,9 @@ naive version breaks; this page is the shorter version.
 
 ```js
 // @flow
-// One entry point: a family as a namespace, or a part by its own name.
-// `Select.Root` and `SelectRoot` are the same component.
-import { Select, SelectRoot } from "@uniflowed/ui";
+// One entry point, and one name per component: `Select` is the namespace,
+// `Select.Root` and `Select.Option` are its parts.
+import { Select } from "@uniflowed/ui";
 ```
 
 ## What ships
@@ -347,21 +347,21 @@ server `announce` does nothing.
 
 ## Import shapes
 
-`@uniflowed/ui` is the package's one entry point. It exports namespaces for app
-code:
+`@uniflowed/ui` is the package's one entry point, and each component in the
+table above is one name in it. A component with parts is a namespace, which is
+the module itself re-exported (`export * as Dialog from "./dialog.js"`). A
+single-element control is a name of its own. Types, hooks and functions stay
+flat:
 
 ```js
-import { Dialog, Field, Select } from "@uniflowed/ui";
+import { Checkbox, Dialog, Field, Select, toast } from "@uniflowed/ui";
+import type { DialogRole, Side } from "@uniflowed/ui";
 ```
 
-and every part under its own name as well, which suits presets, wrappers and
-tests that want one part:
-
-```js
-import { DialogRoot, DialogTrigger } from "@uniflowed/ui";
-```
-
-There is no subpath to import instead. A bundler keeps the modules in the table
+The parts have no prefixed names. `DialogRoot` is gone, and `uf codemod`
+rewrites it to `Dialog.Root`. [Importing: one name per
+component](/guide/ui#importing-one-name-per-component) explains why. There is
+no subpath to import instead. A bundler keeps the modules in the table
 above that the imported names come from and drops the rest, because the package
 declares `sideEffects: false`. `internal/` is not exported; helpers such as
 roving focus and prop composition are part of the primitive contracts, not a

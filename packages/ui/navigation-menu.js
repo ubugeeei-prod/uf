@@ -106,7 +106,7 @@ hook useNavigationMenuItem(part: string): NavigationMenuItemState {
  * trigger writing itself into a ref — is a registry that has to be kept in step
  * with a document that already knows the answer.
  */
-export component NavigationMenuRoot(
+component NavigationMenuRoot(
   children: renders* NavigationMenuList,
   defaultValue?: string | null = null,
   value?: string | null,
@@ -145,13 +145,13 @@ export component NavigationMenuRoot(
 }
 
 /** The list of entries. A `<ul>`, because a reader is told how many there are. */
-export component NavigationMenuList(children: renders* NavigationMenuItem, ...rest: Rest) {
+component NavigationMenuList(children: renders* NavigationMenuItem, ...rest: Rest) {
   useNavigationMenu("NavigationMenu.List");
   return <ul {...rest}>{children}</ul>;
 }
 
 /** One entry: a link on its own, or a button and the group it opens. */
-export component NavigationMenuItem(value: string, children: React.Node, ...rest: Rest) {
+component NavigationMenuItem(value: string, children: React.Node, ...rest: Rest) {
   const menu = useNavigationMenu("NavigationMenu.Item");
   const base = useId();
   const [present, setPresent] = useState(false);
@@ -179,7 +179,7 @@ export component NavigationMenuItem(value: string, children: React.Node, ...rest
 }
 
 /** The button that opens an entry's group. Not a `menuitem`; see the header. */
-export component NavigationMenuTrigger(children: React.Node, ...rest: Rest) {
+component NavigationMenuTrigger(children: React.Node, ...rest: Rest) {
   const item = useNavigationMenuItem("NavigationMenu.Trigger");
   const passed = withoutComposed(rest, ["onClick"]);
 
@@ -203,7 +203,7 @@ export component NavigationMenuTrigger(children: React.Node, ...rest: Rest) {
  * Named after its trigger, so a reader who lands in it by `Tab` is told which
  * entry they are inside rather than hearing an unnamed list of four links.
  */
-export component NavigationMenuBody(children: renders* NavigationMenuLink, ...rest: Rest) {
+component NavigationMenuBody(children: renders* NavigationMenuLink, ...rest: Rest) {
   const item = useNavigationMenuItem("NavigationMenu.Body");
   // Registered only while the group is actually in the document, which for this
   // component means only while it is open — see the module header for why a
@@ -237,7 +237,7 @@ export component NavigationMenuBody(children: renders* NavigationMenuLink, ...re
  * behind them so that coming back — or a router that never unmounted the page —
  * does not leave it hanging open.
  */
-export component NavigationMenuLink(children: React.Node, ...rest: Rest) {
+component NavigationMenuLink(children: React.Node, ...rest: Rest) {
   const item = useNavigationMenuItem("NavigationMenu.Link");
   const passed = withoutComposed(rest, ["onClick"]);
 
@@ -249,3 +249,21 @@ export component NavigationMenuLink(children: React.Node, ...rest: Rest) {
     </li>
   );
 }
+
+/**
+ * The parts, under the names the `NavigationMenu` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as NavigationMenu from "./navigation-menu.js"` —
+ * so a caller writes `<NavigationMenu.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `NavigationMenuRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  NavigationMenuRoot as Root,
+  NavigationMenuList as List,
+  NavigationMenuItem as Item,
+  NavigationMenuTrigger as Trigger,
+  NavigationMenuBody as Body,
+  NavigationMenuLink as Link,
+};

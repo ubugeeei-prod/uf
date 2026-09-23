@@ -70,7 +70,7 @@ import {
 } from "./internal/merge-props.js";
 import { moveOnKey, useFirstItem } from "./internal/roving-focus.js";
 import type { Orientation, RovingSet } from "./internal/roving-focus.js";
-import { RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
+import { Item as RadioGroupItem, Root as RadioGroupRoot } from "./radio-group.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /** Whether the set holds one answer or any number of them. */
@@ -128,7 +128,7 @@ hook useToggleGroup(part: string): ToggleGroupState {
  * Uncontrolled by default and controlled the moment `value` is passed, like
  * everything else here.
  */
-export component ToggleGroupRoot(
+component ToggleGroupRoot(
   children: renders* ToggleGroupItem,
   type?: ToggleGroupType = "multiple",
   defaultValue?: $ReadOnlyArray<string> = NOTHING,
@@ -224,7 +224,7 @@ export component ToggleGroupRoot(
  * a reader is told the set has two members when it has three and cannot ask
  * where the third went. The arrow keys step over it either way.
  */
-export component ToggleGroupItem(
+component ToggleGroupItem(
   value: string,
   children?: React.Node,
   disabled?: boolean = false,
@@ -282,3 +282,14 @@ export component ToggleGroupItem(
 
   return <button {...itemProps} type="button" />;
 }
+
+/**
+ * The parts, under the names the `ToggleGroup` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as ToggleGroup from "./toggle-group.js"` —
+ * so a caller writes `<ToggleGroup.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `ToggleGroupRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { ToggleGroupRoot as Root, ToggleGroupItem as Item };

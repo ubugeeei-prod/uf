@@ -126,9 +126,9 @@ export component AlertDialog(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.AlertDialogRoot defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Primitive.AlertDialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.AlertDialogRoot>
+    </Primitive.AlertDialog.Root>
   );
 }
 
@@ -146,7 +146,7 @@ export component AlertDialogTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialogTrigger
+    <Primitive.AlertDialog.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -162,7 +162,7 @@ export component AlertDialogTrigger(
       }
     >
       {children}
-    </Primitive.AlertDialogTrigger>
+    </Primitive.AlertDialog.Trigger>
   );
 }
 
@@ -175,13 +175,13 @@ export component AlertDialogContent(
 ) {
   return (
     <>
-      <Primitive.AlertDialogOverlay className={props(styles.overlay).className} />
-      <Primitive.AlertDialogBody
+      <Primitive.AlertDialog.Overlay className={props(styles.overlay).className} />
+      <Primitive.AlertDialog.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
-      </Primitive.AlertDialogBody>
+      </Primitive.AlertDialog.Body>
     </>
   );
 }
@@ -194,12 +194,12 @@ export component AlertDialogHeader(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialogHeader
+    <Primitive.AlertDialog.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialogHeader>
+    </Primitive.AlertDialog.Header>
   );
 }
 
@@ -211,12 +211,12 @@ export component AlertDialogFooter(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialogFooter
+    <Primitive.AlertDialog.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialogFooter>
+    </Primitive.AlertDialog.Footer>
   );
 }
 
@@ -228,12 +228,12 @@ export component AlertDialogTitle(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialogTitle
+    <Primitive.AlertDialog.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialogTitle>
+    </Primitive.AlertDialog.Title>
   );
 }
 
@@ -245,12 +245,12 @@ export component AlertDialogDescription(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialogDescription
+    <Primitive.AlertDialog.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDialogDescription>
+    </Primitive.AlertDialog.Description>
   );
 }
 
@@ -265,7 +265,7 @@ export component AlertDialogAction(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialogAction
+    <Primitive.AlertDialog.Action
       {...forwarded(rest)}
       render={
         render ??
@@ -281,7 +281,7 @@ export component AlertDialogAction(
       }
     >
       {children}
-    </Primitive.AlertDialogAction>
+    </Primitive.AlertDialog.Action>
   );
 }
 
@@ -296,7 +296,7 @@ export component AlertDialogCancel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDialogCancel
+    <Primitive.AlertDialog.Cancel
       {...forwarded(rest)}
       render={
         render ??
@@ -312,7 +312,7 @@ export component AlertDialogCancel(
       }
     >
       {children}
-    </Primitive.AlertDialogCancel>
+    </Primitive.AlertDialog.Cancel>
   );
 }
 

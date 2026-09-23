@@ -131,7 +131,7 @@ export component InputOtp(
   return (
     <DisabledContext.Provider value={disabled}>
       <div className={classNames(props(styles.root, xstyle).className, className)}>
-        <Primitive.InputOtpRoot
+        <Primitive.InputOtp.Root
           {...forwarded(rest)}
           className={props(styles.input).className}
           defaultValue={defaultValue}
@@ -145,7 +145,7 @@ export component InputOtp(
           value={value}
         >
           {children}
-        </Primitive.InputOtpRoot>
+        </Primitive.InputOtp.Root>
       </div>
     </DisabledContext.Provider>
   );
@@ -159,12 +159,12 @@ export component InputOtpGroup(
   ...rest: Rest
 ) {
   return (
-    <Primitive.InputOtpGroup
+    <Primitive.InputOtp.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.InputOtpGroup>
+    </Primitive.InputOtp.Group>
   );
 }
 
@@ -178,7 +178,7 @@ export component InputOtpSlot(
   const disabled = useContext(DisabledContext);
   const styled = props(styles.slot, disabled && styles.slotDisabled, xstyle);
   return (
-    <Primitive.InputOtpSlot
+    <Primitive.InputOtp.Slot
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       index={index}
@@ -189,7 +189,7 @@ export component InputOtpSlot(
 /** A short dash between groups, silent to a reader. */
 export component InputOtpSeparator(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.InputOtpSeparator
+    <Primitive.InputOtp.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     />

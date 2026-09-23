@@ -165,7 +165,7 @@ hook useResizable(part: string): ResizableState {
  * `Enter` collapses the pane entirely; a group whose primary pane should never
  * disappear gives it a floor.
  */
-export component ResizablePanelGroup(
+component ResizablePanelGroup(
   children: React.Node,
   value?: number,
   defaultValue?: number = 50,
@@ -225,7 +225,7 @@ export component ResizablePanelGroup(
  * caller renders a pane conditionally, and a handle pointing at the wrong pane
  * is a handle that announces someone else's size.
  */
-export component ResizablePanel(children: React.Node, primary?: boolean = false, ...rest: Rest) {
+component ResizablePanel(children: React.Node, primary?: boolean = false, ...rest: Rest) {
   const group = useResizable("Resizable.Panel");
   const passed = withoutComposed(rest, ["style"]);
   const register = group.registerPrimary;
@@ -260,7 +260,7 @@ export component ResizablePanel(children: React.Node, primary?: boolean = false,
  * name is announced as "separator", which tells a reader there is a control
  * here and nothing about what it does.
  */
-export component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
+component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
   const group = useResizable("Resizable.Handle");
   const passed = withoutComposed(rest, [
     "onKeyDown",
@@ -451,3 +451,14 @@ function stepFor(
     _ => null,
   };
 }
+
+/**
+ * The parts, under the names the `Resizable` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Resizable from "./resizable.js"` —
+ * so a caller writes `<Resizable.PanelGroup>`, and the namespace is the prefix. Each
+ * part is still *declared* as `ResizablePanelGroup`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `PanelGroup`s.
+ */
+export { ResizablePanelGroup as PanelGroup, ResizablePanel as Panel, ResizableHandle as Handle };

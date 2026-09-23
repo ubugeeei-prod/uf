@@ -16,7 +16,7 @@ import {
   useOptimistic,
   useState,
 } from "@uniflowed/react";
-import { CollapsibleRoot, CollapsibleTrigger, CollapsibleContent } from "@uniflowed/ui";
+import { Collapsible } from "@uniflowed/ui";
 
 import { AsyncRegion, useRetryableResource } from "../_shared/async-region.client.js";
 import { timelineData } from "../_server/social-queries.js";
@@ -273,27 +273,27 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
         ? match (session) {
             {kind: "authenticated", user: const user} =>
               <div id="compose" {...styled("compose-region", sharedStyles.composeRegion)}>
-                <CollapsibleRoot
+                <Collapsible.Root
                   open={composerOpen}
                   onOpenChange={(open) => startTransition(() => setComposerOpen(open))}
                 >
-                  <CollapsibleTrigger className="compose-toggle">
+                  <Collapsible.Trigger className="compose-toggle">
                     <Icon name="compose" size={16} />
                     Write a note
                     <Icon name={composerOpen ? "chevron-up" : "chevron-down"} size={15} />
-                  </CollapsibleTrigger>
+                  </Collapsible.Trigger>
                   <ViewTransition name="note-composer" enter="composer-panel" exit="composer-panel">
                     <Activity mode={composerOpen ? "visible" : "hidden"}>
-                      <CollapsibleContent>
+                      <Collapsible.Content>
                         <PostComposer
                           viewer={user}
                           onOptimistic={addOptimistic}
                           onPublished={published}
                         />
-                      </CollapsibleContent>
+                      </Collapsible.Content>
                     </Activity>
                   </ViewTransition>
-                </CollapsibleRoot>
+                </Collapsible.Root>
               </div>,
             {kind: "guest"} =>
               <section className="sign-in-composer">

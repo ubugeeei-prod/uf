@@ -97,13 +97,13 @@ export component Alert(
     xstyle,
   );
   return (
-    <Primitive.AlertRoot
+    <Primitive.Alert.Root
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       live={live}
     >
       {children}
-    </Primitive.AlertRoot>
+    </Primitive.Alert.Root>
   );
 }
 
@@ -116,13 +116,13 @@ export component AlertTitle(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertTitle
+    <Primitive.Alert.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
       level={level}
     >
       {children}
-    </Primitive.AlertTitle>
+    </Primitive.Alert.Title>
   );
 }
 
@@ -134,12 +134,12 @@ export component AlertDescription(
   ...rest: Rest
 ) {
   return (
-    <Primitive.AlertDescription
+    <Primitive.Alert.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.AlertDescription>
+    </Primitive.Alert.Description>
   );
 }
 

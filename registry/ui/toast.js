@@ -139,7 +139,7 @@ export component Toaster(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ToastRegion
+    <Primitive.Toast.Region
       {...forwarded(rest)}
       className={classNames(props(styles.region, xstyle).className, className)}
       label={label}
@@ -151,7 +151,7 @@ export component Toaster(
           <ToastClose />
         </Toast>
       )}
-    </Primitive.ToastRegion>
+    </Primitive.Toast.Region>
   );
 }
 
@@ -161,14 +161,14 @@ export component Toast(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.ToastRoot {
+) renders Primitive.Toast.Root {
   return (
-    <Primitive.ToastRoot
+    <Primitive.Toast.Root
       {...forwarded(rest)}
       className={classNames(props(styles.toast, xstyle).className, className)}
     >
       {children}
-    </Primitive.ToastRoot>
+    </Primitive.Toast.Root>
   );
 }
 
@@ -180,12 +180,12 @@ export component ToastTitle(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ToastTitle
+    <Primitive.Toast.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.ToastTitle>
+    </Primitive.Toast.Title>
   );
 }
 
@@ -197,12 +197,12 @@ export component ToastDescription(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ToastDescription
+    <Primitive.Toast.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.ToastDescription>
+    </Primitive.Toast.Description>
   );
 }
 
@@ -214,13 +214,13 @@ export component ToastAction(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ToastAction
+    <Primitive.Toast.Action
       {...forwarded(rest)}
       className={classNames(props(styles.action, xstyle).className, className)}
       type="button"
     >
       {children}
-    </Primitive.ToastAction>
+    </Primitive.Toast.Action>
   );
 }
 
@@ -232,7 +232,7 @@ export component ToastClose(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ToastClose
+    <Primitive.Toast.Close
       {...forwarded(rest)}
       className={classNames(props(styles.close, xstyle).className, className)}
       label={label}
@@ -251,7 +251,7 @@ export component ToastClose(
       >
         <path d="M18 6 6 18M6 6l12 12" />
       </svg>
-    </Primitive.ToastClose>
+    </Primitive.Toast.Close>
   );
 }
 

@@ -210,7 +210,7 @@ const ComboboxGroupContext: React.Context<ComboboxGroupState | null> = createCon
  * `internal/form-value.js` says why it is an `<input>` and why
  * `@uniflowed/form` does not need it.
  */
-export component ComboboxRoot(
+component ComboboxRoot(
   children: React.Node,
   value?: string | null,
   defaultValue?: string | null = null,
@@ -294,7 +294,7 @@ export component ComboboxRoot(
  * because the list names it, and naming a label that is not rendered is worse
  * than leaving the list unnamed.
  */
-export component ComboboxLabel(children: React.Node, ...rest: Rest) {
+component ComboboxLabel(children: React.Node, ...rest: Rest) {
   const combobox = useCombobox("Combobox.Label");
   const register = combobox.registerLabel;
   useEffect(() => {
@@ -310,7 +310,7 @@ export component ComboboxLabel(children: React.Node, ...rest: Rest) {
 }
 
 /** The text field, and every key the pattern defines. */
-export component ComboboxInput(...rest: Rest) {
+component ComboboxInput(...rest: Rest) {
   const combobox = useCombobox("Combobox.Input");
   // `rest` filtering is render-time props work; ref objects are only passed through later.
   // uf-lint-disable-next-line react-compiler/refs
@@ -442,7 +442,7 @@ export component ComboboxInput(...rest: Rest) {
  * the count the live region announces, and the invariant that
  * `aria-activedescendant` never names an option that has left the list.
  */
-export component ComboboxList(
+component ComboboxList(
   children: renders* (ComboboxOption | ComboboxGroup),
   align?: Align = "start",
   alignOffset?: number = 0,
@@ -562,7 +562,7 @@ export component ComboboxList(
  * finds the active option in the document rather than in a registry that could
  * disagree with it.
  */
-export component ComboboxOption(
+component ComboboxOption(
   value: string,
   children: React.Node,
   label?: string,
@@ -629,10 +629,7 @@ export component ComboboxOption(
  * and nothing else. `Select.Group` says the same since ubugeeei-prod/uf#562 —
  * it is the same listbox, and it took a second breaking change to get there.
  */
-export component ComboboxGroup(
-  children: renders* (ComboboxOption | ComboboxGroupLabel),
-  ...rest: Rest
-) {
+component ComboboxGroup(children: renders* (ComboboxOption | ComboboxGroupLabel), ...rest: Rest) {
   const base = useId();
   const [labelled, setLabelled] = useState(false);
 
@@ -657,7 +654,7 @@ export component ComboboxGroup(
  * This is not `Combobox.Label`. That one names the field; this one names a
  * group of options, and a combobox with groups has both.
  */
-export component ComboboxGroupLabel(children: React.Node, ...rest: Rest) {
+component ComboboxGroupLabel(children: React.Node, ...rest: Rest) {
   const group = useContext(ComboboxGroupContext);
   const register = group?.registerLabel;
 
@@ -683,7 +680,7 @@ export component ComboboxGroupLabel(children: React.Node, ...rest: Rest) {
  * contain options: an "no matches" row inside one is announced as an option a
  * reader can choose, and choosing it does nothing.
  */
-export component ComboboxEmpty(children: React.Node, ...rest: Rest) {
+component ComboboxEmpty(children: React.Node, ...rest: Rest) {
   const combobox = useCombobox("Combobox.Empty");
   if (!combobox.open || combobox.count > 0) {
     return null;
@@ -702,7 +699,7 @@ export component ComboboxEmpty(children: React.Node, ...rest: Rest) {
  * `children` overrides the wording — the default is English and a real
  * application has a translation table.
  */
-export component ComboboxStatus(children?: React.Node, ...rest: Rest) {
+component ComboboxStatus(children?: React.Node, ...rest: Rest) {
   const combobox = useCombobox("Combobox.Status");
   const message = children ?? defaultAnnouncement(combobox.open, combobox.count);
 
@@ -732,3 +729,24 @@ function labelOf(element: HTMLElement): string {
 function textOf(element: HTMLElement): string {
   return (element.textContent ?? "").replace(/\s+/g, " ").trim();
 }
+
+/**
+ * The parts, under the names the `Combobox` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Combobox from "./combobox.js"` —
+ * so a caller writes `<Combobox.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `ComboboxRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  ComboboxRoot as Root,
+  ComboboxLabel as Label,
+  ComboboxInput as Input,
+  ComboboxList as List,
+  ComboboxOption as Option,
+  ComboboxGroup as Group,
+  ComboboxGroupLabel as GroupLabel,
+  ComboboxEmpty as Empty,
+  ComboboxStatus as Status,
+};

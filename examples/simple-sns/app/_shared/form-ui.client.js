@@ -3,15 +3,7 @@
 
 import * as React from "@uniflowed/react";
 import { useFormStatus } from "react-dom";
-import {
-  AlertDescription,
-  AlertRoot,
-  FieldRoot,
-  FieldLabel,
-  FieldControl,
-  FieldDescription,
-  FieldError as PrimitiveError,
-} from "@uniflowed/ui";
+import { Alert, Field } from "@uniflowed/ui";
 
 import { Icon } from "./ui.js";
 import { fieldError, type FormState } from "./social-model.js";
@@ -33,11 +25,11 @@ export component SubmitButton(
   );
 }
 
-component ErrorStatus(message: string) renders AlertRoot {
+component ErrorStatus(message: string) renders Alert.Root {
   return (
-    <AlertRoot live className="form-status error">
-      <AlertDescription>{message}</AlertDescription>
-    </AlertRoot>
+    <Alert.Root live className="form-status error">
+      <Alert.Description>{message}</Alert.Description>
+    </Alert.Root>
   );
 }
 
@@ -76,15 +68,15 @@ export component FormField(
   label: string,
   error: string | null = null,
   hint: string | null = null,
-  children: renders FieldControl,
-) renders FieldRoot {
+  children: renders Field.Control,
+) renders Field.Root {
   return (
-    <FieldRoot className="field" invalid={error != null}>
-      <FieldLabel>{label}</FieldLabel>
+    <Field.Root className="field" invalid={error != null}>
+      <Field.Label>{label}</Field.Label>
       {children}
-      {hint == null ? null : <FieldDescription>{hint}</FieldDescription>}
-      {error == null ? null : <PrimitiveError>{error}</PrimitiveError>}
-    </FieldRoot>
+      {hint == null ? null : <Field.Description>{hint}</Field.Description>}
+      {error == null ? null : <Field.Error>{error}</Field.Error>}
+    </Field.Root>
   );
 }
 

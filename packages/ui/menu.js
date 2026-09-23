@@ -180,7 +180,7 @@ const MenuRadioContext: React.Context<MenuRadioState | null> = createContext(nul
  * whatever layout the caller wrote, and a wrapper would put a `<div>` between
  * them that the caller then has to style around.
  */
-export component MenuRoot(
+component MenuRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -200,7 +200,7 @@ export component MenuRoot(
  * parent — and that difference is what `ArrowLeft`, `Escape` and "choosing an
  * item closes everything" are all defined in terms of.
  */
-export component MenuSub(
+component MenuSub(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -218,7 +218,7 @@ export component MenuSub(
 }
 
 /** The button that opens the menu. */
-export component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const menu = useMenu("Menu.Trigger");
   useTriggerRegistration(menu);
   const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown", "ref"]), {
@@ -269,7 +269,7 @@ export component MenuTrigger(children: React.Node, render?: RenderProp, ...rest:
  * and only the container can answer it. Items still get their own `Enter` and
  * `Space` from being buttons.
  */
-export component MenuBody(
+component MenuBody(
   children: renders* (
     | MenuItem
     | MenuCheckboxItem
@@ -551,7 +551,7 @@ hook useMenuItem(
  * tree. That combination is what shadcn's copy step is usually reached for, and
  * what this package offers instead of it.
  */
-export component MenuItem(
+component MenuItem(
   children: React.Node,
   disabled?: boolean = false,
   closeOnSelect?: boolean = true,
@@ -593,7 +593,7 @@ export component MenuItem(
  * summarises other checkboxes — `checkbox.js` has it, and a menu item is a
  * command rather than a summary of a table's rows.
  */
-export component MenuCheckboxItem(
+component MenuCheckboxItem(
   children: React.Node,
   checked?: boolean,
   defaultChecked?: boolean = false,
@@ -640,7 +640,7 @@ export component MenuCheckboxItem(
  * a state the group starts in and never an event it reports, because no gesture
  * inside it unchooses an answer.
  */
-export component MenuRadioGroup(
+component MenuRadioGroup(
   children: renders* (MenuRadioItem | MenuLabel | MenuSeparator),
   defaultValue?: string | null = null,
   value?: string | null,
@@ -688,7 +688,7 @@ export component MenuRadioGroup(
  * what a sort order or a zoom level in a native menu does; `closeOnSelect` is
  * the way to say otherwise for a choice that ends the visit.
  */
-export component MenuRadioItem(
+component MenuRadioItem(
   children: React.Node,
   value: string,
   disabled?: boolean = false,
@@ -728,7 +728,7 @@ export component MenuRadioItem(
  * is why it reads the list context of the menu around it and the menu context
  * of the one below it.
  */
-export component MenuSubTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component MenuSubTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const menu = useMenu("Menu.SubTrigger");
   const list = useContext(MenuListContext);
   const setActiveId = list?.setActiveId;
@@ -785,7 +785,7 @@ export component MenuSubTrigger(children: React.Node, render?: RenderProp, ...re
  * moving through the menu is told the group changed. It is not focusable and
  * the arrow keys pass straight over it.
  */
-export component MenuSeparator(render?: RenderProp, ...rest: Rest) {
+component MenuSeparator(render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-orientation": "horizontal", role: "separator" });
   if (render != null) {
     return render(props);
@@ -801,7 +801,7 @@ export component MenuSeparator(render?: RenderProp, ...rest: Rest) {
  * that is not in the document makes a screen reader announce *nothing*, which
  * is worse than an unnamed group.
  */
-export component MenuGroup(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component MenuGroup(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const base = useId();
   const [labelled, setLabelled] = useState(false);
 
@@ -826,7 +826,7 @@ export component MenuGroup(children: React.Node, render?: RenderProp, ...rest: R
  * as ordinary content would have a reader hear the heading once as the group's
  * name and again as a stray line of text between the items.
  */
-export component MenuLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component MenuLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const group = useContext(MenuGroupContext);
   const register = group?.registerLabel;
 
@@ -844,3 +844,27 @@ export component MenuLabel(children: React.Node, render?: RenderProp, ...rest: R
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `Menu` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Menu from "./menu.js"` —
+ * so a caller writes `<Menu.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `MenuRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  MenuRoot as Root,
+  MenuTrigger as Trigger,
+  MenuBody as Body,
+  MenuItem as Item,
+  MenuCheckboxItem as CheckboxItem,
+  MenuRadioGroup as RadioGroup,
+  MenuRadioItem as RadioItem,
+  MenuSeparator as Separator,
+  MenuGroup as Group,
+  MenuLabel as Label,
+  MenuSub as Sub,
+  MenuSubTrigger as SubTrigger,
+};

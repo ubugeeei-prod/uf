@@ -69,17 +69,17 @@ export component ColorPicker(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ColorPickerRoot
+    <Primitive.ColorPicker.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children}
-    </Primitive.ColorPickerRoot>
+    </Primitive.ColorPicker.Root>
   );
 }
 export component ColorPickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPickerInput
+    <Primitive.ColorPicker.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
@@ -87,7 +87,7 @@ export component ColorPickerInput(xstyle?: StyleArgument, className?: string, ..
 }
 export component ColorPickerField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPickerField
+    <Primitive.ColorPicker.Field
       {...forwarded(rest)}
       className={classNames(props(styles.field, xstyle).className, className)}
     />
@@ -95,7 +95,7 @@ export component ColorPickerField(xstyle?: StyleArgument, className?: string, ..
 }
 export component ColorPickerChannel(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPickerChannel
+    <Primitive.ColorPicker.Channel
       {...forwarded(rest)}
       className={classNames(props(styles.channel, xstyle).className, className)}
     />
@@ -103,7 +103,7 @@ export component ColorPickerChannel(xstyle?: StyleArgument, className?: string, 
 }
 export component ColorPickerSwatch(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ColorPickerSwatch
+    <Primitive.ColorPicker.Swatch
       {...forwarded(rest)}
       className={classNames(props(styles.swatch, xstyle).className, className)}
     />

@@ -4,6 +4,7 @@ mod codemod;
 mod source;
 #[cfg(test)]
 mod tests;
+mod ui_namespaces;
 
 use crate::ui::Ui;
 use anyhow::{Context, Result, ensure};

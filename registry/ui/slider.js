@@ -153,7 +153,7 @@ export component Slider(
 ) {
   const vertical = orientation === "vertical";
   return (
-    <Primitive.SliderRoot
+    <Primitive.Slider.Root
       {...forwarded(rest)}
       className={classNames(
         props(styles.root, vertical && styles.rootVertical, xstyle).className,
@@ -170,14 +170,14 @@ export component Slider(
       value={value}
       valueText={valueText}
     >
-      <Primitive.SliderTrack
+      <Primitive.Slider.Track
         className={
           props(styles.track, vertical && styles.trackVertical, disabled && styles.trackDisabled)
             .className
         }
       >
         <span {...props(styles.rail, vertical && styles.railVertical)}>
-          <Primitive.SliderRange
+          <Primitive.Slider.Range
             className={
               props(
                 styles.range,
@@ -188,15 +188,15 @@ export component Slider(
           />
         </span>
         {labels.map((label, index) => (
-          <Primitive.SliderThumb
+          <Primitive.Slider.Thumb
             aria-label={label}
             className={props(styles.thumb, vertical && styles.thumbVertical).className}
             index={index}
             key={`${index}:${label}`}
           />
         ))}
-      </Primitive.SliderTrack>
-    </Primitive.SliderRoot>
+      </Primitive.Slider.Track>
+    </Primitive.Slider.Root>
   );
 }
 

@@ -56,7 +56,7 @@ import { withProps, withoutComposed } from "./internal/merge-props.js";
  * links are on screen, and a component that showed five links out of
  * twenty-five would otherwise announce "page 4 of 5".
  */
-export component PaginationRoot(
+component PaginationRoot(
   children: React.Node,
   label?: string = "Pagination",
   page?: number | null = null,
@@ -91,7 +91,7 @@ export component PaginationRoot(
  * A real list, so a reader is told how many there are before walking them and
  * can skip the whole thing in one keystroke.
  */
-export component PaginationContent(
+component PaginationContent(
   children: renders* (PaginationItem | PaginationPrevious | PaginationNext),
   render?: RenderProp,
   ...rest: Rest
@@ -109,7 +109,7 @@ export component PaginationContent(
  * The `<li>` is structural and takes nothing; everything a caller passes goes
  * on the `<a>`, which is what they style and what a reader activates.
  */
-export component PaginationItem(
+component PaginationItem(
   children: React.Node,
   current?: boolean = false,
   disabled?: boolean = false,
@@ -131,7 +131,7 @@ export component PaginationItem(
  * is not something a reader can act on. Pass `label` to translate it; the
  * glyph stays whatever the caller rendered.
  */
-export component PaginationPrevious(
+component PaginationPrevious(
   children?: React.Node,
   label?: string = "Previous page",
   disabled?: boolean = false,
@@ -146,7 +146,7 @@ export component PaginationPrevious(
 }
 
 /** The link to the page after this one. See `Pagination.Previous`. */
-export component PaginationNext(
+component PaginationNext(
   children?: React.Node,
   label?: string = "Next page",
   disabled?: boolean = false,
@@ -207,3 +207,20 @@ component PageLink(
 function defaultAnnouncement(page: number, pageCount: number): string {
   return `Page ${String(page)} of ${String(pageCount)}.`;
 }
+
+/**
+ * The parts, under the names the `Pagination` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Pagination from "./pagination.js"` —
+ * so a caller writes `<Pagination.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `PaginationRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  PaginationRoot as Root,
+  PaginationContent as Content,
+  PaginationItem as Item,
+  PaginationPrevious as Previous,
+  PaginationNext as Next,
+};

@@ -107,18 +107,18 @@ export component Menubar(
   ...rest: Rest
 ) {
   return (
-    <Primitive.MenubarRoot
+    <Primitive.Menubar.Root
       {...forwarded(rest)}
       className={classNames(props(styles.bar, xstyle).className, className)}
     >
       {children}
-    </Primitive.MenubarRoot>
+    </Primitive.Menubar.Root>
   );
 }
 
 /** One menu on the bar: a `MenubarTrigger` and the `MenubarContent` it opens. */
-export component MenubarMenu(children: React.Node, value: string) renders Primitive.MenubarMenu {
-  return <Primitive.MenubarMenu value={value}>{children}</Primitive.MenubarMenu>;
+export component MenubarMenu(children: React.Node, value: string) renders Primitive.Menubar.Menu {
+  return <Primitive.Menubar.Menu value={value}>{children}</Primitive.Menubar.Menu>;
 }
 
 /** The button on the bar that opens its menu and names it. */
@@ -129,12 +129,12 @@ export component MenubarTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.MenubarTrigger
+    <Primitive.Menubar.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
       {children}
-    </Primitive.MenubarTrigger>
+    </Primitive.Menubar.Trigger>
   );
 }
 

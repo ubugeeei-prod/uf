@@ -150,7 +150,7 @@ hook useTooltip(part: string): TooltipState {
  * Renders no element: it is a context and a clock, and a `<div>` around a
  * toolbar is the caller's business.
  */
-export component TooltipProvider(
+component TooltipProvider(
   children: React.Node,
   delayDuration?: number = DEFAULT_OPEN_DELAY,
   skipDelayDuration?: number = DEFAULT_SKIP_DELAY,
@@ -168,7 +168,7 @@ export component TooltipProvider(
  * `delayDuration`, and to 700ms when there is no provider — a tooltip on its
  * own is a complete tooltip and needs nothing around it.
  */
-export component TooltipRoot(
+component TooltipRoot(
   children: React.Node,
   closeDelay?: number = DEFAULT_CLOSE_DELAY,
   defaultOpen?: boolean = false,
@@ -243,7 +243,7 @@ export component TooltipRoot(
  * `render` function that forgets to spread something still gets a working
  * tooltip; see the module header.
  */
-export component TooltipTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component TooltipTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const tooltip = useTooltip("Tooltip.Trigger");
   const { closeDelay, dismissedRef, intent, openDelay, setOpen, triggerRef } = tooltip;
   useFocusableTrigger(triggerRef, "Tooltip.Trigger");
@@ -320,7 +320,7 @@ export component TooltipTrigger(children?: React.Node, render?: RenderProp, ...r
  * takes focus, holds no tab stop, and answers `Escape` from wherever focus
  * happens to be.
  */
-export component TooltipBody(
+component TooltipBody(
   children: React.Node,
   align?: Align = "center",
   alignOffset?: number = 0,
@@ -402,3 +402,19 @@ export component TooltipBody(
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `Tooltip` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Tooltip from "./tooltip.js"` —
+ * so a caller writes `<Tooltip.Provider>`, and the namespace is the prefix. Each
+ * part is still *declared* as `TooltipProvider`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Provider`s.
+ */
+export {
+  TooltipProvider as Provider,
+  TooltipRoot as Root,
+  TooltipTrigger as Trigger,
+  TooltipBody as Body,
+};

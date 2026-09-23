@@ -37,7 +37,7 @@ export component RangeCalendar(
   ...rest: Rest
 ) {
   return (
-    <Primitive.RangeCalendarRoot
+    <Primitive.RangeCalendar.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
@@ -50,7 +50,7 @@ export component RangeCalendar(
           <CalendarMonth />
         </>
       )}
-    </Primitive.RangeCalendarRoot>
+    </Primitive.RangeCalendar.Root>
   );
 }
 

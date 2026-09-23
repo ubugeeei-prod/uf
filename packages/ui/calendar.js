@@ -175,7 +175,7 @@ function toDate(value: DateValue): PlainDate {
  * place it — so `Calendar.Root` renders it and keeps it empty until the month
  * actually changes.
  */
-export component CalendarRoot(
+component CalendarRoot(
   children: React.Node,
   defaultFocused?: DateValue,
   defaultValue?: DateValue | null = null,
@@ -353,7 +353,7 @@ export component CalendarRoot(
  * with a dot under it for an appointment is a `Calendar.Day` with a child, not a
  * fork of this component. Omitted, every day renders its own number.
  */
-export component CalendarMonth(
+component CalendarMonth(
   /** A class for the `<caption>`, which this part renders itself. */
   captionClassName?: string,
   children?: (date: PlainDate) => renders CalendarDay,
@@ -480,7 +480,7 @@ export component CalendarMonth(
  * inventing a second wording that a translation table would then have to own. A
  * caller who wants one passes it; it is not overridden here.
  */
-export component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Rest) {
+component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Rest) {
   const calendar = useCalendar("Calendar.Day");
   const disabled = calendar.isDisabled(date);
   const isChosen = (day: PlainDate) =>
@@ -543,7 +543,7 @@ export component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Re
  * and not onto a sibling part, because `Rest` names `key` out of its indexer and
  * the receiving component's own indexer answers `mixed` for it.
  */
-export component CalendarPrevious(children: React.Node, ...rest: Rest) {
+component CalendarPrevious(children: React.Node, ...rest: Rest) {
   return (
     <MonthStep {...forwarded(rest)} by={-1}>
       {children}
@@ -552,7 +552,7 @@ export component CalendarPrevious(children: React.Node, ...rest: Rest) {
 }
 
 /** The button that shows the month after this one. */
-export component CalendarNext(children: React.Node, ...rest: Rest) {
+component CalendarNext(children: React.Node, ...rest: Rest) {
   return (
     <MonthStep {...forwarded(rest)} by={1}>
       {children}
@@ -585,3 +585,20 @@ component MonthStep(children: React.Node, by: number, ...rest: Rest) {
     </button>
   );
 }
+
+/**
+ * The parts, under the names the `Calendar` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Calendar from "./calendar.js"` —
+ * so a caller writes `<Calendar.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `CalendarRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  CalendarRoot as Root,
+  CalendarPrevious as Previous,
+  CalendarNext as Next,
+  CalendarMonth as Month,
+  CalendarDay as Day,
+};

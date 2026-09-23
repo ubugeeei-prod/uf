@@ -129,7 +129,7 @@ fn a_name_imported_from_the_ui_barrel_is_written_as_its_module() {
 
 /// The manifest `packages/vite/rsc-split.test.js` reads, as `uf build` writes
 /// it: a layout, a page importing `{ Switch }` from the barrel, and a page
-/// importing only `AlertRoot`, a Server Component part.
+/// importing only `Alert`, a Server Component's namespace.
 ///
 /// A snapshot, because the file is the contract between the two languages.
 /// Here, the one boundary is `@uniflowed/ui/switch`; there, the split ships the
@@ -148,7 +148,7 @@ fn the_ui_barrel_manifest_the_vite_split_reads_matches_its_snapshot() {
     );
     builder.add_source(
         "app/counter/$page.js",
-        &page("import { AlertRoot } from \"@uniflowed/ui\";"),
+        &page("import { Alert } from \"@uniflowed/ui\";"),
     );
     for entry in ["app/$layout.js", "app/$page.js", "app/counter/$page.js"] {
         builder.add_entry(entry, EntryKind::Server);

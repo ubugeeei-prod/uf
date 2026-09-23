@@ -62,7 +62,7 @@ import {
   auditTag,
 } from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
-import { barrelImportsPlugin, namespaceViewOf } from "./internal/barrel-imports.js";
+import { barrelImportsPlugin } from "./internal/barrel-imports.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
@@ -705,9 +705,7 @@ function flowPlugin({
     },
 
     async transform(code, id, transformOptions) {
-      // A view of a barrel's namespace has the barrel's path and none of its
-      // source: `uf:barrel-imports` generates it as JavaScript.
-      if (!isFlowModule(id) || namespaceViewOf(id) != null) return null;
+      if (!isFlowModule(id)) return null;
       // What an earlier pass of this build wrote under `.uf/build/` — the ssr
       // pass imports the rsc graph's bundle — is already this transform's
       // output. See `isCompiledOutput`.

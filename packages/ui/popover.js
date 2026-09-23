@@ -117,7 +117,7 @@ hook usePopover(part: string): PopoverState {
  * whatever layout the caller wrote, and a wrapper would put a `<div>` between
  * them for the caller to style around.
  */
-export component PopoverRoot(
+component PopoverRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -152,7 +152,7 @@ export component PopoverRoot(
  * trigger is not "outside" for exactly this reason — closing there and letting
  * this click reopen made the press a no-op that flickered.
  */
-export component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const popover = usePopover("Popover.Trigger");
   const passed = withoutComposed(rest, ["onClick", "ref"]);
   usePresence(popover.registerTrigger);
@@ -190,7 +190,7 @@ export component PopoverTrigger(children: React.Node, render?: RenderProp, ...re
  * separates this from a dialog, and the one a copy of `dialog.js` with the
  * `aria-modal` deleted would get wrong.
  */
-export component PopoverBody(
+component PopoverBody(
   children: React.Node,
   align?: Align = "center",
   alignOffset?: number = 0,
@@ -365,3 +365,14 @@ export component PopoverBody(
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `Popover` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Popover from "./popover.js"` —
+ * so a caller writes `<Popover.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `PopoverRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { PopoverRoot as Root, PopoverTrigger as Trigger, PopoverBody as Body };

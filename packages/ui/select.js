@@ -252,7 +252,7 @@ const SelectGroupContext: React.Context<SelectGroupState | null> = createContext
  * `onValueChange`, which is exactly the pair of props below. Neither package
  * imports the other and neither needs to.
  */
-export component SelectRoot(
+component SelectRoot(
   children: React.Node,
   value?: string | null,
   defaultValue?: string | null = null,
@@ -365,7 +365,7 @@ export component SelectRoot(
  * shadcn's single `SelectLabel`, which is the group's, has no name for the
  * field's.
  */
-export component SelectLabel(children: React.Node, ...rest: Rest) {
+component SelectLabel(children: React.Node, ...rest: Rest) {
   const select = useSelect("Select.Label");
   const register = select.registerFieldLabel;
   useEffect(() => {
@@ -392,7 +392,7 @@ export component SelectLabel(children: React.Node, ...rest: Rest) {
  * forms, and a `<button>` inside a `<form>` submits it by default. A select
  * that posted the form every time it was opened would be a memorable bug.
  */
-export component SelectTrigger(children: React.Node, ...rest: Rest) {
+component SelectTrigger(children: React.Node, ...rest: Rest) {
   const select = useSelect("Select.Trigger");
   const passed = withoutComposed(rest, ["onClick", "onKeyDown", "ref"]);
 
@@ -603,7 +603,7 @@ export component SelectTrigger(children: React.Node, ...rest: Rest) {
  *
  * Case 3 is a real edge and the way out of it is case 1.
  */
-export component SelectValue(children?: React.Node, placeholder?: React.Node, ...rest: Rest) {
+component SelectValue(children?: React.Node, placeholder?: React.Node, ...rest: Rest) {
   const select = useSelect("Select.Value");
   const chosen = select.value;
 
@@ -626,7 +626,7 @@ export component SelectValue(children?: React.Node, placeholder?: React.Node, ..
  * The effect below keeps the one invariant this pattern rests on:
  * `aria-activedescendant` never names an option that is not in the document.
  */
-export component SelectList(
+component SelectList(
   children: renders* (SelectOption | SelectGroup | SelectSeparator),
   align?: Align = "start",
   alignOffset?: number = 0,
@@ -751,7 +751,7 @@ export component SelectList(
  * finds the option in the document rather than in a registry that could
  * disagree with the page — the reason `internal/roving-focus.js` gives.
  */
-export component SelectOption(
+component SelectOption(
   value: string,
   children: React.Node,
   label?: string,
@@ -840,7 +840,7 @@ export component SelectOption(
  * fix is to hand the options to the group directly; a wrapper had no effect on
  * what this renders, because the group's element is the one below.
  */
-export component SelectGroup(children: renders* (SelectOption | SelectGroupLabel), ...rest: Rest) {
+component SelectGroup(children: renders* (SelectOption | SelectGroupLabel), ...rest: Rest) {
   const base = useId();
   const [labelled, setLabelled] = useState(false);
 
@@ -862,7 +862,7 @@ export component SelectGroup(children: renders* (SelectOption | SelectGroupLabel
  * ordinary content a reader would hear the heading once as the group's name and
  * again as a stray line of text among the options.
  */
-export component SelectGroupLabel(children: React.Node, ...rest: Rest) {
+component SelectGroupLabel(children: React.Node, ...rest: Rest) {
   const group = useContext(SelectGroupContext);
   const register = group?.registerLabel;
 
@@ -891,7 +891,7 @@ export component SelectGroupLabel(children: React.Node, ...rest: Rest) {
  * the software rather than the specification. The rule between two groups is
  * decoration, so it says so and stays out of the tree.
  */
-export component SelectSeparator(...rest: Rest) {
+component SelectSeparator(...rest: Rest) {
   return <div {...rest} aria-hidden="true" />;
 }
 
@@ -899,3 +899,24 @@ export component SelectSeparator(...rest: Rest) {
 function textOf(element: HTMLElement | null): string {
   return (element?.textContent ?? "").replace(/\s+/g, " ").trim();
 }
+
+/**
+ * The parts, under the names the `Select` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Select from "./select.js"` —
+ * so a caller writes `<Select.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `SelectRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  SelectRoot as Root,
+  SelectLabel as Label,
+  SelectTrigger as Trigger,
+  SelectValue as Value,
+  SelectList as List,
+  SelectOption as Option,
+  SelectGroup as Group,
+  SelectGroupLabel as GroupLabel,
+  SelectSeparator as Separator,
+};

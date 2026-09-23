@@ -309,6 +309,46 @@
 // primitive because that is the unit a reader looks for, the unit a bundler
 // drops, and the unit the WAI-ARIA practices are written in.
 //
+// # One name per component: the namespace
+//
+// A component with parts is imported as one name and its parts are members of
+// it — `import { Dialog } from "@uniflowed/ui"`, then `<Dialog.Root>`,
+// `<Dialog.Trigger>`. There is no second spelling: `DialogRoot` and the other
+// prefixed names this barrel used to export beside the namespaces are gone
+// (ubugeeei-prod/uf#1453), because two names for one part is two things to
+// search for, two things to autocomplete, and a code review that has to decide
+// which one a file should use. `uf codemod` rewrites the old spelling.
+//
+// The rule, applied without exceptions:
+//
+// - **A component with parts is a namespace.** Its module exports each part
+//   unprefixed — `dialog.js` exports `Root`, `Trigger`, `Body` — and this file
+//   re-exports the module whole: `export * as Dialog from "./dialog.js"`. The
+//   namespace *is* the prefix. A module still declares each part under its
+//   full name (`component DialogRoot`) and exports it under the short one, so
+//   React DevTools, a component stack and an error name `DialogRoot` rather
+//   than one of forty `Root`s.
+// - **A component that is one element is one name.** `Checkbox`, `Switch`,
+//   `Progress`, `ListBox`: there is no `Checkbox.Root` to write, because there
+//   is nothing else in the namespace to tell it from.
+// - **Types, hooks and functions keep their names and stay flat.** `DialogRole`,
+//   `Side`, `toast`, `usePress`, `parseColor`: they are imported by name from
+//   this file, as before. A module's types are also reachable through its
+//   namespace (`Dialog.DialogRole`), because `export * as` carries everything a
+//   module exports; the flat name is the one the documentation uses.
+//
+// Why `export * as` and not the object literal (`export const Dialog = {
+// Root: DialogRoot, … }`) this file used to build: a module namespace is
+// static. A bundler sees `Dialog.Root` as a reference to one export of
+// `dialog.js` and drops the parts a page never names, where an object literal
+// is a value it must keep whole; Flow types `Dialog.Root` as exactly the
+// component `dialog.js` declares, `renders*` constraints included; React
+// Compiler sees an imported binding, not a property read off a mutable
+// object. And `@uniflowed/vite`'s barrel rewrite turns
+// `import { Dialog } from "@uniflowed/ui"` into
+// `import * as Dialog from ".../dialog.js"` — one module, not the barrel —
+// with no generated module standing in for the object.
+//
 // `internal/` holds ten modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
 // `merge-props.js` (the caller's props go on first, the component's semantics
@@ -328,201 +368,6 @@
 // unreachable rather than exported. There is no `internal/props.js`-shaped
 // bag of helpers: a module that cannot say what it is about does not belong in
 // this package.
-
-import {
-  AccordionContent,
-  AccordionHeader,
-  AccordionItem,
-  AccordionRoot,
-  AccordionTrigger,
-} from "./accordion.js";
-import { AlertDescription, AlertRoot, AlertTitle } from "./alert.js";
-import {
-  AlertDialogAction,
-  AlertDialogBody,
-  AlertDialogCancel,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogOverlay,
-  AlertDialogRoot,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "./alert-dialog.js";
-import { AvatarFallback, AvatarImage, AvatarRoot } from "./avatar.js";
-import {
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbRoot,
-  BreadcrumbSeparator,
-} from "./breadcrumb.js";
-import {
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPause,
-  CarouselPrevious,
-  CarouselRoot,
-} from "./carousel.js";
-import {
-  CalendarDay,
-  CalendarMonth,
-  CalendarNext,
-  CalendarPrevious,
-  CalendarRoot,
-} from "./calendar.js";
-import { Checkbox } from "./checkbox.js";
-import { ContextMenuRoot, ContextMenuTrigger } from "./context-menu.js";
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "./collapsible.js";
-import {
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxGroupLabel,
-  ComboboxInput,
-  ComboboxLabel,
-  ComboboxList,
-  ComboboxOption,
-  ComboboxRoot,
-  ComboboxStatus,
-} from "./combobox.js";
-import {
-  DatePickerCalendar,
-  DatePickerInput,
-  DatePickerRoot,
-  DatePickerTrigger,
-} from "./date-picker.js";
-import {
-  DialogBody,
-  DialogClose,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogRoot,
-  DialogTitle,
-  DialogTrigger,
-} from "./dialog.js";
-import {
-  DrawerBody,
-  DrawerClose,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHandle,
-  DrawerHeader,
-  DrawerOverlay,
-  DrawerRoot,
-  DrawerTitle,
-  DrawerTrigger,
-} from "./drawer.js";
-import {
-  FieldControl,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-  FieldRoot,
-  FieldStatus,
-} from "./field.js";
-import { HoverCardBody, HoverCardRoot, HoverCardTrigger } from "./hover-card.js";
-import { InputOtpGroup, InputOtpRoot, InputOtpSeparator, InputOtpSlot } from "./input-otp.js";
-import {
-  MenuBody,
-  MenuCheckboxItem,
-  MenuGroup,
-  MenuItem,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuRoot,
-  MenuSeparator,
-  MenuSub,
-  MenuSubTrigger,
-  MenuTrigger,
-} from "./menu.js";
-import { MenubarMenu, MenubarRoot, MenubarTrigger } from "./menubar.js";
-import {
-  NavigationMenuBody,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuRoot,
-  NavigationMenuTrigger,
-} from "./navigation-menu.js";
-import {
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-  PaginationRoot,
-} from "./pagination.js";
-import { PopoverBody, PopoverRoot, PopoverTrigger } from "./popover.js";
-import { Progress } from "./progress.js";
-import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
-import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaViewport } from "./scroll-area.js";
-import {
-  SelectGroup,
-  SelectGroupLabel,
-  SelectLabel,
-  SelectList,
-  SelectOption,
-  SelectRoot,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "./select.js";
-import { Separator } from "./separator.js";
-import {
-  SheetBody,
-  SheetClose,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetRoot,
-  SheetTitle,
-  SheetTrigger,
-} from "./sheet.js";
-import {
-  SidebarBody,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarItem,
-  SidebarRoot,
-  SidebarTrigger,
-} from "./sidebar.js";
-import { SkeletonBox, SkeletonRoot } from "./skeleton.js";
-import { SliderRange, SliderRoot, SliderThumb, SliderTrack } from "./slider.js";
-import { Switch } from "./switch.js";
-import {
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRoot,
-  TableRow,
-  TableRowHeader,
-  TableRowSelect,
-  TableSelectAll,
-} from "./table.js";
-import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./tabs.js";
-import {
-  ToastAction,
-  ToastClose,
-  ToastDescription,
-  ToastRegion,
-  ToastRoot,
-  ToastTitle,
-  dismissAllToasts,
-  dismissToast,
-  toast,
-  updateToast,
-} from "./toast.js";
-import { Toggle } from "./toggle.js";
-import { ToggleGroupItem, ToggleGroupRoot } from "./toggle-group.js";
-import { TooltipBody, TooltipProvider, TooltipRoot, TooltipTrigger } from "./tooltip.js";
 
 export type { AccordionType } from "./accordion.js";
 export type { AvatarStatus } from "./avatar.js";
@@ -554,203 +399,6 @@ export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.
 export type { ToggleGroupType } from "./toggle-group.js";
 
 /**
- * Every part, under the name its module gives it.
- *
- * This file is the only entry point the package has — `package.json` exports
- * `.` and nothing else — so a name a module exports and this list leaves out is
- * a name nobody can import. The namespaces below are the same parts spelled for
- * composing a page (`Dialog.Root`); these are for the wrapper, the preset and
- * the test that want one part (`import { DialogRoot } from "@uniflowed/ui"`).
- * `sideEffects: false` lets a bundler keep the module a name comes from and drop
- * the rest, and `uf_rsc` names that module, not the package, as the client
- * boundary of a Server Component that imports the name.
- */
-export {
-  AccordionContent,
-  AccordionHeader,
-  AccordionItem,
-  AccordionRoot,
-  AccordionTrigger,
-  AlertDescription,
-  AlertDialogAction,
-  AlertDialogBody,
-  AlertDialogCancel,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogOverlay,
-  AlertDialogRoot,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-  AlertRoot,
-  AlertTitle,
-  AvatarFallback,
-  AvatarImage,
-  AvatarRoot,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbRoot,
-  BreadcrumbSeparator,
-  CalendarDay,
-  CalendarMonth,
-  CalendarNext,
-  CalendarPrevious,
-  CalendarRoot,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPause,
-  CarouselPrevious,
-  CarouselRoot,
-  CollapsibleContent,
-  CollapsibleRoot,
-  CollapsibleTrigger,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxGroupLabel,
-  ComboboxInput,
-  ComboboxLabel,
-  ComboboxList,
-  ComboboxOption,
-  ComboboxRoot,
-  ComboboxStatus,
-  ContextMenuRoot,
-  ContextMenuTrigger,
-  DatePickerCalendar,
-  DatePickerInput,
-  DatePickerRoot,
-  DatePickerTrigger,
-  DialogBody,
-  DialogClose,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogRoot,
-  DialogTitle,
-  DialogTrigger,
-  DrawerBody,
-  DrawerClose,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHandle,
-  DrawerHeader,
-  DrawerOverlay,
-  DrawerRoot,
-  DrawerTitle,
-  DrawerTrigger,
-  FieldControl,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-  FieldRoot,
-  FieldStatus,
-  HoverCardBody,
-  HoverCardRoot,
-  HoverCardTrigger,
-  InputOtpGroup,
-  InputOtpRoot,
-  InputOtpSeparator,
-  InputOtpSlot,
-  MenuBody,
-  MenuCheckboxItem,
-  MenuGroup,
-  MenuItem,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuRoot,
-  MenuSeparator,
-  MenuSub,
-  MenuSubTrigger,
-  MenuTrigger,
-  MenubarMenu,
-  MenubarRoot,
-  MenubarTrigger,
-  NavigationMenuBody,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuRoot,
-  NavigationMenuTrigger,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-  PaginationRoot,
-  PopoverBody,
-  PopoverRoot,
-  PopoverTrigger,
-  RadioGroupIndicator,
-  RadioGroupItem,
-  RadioGroupRoot,
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  ScrollAreaRoot,
-  ScrollAreaScrollbar,
-  ScrollAreaViewport,
-  SelectGroup,
-  SelectGroupLabel,
-  SelectLabel,
-  SelectList,
-  SelectOption,
-  SelectRoot,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-  SheetBody,
-  SheetClose,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetRoot,
-  SheetTitle,
-  SheetTrigger,
-  SidebarBody,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarItem,
-  SidebarRoot,
-  SidebarTrigger,
-  SkeletonBox,
-  SkeletonRoot,
-  SliderRange,
-  SliderRoot,
-  SliderThumb,
-  SliderTrack,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRoot,
-  TableRow,
-  TableRowHeader,
-  TableRowSelect,
-  TableSelectAll,
-  TabsList,
-  TabsPanel,
-  TabsRoot,
-  TabsTab,
-  ToastAction,
-  ToastClose,
-  ToastDescription,
-  ToastRegion,
-  ToastRoot,
-  ToastTitle,
-  ToggleGroupItem,
-  ToggleGroupRoot,
-  TooltipBody,
-  TooltipProvider,
-  TooltipRoot,
-  TooltipTrigger,
-};
-
-/**
  * The five that are one component rather than a namespace of parts.
  *
  * Each takes `render`, so the control or line a design system already has — a
@@ -758,7 +406,11 @@ export {
  * meter shell — keeps the role, state, keys and attributes while being their
  * element. See the module headers and the table in `packages/ui/ui.test.js`.
  */
-export { Checkbox, Progress, Separator, Switch, Toggle };
+export { Checkbox } from "./checkbox.js";
+export { Progress } from "./progress.js";
+export { Separator } from "./separator.js";
+export { Switch } from "./switch.js";
+export { Toggle } from "./toggle.js";
 
 /**
  * Queueing a notification, from anywhere.
@@ -771,7 +423,7 @@ export { Checkbox, Progress, Separator, Switch, Toggle };
  *     updateToast(id, { content: "Uploaded", duration: 4000 });
  *     toast("Could not save", { urgency: "assertive" });
  */
-export { dismissAllToasts, dismissToast, toast, updateToast };
+export { dismissAllToasts, dismissToast, toast, updateToast } from "./toast.js";
 
 /**
  * The interactions every part here is made of, for a control of the caller's own.
@@ -868,14 +520,7 @@ export type {
  * `role="group"` named by the label, and the description and the error describe
  * the set.
  */
-export const Field = {
-  Root: FieldRoot,
-  Label: FieldLabel,
-  Control: FieldControl,
-  Description: FieldDescription,
-  Status: FieldStatus,
-  Error: FieldError,
-};
+export * as Field from "./field.js";
 
 /**
  * Tabs, with the arrow-key behaviour the pattern requires.
@@ -897,12 +542,7 @@ export const Field = {
  * the roving tab stop and the `aria-controls` a tab has. `Tabs.List`'s
  * `renders* Tabs.Tab` is unaffected, because it is the *part* it constrains.
  */
-export const Tabs = {
-  Root: TabsRoot,
-  List: TabsList,
-  Tab: TabsTab,
-  Panel: TabsPanel,
-};
+export * as Tabs from "./tabs.js";
 
 /**
  * A button and the region it shows, with the three attributes that say so.
@@ -915,11 +555,7 @@ export const Tabs = {
  *     <Collapsible.Content>…</Collapsible.Content>
  *   </Collapsible.Root>
  */
-export const Collapsible = {
-  Root: CollapsibleRoot,
-  Trigger: CollapsibleTrigger,
-  Content: CollapsibleContent,
-};
+export * as Collapsible from "./collapsible.js";
 
 /**
  * A stack of disclosures that know about each other.
@@ -937,13 +573,7 @@ export const Collapsible = {
  *     </Accordion.Item>
  *   </Accordion.Root>
  */
-export const Accordion = {
-  Root: AccordionRoot,
-  Item: AccordionItem,
-  Header: AccordionHeader,
-  Trigger: AccordionTrigger,
-  Content: AccordionContent,
-};
+export * as Accordion from "./accordion.js";
 
 /**
  * Site navigation: a list of links behind buttons, and not a `menu`.
@@ -959,14 +589,7 @@ export const Accordion = {
  *     </NavigationMenu.List>
  *   </NavigationMenu.Root>
  */
-export const NavigationMenu = {
-  Root: NavigationMenuRoot,
-  List: NavigationMenuList,
-  Item: NavigationMenuItem,
-  Trigger: NavigationMenuTrigger,
-  Body: NavigationMenuBody,
-  Link: NavigationMenuLink,
-};
+export * as NavigationMenu from "./navigation-menu.js";
 
 /**
  * One answer out of several, with the arrow keys that check as they move.
@@ -989,11 +612,7 @@ export const NavigationMenu = {
  *     />
  *   </Field.Root>
  */
-export const RadioGroup = {
-  Root: RadioGroupRoot,
-  Item: RadioGroupItem,
-  Indicator: RadioGroupIndicator,
-};
+export * as RadioGroup from "./radio-group.js";
 
 /**
  * A row of toggle buttons that behaves as one control.
@@ -1007,10 +626,7 @@ export const RadioGroup = {
  *     <ToggleGroup.Item value="italic">I</ToggleGroup.Item>
  *   </ToggleGroup.Root>
  */
-export const ToggleGroup = {
-  Root: ToggleGroupRoot,
-  Item: ToggleGroupItem,
-};
+export * as ToggleGroup from "./toggle-group.js";
 
 /**
  * A modal dialog: focus moved in, kept in, and given back.
@@ -1035,17 +651,7 @@ export const ToggleGroup = {
  * losing the id `aria-labelledby` points at. `AlertDialog`, `Sheet` and
  * `Drawer` are made of these parts and pass `render` straight through.
  */
-export const Dialog = {
-  Root: DialogRoot,
-  Trigger: DialogTrigger,
-  Overlay: DialogOverlay,
-  Body: DialogBody,
-  Header: DialogHeader,
-  Footer: DialogFooter,
-  Title: DialogTitle,
-  Description: DialogDescription,
-  Close: DialogClose,
-};
+export * as Dialog from "./dialog.js";
 
 /**
  * The confirmation: modal, announced as an alert, and not dismissible by a
@@ -1070,18 +676,7 @@ export const Dialog = {
  *     </AlertDialog.Body>
  *   </AlertDialog.Root>
  */
-export const AlertDialog = {
-  Root: AlertDialogRoot,
-  Trigger: AlertDialogTrigger,
-  Overlay: AlertDialogOverlay,
-  Body: AlertDialogBody,
-  Header: AlertDialogHeader,
-  Footer: AlertDialogFooter,
-  Title: AlertDialogTitle,
-  Description: AlertDialogDescription,
-  Action: AlertDialogAction,
-  Cancel: AlertDialogCancel,
-};
+export * as AlertDialog from "./alert-dialog.js";
 
 /**
  * A modal dialog attached to an edge of the viewport.
@@ -1099,17 +694,7 @@ export const AlertDialog = {
  *     </Sheet.Body>
  *   </Sheet.Root>
  */
-export const Sheet = {
-  Root: SheetRoot,
-  Trigger: SheetTrigger,
-  Overlay: SheetOverlay,
-  Body: SheetBody,
-  Header: SheetHeader,
-  Footer: SheetFooter,
-  Title: SheetTitle,
-  Description: SheetDescription,
-  Close: SheetClose,
-};
+export * as Sheet from "./sheet.js";
 
 /**
  * The sheet you can drag away, with the keyboard that can do everything the
@@ -1130,18 +715,7 @@ export const Sheet = {
  *     </Drawer.Body>
  *   </Drawer.Root>
  */
-export const Drawer = {
-  Root: DrawerRoot,
-  Trigger: DrawerTrigger,
-  Overlay: DrawerOverlay,
-  Body: DrawerBody,
-  Handle: DrawerHandle,
-  Header: DrawerHeader,
-  Footer: DrawerFooter,
-  Title: DrawerTitle,
-  Description: DrawerDescription,
-  Close: DrawerClose,
-};
+export * as Drawer from "./drawer.js";
 
 /**
  * Navigation beside the page, which becomes a modal sheet on a narrow one.
@@ -1159,14 +733,7 @@ export const Drawer = {
  *     </Sidebar.Body>
  *   </Sidebar.Root>
  */
-export const Sidebar = {
-  Root: SidebarRoot,
-  Trigger: SidebarTrigger,
-  Header: SidebarHeader,
-  Body: SidebarBody,
-  Footer: SidebarFooter,
-  Item: SidebarItem,
-};
+export * as Sidebar from "./sidebar.js";
 
 /**
  * Slides, one at a time, that a reader can stop and cannot fall into.
@@ -1186,14 +753,7 @@ export const Sidebar = {
  *     <Carousel.Next />
  *   </Carousel.Root>
  */
-export const Carousel = {
-  Root: CarouselRoot,
-  Content: CarouselContent,
-  Item: CarouselItem,
-  Pause: CarouselPause,
-  Previous: CarouselPrevious,
-  Next: CarouselNext,
-};
+export * as Carousel from "./carousel.js";
 
 /**
  * An overflow container a keyboard can actually scroll.
@@ -1207,11 +767,7 @@ export const Carousel = {
  *     <ScrollArea.Scrollbar orientation="vertical" />
  *   </ScrollArea.Root>
  */
-export const ScrollArea = {
-  Root: ScrollAreaRoot,
-  Viewport: ScrollAreaViewport,
-  Scrollbar: ScrollAreaScrollbar,
-};
+export * as ScrollArea from "./scroll-area.js";
 
 /**
  * A one-time code: six boxes drawn over one real `<input>`.
@@ -1233,12 +789,7 @@ export const ScrollArea = {
  *     </InputOtp.Group>
  *   </InputOtp.Root>
  */
-export const InputOtp = {
-  Root: InputOtpRoot,
-  Group: InputOtpGroup,
-  Slot: InputOtpSlot,
-  Separator: InputOtpSeparator,
-};
+export * as InputOtp from "./input-otp.js";
 
 /**
  * A menu, with the keyboard map every native menu has had for thirty years.
@@ -1271,20 +822,7 @@ export const InputOtp = {
  * item keeps the role, the id, the roving tab stop and the press that closes
  * the tree. See the module header for why that is the answer to "no copy step".
  */
-export const Menu = {
-  Root: MenuRoot,
-  Trigger: MenuTrigger,
-  Body: MenuBody,
-  Item: MenuItem,
-  CheckboxItem: MenuCheckboxItem,
-  RadioGroup: MenuRadioGroup,
-  RadioItem: MenuRadioItem,
-  Separator: MenuSeparator,
-  Group: MenuGroup,
-  Label: MenuLabel,
-  Sub: MenuSub,
-  SubTrigger: MenuSubTrigger,
-};
+export * as Menu from "./menu.js";
 
 /**
  * The same menu, opened by the right button — and by the keyboard.
@@ -1305,20 +843,7 @@ export const Menu = {
  *     </ContextMenu.Body>
  *   </ContextMenu.Root>
  */
-export const ContextMenu = {
-  Root: ContextMenuRoot,
-  Trigger: ContextMenuTrigger,
-  Body: MenuBody,
-  Item: MenuItem,
-  CheckboxItem: MenuCheckboxItem,
-  RadioGroup: MenuRadioGroup,
-  RadioItem: MenuRadioItem,
-  Separator: MenuSeparator,
-  Group: MenuGroup,
-  Label: MenuLabel,
-  Sub: MenuSub,
-  SubTrigger: MenuSubTrigger,
-};
+export * as ContextMenu from "./context-menu.js";
 
 /**
  * A row of menus that behaves as one control: File, Edit, View.
@@ -1336,23 +861,7 @@ export const ContextMenu = {
  *     </Menubar.Menu>
  *   </Menubar.Root>
  */
-export const Menubar = {
-  Root: MenubarRoot,
-  Menu: MenubarMenu,
-  Trigger: MenubarTrigger,
-  // `Menu.Body` itself: a bar's menu is a root menu, and `menubar.js`'s header
-  // says why a wrapper with the same defaults would be a second place to drift.
-  Body: MenuBody,
-  Item: MenuItem,
-  CheckboxItem: MenuCheckboxItem,
-  RadioGroup: MenuRadioGroup,
-  RadioItem: MenuRadioItem,
-  Separator: MenuSeparator,
-  Group: MenuGroup,
-  Label: MenuLabel,
-  Sub: MenuSub,
-  SubTrigger: MenuSubTrigger,
-};
+export * as Menubar from "./menubar.js";
 
 /**
  * A text field with a list of options, navigated without leaving the field.
@@ -1377,17 +886,7 @@ export const Menubar = {
  * `Combobox.Label` names the field and `Combobox.GroupLabel` names a group of
  * options, which is why there are two of them.
  */
-export const Combobox = {
-  Root: ComboboxRoot,
-  Label: ComboboxLabel,
-  Input: ComboboxInput,
-  List: ComboboxList,
-  Option: ComboboxOption,
-  Group: ComboboxGroup,
-  GroupLabel: ComboboxGroupLabel,
-  Empty: ComboboxEmpty,
-  Status: ComboboxStatus,
-};
+export * as Combobox from "./combobox.js";
 
 /**
  * The other half of the combobox pattern: a button, a list, and no typing.
@@ -1415,17 +914,7 @@ export const Combobox = {
  * options. shadcn has one `SelectLabel` and it is the second of those; a select
  * needs both, so they are two parts here.
  */
-export const Select = {
-  Root: SelectRoot,
-  Label: SelectLabel,
-  Trigger: SelectTrigger,
-  Value: SelectValue,
-  List: SelectList,
-  Option: SelectOption,
-  Group: SelectGroup,
-  GroupLabel: SelectGroupLabel,
-  Separator: SelectSeparator,
-};
+export * as Select from "./select.js";
 
 /**
  * A dialog that is not modal, anchored to the button that opened it.
@@ -1447,11 +936,7 @@ export const Select = {
  * writes the trigger's width and the room it had as custom properties, so a
  * stylesheet can point an arrow and cap a height without measuring anything.
  */
-export const Popover = {
-  Root: PopoverRoot,
-  Trigger: PopoverTrigger,
-  Body: PopoverBody,
-};
+export * as Popover from "./popover.js";
 
 /**
  * A month of dates, as one stop in the page's tab order.
@@ -1477,13 +962,7 @@ export const Popover = {
  * of what a disabled menu item does and the only way a reader can find out which
  * days are unavailable.
  */
-export const Calendar = {
-  Root: CalendarRoot,
-  Previous: CalendarPrevious,
-  Next: CalendarNext,
-  Month: CalendarMonth,
-  Day: CalendarDay,
-};
+export * as Calendar from "./calendar.js";
 
 /**
  * A field somebody types a date into, and a calendar for the times they would
@@ -1504,12 +983,7 @@ export const Calendar = {
  * 8601 both ways unless a caller passes their own - `date-picker.js` says why a
  * locale format is not this package's to guess.
  */
-export const DatePicker = {
-  Root: DatePickerRoot,
-  Input: DatePickerInput,
-  Trigger: DatePickerTrigger,
-  Calendar: DatePickerCalendar,
-};
+export * as DatePicker from "./date-picker.js";
 
 /**
  * A phrase about a control, on hover and on focus, that WCAG would accept.
@@ -1533,12 +1007,7 @@ export const DatePicker = {
  * once instead of making the reader wait the delay again. A tooltip outside one
  * is a complete tooltip with a delay of its own.
  */
-export const Tooltip = {
-  Provider: TooltipProvider,
-  Root: TooltipRoot,
-  Trigger: TooltipTrigger,
-  Body: TooltipBody,
-};
+export * as Tooltip from "./tooltip.js";
 
 /**
  * The preview a name expands into: hovered, focused, and full of links.
@@ -1554,11 +1023,7 @@ export const Tooltip = {
  *     </HoverCard.Body>
  *   </HoverCard.Root>
  */
-export const HoverCard = {
-  Root: HoverCardRoot,
-  Trigger: HoverCardTrigger,
-  Body: HoverCardBody,
-};
+export * as HoverCard from "./hover-card.js";
 
 /**
  * Notifications, in a live region that was watching before them.
@@ -1575,14 +1040,7 @@ export const HoverCard = {
  *     )}
  *   </Toast.Region>
  */
-export const Toast = {
-  Region: ToastRegion,
-  Root: ToastRoot,
-  Title: ToastTitle,
-  Description: ToastDescription,
-  Action: ToastAction,
-  Close: ToastClose,
-};
+export * as Toast from "./toast.js";
 
 /**
  * A value in a range, with `role="slider"` on the thumb where it belongs.
@@ -1598,12 +1056,7 @@ export const Toast = {
  *     <Slider.Thumb aria-label="Maximum" index={1} />
  *   </Slider.Root>
  */
-export const Slider = {
-  Root: SliderRoot,
-  Track: SliderTrack,
-  Range: SliderRange,
-  Thumb: SliderThumb,
-};
+export * as Slider from "./slider.js";
 
 /**
  * Two panes and the splitter between them, operable from the keyboard.
@@ -1614,11 +1067,7 @@ export const Slider = {
  *     <Resizable.Panel>Editor</Resizable.Panel>
  *   </Resizable.PanelGroup>
  */
-export const Resizable = {
-  PanelGroup: ResizablePanelGroup,
-  Panel: ResizablePanel,
-  Handle: ResizableHandle,
-};
+export * as Resizable from "./resizable.js";
 
 /**
  * A table, with the four things about one nobody gets right by hand.
@@ -1653,18 +1102,7 @@ export const Resizable = {
  *     </Table.Body>
  *   </Table.Root>
  */
-export const Table = {
-  Root: TableRoot,
-  Caption: TableCaption,
-  Header: TableHeader,
-  Body: TableBody,
-  Row: TableRow,
-  Head: TableHead,
-  RowHeader: TableRowHeader,
-  Cell: TableCell,
-  SelectAll: TableSelectAll,
-  RowSelect: TableRowSelect,
-};
+export * as Table from "./table.js";
 
 /**
  * The navigation a paginated table needs, and the sentence that says it moved.
@@ -1677,13 +1115,7 @@ export const Table = {
  *     </Pagination.Content>
  *   </Pagination.Root>
  */
-export const Pagination = {
-  Root: PaginationRoot,
-  Content: PaginationContent,
-  Item: PaginationItem,
-  Previous: PaginationPrevious,
-  Next: PaginationNext,
-};
+export * as Pagination from "./pagination.js";
 
 /**
  * The trail above the page, read as places rather than as punctuation.
@@ -1706,14 +1138,7 @@ export const Pagination = {
  * crumb is a `Breadcrumb.Page` and not a link, because it is where the reader
  * already is.
  */
-export const Breadcrumb = {
-  Root: BreadcrumbRoot,
-  List: BreadcrumbList,
-  Item: BreadcrumbItem,
-  Link: BreadcrumbLink,
-  Page: BreadcrumbPage,
-  Separator: BreadcrumbSeparator,
-};
+export * as Breadcrumb from "./breadcrumb.js";
 
 /**
  * A callout, and the `live` that decides whether anybody is interrupted by it.
@@ -1736,11 +1161,7 @@ export const Breadcrumb = {
  * `role="alert"` is for. `alert.js`'s header says why there is no polite
  * version of this and why `Toast` is that instead.
  */
-export const Alert = {
-  Root: AlertRoot,
-  Title: AlertTitle,
-  Description: AlertDescription,
-};
+export * as Alert from "./alert.js";
 
 /**
  * A picture of a person, and the two states it is not in yet.
@@ -1757,11 +1178,7 @@ export const Alert = {
  * screen reader say it twice; pass `alt` where the picture is the only thing
  * identifying the person.
  */
-export const Avatar = {
-  Root: AvatarRoot,
-  Image: AvatarImage,
-  Fallback: AvatarFallback,
-};
+export * as Avatar from "./avatar.js";
 
 /**
  * The grey boxes, and the sentence that stops them being an empty page.
@@ -1777,24 +1194,10 @@ export const Avatar = {
  * `busy`; unmounting it takes the region away before it can say the wait is
  * over.
  */
-export const Skeleton = {
-  Root: SkeletonRoot,
-  Box: SkeletonBox,
-};
+export * as Skeleton from "./skeleton.js";
 
 export { I18nProvider, useLocale, useCollator, useFilter } from "./i18n-provider.js";
-import {
-  NumberFieldRoot,
-  NumberFieldInput,
-  NumberFieldIncrement,
-  NumberFieldDecrement,
-} from "./number-field.js";
-export const NumberField = {
-  Root: NumberFieldRoot,
-  Input: NumberFieldInput,
-  Increment: NumberFieldIncrement,
-  Decrement: NumberFieldDecrement,
-};
+export * as NumberField from "./number-field.js";
 
 export { ListBox } from "./list-box.js";
 export { GridList } from "./grid-list.js";
@@ -1804,72 +1207,18 @@ export type { CollectionItem, CollectionItemState, CollectionProps } from "./lis
 
 export type { Drop, DragAndDrop } from "./drag-drop.js";
 export { useDragAndDrop } from "./drag-drop.js";
-import {
-  ColorPickerRoot,
-  ColorPickerInput,
-  ColorPickerField,
-  ColorPickerChannel,
-  ColorPickerSwatch,
-} from "./color-picker.js";
-export const ColorPicker = {
-  Root: ColorPickerRoot,
-  Input: ColorPickerInput,
-  Field: ColorPickerField,
-  Channel: ColorPickerChannel,
-  Swatch: ColorPickerSwatch,
-};
+export * as ColorPicker from "./color-picker.js";
 
 export { DateField } from "./date-field.js";
 export { TimeField } from "./time-field.js";
 export type { DateFieldProps } from "./date-field.js";
-import { RangeCalendarRoot } from "./range-calendar.js";
-import {
-  DateRangePickerRoot,
-  DateRangePickerStartField,
-  DateRangePickerEndField,
-  DateRangePickerTrigger,
-  DateRangePickerCalendar,
-} from "./date-range-picker.js";
 export type { DateRange } from "./range-calendar.js";
-export const RangeCalendar = {
-  Root: RangeCalendarRoot,
-  Month: CalendarMonth,
-  Day: CalendarDay,
-  Previous: CalendarPrevious,
-  Next: CalendarNext,
-};
-export const DateRangePicker = {
-  Root: DateRangePickerRoot,
-  StartField: DateRangePickerStartField,
-  EndField: DateRangePickerEndField,
-  Trigger: DateRangePickerTrigger,
-  Calendar: DateRangePickerCalendar,
-};
+export * as RangeCalendar from "./range-calendar.js";
+export * as DateRangePicker from "./date-range-picker.js";
 
-export {
-  NumberFieldRoot,
-  NumberFieldInput,
-  NumberFieldIncrement,
-  NumberFieldDecrement,
-  parseNumber,
-} from "./number-field.js";
+export { parseNumber } from "./number-field.js";
 export type { NumberFormatOptions } from "./number-field.js";
-export {
-  ColorPickerRoot,
-  ColorPickerInput,
-  ColorPickerField,
-  ColorPickerChannel,
-  ColorPickerSwatch,
-  parseColor,
-} from "./color-picker.js";
-export { RangeCalendarRoot } from "./range-calendar.js";
-export {
-  DateRangePickerRoot,
-  DateRangePickerStartField,
-  DateRangePickerEndField,
-  DateRangePickerTrigger,
-  DateRangePickerCalendar,
-} from "./date-range-picker.js";
+export { parseColor } from "./color-picker.js";
 export type { Locale } from "./i18n-provider.js";
 export { startsWithLocale } from "./i18n-provider.js";
 

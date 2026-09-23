@@ -263,3 +263,41 @@ fn catalogued_previous_release_fixture_has_no_deprecated_tool_keys_after_migrati
     let config = uf_config::load_config_file(&root.join("uf.config.js")).unwrap();
     assert!(config.tool_deprecations().is_empty());
 }
+
+/// The catalogued fixture for `ui-namespaces-1453`: a page written against the
+/// prefixed part names migrates to the namespaces, byte for byte what
+/// `after.js` says, and a second run over the result changes nothing.
+///
+/// Planned as the 0.3.0 binary would plan it, because the migration is
+/// registered for the release that removed the names and `main`'s binary is
+/// older than that until the release is cut.
+#[test]
+fn catalogued_ui_fixture_moves_every_prefixed_part_onto_its_namespace() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(temp.path()).unwrap();
+    fs::write(root.join("uf.config.js"), "export default {};\n").unwrap();
+    fs::create_dir_all(root.join("app")).unwrap();
+    fs::write(
+        root.join("app/settings.js"),
+        include_str!("../../../tests/fixtures/migrations/ui-namespaces/before.js"),
+    )
+    .unwrap();
+
+    let plan = codemod::plan_for(root, Some("0.2.0"), "0.3.0", "0.3.0").unwrap();
+    assert!(plan.unmapped.is_empty(), "{:?}", plan.unmapped);
+    assert!(plan.migrations.iter().any(|id| id == "ui-namespaces-1453"));
+    plan.apply(root).unwrap();
+    assert_eq!(
+        fs::read_to_string(root.join("app/settings.js")).unwrap(),
+        include_str!("../../../tests/fixtures/migrations/ui-namespaces/after.js")
+    );
+
+    let again = codemod::plan_for(root, Some("0.2.0"), "0.3.0", "0.3.0").unwrap();
+    assert!(again.changes.is_empty());
+
+    // A project already past the release is not rewritten again, and a binary
+    // older than the target still refuses to plan it.
+    let later = codemod::plan_for(root, Some("0.3.0"), "0.3.0", "0.3.0").unwrap();
+    assert!(!later.migrations.iter().any(|id| id == "ui-namespaces-1453"));
+    assert!(codemod::plan_for(root, Some("0.2.0"), "0.3.0", "0.2.0").is_err());
+}

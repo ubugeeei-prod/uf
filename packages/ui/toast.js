@@ -349,7 +349,7 @@ const ToastPartsContext: React.Context<ToastParts | null> = createContext(null);
  * so a `<div>` where a notification belongs is a type error rather than a
  * stack of notifications a reader cannot dismiss.
  */
-export component ToastRegion(
+component ToastRegion(
   children: (notification: Notification) => renders ToastRoot,
   label?: string = "Notifications",
   limit?: number = 3,
@@ -427,7 +427,7 @@ export component ToastRegion(
  * an id that is not in the document makes a screen reader announce nothing at
  * all.
  */
-export component ToastRoot(children: React.Node, ...rest: Rest) {
+component ToastRoot(children: React.Node, ...rest: Rest) {
   const notification = useNotification("Toast.Root");
   const base = useId();
   const elementRef = useElementRef<HTMLElement>();
@@ -499,7 +499,7 @@ export component ToastRoot(children: React.Node, ...rest: Rest) {
 }
 
 /** What the notification is about, and the name of its group. */
-export component ToastTitle(children: React.Node, ...rest: Rest) {
+component ToastTitle(children: React.Node, ...rest: Rest) {
   const parts = useToastParts("Toast.Title");
   useRegistration(parts.registerTitle);
 
@@ -511,7 +511,7 @@ export component ToastTitle(children: React.Node, ...rest: Rest) {
 }
 
 /** The rest of it, and the group's description. */
-export component ToastDescription(children: React.Node, ...rest: Rest) {
+component ToastDescription(children: React.Node, ...rest: Rest) {
   const parts = useToastParts("Toast.Description");
   useRegistration(parts.registerDescription);
 
@@ -532,7 +532,7 @@ export component ToastDescription(children: React.Node, ...rest: Rest) {
  * countdown stopping while focus is inside is what makes the button reachable
  * at all; it is not a promise that four seconds was enough time to decide.
  */
-export component ToastAction(children: React.Node, ...rest: Rest) {
+component ToastAction(children: React.Node, ...rest: Rest) {
   const notification = useNotification("Toast.Action");
   const passed = withoutComposed(rest, ["onClick"]);
 
@@ -561,7 +561,7 @@ export component ToastAction(children: React.Node, ...rest: Rest) {
  * `aria-label` that says "Dismiss" over a button that says "Close" breaks the
  * speech reader who says "click Close" out loud.
  */
-export component ToastClose(children?: React.Node, label?: string = "Dismiss", ...rest: Rest) {
+component ToastClose(children?: React.Node, label?: string = "Dismiss", ...rest: Rest) {
   const notification = useNotification("Toast.Close");
   const passed = withoutComposed(rest, ["onClick"]);
 
@@ -592,3 +592,21 @@ hook useRegistration(register: (present: boolean) => void): void {
     return () => register(false);
   }, [register]);
 }
+
+/**
+ * The parts, under the names the `Toast` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Toast from "./toast.js"` —
+ * so a caller writes `<Toast.Region>`, and the namespace is the prefix. Each
+ * part is still *declared* as `ToastRegion`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Region`s.
+ */
+export {
+  ToastRegion as Region,
+  ToastRoot as Root,
+  ToastTitle as Title,
+  ToastDescription as Description,
+  ToastAction as Action,
+  ToastClose as Close,
+};

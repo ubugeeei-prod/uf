@@ -88,7 +88,7 @@ hook useHoverCard(part: string): HoverCardState {
  * the time the reader has to reach the card, and a card holding links is a card
  * they are reaching for.
  */
-export component HoverCardRoot(
+component HoverCardRoot(
   children: React.Node,
   closeDelay?: number = DEFAULT_CLOSE_DELAY,
   defaultOpen?: boolean = false,
@@ -127,7 +127,7 @@ export component HoverCardRoot(
  * reachable by keyboard, and `useFocusableTrigger` refuses anything else —
  * a hover card on a `<span>` is one a keyboard reader can never see.
  */
-export component HoverCardTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component HoverCardTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const card = useHoverCard("HoverCard.Trigger");
   const { closeDelay, dismissedRef, intent, openDelay, triggerRef } = card;
   useFocusableTrigger(triggerRef, "HoverCard.Trigger");
@@ -202,7 +202,7 @@ export component HoverCardTrigger(children?: React.Node, render?: RenderProp, ..
  * because a card that took its own links away and left focus on `<body>` would
  * send the reader back to the top of the page.
  */
-export component HoverCardBody(
+component HoverCardBody(
   children: React.Node,
   align?: Align = "center",
   alignOffset?: number = 0,
@@ -332,3 +332,14 @@ export component HoverCardBody(
 
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `HoverCard` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as HoverCard from "./hover-card.js"` —
+ * so a caller writes `<HoverCard.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `HoverCardRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { HoverCardRoot as Root, HoverCardTrigger as Trigger, HoverCardBody as Body };

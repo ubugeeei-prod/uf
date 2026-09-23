@@ -88,7 +88,7 @@ import { withProps } from "./internal/merge-props.js";
  * header is about: the role is a promise about a change, and a box that was
  * always there has no change to report.
  */
-export component AlertRoot(
+component AlertRoot(
   children: React.Node,
   live?: boolean = false,
   render?: RenderProp,
@@ -116,12 +116,7 @@ export component AlertRoot(
  * the six HTML has is clamped, because `<h7>` is not an element and is
  * announced as nothing at all.
  */
-export component AlertTitle(
-  children: React.Node,
-  level?: number = 3,
-  render?: RenderProp,
-  ...rest: Rest
-) {
+component AlertTitle(children: React.Node, level?: number = 3, render?: RenderProp, ...rest: Rest) {
   const clamped = Math.min(6, Math.max(1, Math.trunc(level)));
   const Heading = `h${String(clamped)}`;
   const props = withProps(rest, { children });
@@ -133,10 +128,21 @@ export component AlertTitle(
 }
 
 /** What the callout says, under its heading. */
-export component AlertDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   if (render != null) {
     return render(props);
   }
   return <p {...props} />;
 }
+
+/**
+ * The parts, under the names the `Alert` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Alert from "./alert.js"` —
+ * so a caller writes `<Alert.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `AlertRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { AlertRoot as Root, AlertTitle as Title, AlertDescription as Description };

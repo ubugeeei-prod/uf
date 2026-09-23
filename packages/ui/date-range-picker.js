@@ -8,10 +8,10 @@ import type { Rest } from "./internal/merge-props.js";
 import { forwarded } from "./internal/merge-props.js";
 import type { DateRange } from "./internal/date-range.js";
 import { validateRange, unavailableInRange } from "./internal/date-range.js";
-import { CalendarMonth } from "./calendar.js";
-import { RangeCalendarRoot } from "./range-calendar.js";
+import { Month as CalendarMonth } from "./calendar.js";
+import { Root as RangeCalendarRoot } from "./range-calendar.js";
 import { DateField } from "./date-field.js";
-import { PopoverRoot, PopoverBody, PopoverTrigger } from "./popover.js";
+import { Root as PopoverRoot, Body as PopoverBody, Trigger as PopoverTrigger } from "./popover.js";
 
 type Picker = {
   range: DateRange | null,
@@ -27,7 +27,7 @@ hook usePicker(): Picker {
   if (picker == null) throw new Error("DateRangePicker parts must be inside DateRangePicker.Root");
   return picker;
 }
-export component DateRangePickerRoot(
+component DateRangePickerRoot(
   children: React.Node,
   value?: DateRange | null,
   defaultValue?: DateRange | null = null,
@@ -58,7 +58,7 @@ export component DateRangePickerRoot(
     </PickerContext.Provider>
   );
 }
-export component DateRangePickerStartField(...rest: Rest) {
+component DateRangePickerStartField(...rest: Rest) {
   const picker = usePicker();
   return (
     <DateField
@@ -76,7 +76,7 @@ export component DateRangePickerStartField(...rest: Rest) {
     />
   );
 }
-export component DateRangePickerEndField(...rest: Rest) {
+component DateRangePickerEndField(...rest: Rest) {
   const picker = usePicker();
   return (
     <DateField
@@ -94,10 +94,10 @@ export component DateRangePickerEndField(...rest: Rest) {
     />
   );
 }
-export component DateRangePickerTrigger(children: React.Node, ...rest: Rest) {
+component DateRangePickerTrigger(children: React.Node, ...rest: Rest) {
   return <PopoverTrigger {...forwarded(rest)}>{children}</PopoverTrigger>;
 }
-export component DateRangePickerCalendar(children?: React.Node = <CalendarMonth />, ...rest: Rest) {
+component DateRangePickerCalendar(children?: React.Node = <CalendarMonth />, ...rest: Rest) {
   const picker = usePicker();
   const dayRef = useRef<HTMLElement | null>(null);
   return (
@@ -118,3 +118,20 @@ export component DateRangePickerCalendar(children?: React.Node = <CalendarMonth 
     </PopoverBody>
   );
 }
+
+/**
+ * The parts, under the names the `DateRangePicker` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as DateRangePicker from "./date-range-picker.js"` —
+ * so a caller writes `<DateRangePicker.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `DateRangePickerRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  DateRangePickerRoot as Root,
+  DateRangePickerStartField as StartField,
+  DateRangePickerEndField as EndField,
+  DateRangePickerTrigger as Trigger,
+  DateRangePickerCalendar as Calendar,
+};

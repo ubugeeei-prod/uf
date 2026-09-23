@@ -127,7 +127,7 @@ hook useTable(part: string): TableState {
  * `announceSort` is the wording of the announcement, for an application with a
  * translation table. The default is English.
  */
-export component TableRoot(
+component TableRoot(
   children: React.Node,
   sort?: Sort | null,
   defaultSort?: Sort | null = null,
@@ -225,7 +225,7 @@ export component TableRoot(
  * what a screen reader reads when a reader lands on it. A heading above the
  * table looks the same and is not the table's name.
  */
-export component TableCaption(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component TableCaption(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const table = useTable("Table.Caption");
   const register = table.registerCaption;
 
@@ -247,7 +247,7 @@ export component TableCaption(children: React.Node, render?: RenderProp, ...rest
  * It tells the root that it exists, because `aria-rowcount` and every row's
  * `aria-rowindex` count header rows and a table without one counts differently.
  */
-export component TableHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component TableHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const table = useTable("Table.Header");
   const register = table.registerHeader;
 
@@ -266,7 +266,7 @@ export component TableHeader(children: React.Node, render?: RenderProp, ...rest:
 }
 
 /** The data rows. */
-export component TableBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component TableBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return (
     <HeaderContext.Provider value={false}>
@@ -291,7 +291,7 @@ export component TableBody(children: React.Node, render?: RenderProp, ...rest: R
  * adding them anyway is a second source of truth that can disagree with the
  * document.
  */
-export component TableRow(
+component TableRow(
   children: React.Node,
   index?: number | null = null,
   render?: RenderProp,
@@ -332,7 +332,7 @@ export component TableRow(
  * Not `"none"` on the others: eleven headers each announcing "not sorted" is
  * eleven announcements of nothing, on every pass through the table.
  */
-export component TableHead(
+component TableHead(
   children: React.Node,
   column?: string | null = null,
   render?: RenderProp,
@@ -395,7 +395,7 @@ export component TableHead(
 }
 
 /** One cell. */
-export component TableCell(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component TableCell(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   if (render != null) {
     return render(withProps(props, { role: "cell" }));
@@ -411,7 +411,7 @@ export component TableCell(children: React.Node, render?: RenderProp, ...rest: R
  * moves down the year column. A table of records usually has one and almost
  * never marks it.
  */
-export component TableRowHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component TableRowHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children, scope: "row" });
   if (render != null) {
     return render(withProps(props, { role: "rowheader" }));
@@ -449,7 +449,7 @@ export component TableRowHeader(children: React.Node, render?: RenderProp, ...re
  * wants a `Checkbox` of their own, which they should write — this part exists
  * for the type of `checked`, not for the markup.
  */
-export component TableSelectAll(
+component TableSelectAll(
   checked: boolean | "mixed",
   onCheckedChange: (checked: boolean) => void,
   label?: string = "Select all rows",
@@ -482,7 +482,7 @@ export component TableSelectAll(
  * Named props rather than `...rest: Rest`, for the reason `Table.SelectAll`
  * gives above.
  */
-export component TableRowSelect(
+component TableRowSelect(
   label: string,
   checked: boolean,
   onCheckedChange: (checked: boolean) => void,
@@ -506,3 +506,25 @@ export component TableRowSelect(
 function defaultAnnouncement(column: string, direction: "ascending" | "descending"): string {
   return `Sorted by ${column}, ${direction}.`;
 }
+
+/**
+ * The parts, under the names the `Table` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as Table from "./table.js"` —
+ * so a caller writes `<Table.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `TableRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  TableRoot as Root,
+  TableCaption as Caption,
+  TableHeader as Header,
+  TableBody as Body,
+  TableRow as Row,
+  TableHead as Head,
+  TableRowHeader as RowHeader,
+  TableCell as Cell,
+  TableSelectAll as SelectAll,
+  TableRowSelect as RowSelect,
+};

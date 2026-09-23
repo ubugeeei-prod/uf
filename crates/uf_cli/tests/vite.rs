@@ -2475,8 +2475,8 @@ fn a_page_importing_one_component_from_the_ui_barrel_ships_that_module_alone() {
 /// The document for `/` names `switch.js` as its client module, not the barrel.
 /// `/dialog` renders the trigger inside its root through the development module
 /// runner, where a second `dialog.js` would throw. And the client component the
-/// browser loads imports a view of the `Dialog` namespace whose one import is
-/// `dialog.js` at the URL the payload names for it. A browser keys a module by
+/// browser loads imports the `Dialog` namespace as `dialog.js` itself, at the
+/// URL the payload names for it (ubugeeei-prod/uf#1453). A browser keys a module by
 /// its URL, and Vite puts `?v=` on a file in `node_modules`, so `@uniflowed/ui`
 /// is installed into the project rather than linked: the layout every project
 /// outside this repository has, and the one where the trigger's `dialog.js` was
@@ -2537,31 +2537,14 @@ fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
                 &opener
             )
         );
-        let Some(view) = opener.split('"').find(|specifier| {
-            specifier.starts_with("/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog")
-        }) else {
-            panic!(
-                "{}",
-                context(
-                    "served a client module that does not import the `Dialog` view",
-                    &opener
-                )
-            );
-        };
-        let served = get(server, port, view, said);
-        assert!(
-            served.starts_with("HTTP/1.1 200") && served.contains("export const Dialog = {"),
-            "{}",
-            context("did not serve the `Dialog` view", &served)
-        );
         // Exactly that URL, closing quote and all: `dialog.js?v=…` is a second
         // module to a browser, whose `Dialog.Trigger` finds no `Dialog.Root`.
         assert!(
-            served.contains(&format!("from \"{DIALOG}\"")),
+            opener.contains(&format!("* as Dialog from \"{DIALOG}\"")),
             "{}",
             context(
-                "imported `dialog.js` in the view at another URL than the payload names",
-                &served
+                "did not import the `Dialog` namespace as `dialog.js`, at the URL the payload names",
+                &opener
             )
         );
     });

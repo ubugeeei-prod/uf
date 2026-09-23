@@ -80,9 +80,9 @@ export component DateRangePicker(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePickerRoot {...forwarded(rest)}>
+    <Primitive.DateRangePicker.Root {...forwarded(rest)}>
       <div className={classNames(props(styles.root, xstyle).className, className)}>{children}</div>
-    </Primitive.DateRangePickerRoot>
+    </Primitive.DateRangePicker.Root>
   );
 }
 export component DateRangePickerStartField(
@@ -91,7 +91,7 @@ export component DateRangePickerStartField(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePickerStartField
+    <Primitive.DateRangePicker.StartField
       {...forwarded(rest)}
       className={classNames(props(styles.field, xstyle).className, className)}
     />
@@ -103,7 +103,7 @@ export component DateRangePickerEndField(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePickerEndField
+    <Primitive.DateRangePicker.EndField
       {...forwarded(rest)}
       className={classNames(props(styles.field, xstyle).className, className)}
     />
@@ -116,12 +116,12 @@ export component DateRangePickerTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePickerTrigger
+    <Primitive.DateRangePicker.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
       {children}
-    </Primitive.DateRangePickerTrigger>
+    </Primitive.DateRangePicker.Trigger>
   );
 }
 export component DateRangePickerCalendar(
@@ -131,7 +131,7 @@ export component DateRangePickerCalendar(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DateRangePickerCalendar
+    <Primitive.DateRangePicker.Calendar
       {...forwarded(rest)}
       className={classNames(props(styles.panel, xstyle).className, className)}
     >
@@ -144,7 +144,7 @@ export component DateRangePickerCalendar(
           <CalendarMonth />
         </>
       )}
-    </Primitive.DateRangePickerCalendar>
+    </Primitive.DateRangePicker.Calendar>
   );
 }
 

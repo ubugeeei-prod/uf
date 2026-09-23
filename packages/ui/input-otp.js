@@ -112,7 +112,7 @@ function clean(raw: string, kind: InputOtpKind, length: number): string {
  * Renders no element of its own beyond the input — see the module header. The
  * caller's props go on the input, because the input is the field.
  */
-export component InputOtpRoot(
+component InputOtpRoot(
   children: React.Node,
   defaultValue?: string = "",
   disabled?: boolean = false,
@@ -173,7 +173,7 @@ export component InputOtpRoot(
  * already been announced, and a reader told "group, 3, group, 4" is being read
  * a picture.
  */
-export component InputOtpGroup(children: React.Node, ...rest: Rest) {
+component InputOtpGroup(children: React.Node, ...rest: Rest) {
   return (
     <div {...rest} aria-hidden="true">
       {children}
@@ -188,7 +188,7 @@ export component InputOtpGroup(children: React.Node, ...rest: Rest) {
  * whether there is one in it already, so a stylesheet can draw a cursor and a
  * border without this module having an opinion about either.
  */
-export component InputOtpSlot(children?: React.Node, index: number, ...rest: Rest) {
+component InputOtpSlot(children?: React.Node, index: number, ...rest: Rest) {
   const otp = useInputOtp("InputOtp.Slot");
   const character = otp.value[index] ?? "";
   // The box the next character goes in, clamped so a full code lights its last
@@ -209,10 +209,26 @@ export component InputOtpSlot(children?: React.Node, index: number, ...rest: Res
 }
 
 /** The dash between two groups. Decoration, and it says so. */
-export component InputOtpSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+component InputOtpSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children });
   if (render != null) {
     return render(props);
   }
   return <div {...props} />;
 }
+
+/**
+ * The parts, under the names the `InputOtp` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as InputOtp from "./input-otp.js"` —
+ * so a caller writes `<InputOtp.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `InputOtpRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export {
+  InputOtpRoot as Root,
+  InputOtpGroup as Group,
+  InputOtpSlot as Slot,
+  InputOtpSeparator as Separator,
+};

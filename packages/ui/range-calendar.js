@@ -7,11 +7,11 @@ import { useControlled } from "./internal/controlled-state.js";
 import type { Rest } from "./internal/merge-props.js";
 import type { DateRange } from "./internal/date-range.js";
 import { validateRange, unavailableInRange } from "./internal/date-range.js";
-import { CalendarRoot, CalendarMonth } from "./calendar.js";
+import { Root as CalendarRoot, Month as CalendarMonth } from "./calendar.js";
 import { visuallyHiddenStyle } from "./internal/visually-hidden-style.js";
 export type { DateRange } from "./internal/date-range.js";
 
-export component RangeCalendarRoot(
+component RangeCalendarRoot(
   children?: React.Node = <CalendarMonth />,
   value?: DateRange | null,
   defaultValue?: DateRange | null = null,
@@ -77,3 +77,21 @@ export component RangeCalendarRoot(
     </div>
   );
 }
+
+/**
+ * The parts, under the names the `RangeCalendar` namespace gives them.
+ *
+ * `index.js` re-exports this module whole — `export * as RangeCalendar from "./range-calendar.js"` —
+ * so a caller writes `<RangeCalendar.Root>`, and the namespace is the prefix. Each
+ * part is still *declared* as `RangeCalendarRoot`, so React DevTools, a component
+ * stack and an error name the part a reader can find rather than one of forty
+ * `Root`s.
+ */
+export { RangeCalendarRoot as Root };
+
+/**
+ * The parts `RangeCalendar` shares with `Calendar`, re-exported so the `RangeCalendar`
+ * namespace is complete on its own: `<RangeCalendar.Month>` is `Calendar`'s part,
+ * not a copy of it.
+ */
+export { Month, Day, Previous, Next } from "./calendar.js";

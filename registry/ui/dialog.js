@@ -148,9 +148,9 @@ export component Dialog(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.DialogRoot defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Primitive.Dialog.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.DialogRoot>
+    </Primitive.Dialog.Root>
   );
 }
 
@@ -167,7 +167,7 @@ export component DialogTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DialogTrigger
+    <Primitive.Dialog.Trigger
       {...forwarded(rest)}
       render={(trigger) => (
         <Button
@@ -180,7 +180,7 @@ export component DialogTrigger(
       )}
     >
       {children}
-    </Primitive.DialogTrigger>
+    </Primitive.Dialog.Trigger>
   );
 }
 
@@ -200,18 +200,18 @@ export component DialogContent(
 ) {
   return (
     <>
-      <Primitive.DialogOverlay className={props(styles.overlay).className} />
-      <Primitive.DialogBody
+      <Primitive.Dialog.Overlay className={props(styles.overlay).className} />
+      <Primitive.Dialog.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
         {hideClose ? null : (
-          <Primitive.DialogClose aria-label={closeLabel} className={props(styles.close).className}>
+          <Primitive.Dialog.Close aria-label={closeLabel} className={props(styles.close).className}>
             <CloseIcon />
-          </Primitive.DialogClose>
+          </Primitive.Dialog.Close>
         )}
-      </Primitive.DialogBody>
+      </Primitive.Dialog.Body>
     </>
   );
 }
@@ -224,12 +224,12 @@ export component DialogHeader(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DialogHeader
+    <Primitive.Dialog.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.DialogHeader>
+    </Primitive.Dialog.Header>
   );
 }
 
@@ -241,12 +241,12 @@ export component DialogFooter(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DialogFooter
+    <Primitive.Dialog.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.DialogFooter>
+    </Primitive.Dialog.Footer>
   );
 }
 
@@ -261,12 +261,12 @@ export component DialogTitle(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DialogTitle
+    <Primitive.Dialog.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.DialogTitle>
+    </Primitive.Dialog.Title>
   );
 }
 
@@ -278,12 +278,12 @@ export component DialogDescription(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DialogDescription
+    <Primitive.Dialog.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.DialogDescription>
+    </Primitive.Dialog.Description>
   );
 }
 
@@ -297,7 +297,7 @@ export component DialogClose(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DialogClose
+    <Primitive.Dialog.Close
       {...forwarded(rest)}
       render={(close) => (
         <Button
@@ -310,7 +310,7 @@ export component DialogClose(
       )}
     >
       {children}
-    </Primitive.DialogClose>
+    </Primitive.Dialog.Close>
   );
 }
 

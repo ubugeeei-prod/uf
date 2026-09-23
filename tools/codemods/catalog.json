@@ -3,5 +3,10 @@
     "version": "0.0.0-alpha.41",
     "implementation": "crates/uf_cli/src/commands/migrate/codemod.rs",
     "fixture": "crates/uf_cli/tests/fixtures/migrations/alpha32/uf.config.js"
+  },
+  "ui-namespaces-1453": {
+    "version": "0.3.0",
+    "implementation": "crates/uf_cli/src/commands/migrate/ui_namespaces.rs",
+    "fixture": "crates/uf_cli/tests/fixtures/migrations/ui-namespaces/before.js"
   }
 }

@@ -33,8 +33,7 @@
 // package that promises neither.
 
 import type { Align, LogicalSide, Side } from "../../packages/ui/internal/anchor.js";
-import { PopoverBody } from "../../packages/ui/popover.js";
-import { TooltipBody } from "../../packages/ui/tooltip.js";
+import { Popover, Tooltip } from "../../packages/ui/index.js";
 
 // A side is one of four names, and a typo is not a fifth.
 // expect: incompatible with Side
@@ -59,18 +58,18 @@ export const sideIsNotAnAlignment: Align = "bottom";
 export const logicalIsNotPhysical: Side = "inline-end";
 
 // The parts refuse the same strings, which is where a consumer meets them.
-// expect: Cannot create PopoverBody element
-export const popover: mixed = <PopoverBody side="bottmo">Filters</PopoverBody>;
+// expect: Cannot create Popover.Body element
+export const popover: mixed = <Popover.Body side="bottmo">Filters</Popover.Body>;
 
-// expect: Cannot create TooltipBody element
-export const tooltip: mixed = <TooltipBody align="middle">Bold</TooltipBody>;
+// expect: Cannot create Tooltip.Body element
+export const tooltip: mixed = <Tooltip.Body align="middle">Bold</Tooltip.Body>;
 
-// expect: Cannot create TooltipBody element
-export const offset: mixed = <TooltipBody sideOffset="8">Bold</TooltipBody>;
+// expect: Cannot create Tooltip.Body element
+export const offset: mixed = <Tooltip.Body sideOffset="8">Bold</Tooltip.Body>;
 
 // A logical side is one of two names, and a typo is not a third.
-// expect: Cannot create PopoverBody element
-export const logicalTypo: mixed = <PopoverBody side="inline-ende">Filters</PopoverBody>;
+// expect: Cannot create Popover.Body element
+export const logicalTypo: mixed = <Popover.Body side="inline-ende">Filters</Popover.Body>;
 
 // What is *not* an error: the four sides and the three alignments themselves.
 export const side: Side = "left";
@@ -78,9 +77,9 @@ export const align: Align = "end";
 // The two logical ones, and a part that takes them: this is what a submenu asks
 // for, and what an overlay in a right-to-left page resolves to the left.
 export const logical: LogicalSide = "inline-start";
-export const inlineEnd: mixed = <PopoverBody side="inline-end">Filters</PopoverBody>;
+export const inlineEnd: mixed = <Popover.Body side="inline-end">Filters</Popover.Body>;
 export const fine: mixed = (
-  <PopoverBody align="start" side="right" sideOffset={8}>
+  <Popover.Body align="start" side="right" sideOffset={8}>
     Filters
-  </PopoverBody>
+  </Popover.Body>
 );

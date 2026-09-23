@@ -185,7 +185,7 @@ export component Combobox(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ComboboxRoot
+    <Primitive.Combobox.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultInputValue={defaultInputValue}
@@ -200,7 +200,7 @@ export component Combobox(
       value={value}
     >
       {children}
-    </Primitive.ComboboxRoot>
+    </Primitive.Combobox.Root>
   );
 }
 
@@ -212,19 +212,19 @@ export component ComboboxLabel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ComboboxLabel
+    <Primitive.Combobox.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.ComboboxLabel>
+    </Primitive.Combobox.Label>
   );
 }
 
 /** The text field. */
 export component ComboboxInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.ComboboxInput
+    <Primitive.Combobox.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
@@ -245,7 +245,7 @@ export component ComboboxList(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ComboboxList
+    <Primitive.Combobox.List
       {...forwarded(rest)}
       align={align}
       alignOffset={alignOffset}
@@ -256,7 +256,7 @@ export component ComboboxList(
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.ComboboxList>
+    </Primitive.Combobox.List>
   );
 }
 
@@ -269,10 +269,10 @@ export component ComboboxOption(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.ComboboxOption {
+) renders Primitive.Combobox.Option {
   const styled = props(styles.option, disabled && styles.optionDisabled, xstyle);
   return (
-    <Primitive.ComboboxOption
+    <Primitive.Combobox.Option
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
@@ -295,7 +295,7 @@ export component ComboboxOption(
       >
         <path d="M20 6 9 17l-5-5" />
       </svg>
-    </Primitive.ComboboxOption>
+    </Primitive.Combobox.Option>
   );
 }
 
@@ -305,14 +305,14 @@ export component ComboboxGroup(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.ComboboxGroup {
+) renders Primitive.Combobox.Group {
   return (
-    <Primitive.ComboboxGroup
+    <Primitive.Combobox.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.ComboboxGroup>
+    </Primitive.Combobox.Group>
   );
 }
 
@@ -322,14 +322,14 @@ export component ComboboxGroupLabel(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.ComboboxGroupLabel {
+) renders Primitive.Combobox.GroupLabel {
   return (
-    <Primitive.ComboboxGroupLabel
+    <Primitive.Combobox.GroupLabel
       {...forwarded(rest)}
       className={classNames(props(styles.groupLabel, xstyle).className, className)}
     >
       {children}
-    </Primitive.ComboboxGroupLabel>
+    </Primitive.Combobox.GroupLabel>
   );
 }
 
@@ -341,12 +341,12 @@ export component ComboboxEmpty(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ComboboxEmpty
+    <Primitive.Combobox.Empty
       {...forwarded(rest)}
       className={classNames(props(styles.empty, xstyle).className, className)}
     >
       {children}
-    </Primitive.ComboboxEmpty>
+    </Primitive.Combobox.Empty>
   );
 }
 
@@ -358,12 +358,12 @@ export component ComboboxStatus(
   ...rest: Rest
 ) {
   return (
-    <Primitive.ComboboxStatus
+    <Primitive.Combobox.Status
       {...forwarded(rest)}
       className={classNames(props(styles.hidden, xstyle).className, className)}
     >
       {children}
-    </Primitive.ComboboxStatus>
+    </Primitive.Combobox.Status>
   );
 }
 

@@ -1,1 +1,6 @@
-[]
+[
+  {
+    "change": "feat(ui)!: export each component's parts through its namespace only",
+    "codemod": "ui-namespaces-1453"
+  }
+]

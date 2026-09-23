@@ -157,9 +157,9 @@ export component Menu(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.MenuRoot defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Primitive.Menu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.MenuRoot>
+    </Primitive.Menu.Root>
   );
 }
 
@@ -177,7 +177,7 @@ export component MenuTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.MenuTrigger
+    <Primitive.Menu.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -193,7 +193,7 @@ export component MenuTrigger(
       }
     >
       {children}
-    </Primitive.MenuTrigger>
+    </Primitive.Menu.Trigger>
   );
 }
 
@@ -219,7 +219,7 @@ export component MenuContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.MenuBody
+    <Primitive.Menu.Body
       {...forwarded(rest)}
       align={align}
       className={classNames(props(styles.content, xstyle).className, className)}
@@ -228,7 +228,7 @@ export component MenuContent(
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.MenuBody>
+    </Primitive.Menu.Body>
   );
 }
 
@@ -241,9 +241,9 @@ export component MenuItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.MenuItem {
+) renders Primitive.Menu.Item {
   return (
-    <Primitive.MenuItem
+    <Primitive.Menu.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       closeOnSelect={closeOnSelect}
@@ -251,7 +251,7 @@ export component MenuItem(
       onSelect={onSelect}
     >
       {children}
-    </Primitive.MenuItem>
+    </Primitive.Menu.Item>
   );
 }
 
@@ -267,9 +267,9 @@ export component MenuCheckboxItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.MenuCheckboxItem {
+) renders Primitive.Menu.CheckboxItem {
   return (
-    <Primitive.MenuCheckboxItem
+    <Primitive.Menu.CheckboxItem
       {...forwarded(rest)}
       checked={checked}
       className={classNames(props(styles.item, xstyle).className, className)}
@@ -296,7 +296,7 @@ export component MenuCheckboxItem(
         </svg>
       </span>
       {children}
-    </Primitive.MenuCheckboxItem>
+    </Primitive.Menu.CheckboxItem>
   );
 }
 
@@ -309,9 +309,9 @@ export component MenuRadioGroup(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.MenuRadioGroup {
+) renders Primitive.Menu.RadioGroup {
   return (
-    <Primitive.MenuRadioGroup
+    <Primitive.Menu.RadioGroup
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
       defaultValue={defaultValue}
@@ -319,7 +319,7 @@ export component MenuRadioGroup(
       value={value}
     >
       {children}
-    </Primitive.MenuRadioGroup>
+    </Primitive.Menu.RadioGroup>
   );
 }
 
@@ -333,9 +333,9 @@ export component MenuRadioItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.MenuRadioItem {
+) renders Primitive.Menu.RadioItem {
   return (
-    <Primitive.MenuRadioItem
+    <Primitive.Menu.RadioItem
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       closeOnSelect={closeOnSelect}
@@ -349,7 +349,7 @@ export component MenuRadioItem(
         </svg>
       </span>
       {children}
-    </Primitive.MenuRadioItem>
+    </Primitive.Menu.RadioItem>
   );
 }
 
@@ -359,14 +359,14 @@ export component MenuGroup(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.MenuGroup {
+) renders Primitive.Menu.Group {
   return (
-    <Primitive.MenuGroup
+    <Primitive.Menu.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.MenuGroup>
+    </Primitive.Menu.Group>
   );
 }
 
@@ -376,14 +376,14 @@ export component MenuLabel(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.MenuLabel {
+) renders Primitive.Menu.Label {
   return (
-    <Primitive.MenuLabel
+    <Primitive.Menu.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.MenuLabel>
+    </Primitive.Menu.Label>
   );
 }
 
@@ -392,9 +392,9 @@ export component MenuSeparator(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.MenuSeparator {
+) renders Primitive.Menu.Separator {
   return (
-    <Primitive.MenuSeparator
+    <Primitive.Menu.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     />
@@ -425,11 +425,11 @@ export component MenuSub(
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
-) renders Primitive.MenuSub {
+) renders Primitive.Menu.Sub {
   return (
-    <Primitive.MenuSub defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Primitive.Menu.Sub defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.MenuSub>
+    </Primitive.Menu.Sub>
   );
 }
 
@@ -441,7 +441,7 @@ export component MenuSubTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.MenuSubTrigger
+    <Primitive.Menu.SubTrigger
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
     >
@@ -461,7 +461,7 @@ export component MenuSubTrigger(
       >
         <path d="m9 18 6-6-6-6" />
       </svg>
-    </Primitive.MenuSubTrigger>
+    </Primitive.Menu.SubTrigger>
   );
 }
 

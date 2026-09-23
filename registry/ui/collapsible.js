@@ -102,9 +102,9 @@ export component Collapsible(
 ) {
   return (
     <div {...rest} className={classNames(props(styles.root, xstyle).className, className)}>
-      <Primitive.CollapsibleRoot defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+      <Primitive.Collapsible.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
         {children}
-      </Primitive.CollapsibleRoot>
+      </Primitive.Collapsible.Root>
     </div>
   );
 }
@@ -118,7 +118,7 @@ export component CollapsibleTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CollapsibleTrigger
+    <Primitive.Collapsible.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
       disabled={disabled}
@@ -139,7 +139,7 @@ export component CollapsibleTrigger(
       >
         <path d="m6 9 6 6 6-6" />
       </svg>
-    </Primitive.CollapsibleTrigger>
+    </Primitive.Collapsible.Trigger>
   );
 }
 
@@ -151,12 +151,12 @@ export component CollapsibleContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.CollapsibleContent
+    <Primitive.Collapsible.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.CollapsibleContent>
+    </Primitive.Collapsible.Content>
   );
 }
 

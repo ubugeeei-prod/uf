@@ -216,7 +216,7 @@ export component Drawer(
 ) {
   return (
     <SideContext.Provider value={side}>
-      <Primitive.DrawerRoot
+      <Primitive.Drawer.Root
         defaultOpen={defaultOpen}
         defaultSnapPoint={defaultSnapPoint}
         onOpenChange={onOpenChange}
@@ -227,7 +227,7 @@ export component Drawer(
         snapPoints={snapPoints}
       >
         {children}
-      </Primitive.DrawerRoot>
+      </Primitive.Drawer.Root>
     </SideContext.Provider>
   );
 }
@@ -243,7 +243,7 @@ export component DrawerTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DrawerTrigger
+    <Primitive.Drawer.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -259,7 +259,7 @@ export component DrawerTrigger(
       }
     >
       {children}
-    </Primitive.DrawerTrigger>
+    </Primitive.Drawer.Trigger>
   );
 }
 
@@ -279,14 +279,14 @@ export component DrawerContent(
   const side = useContext(SideContext);
   return (
     <>
-      <Primitive.DrawerOverlay className={props(styles.overlay).className} />
-      <Primitive.DrawerBody
+      <Primitive.Drawer.Overlay className={props(styles.overlay).className} />
+      <Primitive.Drawer.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
         {hideHandle ? null : (
-          <Primitive.DrawerHandle
+          <Primitive.Drawer.Handle
             className={props(styles.handle).className}
             data-side={side}
             label={handleLabel}
@@ -297,7 +297,7 @@ export component DrawerContent(
             )}
           />
         )}
-      </Primitive.DrawerBody>
+      </Primitive.Drawer.Body>
     </>
   );
 }
@@ -310,12 +310,12 @@ export component DrawerHeader(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DrawerHeader
+    <Primitive.Drawer.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.DrawerHeader>
+    </Primitive.Drawer.Header>
   );
 }
 
@@ -327,12 +327,12 @@ export component DrawerFooter(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DrawerFooter
+    <Primitive.Drawer.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.DrawerFooter>
+    </Primitive.Drawer.Footer>
   );
 }
 
@@ -344,12 +344,12 @@ export component DrawerTitle(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DrawerTitle
+    <Primitive.Drawer.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.DrawerTitle>
+    </Primitive.Drawer.Title>
   );
 }
 
@@ -361,12 +361,12 @@ export component DrawerDescription(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DrawerDescription
+    <Primitive.Drawer.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.DrawerDescription>
+    </Primitive.Drawer.Description>
   );
 }
 
@@ -384,7 +384,7 @@ export component DrawerClose(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DrawerClose
+    <Primitive.Drawer.Close
       {...forwarded(rest)}
       render={
         render ??
@@ -400,7 +400,7 @@ export component DrawerClose(
       }
     >
       {children}
-    </Primitive.DrawerClose>
+    </Primitive.Drawer.Close>
   );
 }
 

@@ -119,60 +119,70 @@ fn the_client_module_list_names_exactly_the_ui_modules_that_are_client_modules()
 ///
 /// Read from `packages/ui/index.js` itself, with this crate's scanner for its
 /// imports and re-exports, so the rule is held to what the barrel does rather
-/// than to a second description of it. A namespace such as `Dialog` is an object
-/// of parts, and comes from every module one of its parts does.
+/// than to a second description of it. A namespace such as `Dialog` is a
+/// module re-exported whole (`export * as Dialog from "./dialog.js"`,
+/// ubugeeei-prod/uf#1453), and comes from that module and from every module it
+/// re-exports parts of: `ContextMenu` is `context-menu.js` and the `Menu`
+/// parts it hands on from `menu.js`.
 #[test]
 fn the_barrel_names_the_client_modules_each_export_comes_from() {
     use std::collections::{BTreeMap, BTreeSet};
 
-    let source = std::fs::read_to_string(repository_root().join("packages/ui/index.js"))
+    let package = repository_root().join("packages/ui");
+    let source = std::fs::read_to_string(package.join("index.js"))
         .expect("packages/ui/index.js cannot be read");
+    let module_of = |specifier: &str| -> Option<String> {
+        Some(
+            specifier
+                .strip_prefix("./")?
+                .strip_suffix(".js")?
+                .to_owned(),
+        )
+    };
     let client_module = |specifier: &str| -> Option<String> {
-        let module = specifier.strip_prefix("./")?.strip_suffix(".js")?;
-        uf_lib::CLIENT_MODULE_SUBPATHS
-            .contains(&module)
-            .then(|| module.to_owned())
+        module_of(specifier)
+            .filter(|module| uf_lib::CLIENT_MODULE_SUBPATHS.contains(&module.as_str()))
     };
 
-    // Every name the barrel imports or re-exports, and the client module it is
-    // from, if it is from one.
+    // Every name the barrel imports or re-exports on its own, and the client
+    // module it is from, if it is from one; and every namespace, with the
+    // client modules its parts come from.
     let mut origin: BTreeMap<String, Option<String>> = BTreeMap::new();
+    let mut namespaces: Vec<(String, BTreeSet<String>)> = Vec::new();
     for import in crate::scan::scan_imports(&source).iter() {
         for binding in &import.bindings {
-            if matches!(binding.imported, crate::scan::ImportedName::Named(_)) {
-                origin.insert(binding.local.to_string(), client_module(&import.specifier));
+            match binding.imported {
+                crate::scan::ImportedName::Named(_) => {
+                    origin.insert(binding.local.to_string(), client_module(&import.specifier));
+                }
+                crate::scan::ImportedName::Namespace => {
+                    let module = module_of(&import.specifier).unwrap_or_else(|| {
+                        panic!("{} is not a module of the package", import.specifier)
+                    });
+                    let file = package.join(format!("{module}.js"));
+                    let own = std::fs::read_to_string(&file).unwrap_or_else(|error| {
+                        panic!("{} cannot be read: {error}", file.display())
+                    });
+                    let mut modules: BTreeSet<String> =
+                        client_module(&import.specifier).into_iter().collect();
+                    for handed_on in crate::scan::scan_imports(&own).iter() {
+                        if handed_on.kind == crate::scan::ImportKind::ReExport
+                            && let Some(module) = client_module(&handed_on.specifier)
+                        {
+                            modules.insert(module);
+                        }
+                    }
+                    namespaces.push((binding.local.to_string(), modules));
+                }
+                crate::scan::ImportedName::Default => {}
             }
-        }
-    }
-
-    // Every `export const Name = { Part: Value, … };`, and the modules its
-    // values are from.
-    let mut namespaces: Vec<(String, BTreeSet<String>)> = Vec::new();
-    let mut open: Option<(String, BTreeSet<String>)> = None;
-    for line in source.lines() {
-        if let Some(name) = line
-            .strip_prefix("export const ")
-            .and_then(|rest| rest.strip_suffix(" = {"))
-        {
-            open = Some((name.to_owned(), BTreeSet::new()));
-            continue;
-        }
-        if open.is_some() && line.starts_with("};") {
-            namespaces.extend(open.take());
-            continue;
-        }
-        if let Some((_, modules)) = open.as_mut()
-            && let Some((_, value)) = line.split_once(':')
-            && let Some(Some(module)) = origin.get(value.trim().trim_end_matches(','))
-        {
-            modules.insert(module.clone());
         }
     }
 
     // A floor on both, so a barrel that stopped parsing cannot pass by being
     // empty.
     assert!(
-        origin.len() > 100 && namespaces.len() > 20,
+        origin.len() > 20 && namespaces.len() > 30,
         "almost nothing came out of packages/ui/index.js: {} names, {} namespaces",
         origin.len(),
         namespaces.len()

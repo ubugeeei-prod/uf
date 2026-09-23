@@ -30,9 +30,9 @@
 // # Read off the barrel the project resolves
 //
 // Which file defines a name is read from the barrel itself: its static
-// `import { A } from "./a.js"` and `export { A } from "./a.js"` statements, and
-// the object literals it builds its namespaces from. Not a table kept here,
-// because the barrel a project installed is the one whose names count.
+// `import { A } from "./a.js"`, `export { A } from "./a.js"` and
+// `export * as A from "./a.js"` statements. Not a table kept here, because the
+// barrel a project installed is the one whose names count.
 //
 // A name that reading cannot place stays an import from the barrel, and so does
 // every form that binds no name — `import * as ui`, `export * from` and
@@ -51,12 +51,20 @@
 //
 // # Namespaces
 //
-// `Dialog` is not an export of `dialog.js`. It is an object the barrel builds
-// from `dialog.js`'s parts, and `ContextMenu`'s is built from two modules. An
-// import of one is served from a view of the barrel, `index.js?uf-namespace=Dialog`:
-// a module generated here that imports those parts and builds the same object.
-// It is the barrel's own path with a query, so its relative imports resolve the
-// way the barrel's do.
+// `Dialog` is `dialog.js` itself: the barrel says `export * as Dialog from
+// "./dialog.js"` (ubugeeei-prod/uf#1453), so `import { Dialog } from
+// "@uniflowed/ui"` becomes `import * as Dialog from ".../dialog.js"` and
+// `export { Dialog as Modal } from "@uniflowed/ui"` becomes
+// `export * as Modal from ".../dialog.js"`. A module namespace is the same object
+// however many importers ask for it, so nothing is generated to stand in for
+// it. `ContextMenu` spans two modules and is still one: `context-menu.js`
+// re-exports `Menu`'s parts, and importing it reaches `menu.js` through that.
+//
+// Until #1453 the barrel built each namespace as an object literal, and a
+// generated `index.js?uf-namespace=Dialog` module rebuilt the object for an
+// importer. That form is no longer read: `@uniflowed/vite` and `@uniflowed/ui`
+// are released together, and an object literal the reading meets now is
+// `OPAQUE` — left on the barrel, which costs size and never correctness.
 
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -65,9 +73,6 @@ import { normalizePath, parseAst } from "vite";
 
 /** The packages whose barrel imports are rewritten. */
 export const BARREL_PACKAGES = Object.freeze(["@uniflowed/ui"]);
-
-/** The query that makes a barrel's path a view of one of its namespaces. */
-export const NAMESPACE_QUERY = "uf-namespace";
 
 /** The module kinds whose imports are read, once earlier plugins made them JavaScript. */
 const SCRIPT = /\.(?:[cm]?[jt]sx?|mdx)$/;
@@ -93,7 +98,7 @@ export function barrelImportsPlugin() {
     name: "uf:barrel-imports",
 
     async transform(code, id) {
-      if (id.startsWith("\0") || namespaceViewOf(id) != null) return null;
+      if (id.startsWith("\0")) return null;
       if (!BARREL_PACKAGES.some((name) => code.includes(name))) return null;
       if (!SCRIPT.test(cleanId(id))) return null;
       let program;
@@ -134,27 +139,7 @@ export function barrelImportsPlugin() {
       if (edits.length === 0) return null;
       return { code: applyEdits(code, edits), map: null };
     },
-
-    load(id) {
-      const view = namespaceViewOf(id);
-      if (view == null) return null;
-      return namespaceViewSource(readBarrel(readings, view.file).exports, view.file, view.name);
-    },
   };
-}
-
-/**
- * The barrel and the namespace a view module stands for, or `null` for any
- * other id.
- *
- * `uf:flow` asks too: a view has the barrel's path and extension, and is not
- * the barrel's Flow source.
- */
-export function namespaceViewOf(id) {
-  const at = id.indexOf("?");
-  if (at === -1 || id.startsWith("\0")) return null;
-  const name = new URLSearchParams(id.slice(at + 1)).get(NAMESPACE_QUERY);
-  return name == null || name === "" ? null : { file: id.slice(0, at), name };
 }
 
 /**
@@ -169,8 +154,8 @@ export function namespaceViewOf(id) {
  *
  *   * `{ kind: "binding", file, name }` — an export of another module, passed
  *     through under this name;
- *   * `{ kind: "namespace", parts }` — an object literal whose every property
- *     is such a binding, each part `{ key, file, name }`;
+ *   * `{ kind: "module", file }` — another module whole, re-exported as a
+ *     namespace with `export * as Name from "./file.js"`;
  *   * `OPAQUE` — anything else, which stays an import from the barrel.
  *
  * @param {string} source
@@ -185,10 +170,9 @@ export function barrelExports(source, file) {
       ? normalizePath(path.join(directory, node.value))
       : null;
 
-  // Every binding an import made, and every `const` object, before any export
-  // is read: `export { Dialog }` may come before the `const` it names.
+  // Every binding an import made, before any export is read: `export { A }`
+  // may come before the `import` it names.
   const bindings = new Map();
-  const objects = new Map();
   for (const node of program.body) {
     if (node.type === "ImportDeclaration" && node.importKind !== "type") {
       const from = fileOf(node.source);
@@ -206,27 +190,25 @@ export function barrelExports(source, file) {
         );
       }
     }
-    const declaration = node.type === "ExportNamedDeclaration" ? node.declaration : node;
-    if (declaration?.type === "VariableDeclaration" && declaration.kind === "const") {
-      for (const declarator of declaration.declarations) {
-        if (declarator.id.type === "Identifier" && declarator.init?.type === "ObjectExpression") {
-          objects.set(declarator.id.name, declarator.init);
-        }
-      }
-    }
   }
 
   const local = (name) => {
     const binding = bindings.get(name);
-    if (binding != null) return { kind: "binding", ...binding };
-    const object = objects.get(name);
-    return object == null ? OPAQUE : namespaceOf(object, bindings);
+    return binding == null ? OPAQUE : { kind: "binding", ...binding };
   };
 
   const exports = new Map();
   for (const node of program.body) {
     if (node.type === "ExportDefaultDeclaration") {
       exports.set("default", OPAQUE);
+    }
+    // `export * as Dialog from "./dialog.js"`: the namespace is the module. A
+    // bare `export * from` names nothing, so it places nothing.
+    if (node.type === "ExportAllDeclaration" && node.exported != null) {
+      if (node.exportKind === "type") continue;
+      const from = fileOf(node.source);
+      exports.set(nameOf(node.exported), from == null ? OPAQUE : { kind: "module", file: from });
+      continue;
     }
     if (node.type !== "ExportNamedDeclaration" || node.exportKind === "type") continue;
     const { declaration } = node;
@@ -257,53 +239,6 @@ export function barrelExports(source, file) {
     }
   }
   return exports;
-}
-
-/**
- * The module a view of a barrel's namespace is: the parts, imported from their
- * files, and the object the barrel builds from them.
- *
- * A name that is not a namespace the barrel builds — the barrel changed under a
- * development server after an importer was rewritten — is re-exported from the
- * barrel itself, which answers correctly, if slowly, or with the bundler's own
- * error for a name that is gone.
- *
- * @param {Map<string, object>} exports what `barrelExports` read
- * @param {string} barrel the barrel's absolute path
- * @param {string} name the namespace
- */
-export function namespaceViewSource(exports, barrel, name) {
-  const target = exports.get(name);
-  const directory = path.dirname(barrel);
-  const specifierOf = (file) => {
-    const relative = normalizePath(path.relative(directory, file));
-    return JSON.stringify(relative.startsWith("../") ? relative : `./${relative}`);
-  };
-  if (target?.kind !== "namespace") {
-    return `export { ${printName(name)} } from ${specifierOf(barrel)};\n`;
-  }
-  const locals = new Map();
-  const taken = new Set();
-  const imports = new Map();
-  for (const part of target.parts) {
-    const key = `${part.file}\0${part.name}`;
-    if (locals.has(key)) continue;
-    let alias = IDENTIFIER.test(part.name) ? part.name : "part";
-    while (taken.has(alias)) alias = `${alias}$`;
-    taken.add(alias);
-    locals.set(key, alias);
-    const specifiers = imports.get(part.file) ?? [];
-    specifiers.push(alias === part.name ? alias : `${printName(part.name)} as ${alias}`);
-    imports.set(part.file, specifiers);
-  }
-  const lines = [...imports].map(
-    ([file, specifiers]) => `import { ${specifiers.join(", ")} } from ${specifierOf(file)};`,
-  );
-  const properties = target.parts.map(
-    (part) => `  ${printName(part.key)}: ${locals.get(`${part.file}\0${part.name}`)},`,
-  );
-  lines.push(`export const ${name} = {`, ...properties, "};");
-  return `${lines.join("\n")}\n`;
 }
 
 /** An import or re-export whose source is one of `BARREL_PACKAGES`. */
@@ -339,6 +274,8 @@ function rewriteStatement(node, exports, barrel) {
   const kept = [];
   let keptDefault = null;
   const moved = new Map();
+  // One statement each: `import * as Dialog` binds a single name.
+  const namespaces = [];
   for (const specifier of specifiers) {
     if (specifier.type === "ImportDefaultSpecifier") {
       keptDefault = specifier.local.name;
@@ -353,15 +290,21 @@ function rewriteStatement(node, exports, barrel) {
       kept.push(printed(exported));
       continue;
     }
-    const [source, name] =
-      target.kind === "binding"
-        ? [target.file, target.name]
-        : [`${normalizePath(barrel)}?${NAMESPACE_QUERY}=${encodeURIComponent(exported)}`, exported];
-    const list = moved.get(source) ?? [];
-    list.push(printed(name));
-    moved.set(source, list);
+    if (target.kind === "module") {
+      // A namespace binding has to be an identifier, which an import's local
+      // name always is and an export's exported name may not be.
+      if (!IDENTIFIER.test(binding)) {
+        kept.push(printed(exported));
+        continue;
+      }
+      namespaces.push({ file: target.file, binding });
+      continue;
+    }
+    const list = moved.get(target.file) ?? [];
+    list.push(printed(target.name));
+    moved.set(target.file, list);
   }
-  if (moved.size === 0) return null;
+  if (moved.size === 0 && namespaces.length === 0) return null;
 
   const keyword = isImport ? "import" : "export";
   const statements = [];
@@ -373,6 +316,9 @@ function rewriteStatement(node, exports, barrel) {
   }
   for (const [source, list] of moved) {
     statements.push(`${keyword} { ${list.join(", ")} } from ${JSON.stringify(source)};`);
+  }
+  for (const { file, binding } of namespaces) {
+    statements.push(`${keyword} * as ${binding} from ${JSON.stringify(file)};`);
   }
   return statements.join("\n");
 }
@@ -400,27 +346,6 @@ function applyEdits(code, edits) {
     at = node.end;
   }
   return out + code.slice(at);
-}
-
-/** An object literal of imported bindings, as a namespace, or `OPAQUE`. */
-function namespaceOf(object, bindings) {
-  const parts = [];
-  for (const property of object.properties) {
-    if (property.type !== "Property" || property.kind !== "init" || property.computed) {
-      return OPAQUE;
-    }
-    if (property.method || property.value.type !== "Identifier") return OPAQUE;
-    const key =
-      property.key.type === "Identifier"
-        ? property.key.name
-        : typeof property.key.value === "string"
-          ? property.key.value
-          : null;
-    const binding = bindings.get(property.value.name);
-    if (key == null || binding == null) return OPAQUE;
-    parts.push({ key, ...binding });
-  }
-  return { kind: "namespace", parts };
 }
 
 /** A barrel's reading, re-read only when its size or modification time changes. */

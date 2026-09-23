@@ -232,7 +232,7 @@ describe("a file of an installed uf package, in the browser under `uf dev`", () 
     const versioned = "/project/node_modules/@uniflowed/ui/dialog.js?v=1a2b3c4d";
     for (const [specifier, importer] of [
       ["@uniflowed/ui", "/project/app/opener.js"],
-      ["./dialog.js", "/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog"],
+      ["./dialog.js", "/project/node_modules/@uniflowed/ui/sheet.js"],
       ["/project/node_modules/@uniflowed/ui/dialog.js", "/project/app/opener.js"],
       ["/node_modules/@uniflowed/ui/dialog.js", undefined],
     ]) {
@@ -246,14 +246,14 @@ describe("a file of an installed uf package, in the browser under `uf dev`", () 
     }
   });
 
-  it("keeps every other query, such as a namespace view's", async () => {
+  it("keeps every other query, such as a raw import's", async () => {
     const out = await clientModuleUrlPlugin().resolveId.call(
-      resolvingTo("/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog&v=1a2b3c4d"),
-      "/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog",
+      resolvingTo("/project/node_modules/@uniflowed/ui/dialog.js?raw&v=1a2b3c4d"),
+      "/project/node_modules/@uniflowed/ui/dialog.js?raw",
       "/project/app/opener.js",
       {},
     );
-    expect(out.id).toBe("/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog");
+    expect(out.id).toBe("/project/node_modules/@uniflowed/ui/dialog.js?raw");
   });
 
   it("leaves every other import to Vite, without resolving it a second time", async () => {
