@@ -93,4 +93,8 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
     // targets implements. After `bom.js` so that its `Crypto` is the one that
     // shadows, and whole rather than partial for the same reason. See #619.
     ("web-crypto.js", include_str!("../../libdefs/web-crypto.js")),
+    // Fetch's `Response`, of which the vendored `bom.js` has the instance half
+    // and the statics without `json`. After `bom.js` so that it shadows, and
+    // whole for the same reason as `web-crypto.js`. See #1451.
+    ("fetch.js", include_str!("../../libdefs/fetch.js")),
 ];
