@@ -2,6 +2,7 @@
 
 ## uf@0.0.0-alpha.47
 
+- ci(deploy-parity): run the version-skew fixture where a socket can be bound (#1340) (8010f8d1)
 - feat: prerender a static shell and stream its holes per request (PPR) (#1337) (32acd930)
 - feat(lsp): answer hover, definitions and completion from Flow inference (#1334) (a1af6df5)
 - fix(bench): reach client components in the HMR stage, and commit the first CI baseline (#1338) (6ac309da)
