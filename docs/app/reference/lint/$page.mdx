@@ -259,6 +259,7 @@ Whitespace, tasks and the suppression comments themselves.
 | [`uniflowed/no-tabs`](#uniflowedno-tabs) | `error` | indent with spaces, never tabs |
 | [`uniflowed/no-trailing-whitespace`](#uniflowedno-trailing-whitespace) | `error` | lines must not end in whitespace |
 | [`uniflowed/unknown-lint-suppression`](#uniflowedunknown-lint-suppression) | `error` | `uf-lint-disable` comments must name a rule this linter knows |
+| [`uniflowed/unused-lint-suppression`](#uniflowedunused-lint-suppression) | `warn` | a `uf-lint-disable` comment must silence a finding |
 
 ## Every rule, with examples
 
@@ -5345,4 +5346,31 @@ app/example.js:2:30 unknown lint rule `flow/unclear-typo` in suppression comment
 // The payload is validated by the caller, and Flow cannot express its shape.
 // uf-lint-disable-next-line flow/unclear-type
 export type Payload = { data: any };
+```
+
+### uniflowed/unused-lint-suppression
+
+Default: `warn`. A `uf-lint-disable` comment must silence a finding.
+
+A `uf-lint-disable` comment whose rule finds nothing on the lines it covers suppresses nothing. It is usually left over from a finding that went away: the code changed, or the rule stopped reporting a false positive. Left in place, it would silence the next real finding on that line without anyone reading it. Delete it. Rules that are off, rules that need type inference, and (in an editor linting one file) the project-wide `import/*` rules are not judged, since they did not look.
+
+#### Bad
+
+```js
+// @flow
+// uf-lint-disable-next-line flow/unclear-type
+export type Payload = { data: mixed };
+```
+
+`uf lint` reports:
+
+```text
+app/example.js:2:30 `flow/unclear-type` reports nothing here, so this suppression silences nothing; remove it
+```
+
+#### Good
+
+```js
+// @flow
+export type Payload = { data: mixed };
 ```

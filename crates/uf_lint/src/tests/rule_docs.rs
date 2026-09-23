@@ -54,6 +54,11 @@
 //! ```
 //! ````
 //!
+//! Each example runs with its own rule switched on and nothing else, except
+//! the rules its `uf-lint-disable` comments name. Those are switched on too, so
+//! the suppression rules can be shown working, and their findings count like
+//! any other.
+//!
 //! One example is one small project. Every code fence in a section is a file
 //! of it. A fence's info string may name the file, as in ```` ```json path=package.json ````.
 //! Without a path, a `js` fence is `app/example.js` and a `json` fence is
@@ -363,7 +368,23 @@ fn findings(rule: &RuleDescriptor, example: &Example) -> Vec<String> {
         .iter()
         .map(|file| at(&file.path(), &file.code))
         .collect();
-    let report = lint_sources(&files, &only(rule.id)).expect("lint");
+    let mut config = only(rule.id);
+    // A rule a suppression comment names is switched on too. Otherwise the
+    // suppression rules' examples could not be written at all: an unused
+    // suppression is only judged when its rule runs, and a used one only
+    // silences something when its rule reports. Those rules' findings are
+    // compared like the example's own, so an example cannot hide one.
+    for file in &example.files {
+        for named in suppressed_rules(&file.code) {
+            if crate::rules::canonical_rule_id(named).is_some() {
+                config
+                    .lint
+                    .rules
+                    .insert(CompactString::from(named), RuleLevel::Error);
+            }
+        }
+    }
+    let report = lint_sources(&files, &config).expect("lint");
     report
         .diagnostics
         .iter()
@@ -375,6 +396,24 @@ fn findings(rule: &RuleDescriptor, example: &Example) -> Vec<String> {
                 diagnostic.column,
                 diagnostic.message
             )
+        })
+        .collect()
+}
+
+/// The rule ids `uf-lint-disable` and `uf-lint-disable-next-line` comments in
+/// `code` name, as written.
+fn suppressed_rules(code: &str) -> Vec<&str> {
+    code.lines()
+        .filter_map(|line| {
+            let comment = line.trim_start().strip_prefix("//")?.trim_start();
+            comment
+                .strip_prefix("uf-lint-disable-next-line")
+                .or_else(|| comment.strip_prefix("uf-lint-disable"))
+        })
+        .flat_map(|names| {
+            names
+                .split(|ch: char| ch.is_whitespace() || ch == ',')
+                .filter(|name| !name.is_empty())
         })
         .collect()
 }
