@@ -1,6 +1,6 @@
 ---
 title: "Components · uf"
-description: "The headless primitives, their parts, and the keys each one owns."
+description: "Every component uf ui add writes, then the headless parts and the keys each one owns."
 ---
 
 import { Registry } from "./registry.js";
@@ -10,12 +10,73 @@ import { Registry } from "./registry.js";
 # Components
 
 <div className="lede">
+Start with `uf ui add`. It writes a styled, accessible component into your
+project, and you import it as one name. Every component it can write is below,
+running, with its source. Under the look, each is built on `@uniflowed/ui`,
+whose parts, keys and ARIA the rest of this page documents.
+</div>
+
+## Add a component
+
+```sh
+uf ui list              # what the registry has
+uf ui add dialog        # writes app/components/ui/dialog.js, and button.js, which it imports
+uf ui diff dialog       # how your copy differs from this uf's version
+uf ui update dialog     # merge this uf's changes into your edited copy
+```
+
+A component with parts is one namespace. Import the copy as a module, and its
+parts are members of it:
+
+```js
+// @flow
+import * as Dialog from "./components/ui/dialog.js";
+
+<Dialog.Root>
+  <Dialog.Trigger>Rename</Dialog.Trigger>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Rename project</Dialog.Title>
+      <Dialog.Description>Everyone on the team sees the new name.</Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer>
+      <Dialog.Close>Cancel</Dialog.Close>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>;
+```
+
+A component that is one element is one name:
+`import { Button } from "./components/ui/button.js"`. `uf ui add` prints the
+import line for each component you name, and each entry below shows it too.
+[Commands](/reference/cli) has every flag, and
+[Importing: one name per component](/guide/ui#importing-one-name-per-component)
+explains why components are imported as namespaces.
+
+## Registry components
+
+Every component the registry has: the command that writes it, the line that
+imports it, its example running on this page, and its two files, folded under
+it. The list is `registry/ui/` itself, read when this site is built from the
+same directory `uf` embeds, so every component `uf ui list` offers is shown
+here. The examples render in the tokens' default theme, whatever this site's
+theme is, because that is what a project sees before it applies a theme of its
+own.
+
+<Registry />
+
+## The headless parts: `@uniflowed/ui`
+
+Reach for the parts directly when your design system lives somewhere else,
+when your styling is not StyleX, or when a surface is unusual enough that an
+owned component would be edited beyond recognition.
+[Owned or headless](/guide/ui#owned-or-headless) compares the two.
+
 `@uniflowed/ui` ships behaviour and no styles. Every part takes `className` and
 every other DOM prop and passes it through; what it contributes is the keyboard
 map and the screen-reader wiring, which is the half that does not show up in a
 screenshot and the half that is missing from almost every hand-written
 component.
-</div>
 
 Each primitive implements the WAI-ARIA authoring practices pattern for it — the
 roles, the `aria-*` wiring, the focus management and the whole keyboard map.
@@ -2191,26 +2252,11 @@ switch with `aria-checked` and the switch keyboard contract; a rendered checkbox
 keeps `role="checkbox"` and preserves `aria-checked="mixed"` when
 `indeterminate` is set.
 
-## Registry components
-
-[`uf ui add`](/reference/cli) writes styled components into a project, each one
-built on the parts above and owned by the project from then on;
-[Owned or headless](/guide/ui#owned-or-headless) says when to reach for which.
-Every component the registry has is below: the command that writes it, its
-example running on this page, and its two files, folded under it.
-
-The list is `registry/ui/` itself, read when this site is built from the same
-directory `uf` embeds, so a component `uf ui list` offers is a component shown
-here. The examples render in the tokens' default theme whatever this site's
-theme is, because that is what a project sees before it applies one of its own.
-
-<Registry />
-
 ## What this page is
 
-A reference for what `@uniflowed/ui` guarantees, not a gallery. The one look on
-it is under [Registry components](#registry-components), since those are files
-a project owns rather than parts of the package. The guarantees
+A reference for what `@uniflowed/ui` guarantees, not a gallery. The only styling
+on it is under [Registry components](#registry-components), because those are
+files a project owns, not parts of the package. The guarantees
 are stated as tests in `packages/ui/ui.test.js`, where every assertion is
 either "a reader is told X" or "this key does Y" — a snapshot of the markup
 would pass while every one of them was broken.

@@ -1,28 +1,145 @@
 ---
-title: "Headless components · uf"
-description: "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all."
+title: "UI components · uf"
+description: "Styled components you own, from uf ui add, on headless parts that own the keyboard and ARIA."
 ---
 
 <p className="eyebrow">Build an app</p>
 
-# Headless components
+# UI components
 
 <div className="lede">
-`@uniflowed/ui` is the headless half of a Flow React design system: roving tab
-stops, focus traps, typeahead, live regions, form wiring, range controls,
-modals, overlays, tables and the ARIA that makes each one true. It has no
-dependency on a styling system, and the UI suite now holds the contracts with
-500-plus behaviour tests.
+`uf ui add dialog` writes a styled, accessible dialog into your project, and
+from then on it is your file. Its look is yours to change. Its behaviour
+(focus trap, `Escape`, focus restore, the ARIA) is imported from
+`@uniflowed/ui` and keeps improving when you upgrade. Start with the command.
+Reach for the headless parts underneath when you need a look the registry does
+not have.
 </div>
 
-**What you will be able to do:** compose fields, tabs, dialogs, menus,
-comboboxes, checkboxes and switches into a surface, change the element a part
-renders, and keep the keyboard and ARIA behaviour each one owns.
+**What you will be able to do:** add components with `uf ui add`, import and
+compose them, keep your copies in step with uf, and drop down to the headless
+parts when you need to.
 
 **What you need first:** a project — [Your first project](/guide/project).
 Styling comes on the page after this one.
 
-## What you get, and what you do not
+## Start with `uf ui add`
+
+```sh
+uf ui list                        # every component the registry has
+uf ui add button dialog tabs      # write them, and whatever they import
+```
+
+Each component is one file in `app/components/ui/`, or in the directory
+[`ui.directory`](/reference/config#ui) names. `dialog.js` imports
+`./button.js`, so adding `dialog` writes both. A package a component needs and
+`package.json` does not list yet is added first, at this uf's version. The
+command ends by printing how to import what you asked for:
+
+```
+ℹ import from a module in app/:
+  import { Button } from "./components/ui/button.js";
+  import * as Dialog from "./components/ui/dialog.js";
+  import * as Tabs from "./components/ui/tabs.js";
+```
+
+**Import a copy as one name.** A component with parts is a namespace: import the
+module, and its parts are members of it. A component that is one element is
+that name.
+
+```js
+// @flow
+import * as React from "@uniflowed/react";
+
+import { Button } from "./components/ui/button.js";
+import * as Dialog from "./components/ui/dialog.js";
+import * as Tabs from "./components/ui/tabs.js";
+
+export component Settings() {
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger>Settings</Dialog.Trigger>
+      <Dialog.Content>
+        <Dialog.Header>
+          <Dialog.Title>Settings</Dialog.Title>
+        </Dialog.Header>
+        <Tabs.Root defaultValue="general">
+          <Tabs.List aria-label="Sections">
+            <Tabs.Tab value="general">General</Tabs.Tab>
+            <Tabs.Tab value="billing">Billing</Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel value="general">…</Tabs.Panel>
+          <Tabs.Panel value="billing">…</Tabs.Panel>
+        </Tabs.Root>
+        <Dialog.Footer>
+          <Dialog.Close>Done</Dialog.Close>
+          <Button tone="primary">Save</Button>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog.Root>
+  );
+}
+```
+
+This is the same convention `@uniflowed/ui` uses (`Dialog.Root`, `Tabs.Tab`),
+so a page that uses both reads the same way.
+[Importing: one name per component](#importing-one-name-per-component) explains
+why.
+
+**Change it.** The file is yours: change its tokens, spacing and variants, or
+the markup around the parts. The header of each file lists what to keep true
+while you do, such as "a dialog needs a name" and "the close button is last in
+the markup". Those rules are about accessibility, not about the look.
+
+**Keep it in step.** The last line of each copy records the uf that wrote it and
+a digest of what it wrote. `uf ui diff dialog` shows how your copy differs from
+this uf's version, and whether each difference is your edit or the registry's
+change. `uf ui update dialog` merges the registry's change into your edited
+file, three-way, so updating never makes you choose between your edit and the
+fix. [Commands](/reference/cli) has all four commands, and
+[Components](/reference/ui#registry-components) shows every component running,
+beside its source.
+
+## Owned or headless
+
+uf has both halves of a design system, and they are different kinds of thing.
+`uf ui add` writes the styled half into your repository, one component per
+file. `@uniflowed/ui` is the headless half, a package: the parts described
+below, imported, upgraded, never copied. Every component `uf ui add` writes is
+built on those parts.
+
+| | Headless: `@uniflowed/ui` | Owned: `uf ui add` |
+| --- | --- | --- |
+| Where it lives | `node_modules`, upgraded with uf | `app/components/ui/`, committed with your code |
+| What it owns | Roles, the keyboard, focus, the ARIA wiring, composition types | The look: tokens, spacing, variants, the markup around the parts |
+| How you change it | `className`, `render`, data attributes | Edit the file |
+| How a fix reaches you | Upgrading `@uniflowed/ui` | Behaviour by upgrading `@uniflowed/ui`, which the file still imports; the look through `uf ui update`, which merges the registry's change into your edited file |
+
+Reach for the owned component when the application wants one look that its
+pages agree on and a person expects to open the file and change it, which is
+most product UI. Reach for the parts directly when the design system already
+exists somewhere else, when the styling is not StyleX, or when a surface is
+unusual enough that the owned component would be edited beyond recognition.
+
+The two are not forks of each other. An owned `dialog.js` imports its parts
+from `@uniflowed/ui`, so the focus trap, `Escape`, focus restore and the inert
+page behind it keep arriving by upgrade, and what the file owns is only what a
+person means by "our dialog". The composition constraints hold in the copy
+too: the owned `Tabs.List` takes `renders*` the owned `Tabs.Tab`, so a
+`<button>` dropped into it is a Flow error in your own file.
+
+Every owned component is styled with the tokens `@uniflowed/stylex` compiles,
+so [dark mode](/guide/styling#dark-mode) is one spread on the document, and a
+`stylex.createTheme` of your own restyles all of them at once.
+
+## The headless parts: `@uniflowed/ui`
+
+Everything below this point is about the package the components are built on.
+Use it directly when your design system lives somewhere else, when your styling
+is not StyleX, or when a surface is too unusual for an owned component. Each of
+those parts is also what an owned component's behaviour comes from.
+
+### What you get, and what you do not
 
 The package root exports more than thirty primitive families and five
 single-element controls. The full per-part reference is
@@ -70,56 +187,6 @@ One part renders no element and so forwards nothing: `Field.Control` takes a
 `render` function and that is its whole signature. A `className` on it would go
 nowhere; it belongs on whatever `render` returns, beside the four attributes
 that function is handed.
-
-## Owned or headless
-
-uf has both halves of a design system, and they are different kinds of thing.
-`@uniflowed/ui` is a package: the parts on this page, imported, upgraded, never
-copied. `uf ui add` writes the other half into your repository — one styled
-component per file in `app/components/ui/`, or the directory
-[`ui.directory`](/reference/config#ui) names, built on these parts:
-
-```sh
-uf ui add button dialog tabs select
-```
-
-```js
-import * as Dialog from "./components/ui/dialog.js";
-```
-
-| | Headless: `@uniflowed/ui` | Owned: `uf ui add` |
-| --- | --- | --- |
-| Where it lives | `node_modules`, upgraded with uf | `app/components/ui/`, committed with your code |
-| What it owns | Roles, the keyboard, focus, the ARIA wiring, composition types | The look: tokens, spacing, variants, the markup around the parts |
-| How you change it | `className`, `render`, data attributes | Edit the file |
-| How a fix reaches you | Upgrading `@uniflowed/ui` | Behaviour by upgrading `@uniflowed/ui`, which the file still imports; the look through `uf ui update`, which merges the registry's change into your edited file |
-
-Reach for the owned component when the application wants one look that its
-pages agree on and a person expects to open the file and change it, which is
-most product UI. Reach for the parts directly when the design system already
-exists somewhere else, when the styling is not StyleX, or when a surface is
-unusual enough that the owned component would be edited beyond recognition.
-
-The two are not forks of each other. An owned `dialog.js` imports its parts
-from `@uniflowed/ui`, so the focus trap, `Escape`, focus restore and the inert
-page behind it keep arriving by upgrade, and what the file owns is only what a
-person means by "our dialog". The composition constraints hold in the copy
-too: the owned `Tabs.List` takes `renders*` the owned `Tabs.Tab`, so a
-`<button>` dropped into it is a Flow error in your own file.
-
-A copy remembers where it came from. Its last line names the uf that wrote it
-and a digest of what was written, so `uf ui add` never replaces a file somebody
-edited without `--overwrite`, and `uf ui diff` says whether a difference is your
-edit, the registry's change, or both. `uf ui update` merges the registry's
-change into your edit. The digest identifies the exact text the copy began as,
-and that text is the base of a three-way merge, so updating a component does
-not mean choosing between your edit and the fix. [Commands](/reference/cli) has
-all four commands in full, and [Components](/reference/ui#registry-components)
-renders every component the registry has, live and beside its source.
-
-Every owned component is styled with the tokens `@uniflowed/stylex` compiles,
-so [dark mode](/guide/styling#dark-mode) is one spread on the document, and a
-`stylex.createTheme` of your own restyles all of them at once.
 
 ## Changing the element a part renders
 
@@ -176,6 +243,12 @@ That is the only spelling. The rule has three cases:
 | A component with parts | One namespace; the parts are unprefixed members | `Dialog.Root`, `Tabs.Tab`, `Menu.SubTrigger` |
 | A component that is one element | Its own name | `Checkbox`, `Switch`, `Progress`, `ListBox` |
 | A type, hook or function | Its own name, flat | `DialogRole`, `Side`, `toast`, `usePress`, `parseColor` |
+
+The components `uf ui add` writes follow the same rule. A copy with parts
+exports them unprefixed and is imported as a module
+(`import * as Dialog from "./components/ui/dialog.js"`). A copy with one part
+is that name (`import { Button } from "./components/ui/button.js"`). A page
+that uses both a copy and the package reads the same either way.
 
 **Why namespaces.** Two names for one part means two things to search for and a
 review decision in every file. Earlier releases exported `DialogRoot` next

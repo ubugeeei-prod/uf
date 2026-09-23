@@ -277,9 +277,9 @@ export const sections: $ReadOnlyArray<Section> = [
       },
       {
         href: "/guide/ui",
-        title: "Headless components",
+        title: "UI components",
         blurb:
-          "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all.",
+          "Styled components you own, from uf ui add, on headless parts that own the keyboard and ARIA.",
       },
       {
         href: "/guide/rendering",
@@ -416,7 +416,8 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/reference/ui",
         title: "Components",
-        blurb: "The headless primitives, their parts, and the keys each one owns.",
+        blurb:
+          "Every component uf ui add writes, then the headless parts and the keys each one owns.",
       },
       {
         href: "/reference/std",
