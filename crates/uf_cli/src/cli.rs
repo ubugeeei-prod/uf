@@ -485,6 +485,16 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: I18nCommand,
     },
+    /// Generate Flow from SQL with sqlc, with `uf` as its Flow plugin.
+    ///
+    /// The project keeps a normal `sqlc.yaml` whose plugin is `cmd: uf`;
+    /// `uf sqlc generate` runs sqlc with this `uf` first on `PATH`, so the
+    /// plugin sqlc starts is the one that was asked. `uf sqlc diff` is the CI
+    /// check: it fails when the generated files are out of date.
+    Sqlc {
+        #[command(subcommand)]
+        command: SqlcCommand,
+    },
     /// Print the toolchain's version, host, and resolved paths — or, given a
     /// package, what the registry says about it.
     ///
@@ -1422,6 +1432,25 @@ pub(crate) enum CatalogCommand {
         /// Say what would change, and change nothing.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+/// What `uf sqlc` can ask sqlc to do.
+#[derive(Debug, Subcommand)]
+pub(crate) enum SqlcCommand {
+    /// Run `sqlc generate`: write the Flow modules sqlc's config asks for.
+    Generate {
+        /// The sqlc config, when it is not `sqlc.yaml`, `sqlc.yml` or
+        /// `sqlc.json` in the project root.
+        #[arg(short = 'f', long, value_name = "FILE")]
+        file: Option<Utf8PathBuf>,
+    },
+    /// Run `sqlc diff`: fail if generating would change any file.
+    Diff {
+        /// The sqlc config, when it is not `sqlc.yaml`, `sqlc.yml` or
+        /// `sqlc.json` in the project root.
+        #[arg(short = 'f', long, value_name = "FILE")]
+        file: Option<Utf8PathBuf>,
     },
 }
 

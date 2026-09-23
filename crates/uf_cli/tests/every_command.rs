@@ -79,6 +79,10 @@ const COVERAGE: &[(&str, &str)] = &[
         "i18n",
         "i18n.rs: extracts a project's catalogue and merges a translation",
     ),
+    (
+        "sqlc",
+        "sqlc.rs: the plugin protocol and the sqlc it runs; tools/ci/sqlc.sh: real sqlc",
+    ),
     ("info", "here, and output.rs for the brand surface"),
     ("inspect", "here, and inspect.rs for the resolved config"),
     ("install", "workflow.rs: runs the package manager"),
