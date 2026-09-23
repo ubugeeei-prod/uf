@@ -23,7 +23,7 @@ function nodeImports(source: string): Array<string> {
 }
 
 function nodeNamedImports(source: string): Map<string, Array<string>> {
-  const found = new Map();
+  const found = new Map<string, Array<string>>();
   const pattern = /\bimport\s+\{([^}]+)\}\s+from\s+["'](node:[^"']+)["']/g;
   let match = pattern.exec(source);
   while (match != null) {
@@ -67,8 +67,10 @@ describe("browser substitutions", () => {
       const source = fs.readFileSync(path.join(here, reached), "utf8");
       const named = nodeNamedImports(source);
       for (const specifier of nodeImports(source)) {
-        const target = (browser: $FlowFixMe)[specifier];
-        expect(typeof target).toBe("string");
+        const target = browser[specifier];
+        if (typeof target !== "string") {
+          throw new Error(`package.json#browser has no substitute file for ${specifier}`);
+        }
         const file = path.join(here, target);
         expect(fs.existsSync(file)).toBe(true);
         const exports = await import(pathToFileURL(file).href);

@@ -9,7 +9,7 @@ it("names the icon button and shows the skip link only while it has focus", () =
   expect(screen.getByRole("button", { name: "Close the panel" })).not.toBeNull();
   const link = screen.getByRole("link", { name: "Skip to content" });
   const block = link.parentElement;
-  if (!(link instanceof HTMLElement) || block == null)
+  if (!(link instanceof HTMLElement) || !(block instanceof HTMLElement))
     throw new Error("expected a link in a block");
   expect(block.style.position).toBe("absolute");
   act(() => link.focus());
