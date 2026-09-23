@@ -51,5 +51,8 @@ done
   # The search index is read from what the build wrote — the ids the markdown
   # pipeline rendered, not the ones the sources imply — so it runs after the
   # build and writes beside it. `docs/app/_design/search.js` says what is in it.
-  UF_PROJECT_ROOT=. node --import @uniflowed/host/register tools/docs/search-index.js docs/dist/docs
+  # The Flow loader compiles through `uf transform`, so it is told which uf:
+  # the one that just built the site, not whichever is first on `PATH`.
+  UF_BINARY="${UF_BIN:-$repo_root/target/release/uf}" UF_PROJECT_ROOT=. \
+    node --import @uniflowed/host/register tools/docs/search-index.js docs/dist/docs
 )
