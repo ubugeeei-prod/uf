@@ -1,0 +1,8 @@
+# The copies `run.mjs` builds a variant in. Inside the repository rather than a
+# temporary directory, because the fixture imports `@uniflowed/*` and needs the
+# repository's `node_modules` above it.
+/.work/
+# What `uf build` writes into the committed fixture when it is built in place.
+/fixture/dist/
+/fixture/router.js
+/fixture/server-actions.js

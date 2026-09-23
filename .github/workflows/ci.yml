@@ -33,6 +33,7 @@ jobs:
       rsc: ${{ steps.scope.outputs.rsc }}
       release: ${{ steps.scope.outputs.release }}
       version: ${{ steps.scope.outputs.version }}
+      deploy: ${{ steps.scope.outputs.deploy }}
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
@@ -1168,6 +1169,106 @@ jobs:
       - run: sh tools/ci/native-example.sh
         if: needs.changes.outputs.full == 'true'
 
+  # The deployment compatibility matrix (`tools/deploy-matrix`): one fixture
+  # with every rendering mode, built with each adapter and served by that
+  # target's own runtime or local emulator — Node, Bun, Deno, Docker for the
+  # container, Wrangler's workerd for the Worker, Kumo (API Gateway, Lambda,
+  # S3) with the AWS Lambda Node image for the function, and Workers static
+  # assets for the static host — then asked every mode over HTTP and in Chrome.
+  # `tools/deploy-matrix/matrix.json` says what each cell must do, and the
+  # deploy guide's table is generated from it.
+  #
+  # Every tool is pinned and checked (Wrangler by its lockfile, Kumo by
+  # SHA-256, the Lambda image and Chrome by version or digest), and no step
+  # needs a secret. It runs when a pull request touches what it is about
+  # (`deploy` in `tools/ci/change-scope.cjs`) and in the release queue;
+  # otherwise every step is skipped and the job succeeds, like the others.
+  deploy-matrix:
+    name: Deploy matrix (${{ matrix.target }})
+    needs: [changes, toolchain]
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [node, bun, deno, container, edge, serverless, static]
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.deploy == 'true'
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: needs.changes.outputs.deploy == 'true' && matrix.target == 'bun'
+        with:
+          # The floor `uf_runtime::BUN_MINIMUM` declares for `--adapter bun`.
+          bun-version: 1.3.14
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: needs.changes.outputs.deploy == 'true' && matrix.target == 'deno'
+        with:
+          deno-version: v2.9.7
+      - run: npm ci --prefer-offline --no-audit --no-fund
+        if: needs.changes.outputs.deploy == 'true'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.deploy == 'true'
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+        if: needs.changes.outputs.deploy == 'true'
+      - name: Install the pinned emulators
+        if: needs.changes.outputs.deploy == 'true' && (matrix.target == 'edge' || matrix.target == 'static' || matrix.target == 'serverless')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          case "$TARGET" in
+            edge|static) tools/deploy-matrix/install-tools.sh "$RUNNER_TEMP/deploy-matrix-tools" wrangler ;;
+            serverless) tools/deploy-matrix/install-tools.sh "$RUNNER_TEMP/deploy-matrix-tools" kumo lambda-image ;;
+          esac
+      - run: sh tools/ci/pinned-browser.sh
+        if: needs.changes.outputs.deploy == 'true'
+      - name: Run the ${{ matrix.target }} column
+        if: needs.changes.outputs.deploy == 'true'
+        run: node tools/deploy-matrix/run.mjs --target "${{ matrix.target }}" --uf ./target/release/uf --out output/deploy-matrix
+      # The Worker smoke the edge documentation cites: the served-app, action
+      # and regeneration fixtures, and the table of Node built-ins a Worker
+      # only stubs, measured again under workerd.
+      - run: ./target/release/uf run edge:smoke
+        if: needs.changes.outputs.deploy == 'true' && matrix.target == 'edge'
+      - if: needs.changes.outputs.deploy == 'true' && always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deploy-matrix-${{ matrix.target }}
+          path: output/deploy-matrix
+          retention-days: 7
+
+  # Every column's results against `tools/deploy-matrix/matrix.json`: a cell
+  # the documentation marks "Verified in CI" has to have passed in this run.
+  # Writes the matrix to the run's summary. Runs after failed columns too, so
+  # the summary shows which cells failed.
+  deploy-matrix-report:
+    name: Deploy matrix
+    needs: [changes, deploy-matrix]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        if: needs.changes.outputs.deploy == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.deploy == 'true'
+        with:
+          pattern: deploy-matrix-*
+          merge-multiple: true
+          path: output/deploy-matrix
+      - run: node tools/deploy-matrix/report.mjs --results output/deploy-matrix
+        if: needs.changes.outputs.deploy == 'true'
+
   # One check that is true only when every other one is.
   #
   # Every job above declares `needs: toolchain`, and a job whose dependency
@@ -1233,6 +1334,8 @@ jobs:
       - sqlc
       - native-bundle
       - browser-testing
+      - deploy-matrix
+      - deploy-matrix-report
     runs-on: ubuntu-latest
     steps:
       - name: Every job it depends on succeeded

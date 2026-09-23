@@ -1,0 +1,8 @@
+{
+  "name": "uf-deploy-matrix-emulators",
+  "private": true,
+  "description": "The emulators tools/deploy-matrix runs, pinned with their whole dependency tree by package-lock.json. Installed by tools/deploy-matrix/install-tools.sh; not a workspace.",
+  "devDependencies": {
+    "wrangler": "4.128.0"
+  }
+}
