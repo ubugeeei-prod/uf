@@ -5057,7 +5057,8 @@ fn assert_based_served(server: &mut Server, port: u16, said: &Mutex<String>, com
     let payload = get(server, port, "/docs/posts/hello-world/__uf.flight", said);
     assert!(
         payload.starts_with("HTTP/1.1 200")
-            && has_header(&payload, "content-type", "text/x-component"),
+            && has_header(&payload, "content-type", "text/x-component")
+            && has_header(&payload, "x-content-type-options", "nosniff"),
         "{}",
         context(
             "did not answer a navigating browser's payload request under the base path",

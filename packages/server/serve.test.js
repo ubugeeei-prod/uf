@@ -256,6 +256,22 @@ describe("the static handler", () => {
     }
   });
 
+  // A prerendered payload holds a page's strings with their markup, at a URL
+  // anybody can open as a document; it is never to be sniffed into HTML.
+  it("serves a prerendered payload as a payload, and never as something to sniff", async () => {
+    const serveStatic = createStaticHandler({
+      root: directoryWith({ "guide/__uf.flight": '0:"<img src=x onerror=alert(1)>"\n' }),
+    });
+    const response = await serveStatic(request("/guide/__uf.flight"));
+    expect(response?.headers.get("content-type")).toBe("text/x-component");
+    expect(response?.headers.get("x-content-type-options")).toBe("nosniff");
+    // And a file that is not a payload is left as it was.
+    const other = await createStaticHandler({ root: directoryWith({ "a.txt": "a" }) })(
+      request("/a.txt"),
+    );
+    expect(other?.headers.get("x-content-type-options")).toBe(null);
+  });
+
   it("serves a prerendered document for a directory path", async () => {
     const root = directoryWith({ "guide/index.html": "<p>guide</p>" });
     const serveStatic = createStaticHandler({ root });

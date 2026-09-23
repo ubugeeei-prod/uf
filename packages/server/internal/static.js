@@ -200,17 +200,21 @@ export async function locateStatic(
     if (opened == null || (opened !== root && !opened.startsWith(root + path.sep))) {
       continue;
     }
-    return {
-      path: candidate,
-      headers: {
-        "content-type":
-          name === "apple-app-site-association"
-            ? "application/json; charset=utf-8"
-            : (CONTENT_TYPES[path.extname(candidate).toLowerCase()] ?? "application/octet-stream"),
-        "content-length": String(info.size),
-      },
-      headOnly: method === "HEAD",
+    const headers: { [string]: string } = {
+      "content-type":
+        name === "apple-app-site-association"
+          ? "application/json; charset=utf-8"
+          : (CONTENT_TYPES[path.extname(candidate).toLowerCase()] ?? "application/octet-stream"),
+      "content-length": String(info.size),
     };
+    // A prerendered payload holds the page's text as it was written, markup and
+    // all, and it is served at a URL anybody can open as a document. `nosniff`
+    // keeps a browser from ever second-guessing `text/x-component` into HTML
+    // and running it — the header `flight()` in `@uniflowed/router/rsc/ssr` sends too.
+    if (name === "__uf.flight") {
+      headers["x-content-type-options"] = "nosniff";
+    }
+    return { path: candidate, headers, headOnly: method === "HEAD" };
   }
   return null;
 }

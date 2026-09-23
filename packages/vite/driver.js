@@ -535,6 +535,8 @@ async function preview() {
       previewServer.middlewares.use((request, response, next) => {
         if ((request.url ?? "").split("?")[0].endsWith("/__uf.flight")) {
           response.setHeader("content-type", "text/x-component");
+          // As every other door answers a payload: never sniffed into a document.
+          response.setHeader("x-content-type-options", "nosniff");
         }
         if ((request.url ?? "").split("?")[0] === "/.well-known/apple-app-site-association") {
           response.setHeader("content-type", "application/json; charset=utf-8");

@@ -477,7 +477,16 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     }
     return {
       status: rendered.status,
-      headers: { "content-type": FLIGHT_CONTENT_TYPE, vary: INTERCEPTED_FROM_HEADER },
+      headers: {
+        "content-type": FLIGHT_CONTENT_TYPE,
+        vary: INTERCEPTED_FROM_HEADER,
+        // The payload carries the page's strings as they were rendered — a
+        // comment body with `<img onerror>` in it included — and its URL is one
+        // anybody can open as a document. `text/x-component` is not a type a
+        // browser sniffs into HTML today; `nosniff` makes that a promise rather
+        // than a property of today's browsers.
+        "x-content-type-options": "nosniff",
+      },
       stream: rendered.stream,
       error: rendered.failure,
     };
