@@ -1240,7 +1240,9 @@ async function measureSuite(
   }
   const root = path.join(options.workDir, "suite");
   generateSuites(root, GUIDE_PRESET, REPO);
-  linkInto(path.join(root, "vitest"), path.join(REPO, RIVALS_DIR, "node_modules"));
+  if (vitest != null) {
+    linkInto(path.join(root, "vitest"), path.join(REPO, RIVALS_DIR, "node_modules"));
+  }
   const tests = GUIDE_PRESET.files * GUIDE_PRESET.cases;
   for (const runner of runners) {
     const dir = path.join(root, runner.tool);
