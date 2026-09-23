@@ -453,14 +453,43 @@ function specifiers(code: string): Array<string> {
   return found;
 }
 
+/** A quoted absolute path to a JavaScript module, as a Flight row names one. */
+const MODULE_PATH = /"(\/[^"\s]+?\.(?:[cm]?js|jsx|tsx?)(?:\?[^"\s]*)?)"/g;
+
+/**
+ * The client modules a page's inline Flight payload names.
+ *
+ * Since routes render as React Server Components (ubugeeei-prod/uf#1037), a
+ * client component is not imported by any module the document loads: the
+ * payload names it, and `@uniflowed/router`'s Flight client imports it by that
+ * name when React asks. Each `<script type="application/json" data-uf-flight>`
+ * element holds a JSON string of payload rows, and a client reference's id is
+ * its module's URL, so every quoted absolute module path in the decoded text
+ * is one the browser would request. An element that is not a string — bytes,
+ * or the end marker — names nothing.
+ */
+export function clientReferences(element: string): Array<string> {
+  let text: mixed = null;
+  try {
+    text = JSON.parse(element);
+  } catch {
+    return [];
+  }
+  if (typeof text !== "string") {
+    return [];
+  }
+  return [...text.matchAll(MODULE_PATH)].map((match) => match[1]);
+}
+
 /**
  * Request the page's client module graph, the way the browser would.
  *
  * This is what makes Vite hot-update a module at all: its module graph is built
  * from what was requested, and a component nothing has asked for is a component
  * Vite has no reason to tell anybody about. Everything the document loads as a
- * module is followed — `src`s, the imports inside inline module scripts, and
- * then every import in what those serve. Vite rewrites imports to absolute
+ * module is followed — `src`s, the imports inside inline module scripts, the
+ * client modules the inline Flight payload names, and then every import in
+ * what those serve. Vite rewrites imports to absolute
  * paths, so a specifier that is not a path is a bare name inside a string and
  * is skipped. A request that fails is skipped too: served code is scanned, not
  * parsed, and a browser would not have executed the line it came from.
@@ -472,6 +501,12 @@ async function crawl(base: string, document: string): Promise<Set<string>> {
   const entries: Array<URL> = [];
   for (const match of document.matchAll(SCRIPT)) {
     const attributes = match[1];
+    if (/\bdata-uf-flight\b/.test(attributes)) {
+      for (const reference of clientReferences(match[2])) {
+        entries.push(new URL(reference, `${base}/`));
+      }
+      continue;
+    }
     if (!/\btype="module"/.test(attributes)) {
       continue;
     }
