@@ -305,6 +305,7 @@ describe("the form state a document carries to hydrateRoot", () => {
 function posted(
   fields: $ReadOnlyArray<[string, string]>,
   headers?: { readonly [string]: string | null },
+  at?: string = "https://app.example/notes?draft=1",
 ): Request {
   const given: { [string]: string } = {
     origin: "https://app.example",
@@ -316,7 +317,7 @@ function posted(
     if (value == null) delete given[name];
     else given[name] = String(value);
   }
-  return new Request("https://app.example/notes?draft=1", {
+  return new Request(at, {
     method: "POST",
     headers: given,
     body: new URLSearchParams(fields as $FlowFixMe).toString(),
@@ -415,6 +416,22 @@ describe("a form posted to a server action before its page hydrated", () => {
     );
     expect(ran).toBe(true);
     expect(answer?.status).toBe(303);
+  });
+
+  // A page reached at `https://app.example//evil.example/notes` posts its form
+  // to the same address, and a request-target that opens with two slashes is
+  // one every host but Node's passes through as it came. Answered with
+  // `Location: //evil.example/notes`, the post/redirect/get would hand the
+  // person to another host after they submitted a form on this one.
+  it("answers back to a path on this origin, whatever the posted path opened with", async () => {
+    for (const at of [
+      "https://app.example//evil.example/notes?draft=1",
+      "https://app.example/\\evil.example/notes?draft=1",
+    ]) {
+      const answer = await hosted(async () => {}, posted(formFor([]), undefined, at));
+      expect(answer?.status).toBe(303);
+      expect(answer?.headers.get("location")).toBe("/evil.example/notes?draft=1");
+    }
   });
 
   it("follows redirect() with a 303, which a browser follows with a GET", async () => {

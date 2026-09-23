@@ -34,9 +34,12 @@
  * @param {string} [path]
  */
 export async function toRequest(incoming, config, path) {
-  const host = incoming.headers.host ?? "localhost";
   const protocol = config?.server?.https == null ? "http" : "https";
-  const url = new URL(path ?? incoming.originalUrl ?? incoming.url ?? "/", `${protocol}://${host}`);
+  const url = requestUrl(
+    protocol,
+    incoming.headers.host,
+    path ?? incoming.originalUrl ?? incoming.url,
+  );
 
   const headers = new Headers();
   for (const [name, value] of Object.entries(incoming.headers)) {
@@ -67,8 +70,61 @@ export async function toRequest(incoming, config, path) {
  * @param {import("node:http").IncomingMessage} incoming
  */
 export function toAddressRequest(incoming) {
-  const host = incoming.headers.host ?? "localhost";
-  return new Request(new URL(incoming.originalUrl ?? incoming.url ?? "/", `http://${host}`));
+  return new Request(
+    requestUrl("http", incoming.headers.host, incoming.originalUrl ?? incoming.url),
+  );
+}
+
+/**
+ * The URL a Node request was for: `Host`'s authority and the request-target's
+ * path and query, joined as text so a target of `//evil.example/x` (or
+ * `/\evil.example/x`) cannot become the request's host, and an absolute-form
+ * target keeps only its path. A `Host` holding a path, a user name, a query or
+ * a fragment is not believed.
+ *
+ * The same function as `requestUrl` in `@uniflowed/server/node`, which has the
+ * argument for why; spelled twice because this file runs before any Flow
+ * transform and cannot import that one. `packages/server/serve.test.js` holds
+ * both to one answer.
+ *
+ * @param {string} protocol
+ * @param {unknown} host the `Host` header as Node parsed it
+ * @param {string | undefined} target the request-target
+ * @returns {URL}
+ */
+function requestUrl(protocol, host, target) {
+  const authority =
+    typeof host === "string" && host !== "" && isAuthority(host) ? host : "localhost";
+  let path = target ?? "/";
+  if (!path.startsWith("/")) {
+    try {
+      const absolute = new URL(path);
+      path = absolute.pathname + absolute.search;
+    } catch {
+      path = "/";
+    }
+  }
+  try {
+    return new URL(`${protocol}://${authority}${path}`);
+  } catch {
+    return new URL(`${protocol}://localhost/`);
+  }
+}
+
+/**
+ * Whether `value` has none of the characters that end a URL's authority.
+ *
+ * @param {string} value
+ */
+function isAuthority(value) {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    // `/`, `\`, `?`, `#`, `@`, and every space and control character.
+    if (code === 47 || code === 92 || code === 63 || code === 35 || code === 64 || code <= 32) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

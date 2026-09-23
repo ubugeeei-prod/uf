@@ -133,6 +133,27 @@ describe("a trailing-slash policy", () => {
     expect(admitted({ trailingSlash: "always" }, "/guide/")).toBe("continue http://uf.test/guide/");
   });
 
+  // A path that opens with two slashes — `https://app.example//evil.example/x/`,
+  // which is a link anybody can write and a request-target every host but
+  // Node's passes through as it came — spelled back into `Location` as it
+  // stands is `//evil.example/x`: a *network-path reference*, which a browser
+  // resolves to another host. The normalisation that exists to tidy a URL
+  // would be an open redirect on the application's own domain. A backslash is
+  // the same attack, because a URL parser reads `\` as `/` in an http URL.
+  it("never answers with a Location that leaves the origin", () => {
+    expect(admitted({ trailingSlash: "never" }, "//evil.example/x/")).toBe("308 /evil.example/x");
+    expect(admitted({ trailingSlash: "always" }, "//evil.example/x")).toBe("308 /evil.example/x/");
+    expect(admitted({ trailingSlash: "always" }, "/\\evil.example/x")).toBe("308 /evil.example/x/");
+    expect(admitted({ trailingSlash: "always" }, "///evil.example/x?y=1")).toBe(
+      "308 /evil.example/x/?y=1",
+    );
+    // A base path is in front of it, so the address was never at risk; it is
+    // still one slash rather than two.
+    expect(admitted({ basePath: "/docs", trailingSlash: "always" }, "/docs//x")).toBe(
+      "308 /docs/x/",
+    );
+  });
+
   it("spells the root of a base path as the base, unless it is always", () => {
     expect(admitted({ basePath: "/docs", trailingSlash: "never" }, "/docs/")).toBe("308 /docs");
     expect(admitted({ basePath: "/docs", trailingSlash: "always" }, "/docs")).toBe("308 /docs/");

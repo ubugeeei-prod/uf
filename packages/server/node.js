@@ -143,6 +143,63 @@ export type NodeResponse = {
 };
 
 /**
+ * The URL a Node request was for: `Host`'s authority and the request-target's
+ * path and query, and nothing else of either.
+ *
+ * Joined as text rather than resolved with `new URL(target, base)`, and that
+ * is the whole point. Resolution reads a target of `//evil.example/x` — what a
+ * browser sends for the link `https://app.example//evil.example/x`, and what
+ * a URL parser also makes of `/\evil.example/x` — as a network-path reference
+ * and makes `evil.example` the request's host. uf's rule is that `Host` is the
+ * one statement of which site a request is for (`docs/security.md`, rule 2):
+ * the OAuth routes' same-origin check reads `new URL(request.url).host`, and an
+ * application's `new URL("/sign-in", request.url)` redirect trusts the origin
+ * in it. Both would otherwise be answering about somebody else's.
+ *
+ * The request-target has two other forms. Absolute-form
+ * (`http://evil.example/x`), which a client speaking to a proxy sends, keeps
+ * its path and query and loses its authority for the same reason; anything
+ * else — asterisk-form, or text that is no URL — is `/`. A `Host` holding a
+ * path, a user name, a query or a fragment is not a host and is not believed:
+ * the URL is `localhost`'s, which no same-origin comparison will match.
+ *
+ * `@uniflowed/vite`'s `internal/http.js` spells the same function for `uf dev`
+ * and `uf preview`, because it runs before any Flow transform and cannot import
+ * this one; `packages/server/serve.test.js` holds both to one answer.
+ */
+function requestUrl(protocol: string, host: mixed, target: ?string): URL {
+  const authority =
+    typeof host === "string" && host !== "" && isAuthority(host) ? host : "localhost";
+  let path = target ?? "/";
+  if (!path.startsWith("/")) {
+    try {
+      const absolute = new URL(path);
+      path = absolute.pathname + absolute.search;
+    } catch {
+      path = "/";
+    }
+  }
+  try {
+    return new URL(`${protocol}://${authority}${path}`);
+  } catch {
+    return new URL(`${protocol}://localhost/`);
+  }
+}
+
+/** Whether `value` has none of the characters that end a URL's authority. */
+function isAuthority(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    // `/`, `\`, `?`, `#`, `@`, and every space and control character.
+    if (code === 47 || code === 92 || code === 63 || code === 35 || code === 64 || code <= 32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * A Node request as a `Request`./**
  * A Node request as a `Request`.
  *
  * The body is passed as a stream where the host allows it, so a handler that
@@ -154,10 +211,8 @@ export function toRequest(
   incoming: NodeRequest,
   options?: {| readonly secure?: boolean |},
 ): Request {
-  const host = incoming.headers.host;
-  const authority = typeof host === "string" && host !== "" ? host : "localhost";
   const protocol = options?.secure === true ? "https" : "http";
-  const url = new URL(incoming.originalUrl ?? incoming.url ?? "/", `${protocol}://${authority}`);
+  const url = requestUrl(protocol, incoming.headers.host, incoming.originalUrl ?? incoming.url);
 
   const headers = new Headers();
   for (const name of Object.keys(incoming.headers)) {
