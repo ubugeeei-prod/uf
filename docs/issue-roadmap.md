@@ -62,6 +62,14 @@
       whole scan, so one `chmod 000` directory made `uf fmt`, `uf lint`,
       `uf check` and `uf test` do nothing for the rest of the project.
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.
+- [ ] Time every uf command beside Vite+, Next.js, Bun, Vitest, ESLint, Prettier,
+      Biome, Flow and pnpm in one reproducible run, gate uf's half nightly, and
+      publish it ([#945](https://github.com/ubugeeei-prod/uf/issues/945)).
+      `uf run bench:toolchain --tools all` measures every tool on its own
+      idiomatic copy of one generated application, with CPU time beside wall
+      clock; `.github/workflows/bench.yml` fails a uf stage more than 20% and
+      25 ms slower than `tools/bench/toolchain/baseline.json`; `/guide/benchmarks`
+      renders that file with the rows uf loses first.
 - [ ] Ban `String`, `format!`, and allocation-heavy std helpers in parser/lint/router/test hot paths.
 - [ ] Audit hot paths for unnecessary `.clone()` calls and replace them with borrowed or arena-backed flows.
 - [x] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.

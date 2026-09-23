@@ -1403,6 +1403,13 @@ got quicker by running less of itself is the easiest way to get this table
 wrong, and `bun test` prints the `expect()` count, so the 2,000 is checked
 rather than claimed.
 
+`uf run bench:toolchain -- --tools uf,bun,vitest --stages test` runs the same
+three copies itself, cold and warm, refuses a run that does not report 1,000
+passes, and records CPU time beside the wall clock. It is not interleaved the
+way the table above was: each runner's runs are consecutive. The nightly
+result, measured on a CI runner, is on [Benchmarks](/guide/benchmarks) as the
+fixture called `suite`.
+
 **Where the remaining time goes.** Not transforms, and not discovery. With the
 cache warm a worker reads its modules back instead of compiling them, and uf's
 entire front half — config, scan, discovery and scheduling, all before any
