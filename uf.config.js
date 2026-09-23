@@ -525,6 +525,18 @@ export default defineConfig({
       dependsOn: ["docs:build"],
     },
 
+    // What uf ships that the manual does not document: every command and flag
+    // in `uf --help`, every key `uf inspect --json` serializes, and every
+    // published package, against the three reference pages. The gaps known
+    // today are listed in `tools/docs/coverage-gaps.txt`; a new one fails, and
+    // so does a listed one that has been documented, so the list only shrinks.
+    // Reads the binary rather than the site, so it depends on `build` alone.
+    "docs:coverage": {
+      command:
+        "UF_BIN=./target/release/uf UF_BINARY=./target/release/uf UF_PROJECT_ROOT=. node --import @uniflowed/host/register tools/docs/coverage.js",
+      dependsOn: ["build"],
+    },
+
     // The `Docs build` job, in one command.
     //
     // `uf run` takes one task, and the checks below share the same built site.
@@ -542,6 +554,7 @@ export default defineConfig({
         "security:scan:test",
         "docs:csp",
         "docs:hydration",
+        "docs:coverage",
       ],
     },
 
