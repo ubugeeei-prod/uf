@@ -21,14 +21,14 @@ import remarkFrontmatterExport from "./internal/frontmatter.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 type LockEntry = {
-  +version?: string,
-  +link?: boolean,
-  +resolved?: string,
-  +dependencies?: { +[string]: string },
-  +optionalDependencies?: { +[string]: string },
+  readonly version?: string,
+  readonly link?: boolean,
+  readonly resolved?: string,
+  readonly dependencies?: { readonly [string]: string },
+  readonly optionalDependencies?: { readonly [string]: string },
 };
 
-type Lock = { +packages: { +[string]: LockEntry } };
+type Lock = { readonly packages: { readonly [string]: LockEntry } };
 
 /**
  * Where npm installed `name` for the package at `from`: the nearest
@@ -51,6 +51,7 @@ function installs(lock: Lock, start: string): Set<string> {
   const pending = [start];
   while (pending.length > 0) {
     const at = pending.pop();
+    if (at == null) break;
     const entry = lock.packages[at];
     if (entry == null || seen.has(at)) continue;
     seen.add(at);

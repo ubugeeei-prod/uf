@@ -46,12 +46,14 @@ import { act, cleanup, userEvent } from "@uniflowed/react-testing";
 // ordering in front of the last case below on every run, rather than on the
 // runs the scheduler happened to arrange it.
 import { Link, routerView } from "@uniflowed/router";
+import type { RouteTable } from "@uniflowed/router";
 import { afterAll, afterEach, describe, expect, it } from "@uniflowed/test";
 
 // Reached by path rather than by package name, the way `routing.test.js` and
 // `error-boundary.test.js` reach for the same package: `internal/` is the
 // build's own router and its own split, not something a project imports.
 import { installDom } from "../../packages/react-testing/internal/dom.js";
+import { bodyOf } from "../../tests/library/dom.js";
 import uniflowed from "./index.js";
 import { clientRouteFilter, readRscManifest } from "./internal/rsc.js";
 import { routesModuleSource, scanRoutes } from "./internal/routes.js";
@@ -109,7 +111,7 @@ function manifestModule(modulePath: string, reaches: boolean) {
 function manifestIn(root: string, manifest: mixed): mixed {
   const file = path.join(root, ".uf", "rsc", "uf-rsc-manifest.json");
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2) ?? "null"}\n`);
   return readRscManifest(file);
 }
 
@@ -570,9 +572,12 @@ async function serverModule() {
  * hydration below have to be the same components for the comparison React
  * makes to mean anything.
  */
-let built: mixed = null;
+let built: ?{ readonly server: RouteTable["routes"], readonly client: RouteTable["routes"] } = null;
 
-function tables() {
+function tables(): {
+  readonly server: RouteTable["routes"],
+  readonly client: RouteTable["routes"],
+} {
   if (built != null) {
     return built;
   }
@@ -626,7 +631,7 @@ function tables() {
     loading: [],
   };
 
-  built = {
+  const both = {
     // Every route has its page: this is what the server renders from.
     server: [home, counter],
     // The browser's copy. `/` kept its path — the router still has to match
@@ -636,7 +641,8 @@ function tables() {
       counter,
     ],
   };
-  return built;
+  built = both;
+  return both;
 }
 
 /**
@@ -667,7 +673,7 @@ async function serve(url: string): Promise<void> {
   const root = globalThis.document.createElement("div");
   root.id = ROOT_ID;
   root.innerHTML = rendered.innerHTML;
-  globalThis.document.body.replaceChildren(root);
+  bodyOf().replaceChildren(root);
   globalThis.window.history.pushState(null, "", url);
 }
 
@@ -692,7 +698,7 @@ afterEach(() => {
     return;
   }
   cleanup();
-  globalThis.document.body.replaceChildren();
+  bodyOf().replaceChildren();
 });
 
 describe("hydration across the boundary", () => {

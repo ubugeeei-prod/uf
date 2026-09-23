@@ -64,17 +64,20 @@ type FakeResponse = {
 };
 
 function outgoing(): FakeResponse {
-  return {
+  // The methods name the object rather than `this`, so a handler that takes
+  // `res.end` off the response and calls it on its own still ends this one.
+  const response: FakeResponse = {
     statusCode: 0,
     headers: {},
     ended: false,
     setHeader(name: string, value: string) {
-      this.headers[name] = value;
+      response.headers[name] = value;
     },
     end() {
-      this.ended = true;
+      response.ended = true;
     },
   };
+  return response;
 }
 
 /**
