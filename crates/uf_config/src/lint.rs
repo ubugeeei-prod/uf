@@ -469,7 +469,9 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 143] = [
     // content — the prop and nested children at once — is named in the
     // message, and the rule stays `warn` for the rest.
     ("react/no-children-prop", RuleLevel::Warn),
-    // Framework routes are wired by name; `warn` while the scaffold migrates.
+    // A named component keeps one name everywhere it is imported, and the
+    // router reads `Page`, `Layout` and the rest by name as well as `default`.
+    // `warn`: it is a convention, and `default` still works.
     ("react/no-default-export-component", RuleLevel::Warn),
     // A `useMemo`/`useCallback` the official React Compiler removed when it
     // compiled the function around it. `warn`, not `error`: nothing is broken
