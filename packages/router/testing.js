@@ -681,6 +681,14 @@ export type BuiltApp = {|
   ) => Promise<Response>,
   /** Resolves once every request answered so far has settled (`after()` has run). */
   readonly settled: () => Promise<void>,
+  /**
+   * Every exception the application threw instead of answering, oldest first.
+   *
+   * A host answers one with a bare `500` and hands it to its error reporting;
+   * the `500` is what `fetch` returns, and this is the report, so a test can
+   * assert on why without the reason ever being in a response.
+   */
+  readonly errors: () => $ReadOnlyArray<mixed>,
 |};
 
 /** A loaded `handler.js`, checked field by field. */
@@ -723,14 +731,17 @@ export async function openBuild(directory: string | URL): Promise<BuiltApp> {
     routing: handler.routing as $FlowFixMe,
   });
   const pending: Set<Promise<void>> = new Set();
+  const thrown: Array<mixed> = [];
 
   async function answer(request: Request): Promise<Response> {
     const lifecycle = handler.beginRequest(request);
     let response: Response;
     try {
       response = await lifecycle.run(() => serve(request));
-    } catch {
+    } catch (error) {
       // Obligation 6 of the adapter contract: a bare 500, nothing of the error.
+      // The error goes where a host's error reporting would put it: `errors()`.
+      thrown.push(error);
       response = new Response("500 Internal Server Error\n", {
         status: 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
@@ -845,6 +856,7 @@ export async function openBuild(directory: string | URL): Promise<BuiltApp> {
         await Promise.all(Array.from(pending));
       }
     },
+    errors: () => [...thrown],
   };
 }
 

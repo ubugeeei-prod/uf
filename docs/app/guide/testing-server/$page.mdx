@@ -397,6 +397,10 @@ that is already built.
   `POST`.
 - `settled()` waits for every answered request's `after()` work. A request
   settles once its body has been read or cancelled.
+- `errors()` lists the exceptions the application threw instead of answering.
+  A host reports those and answers with a bare `500`; `fetch` returns the
+  `500`, and this is the report, so a test can assert on why a request failed
+  without the reason ever being in a response.
 
 ### Boundaries and a form before hydration
 

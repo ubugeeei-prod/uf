@@ -323,6 +323,7 @@ describe("openBuild", () => {
         "}",
         "export async function fetch(request) {",
         "  const url = new URL(request.url);",
+        '  if (url.pathname === "/throws") throw new Error("the ledger is locked");',
         '  if (request.method === "POST") return new Response(await request.text(), { status: 303, headers: { location: "/done", "x-origin": request.headers.get("origin") } });',
         '  if (url.pathname === "/notes/__uf.flight") return new Response("0:{}", { headers: { "content-type": "text/x-component" } });',
         '  if (url.pathname === "/form") return new Response(\'<form action=""><input type="hidden" name="$uf_id_0" value="abc"/></form>\', { headers: { "content-type": "text/html" } });',
@@ -369,6 +370,19 @@ describe("openBuild", () => {
       expect(answer.status).toBe(303);
       expect(answer.headers.get("x-origin")).toBe(TEST_ORIGIN);
       expect(await answer.text()).toBe("%24uf_id_0=abc&note=hi");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("answers a handler that threw with a bare 500, and keeps the exception for the test", async () => {
+    const root = fakeBuild();
+    try {
+      const app = await openBuild(root);
+      const response = await app.fetch("/throws");
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain("ledger");
+      expect(app.errors().map((error) => String(error))).toEqual(["Error: the ledger is locked"]);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
