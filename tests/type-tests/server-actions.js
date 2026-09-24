@@ -2,20 +2,23 @@
 //
 // Server actions misused, and the test that says the checker catches it.
 //
-// This file is *supposed* to fail `uf check`. Every marked line is a mistake
-// somebody can make about a `"use server"` function, and the claim being
-// proved is that each is caught before a request is ever made — because a
-// server action is the one place in an application where a wrong argument
-// crosses a network, and the answer on the other side is a `400` with nothing
-// in it.
+// Every refusal in this file is a type error `uf check` must raise, suppressed
+// where it stands. Every marked line is a mistake somebody can make about a
+// `"use server"` function, and the claim being proved is that each is caught
+// before a request is ever made — because a server action is the one place in
+// an application where a wrong argument crosses a network, and the answer on
+// the other side is a `400` with nothing in it.
 //
 // # How it is read
 //
-// A `// expect:` comment says that the line after it must be reported, and
-// that the report must contain that text. A line without one must not be
-// reported at all, so a change that makes any of these *stop* being an error
-// fails the test, and so does one that makes something else here start being
-// one. `tests/library/server-actions.test.js` runs it.
+// A `// $FlowExpectedError[code]` comment says that the line after it must be
+// reported with that code, and the words after the code say what the report is
+// about. Flow suppresses the error, so `uf check` at the repository root stays
+// clean, and a suppression that stops matching an error is reported as unused,
+// which fails the test. A line without one must not be reported at all, so a
+// change that makes any of these *stop* being an error fails the test, and so
+// does one that makes something else here start being one.
+// `tests/library/server-actions.test.js` runs it.
 //
 // # The two kinds of mistake, and why one needs the library at all
 //
@@ -82,33 +85,33 @@ type FormResultName = $Keys<FormResultActions>;
 
 // --- Calling an action wrongly, which is what a client component does ---
 
-// expect: 36 is incompatible with string
+// $FlowExpectedError[incompatible-type] 36 is incompatible with string
 export const wrongArgumentType: Promise<{ readonly id: string }> = createUser(36, 36);
 
-// expect: Cannot call createUser because function requires another argument
+// $FlowExpectedError[incompatible-type] Cannot call createUser because function requires another argument
 export const tooFewArguments: Promise<{ readonly id: string }> = createUser("ada");
 
-// expect: {readonly id: string} is incompatible with string
+// $FlowExpectedError[incompatible-type] {readonly id: string} is incompatible with string
 export const wrongResultType: Promise<string> = createUser("ada", 36);
 
 // --- An action whose signature cannot cross the wire ---
 //
 // These two are what `server-actions.js` holds a whole project against.
 
-// expect: Cannot instantiate ActionArguments
+// $FlowExpectedError[incompatible-type] Cannot instantiate ActionArguments
 export type WatchArgsFitTheWire = ActionArguments<Parameters<UnwireableActions[UnwireableName]>>;
 
-// expect: Map<string, number> is incompatible with
+// $FlowExpectedError[incompatible-type] Map<string, number> is incompatible with
 export type WatchResultsFitTheWire = ActionResult<ReturnType<UnwireableActions[UnwireableName]>>;
 
-// expect: Cannot instantiate ActionResult
+// $FlowExpectedError[incompatible-type] Cannot instantiate ActionResult
 export type SyncFitsTheWire = ActionResult<ReturnType<SynchronousActions[SynchronousName]>>;
 
 // A form crosses one way. `saveNote` below is accepted because a `FormData` is
 // something a call passes; this is refused because it is not something a
 // server answers with, and the two bounds are different types for that reason.
 
-// expect: FormData is incompatible with
+// $FlowExpectedError[incompatible-type] FormData is incompatible with
 export type FormResultFitsTheWire = ActionResult<ReturnType<FormResultActions[FormResultName]>>;
 
 // --- And what must stay usable ---
@@ -121,12 +124,13 @@ export const formCall: Promise<string> = saveNote(null, new FormData());
 export type ArgsFitTheWire = ActionArguments<Parameters<Actions[Name]>>;
 
 // A second form is refused by the wire and not by the bound, so this line is
-// accepted today and should not be. It is here without an `expect:` because
-// that is the truth about the checker right now, and because a line that
-// changes behaviour is the cheapest way to tell whoever fixes
+// accepted today and should not be. It is here without a `$FlowExpectedError`
+// because that is the truth about the checker right now, and because a line
+// that changes behaviour is the cheapest way to tell whoever fixes
 // ubugeeei-prod/uf#300 that this was waiting on them: adding the tuple-level
 // constraint makes this start being reported, which fails this test and brings
-// them here. Move it up to the refusals above with an `expect:` when it does.
+// them here. Move it up to the refusals above with a `$FlowExpectedError` when
+// it does.
 //
 // `ActionArguments`' doc says why the constraint cannot be written yet — the
 // recursion #300 breaks does not fail, it answers `true` for every tuple. What

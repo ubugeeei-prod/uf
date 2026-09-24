@@ -871,7 +871,12 @@ fn suppressed(
     let root = Path::new(VIRTUAL_ROOT);
     let unsuppressable = BTreeSet::new();
 
-    let mut unused = ErrorSuppressions::empty();
+    // Every suppression starts out unused, and each one an error or a warning
+    // matches is taken out; what is left at the end silences nothing. That is
+    // OCaml `check_content`'s `~unused:suppressions`. Passing an empty set
+    // here, as this function used to, made every `$FlowFixMe` look used and
+    // left a stale one indistinguishable from a working one.
+    let mut unused = suppressions.clone();
     let (errors, _) = suppressions.filter_suppressed_errors(
         root,
         None,
@@ -883,9 +888,7 @@ fn suppressed(
         &errors,
         &mut unused,
     );
-
-    let mut unused = ErrorSuppressions::empty();
-    let (warnings, _) = suppressions.filter_suppressed_errors(
+    let (mut warnings, _) = suppressions.filter_suppressed_errors(
         root,
         None,
         false,
@@ -896,8 +899,43 @@ fn suppressed(
         &warnings,
         &mut unused,
     );
+    unused_suppression_warnings(parsed, &unused, &mut warnings);
 
     (errors, warnings)
+}
+
+/// Add Flow's "Unused suppression comment." warning for every suppression in
+/// `unused` that belongs to the file being checked.
+///
+/// A warning, as in Flow, so a stale `$FlowFixMe` does not fail a build that a
+/// project's upgrade of uf made more precise. What it buys is visibility: a
+/// `$FlowExpectedError` in a negative type test that stops matching an error
+/// is exactly the regression that test exists to catch, and
+/// `tests/library/type-tests.js` treats this warning in a fixture as a failure.
+///
+/// Only this file's suppressions: a dependency's are its own check's business,
+/// which is Flow's rule too (`add_suppression_warnings` skips dependencies).
+fn unused_suppression_warnings(
+    parsed: &parse::Parsed,
+    unused: &ErrorSuppressions,
+    warnings: &mut ConcreteLocPrintableErrorSet,
+) {
+    let mut found = ErrorSet::empty();
+    for loc in unused.all_unused_locs() {
+        if loc.source.as_ref() != Some(&parsed.file_key) {
+            continue;
+        }
+        found.add(flow_error::error_of_msg(
+            parsed.file_key.dupe(),
+            ErrorMessage::EUnusedSuppression(ALoc::of_loc(loc)),
+        ));
+    }
+    if found.is_empty() {
+        return;
+    }
+    for warning in printable(parsed, found).iter() {
+        warnings.add(warning.clone());
+    }
 }
 
 #[cfg(test)]

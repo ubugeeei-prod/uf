@@ -493,3 +493,49 @@ fn a_report_separates_the_builtin_cost_from_the_check_cost() {
     assert!(report.builtins.cold_elapsed > Duration::ZERO);
     assert!(report.files_per_second().is_some());
 }
+
+/// A suppression comment that matches no error is reported, as Flow reports it:
+/// a warning with no error code, on the comment itself. One that matches is
+/// silent. Before this, `uf check` said nothing about either, so a
+/// `$FlowExpectedError` in a negative type test that stopped matching looked
+/// exactly like one that still worked. ubugeeei-prod/uf#1451.
+#[test]
+fn a_suppression_that_suppresses_nothing_is_a_warning_on_the_comment() {
+    let diagnostics = check(
+        "suppressions.js",
+        "// @flow\n\
+         // $FlowExpectedError[incompatible-type]\n\
+         export const used: number = \"x\";\n\
+         // $FlowFixMe[incompatible-type]\n\
+         export const unused: number = 1;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+    let warning = &diagnostics[0];
+    assert_eq!(warning.severity, Severity::Warning);
+    assert_eq!(warning.code, None);
+    assert_eq!(warning.primary.path, "suppressions.js");
+    assert_eq!(warning.primary.start.line, 4);
+}
+
+/// A suppression naming a different code than the error on its line does not
+/// suppress it, so both are reported: the error, and the comment as unused.
+/// This is what an error code renamed upstream looks like in a project.
+#[test]
+fn a_suppression_for_the_wrong_code_leaves_the_error_and_is_itself_unused() {
+    let diagnostics = check(
+        "renamed.js",
+        "// @flow\n// $FlowFixMe[incompatible-call]\nexport const value: number = \"x\";\n",
+    );
+
+    let mut found: Vec<(Severity, u32)> = diagnostics
+        .iter()
+        .map(|diagnostic| (diagnostic.severity, diagnostic.primary.start.line))
+        .collect();
+    found.sort_by_key(|(_, line)| *line);
+    assert_eq!(
+        found,
+        [(Severity::Warning, 2), (Severity::Error, 3)],
+        "{diagnostics:#?}"
+    );
+}

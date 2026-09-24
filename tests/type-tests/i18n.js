@@ -3,14 +3,15 @@
 // The five misuses `@uniflowed/i18n` exists to refuse, and the calls it must
 // keep accepting.
 //
-// This file is *supposed* to fail `uf check`. The whole design of the package
-// rests on Flow catching five things at a `t` call — a missing argument, an
-// argument of the wrong type, a misspelt key, an extra argument, and an
-// argument handed to a message that takes none — and a claim like that is not
-// provable by running anything: no assertion about behaviour can say that a
-// *different* program would have been rejected. All five were checked by hand
-// against a scratch file while #567 was written, and a scratch file survives no
-// refactor. That is ubugeeei-prod/uf#568.
+// Every refusal in this file is a type error `uf check` must raise, suppressed
+// where it stands. The whole design of the package rests on Flow catching five
+// things at a `t` call — a missing argument, an argument of the wrong type, a
+// misspelt key, an extra argument, and an argument handed to a message that
+// takes none — and a claim like that is not provable by running anything: no
+// assertion about behaviour can say that a *different* program would have been
+// rejected. All five were checked by hand against a scratch file while #567 was
+// written, and a scratch file survives no refactor. That is
+// ubugeeei-prod/uf#568.
 //
 // The other half matters as much and is the half a scratch file never has: the
 // calls at the bottom that must keep compiling. A `t` that refused everything
@@ -18,10 +19,13 @@
 //
 // # How it is read
 //
-// A `// expect:` comment says that the line after it must be reported, and that
-// the report must contain that text. A line without one must not be reported at
-// all. `packages/i18n/i18n.test.js` runs `uf check` and compares the two, via
-// the shared harness in `tests/library/type-tests.js`.
+// A `// $FlowExpectedError[code]` comment says that the line after it must be
+// reported with that code, and the words after the code say what the report is
+// about. Flow suppresses the error, so `uf check` at the repository root stays
+// clean, and a suppression that stops matching an error is reported as unused,
+// which fails the test. A line without one must not be reported at all.
+// `packages/i18n/i18n.test.js` runs `uf check` and compares the two, via the
+// shared harness in `tests/library/type-tests.js`.
 //
 // # Why it is checked with the package rather than on its own
 //
@@ -64,27 +68,27 @@ const en: Catalogue<typeof messages> = defineCatalogue("en-US", messages);
 // is the ordinary shape of "a placeholder was added to the English and the call
 // sites were not visited".
 
-// expect: property name is missing in object literal but exists in ParamArgs
+// $FlowExpectedError[incompatible-type] property name is missing in object literal but exists in ParamArgs
 export const missingArgument: string = en.t("greeting", {});
 
 // An argument of the wrong type. `count` is declared `number` beside a message
 // that annotates it `:number`, and a string here would format as the literal
 // text rather than through `Intl.NumberFormat`.
 
-// expect: in property count: "12" is incompatible with number
+// $FlowExpectedError[incompatible-type] in property count: "12" is incompatible with number
 export const wronglyTypedArgument: string = en.t("unread", { count: "12" });
 
 // A misspelt key. Every i18n library catches this one; it is here because the
 // generic `t` has to keep catching it while it also checks the arguments.
 
-// expect: property unreadd (did you mean unread?) is missing
+// $FlowExpectedError[prop-missing] property unreadd (did you mean unread?) is missing
 export const misspeltKey: string = en.t("unreadd", { count: 1 });
 
 // An extra argument. Not a typo of nothing — it is a `{$count}` that a
 // translator removed, or a parameter renamed in the message and not at the
 // call, and a caller computing a value that reaches no output should hear so.
 
-// expect: property count is extra in object literal but missing in ParamArgs
+// $FlowExpectedError[incompatible-type] property count is extra in object literal but missing in ParamArgs
 export const extraArgument: string = en.t("greeting", { name: "Ada", count: 1 });
 
 // An argument to a message that takes none. `cartEmpty` is declared with `{}`,
@@ -92,7 +96,7 @@ export const extraArgument: string = en.t("greeting", { name: "Ada", count: 1 })
 // module header of `catalogue.js` for why the empty object is not an oversight
 // — and this is the misuse that spelling has to be able to refuse.
 
-// expect: property name is extra in object literal but missing in ParamArgs
+// $FlowExpectedError[incompatible-type] property name is extra in object literal but missing in ParamArgs
 export const argumentToAMessageWithNone: string = en.t("cartEmpty", { name: "Ada" });
 
 // --- and the calls that must keep compiling ---------------------------------

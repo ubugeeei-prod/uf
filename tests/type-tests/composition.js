@@ -3,8 +3,9 @@
 // The wrong child, in every place this package refuses one, and the right one
 // beside it.
 //
-// This file is *supposed* to fail `uf check`. `packages/ui/index.js` makes one
-// claim no other component library can make:
+// Every refusal in this file is a type error `uf check` must raise, suppressed
+// where it stands. `packages/ui/index.js` makes one claim no other component
+// library can make:
 //
 //   > `Tabs.List` declares `renders* Tabs.Tab`, so a `<button>` in a tab list
 //   > is a *type error* — not a review comment, not a runtime warning, not a
@@ -22,14 +23,17 @@
 //
 // # How it is read
 //
-// A `// expect:` comment says that the line after it must be reported, and that
-// the report must contain that text. A line without one must not be reported at
-// all — which is the half that matters most here, because one of these can
-// break in two directions. A `renders*` that stops rejecting a `<div>` fails
-// this file; so does one that starts rejecting the parts it exists to admit,
-// which is the failure that reaches a consumer as "this library does not
-// compile" rather than as a guarantee quietly gone. Both are written out for
-// every constraint the package makes.
+// A `// $FlowExpectedError[code]` comment says that the line after it must be
+// reported with that code, and the words after the code say what the report is
+// about. Flow suppresses the error, so `uf check` at the repository root stays
+// clean, and a suppression that stops matching an error is reported as unused,
+// which fails the test. A line without one must not be reported at all — which
+// is the half that matters most here, because one of these can break in two
+// directions. A `renders*` that stops rejecting a `<div>` fails this file; so
+// does one that starts rejecting the parts it exists to admit, which is the
+// failure that reaches a consumer as "this library does not compile" rather
+// than as a guarantee quietly gone. Both are written out for every constraint
+// the package makes.
 //
 // The wrong children sit inside `{ … }` rather than being written as ordinary
 // children, and that is not a style choice: a `//` comment between two JSX tags
@@ -89,7 +93,7 @@ export const tabs: mixed = (
 export const buttonInATabList: mixed = (
   <Tabs.List>
     {
-      // expect: does not render TabsTab
+      // $FlowExpectedError[incompatible-type] does not render TabsTab
       <button type="button">General</button>
     }
   </Tabs.List>
@@ -118,7 +122,7 @@ export const menu: mixed = (
 export const divInAMenu: mixed = (
   <Menu.Body>
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>Open</div>
     }
   </Menu.Body>
@@ -130,7 +134,7 @@ export const divInAMenu: mixed = (
 export const optionInAMenu: mixed = (
   <Menu.Body>
     {
-      // expect: Either SelectOption element does not render MenuCheckboxItem
+      // $FlowExpectedError[incompatible-type] Either SelectOption element does not render MenuCheckboxItem
       <Select.Option value="GB">United Kingdom</Select.Option>
     }
   </Menu.Body>
@@ -155,7 +159,7 @@ export const combobox: mixed = (
 export const divInACombobox: mixed = (
   <Combobox.List>
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>United Kingdom</div>
     }
   </Combobox.List>
@@ -164,7 +168,7 @@ export const divInACombobox: mixed = (
 export const divInAComboboxGroup: mixed = (
   <Combobox.Group>
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>Europe</div>
     }
   </Combobox.Group>
@@ -185,7 +189,7 @@ export const select: mixed = (
 export const divInASelect: mixed = (
   <Select.List>
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>France</div>
     }
   </Select.List>
@@ -208,7 +212,7 @@ export const selectGroup: mixed = (
 export const divInASelectGroup: mixed = (
   <Select.Group>
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>Europe</div>
     }
   </Select.Group>
@@ -225,7 +229,7 @@ export const divInASelectGroup: mixed = (
 export const separatorInASelectGroup: mixed = (
   <Select.Group>
     {
-      // expect: Either SelectSeparator element does not render SelectGroupLabel
+      // $FlowExpectedError[incompatible-type] Either SelectSeparator element does not render SelectGroupLabel
       <Select.Separator />
     }
   </Select.Group>
@@ -248,7 +252,7 @@ export const toast: mixed = (
 export const divFromAToastRegion: mixed = (
   <Toast.Region>
     {
-      // expect: in property children > the return value
+      // $FlowExpectedError[incompatible-type] in property children > the return value
       () => <div />
     }
   </Toast.Region>
@@ -266,7 +270,7 @@ export const pagination: mixed = (
 export const divInAPagination: mixed = (
   <Pagination.Content>
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>1</div>
     }
   </Pagination.Content>
@@ -293,7 +297,7 @@ export const breadcrumb: mixed = (
 export const divInABreadcrumb: mixed = (
   <Breadcrumb.List>
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>Home</div>
     }
   </Breadcrumb.List>
@@ -310,7 +314,7 @@ export const toggleGroup: mixed = (
 export const buttonInAToggleGroup: mixed = (
   <ToggleGroup.Root>
     {
-      // expect: does not render ToggleGroupItem
+      // $FlowExpectedError[incompatible-type] does not render ToggleGroupItem
       <button type="button">Bold</button>
     }
   </ToggleGroup.Root>
@@ -319,10 +323,10 @@ export const buttonInAToggleGroup: mixed = (
 // --- NavigationMenu ----------------------------------------------------------
 //
 // Three constraints in one component, which is why all three are written out:
-// the root holds lists, a list holds entries, and the group an entry opens holds
-// links. The third is the one with a behaviour behind it — a `<button>` in
-// there is a control that does not go anywhere, in a group whose whole purpose
-// is that `Tab` reaches somewhere.
+// the root holds lists, a list holds entries, and the group an entry opens
+// holds links. The third is the one with a behaviour behind it — a `<button>`
+// in there is a control that does not go anywhere, in a group whose whole
+// purpose is that `Tab` reaches somewhere.
 
 export const navigationMenu: mixed = (
   <NavigationMenu.Root>
@@ -339,7 +343,7 @@ export const navigationMenu: mixed = (
 export const itemInANavigationMenuRoot: mixed = (
   <NavigationMenu.Root>
     {
-      // expect: does not render NavigationMenuList
+      // $FlowExpectedError[incompatible-type] does not render NavigationMenuList
       <NavigationMenu.Item value="products">Products</NavigationMenu.Item>
     }
   </NavigationMenu.Root>
@@ -348,7 +352,7 @@ export const itemInANavigationMenuRoot: mixed = (
 export const divInANavigationMenuList: mixed = (
   <NavigationMenu.List>
     {
-      // expect: does not render NavigationMenuItem
+      // $FlowExpectedError[incompatible-type] does not render NavigationMenuItem
       <div>Products</div>
     }
   </NavigationMenu.List>
@@ -357,7 +361,7 @@ export const divInANavigationMenuList: mixed = (
 export const buttonInANavigationMenuBody: mixed = (
   <NavigationMenu.Body>
     {
-      // expect: does not render NavigationMenuLink
+      // $FlowExpectedError[incompatible-type] does not render NavigationMenuLink
       <button type="button">Pricing</button>
     }
   </NavigationMenu.Body>
@@ -383,7 +387,7 @@ export const accordion: mixed = (
 export const headerInAnAccordionRoot: mixed = (
   <Accordion.Root>
     {
-      // expect: does not render AccordionItem
+      // $FlowExpectedError[incompatible-type] does not render AccordionItem
       <Accordion.Header>
         <Accordion.Trigger>Shipping</Accordion.Trigger>
       </Accordion.Header>
@@ -394,7 +398,7 @@ export const headerInAnAccordionRoot: mixed = (
 export const divInAnAccordionItem: mixed = (
   <Accordion.Item value="shipping">
     {
-      // expect: does not render union type
+      // $FlowExpectedError[incompatible-type] does not render union type
       <div>Shipping</div>
     }
   </Accordion.Item>
@@ -403,7 +407,7 @@ export const divInAnAccordionItem: mixed = (
 export const divInAnAccordionHeader: mixed = (
   <Accordion.Header>
     {
-      // expect: does not render AccordionTrigger
+      // $FlowExpectedError[incompatible-type] does not render AccordionTrigger
       <div>Shipping</div>
     }
   </Accordion.Header>

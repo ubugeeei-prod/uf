@@ -7,10 +7,10 @@
 // `@uniflowed/react-testing` published `fireEvent` as `any`, so
 // `fireEvent.clcik(button)` was a call that dispatched a `clcik` event, which
 // no component listens for, in a test that then asserted nothing had happened
-// and passed. Read the same way as every fixture here: this file is *supposed*
-// to fail `uf check`, a `// expect:` comment says the line after it must be
-// reported and what the report must contain, and a line without one must not be
-// reported at all.
+// and passed. Read the same way as every fixture here: each misuse carries a
+// `// $FlowExpectedError[code]` naming the error it must raise, a suppression
+// that stops matching is reported as unused and fails the test, and a line
+// without one must not be reported at all.
 //
 // The last two entries are the cost of the table rather than a bug in it. The
 // proxy answered to any name in any casing; a written-out list answers to a
@@ -24,21 +24,21 @@ import { fireEvent } from "../../packages/react-testing/index.js";
 const button: HTMLElement = document.createElement("button");
 
 // A misspelt event name. The whole reason the table exists.
-// expect: clcik
+// $FlowExpectedError[prop-missing] clcik
 export const misspelt: boolean = fireEvent.clcik(button);
 
 // A name nobody listed. The proxy dispatched it; the table says so.
-// expect: pointerDoubleTap
+// $FlowExpectedError[prop-missing] pointerDoubleTap
 export const unlisted: boolean = fireEvent.pointerDoubleTap(button);
 
 // The DOM's own lower-case spelling. The proxy took it because it lower-cased
 // whatever it was handed, and the table publishes the camel case React and
 // Testing Library publish.
-// expect: keydown
+// $FlowExpectedError[prop-missing] keydown
 export const lowerCased: boolean = fireEvent.keydown(button);
 
 // A target is an `EventTarget`, and a string is not one.
-// expect: EventTarget
+// $FlowExpectedError[incompatible-type] EventTarget
 export const notATarget: boolean = fireEvent.click("#save");
 
 // Everything below is correct, and has to stay unreported.

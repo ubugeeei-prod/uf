@@ -2,19 +2,23 @@
 //
 // Misuses that have to be type errors, and the test that says they are.
 //
-// This file is *supposed* to fail `uf check`. Every line below is a mistake a
-// consumer can make about where an overlay opens, and the whole claim
-// `internal/anchor.js` makes about its types is that the checker catches each
-// one at the call rather than opening the overlay somewhere else at run time. A
-// claim like that is not provable by rendering anything, so it is proved the
-// only way it can be: by running the checker and reading what it said.
+// Every refusal in this file is a type error `uf check` must raise, suppressed
+// where it stands. Every line below is a mistake a consumer can make about
+// where an overlay opens, and the whole claim `internal/anchor.js` makes about
+// its types is that the checker catches each one at the call rather than
+// opening the overlay somewhere else at run time. A claim like that is not
+// provable by rendering anything, so it is proved the only way it can be: by
+// running the checker and reading what it said.
 //
 // # How it is read
 //
-// A `// expect:` comment says that the line after it must be reported, and that
-// the report must contain that text. A line without one must not be reported at
-// all — so a change that makes any of these *stop* being an error fails the
-// test, and so does one that makes something else here start being one.
+// A `// $FlowExpectedError[code]` comment says that the line after it must be
+// reported with that code, and the words after the code say what the report is
+// about. Flow suppresses the error, so `uf check` at the repository root stays
+// clean, and a suppression that stops matching an error is reported as unused,
+// which fails the test. A line without one must not be reported at all — so a
+// change that makes any of these *stop* being an error fails the test, and so
+// does one that makes something else here start being one.
 //
 // # Why it is checked with the package rather than on its own
 //
@@ -36,39 +40,39 @@ import type { Align, LogicalSide, Side } from "../../packages/ui/internal/anchor
 import { Popover, Tooltip } from "../../packages/ui/index.js";
 
 // A side is one of four names, and a typo is not a fifth.
-// expect: incompatible with Side
+// $FlowExpectedError[incompatible-type] incompatible with Side
 export const misspelledSide: Side = "bottmo";
 
 // An alignment is one of three.
-// expect: incompatible with Align
+// $FlowExpectedError[incompatible-type] incompatible with Align
 export const misspelledAlign: Align = "middle";
 
 // And the two are not each other's: `start` aligns, it does not face.
-// expect: incompatible with Side
+// $FlowExpectedError[incompatible-type] incompatible with Side
 export const alignmentIsNotASide: Side = "start";
 
-// expect: incompatible with Align
+// $FlowExpectedError[incompatible-type] incompatible with Align
 export const sideIsNotAnAlignment: Align = "bottom";
 
 // `Side` stays physical, which is the whole reason `LogicalSide` is a second
 // name: a design that puts a popover to the right of a toolbar means the right
 // of it in Arabic too, and only a submenu wants the side that follows the
 // reading direction.
-// expect: incompatible with Side
+// $FlowExpectedError[incompatible-type] incompatible with Side
 export const logicalIsNotPhysical: Side = "inline-end";
 
 // The parts refuse the same strings, which is where a consumer meets them.
-// expect: Cannot create Popover.Body element
+// $FlowExpectedError[incompatible-type] Cannot create Popover.Body element
 export const popover: mixed = <Popover.Body side="bottmo">Filters</Popover.Body>;
 
-// expect: Cannot create Tooltip.Body element
+// $FlowExpectedError[incompatible-type] Cannot create Tooltip.Body element
 export const tooltip: mixed = <Tooltip.Body align="middle">Bold</Tooltip.Body>;
 
-// expect: Cannot create Tooltip.Body element
+// $FlowExpectedError[incompatible-type] Cannot create Tooltip.Body element
 export const offset: mixed = <Tooltip.Body sideOffset="8">Bold</Tooltip.Body>;
 
 // A logical side is one of two names, and a typo is not a third.
-// expect: Cannot create Popover.Body element
+// $FlowExpectedError[incompatible-type] Cannot create Popover.Body element
 export const logicalTypo: mixed = <Popover.Body side="inline-ende">Filters</Popover.Body>;
 
 // What is *not* an error: the four sides and the three alignments themselves.

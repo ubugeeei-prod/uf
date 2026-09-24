@@ -463,10 +463,7 @@ type Revocable = {| readonly proxy: mixed, readonly revoke: () => void |};
  * language does.
  */
 function makeRevocable(target: mixed, traps: mixed): Revocable {
-  // $FlowFixMe[incompatible-call]
   // $FlowFixMe[incompatible-type]
-  // $FlowFixMe[prop-missing]
-  // $FlowFixMe[incompatible-return]
   return Proxy.revocable(target, traps);
 }
 

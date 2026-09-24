@@ -56,7 +56,6 @@ export function isAutoFreeze(): boolean {
  * that publishes a result should stop at one rather than inspect it.
  */
 export function isFrozen(value: mixed): boolean {
-  // $FlowFixMe[incompatible-call]
   // $FlowFixMe[incompatible-type]
   return Object.isFrozen(value);
 }
@@ -90,7 +89,6 @@ export function freeze<T>(value: T, deep?: boolean): T {
     // Shadowing the prototype's mutators is the only way to close a
     // collection, and it is done once, here.
     // $FlowFixMe[class-object-subtyping]
-    // $FlowFixMe[incompatible-type]
     const collection = value as { [string]: mixed, ... };
     collection.set = refuseCollectionWrite;
     collection.add = refuseCollectionWrite;
