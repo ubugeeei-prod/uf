@@ -18,12 +18,12 @@ import {
 } from "@uniflowed/server/host";
 
 /** A request with the given headers. */
-function request(init: { readonly [string]: string }): Request {
+function request(init: { [string]: string }): Request {
   return new Request("https://uniflowed.dev/", { headers: init });
 }
 
 /** Run `body` as if handling a request carrying `init`. */
-function handling<T>(init: { readonly [string]: string }, body: () => T): T {
+function handling<T>(init: { [string]: string }, body: () => T): T {
   return runWithContext(contextFor(request(init)), body);
 }
 
@@ -107,7 +107,7 @@ describe("parsing a cookie header", () => {
     const out = parseCookies("__proto__=polluted");
 
     expect(Object.getPrototypeOf(out)).toBe(null);
-    expect(({} as mixed).polluted).toBe(undefined);
+    expect("polluted" in {}).toBe(false);
   });
 
   it("ignores entries with no value and an empty header", () => {

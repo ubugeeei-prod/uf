@@ -38,20 +38,6 @@ import { send } from "@uniflowed/server/node";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
-/**
- * The half of a `ReadableStream` controller these fixtures use.
- *
- * `ReadableStream`'s own controller type is not among the libdefs uf ships,
- * and the fixture below used to reach for `(controller: any)` — two casts,
- * which `flow/unclear-type` rejects. Naming the two methods the fixture
- * actually calls says more than `any` did and costs one line.
- */
-type StreamController = {
-  readonly enqueue: (chunk: Uint8Array) => mixed,
-  readonly close: () => mixed,
-  ...
-};
-
 /** A server bundle, as `loadBuild` would have imported one. */
 function entryWith(options: {
   guard?: (request: Request) => Promise<Response | null> | Response | null,
@@ -107,7 +93,7 @@ function bodyOf(html: string) {
     text: async () => html,
     stream: () =>
       new ReadableStream({
-        start(controller: StreamController) {
+        start(controller: ReadableStreamDefaultController<Uint8Array>) {
           controller.enqueue(new TextEncoder().encode(html));
           controller.close();
         },
@@ -118,7 +104,8 @@ function bodyOf(html: string) {
   };
 }
 
-const request = (url: string, init?: mixed) => new Request(`http://localhost${url}`, init);
+const request = (url: string, init?: RequestOptions): Request =>
+  new Request(`http://localhost${url}`, init);
 
 /** A directory holding `files`, removed when the process exits. */
 function directoryWith(files: { [string]: string }): string {
@@ -357,7 +344,7 @@ describe("the static handler", () => {
       "assets/client.js": "export {};",
     });
     const serveStatic = createStaticHandler({ root });
-    const drafting = { headers: { cookie: "__Host-uf.draft=1.whatever" } };
+    const drafting: RequestOptions = { headers: { cookie: "__Host-uf.draft=1.whatever" } };
 
     expect(await serveStatic(request("/guide", drafting))).toBe(null);
     expect(await serveStatic(request("/guide/", drafting))).toBe(null);
@@ -436,32 +423,36 @@ describe("writing a `Response` to a Node response", () => {
    */
   function outgoing(options?: {| readonly full?: boolean |}) {
     const listeners: Map<string, Array<() => mixed>> = new Map();
-    return {
+    // Named rather than reached through `this`, which Flow will not type in an
+    // object literal's methods: they can be called unbound.
+    const response = {
       statusCode: 0,
       statusMessage: "",
+      headersSent: false,
       written: [] as Array<string>,
       ended: false,
       setHeader() {},
-      write(chunk: Uint8Array): boolean {
-        this.written.push(new TextDecoder().decode(chunk));
+      write(chunk: Uint8Array | string): boolean {
+        response.written.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
         return options?.full !== true;
       },
       end() {
-        this.ended = true;
+        response.ended = true;
       },
-      on(event: string, listener: () => mixed) {
+      destroy() {},
+      on(event: string, listener: () => mixed): mixed {
         listeners.set(event, [...(listeners.get(event) ?? []), listener]);
-        return this;
+        return response;
       },
-      once(event: string, listener: () => mixed) {
-        return this.on(event, listener);
+      once(event: string, listener: () => mixed): mixed {
+        return response.on(event, listener);
       },
-      off(event: string, listener: () => mixed) {
+      off(event: string, listener: () => mixed): mixed {
         listeners.set(
           event,
           (listeners.get(event) ?? []).filter((each) => each !== listener),
         );
-        return this;
+        return response;
       },
       emit(event: string) {
         for (const listener of [...(listeners.get(event) ?? [])]) {
@@ -472,6 +463,7 @@ describe("writing a `Response` to a Node response", () => {
         return (listeners.get(event) ?? []).length;
       },
     };
+    return response;
   }
 
   /**
@@ -637,7 +629,7 @@ describe("writing a `Response` to a Node response", () => {
 // rendered. There is nothing there for a draft request to be given instead.
 describe("a draft request, at every front door", () => {
   const PUBLISHED = "<!doctype html><p>published</p>";
-  const drafting = { headers: { cookie: "__Host-uf.draft=1.whatever" } };
+  const drafting: RequestOptions = { headers: { cookie: "__Host-uf.draft=1.whatever" } };
 
   /**
    * A build: one prerendered page, one chunk, and an application that renders
@@ -694,7 +686,7 @@ describe("a draft request, at every front door", () => {
   }
 
   /** The three doors, each composed the way its command composes it. */
-  function doors() {
+  function doors(): { readonly [door: string]: (request: Request) => Promise<Response> } {
     const { distDir, entry } = built();
 
     // `uf start`: uf owns the socket, so its own static handler is first and
@@ -739,7 +731,9 @@ describe("a draft request, at every front door", () => {
   }
 
   it("is rendered rather than answered from the prerendered document", async () => {
-    for (const [door, handle] of Object.entries(doors())) {
+    const every = doors();
+    for (const door of Object.keys(every)) {
+      const handle = every[door];
       const response = await handle(request("/guide/", drafting));
       const body = await response.text();
       expect(`${door}: ${String(response.status)}`).toBe(`${door}: 200`);
@@ -750,7 +744,9 @@ describe("a draft request, at every front door", () => {
   it("still gets its stylesheets and chunks off disk", async () => {
     // Only documents. A chunk is the same bytes in draft mode as out of it,
     // and skipping it would leave the page unstyled and unhydrated for no gain.
-    for (const [door, handle] of Object.entries(doors())) {
+    const every = doors();
+    for (const door of Object.keys(every)) {
+      const handle = every[door];
       const response = await handle(request("/assets/client.js", drafting));
       expect(`${door}: ${await response.text()}`).toBe(`${door}: export {};`);
     }
@@ -759,7 +755,9 @@ describe("a draft request, at every front door", () => {
   it("and the same request without the cookie is answered off disk", async () => {
     // Which is what makes the two above about draft mode rather than about
     // documents: take the cookie away and every door serves the file again.
-    for (const [door, handle] of Object.entries(doors())) {
+    const every = doors();
+    for (const door of Object.keys(every)) {
+      const handle = every[door];
       const response = await handle(request("/guide/"));
       expect(`${door}: ${await response.text()}`).toBe(`${door}: ${PUBLISHED}`);
     }

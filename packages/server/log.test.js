@@ -48,11 +48,12 @@ import {
   silentLogger,
 } from "@uniflowed/server/log";
 import { nodeListener, reportMalformedRequests } from "@uniflowed/server/node";
+import type { Logger } from "@uniflowed/server";
 import { createServer } from "node:http";
 import { Duplex } from "node:stream";
 
 /** Run `body` as if handling a request for `url` carrying `init`. */
-function handling<T>(url: string, body: () => T, init?: { readonly [string]: string }): T {
+function handling<T>(url: string, body: () => T, init?: { [string]: string }): T {
   return runWithContext(
     contextFor(new Request(`https://uniflowed.dev${url}`, { headers: init })),
     body,
@@ -62,7 +63,12 @@ function handling<T>(url: string, body: () => T, init?: { readonly [string]: str
 describe("levels", () => {
   it("writes nothing below the threshold it was built with", () => {
     const records = [];
-    const log = createLogger({ level: "warn", sink: (record) => records.push(record) });
+    const log = createLogger({
+      level: "warn",
+      sink: (record) => {
+        records.push(record);
+      },
+    });
 
     log.debug("a");
     log.info("b");
@@ -479,7 +485,7 @@ describe("the line a finished request leaves behind", () => {
   });
 
   /** A host that begins a request and answers it with `answer`. */
-  const listening = (log, answer) =>
+  const listening = (log: Logger, answer: (request: Request) => Promise<Response>) =>
     nodeListener(answer, {
       beginRequest: (request) => {
         const context = contextFor(request);
@@ -602,7 +608,10 @@ describe("a request the parser refused", () => {
         callback();
       },
     });
-    // $FlowFixMe[prop-missing] - a `node:http` server, structurally.
+    // A `node:http` server, structurally: `createServer` reaches Flow untyped,
+    // so `emit` is a property of an unknown. The code read `prop-missing`
+    // before Flow renamed it.
+    // $FlowFixMe[incompatible-use]
     server.emit("connection", connection);
     connection.push(bytes);
     // One turn of the loop is all the parser needs; it rejects on the first

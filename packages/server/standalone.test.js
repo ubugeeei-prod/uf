@@ -33,6 +33,21 @@ import { describe, expect, it } from "@uniflowed/testing";
 import { uft } from "@uniflowed/test";
 import { beginRequest } from "@uniflowed/server/host";
 import { createHandler } from "@uniflowed/server/standalone";
+import type { StandaloneApp } from "@uniflowed/server/standalone";
+
+/** What a document is piped into: the two methods React's `pipe` calls. */
+type Destination = {
+  readonly write: (chunk: Uint8Array | string) => mixed,
+  readonly end: () => mixed,
+  ...
+};
+
+/** What a fake render resolves to: a shell that is ready, and a body. */
+type Rendered = {|
+  readonly status: number,
+  readonly pipe: (destination: Destination) => Promise<void>,
+  readonly stream: () => ReadableStream<Uint8Array>,
+|};
 
 /** A file as the build embeds it. */
 function embed(type: string, contents: string) {
@@ -61,26 +76,24 @@ const document = { scripts: ["/assets/app-a1b2c3.js"], styles: [], preloads: [] 
  * contract, and a fake that satisfies the real one is the only way to see the
  * shim get it wrong.
  */
-function rendered(status: number, html: string) {
-  let cancelled = false;
+function rendered(status: number, html: string): Rendered {
   return {
     status,
     // `async`, because the router's is: `DocumentBody.pipe` resolves on the
     // last byte rather than on the first, and a fake that resolved
     // synchronously would hide a caller that never waited for either.
-    pipe: async (destination) => {
+    pipe: async (destination: Destination) => {
       destination.write(Buffer.from(html, "utf8"));
       destination.end();
     },
-    stream: () => ({
-      cancel: async () => {
-        cancelled = true;
-      },
-      get cancelled() {
-        return cancelled;
-      },
-    }),
-    wasCancelled: () => cancelled,
+    // A real stream, so a `HEAD` that cancels it cancels something.
+    stream: () =>
+      new ReadableStream({
+        start(controller: ReadableStreamDefaultController<Uint8Array>) {
+          controller.enqueue(new TextEncoder().encode(html));
+          controller.close();
+        },
+      }),
   };
 }
 
@@ -89,8 +102,12 @@ function rendered(status: number, html: string) {
  * renderer produced this" from "a file was found".
  */
 function application() {
-  const asked = { rendered: [], dispatched: [], guarded: [] };
-  const app = {
+  const asked: {|
+    rendered: Array<string>,
+    dispatched: Array<string>,
+    guarded: Array<string>,
+  |} = { rendered: [], dispatched: [], guarded: [] };
+  const app: StandaloneApp = {
     // The real one, because there is nothing to fake: a compiled binary gets
     // this export from the bundle beside it, and the whole reason it comes
     // from there rather than from the shim's own import is that the request
@@ -139,9 +156,11 @@ function application() {
  * kernel buffer is full and the rest is being held in this process.
  */
 function recorder(options?: {| readonly full?: boolean |}) {
-  const chunks = [];
+  const chunks: Array<Uint8Array> = [];
   const listeners: Map<string, Array<() => mixed>> = new Map();
-  return {
+  // Named rather than reached through `this`, which Flow will not type in an
+  // object literal's methods: they can be called unbound.
+  const response = {
     statusCode: 0,
     // A real `ServerResponse` has both, and `send` in `./node.js` reads and
     // writes them.
@@ -149,21 +168,21 @@ function recorder(options?: {| readonly full?: boolean |}) {
     headersSent: false,
     headers: {} as { [string]: string },
     setHeader(name: string, value: string) {
-      this.headers[name.toLowerCase()] = value;
+      response.headers[name.toLowerCase()] = value;
     },
-    on(event: string, listener: () => mixed) {
+    on(event: string, listener: () => mixed): mixed {
       listeners.set(event, [...(listeners.get(event) ?? []), listener]);
-      return this;
+      return response;
     },
-    once(event: string, listener: () => mixed) {
-      return this.on(event, listener);
+    once(event: string, listener: () => mixed): mixed {
+      return response.on(event, listener);
     },
-    off(event: string, listener: () => mixed) {
+    off(event: string, listener: () => mixed): mixed {
       listeners.set(
         event,
         (listeners.get(event) ?? []).filter((each) => each !== listener),
       );
-      return this;
+      return response;
     },
     /** Fire an event, the way a socket would. */
     emit(event: string) {
@@ -175,11 +194,11 @@ function recorder(options?: {| readonly full?: boolean |}) {
     listening(event: string): number {
       return (listeners.get(event) ?? []).length;
     },
-    write(chunk) {
+    write(chunk: Uint8Array | string): boolean {
       chunks.push(Buffer.from(chunk));
       return options?.full !== true;
     },
-    end(chunk) {
+    end(chunk?: Uint8Array | string) {
       if (chunk != null) {
         chunks.push(Buffer.from(chunk));
       }
@@ -187,14 +206,15 @@ function recorder(options?: {| readonly full?: boolean |}) {
     // A real `ServerResponse` has one, and the handler needs it: a render that
     // fails after the shell has no status left to answer with.
     destroyed: null as mixed,
-    destroy(error) {
-      this.destroyed = error ?? true;
-      return this;
+    destroy(error?: mixed): mixed {
+      response.destroyed = error ?? true;
+      return response;
     },
     body(): string {
       return Buffer.concat(chunks).toString("utf8");
     },
   };
+  return response;
 }
 
 /** One request through a fresh handler, with what the application saw. */
@@ -202,7 +222,14 @@ async function request(method: string, url: string, headers?: { [string]: string
   const { app, asked } = application();
   const handle = createHandler({ app, assets, document });
   const response = recorder();
-  await handle({ method, url, headers: { host: "example.test", ...headers } }, response);
+  // Key by key rather than spread after `host`: Flow cannot type a spread of an
+  // indexer after a named key. A caller's `host` still wins.
+  const given: { [string]: string } = headers ?? {};
+  const sent: { [string]: string } = { host: "example.test" };
+  for (const name of Object.keys(given)) {
+    sent[name] = given[name];
+  }
+  await handle({ method, url, headers: sent }, response);
   return { response, asked };
 }
 
@@ -490,16 +517,16 @@ describe("a render that fails after the shell", () => {
    * rejection is deferred by a turn on purpose: a handler that did not await
    * would have returned before it happened, which is exactly the bug.
    */
-  function failingRender(error: Error) {
+  function failingRender(error: Error): Rendered {
     return {
       status: 200,
-      pipe: async (destination) => {
+      pipe: async (destination: Destination) => {
         destination.write(Buffer.from("<!doctype html><p>the shell", "utf8"));
         await new Promise((resolve) => setTimeout(resolve, 0));
         destination.end();
         throw error;
       },
-      stream: () => ({ cancel: async () => {} }),
+      stream: () => new ReadableStream(),
     };
   }
 

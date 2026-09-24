@@ -22,7 +22,22 @@ import {
 } from "@uniflowed/server/schedule";
 import { nodeCapabilities } from "@uniflowed/server/node";
 import { SCHEDULED_HEADER, createWorkerScheduled } from "@uniflowed/server/edge";
+import { beginRequest } from "@uniflowed/server/host";
+import type { Logger } from "@uniflowed/server";
 import { lambdaCapabilities } from "@uniflowed/server/lambda";
+
+/** A logger that writes nothing, with every member a real one has. */
+function silent(): Logger {
+  const logger: Logger = {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    child: () => logger,
+    level: "debug",
+  };
+  return logger;
+}
 
 const at = (iso: string) => Temporal.Instant.from(iso);
 
@@ -42,7 +57,7 @@ const due = (cron: string, iso: string): boolean => {
         },
       }),
     ],
-    log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+    log: silent(),
   });
   void scheduler.tick(at(iso));
   return ran;
@@ -154,7 +169,7 @@ describe("a cron expression", () => {
 });
 
 describe("the scheduler", () => {
-  const quiet = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+  const quiet = silent();
 
   it("runs a schedule once for a minute, however often it is ticked", async () => {
     let runs = 0;
@@ -308,14 +323,19 @@ describe("which targets may hold a schedule", () => {
 });
 
 describe("a host starting schedules", () => {
-  const quiet = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+  const quiet = silent();
 
   // The bargain `serve` makes: a deployment that declares none pays for none.
   // Asserted because the alternative — an interval armed for an empty list —
   // is invisible until something asks why a process will not exit.
   it("arms nothing when there are no schedules", () => {
     const said: Array<string> = [];
-    const stop = startSchedules(undefined, { ...quiet, info: (m) => said.push(m) });
+    const stop = startSchedules(undefined, {
+      ...quiet,
+      info: (m) => {
+        said.push(m);
+      },
+    });
     expect(said).toEqual([]);
     expect(typeof stop).toBe("function");
     stop();
@@ -329,7 +349,12 @@ describe("a host starting schedules", () => {
     const said: Array<{ message: string, count: mixed }> = [];
     const stop = startSchedules(
       [defineSchedule({ name: "one", cron: "* * * * *", run: () => {} })],
-      { ...quiet, info: (message, fields) => said.push({ message, count: fields?.count }) },
+      {
+        ...quiet,
+        info: (message, fields) => {
+          said.push({ message, count: fields?.count });
+        },
+      },
     );
     expect(said).toEqual([{ message: "schedules started", count: 1 }]);
     // Stopping is the half a test needs: an interval nobody cleared keeps a
@@ -340,22 +365,33 @@ describe("a host starting schedules", () => {
 
 describe("a schedule on a worker", () => {
   // What Cloudflare hands `scheduled()`, and what uf hands it back.
-  const fired = (routes, cron, handle) => {
-    const seen = [];
-    const settled = [];
+  const fired = (
+    routes: { readonly [string]: string },
+    cron?: string,
+    handle?: (request: Request) => Response | Promise<Response>,
+  ) => {
+    const seen: Array<Request> = [];
+    const settled: Array<Promise<mixed>> = [];
     const scheduled = createWorkerScheduled({
       routes,
       handle: async (request) => {
         seen.push(request);
         return handle == null ? new Response("ok") : handle(request);
       },
-      beginRequest: () => ({
-        context: { id: "test-id", route: null },
-        run: (body) => body(),
-        settle: async () => {},
-      }),
+      // The real one: a worker is handed the application's own, and a fake
+      // lifecycle would be a second definition of what a request is.
+      beginRequest,
     });
-    return { scheduled, seen, settled, ctx: { waitUntil: (p) => settled.push(p) } };
+    return {
+      scheduled,
+      seen,
+      settled,
+      ctx: {
+        waitUntil: (p: Promise<mixed>) => {
+          settled.push(p);
+        },
+      },
+    };
   };
 
   it("dispatches the route the expression names, as a GET", async () => {

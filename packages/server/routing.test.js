@@ -15,12 +15,13 @@ import {
   wasAdmitted,
   withHeaders,
 } from "./internal/routing.js";
+import type { RoutingRules, TrailingSlash } from "./internal/routing.js";
 
-const at = (url: string, init?: mixed) => new Request(`http://uf.test${url}`, init);
+const at = (url: string, init?: RequestOptions): Request =>
+  new Request(`http://uf.test${url}`, init);
 
 /** What `admit` decided, as something an assertion can read in one line. */
-function admitted(rules: mixed, url: string, init?: mixed): string {
-  // $FlowFixMe[incompatible-call] - the fixtures below are `RoutingRules`.
+function admitted(rules: RoutingRules | void, url: string, init?: RequestOptions): string {
   const decision = admit(rules, at(url, init));
   if (decision.kind === "answer") {
     const { response } = decision;
@@ -173,12 +174,16 @@ describe("a trailing-slash policy", () => {
   });
 
   it("spells a redirect's destination so following it is not a second redirect", () => {
-    const always = { trailingSlash: "always", redirects: rules.redirects.slice(0, 1) };
+    const always: RoutingRules = {
+      trailingSlash: "always",
+      redirects: rules.redirects.slice(0, 1),
+    };
     expect(admitted(always, "/old-blog/hello/")).toBe("308 /blog/hello/");
   });
 
   it("is the spelling the router writes its links with", () => {
-    for (const policy of ["never", "always", "ignore"]) {
+    const policies: $ReadOnlyArray<TrailingSlash> = ["never", "always", "ignore"];
+    for (const policy of policies) {
       for (const underBase of [false, true]) {
         for (const path of ["/", "/guide", "/guide/", "/a/b", "/robots.txt", "/docs/"]) {
           expect(

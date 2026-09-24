@@ -47,6 +47,8 @@ import { createFilesystemCache } from "@uniflowed/server/cache/filesystem";
 import { cookies, draftMode, headers } from "@uniflowed/server";
 import { createDispatcher } from "@uniflowed/router/handler";
 import { createFetchHandler } from "@uniflowed/server/fetch";
+import type { Application } from "@uniflowed/server/fetch";
+import type { WritableLike } from "../../packages/server/internal/application.js";
 import { beginRequest } from "@uniflowed/server/host";
 
 // Not a package export, deliberately — `serve.test.js` says why. It is what
@@ -60,7 +62,8 @@ import { runInScope } from "./internal/cache-store.js";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
-const request = (url: string, init?: mixed) => new Request(`http://localhost${url}`, init);
+const request = (url: string, init?: RequestOptions): Request =>
+  new Request(`http://localhost${url}`, init);
 
 /**
  * The clock a test drives.
@@ -94,12 +97,31 @@ async function settled(): Promise<void> {
   }
 }
 
-/** The half of a `ReadableStream` controller these fixtures use. */
-type StreamController = {
-  readonly enqueue: (chunk: Uint8Array) => mixed,
-  readonly close: () => mixed,
-  ...
+/** What a fixture app does, all of it optional. */
+type AppOptions = {
+  guard?: (request: Request) => Promise<Response | null> | Response | null,
+  handler?: (request: Request) => Promise<Response | null> | Response | null,
+  render?: (url: string) => mixed,
+  tail?: () => mixed,
+  status?: number,
+  headers?: { [string]: string },
+  renders?: Array<string>,
+  /** Text sent after the document's first chunk, once this resolves: a boundary. */
+  later?: Promise<string>,
 };
+
+/**
+ * The URLs each fixture app has rendered, in order.
+ *
+ * Kept beside the app rather than on it: `Application` is an exact type, and a
+ * double with an extra field is no longer the thing a host is given.
+ */
+const rendered: WeakMap<Application, Array<string>> = new WeakMap();
+
+/** What `app` has rendered so far. */
+function rendersOf(app: Application): $ReadOnlyArray<string> {
+  return rendered.get(app) ?? [];
+}
 
 /**
  * A server bundle, as `handler.js` imports one.
@@ -110,20 +132,9 @@ type StreamController = {
  * is being read — which is where a component inside a `<Suspense>` boundary
  * renders, long after the shell resolved.
  */
-function appWith(options: {
-  guard?: (request: Request) => Promise<Response | null> | Response | null,
-  handler?: (request: Request) => Promise<Response | null> | Response | null,
-  render?: (url: string) => mixed,
-  tail?: () => mixed,
-  status?: number,
-  headers?: { [string]: string },
-  renders?: Array<string>,
-  /** Text sent after the document's first chunk, once this resolves: a boundary. */
-  later?: Promise<string>,
-}) {
+function appWith(options: AppOptions): Application {
   const renders = options.renders ?? [];
-  return {
-    renders,
+  const app: Application = {
     beginRequest,
     runMiddleware: async (request: Request) => (options.guard ? options.guard(request) : null),
     // Part of the `Application` contract since server actions landed, and it
@@ -140,17 +151,18 @@ function appWith(options: {
       return {
         status: options.status ?? 200,
         headers: options.headers,
-        pipe: (destination: { write: (chunk: string) => mixed, end: () => mixed, ... }) => {
+        pipe: (destination: WritableLike) => {
           destination.write(html);
           destination.end();
         },
         stream: () =>
           new ReadableStream({
-            async start(controller: StreamController) {
+            async start(controller: ReadableStreamDefaultController<Uint8Array>) {
               controller.enqueue(new TextEncoder().encode(html));
               if (options.tail) options.tail();
-              if (options.later != null) {
-                controller.enqueue(new TextEncoder().encode(await options.later));
+              const later = options.later;
+              if (later != null) {
+                controller.enqueue(new TextEncoder().encode(await later));
               }
               controller.close();
             },
@@ -158,6 +170,8 @@ function appWith(options: {
       };
     },
   };
+  rendered.set(app, renders);
+  return app;
 }
 
 /**
@@ -167,7 +181,12 @@ function appWith(options: {
  * begins no request — it has a `Response` in hand and not a response on the
  * wire — and a fixture that forgot would be testing a handler no host runs.
  */
-async function serve(handle, app, url: string, init?: mixed): Promise<Response> {
+async function serve(
+  handle: (request: Request) => Promise<Response>,
+  app: Application,
+  url: string,
+  init?: RequestOptions,
+): Promise<Response> {
   const asRequest = request(url, init);
   const { run, settle } = app.beginRequest(asRequest);
   try {
@@ -178,7 +197,7 @@ async function serve(handle, app, url: string, init?: mixed): Promise<Response> 
 }
 
 /** A store, a handler over it, and the app underneath, for one test. */
-function servingWith(options: mixed, cacheOptions?: {| route?: boolean, fetch?: boolean |}) {
+function servingWith(options: AppOptions, cacheOptions?: {| route?: boolean, fetch?: boolean |}) {
   const time = clock();
   const store = createCacheStore({ now: time.now });
   const app = appWith(options);
@@ -351,7 +370,7 @@ describe("an entry", () => {
 
     let raised = null;
     try {
-      await store.resolve({ key: ["flaky"] }, failing);
+      await store.resolve<mixed>({ key: ["flaky"] }, failing);
     } catch (error) {
       raised = error;
     }
@@ -579,8 +598,8 @@ describe("a request that arrives while an entry is being filled", () => {
       return "one render";
     };
 
-    const first = store.resolve({ key: ["slow"] }, produce);
-    const second = store.resolve({ key: ["slow"] }, produce);
+    const first = store.resolve<mixed>({ key: ["slow"] }, produce);
+    const second = store.resolve<mixed>({ key: ["slow"] }, produce);
     const third = store.resolve({ key: ["slow"] }, produce);
     release();
     const [a, b, c] = await Promise.all([first, second, third]);
@@ -605,8 +624,8 @@ describe("a request that arrives while an entry is being filled", () => {
       throw new Error("upstream is down");
     };
 
-    const first = store.resolve({ key: ["slow"] }, produce);
-    const second = store.resolve({ key: ["slow"] }, produce);
+    const first = store.resolve<mixed>({ key: ["slow"] }, produce);
+    const second = store.resolve<mixed>({ key: ["slow"] }, produce);
     release();
 
     const settled = await Promise.allSettled([first, second]);
@@ -682,7 +701,7 @@ describe("the route cache", () => {
     const second = await serve(handle, app, "/posts");
     expect(second.headers.get("x-uf-cache")).toBe("HIT");
     expect(await second.text()).toBe("<!doctype html><p>/posts</p><b>1</b><i>boundary</i>");
-    expect(app.renders.length).toBe(1);
+    expect(rendersOf(app).length).toBe(1);
   });
 
   it("streams a page it will not keep, and says BYPASS", async () => {
@@ -708,7 +727,7 @@ describe("the route cache", () => {
 
     expect(first.headers.get("x-uf-cache")).toBe("MISS");
     expect(second.headers.get("x-uf-cache")).toBe("HIT");
-    expect(app.renders.length).toBe(1);
+    expect(rendersOf(app).length).toBe(1);
     // The body is the *document*, byte for byte, not a re-render of it.
     expect(await second.text()).toBe(await first.text());
   });
@@ -724,7 +743,7 @@ describe("the route cache", () => {
     await serve(handle, app, "/posts?page=2");
     const again = await serve(handle, app, "/posts?page=1");
 
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
     expect(again.headers.get("x-uf-cache")).toBe("HIT");
   });
 
@@ -735,7 +754,7 @@ describe("the route cache", () => {
     await serve(handle, app, "/posts");
 
     expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("stores nothing when the render read the request", async () => {
@@ -751,7 +770,7 @@ describe("the route cache", () => {
 
     expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
     expect(second.headers.get("x-uf-cache")).toBe("BYPASS");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   for (const [read, during] of [
@@ -775,7 +794,7 @@ describe("the route cache", () => {
 
       expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
       expect(second.headers.get("x-uf-cache")).toBe("BYPASS");
-      expect(app.renders.length).toBe(2);
+      expect(rendersOf(app).length).toBe(2);
     });
   }
 
@@ -810,7 +829,7 @@ describe("the route cache", () => {
 
     expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("MISS");
     expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("HIT");
-    expect(app.renders.length).toBe(1);
+    expect(rendersOf(app).length).toBe(1);
 
     const issued = await serve(handle, app, "/api/preview");
     const set =
@@ -823,10 +842,10 @@ describe("the route cache", () => {
     // `BYPASS` would mean it went in and was refused, and the point is that it
     // did not go in.
     expect(drafted.headers.get("x-uf-cache")).toBe(null);
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
     // And the entry is still there for everybody else.
     expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("HIT");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("stores nothing when a component below the shell read the request", async () => {
@@ -846,7 +865,7 @@ describe("the route cache", () => {
     await serve(handle, app, "/feed");
 
     expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("is not stopped by a guard that read the request and let it through", async () => {
@@ -867,7 +886,7 @@ describe("the route cache", () => {
     const second = await serve(handle, app, "/posts", { headers: { cookie: "session=abc" } });
 
     expect(second.headers.get("x-uf-cache")).toBe("HIT");
-    expect(app.renders.length).toBe(1);
+    expect(rendersOf(app).length).toBe(1);
   });
 
   it("stores nothing for a render that did not answer 200", async () => {
@@ -883,7 +902,7 @@ describe("the route cache", () => {
     expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
 
     await serve(handle, app, "/nope");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("stores nothing for a render that set a cookie", async () => {
@@ -923,7 +942,7 @@ describe("the route cache", () => {
 
     const after = await serve(handle, app, "/posts");
     expect(after.headers.get("x-uf-cache")).toBe("MISS");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("is emptied for one URL by revalidatePath", async () => {
@@ -960,7 +979,7 @@ describe("the route cache", () => {
     expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("HIT");
     time.advance(1);
     expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("MISS");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("does not fill an entry for a HEAD, and does not read one either", async () => {
@@ -977,7 +996,7 @@ describe("the route cache", () => {
 
     const get = await serve(handle, app, "/posts");
     expect(get.headers.get("x-uf-cache")).toBe("MISS");
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("does nothing when the switch is off, and does not make cacheLife an error", async () => {
@@ -999,7 +1018,7 @@ describe("the route cache", () => {
     expect(first.status).toBe(200);
     expect(first.headers.get("x-uf-cache")).toBe(null);
     expect(second.headers.get("x-uf-cache")).toBe(null);
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("leaves a handler with no cache at all rendering every request", async () => {
@@ -1014,7 +1033,7 @@ describe("the route cache", () => {
     const second = await serve(handle, app, "/posts");
 
     expect(second.headers.get("x-uf-cache")).toBe(null);
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 });
 
@@ -1036,8 +1055,8 @@ describe("the fetch cache", () => {
     const client = clientWith();
     const cached = createCachedFetch({ client, name: "api", store });
 
-    await cached.request("/users");
-    await cached.request("/users");
+    await cached.request<mixed>("/users");
+    await cached.request<mixed>("/users");
 
     expect(client.calls.length).toBe(2);
     expect(store.size()).toBe(0);
@@ -1050,15 +1069,15 @@ describe("the fetch cache", () => {
     const cached = createCachedFetch({ client, name: "api", store });
     const options = { cache: { lifetime: { revalidate: 60 }, tags: ["users"] } };
 
-    const first = await cached.request("/users", options);
-    const second = await cached.request("/users", options);
+    const first = await cached.request<mixed>("/users", options);
+    const second = await cached.request<mixed>("/users", options);
 
     expect(first).toBe("body 1");
     expect(second).toBe("body 1");
     expect(client.calls.length).toBe(1);
 
     time.advance(60);
-    expect(await cached.request("/users", options)).toBe("body 2");
+    expect(await cached.request<mixed>("/users", options)).toBe("body 2");
   });
 
   it("keeps two clients apart even when they request the same path", async () => {
@@ -1069,8 +1088,8 @@ describe("the fetch cache", () => {
     const one = createCachedFetch({ client: first, name: "billing", store });
     const two = createCachedFetch({ client: second, name: "identity", store });
 
-    await one.request("/users", options);
-    await two.request("/users", options);
+    await one.request<mixed>("/users", options);
+    await two.request<mixed>("/users", options);
 
     expect(first.calls.length).toBe(1);
     expect(second.calls.length).toBe(1);
@@ -1082,9 +1101,9 @@ describe("the fetch cache", () => {
     const cached = createCachedFetch({ client, name: "api", store });
     const options = { cache: { lifetime: { revalidate: 3600 }, tags: ["users"] } };
 
-    await cached.request("/users", options);
+    await cached.request<mixed>("/users", options);
     expect(store.revalidateTag("users")).toBe(1);
-    await cached.request("/users", options);
+    await cached.request<mixed>("/users", options);
 
     expect(client.calls.length).toBe(2);
   });
@@ -1096,8 +1115,8 @@ describe("the fetch cache", () => {
     const cached = createCachedFetch({ client, name: "api" });
     const options = { cache: { lifetime: { revalidate: 60 } } };
 
-    await cached.request("/users", options);
-    await cached.request("/users", options);
+    await cached.request<mixed>("/users", options);
+    await cached.request<mixed>("/users", options);
 
     expect(client.calls.length).toBe(2);
   });
@@ -1109,7 +1128,7 @@ describe("the fetch cache", () => {
     const cached = createCachedFetch({ client, name: "api" });
     const options = { cache: { lifetime: { revalidate: 60 } } };
     const app = appWith({
-      handler: async () => Response.json({ body: await cached.request("/users", options) }),
+      handler: async () => Response.json({ body: await cached.request<mixed>("/users", options) }),
     });
     const handle = createFetchHandler({
       app,
@@ -1131,7 +1150,7 @@ describe("the fetch cache", () => {
     const cached = createCachedFetch({ client, name: "api" });
     const options = { cache: { lifetime: { revalidate: 60 } } };
     const app = appWith({
-      handler: async () => Response.json({ body: await cached.request("/users", options) }),
+      handler: async () => Response.json({ body: await cached.request<mixed>("/users", options) }),
     });
     const handle = createFetchHandler({
       app,
@@ -1169,7 +1188,7 @@ describe("what rendering.cache reaches", () => {
     const second = await serve(handle, app, "/posts");
 
     expect(second.headers.get("x-uf-cache")).toBe("HIT");
-    expect(app.renders.length).toBe(1);
+    expect(rendersOf(app).length).toBe(1);
   });
 
   it("builds nothing when both switches are off", async () => {
@@ -1191,7 +1210,7 @@ describe("what rendering.cache reaches", () => {
     // that turned the cache off is told so by `revalidateTag` raising rather
     // than reporting that it expired nothing.
     expect(first.headers.get("x-uf-cache")).toBe(null);
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 
   it("builds nothing when the project said nothing", async () => {
@@ -1205,7 +1224,7 @@ describe("what rendering.cache reaches", () => {
     await serve(handle, app, "/posts");
     await serve(handle, app, "/posts");
 
-    expect(app.renders.length).toBe(2);
+    expect(rendersOf(app).length).toBe(2);
   });
 });
 
@@ -1347,7 +1366,7 @@ describe("a durable store", () => {
     const after = durableStore(provider, { now: time.now });
     const result = await after.resolve(
       { key: ["route", "/"], lifetime: { revalidate: 60 } },
-      async () => ({ status: 500, headers: {}, body: new Uint8Array() }),
+      async () => ({ status: 500, headers: {}, body: new Uint8Array(0) }),
     );
 
     // A rendered document is a `Uint8Array`, and plain JSON turns one into an
@@ -1644,7 +1663,7 @@ describe("the route cache, on a disk", () => {
 
     expect(cold.headers.get("x-uf-cache")).toBe("MISS");
     expect(warm.headers.get("x-uf-cache")).toBe("HIT");
-    expect(second.renders.length).toBe(0);
+    expect(rendersOf(second).length).toBe(0);
     // Byte for byte the document the first process produced, which is what
     // `Uint8Array` support in the encoding exists to make true.
     expect(await warm.text()).toBe("<!doctype html><p>/posts</p><b>1</b>");
@@ -1683,7 +1702,7 @@ describe("the route cache, on a disk", () => {
     );
 
     expect(deployed.headers.get("x-uf-cache")).toBe("MISS");
-    expect(second.renders.length).toBe(1);
+    expect(rendersOf(second).length).toBe(1);
     fs.rmSync(directory, { recursive: true, force: true });
   });
 
@@ -1823,7 +1842,7 @@ export function createCacheProvider() {
     const second = await serve(handle, app, "/posts");
 
     expect(second.headers.get("x-uf-cache")).toBe("HIT");
-    expect(app.renders.length).toBe(1);
+    expect(rendersOf(app).length).toBe(1);
     expect(providerSpecifier(directory, "./provider.mjs")).toBe(pathToFileURL(module).href);
     // A package name is Node's to resolve and is left exactly as written.
     expect(providerSpecifier(directory, "@acme/uf-cache-redis")).toBe("@acme/uf-cache-redis");
@@ -1850,7 +1869,7 @@ export function createCacheProvider() {
 
     // The store still works — one render for two requests — and left nothing
     // anywhere. Persistence is opted into by name and by nothing else.
-    expect(app.renders.length).toBe(1);
+    expect(rendersOf(app).length).toBe(1);
     expect(fs.readdirSync(directory)).toEqual([]);
     fs.rmSync(directory, { recursive: true, force: true });
   });

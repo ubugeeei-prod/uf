@@ -99,8 +99,15 @@ async function withTokenEndpoint<T>(
   }
 }
 
+/** The options a test varies; the rest are `signingIn`'s. */
+type AuthTuning = {|
+  readonly authorizationSeconds?: number,
+  readonly origin?: string,
+  readonly sessionSeconds?: number,
+|};
+
 /** A configured `auth` and the store behind it. */
-function signingIn(options?: { [string]: mixed }) {
+function signingIn(options?: AuthTuning) {
   const store = memorySessionStore();
   const auth = createAuth({
     provider,
@@ -696,7 +703,7 @@ describe("reading the session from a loader or a component", () => {
 
 describe("when things expire", () => {
   /** Sign in with the clock stopped at `at`, and hand back the session. */
-  async function signedInAt(at: string, options?: { [string]: mixed }) {
+  async function signedInAt(at: string, options?: AuthTuning) {
     const restore = setClock(fixedClock(Temporal.Instant.from(at).epochMilliseconds));
     try {
       const { auth, store } = signingIn(options);
