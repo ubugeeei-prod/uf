@@ -40,11 +40,18 @@ const INLINE_MAP = "\n//# sourceMappingURL=data:application/json;base64,";
  * request out of the environment.
  */
 export function lazySourceMapsWanted() {
+  // Deno first, and before the environment is touched: a Deno worker may read
+  // only the variables `uf` granted it, and asking for any other throws
+  // `NotCapable` out of the loader before the first module loads.
+  if (globalThis.Deno != null) return false;
   const env = globalThis.process?.env;
-  if (env == null || env.UF_TEST_LAZY_SOURCE_MAPS !== "1") return false;
-  delete env.UF_TEST_LAZY_SOURCE_MAPS;
+  try {
+    if (env == null || env.UF_TEST_LAZY_SOURCE_MAPS !== "1") return false;
+    delete env.UF_TEST_LAZY_SOURCE_MAPS;
+  } catch {
+    return false;
+  }
   return (
-    globalThis.Deno == null &&
     globalThis.process.sourceMapsEnabled === true &&
     typeof globalThis.process.setSourceMapsEnabled === "function" &&
     typeof SourceMap === "function"
