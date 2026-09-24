@@ -108,6 +108,38 @@ export type FetchedFlight =
       readonly url: string,
     |};
 
+/**
+ * `error` as it may cross into a Flight payload: a thrown value that is not an
+ * `Error` becomes one.
+ *
+ * The route's error travels to the browser as a prop of the error page and as
+ * part of the route state, and React serialises it the way it serialises any
+ * prop. For an `Error` that is safe by React's own rule: a production payload
+ * carries the digest and none of the message or the stack. A thrown value
+ * that is *not* an `Error` gets no such rule. A string, or a plain object
+ * such as an API client's `{ message, details, hint }`, would be serialised
+ * as the data it is, and a query, a table name or a token in it would be
+ * published to whoever asked for the page.
+ *
+ * So it is wrapped. The message is the value's `String()`, which `uf dev`
+ * shows and which a production payload drops along with every other `Error`
+ * message. The original value is still what the server reported: this is
+ * applied only to the copy that crosses. `unauthorized` and `forbidden` carry
+ * nothing and pass through as they are.
+ */
+export function crossableRouteError(error: ?RouteError): ?RouteError {
+  if (error == null || error.kind !== "thrown" || error.error instanceof Error) {
+    return error;
+  }
+  let text = "a value that is not an Error was thrown";
+  try {
+    text = String(error.error);
+  } catch {
+    // A value whose `toString` throws: the sentence above is all it gets.
+  }
+  return { kind: "thrown", error: new Error(text) };
+}
+
 /** The part of a resolved route that crosses to the browser. */
 export function routeState(resolved: ResolvedRoute): RouteState {
   const interception = resolved.interception;

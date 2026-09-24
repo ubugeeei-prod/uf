@@ -59,7 +59,7 @@ import { BoundaryReporter } from "./internal/boundaries.js";
 import { routeBoundaries } from "./internal/boundary-data.js";
 import { composeRoute, pageComponent } from "./internal/compose.js";
 import { ErrorRoutePage } from "./internal/error-view.js";
-import { type FlightRoot, routeState } from "./internal/flight.js";
+import { type FlightRoot, crossableRouteError, routeState } from "./internal/flight.js";
 import { requireServerComponentsReact } from "./internal/react-version.js";
 import type { ErrorModule, PageModule, ResolvedRoute, ResolvedSlot } from "./internal/resolve.js";
 import { resolveFailure, resolveInterception, resolveMatch } from "./internal/resolve.js";
@@ -209,7 +209,9 @@ export function createFlightRenderer(options: {|
       </>
     );
     const root: FlightRoot = { route: state, tree, deployment: options.deployment ?? null };
-    const failure = renderFailure(route);
+    // From the route as it resolved, not the copy for the browser: the host is
+    // told what was actually thrown. See `crossableRouteError`.
+    const failure = renderFailure(resolved);
     if (failure != null) reportRequestError(failure, "render");
     const report = (error) => {
       reportRequestError(error, "render");
@@ -227,7 +229,7 @@ export function createFlightRenderer(options: {|
         signal: settings?.signal,
       }),
     );
-    return { kind: "route", status: route.status, stream, failure: renderFailure(route) };
+    return { kind: "route", status: route.status, stream, failure };
   };
 }
 
@@ -343,6 +345,9 @@ function forTheBrowser(resolved: ResolvedRoute, file: string | null): ResolvedRo
   const boundary = resolved.errorBoundary;
   return {
     ...resolved,
+    // Only an `Error` has React's production rule of carrying no message; see
+    // `crossableRouteError`.
+    error: crossableRouteError(resolved.error),
     errorBoundary: { above: boundary.above, module: clientErrorModule(boundary.module, file) },
     slots: resolved.slots.map(slotForTheBrowser),
   };
