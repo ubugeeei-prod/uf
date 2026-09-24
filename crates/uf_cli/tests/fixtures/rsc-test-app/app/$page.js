@@ -2,6 +2,8 @@
 import * as React from "@uniflowed/react";
 import { cookies } from "@uniflowed/server";
 import { Counter } from "./_components/Counter.js";
+// Reads the visitor cookie, so it is rendered for each request rather than prerendered.
+export const dynamic = "force-dynamic";
 async function Delayed() {
   await new Promise((resolve) => setTimeout(resolve, 80));
   return <p id="resolved">nested async data</p>;

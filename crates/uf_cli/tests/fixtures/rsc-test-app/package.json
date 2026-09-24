@@ -6,6 +6,7 @@
   "dependencies": {
     "@uniflowed/config": "0.0.0-alpha.40",
     "@uniflowed/react": "0.0.0-alpha.40",
+    "@uniflowed/react-testing": "0.0.0-alpha.40",
     "@uniflowed/router": "0.0.0-alpha.40",
     "@uniflowed/server": "0.0.0-alpha.40",
     "@uniflowed/test": "0.0.0-alpha.40",
