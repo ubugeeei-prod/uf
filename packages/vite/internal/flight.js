@@ -18,9 +18,14 @@
 //     client directive is not evaluated here: it is replaced by a client
 //     reference per export, naming the chunk the browser loads it from.
 //   * **`ssr`**, Vite's own server environment. It holds the HTML renderer, the
-//     route handlers, the middleware, the action table — and the *server copy*
-//     of every client module, which is what renders a client component into
-//     HTML. It reaches the rsc graph through one module, the bridge.
+//     route handlers, the middleware — and the *server copy* of every client
+//     module, which is what renders a client component into HTML. It reaches
+//     the rsc graph through one module, the bridge, for the payload and for
+//     the server-action endpoint: the action table is the rsc graph's, so an
+//     action shares every module instance with the pages that show what it
+//     wrote (ubugeeei-prod/uf#1469). A route handler and a middleware do not
+//     yet: a module one of them imports and a page imports is evaluated once in
+//     each graph.
 //   * **`client`**, the browser's. Its entry hydrates from the payload the
 //     document carries, and it holds no page, layout or loader — only the
 //     client modules, each an entry of its own, loaded when a payload names it.
@@ -509,18 +514,30 @@ export function fsFileOf(pathname) {
  * build rendered it — a prerendered payload is a file, and nothing that serves
  * a file can say so for it. `null` under `uf dev`.
  */
-export function rscEntrySource(routesId, routing = {}, deployment = null) {
+export function rscEntrySource(routesId, routing = {}, deployment = null, actionsId = null) {
   const settings = {
     basePath: routing.basePath ?? "",
     trailingSlash: routing.trailingSlash ?? "ignore",
   };
-  return `import { createFlightRenderer, installRouting } from "@uniflowed/router/rsc";
+  // The action table is loaded here, in the graph the pages render in, and
+  // not in the ssr graph that answers the request. A module an action and a
+  // page both import is then one instance: a write the action makes is what
+  // the next render — the postback of a form posted before hydration
+  // included — reads. In the ssr graph it was a second copy, and the page
+  // never saw the write (ubugeeei-prod/uf#1469).
+  const actions =
+    actionsId == null
+      ? "export const callAction = createActionDispatcher({ actions: [] });"
+      : `import { actions } from ${JSON.stringify(actionsId)};
+export const callAction = createActionDispatcher({ actions });`;
+  return `import { createActionDispatcher, createFlightRenderer, installRouting } from "@uniflowed/router/rsc";
 import { routes, notFound, errors } from ${JSON.stringify(routesId)};
 installRouting(${JSON.stringify(settings)});
 export { routes, notFound, errors };
 export const renderFlight = createFlightRenderer({ routes, notFound, errors, deployment: ${JSON.stringify(
     deployment ?? null,
   )} });
+${actions}
 `;
 }
 
@@ -543,13 +560,16 @@ if (typeof load !== "function") {
 export async function renderFlight(url, options) {
   return (await load()).renderFlight(url, options);
 }
+export async function callAction(request, settings) {
+  return (await load()).callAction(request, settings);
+}
 export const { routes, notFound, errors } = await load();
 `;
 }
 
 /** `virtual:uf/rsc-bridge` in a build: the rsc build's output, bundled in. */
 export function builtBridgeSource(rscOutput) {
-  return `export { renderFlight, routes, notFound, errors } from ${JSON.stringify(rscOutput)};\n`;
+  return `export { renderFlight, callAction, routes, notFound, errors } from ${JSON.stringify(rscOutput)};\n`;
 }
 
 /**
@@ -697,12 +717,10 @@ ${clientInstrumentationSource(options.instrumentation)}hydrateFlight({ App${stri
 export function flightServerSource(
   appEntry,
   routesId,
-  actionsId,
   routing = { redirects: [], rewrites: [], headers: [], basePath: "", trailingSlash: "ignore" },
   instrumentation = null,
 ) {
   return `import {
-  createActionDispatcher,
   createInstrumentation,
   instrumentRender,
   traceRequestPhase,
@@ -712,8 +730,13 @@ export function flightServerSource(
 } from "@uniflowed/router/server";
 import { createDocumentRenderer } from "@uniflowed/router/rsc/ssr";
 import { handlers, middleware } from ${JSON.stringify(routesId)};
-import { actions } from ${JSON.stringify(actionsId)};
-import { renderFlight, routes, notFound, errors } from ${JSON.stringify(FLIGHT_VIRTUAL.bridge)};
+import {
+  renderFlight,
+  callAction as callActionInRsc,
+  routes,
+  notFound,
+  errors,
+} from ${JSON.stringify(FLIGHT_VIRTUAL.bridge)};
 import { loadClientModule } from ${JSON.stringify(FLIGHT_VIRTUAL.references)};
 import App from ${JSON.stringify(appEntry)};
 export const routing = ${JSON.stringify(routing)};
@@ -735,7 +758,8 @@ export const flight = (url, options = {}) => instrumentRender(
 export { shellDocument } from "@uniflowed/router/server";
 const dispatchRoute = createDispatcher({ handlers });
 export const dispatch = (request) => traceRequestPhase("route", () => dispatchRoute(request));
-export const callAction = createActionDispatcher({ actions });
+// Built in the rsc graph and reached through the bridge; see \`rscEntrySource\`.
+export const callAction = callActionInRsc;
 const guard = createMiddlewareRunner({ middleware });
 export const runMiddleware = (request) => traceRequestPhase("middleware", () => guard(request));
 `;

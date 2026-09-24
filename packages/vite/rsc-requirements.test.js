@@ -16,7 +16,13 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
-import { flightClientSource, flightServerSource } from "./internal/flight.js";
+import {
+  builtBridgeSource,
+  devBridgeSource,
+  flightClientSource,
+  flightServerSource,
+  rscEntrySource,
+} from "./internal/flight.js";
 import { clientModuleSource, serverModuleSource } from "./internal/routes.js";
 import { serverComponentsProblem } from "./internal/server-components.js";
 
@@ -64,10 +70,27 @@ describe("the router entry an application starts from", () => {
 
   it("is a Server Components entry when routes render as Server Components", () => {
     const client = flightClientSource("/project/app.js");
-    const server = flightServerSource("/project/app.js", "virtual:uf/routes", "virtual:uf/actions");
+    const server = flightServerSource("/project/app.js", "virtual:uf/routes");
 
     expect(client).toContain('import { hydrateFlight } from "@uniflowed/router/rsc/client";');
     expect(server).toContain('import { createDocumentRenderer } from "@uniflowed/router/rsc/ssr";');
+  });
+
+  it("builds the action endpoint in the rsc graph, beside the pages", () => {
+    // An action and the page that shows what it wrote must run the same
+    // instance of the modules they share. Building the endpoint in the ssr
+    // graph gave the action a copy of its own (ubugeeei-prod/uf#1469).
+    const rsc = rscEntrySource("virtual:uf/routes", {}, null, "virtual:uf/actions");
+    expect(rsc).toContain('import { actions } from "virtual:uf/actions";');
+    expect(rsc).toContain("export const callAction = createActionDispatcher({ actions });");
+
+    const server = flightServerSource("/project/app.js", "virtual:uf/routes");
+    expect(server).not.toContain("virtual:uf/actions");
+    expect(server).not.toContain("createActionDispatcher");
+    expect(server).toContain("callAction as callActionInRsc");
+
+    expect(builtBridgeSource("/out/rsc/index.js")).toContain("callAction");
+    expect(devBridgeSource()).toContain("(await load()).callAction(request, settings)");
   });
 });
 

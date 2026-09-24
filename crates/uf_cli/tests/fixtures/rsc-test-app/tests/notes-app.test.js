@@ -48,14 +48,11 @@ describe("the notes route, built", () => {
     expect(await page.text()).toContain("saved note 2");
   });
 
-  it.skipBecause(
-    "lists a note saved by the action on the next render",
-    "#1469: the action and the page run two copies of notes.server.js, so the page never sees the write",
-    async () => {
-      await app.submit("/notes", { text: "Seen by the page" }, { cookies: { session: "grace" } });
-      expect(await (await app.render("/notes")).text()).toContain("Seen by the page");
-    },
-  );
+  it("lists a note saved by the action on the next render", async () => {
+    // The action and the page share one instance of `notes.server.js` (#1469).
+    await app.submit("/notes", { text: "Seen by the page" }, { cookies: { session: "grace" } });
+    expect(await (await app.render("/notes")).text()).toContain("Seen by the page");
+  });
 
   it("refuses a note from nobody, as state the page renders", async () => {
     const page = await (await app.submit("/notes", { text: "anonymous" })).text();

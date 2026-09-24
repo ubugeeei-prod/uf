@@ -413,14 +413,11 @@ that is already built.
     expect(await page.text()).toContain("saved note 2");
   });
 
-  it.skipBecause(
-    "lists a note saved by the action on the next render",
-    "#1469: the action and the page run two copies of notes.server.js, so the page never sees the write",
-    async () => {
-      await app.submit("/notes", { text: "Seen by the page" }, { cookies: { session: "grace" } });
-      expect(await (await app.render("/notes")).text()).toContain("Seen by the page");
-    },
-  );
+  it("lists a note saved by the action on the next render", async () => {
+    // The action and the page share one instance of `notes.server.js` (#1469).
+    await app.submit("/notes", { text: "Seen by the page" }, { cookies: { session: "grace" } });
+    expect(await (await app.render("/notes")).text()).toContain("Seen by the page");
+  });
 
   it("refuses a note from nobody, as state the page renders", async () => {
     const page = await (await app.submit("/notes", { text: "anonymous" })).text();
@@ -438,6 +435,7 @@ that is already built.
   it("renders an existing note's page", async () => {
     expect(await (await app.render("/notes/1")).text()).toContain("by ada");
   });
+});
 ```
 
 `submit(path, fields)` renders the page and reads the form's hidden fields:
@@ -446,14 +444,11 @@ key. It then posts them with `fields`, as a browser without JavaScript does,
 through the endpoint's second door. A `useActionState` form comes back as the
 page rendered with the action's result.
 
-**One case is skipped, and it is a bug.** In a built application, the server
-actions run in a different module graph from the pages. A module both import,
-like this fixture's in-memory store, is evaluated twice, so the page never sees
-the action's write
-([#1469](https://github.com/ubugeeei-prod/uf/issues/1469)). The case is in the
-file with `it.skipBecause` naming the issue, and it passes once that is fixed.
-An application whose state lives outside the process, such as a database or an
-upstream service, is not affected.
+The second case is the one a unit test cannot make: the action writes, and
+the next render of the page reads what it wrote. That holds because server
+actions run in the same module graph as the pages
+([#1469](https://github.com/ubugeeei-prod/uf/issues/1469)). Route handlers and
+middleware do not yet ([Server Components](/guide/server-components#what-is-not-here)).
 
 A build takes seconds. Build once per file in `beforeAll`, and keep one
 project's build tests in one file: two files building the same project at once
@@ -476,7 +471,7 @@ Chromium, which is why the four levels above do not.
 | A route's HTML, Flight payload, not-found and error boundaries through a real build | **Implemented** |
 | A form posted before hydration, `useActionState` postback included | **Implemented** |
 | Hydration and client interaction | **Implemented** through `createTestApp` and a Chromium |
-| An action and the page it changes sharing module state | **Bug**, [#1469](https://github.com/ubugeeei-prod/uf/issues/1469) |
+| An action and the page it changes sharing module state | **Implemented** ([#1469](https://github.com/ubugeeei-prod/uf/issues/1469)); a route handler or middleware and a page do not share it yet |
 | `redirect()` and the other routing calls from a hydrated action | **Implemented** ([#1470](https://github.com/ubugeeei-prod/uf/issues/1470)) |
 | Rendering one Server Component to Flight in the test's own process | **Planned.** React's Flight renderer needs the `react-server` build of React, which a test worker does not resolve; a render that faked it would pass what Flight refuses |
 | `buildApp` on Bun and Deno test hosts, and over the `edge` adapter | **Not verified yet.** CI runs it on Node, over the `node` adapter |
