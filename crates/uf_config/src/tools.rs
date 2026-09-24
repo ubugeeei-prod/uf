@@ -780,7 +780,7 @@ fn is_numeric_identifier(part: &str) -> bool {
 }
 
 /// `26` or `1.4`: one or two numeric parts, and nothing else.
-fn is_prefix(version: &str) -> bool {
+pub(crate) fn is_prefix(version: &str) -> bool {
     let mut parts = 0;
     for part in version.split('.') {
         if !is_numeric_identifier(part) {
@@ -792,7 +792,7 @@ fn is_prefix(version: &str) -> bool {
 }
 
 /// `24.14.0`, `1.3.0-canary.2`, `4.9.2+sha.20260910`.
-fn is_exact(version: &str) -> bool {
+pub(crate) fn is_exact(version: &str) -> bool {
     let (core, suffix) = match version.find(['-', '+']) {
         Some(index) => version.split_at(index),
         None => (version, ""),

@@ -15,7 +15,9 @@ mod library;
 mod lint;
 mod native_links;
 mod package_scripts;
+mod pin;
 pub use package_scripts::INSTALL_LIFECYCLE_SCRIPTS;
+pub use pin::pinned_uf;
 pub mod plugins;
 mod rendering;
 mod router_rules;
@@ -146,6 +148,13 @@ pub struct UniflowedConfig {
     /// Where `uf ui add` writes the components a project owns, and where
     /// `uf ui list` and `uf ui diff` look for them.
     pub ui: UiConfig,
+    /// The release of uf this project runs on, or `None` for whichever uf
+    /// started the command: `"0.3.0"`.
+    ///
+    /// An exact release, and read before anything else: a uf of any other
+    /// release started inside the project hands its command line to this one,
+    /// from the installer's store, installing it first. See [`pin`].
+    pub uf: Option<CompactString>,
     /// The project's own Vite configuration, passed through untouched.
     ///
     /// uf does not read this and does not need to. Re-declaring an upstream
@@ -1953,6 +1962,18 @@ pub enum ConfigError {
         /// Where the rest of the answer is.
         tracking: String,
     },
+    /// `uf` names something other than an exact release of uf.
+    ///
+    /// Its own variant for the reason [`ConfigError::ToolSpec`] is one: the
+    /// value was read, and the refusal is about what it says. See [`pin`].
+    #[error("{path}: uf is `{written}`, {reason}")]
+    UfVersion {
+        path: Utf8PathBuf,
+        /// What was written there.
+        written: String,
+        /// Why it was refused, and what to write instead.
+        reason: String,
+    },
     /// A tool spec uf cannot read: a name the key's role does not take, a
     /// range or a tag where a version belongs, or nothing after an `@`.
     ///
@@ -2282,6 +2303,9 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
     // test runtime its runner contradicts, and no deprecated tool key saying
     // something other than the key that replaced it. See ubugeeei-prod/uf#940.
     tools::check(path, config)?;
+    // And which uf: an exact release, which is the only thing a uf started
+    // elsewhere can hand the command line to. See [`pin`].
+    pin::check(path, config.uf.as_deref())?;
     // And `app.router`'s redirects, rewrites and headers, in the grammar every
     // host matches them with. See ubugeeei-prod/uf#959.
     router_rules::check(path, config)?;

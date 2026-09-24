@@ -1190,3 +1190,192 @@ fn self_uninstall_refuses_to_remove_the_home_directory() {
         "the refusal came after removing the links"
     );
 }
+
+/// A release whose three binaries say which of them ran, and with what.
+///
+/// A shell script rather than a copy of `sleep`: what is checked here is who
+/// the command line was handed to, and a script can say so on stdout.
+fn publish_answering(base: &Path, version: &str) {
+    let script = base.join(format!("answer-{version}"));
+    fs::create_dir_all(base).unwrap();
+    fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho \"uf@{version} as $(basename \"$0\"): $*\"\n\
+             echo \"followed=$UF_TOOLCHAIN_FOLLOWED\"\n"
+        ),
+    )
+    .unwrap();
+    make_executable(&script);
+    publish_with(base, version, &script);
+}
+
+/// A project directory whose `uf.config.js` pins `version`.
+fn project_pinning(root: &Path, version: &str) -> PathBuf {
+    let project = root.join("project");
+    fs::create_dir_all(&project).unwrap();
+    fs::write(
+        project.join("uf.config.js"),
+        format!("export default defineConfig({{ uf: \"{version}\" }});\n"),
+    )
+    .unwrap();
+    project
+}
+
+/// A pinned release the machine does not have is installed, and the command
+/// line is handed to it whole — and nothing global moves: no link, no
+/// active version, no rollback record.
+#[test]
+fn a_pinned_release_is_installed_and_runs_the_command() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let release = root.join("releases");
+    publish_answering(&release, "0.9.9");
+    let project = project_pinning(root, "0.9.9");
+
+    let output = uf_in(root, Some(&release))
+        .arg("--cwd")
+        .arg(&project)
+        .args(["build", "--mode", "production"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(&format!(
+            "uf@0.9.9 as uf: --cwd {} build --mode production",
+            project.display()
+        )),
+        "{stdout}"
+    );
+    assert!(stdout.contains("followed=0.9.9"), "{stdout}");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("uf.config.js pins uf@0.9.9, which is not installed; installing it"),
+        "{stderr}"
+    );
+
+    assert!(runtime_dir(root, "0.9.9").join("bin/uf").exists());
+    assert!(!root.join("bin/uf").exists(), "following a pin linked uf");
+    assert!(previous_version(root).is_none());
+    assert!(!root.join("state/uniflowed/active-runtime.json").exists());
+}
+
+/// Once installed, a pin needs no network: an unreachable release base
+/// proves nothing was fetched. And `ufx` stays `ufx`.
+#[test]
+fn an_installed_pin_is_followed_offline_by_the_binary_that_was_started() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let release = root.join("releases");
+    publish_answering(&release, "0.9.9");
+    let project = project_pinning(root, "0.9.9");
+    succeeds(
+        root,
+        &release,
+        &["--cwd", project.to_str().unwrap(), "build"],
+    );
+
+    let output = support::binary("ufx")
+        .env("UF_INSTALL_ROOT", root.join("share/uf"))
+        .env("UF_BIN_DIR", root.join("bin"))
+        .env("HOME", root.join("home"))
+        .env("UF_RELEASE_BASE", "file:///nowhere/at/all")
+        .current_dir(&project)
+        .args(["tsc", "--noEmit"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("uf@0.9.9 as ufx: tsc --noEmit"), "{stdout}");
+}
+
+/// `UF_TOOLCHAIN=current` runs the uf that was started, pin or no pin, and
+/// `UF_TOOLCHAIN=<version>` follows that version instead of the pin.
+#[test]
+fn uf_toolchain_overrides_the_pin() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let release = root.join("releases");
+    publish_answering(&release, "0.9.8");
+    let project = project_pinning(root, "0.9.9");
+
+    let output = uf_in(root, None)
+        .env("UF_TOOLCHAIN", "current")
+        .current_dir(&project)
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains(env!("CARGO_PKG_VERSION")), "{stdout}");
+
+    let stdout = String::from_utf8(
+        uf_in(root, Some(&release))
+            .env("UF_TOOLCHAIN", "0.9.8")
+            .current_dir(&project)
+            .arg("build")
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert!(stdout.contains("uf@0.9.8 as uf: build"), "{stdout}");
+}
+
+/// A pin that cannot be installed stops the command, says which file asked
+/// for it, and names the way out.
+#[test]
+fn a_pin_that_cannot_be_installed_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let release = root.join("releases");
+    publish_answering(&release, "0.9.9");
+    let project = project_pinning(root, "0.9.7");
+
+    let output = uf_in(root, Some(&release))
+        .current_dir(&project)
+        .arg("build")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("uf.config.js pins uf@0.9.7"), "{stderr}");
+    assert!(stderr.contains("UF_TOOLCHAIN=current"), "{stderr}");
+    assert!(!runtime_dir(root, "0.9.7").exists());
+}
+
+/// `uf self-update` in a pinned project updates the machine, not the pin: it
+/// is never handed to the pinned release.
+#[test]
+fn self_update_in_a_pinned_project_is_not_followed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let release = root.join("releases");
+    publish_as_latest(&release, "0.9.8");
+    let project = project_pinning(root, "0.9.9");
+
+    let output = uf_in(root, Some(&release))
+        .current_dir(&project)
+        .args(["self-update", "--check"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!runtime_dir(root, "0.9.9").exists());
+}

@@ -36,6 +36,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 
 | Key | What it configures |
 | --- | --- |
+| `uf` | The release of uf the project runs on: `"0.3.0"`. See [below](#uf) |
 | `runtime` | The runtime commands run on when no key nearer the command names one: `"node@24"`. See [below](#runtime-and-packagemanager) |
 | `packageManager` | The manager `uf install` and the other package commands drive: `"pnpm@10"` |
 | `app` | The application: router, runtime, React, rendering, built-ins |
@@ -57,6 +58,33 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `ui` | Where `uf ui add` writes the components a project owns. See [below](#ui) |
 | `pm`, `publish`, `package`, `release` | Which registry uf reads from and publishes to, and how a release is built |
 | `server`, `story`, `std`, `vrt` | The server adapter, stories, the standard library, visual tests |
+
+## uf
+
+The release of uf itself, the way `rust-toolchain.toml` pins Rust.
+
+```js
+export default defineConfig({
+  uf: "0.3.0",
+});
+```
+
+Any `uf`, `ufr` or `ufx` started inside the project — whichever release is on
+`PATH` — hands the command to `uf@0.3.0`, installing it into the install store
+first with the same download checks as `uf self-update`. Nothing global
+changes: `~/.local/bin/uf` stays where it was, and outside the project the
+machine's own uf runs.
+
+| Written | Means |
+| --- | --- |
+| `"0.3.0"`, `"0.0.0-alpha.35"` | Exactly that release |
+| `"0.3"`, `"^0.3.0"`, `"latest"` | Refused. The message names the release to write |
+| absent | Whichever uf was started, as before |
+
+`uf self-update`, `uf self-uninstall` and `uf use` manage the machine's uf and
+never follow the pin. For one command, `UF_TOOLCHAIN=0.4.0` runs another release
+instead of the pinned one, and `UF_TOOLCHAIN=current` runs the uf that was
+started.
 
 ## runtime and packageManager
 

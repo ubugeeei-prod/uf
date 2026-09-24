@@ -72,6 +72,18 @@ const HELP_STYLES: clap::builder::Styles = {
 };
 
 pub fn main() -> ExitCode {
+    // A project that pins another release of uf runs that release, whatever
+    // this one would have made of the command line — which is why this comes
+    // before anything reads it. See `commands::toolchain::pin`.
+    match commands::toolchain::follow_pin() {
+        Ok(None) => {}
+        Ok(Some(code)) => return code,
+        Err(error) => {
+            let mut ui = Ui::new(ColorChoice::Auto, OutputMode::Human);
+            ui.error(&error);
+            return ExitCode::FAILURE;
+        }
+    }
     // sqlc starts a process plugin as `<cmd> /plugin.CodegenService/Generate`
     // with the request on stdin. That is not a command line a person types,
     // so it is answered before the parser sees it: no banner, no menu, and

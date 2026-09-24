@@ -1102,6 +1102,17 @@ export type UniflowedConfig = {
    */
   readonly staged?: { readonly [string]: string | $ReadOnlyArray<string> },
   /**
+   * The release of uf this project runs on: `"0.3.0"`.
+   *
+   * Any uf started inside the project — whichever release is on `PATH` —
+   * hands the command to this one, from the installer's store, installing it
+   * first. Nothing global changes; outside the project the machine's own uf
+   * runs. An exact release only: a prefix or a range is refused.
+   * `UF_TOOLCHAIN=<version>` overrides it for one command, and
+   * `UF_TOOLCHAIN=current` runs the uf that was started.
+   */
+  readonly uf?: string,
+  /**
    * Where `uf ui add` writes the components a project owns, and where
    * `uf ui list` and `uf ui diff` look for them.
    *
