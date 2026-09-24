@@ -26,11 +26,12 @@
 // reason.
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import type { CheckReport } from "../../tests/library/type-tests.js";
+import type { CheckDiagnostic } from "../../tests/library/type-tests.js";
 import {
   everyMisuseIsReported,
   oneCheckPerCommand,
@@ -43,6 +44,17 @@ import {
 // reads its own fixture out of the answer. `oneCheckPerCommand` says why it is
 // made here rather than shared between files.
 const checker = oneCheckPerCommand();
+
+/** What `uf check packages/ui --json` says, as the first block below reads it. */
+type PackageReport = {
+  typeCheck: {
+    status: string,
+    filesChecked: number,
+    /** How many files the command named, before their imports were added. */
+    requested: number,
+    diagnostics: Array<CheckDiagnostic>,
+  },
+};
 
 describe("the props a part spreads onto its element", () => {
   // A type is a promise the same way a role is, and this is the only test here
@@ -91,7 +103,7 @@ describe("the props a part spreads onto its element", () => {
           `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
       );
     }
-    const report: CheckReport = JSON.parse(run.stdout);
+    const report: PackageReport = JSON.parse(run.stdout);
     // Without this the test would pass just as happily on a run that checked
     // nothing at all.
     expect(report.typeCheck.status).toBe("checked");
@@ -105,13 +117,15 @@ describe("the props a part spreads onto its element", () => {
       }))
       .filter((diagnostic) => diagnostic.said.includes("in property key"));
     expect(keyed).toEqual([]);
-    // And the checker read the package rather than only this file, which is
+    // And the checker read the package rather than only its tests, which is
     // the way the filter above could have emptied the list it is asserting on.
-    expect(
-      report.typeCheck.diagnostics.some(
-        (diagnostic) => !diagnostic.primary.path.endsWith(".test.js"),
-      ),
-    ).toBe(true);
+    // Counted from what it was asked to check rather than from what it
+    // reported: this used to require a diagnostic outside the tests, and so
+    // failed the day the package's sources checked clean.
+    const tests = fs
+      .readdirSync(path.join(repository, "packages", "ui"))
+      .filter((name) => name.endsWith(".test.js"));
+    expect(report.typeCheck.requested).toBeGreaterThan(tests.length);
   });
 });
 

@@ -95,6 +95,8 @@ import { useFieldSource, useForm } from "@uniflowed/form";
 // weaker copy of it. The arithmetic is still the one thing in this package a
 // test can hold to an exact number, so it is reached where it lives.
 import type { Align, Placement, Rect, Side } from "./internal/anchor.js";
+import type { PartEvent } from "./internal/merge-props.js";
+import type { Sort } from "./table.js";
 import { placeOverlay, useAnchor } from "./internal/anchor.js";
 // And the same, for the other half of a calendar: `internal/date-grid.js` says
 // which date a key means, over dates rather than over elements, and the month
@@ -304,7 +306,7 @@ describe("Field", () => {
     return (
       <Field.Root invalid={invalid}>
         <Field.Label>Email address</Field.Label>
-        <Field.Control render={(props) => <input type="email" {...props} />} />
+        <Field.Control render={(props) => <input {...props} type="email" />} />
         <Field.Description>We will not share it.</Field.Description>
         <Field.Error>That is not an email address.</Field.Error>
       </Field.Root>
@@ -375,7 +377,7 @@ describe("Field", () => {
     render(
       <Field.Root render={(props) => <section {...props} />} invalid>
         <Field.Label render={(props) => <strong {...props} />}>Email address</Field.Label>
-        <Field.Control render={(props) => <input type="email" {...props} />} />
+        <Field.Control render={(props) => <input {...props} type="email" />} />
         <Field.Description render={(props) => <small {...props} />}>
           We will not share it.
         </Field.Description>
@@ -411,7 +413,7 @@ describe("Field", () => {
         <div>
           <Field.Root busy={saving}>
             <Field.Label>Email address</Field.Label>
-            <Field.Control render={(props) => <input type="email" {...props} />} />
+            <Field.Control render={(props) => <input {...props} type="email" />} />
             <Field.Status>{saving ? "Saving email" : ""}</Field.Status>
           </Field.Root>
           <button onClick={() => setSaving(true)} type="button">
@@ -454,7 +456,7 @@ describe("Field: bound to a form", () => {
       <form onSubmit={form.handleSubmit(() => {})}>
         <Field.Root field={email}>
           <Field.Label>Email address</Field.Label>
-          <Field.Control render={(props) => <input type="email" {...props} />} />
+          <Field.Control render={(props) => <input {...props} type="email" />} />
           <Field.Description>We will not share it.</Field.Description>
           <Field.Error />
         </Field.Root>
@@ -569,7 +571,7 @@ describe("Field: bound to a form", () => {
         >
           <Field.Root field={email}>
             <Field.Label>Email address</Field.Label>
-            <Field.Control render={(props) => <input type="email" {...props} />} />
+            <Field.Control render={(props) => <input {...props} type="email" />} />
             <Field.Status>Saving email</Field.Status>
             <Field.Error />
           </Field.Root>
@@ -1061,14 +1063,14 @@ describe("Dialog", () => {
   });
 
   it("holds the page still while it is open, and gives it back", async () => {
-    const before = document.body.style.overflow;
+    const before = document.body?.style.overflow;
     render(<Example />);
     await userEvent.click(screen.getByRole("button", { name: "Open" }));
     // A wheel over a modal that scrolls the document loses the reader's place
     // in the page they will come back to.
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.body?.style.overflow).toBe("hidden");
     await userEvent.keyboard("{Escape}");
-    expect(document.body.style.overflow).toBe(before);
+    expect(document.body?.style.overflow).toBe(before);
   });
 
   it("closes on Escape", async () => {
@@ -1177,7 +1179,7 @@ describe("Dialog: two of them stacked", () => {
     await userEvent.keyboard("{Escape}");
     // The outer dialog is still open, so the page behind *both* of them must
     // still be inert — the inner dialog's cleanup must not undo the outer's.
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.body?.style.overflow).toBe("hidden");
     expect(trigger).not.toHaveAttribute("inert");
   });
 });
@@ -4123,7 +4125,7 @@ describe("Popover", () => {
     expect(behind).not.toHaveAttribute("inert");
     expect(behind).not.toHaveAttribute("aria-hidden");
     expect(screen.getByRole("dialog")).not.toHaveAttribute("aria-modal");
-    expect(document.body.style.overflow).toBe("");
+    expect(document.body?.style.overflow).toBe("");
   });
 
   it("moves focus into it, and gives it back on Escape", async () => {
@@ -4189,7 +4191,7 @@ describe("Popover", () => {
   it("hands trigger and body behaviour to caller-rendered elements", async () => {
     render(
       <Popover.Root>
-        <Popover.Trigger render={(props) => <a href="#filters" {...props} />}>
+        <Popover.Trigger render={(props) => <a {...props} href="#filters" />}>
           Filters
         </Popover.Trigger>
         <Popover.Body render={(props) => <section {...props} data-testid="panel" />}>
@@ -4306,7 +4308,7 @@ describe("the gesture that dismisses an overlay, and the three that do not", () 
   // having no landmark — a fact about the fragment, not about the component.
 
   /** Open the menu, the way a reader does. */
-  const openMenu = async (): Promise<HTMLElement> => {
+  const openMenu = async (): Promise<Element> => {
     const { container } = render(
       <main>
         <h1>Files</h1>
@@ -4318,7 +4320,7 @@ describe("the gesture that dismisses an overlay, and the three that do not", () 
   };
 
   /** Open the select's list from the keyboard, which is where most of its cases start. */
-  const openSelect = async (): Promise<HTMLElement> => {
+  const openSelect = async (): Promise<Element> => {
     const { container } = render(
       <main>
         <h1>Files</h1>
@@ -4331,7 +4333,7 @@ describe("the gesture that dismisses an overlay, and the three that do not", () 
   };
 
   /** Open the combobox's list the only way it opens: by typing. */
-  const openCombobox = async (): Promise<HTMLElement> => {
+  const openCombobox = async (): Promise<Element> => {
     const { container } = render(
       <main>
         <h1>Files</h1>
@@ -4342,7 +4344,7 @@ describe("the gesture that dismisses an overlay, and the three that do not", () 
     return container;
   };
 
-  const openPopover = async (): Promise<HTMLElement> => {
+  const openPopover = async (): Promise<Element> => {
     const { container } = render(
       <main>
         <h1>Files</h1>
@@ -4353,7 +4355,7 @@ describe("the gesture that dismisses an overlay, and the three that do not", () 
     return container;
   };
 
-  const openDialog = async (): Promise<HTMLElement> => {
+  const openDialog = async (): Promise<Element> => {
     const { container } = render(
       <main>
         <h1>Files</h1>
@@ -4516,7 +4518,7 @@ describe("the gesture that dismisses an overlay, and the three that do not", () 
     // press outside the first, which is the very thing these cases are about.
     // Inside a `<main>` with a heading for the reason the audited block below
     // gives — the rule set includes the page-level rules.
-    const overlays: $ReadOnlyArray<() => Promise<HTMLElement>> = [
+    const overlays: $ReadOnlyArray<() => Promise<Element>> = [
       openMenu,
       openSelect,
       openCombobox,
@@ -4755,7 +4757,7 @@ describe("Tooltip", () => {
       <Tooltip.Root>
         <Tooltip.Trigger
           render={(props) => (
-            <a href="/bold" {...props}>
+            <a {...props} href="/bold">
               Bold
             </a>
           )}
@@ -4893,7 +4895,7 @@ describe("HoverCard", () => {
         <HoverCard.Root>
           <HoverCard.Trigger
             render={(props) => (
-              <a href="/ada" {...props}>
+              <a {...props} href="/ada">
                 @ada
               </a>
             )}
@@ -4921,7 +4923,7 @@ describe("HoverCard", () => {
           <HoverCard.Root closeDelay={closeDelay}>
             <HoverCard.Trigger
               render={(props) => (
-                <a href="/ada" {...props}>
+                <a {...props} href="/ada">
                   @ada
                 </a>
               )}
@@ -4980,7 +4982,7 @@ describe("HoverCard", () => {
       <HoverCard.Root>
         <HoverCard.Trigger
           render={(props) => (
-            <a href="/ada" {...props}>
+            <a {...props} href="/ada">
               @ada
             </a>
           )}
@@ -6472,7 +6474,7 @@ describe("Table", () => {
   ];
 
   component Example(rowCount?: number | null = null, rowOffset?: number = 0) {
-    const [sort, setSort] = useState(null);
+    const [sort, setSort] = useState<Sort | null>(null);
     const [chosen, setChosen] = useState<$ReadOnlyArray<string>>([]);
     const all = chosen.length === PEOPLE.length ? true : chosen.length === 0 ? false : "mixed";
 
@@ -6660,7 +6662,7 @@ describe("Table", () => {
 
   it("hands the table contract to caller-rendered elements", async () => {
     component CallerRenderedTable() {
-      const [sort, setSort] = useState(null);
+      const [sort, setSort] = useState<Sort | null>(null);
       return (
         <Table.Root
           onSortChange={setSort}
@@ -7988,7 +7990,7 @@ describe("Collapsible", () => {
     const clicked = fn();
     render(
       <Collapsible.Root>
-        <Collapsible.Trigger onClick={clicked} render={(props) => <a href="#details" {...props} />}>
+        <Collapsible.Trigger onClick={clicked} render={(props) => <a {...props} href="#details" />}>
           Details
         </Collapsible.Trigger>
         <Collapsible.Content render={(props) => <section {...props} data-testid="panel" />}>
@@ -8167,7 +8169,7 @@ describe("Accordion", () => {
           <Accordion.Header level={3}>
             <Accordion.Trigger
               onClick={clicked}
-              render={(props) => <a href="#shipping" {...props} />}
+              render={(props) => <a {...props} href="#shipping" />}
             >
               Shipping
             </Accordion.Trigger>
@@ -9031,7 +9033,7 @@ describe("caller props never disable the component", () => {
   it("lets a caller handler stop the component's behaviour deliberately", () => {
     render(
       <Dialog.Root defaultOpen>
-        <Dialog.Body onKeyDown={(event) => event.preventDefault()}>
+        <Dialog.Body onKeyDown={(event: PartEvent) => event.preventDefault()}>
           <Dialog.Title>Title</Dialog.Title>
         </Dialog.Body>
       </Dialog.Root>,
@@ -9727,7 +9729,7 @@ describe("the escape hatch, exercised", () => {
       <Menu.Root defaultOpen>
         <Menu.Trigger>File</Menu.Trigger>
         <Menu.Body>
-          <Menu.Item onSelect={onSelect} render={(props) => <a href="/settings" {...props} />}>
+          <Menu.Item onSelect={onSelect} render={(props) => <a {...props} href="/settings" />}>
             Settings
           </Menu.Item>
         </Menu.Body>
@@ -9756,7 +9758,7 @@ describe("the escape hatch, exercised", () => {
       <Menu.Root defaultOpen>
         <Menu.Trigger>File</Menu.Trigger>
         <Menu.Body>
-          <Menu.Item render={(props) => <a href="/one" {...props} />}>One</Menu.Item>
+          <Menu.Item render={(props) => <a {...props} href="/one" />}>One</Menu.Item>
           <Menu.Item>Two</Menu.Item>
         </Menu.Body>
       </Menu.Root>,
@@ -9813,7 +9815,7 @@ describe("the escape hatch, exercised", () => {
     render(
       <Tabs.Root defaultValue="one">
         <Tabs.List>
-          <Tabs.Tab render={(props) => <a href="#one" {...props} />} value="one">
+          <Tabs.Tab render={(props) => <a {...props} href="#one" />} value="one">
             One
           </Tabs.Tab>
           <Tabs.Tab value="two">Two</Tabs.Tab>
@@ -9859,7 +9861,7 @@ describe("the escape hatch, exercised", () => {
         render={(props) => <section {...props} />}
         type="multiple"
       >
-        <ToggleGroup.Item render={(props) => <a href="#bold" {...props} />} value="bold">
+        <ToggleGroup.Item render={(props) => <a {...props} href="#bold" />} value="bold">
           Bold
         </ToggleGroup.Item>
         <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
@@ -9925,7 +9927,7 @@ describe("the escape hatch, exercised", () => {
       <Sheet.Root defaultOpen>
         <Sheet.Body>
           <Sheet.Title render={(props) => <h4 {...props} />}>Filters</Sheet.Title>
-          <Sheet.Close render={(props) => <a href="#close" {...props} />}>Done</Sheet.Close>
+          <Sheet.Close render={(props) => <a {...props} href="#close" />}>Done</Sheet.Close>
         </Sheet.Body>
       </Sheet.Root>,
     );
@@ -9944,7 +9946,7 @@ describe("the escape hatch, exercised", () => {
     render(
       <Menubar.Root aria-label="Application">
         <Menubar.Menu value="file">
-          <Menubar.Trigger render={(props) => <a href="#file" {...props} />}>File</Menubar.Trigger>
+          <Menubar.Trigger render={(props) => <a {...props} href="#file" />}>File</Menubar.Trigger>
           <Menubar.Body>
             <Menubar.Item>New</Menubar.Item>
           </Menubar.Body>
@@ -9974,7 +9976,7 @@ describe("the escape hatch, exercised", () => {
           name="plan"
           render={(props) => <section {...props} />}
         >
-          <RadioGroup.Item render={(props) => <a href="#free" {...props} />} value="free">
+          <RadioGroup.Item render={(props) => <a {...props} href="#free" />} value="free">
             Free
             <RadioGroup.Indicator render={(props) => <i {...props} />}>chosen</RadioGroup.Indicator>
           </RadioGroup.Item>

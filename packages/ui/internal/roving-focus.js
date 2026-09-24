@@ -69,9 +69,18 @@ const TYPEAHEAD_WINDOW = 500;
  * cannot see.
  */
 export function itemsOf(container: HTMLElement, item: string, owner: string): Array<HTMLElement> {
-  return Array.from(container.querySelectorAll(item)).filter(
-    (element: $FlowFixMe) => element.closest(owner) === container,
-  );
+  const found: Array<HTMLElement> = [];
+  for (const element of container.querySelectorAll(item)) {
+    // An item is an HTML or SVG element, both `HTMLElement` to Flow; asked
+    // rather than annotated, because `querySelectorAll` answers `Element`.
+    if (
+      (element instanceof HTMLElement || element instanceof SVGElement) &&
+      element.closest(owner) === container
+    ) {
+      found.push(element);
+    }
+  }
+  return found;
 }
 
 /**

@@ -54,7 +54,7 @@ import type { DateValue } from "./calendar.js";
 import { Root as CalendarRoot } from "./calendar.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Align, LogicalSide } from "./internal/anchor.js";
-import type { Rest } from "./internal/merge-props.js";
+import type { PartEvent, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
   composeRefs,
@@ -251,6 +251,16 @@ const CalendarSettings: React.Context<CalendarSettingsValue> = createContext({
  * does not open the popover, the button beside it does, and telling a reader the
  * field expands something would be a promise the field does not keep.
  */
+/**
+ * The text in the field an event came from.
+ *
+ * `currentTarget` is the `input` this part renders, so it is always an
+ * `HTMLInputElement`. Asked rather than cast, so that the check is the type.
+ */
+function typedText(target: mixed): string {
+  return target instanceof HTMLInputElement ? target.value : "";
+}
+
 component DatePickerInput(...rest: Rest) {
   const picker = useDatePicker("DatePicker.Input");
   // `rest` filtering is render-time props work; ref objects are only passed through later.
@@ -264,12 +274,12 @@ component DatePickerInput(...rest: Rest) {
       // Input events commit typed text while focus stays on the field ref.
       // uf-lint-disable-next-line react-compiler/refs
       onBlur={composeHandlers(rest.onBlur, (event) => {
-        picker.commit((event.currentTarget: $FlowFixMe).value);
+        picker.commit(typedText(event.currentTarget));
       })}
       // Input events commit typed text while focus stays on the field ref.
       // uf-lint-disable-next-line react-compiler/refs
       onChange={composeHandlers(rest.onChange, (event) => {
-        picker.setDraft((event.currentTarget: $FlowFixMe).value);
+        picker.setDraft(typedText(event.currentTarget));
       })}
       // Key events commit typed text while focus stays on the field ref.
       // uf-lint-disable-next-line react-compiler/refs
@@ -280,7 +290,7 @@ component DatePickerInput(...rest: Rest) {
         // Claimed, so a date picker inside a form is not a control where
         // pressing Enter to confirm what you typed submits the page instead.
         event.preventDefault();
-        picker.commit((event.currentTarget: $FlowFixMe).value);
+        picker.commit(typedText(event.currentTarget));
       })}
       // React calls callback refs during commit; the calendar and picker read the field later.
       // uf-lint-disable-next-line react-compiler/refs
@@ -327,7 +337,7 @@ component DatePickerCalendar(
       // The date, not the first button in the popover. The APG's date picker
       // dialog puts focus on the grid for the same reason.
       initialFocus={dayRef}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
+      onKeyDown={composeHandlers(rest.onKeyDown, (event: PartEvent) => {
         if (event.key !== "Escape") {
           return;
         }
