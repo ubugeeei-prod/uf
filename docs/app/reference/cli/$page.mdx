@@ -783,6 +783,18 @@ showing up as an error in `wrangler tail`. A logger your application installs
 with `installLogger` is kept. This applies only inside a Worker: imported under
 Node, for example by a test, `worker.js` keeps writing every level to stderr.
 
+**Streamed responses are sent uncompressed.** A document, a navigation's RSC
+payload and an event stream that the application answers carry
+`Content-Encoding: identity`, because a Worker's response is otherwise
+compressed for a client that accepts it and a compressor holds a streamed
+shell until the body ends: under `wrangler dev` a static shell the Worker sent
+at 4 ms reached a browser-like client at 1.2 s, together with the hole it was
+sent ahead of. Assets, JSON and every other type keep whatever compression the
+platform applies, and a response that names its own encoding keeps it. The
+cost is compression on those three types; whether Cloudflare's production
+edge buffers the same way has not been measured by uf
+([#1494](https://github.com/ubugeeei-prod/uf/issues/1494)).
+
 React is linked from its `server.edge.js` build for this target, so a document
 comes out of `renderToReadableStream` rather than the Node renderer. That is a
 different code path from every other target, and the test that says all six
