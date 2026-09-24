@@ -38,6 +38,7 @@ import {
   resolveMatch,
   routerView,
 } from "@uniflowed/router";
+import type { RouteTable } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
@@ -330,7 +331,7 @@ async function chunksOf(result: {
   const started = Date.now();
   const decoder = new TextDecoder();
   const reader = result.stream().getReader();
-  const out = [];
+  const out: Array<{| readonly at: number, readonly text: string |}> = [];
   while (true) {
     const { done, value } = await reader.read();
     if (done === true) {
@@ -760,7 +761,7 @@ describe("hydrating a route whose loader answered on the server", () => {
    * React comparing two renders of the same components. Two tables would be two
    * sets of components and the comparison would mean nothing.
    */
-  function countedTable(seen: { loads: number, ... }) {
+  function countedTable(seen: { loads: number, ... }): TableParts {
     component DataPage(data: mixed) {
       return <p>{typeof data === "string" ? data : "no data"}</p>;
     }
@@ -812,7 +813,7 @@ describe("hydrating a route whose loader answered on the server", () => {
     const root = globalThis.document.createElement("div");
     root.id = "uf-root";
     root.innerHTML = rendered?.innerHTML ?? "";
-    globalThis.document.body.replaceChildren(root);
+    globalThis.document.body?.replaceChildren(root);
     globalThis.window.history.pushState(null, "", "/slow");
 
     const { hydrate } = await clientModule();
@@ -833,15 +834,24 @@ describe("hydrating a route whose loader answered on the server", () => {
     // element rather than making a second one — so a hydrated document has one
     // title, in the head, and the body has none.
     const seen = { loads: 0 };
-    const table = countedTable(seen);
-    table.routes[0].page = () =>
-      Promise.resolve({
-        default: (props: { readonly data: mixed, ... }) => (
-          <p>{typeof props.data === "string" ? props.data : "no data"}</p>
-        ),
-        loader: () => "the page is here",
-        metadata: { title: "The manual", canonical: "https://docs.uniflowed.dev/slow" },
-      });
+    const counted = countedTable(seen);
+    component TitledPage(data: mixed) {
+      return <p>{typeof data === "string" ? data : "no data"}</p>;
+    }
+    const table = {
+      ...counted,
+      routes: [
+        {
+          ...counted.routes[0],
+          page: () =>
+            Promise.resolve({
+              default: TitledPage,
+              loader: () => "the page is here",
+              metadata: { title: "The manual", canonical: "https://docs.uniflowed.dev/slow" },
+            }),
+        },
+      ],
+    };
     const { html } = await createRenderer({
       App: routerView("./app"),
       ...table,
@@ -849,8 +859,12 @@ describe("hydrating a route whose loader answered on the server", () => {
 
     installDom();
     const parsed = new globalThis.DOMParser().parseFromString(html, "text/html");
-    expect(parsed.head.querySelectorAll("title").length).toBe(1);
-    expect(parsed.head.querySelector('link[rel="canonical"]')).toBeTruthy();
+    const head = parsed.head;
+    if (head == null) {
+      throw new Error("the prerendered document has no <head>");
+    }
+    expect(head.querySelectorAll("title").length).toBe(1);
+    expect(head.querySelector('link[rel="canonical"]')).toBeTruthy();
     expect(parsed.getElementById("uf-root")?.querySelector("title")).toBe(null);
   });
 });
@@ -1040,11 +1054,12 @@ describe("the Web-standard renderer", () => {
    */
   function neverFinishing() {
     const seen: { signal: AbortSignal | null } = { signal: null };
-    const render = async (node, settings) => {
+    const render = async (_node: React.Node, settings: { readonly signal: AbortSignal, ... }) => {
       seen.signal = settings.signal;
       return {
         getReader: () => ({
-          read: () => new Promise(() => {}),
+          read: (): Promise<{ readonly done?: boolean, readonly value?: Uint8Array }> =>
+            new Promise(() => {}),
           releaseLock: () => {},
         }),
       };
@@ -1093,7 +1108,17 @@ describe("the Web-standard renderer", () => {
 // ---------------------------------------------------------------------------
 
 /** A one-route table whose page is `Page` and whose layouts are `layouts`. */
-function tableOf(Page: React.ComponentType<empty>, layouts: $ReadOnlyArray<mixed>) {
+/** The three tables `createRenderer` takes, as the tests build them. */
+type TableParts = {|
+  readonly routes: RouteTable["routes"],
+  readonly notFound: RouteTable["notFound"],
+  readonly errors: RouteTable["errors"],
+|};
+
+function tableOf(
+  Page: React.ComponentType<empty>,
+  layouts: $ReadOnlyArray<React.ComponentType<empty>>,
+): TableParts {
   return {
     routes: [
       {

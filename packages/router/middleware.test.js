@@ -17,17 +17,26 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 import { createMiddlewareRunner } from "@uniflowed/router/middleware";
+import type {
+  MiddlewareContext,
+  MiddlewareModule,
+  MiddlewareRecord,
+} from "@uniflowed/router/middleware";
 import { beginRequest } from "@uniflowed/router/server";
 import { cookies, headers } from "@uniflowed/server";
 
 /** A table entry whose module is given inline. */
-const record = (path, module) => ({
+const record = (path: string, module: MiddlewareModule): MiddlewareRecord => ({
   path,
   file: `app${path === "/" ? "" : path}/$middleware.js`,
   load: async () => module,
 });
 
-const get = (url, init) => new Request(`http://localhost${url}`, init);
+const get = (url: string, init?: RequestOptions) => new Request(`http://localhost${url}`, init);
+
+/** The status of a runner's answer, when it answered with a response. */
+const statusOf = (answer: Response | Request | null): number | null =>
+  answer instanceof Response ? answer.status : null;
 
 /**
  * The runner, as a host calls it: inside a request the host owns and settles.
@@ -39,14 +48,16 @@ const get = (url, init) => new Request(`http://localhost${url}`, init);
  * `request-lifecycle.test.js`; here it is scaffolding, and the point of having
  * it in one line is that no test below has to think about it.
  */
-const hosted = (runner) => async (request) => {
-  const { run, settle } = beginRequest(request);
-  try {
-    return await run(() => runner(request));
-  } finally {
-    await settle();
-  }
-};
+const hosted =
+  (runner: (request: Request) => Promise<Response | Request | null>) =>
+  async (request: Request): Promise<Response | Request | null> => {
+    const { run, settle } = beginRequest(request);
+    try {
+      return await run(() => runner(request));
+    } finally {
+      await settle();
+    }
+  };
 
 describe("matching", () => {
   it("runs for the path it guards", async () => {
@@ -57,7 +68,7 @@ describe("matching", () => {
     );
 
     const response = await run(get("/dashboard"));
-    expect(response?.status).toBe(401);
+    expect(statusOf(response)).toBe(401);
   });
 
   it("runs for everything under the path it guards", async () => {
@@ -69,8 +80,8 @@ describe("matching", () => {
 
     // The subtree, not the one path: a guard on `/dashboard` that only ran for
     // `/dashboard` itself would leave every page under it open.
-    expect((await run(get("/dashboard/settings")))?.status).toBe(401);
-    expect((await run(get("/dashboard/reports/2026/q1")))?.status).toBe(401);
+    expect(statusOf(await run(get("/dashboard/settings")))).toBe(401);
+    expect(statusOf(await run(get("/dashboard/reports/2026/q1")))).toBe(401);
   });
 
   it("runs for a path under it that matches no route at all", async () => {
@@ -83,7 +94,7 @@ describe("matching", () => {
     // `/dashboard/typo` is a 404, and a 404 rendered without the guard having
     // run is how a per-route middleware array leaks: the router has no record
     // for it, so there would have been no array to read.
-    expect((await run(get("/dashboard/typo")))?.status).toBe(401);
+    expect(statusOf(await run(get("/dashboard/typo")))).toBe(401);
   });
 
   it("does not run for a sibling path", async () => {
@@ -107,8 +118,8 @@ describe("matching", () => {
       }),
     );
 
-    expect((await run(get("/")))?.status).toBe(401);
-    expect((await run(get("/anything/at/all")))?.status).toBe(401);
+    expect(statusOf(await run(get("/")))).toBe(401);
+    expect(statusOf(await run(get("/anything/at/all")))).toBe(401);
   });
 
   it("captures the parameters of the directory it guards", async () => {
@@ -116,7 +127,8 @@ describe("matching", () => {
       createMiddlewareRunner({
         middleware: [
           record("/:org", {
-            default: (request, context) => Response.json({ org: context.params.org }),
+            default: (request: Request, context: MiddlewareContext) =>
+              Response.json({ org: context.params.org }),
           }),
         ],
       }),
@@ -131,7 +143,8 @@ describe("matching", () => {
       createMiddlewareRunner({
         middleware: [
           record("/", {
-            default: (request, context) => new Response(context.searchParams.get("token") ?? ""),
+            default: (request: Request, context: MiddlewareContext) =>
+              new Response(context.searchParams.get("token") ?? ""),
           }),
         ],
       }),
@@ -187,7 +200,7 @@ describe("composition", () => {
       }),
     );
 
-    expect((await run(get("/dashboard")))?.status).toBe(403);
+    expect(statusOf(await run(get("/dashboard")))).toBe(403);
     // A rejected request must not go on running the checks below it.
     expect(reached).toBe(false);
   });
@@ -198,7 +211,7 @@ describe("composition", () => {
       createMiddlewareRunner({
         middleware: [
           record("/", {
-            default: (request) => {
+            default: (request: Request) => {
               seen.push(new URL(request.url).pathname);
             },
           }),
@@ -225,7 +238,7 @@ describe("composition", () => {
       }),
     );
 
-    expect((await run(get("/")))?.status).toBe(401);
+    expect(statusOf(await run(get("/")))).toBe(401);
   });
 
   it("loads a module only when its path is asked for", async () => {
@@ -269,7 +282,7 @@ describe("inside a request", () => {
 
     // The check an application actually writes: `cookies()` takes no argument,
     // so it only works if the request the host began is the one this runs in.
-    expect((await run(get("/dashboard")))?.status).toBe(401);
+    expect(statusOf(await run(get("/dashboard")))).toBe(401);
     expect(await run(get("/dashboard", { headers: { cookie: "session=abc" } }))).toBe(null);
   });
 
@@ -287,7 +300,7 @@ describe("inside a request", () => {
       }),
     );
 
-    expect((await run(get("/api/things")))?.status).toBe(401);
+    expect(statusOf(await run(get("/api/things")))).toBe(401);
     expect(await run(get("/api/things", { headers: { authorization: "Bearer t" } }))).toBe(null);
   });
 
@@ -329,7 +342,7 @@ describe("errors", () => {
       }),
     );
 
-    expect((await run(get("/dashboard")))?.status).toBe(401);
+    expect(statusOf(await run(get("/dashboard")))).toBe(401);
   });
 
   it("lets a middleware's error out rather than turning it into a 500", async () => {
@@ -373,7 +386,7 @@ describe("errors", () => {
       { "x-middleware-prefetch": "1" },
       { "x-invoke-path": "/" },
     ]) {
-      expect((await run(get("/dashboard", { headers: header })))?.status).toBe(401);
+      expect(statusOf(await run(get("/dashboard", { headers: header })))).toBe(401);
     }
   });
 });

@@ -92,7 +92,7 @@ afterEach(async () => {
     return;
   }
   cleanup();
-  globalThis.document.body.replaceChildren();
+  globalThis.document.body?.replaceChildren();
   globalThis.window.history.replaceState(null, "", "/");
   installNavigation("client");
 });
@@ -356,7 +356,7 @@ async function serve(url: string, address: string): Promise<void> {
   const root = globalThis.document.createElement("div");
   root.id = ROOT_ID;
   root.innerHTML = rendered.innerHTML;
-  globalThis.document.body.replaceChildren(root);
+  globalThis.document.body?.replaceChildren(root);
   globalThis.window.history.pushState(null, "", address);
 }
 

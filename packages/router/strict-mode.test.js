@@ -175,7 +175,7 @@ afterEach(() => {
     return;
   }
   cleanup();
-  globalThis.document.body.replaceChildren();
+  globalThis.document.body?.replaceChildren();
 });
 
 /**
@@ -284,7 +284,7 @@ async function serve(url: string): Promise<void> {
   const root = globalThis.document.createElement("div");
   root.id = ROOT_ID;
   root.innerHTML = rendered.innerHTML;
-  globalThis.document.body.replaceChildren(root);
+  globalThis.document.body?.replaceChildren(root);
   globalThis.window.history.pushState(null, "", url);
 }
 
@@ -304,7 +304,7 @@ async function hydrateHere(strictMode: boolean): Promise<void> {
 
 /** The rendered root, as text. */
 function pageText(): string {
-  return globalThis.document.body.textContent ?? "";
+  return globalThis.document.body?.textContent ?? "";
 }
 
 describe("the router, hydrated under Strict Mode", () => {
@@ -424,7 +424,7 @@ describe("where `<StrictMode>` has to be", () => {
       }, []);
       return null;
     }
-    return { log, Probe: (Probe: $FlowFixMe) };
+    return { log, Probe: Probe as $FlowFixMe };
   }
 
   it("doubles renders and effects when it is the root's own child", () => {

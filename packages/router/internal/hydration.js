@@ -195,21 +195,26 @@ type DetachedHeadStyle = {|
  * puts them back in the same order.
  */
 export function prepareDevHeadForHydration(document: Document): () => void {
-  for (const script of document.head.querySelectorAll("script")) {
+  // A document without a head has nothing of uf's in it to hide.
+  const head = document.head;
+  if (head == null) {
+    return () => {};
+  }
+  for (const script of head.querySelectorAll("script")) {
     if (isDevHeadScript(script)) {
       script.remove();
     }
   }
-  for (const child of Array.from(document.head.childNodes)) {
+  for (const child of Array.from(head.childNodes)) {
     if (isIgnorableHeadWhitespace(child)) {
-      child.remove();
+      head.removeChild(child);
     }
   }
   const detached = [];
-  for (const style of document.head.querySelectorAll("style")) {
+  for (const style of head.querySelectorAll("style")) {
     if (isViteDevStyle(style)) {
       const anchor = document.createComment("uf dev style");
-      document.head.insertBefore(anchor, style);
+      head.insertBefore(anchor, style);
       style.remove();
       detached.push({ anchor, style });
     }
@@ -243,7 +248,7 @@ function restoreDevHeadStyles(
       parent.insertBefore(style, anchor);
       parent.removeChild(anchor);
     } else {
-      document.head.appendChild(style);
+      document.head?.appendChild(style);
     }
   }
 }

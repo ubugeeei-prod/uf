@@ -19,6 +19,12 @@ export function prepareDocumentForHydration(document: Document): void {
   // document that arrived. See `./deployment.js`.
   rememberDeployment(document);
   const head = document.head;
+  if (head == null) {
+    // Nothing a server wrote into a head to put right; the forms still are.
+    document.getElementById("_R_")?.remove();
+    normalizeReactFormActions(document);
+    return;
+  }
   const envelope = head.querySelector('meta[name="uf:render"]');
   if (envelope != null && head.firstChild !== envelope) {
     head.insertBefore(envelope, head.firstChild);

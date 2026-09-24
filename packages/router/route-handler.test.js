@@ -10,20 +10,34 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 import { createDispatcher } from "@uniflowed/router/handler";
+import type {
+  Handler,
+  HandlerContext,
+  HandlerModule,
+  HandlerRecord,
+} from "@uniflowed/router/handler";
 import { beginRequest } from "@uniflowed/router/server";
 import { cookies, draftMode, headers } from "@uniflowed/server";
 import { manualClock, setClock } from "@uniflowed/core/clock";
 import { Temporal } from "@uniflowed/core/temporal";
 
 /** A table entry whose module is given inline. */
-const record = (path, module) => ({
+const record = (path: string, module: HandlerModule): HandlerRecord => ({
   path,
   params: [],
   file: `${path}/$route.js`,
   load: async () => module,
 });
 
-const get = (url, init) => new Request(`http://localhost${url}`, init);
+const get = (url: string, init?: RequestOptions) => new Request(`http://localhost${url}`, init);
+
+/** A dispatcher's answer, which these tests expect to be a response. */
+const answered = (response: ?Response): Response => {
+  if (response == null) {
+    throw new Error("no handler answered the request");
+  }
+  return response;
+};
 
 /**
  * The dispatcher, as a host calls it: inside a request the host owns and
@@ -33,22 +47,28 @@ const get = (url, init) => new Request(`http://localhost${url}`, init);
  * dispatcher no longer builds a context of its own, so it does not run outside
  * one. What the lifecycle is for is `request-lifecycle.test.js`.
  */
-const hosted = (dispatch) => async (request) => {
-  const { run, settle } = beginRequest(request);
-  try {
-    return await run(() => dispatch(request));
-  } finally {
-    await settle();
-  }
-};
+const hosted =
+  (dispatch: (request: Request) => Promise<Response | null>) =>
+  async (request: Request): Promise<Response | null> => {
+    const { run, settle } = beginRequest(request);
+    try {
+      return await run(() => dispatch(request));
+    } finally {
+      await settle();
+    }
+  };
 
 describe("matching", () => {
   it("decodes parameters like page routes without splitting encoded slashes", async () => {
     const dispatch = hosted(
       createDispatcher({
         handlers: [
-          record("/api/users/:id", { GET: (_, { params }) => Response.json(params) }),
-          record("/api/files/:rest*", { GET: (_, { params }) => Response.json(params) }),
+          record("/api/users/:id", {
+            GET: (_: Request, { params }: HandlerContext) => Response.json(params),
+          }),
+          record("/api/files/:rest*", {
+            GET: (_: Request, { params }: HandlerContext) => Response.json(params),
+          }),
         ],
       }),
     );
@@ -89,7 +109,8 @@ describe("matching", () => {
       createDispatcher({
         handlers: [
           record("/api/users/:id", {
-            GET: (request, context) => Response.json({ id: context.params.id }),
+            GET: (request: Request, context: HandlerContext) =>
+              Response.json({ id: context.params.id }),
           }),
         ],
       }),
@@ -104,7 +125,7 @@ describe("matching", () => {
       createDispatcher({
         handlers: [
           record("/files/:path*", {
-            GET: (request, context) => Response.json(context.params.path),
+            GET: (request: Request, context: HandlerContext) => Response.json(context.params.path),
           }),
         ],
       }),
@@ -147,7 +168,8 @@ describe("matching", () => {
       createDispatcher({
         handlers: [
           record("/api/search", {
-            GET: (request, context) => new Response(context.searchParams.get("q") ?? ""),
+            GET: (request: Request, context: HandlerContext) =>
+              new Response(context.searchParams.get("q") ?? ""),
           }),
         ],
       }),
@@ -163,7 +185,7 @@ describe("methods", () => {
         handlers: [
           record("/api/thing", {
             GET: () => new Response("read"),
-            POST: async (request) => Response.json(await request.json(), { status: 201 }),
+            POST: async (request: Request) => Response.json(await request.json(), { status: 201 }),
             helper: () => new Response("not a method"),
           }),
         ],
@@ -230,7 +252,7 @@ describe("methods", () => {
       createDispatcher({
         handlers: [
           record("/api/search", {
-            QUERY: async (request) => Response.json({ asked: await request.json() }),
+            QUERY: async (request: Request) => Response.json({ asked: await request.json() }),
           }),
         ],
       }),
@@ -400,15 +422,17 @@ describe("the request a handler is inside", () => {
  */
 describe("draft mode", () => {
   /** A dispatcher for one handler at `/api/preview`. */
-  const preview = (handler) =>
+  const preview = (handler: Handler) =>
     hosted(createDispatcher({ handlers: [record("/api/preview", { GET: handler })] }));
 
   /** The `__Host-uf.draft` cookie a response set, whole. */
-  const draftCookie = (response) =>
-    response.headers.getSetCookie().find((value) => value.startsWith("__Host-uf.draft=")) ?? null;
+  const draftCookie = (response: ?Response): string | null =>
+    answered(response)
+      .headers.getSetCookie()
+      .find((value) => value.startsWith("__Host-uf.draft=")) ?? null;
 
   /** That cookie as a browser would send it back. */
-  const asRequestCookie = (response) => {
+  const asRequestCookie = (response: ?Response): string => {
     const set = draftCookie(response);
     if (set == null) throw new Error("the response set no draft cookie");
     return set.slice(0, set.indexOf(";"));
@@ -451,7 +475,7 @@ describe("draft mode", () => {
       get("/api/preview", { headers: { cookie: asRequestCookie(enabled) } }),
     );
 
-    expect(await seen.json()).toEqual({ draft: true });
+    expect(await answered(seen).json()).toEqual({ draft: true });
   });
 
   it("carries the cookie on a redirect, which is what the CMS flow returns", async () => {
@@ -487,7 +511,7 @@ describe("draft mode", () => {
     const seen = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
       get("/api/preview", { headers: { cookie: asRequestCookie(cleared) } }),
     );
-    expect(await seen.json()).toEqual({ draft: false });
+    expect(await answered(seen).json()).toEqual({ draft: false });
   });
 
   it("does not set a cookie on a request that never asked", async () => {
@@ -509,7 +533,7 @@ describe("draft mode", () => {
       const response = await dispatch(
         get("/api/preview", { headers: { cookie: `__Host-uf.draft=${forged}` } }),
       );
-      expect(await response.json()).toEqual({ draft: false });
+      expect(await answered(response).json()).toEqual({ draft: false });
     }
   });
 
@@ -528,7 +552,7 @@ describe("draft mode", () => {
     const response = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
       get("/api/preview", { headers: { cookie: `__Host-uf.draft=${stretched}` } }),
     );
-    expect(await response.json()).toEqual({ draft: false });
+    expect(await answered(response).json()).toEqual({ draft: false });
   });
 
   it("refuses a secret too short to be a key, and names the variable", async () => {
@@ -552,7 +576,7 @@ describe("draft mode", () => {
       const response = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
         get("/api/preview", { headers: { cookie: "__Host-uf.draft=9999999999999.AAAA" } }),
       );
-      expect(await response.json()).toEqual({ draft: false });
+      expect(await answered(response).json()).toEqual({ draft: false });
     } finally {
       if (before == null) {
         delete process.env.UF_DRAFT_SECRET;
@@ -579,14 +603,14 @@ describe("draft mode", () => {
       const inside = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
         get("/api/preview", { headers: { cookie } }),
       );
-      expect(await inside.json()).toEqual({ draft: true });
+      expect(await answered(inside).json()).toEqual({ draft: true });
 
       clock.advance(3601 * 1000);
 
       const after = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
         get("/api/preview", { headers: { cookie } }),
       );
-      expect(await after.json()).toEqual({ draft: false });
+      expect(await answered(after).json()).toEqual({ draft: false });
     } finally {
       restore();
     }

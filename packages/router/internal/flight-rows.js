@@ -39,7 +39,12 @@ const NEWLINE = 0x0a;
 const ERROR_TAG = "E".charCodeAt(0);
 
 /** One row's place in the payload. */
-type Row = {| +start: number, +end: number, +tag: number, +body: number |};
+type Row = {|
+  readonly start: number,
+  readonly end: number,
+  readonly tag: number,
+  readonly body: number,
+|};
 
 /**
  * Every row of a finished payload, in order.
@@ -92,7 +97,7 @@ function rowsOf(bytes: Uint8Array): Array<Row> {
 export function withoutErrorRows(
   payload: Uint8Array,
   left: (digest: string) => boolean,
-): {| +payload: Uint8Array, +removed: number |} {
+): {| readonly payload: Uint8Array, readonly removed: number |} {
   const decoder = new TextDecoder();
   const kept: Array<Uint8Array> = [];
   let removed = 0;

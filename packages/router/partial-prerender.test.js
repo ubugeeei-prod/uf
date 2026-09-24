@@ -110,7 +110,9 @@ describe("a static shell", () => {
     expect(built.close).toBe("");
     expect(built.postponed).not.toBe(null);
     // Plain JSON, which is what lets a build write it and a server read it.
-    expect(JSON.parse(JSON.stringify(built.postponed))).toEqual(built.postponed);
+    const serialised = JSON.stringify(built.postponed);
+    expect(serialised).not.toBe(undefined);
+    expect(JSON.parse(serialised ?? "null")).toEqual(built.postponed);
   });
 
   it("stops inside uf's own container for an application that renders no document", async () => {
@@ -138,10 +140,12 @@ describe("a static shell", () => {
   });
 
   it("does not report the stop as an error", async () => {
-    const errors = [];
+    const errors: Array<mixed> = [];
     await prerenderShell(<Page name={never} document={true} />, {
       shell,
-      onError: (error) => errors.push(error),
+      onError: (error: mixed) => {
+        errors.push(error);
+      },
       settle,
     });
     expect(errors).toEqual([]);
@@ -171,13 +175,13 @@ async function assertResumedInOrder(document: boolean): Promise<void> {
   const reader = body.stream().getReader();
   const first = await reader.read();
   // Nothing about the request has happened yet, and the shell is out.
-  expect(decode(first.value ?? new Uint8Array())).toBe(built.html);
+  expect(decode(first.value ?? new Uint8Array(0))).toBe(built.html);
   answer("ada");
   const rest = [];
   while (true) {
     const step = await reader.read();
     if (step.done === true) break;
-    rest.push(decode(step.value ?? new Uint8Array()));
+    rest.push(decode(step.value ?? new Uint8Array(0)));
   }
   const tail = rest.join("");
   expect(tail).toContain("signed in as ada");
@@ -185,7 +189,7 @@ async function assertResumedInOrder(document: boolean): Promise<void> {
   // The payload is the request's, written after the shell and ended
   // before the document closes.
   const payload = /<script type="application\/json" data-uf-flight>(.*?)<\/script>/.exec(tail);
-  expect(payload == null ? null : decode(flightChunkBytes(payload[1]) ?? new Uint8Array())).toBe(
+  expect(payload == null ? null : decode(flightChunkBytes(payload[1]) ?? new Uint8Array(0))).toBe(
     '0:"the request\'s payload"\n',
   );
   expect(tail.indexOf(END_MARKER)).toBeGreaterThan(-1);

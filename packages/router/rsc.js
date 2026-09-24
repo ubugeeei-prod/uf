@@ -61,9 +61,15 @@ import { composeRoute, pageComponent } from "./internal/compose.js";
 import { ErrorRoutePage } from "./internal/error-view.js";
 import { type FlightRoot, crossableRouteError, routeState } from "./internal/flight.js";
 import { requireServerComponentsReact } from "./internal/react-version.js";
-import type { ErrorModule, PageModule, ResolvedRoute, ResolvedSlot } from "./internal/resolve.js";
+import type {
+  ErrorModule,
+  PageModule,
+  ResolvedRoute,
+  ResolvedSlot,
+  RouteTable,
+} from "./internal/resolve.js";
 import { resolveFailure, resolveInterception, resolveMatch } from "./internal/resolve.js";
-import type { RouteParams, RouteTable, SearchParams } from "./internal/routing.js";
+import type { RouteParams, SearchParams } from "./internal/routing.js";
 import { RedirectError, nearestBoundary } from "./internal/routing.js";
 import { withServerRoute } from "./internal/server-route.js";
 
@@ -213,7 +219,7 @@ export function createFlightRenderer(options: {|
     // told what was actually thrown. See `crossableRouteError`.
     const failure = renderFailure(resolved);
     if (failure != null) reportRequestError(failure, "render");
-    const report = (error) => {
+    const report = (error: mixed) => {
       reportRequestError(error, "render");
       if (settings?.onError != null) return settings.onError(error);
       console.error(error);
@@ -390,7 +396,7 @@ function isClientReference(value: mixed): boolean {
   if (value == null || (typeof value !== "object" && typeof value !== "function")) {
     return false;
   }
-  const tagged: { +$$typeof?: mixed, ... } = (value: $FlowFixMe);
+  const tagged: { readonly $$typeof?: mixed, ... } = value as $FlowFixMe;
   return tagged.$$typeof === CLIENT_REFERENCE;
 }
 

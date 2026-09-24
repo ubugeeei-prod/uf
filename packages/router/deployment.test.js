@@ -202,10 +202,9 @@ describe("a navigation's payload, from a tab on the previous build", () => {
     let sent = new Headers();
     pageAt("http://uf.test/feed", "build-n", async (_input, init) => {
       sent = new Headers(init?.headers);
-      const refused = new Response("409 Conflict\n", {
-        status: 409,
-        headers: { "content-type": "text/plain; charset=utf-8", [DEPLOYMENT_HEADER]: "build-n1" },
-      });
+      const headers = new Headers({ "content-type": "text/plain; charset=utf-8" });
+      headers.set(DEPLOYMENT_HEADER, "build-n1");
+      const refused = new Response("409 Conflict\n", { status: 409, headers });
       Object.defineProperty(refused, "url", { value: "http://uf.test/account/__uf.flight" });
       return refused;
     });
@@ -358,7 +357,7 @@ describe("a page React Server Components rendered, on the previous build", () =>
       Promise.resolve({
         kind: "flight",
         url,
-        root: Promise.reject(
+        root: Promise.reject<FlightRoot>(
           new TypeError("Failed to fetch dynamically imported module: /assets/Counter-abc.js"),
         ),
       }),

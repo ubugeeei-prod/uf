@@ -81,13 +81,15 @@ export type PayloadReader = {|
 
 /** The parts of a `Document` this module uses, so it needs no DOM lib. */
 type DocumentLike = interface {
-  readonly querySelectorAll: (selector: string) => Iterable<ElementLike>,
-  readonly documentElement: mixed,
+  // Methods rather than function-valued properties: a `Document`'s are
+  // methods, and a method cannot be read off its object as a property.
+  querySelectorAll(selector: string): Iterable<ElementLike>,
+  readonly documentElement: ?Node,
 };
 
 /** The parts of an `Element` this module uses. */
 type ElementLike = interface {
-  readonly getAttribute: (name: string) => string | null,
+  getAttribute(name: string): ?string,
   readonly textContent: string | null,
 };
 
@@ -261,7 +263,6 @@ export function domObserver(
     const observer = new MutationObserver(() => {
       callback();
     });
-    // $FlowFixMe[incompatible-call] `documentElement` is a `Node`; the interface above says only what is read.
     observer.observe(root, { childList: true, subtree: true });
     return () => {
       observer.disconnect();

@@ -412,7 +412,7 @@ export function createRenderer(options: {|
       return redirectDocument(resolution.error);
     }
     let resolved: ResolvedRoute = resolution.route;
-    const report = settings?.onError ?? (() => {});
+    const report = settings?.onError ?? ((_error: mixed) => {});
     // Built once and shared by both renders below, so a page that threw its
     // shell away and rendered its error boundary instead reports the stream the
     // browser was actually sent rather than the one that was abandoned.
@@ -505,7 +505,7 @@ export function createRenderer(options: {|
       return redirectResult(redirectDocument(resolution.error));
     }
     let resolved: ResolvedRoute = resolution.route;
-    const report = settings?.onError ?? (() => {});
+    const report = settings?.onError ?? ((_error: mixed) => {});
 
     let html: string;
     try {

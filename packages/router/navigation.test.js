@@ -41,6 +41,7 @@ import { installDom } from "../../packages/react-testing/internal/dom.js";
 // the same module instance for the reset below to reset anything. Taking both
 // from the one path is how that stops being a property of the resolver.
 import { Link, installNavigation, routerView, useRouter } from "./internal/runtime.js";
+import type { PageModule, RouteRecord } from "./internal/runtime.js";
 import { clientModuleSource } from "../../packages/vite/internal/routes.js";
 
 // ---------------------------------------------------------------------------
@@ -113,9 +114,15 @@ const PREFETCHED = "/prefetched";
  * server render and the hydration have to be the same components for React's
  * comparison to mean anything.
  */
-let built: mixed = null;
+/** The table these tests route through, and the route the prefetch borrows. */
+type Built = {|
+  readonly routes: $ReadOnlyArray<RouteRecord>,
+  readonly other: { readonly page: () => Promise<PageModule>, ... },
+|};
 
-function tables() {
+let built: Built | null = null;
+
+function tables(): Built {
   if (built != null) {
     return built;
   }
@@ -233,7 +240,7 @@ async function serve(url: string): Promise<void> {
   const root = globalThis.document.createElement("div");
   root.id = ROOT_ID;
   root.innerHTML = rendered.innerHTML;
-  globalThis.document.body.replaceChildren(root);
+  globalThis.document.body?.replaceChildren(root);
   globalThis.window.history.pushState(null, "", url);
 }
 
@@ -354,7 +361,7 @@ afterEach(() => {
     return;
   }
   cleanup();
-  globalThis.document.body.replaceChildren();
+  globalThis.document.body?.replaceChildren();
   // The mode is module state on the runtime, and a worker runs many files out
   // of one module registry: a test that left `"document"` installed would be
   // deciding what a `Link` does in whichever file the scheduler put next. See

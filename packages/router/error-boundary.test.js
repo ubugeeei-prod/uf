@@ -29,6 +29,7 @@ import {
   routerView,
   unauthorized,
 } from "@uniflowed/router";
+import type { RouteError, RouteRecord, RouteTable } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
@@ -116,11 +117,11 @@ const guideLayout = { metadata: { title: "guide" } };
 const loadRootLayout = () => Promise.resolve(rootLayout);
 const loadGuideLayout = () => Promise.resolve(guideLayout);
 
-component SiteError(error, reset) {
+component SiteError(error: RouteError, reset: () => void) {
   return <p>site error</p>;
 }
 
-component GuideError(error, reset) {
+component GuideError(error: RouteError, reset: () => void) {
   return <p>guide error</p>;
 }
 
@@ -148,7 +149,11 @@ const throwingRoute = (thrower: () => mixed) => ({
   layouts: [loadRootLayout, loadGuideLayout],
 });
 
-const tableWith = (route, errors) => ({ routes: [route], notFound: [], errors });
+const tableWith = (route: RouteRecord, errors: RouteTable["errors"]): RouteTable => ({
+  routes: [route],
+  notFound: [],
+  errors,
+});
 
 describe("a loader that throws", () => {
   it("resolves to the nearest boundary, with that boundary's layouts", async () => {
@@ -476,8 +481,8 @@ describe("what `uf dev` says about it", () => {
     const fixed = [];
     const logged = [];
     const server = {
-      ssrFixStacktrace: (error) => fixed.push(error),
-      config: { logger: { error: (message) => logged.push(message) } },
+      ssrFixStacktrace: (error: mixed) => fixed.push(error),
+      config: { logger: { error: (message: string) => logged.push(message) } },
     };
     const error = new Error("the page threw");
 
@@ -493,7 +498,7 @@ describe("what `uf dev` says about it", () => {
     const logged = [];
     const server = {
       ssrFixStacktrace: () => {},
-      config: { logger: { error: (message) => logged.push(message) } },
+      config: { logger: { error: (message: string) => logged.push(message) } },
     };
 
     // `throw "nope"` is legal and a stack-trace mapper cannot be handed it.
@@ -549,7 +554,7 @@ describe("rendering in the browser", () => {
       }
       return <p>the page recovered</p>;
     }
-    component Retry(error, reset) {
+    component Retry(error: RouteError, reset: () => void) {
       return (
         <button type="button" onClick={reset}>
           try again

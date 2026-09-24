@@ -142,13 +142,13 @@ export function flightChunkBytes(text: string): Uint8Array | null {
   if (typeof value === "string") {
     return new TextEncoder().encode(value);
   }
-  if (
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof value.bytes === "string" &&
-    Object.keys(value).length === 1
-  ) {
-    return fromBase64(value.bytes);
+  if (typeof value === "object" && !Array.isArray(value)) {
+    // Read once into a local: a refinement of `value.bytes` does not survive
+    // to the call, a `const` does.
+    const bytes = value.bytes;
+    if (typeof bytes === "string" && Object.keys(value).length === 1) {
+      return fromBase64(bytes);
+    }
   }
   throw new Error(`@uniflowed/router: a ${FLIGHT_CHUNK_ATTRIBUTE} element holds no payload chunk`);
 }

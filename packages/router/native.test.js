@@ -98,7 +98,9 @@ describe("@uniflowed/router/native", () => {
     });
     expect(await linking.getInitialURL()).toBe("/users/42");
     const arrived = [];
-    const unsubscribe = linking.subscribe((href) => arrived.push(href));
+    const unsubscribe = linking.subscribe((href) => {
+      arrived.push(href);
+    });
     receive({ url: "https://example.com/users/42" });
     receive({ url: "https://example.com/users/43" });
     receive({ url: "https://example.com/users/43" });

@@ -34,7 +34,7 @@ component DefaultRouteError(error: RouteError, reset: () => void) {
   const detail = match (error) {
     {kind: "unauthorized"} => "This page needs you to be signed in.",
     {kind: "forbidden"} => "You do not have access to this page.",
-    {kind: "thrown"} => "This page could not be rendered.",
+    {kind: "thrown", ...} => "This page could not be rendered.",
   };
   return (
     <main>

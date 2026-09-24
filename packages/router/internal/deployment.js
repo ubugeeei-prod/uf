@@ -52,8 +52,9 @@ let remembered: string | null | void;
 
 /** The parts of a `Document` read here. */
 type HeadLike = interface {
-  readonly querySelector: (selector: string) => ?interface {
-    readonly getAttribute: (name: string) => ?string,
+  // Methods, as a `Document`'s are: a method cannot be read off as a property.
+  querySelector(selector: string): ?interface {
+    getAttribute(name: string): ?string,
   },
 };
 

@@ -81,9 +81,9 @@ const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 
 /** A payload stream the test writes into by hand. */
 function handPayload(): {|
-  +stream: ReadableStream<Uint8Array>,
-  +write: (text: string) => void,
-  +end: () => void,
+  readonly stream: ReadableStream<Uint8Array>,
+  readonly write: (text: string) => void,
+  readonly end: () => void,
 |} {
   let controller = null;
   const stream = new ReadableStream({
