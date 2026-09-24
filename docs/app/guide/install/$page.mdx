@@ -87,6 +87,20 @@ uf self-update --rollback
 Previous runtimes remain in the install store. Running the installer again also
 records the version it replaces, so the same rollback command applies.
 
+## Pin a project to a release
+
+A project can name the release of uf it runs on in `uf.config.js`:
+
+```js
+export default defineConfig({
+  uf: "0.3.0",
+});
+```
+
+Inside that project every `uf` command runs `uf@0.3.0`, installed on first use,
+whatever `uf self-update` last switched the machine to. See
+[`uf`](/reference/config#uf).
+
 ## Uninstall
 
 ```sh

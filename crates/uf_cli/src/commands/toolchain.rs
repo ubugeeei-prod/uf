@@ -1,4 +1,6 @@
-//! `uf use`, `uf self-update` and `uf self-uninstall`: the uf binary itself.
+//! `uf use`, `uf self-update` and `uf self-uninstall`: the uf binary itself —
+//! and following a project's `uf: "<version>"` to the release it pins, in
+//! [`pin`].
 //!
 //! Everything here is about *uf*, not about a project's dependencies — those
 //! are [`super::pm`] — and not about the JavaScript hosts a project runs on,
@@ -64,8 +66,11 @@
 //! `~/.local/bin/uf` the two of them take turns overwriting with different
 //! kinds of file.
 
+mod pin;
 mod switch;
 mod uninstall;
+
+pub(crate) use pin::follow as follow_pin;
 
 pub(crate) use uninstall::self_uninstall;
 

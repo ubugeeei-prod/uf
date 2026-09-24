@@ -25,6 +25,9 @@ pub fn binary(name: &str) -> Command {
     let mut command = Command::cargo_bin(name).unwrap();
     command
         .env_remove("NO_COLOR")
+        // A developer's own override would send every case to another uf.
+        .env_remove("UF_TOOLCHAIN")
+        .env_remove("UF_TOOLCHAIN_FOLLOWED")
         .env_remove("FORCE_COLOR")
         .env_remove("CLICOLOR")
         .env_remove("CLICOLOR_FORCE")
