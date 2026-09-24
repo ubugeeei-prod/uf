@@ -416,7 +416,9 @@ for (const adapter of postgresAdapters) {
           spotifyURL: null,
           balance: "0.00",
         });
-        expect(created?.createdAt).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+[+-]\d\d/);
+        // PostgreSQL's text form drops the fraction when it is zero, so a row
+        // created on a whole second reads `…:42+00`, not `…:42.000000+00`.
+        expect(created?.createdAt).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(\.\d+)?[+-]\d\d/);
         await expect(options.findByExternal(db, { externalId })).resolves.toMatchObject({ id: 1 });
         await expect(options.byExternals(db, { ids: [externalId] })).resolves.toEqual([1]);
         await db.query('UPDATE accounts SET settings = \'{"theme": "sepia"}\'', [], "exec");
