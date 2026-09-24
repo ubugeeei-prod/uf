@@ -205,10 +205,14 @@ async function transformBytes(
 async function readStream(stream: ReadableStreamLike): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Array<Uint8Array> = [];
+  // The end of the input leaves the loop with `break`, and what follows the
+  // loop is that exit. Flow does not treat `for (;;)` as ending the function
+  // (facebook/flow#7657), so a loop whose only exits were `return`s inside it
+  // still left an implicit `undefined` return possible.
   for (;;) {
     const next = await reader.read();
     if (next.done === true) {
-      return concat(chunks);
+      break;
     }
     if (!(next.value instanceof Uint8Array)) {
       await reader.cancel?.("@uniflowed/std/zip: stream produced a non-byte chunk");
@@ -216,6 +220,7 @@ async function readStream(stream: ReadableStreamLike): Promise<Uint8Array> {
     }
     chunks.push(next.value);
   }
+  return concat(chunks);
 }
 
 function readCentralDirectory(bytes: Uint8Array, data: DataView): Array<ZipRecord> {

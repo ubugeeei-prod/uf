@@ -197,10 +197,14 @@ export async function readAll(reader: Reader): Promise<Uint8Array> {
 /** Copy all chunks from `reader` into `writer`, returning the byte count. */
 export async function copy(writer: Writer, reader: Reader): Promise<number> {
   let total = 0;
+  // The end of the input leaves the loop with `break`, and what follows the
+  // loop is that exit. Flow does not treat `for (;;)` as ending the function
+  // (facebook/flow#7657), so a loop whose only exits were `return`s inside it
+  // still left an implicit `undefined` return possible.
   for (;;) {
     const next = await reader.read();
     if (next.done) {
-      return total;
+      break;
     }
     const expected = next.value.length;
     const written = await writer.write(next.value);
@@ -212,6 +216,7 @@ export async function copy(writer: Writer, reader: Reader): Promise<number> {
       throw new ShortWriteError(expected, written);
     }
   }
+  return total;
 }
 
 type StreamReadStep = {
