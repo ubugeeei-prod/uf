@@ -111,8 +111,8 @@ const removed: { [string]: mixed } = {};
 beforeAll(() => {
   for (const name of DOM_GLOBALS) {
     if (name in globalThis) {
-      removed[name] = globalThis[name];
-      delete globalThis[name];
+      removed[name] = Reflect.getOwnPropertyDescriptor(globalThis, name)?.value;
+      Reflect.deleteProperty(globalThis, name);
     }
   }
 });
@@ -182,7 +182,7 @@ describe("the environment hooks, prerendered", () => {
       // hydrating render has to produce the same markup.
       const supported = useSupported(() => true);
       const clipboard = useClipboard();
-      const channel = useBroadcast("uf-ssr", () => {});
+      const channel = useBroadcast<mixed>("uf-ssr", () => {});
       const network = useNetwork();
       const where = useGeolocation();
       const idle = useGeolocation({ enabled: false });

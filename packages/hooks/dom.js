@@ -42,8 +42,17 @@ import type { ScrollOffset, Size } from "./browser.js";
 import { browserWindow } from "./browser.js";
 import { useIsomorphicLayoutEffect, useStableCallback } from "./lifecycle.js";
 
-/** A ref object these hooks read: what `useRef` and `useElementRef` return. */
-export type Ref<T> = { current: T | null };
+/**
+ * A ref object these hooks read: what `useRef` and `useElementRef` return.
+ *
+ * `readonly`, because the hooks only ever read `current`, and because that is
+ * what lets a caller pass the ref they already have. A ref is a mutable box,
+ * so a writable `{ current: HTMLElement | null }` is invariant, and
+ * `useRef<HTMLDivElement | null>(null)` did not fit it: every
+ * `useHover(ref)` on a `div` ref was a type error at the call. Read-only, it is
+ * covariant, and a ref to any element a hook accepts is accepted.
+ */
+export type Ref<T> = { readonly current: T | null };
 
 /**
  * What a listener can be attached to.
@@ -383,8 +392,13 @@ export hook useScroll(ref: Ref<HTMLElement>): ScrollOffset {
   return offset;
 }
 
-/** A ref for one of the hooks above, typed for the element you will attach it to. */
-export hook useElementRef<T extends HTMLElement>(): Ref<T> {
+/**
+ * A ref for one of the hooks above, typed for the element you will attach it to.
+ *
+ * Writable, unlike [`Ref`], because React writes it: it goes to an element's
+ * `ref` prop as well as to a hook.
+ */
+export hook useElementRef<T extends HTMLElement>(): { current: T | null } {
   return useRef<T | null>(null);
 }
 

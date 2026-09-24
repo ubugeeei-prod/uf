@@ -89,7 +89,7 @@ const advance = (millis: number) => {
 
 describe("useStableCallback", () => {
   it("keeps one identity across renders", async () => {
-    const identities = new Set();
+    const identities = new Set<mixed>();
     component Probe() {
       const [, setTick] = useState(0);
       const callback = useStableCallback(() => {});
@@ -223,7 +223,7 @@ describe("useAsync", () => {
 
   it("reports a rejection as an error", async () => {
     component Probe() {
-      const { error, pending } = useAsync(async () => {
+      const { error, pending } = useAsync<empty>(async () => {
         throw new Error("nope");
       }, []);
       return <output>{pending ? "pending" : (error?.message ?? "none")}</output>;
@@ -505,7 +505,7 @@ describe("the state shapes", () => {
   it("edits a list without touching the array it was given", async () => {
     const initial = ["a", "b", "c"];
     let identities = 0;
-    let previous = null;
+    let previous: ?$ReadOnlyArray<string> = null;
     component Probe() {
       const list = useList(initial);
       if (list.items !== previous) {
@@ -563,7 +563,7 @@ describe("the state shapes", () => {
   });
 
   it("replaces the Set on every change rather than mutating it", async () => {
-    const seen = new Set();
+    const seen = new Set<mixed>();
     component Probe() {
       const set = useSet(["x"]);
       seen.add(set.items);
@@ -1481,7 +1481,7 @@ describe("useAsync, aborting and retrying", () => {
 
     let attempts = 0;
     component Broken() {
-      const { error } = useAsync(
+      const { error } = useAsync<empty>(
         async () => {
           attempts += 1;
           throw new Error("still broken");
@@ -1502,7 +1502,7 @@ describe("useAsync, aborting and retrying", () => {
   it("does not retry a call that was abandoned", async () => {
     let calls = 0;
     component Probe() {
-      useAsync(
+      useAsync<empty>(
         async () => {
           calls += 1;
           throw new Error("nope");
@@ -2049,11 +2049,11 @@ describe("Strict Mode, which renders and mounts everything twice", () => {
         <Probe />
       </React.StrictMode>,
     );
-    expect(globalThis.document.body.style.overflow).toBe("hidden");
+    expect(globalThis.document.body?.style.overflow).toBe("hidden");
     unmount();
     // A lock that counted the double mount and released once would leave the
     // page frozen for the rest of the session.
-    expect(globalThis.document.body.style.overflow).toBe("");
+    expect(globalThis.document.body?.style.overflow).toBe("");
   });
 
   it("does not start two intervals or two requests", async () => {
@@ -2188,12 +2188,14 @@ describe("useEventSource", () => {
 
   const install = () => {
     opened = [];
-    globalThis.EventSource = FakeStream;
+    // `Reflect.set` because the libdef declares `EventSource` as the real
+    // class, and this puts a stand-in there for the length of a test.
+    Reflect.set(globalThis, "EventSource", FakeStream);
   };
 
   afterEach(() => {
     uft.useRealTimers();
-    globalThis.EventSource = undefined;
+    Reflect.set(globalThis, "EventSource", undefined);
   });
 
   component Probe() {
