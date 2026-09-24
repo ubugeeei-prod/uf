@@ -136,10 +136,26 @@ impl ModuleIndex {
     ///
     /// [`None`] means no file in the batch answers to it — which is not the
     /// same as the module not existing, only that this check was not handed it.
+    ///
+    /// A query or a fragment on a module specifier names the same file: Node
+    /// and every bundler key a module *instance* by its whole URL, so
+    /// `./log.js?a-second-copy` is a second evaluation of `./log.js` with the
+    /// same exports. It resolves to that file, typed as it is, where it used to
+    /// miss and come back `any`. The query of a Vite asset import (`?raw`,
+    /// `?url`, `?worker`, ...) changes what the import *is*, so a specifier
+    /// [`super::assets::declared_module_for`] recognises keeps its query and
+    /// goes on to that declared shape instead.
     pub(super) fn resolve(&self, importer: &str, specifier: &str) -> Option<usize> {
         if !is_relative(specifier) {
             return None;
         }
+        let specifier = if super::assets::declared_module_for(specifier).is_some() {
+            specifier
+        } else {
+            specifier
+                .split_once(['?', '#'])
+                .map_or(specifier, |(path, _)| path)
+        };
         self.resolve_file(&join(importer, specifier)?)
     }
 
@@ -317,6 +333,22 @@ mod tests {
         let index = ModuleIndex::new(["a.js", "b.js"]);
 
         assert_eq!(index.resolve("b.js", "./a.js"), Some(0));
+    }
+
+    /// A query names a second instance of the same file, so it resolves to
+    /// that file; an asset query keeps its meaning and resolves to no source.
+    #[test]
+    fn a_query_or_fragment_names_the_same_module_unless_it_makes_an_asset() {
+        let index = ModuleIndex::new(["src/log.js", "src/app.js"]);
+
+        assert_eq!(
+            index.resolve("src/app.js", "./log.js?a-second-copy"),
+            Some(0)
+        );
+        assert_eq!(index.resolve("src/app.js", "./log?copy&x=1"), Some(0));
+        assert_eq!(index.resolve("src/app.js", "./log.js#frag"), Some(0));
+        assert_eq!(index.resolve("src/app.js", "./log.js?raw"), None);
+        assert_eq!(index.resolve("src/app.js", "./log.js?url"), None);
     }
 
     #[test]

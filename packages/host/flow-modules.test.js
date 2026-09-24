@@ -30,16 +30,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
-/** The module under test, reached as a path so no resolution is involved. */
-const TRANSFORM: string = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "./transform.js",
-);
-
-const host = await import(TRANSFORM);
+/**
+ * The module under test, by a relative specifier so no package resolution is
+ * involved, and written out so the checker types it as the module it is.
+ */
+const host = await import("./transform.js");
 const roots: Array<string> = [];
 
 afterAll(() => {

@@ -477,7 +477,9 @@ describe("Temporal on a host that has one of its own", () => {
       configurable: true,
     });
     try {
-      return await import(new URL("./temporal.js?a-native-host", import.meta.url).href);
+      // The query makes it a second instance of the module, evaluated now;
+      // the checker types it as `./temporal.js` itself.
+      return await import("./temporal.js?a-native-host");
     } finally {
       if (found == null) {
         Reflect.deleteProperty(globalThis, "Temporal");

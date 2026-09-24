@@ -465,6 +465,26 @@ fn which_copy_a_file_sees_does_not_depend_on_the_batch_order() {
     assert_eq!(reported(&hoisted_first), reported(&hoisted_last));
 }
 
+/// `import("./log.js?a-second-copy")` is a second instance of `./log.js`, and
+/// it is typed as that module rather than as `any`. A test that proves two
+/// module graphs share process state writes exactly this, and it used to be
+/// either an `any` or, with a computed URL, an `unsupported-syntax` error.
+#[test]
+fn an_import_with_a_query_is_typed_as_the_file_it_names() {
+    let batch = [
+        Source::new("log.js", "// @flow\nexport const level: number = 1;\n"),
+        Source::new(
+            "app.js",
+            "// @flow\nexport async function copy(): Promise<string> {\n  const again = await import(\"./log.js?a-second-copy\");\n  return again.level;\n}\n",
+        ),
+    ];
+
+    assert_eq!(
+        reported(&batch),
+        [("app.js".to_owned(), "incompatible-type")]
+    );
+}
+
 #[test]
 fn builtins_are_merged_once_and_then_free() {
     let first = prepare_builtins(&[]).expect("builtins merge");
