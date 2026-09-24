@@ -102,6 +102,16 @@ function outcomes(events: Array<Event>): Array<string> {
 
 const BUDGET = { timeout: 120_000 };
 
+/**
+ * The payload reproduction below needs `tests/library/payload.test.js`'s
+ * hydration case to finish, and on Deno it does not: Deno stops during that
+ * case's deferred hydration in the simulated DOM, a named exception of the Deno
+ * library lane (ubugeeei-prod/uf#1433). Driven through a worker here, the
+ * worker never closes and the case waits out its budget, so on Deno it is a
+ * declared skip until #1433 is fixed. The generic case above it still runs.
+ */
+const itUnlessDeno: typeof it = path.basename(process.execPath).startsWith("deno") ? it.skip : it;
+
 describe("the next file in the same worker", () => {
   it(
     "sees a module the previous file changed as it was before either ran",
@@ -149,7 +159,7 @@ describe("the next file in the same worker", () => {
     BUDGET,
   );
 
-  it(
+  itUnlessDeno(
     "renders a time in UTC after a file that hydrated a page in another zone",
     async () => {
       // The reproduction from the issue, in the order that failed: the payload

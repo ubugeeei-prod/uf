@@ -71,7 +71,7 @@ export type VercelHandlerOptions = {|
 
 /** The piece of Vercel's request context this module reads. */
 type VercelRequestContext = {
-  +get?: () => ?{ +waitUntil?: (promise: Promise<mixed>) => mixed, ... },
+  readonly get?: () => ?{ readonly waitUntil?: (promise: Promise<mixed>) => mixed, ... },
   ...
 };
 
@@ -87,7 +87,7 @@ type VercelRequestContext = {
  * where the handler's promise is what keeps the work alive.
  */
 function platformWaitUntil(): ((promise: Promise<mixed>) => mixed) | null {
-  const holder: { +[symbol]: ?VercelRequestContext, ... } = (globalThis: $FlowFixMe);
+  const holder: { readonly [symbol]: ?VercelRequestContext, ... } = globalThis as $FlowFixMe;
   const context = holder[Symbol.for("@vercel/request-context")];
   const current = context?.get?.();
   return typeof current?.waitUntil === "function" ? current.waitUntil : null;

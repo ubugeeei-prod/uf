@@ -103,9 +103,25 @@ fn a_project_on_the_alpha_series_migrates_to_this_binarys_version() {
         source::get(after, &["runtime"]).unwrap(),
         Some(json!("node@24.14.0"))
     );
-    // Past the release that introduced it, there is nothing left to do.
+    // Past the release that introduced it, that migration does not run again
+    // and the config is left alone. Later releases may still plan migrations
+    // of their own (0.3.0 plans #1453's two), so this asserts only about this one.
     let current = codemod::plan(root, Some("0.0.0-alpha.41"), env!("CARGO_PKG_VERSION")).unwrap();
-    assert!(current.changes.is_empty() && current.migrations.is_empty());
+    assert!(
+        !current
+            .migrations
+            .iter()
+            .any(|m| m == codemod::TOOL_DECLARATIONS),
+        "{:?}",
+        current.migrations
+    );
+    assert!(
+        current
+            .changes
+            .iter()
+            .all(|change| change.path != "uf.config.js"),
+        "the config was rewritten again"
+    );
 }
 
 #[test]

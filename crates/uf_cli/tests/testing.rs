@@ -402,9 +402,10 @@ it("still runs after it", () => {
 /// and makes a poor test: what has to be shown is that the line arrived *after*
 /// its file had been reported, and a sleep shows that only while the machine is
 /// idle. So the second file hands the first one a switch, through a module
-/// neither of them is: both import `switch.js` without the cache-busting query
-/// the worker puts on a test file, so both get the one instance the worker's
-/// registry holds. The callback is still detached — scheduled by a case that
+/// neither of them is: `switch.js`. Since #1504 each test file gets its own
+/// copy of every project module, so the switch keeps its state on
+/// `globalThis`, under a registered symbol, which the worker's process still
+/// shares between files. The callback is still detached — scheduled by a case that
 /// returned long before it fires — but it cannot run until the second file has
 /// started, and the second file cannot finish until it has.
 ///
@@ -415,20 +416,38 @@ const STRAGGLER: [(&str, &str); 3] = [
     (
         "src/switch.js",
         r#"// @flow
-let release: () => void = () => {};
-export const begun: Promise<void> = new Promise((resolve) => {
-  release = resolve;
-});
-export function begin(): void {
-  release();
+// One switch per process, not per module instance: each test file imports its
+// own copy of this module, and both files have to throw the same switch.
+type Switch = {
+  begun: Promise<void>,
+  begin: () => void,
+  printed: Promise<void>,
+  donePrinting: () => void,
+};
+const KEY = Symbol.for("uf-test/straggler-switch");
+function made(): Switch {
+  let release: () => void = () => {};
+  const begun: Promise<void> = new Promise((resolve) => {
+    release = resolve;
+  });
+  let settle: () => void = () => {};
+  const printed: Promise<void> = new Promise((resolve) => {
+    settle = resolve;
+  });
+  return { begun, begin: () => release(), printed, donePrinting: () => settle() };
 }
+const existing: mixed = Reflect.get(globalThis, KEY);
+// $FlowFixMe[incompatible-type] this module is the only writer of KEY.
+const shared: Switch = existing != null ? existing : made();
+Reflect.set(globalThis, KEY, shared);
 
-let settle: () => void = () => {};
-export const printed: Promise<void> = new Promise((resolve) => {
-  settle = resolve;
-});
+export const begun: Promise<void> = shared.begun;
+export const printed: Promise<void> = shared.printed;
+export function begin(): void {
+  shared.begin();
+}
 export function donePrinting(): void {
-  settle();
+  shared.donePrinting();
 }
 "#,
     ),

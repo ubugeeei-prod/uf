@@ -1408,8 +1408,14 @@ fn a_client_entry_never_imports_a_node_builtin() {
     /// which the package exports under the `react-server` condition alone — a
     /// browser never resolves it — and `router/rsc.js`, whose Flight renderer
     /// refuses to load anywhere but a `react-server` graph.
+    /// `router/testing.js` is `@uniflowed/router/testing`, the helpers a test
+    /// file imports to call server actions and load a production build
+    /// in-process (#1476). It builds the app with `uf build` and reads files, so
+    /// it runs under a test runner and never in a browser, and nothing in the
+    /// package's browser graph imports it.
     const SERVER_MODULES: &[&str] = &[
         "router/server.js",
+        "router/testing.js",
         "router/handler.js",
         "router/internal/server-route.js",
         "react-testing/internal/render.js",

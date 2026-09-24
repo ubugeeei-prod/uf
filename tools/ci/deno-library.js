@@ -22,6 +22,8 @@ const nativeFiles = new Set([
   // Added in #1384, after the rest of this list; it imports Vite like them (#1433).
   "packages/vite/build-passes.test.js",
   "packages/vite/devtools.test.js",
+  // Added in #1486; it builds the route table through Vite like the rest (#1433).
+  "packages/vite/error-boundaries.test.js",
   "packages/vite/flight-dev-urls.test.js",
   "packages/vite/flight.test.js",
   "packages/vite/rsc-requirements.test.js",
