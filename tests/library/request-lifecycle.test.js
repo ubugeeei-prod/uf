@@ -610,7 +610,9 @@ describe("the compiled binary", () => {
       destination.end();
       order.push("document piped");
     },
-    stream: () => ({ cancel: async () => {} }),
+    // Never read: the binary pipes. A real, empty stream so the fake has the
+    // type every front door's `Application` asks `render` for.
+    stream: () => new ReadableStream<Uint8Array>(),
   });
 
   it("settles after `pipe` resolves, which is after the last byte", async () => {

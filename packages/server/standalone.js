@@ -151,94 +151,22 @@ export type DocumentAssets = {|
   readonly deployment?: string,
 |};
 
-/** What the project's server bundle exports; see `virtual:uf/server`. */
-export type StandaloneApp = {|
-  /**
-   * Render `url`, resolving when the *shell* is ready.
-   *
-   * The same `{ status, headers?, pipe }` the router hands `uf start` and
-   * every adapter — not a finished string. A binary that collected the whole
-   * document before answering would be the one deployment target that does not
-   * stream, and the reason `renderToString` was replaced is that the wait is
-   * the slowest thing on the page.
-   */
-  readonly render: (
-    url: string,
-    assets: DocumentAssets,
-    options?: {|
-      readonly onError?: (error: mixed) => void,
-      /** See `./internal/application.js`. */
-      readonly formState?: FormState,
-    |},
-  ) => Promise<{|
-    readonly status: number,
-    readonly headers?: { readonly [string]: string },
-    // A promise, and not `void`: `DocumentBody.pipe` resolves on the last byte
-    // and rejects when the render fails after the shell. Typing it away was
-    // how the rejection below came to be dropped.
-    readonly pipe: (destination: NodeResponse) => Promise<void>,
-    readonly stream: () => ReadableStream<Uint8Array>,
-  |}>,
-  readonly dispatch: (request: Request) => Promise<Response | null>,
-  /**
-   * A route's Flight payload, for a browser that is navigating; see
-   * `./internal/application.js`. Absent on a bundle rendered from its modules.
-   */
-  readonly flight?: Application["flight"],
-  /**
-   * The server action this request names, or `null` when it names none.
-   *
-   * Between the guard and the handlers here as in every other host, and called
-   * rather than tested for on the same reasoning as `runMiddleware` below: a
-   * binary whose bundle predates this is a `TypeError` on the first request
-   * rather than one whose actions quietly answer 404.
-   */
-  readonly callAction: (
-    request: Request,
-    settings?: {| readonly postback?: (formState: FormState) => Promise<Response> |},
-  ) => Promise<Response | null>,
-  /**
-   * The guard on the path, run before anything under it answers.
-   *
-   * Called rather than tested for: a server bundle without it is a `TypeError`
-   * on the first request, not an application whose auth check quietly stopped
-   * running once it was compiled. See ubugeeei-prod/uf#260, and
-   * `@uniflowed/vite`'s `createApplicationHandler`, which says the same thing
-   * about `uf preview` and `uf start`.
-   *
-   * A `Request` back is a middleware's `rewrite()`; see `./internal/application.js`.
-   */
-  readonly runMiddleware: (request: Request) => Promise<Response | Request | null>,
-  /** `app.router`'s redirects, rewrites and headers; see `./internal/routing.js`. */
-  readonly routing?: RoutingRules,
-  /**
-   * Begin the request everything above runs inside.
-   *
-   * From the application bundle rather than from this module's own import of
-   * `@uniflowed/server/host`, and that is not a stylistic choice: the request
-   * store is shared by every copy of one *release* of `@uniflowed/server`, and
-   * the release that matters is the one the bundled router, middleware and
-   * pages resolved to. Beginning a request in another release's store would
-   * leave every `cookies()` in the application outside one, silently.
-   *
-   * `run` wraps everything that decides the response; `settle` is called after
-   * the last byte, which here is after `send`, after `sendBytes`, and after
-   * `pipe` resolves. See ubugeeei-prod/uf#389.
-   */
-  readonly beginRequest: (request: Request) => {|
-    /**
-     * The request itself, so this module can say what the host can do.
-     *
-     * Named here rather than left off because a compiled binary reaches a
-     * route handler without going through `./fetch.js`, which is where the
-     * other three front doors install their capabilities — and a handler that
-     * streams events has to get the same answer from all four.
-     */
-    readonly context: { capabilities: ServerCapabilities | null, ... },
-    readonly run: <T>(body: () => Promise<T>) => Promise<T>,
-    readonly settle: () => Promise<void>,
-  |},
-|};
+/**
+ * What the project's server bundle exports; see `virtual:uf/server`.
+ *
+ * The same `Application` every other front door takes (`./fetch.js`,
+ * `./node.js`, `@uniflowed/vite`), not a copy of it. This used to be a
+ * separate exact type written for this module, and it drifted from
+ * `Application` in three places: `render`'s `pipe` took this module's
+ * `NodeResponse` and promised a `Promise`, `beginRequest`'s context was a
+ * narrower shape, and it had no `resume`. So one server bundle could not
+ * satisfy both types, although one bundle is exactly what `uf build` hands to
+ * every host. What this module needs from each member is argued at the call
+ * site that uses it. In particular, `pipe` is awaited, which keeps a
+ * rejection after the shell from being dropped whether or not the type says
+ * it returns a promise.
+ */
+export type StandaloneApp = Application;
 
 /** Everything an application needs to answer a request, all of it built in. */
 export type HandlerOptions = {|
