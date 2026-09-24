@@ -1,5 +1,29 @@
 # Changelog
 
+## uf@0.4.0
+
+This minor release has no breaking changes. Commands, configuration and package APIs may
+still change between `0.x` releases.
+
+### Highlights
+
+- **Pin a project to a release of uf** (#1557). `uf: "0.4.0"` in `uf.config.js` does for
+  uf what `rust-toolchain.toml` does for Rust: any `uf`, `ufr` or `ufx` started inside the
+  project hands the command to that release, installing it into the install store first
+  with the same download checks as `uf self-update`. Nothing global changes, and outside
+  the project the machine's own uf runs. Only an exact release is accepted. `uf
+  self-update`, `uf self-uninstall` and `uf use` never follow the pin;
+  `UF_TOOLCHAIN=<version>` overrides it for one command and `UF_TOOLCHAIN=current` runs
+  the uf that was started. Releases before 0.4.0 ignore the key.
+- **Releases publish themselves** (#1556). Once a release PR merges through the queue,
+  `Release automation` dispatches the npm publication, the GitHub Release and the editor
+  packages in order, and reruns npm verification once when the registry lags.
+
+### All changes
+
+- feat(toolchain): pin a project to a release of uf with `uf` in uf.config.js (#1557) (d3964992)
+- feat(release): publish a merged release PR automatically (#1556) (d91cdabe)
+
 ## uf@0.3.0
 
 This minor release has three breaking changes: `@uniflowed/ui`'s namespaces, `uf test`'s
