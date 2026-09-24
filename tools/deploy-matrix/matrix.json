@@ -93,11 +93,6 @@
         "images": {
           "status": "planned",
           "note": "images"
-        },
-        "streaming": {
-          "status": "known-bug",
-          "issue": 1493,
-          "note": "route-cache"
         }
       }
     },
@@ -110,11 +105,6 @@
         "images": {
           "status": "planned",
           "note": "images"
-        },
-        "streaming": {
-          "status": "known-bug",
-          "issue": 1493,
-          "note": "route-cache"
         }
       }
     },
@@ -127,11 +117,6 @@
         "images": {
           "status": "planned",
           "note": "images"
-        },
-        "streaming": {
-          "status": "known-bug",
-          "issue": 1493,
-          "note": "route-cache"
         }
       }
     },
@@ -144,11 +129,6 @@
         "images": {
           "status": "planned",
           "note": "images"
-        },
-        "streaming": {
-          "status": "known-bug",
-          "issue": 1493,
-          "note": "route-cache"
         }
       }
     },
@@ -172,8 +152,8 @@
         },
         "streaming": {
           "status": "known-bug",
-          "issue": 1493,
-          "note": "route-cache-edge"
+          "issue": 1494,
+          "note": "workers-gzip"
         },
         "ppr": {
           "status": "known-bug",
@@ -211,7 +191,10 @@
           "status": "rejected",
           "note": "ppr-serverless",
           "refusal": {
-            "features": ["ppr", "s3cache"],
+            "features": [
+              "ppr",
+              "s3cache"
+            ],
             "config": "serverless",
             "pattern": "prerendered 1 page partially \\(/ppr\\).*--adapter serverless. buffers every response"
           }
@@ -220,7 +203,9 @@
           "status": "verified",
           "note": "s3",
           "refusal": {
-            "features": ["isr"],
+            "features": [
+              "isr"
+            ],
             "config": "full",
             "pattern": "regenerates 2 pages \\(/isr, /tagged\\).*--adapter serverless. has nowhere of its own"
           }
@@ -260,7 +245,9 @@
         "ssr": {
           "status": "rejected",
           "refusal": {
-            "features": ["ssr"],
+            "features": [
+              "ssr"
+            ],
             "config": "full",
             "pattern": "/ssr/:id \\(app/ssr/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
           }
@@ -268,7 +255,9 @@
         "streaming": {
           "status": "rejected",
           "refusal": {
-            "features": ["streaming"],
+            "features": [
+              "streaming"
+            ],
             "config": "full",
             "pattern": "/stream/:id \\(app/stream/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
           }
@@ -276,7 +265,9 @@
         "ppr": {
           "status": "rejected",
           "refusal": {
-            "features": ["ppr"],
+            "features": [
+              "ppr"
+            ],
             "config": "full",
             "pattern": "/ppr \\(app/ppr/\\$page\\.js\\) — it reads the request inside a `<Suspense>` boundary"
           }
@@ -284,7 +275,9 @@
         "isr-time": {
           "status": "rejected",
           "refusal": {
-            "features": ["isr"],
+            "features": [
+              "isr"
+            ],
             "config": "full",
             "pattern": "/isr \\(app/isr/\\$page\\.js\\) — it regenerates"
           }
@@ -292,7 +285,9 @@
         "isr-on-demand": {
           "status": "rejected",
           "refusal": {
-            "features": ["isr"],
+            "features": [
+              "isr"
+            ],
             "config": "full",
             "pattern": "/tagged \\(app/tagged/\\$page\\.js\\) — it regenerates"
           }
@@ -300,7 +295,9 @@
         "action-json": {
           "status": "rejected",
           "refusal": {
-            "features": ["actions"],
+            "features": [
+              "actions"
+            ],
             "config": "full",
             "pattern": "add \\(app/actions/_actions/counter\\.js\\) — a server action"
           }
@@ -308,7 +305,9 @@
         "action-form": {
           "status": "rejected",
           "refusal": {
-            "features": ["actions"],
+            "features": [
+              "actions"
+            ],
             "config": "full",
             "pattern": "saveNote \\(app/actions/_actions/counter\\.js\\) — a server action"
           }
@@ -316,7 +315,9 @@
         "route-handlers": {
           "status": "rejected",
           "refusal": {
-            "features": ["handlers"],
+            "features": [
+              "handlers"
+            ],
             "config": "full",
             "pattern": "/api/echo \\(app/api/echo/\\$route\\.js\\) — a route handler"
           }
@@ -324,7 +325,9 @@
         "cookies": {
           "status": "rejected",
           "refusal": {
-            "features": ["handlers"],
+            "features": [
+              "handlers"
+            ],
             "config": "full",
             "pattern": "/api/cookies \\(app/api/cookies/\\$route\\.js\\) — a route handler"
           }
@@ -332,7 +335,9 @@
         "middleware": {
           "status": "rejected",
           "refusal": {
-            "features": ["middleware"],
+            "features": [
+              "middleware"
+            ],
             "config": "full",
             "pattern": "/gated \\(app/gated/\\$middleware\\.js\\) — a middleware"
           }
@@ -352,7 +357,9 @@
         "error-boundary": {
           "status": "rejected",
           "refusal": {
-            "features": ["errors"],
+            "features": [
+              "errors"
+            ],
             "config": "full",
             "pattern": "/boom/:id \\(app/boom/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
           }
@@ -362,13 +369,8 @@
           "note": "images"
         },
         "rsc-payload": {
-          "status": "known-bug",
-          "issue": 1495,
-          "note": "flight-type"
-        },
-        "hydration": {
-          "status": "known-bug",
-          "issue": 1495,
+          "status": "verified",
+          "expect": "static",
           "note": "flight-type"
         }
       }
@@ -382,9 +384,7 @@
     "kumo-host": "Kumo 0.30.0's HTTP API event carries no `host` header and no `requestContext.domainName`, so uf's same-origin check refuses every action (as it should for a request that names no host). Real API Gateway sends both. The check runs and is expected to fail until Kumo does.",
     "kumo-cookies": "Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.",
     "images": "The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.",
-    "route-cache": "With `rendering.cache.route` on — which `isr` needs, and the fixture has ISR pages — every page rendered per request is buffered whole, so a `$loading.js` fallback arrives with the page it stands in for. The same build with the route cache off streams.",
-    "route-cache-edge": "The route-cache buffering of #1493, and on top of it the compression of #1494.",
     "workers-gzip": "Under `wrangler dev`, gzip compression for a client that accepts it holds the static shell until the document ends (shell and hole together at ~1.2 s); with `accept-encoding: identity` the shell arrives at ~4 ms. The Worker streams; the host's compression buffers.",
-    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type, so the client router loads the document instead: navigation works, as full page loads. The Worker types it since #1498; a static host needs the router change in #1508 or the `_headers` rule the deploy guide gives."
+    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it."
   }
 }
