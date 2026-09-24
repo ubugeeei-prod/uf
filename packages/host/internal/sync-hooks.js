@@ -79,6 +79,7 @@ import {
   writeCached,
 } from "./flow-cache.js";
 import { fileScoped } from "./file-scope.js";
+import { moduleEpochs } from "./module-epochs.js";
 
 /**
  * Install the hooks for the rest of this thread, compiling under `root`.
@@ -106,6 +107,10 @@ export function installFlowHooks(root) {
   }
   const cacheDirectory = cacheDirectoryFor(root);
   let compiler = null;
+  // Only for a `uf test --watch` worker, which is kept between runs and told
+  // which files changed; see `./module-epochs.js`. Every other process loads
+  // each module once and has no use for the graph.
+  const epochs = environmentVariable("UF_TEST_KEEP_WORKERS") === "1" ? moduleEpochs() : null;
 
   return nodeModule.registerHooks({
     resolve(specifier, context, nextResolve) {
@@ -119,7 +124,11 @@ export function installFlowHooks(root) {
         throw error;
       }
       // A test file's own copy of the project's modules; see `./file-scope.js`.
-      const url = fileScoped(context?.parentURL, resolved?.url, isImport(context));
+      let url = fileScoped(context?.parentURL, resolved?.url, isImport(context));
+      // A kept watch worker's record of what it loaded, and a fresh URL for
+      // what an edit reached; see `./module-epochs.js`. A URL the file scope
+      // already gave a query keeps it: that instance is the file's own.
+      if (epochs != null) url = epochs.resolved(context?.parentURL, url, isImport(context));
       return url === resolved.url ? resolved : { ...resolved, url };
     },
 

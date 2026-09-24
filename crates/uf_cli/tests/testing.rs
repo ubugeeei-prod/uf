@@ -2536,3 +2536,208 @@ fn a_forking_host_shim_does_not_leave_the_run_hanging() {
         "the shim exec'd rather than forked, so this proved nothing:\n{marked}"
     );
 }
+
+/// Every line a child writes to stdout and stderr, as one channel.
+fn lines_of(child: &mut std::process::Child) -> std::sync::mpsc::Receiver<String> {
+    use std::io::{BufRead as _, BufReader, Read};
+    let (sender, lines) = std::sync::mpsc::channel();
+    let streams: [Box<dyn Read + Send>; 2] = [
+        Box::new(child.stdout.take().expect("stdout is piped")),
+        Box::new(child.stderr.take().expect("stderr is piped")),
+    ];
+    for stream in streams {
+        let sender = sender.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stream).lines() {
+                let Ok(line) = line else {
+                    break;
+                };
+                if sender.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    lines
+}
+
+/// Read lines into `transcript` until one contains `needle`, within `budget`.
+fn wait_for(
+    lines: &std::sync::mpsc::Receiver<String>,
+    needle: &str,
+    budget: Duration,
+    transcript: &mut String,
+) -> bool {
+    let deadline = std::time::Instant::now() + budget;
+    while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
+        let Ok(line) = lines.recv_timeout(left) else {
+            return false;
+        };
+        transcript.push_str(&line);
+        transcript.push('\n');
+        if line.contains(needle) {
+            return true;
+        }
+    }
+    false
+}
+
+/// A watch session reruns an edit in the worker it already has, against the
+/// edited code.
+///
+/// Both halves are the promise. The worker is kept — the same process runs the
+/// file before and after the edit, which is what makes a rerun cost the file
+/// rather than a host start and the whole dependency graph — and it still sees
+/// the edit, through a module between the test and the file that changed.
+#[test]
+fn a_watch_session_reruns_an_edit_in_the_worker_it_already_has() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&[
+        (
+            "probe.test.js",
+            "// @flow\nimport fs from \"node:fs\";\nimport { expect, it } from \"@uniflowed/test\";\n\
+             import { double } from \"./math.js\";\n\n\
+             it(\"doubles\", () => {\n  fs.mkdirSync(\".uf\", { recursive: true });\n  \
+             fs.appendFileSync(\".uf/pids.txt\", `${process.pid}\\n`);\n  \
+             expect(double(21)).toBe(42);\n});\n",
+        ),
+        (
+            "math.js",
+            "// @flow\nexport { double } from \"./double.js\";\n",
+        ),
+        (
+            "double.js",
+            "// @flow\nexport function double(value: number): number {\n  return value * 2;\n}\n",
+        ),
+    ]);
+
+    let mut child = std::process::Command::new(support::uf_path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args([
+            "test",
+            "--watch",
+            "--watch-interval",
+            "100",
+            "probe.test.js",
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("uf starts");
+    let lines = lines_of(&mut child);
+    let mut transcript = String::new();
+
+    let first = wait_for(
+        &lines,
+        "1 passed",
+        Duration::from_secs(120),
+        &mut transcript,
+    );
+    let second = first && {
+        // Past any filesystem's modification-time resolution, so the watcher
+        // cannot read the edit as the file it already recorded.
+        std::thread::sleep(Duration::from_millis(1_100));
+        project.write(
+            "double.js",
+            "// @flow\nexport function double(value: number): number {\n  return value * 3;\n}\n",
+        );
+        wait_for(
+            &lines,
+            "expected 63 to be 42",
+            Duration::from_secs(120),
+            &mut transcript,
+        )
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(first, "the first run never passed:\n{transcript}");
+    assert!(second, "the edit never reached a run:\n{transcript}");
+    let pids =
+        std::fs::read_to_string(project.path().join(".uf").join("pids.txt")).expect("the test ran");
+    let pids: Vec<&str> = pids.lines().collect();
+    assert_eq!(pids.len(), 2, "one line per run: {pids:?}");
+    assert_eq!(
+        pids[0], pids[1],
+        "the rerun started a new worker instead of keeping the one it had:\n{transcript}"
+    );
+}
+
+/// A watch session nobody gave an interval hears a save from the kernel, or
+/// says why it is polling instead, and reruns the edit either way.
+///
+/// Which of the two happens is the machine's: a sandbox that denies the
+/// file-event service, and many network mounts, accept the watch and report
+/// nothing, and the session finds that out with a probe before relying on
+/// it. What must hold on every machine is that the edit reaches a run and the
+/// announcement does not claim a poll interval it is not using.
+#[test]
+fn a_watch_session_with_no_interval_hears_a_save_or_says_why_it_polls() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&[
+        (
+            "probe.test.js",
+            "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\
+             import { double } from \"./double.js\";\n\n\
+             it(\"doubles\", () => {\n  expect(double(21)).toBe(42);\n});\n",
+        ),
+        (
+            "double.js",
+            "// @flow\nexport function double(value: number): number {\n  return value * 2;\n}\n",
+        ),
+    ]);
+
+    let mut child = std::process::Command::new(support::uf_path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--watch", "probe.test.js"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("uf starts");
+    let lines = lines_of(&mut child);
+    let mut transcript = String::new();
+
+    let watching = wait_for(
+        &lines,
+        "watching",
+        Duration::from_secs(120),
+        &mut transcript,
+    );
+    let rerun = watching && {
+        std::thread::sleep(Duration::from_millis(1_100));
+        project.write(
+            "double.js",
+            "// @flow\nexport function double(value: number): number {\n  return value * 3;\n}\n",
+        );
+        wait_for(
+            &lines,
+            "expected 63 to be 42",
+            Duration::from_secs(120),
+            &mut transcript,
+        )
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        watching,
+        "the session never started watching:\n{transcript}"
+    );
+    assert!(rerun, "the edit never reached a run:\n{transcript}");
+    let announced = transcript
+        .lines()
+        .find(|line| line.contains("watching"))
+        .unwrap_or_default();
+    assert!(
+        !announced.contains(" every "),
+        "an interval nobody chose was announced: {announced}"
+    );
+}

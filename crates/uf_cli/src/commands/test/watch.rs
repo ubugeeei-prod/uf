@@ -21,11 +21,12 @@
 
 use anyhow::Result;
 use camino::Utf8Path;
+use compact_str::CompactString;
 use uf_config::UniflowedConfig;
 use uf_config::env_files::ProjectEnv;
 use uf_project::{ProjectFile, scan_selected_source_files};
 use uf_term::{PhaseTimer, Status};
-use uf_test::{ImportGraph, TestFilter, Watcher};
+use uf_test::{ImportGraph, TestFilter, Watcher, WorkerPool};
 
 use super::render::render_report;
 use super::{TestArgs, read_timings, record_timings, run_once};
@@ -63,8 +64,16 @@ pub(super) fn watch(
     // Resolved once, with the environment the session started with: a watch
     // that reloaded `.env` mid-session would change what the suite means
     // between two runs of the same file.
+    // Kept between runs, so a rerun costs the files it runs and what the edit
+    // touched rather than a host start and the whole dependency graph each
+    // time; see `uf_test::WorkerPool` for what keeps a kept worker from
+    // running the code as it was before the edit. A browser's driver reloads
+    // its page for every file already and has nothing to keep.
+    let keep = !args.browser;
     let host = super::test_host(root, &config, env, args.browser, runtime)?
-        .with_axe(config.accessibility.axe.as_json());
+        .with_axe(config.accessibility.axe.as_json())
+        .with_kept_workers(keep);
+    let pool = keep.then(WorkerPool::new);
     // Every host, Deno included. Deno used to be refused here, because its Flow
     // loader was an ahead-of-time pass and a watch session would have kept
     // re-running the tree the first pass wrote. Its loader is a hook now
@@ -79,29 +88,121 @@ pub(super) fn watch(
     let mut watcher = Watcher::new(root, args.watch_options());
     prime(&mut watcher, &files);
 
-    let interval = watcher.interval();
-    run_and_report(ui, root, &host, &files, &files, &args, None);
-    announce(ui, files.len(), interval);
+    // A chosen `--watch-interval` is taken as asked. Otherwise the watcher
+    // waits as long as polling costs about two per cent of a core — 50 ms on a
+    // selection of a few hundred files, up to the old 250 ms on a large one —
+    // because a save noticed a quarter of a second late was most of the time
+    // between it and a rerun that now takes tens of milliseconds.
+    let chosen = args.watch_interval.is_some();
+    let mut interval = watcher.interval();
+    // Kernel file events when nobody chose an interval and this machine can
+    // give them, so a save is heard when it happens rather than at the next
+    // look; see `uf_test::EventWatcher`. A chosen interval is a request to
+    // poll, and a file system that sends no events is polled as before.
+    let (mut events, unavailable) = if chosen {
+        (None, None)
+    } else {
+        match start_events(root, &files) {
+            Ok(source) => (Some(source), None),
+            Err(error) => (None, Some(error.to_string())),
+        }
+    };
+    run_and_report(ui, root, &host, &files, &files, &args, None, pool.as_ref());
+    announce(
+        ui,
+        files.len(),
+        events.is_none().then_some(interval),
+        unavailable.as_deref(),
+    );
 
     let mut ticks: u32 = 0;
     loop {
+        if let Some(source) = events.as_mut() {
+            let moved = match source.wait(EVENT_RESCAN_EVERY) {
+                Some(batch) if !batch.rescan => match reread_heard(&mut files, &batch.changed) {
+                    Heard::Nothing => continue,
+                    Heard::Read(moved) => moved,
+                    Heard::Rescan => rescan(root, &config, &args, &mut files)?,
+                },
+                // Nothing for a while, or the backend lost events: the walk is
+                // what sees a file created where no watched file was, and what
+                // catches whatever a dropped event would have said.
+                _ => rescan(root, &config, &args, &mut files)?,
+            };
+            // A directory that gained its first watched file is heard from from
+            // now on. One the backend refuses is left to the periodic rescan.
+            let _ = source.watch_directories(files.iter().map(|file| file.relative_path.as_str()));
+            if moved.is_empty() {
+                continue;
+            }
+            refresh_graph(&mut graph, &files, &moved);
+            if let Some(pool) = &pool {
+                pool.invalidate(&loaded_paths(root, &moved));
+            }
+            let rerun = affected(&graph, &moved, &files, &filter);
+            if rerun.is_empty() {
+                report_no_op(ui, &moved);
+                continue;
+            }
+            let subset: Vec<ProjectFile> = files
+                .iter()
+                .filter(|file| rerun.iter().any(|path| path == &file.relative_path))
+                .cloned()
+                .collect();
+            run_and_report(
+                ui,
+                root,
+                &host,
+                &files,
+                &subset,
+                &args,
+                Some(&moved),
+                pool.as_ref(),
+            );
+            continue;
+        }
+
         std::thread::sleep(interval);
         ticks = ticks.wrapping_add(1);
 
-        let triggered = !poll(&mut watcher, &files).is_empty();
+        let polled = std::time::Instant::now();
+        let changes = poll(&mut watcher, &files);
+        if !chosen {
+            interval = uf_test::adaptive_interval(polled.elapsed());
+        }
+        let triggered = !changes.is_empty();
         if !triggered && !ticks.is_multiple_of(RESCAN_EVERY) {
             continue;
         }
 
-        let refreshed = scan_selected_source_files(root, &config, &args.paths)?.files;
-        let moved = changed_paths(&files, &refreshed);
-        files = refreshed;
-        prime(&mut watcher, &files);
+        // The files the trigger named, read again and nothing else, when that
+        // is all that happened: an edit to a file the session already knows.
+        // A file that appeared or went, or the periodic rescan, still reads the
+        // whole selection, because only the walk can see a new file.
+        let reread = (triggered
+            && !ticks.is_multiple_of(RESCAN_EVERY)
+            && changes.added.is_empty()
+            && changes.removed.is_empty())
+        .then(|| reread_modified(&mut files, &changes.modified))
+        .flatten();
+        let moved = match reread {
+            Some(moved) => moved,
+            None => {
+                let refreshed = scan_selected_source_files(root, &config, &args.paths)?.files;
+                let moved = changed_paths(&files, &refreshed);
+                files = refreshed;
+                prime(&mut watcher, &files);
+                moved
+            }
+        };
         if moved.is_empty() {
             continue;
         }
 
         refresh_graph(&mut graph, &files, &moved);
+        if let Some(pool) = &pool {
+            pool.invalidate(&loaded_paths(root, &moved));
+        }
         let rerun = affected(&graph, &moved, &files, &filter);
         if rerun.is_empty() {
             report_no_op(ui, &moved);
@@ -113,8 +214,40 @@ pub(super) fn watch(
             .filter(|file| rerun.iter().any(|path| path == &file.relative_path))
             .cloned()
             .collect();
-        run_and_report(ui, root, &host, &files, &subset, &args, Some(&moved));
+        run_and_report(
+            ui,
+            root,
+            &host,
+            &files,
+            &subset,
+            &args,
+            Some(&moved),
+            pool.as_ref(),
+        );
     }
+}
+
+/// The files that moved, as the paths a worker's loader resolved them to.
+///
+/// Canonical, because the loader's paths are: a project under a symlinked
+/// directory (`/tmp` on macOS is `/private/tmp`) would otherwise name one
+/// file two ways and the worker would find nothing to reload. A file that has
+/// gone cannot be canonicalised and is named as it was.
+fn loaded_paths(root: &Utf8Path, moved: &[String]) -> Vec<String> {
+    let base = std::fs::canonicalize(root.as_std_path())
+        .ok()
+        .and_then(|path| camino::Utf8PathBuf::from_path_buf(path).ok())
+        .unwrap_or_else(|| root.to_path_buf());
+    moved
+        .iter()
+        .map(|relative| {
+            let path = base.join(relative);
+            std::fs::canonicalize(path.as_std_path())
+                .ok()
+                .and_then(|canonical| canonical.into_os_string().into_string().ok())
+                .unwrap_or_else(|| path.into_string())
+        })
+        .collect()
 }
 
 fn prime(watcher: &mut Watcher, files: &[ProjectFile]) {
@@ -139,6 +272,146 @@ fn build_graph(files: &[ProjectFile]) -> ImportGraph {
             .iter()
             .map(|file| (file.relative_path.as_str(), file.source.as_str())),
     )
+}
+
+/// How long an event-driven session goes without an event before it walks the
+/// selection anyway.
+///
+/// The walk is what finds a file created in a directory that held no watched
+/// file — no subscription covered it — and what catches whatever a dropped
+/// event would have said. Five seconds rather than the polling loop's two,
+/// because here it is the only cost an idle session has.
+const EVENT_RESCAN_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How long a session waits to hear about its own probe file before it decides
+/// events are not arriving and polls instead.
+const EVENT_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Subscribe to kernel events for the project and every directory holding a
+/// watched file, and prove they arrive.
+fn start_events(
+    root: &Utf8Path,
+    files: &[ProjectFile],
+) -> Result<uf_test::EventWatcher, uf_test::EventError> {
+    let mut source = uf_test::EventWatcher::new(root)?;
+    source.watch_directories(files.iter().map(|file| file.relative_path.as_str()))?;
+    // Heard, not only subscribed: a sandbox that denies the file-event service
+    // lets the watch start and then says nothing, and a session that trusted
+    // that would never see a save.
+    if !source.verify(&root.join(".uf"), EVENT_PROBE_TIMEOUT)? {
+        return Err(uf_test::EventError::generic(
+            "the file system accepted the watch and reported nothing",
+        ));
+    }
+    Ok(source)
+}
+
+/// What a burst of events means for the session.
+#[derive(Debug, PartialEq, Eq)]
+enum Heard {
+    /// Only paths the session has no use for: its own cache, a dependency, an
+    /// editor's swap file.
+    Nothing,
+    /// Files the session already holds, read again; the ones whose text moved.
+    Read(Vec<String>),
+    /// Something only the walk can answer: a new file, one that went, one that
+    /// could not be read.
+    Rescan,
+}
+
+/// Decide what the paths in one burst of events call for, reading again the
+/// ones the session already holds.
+fn reread_heard(files: &mut [ProjectFile], heard: &[CompactString]) -> Heard {
+    let relevant: Vec<&CompactString> = heard.iter().filter(|path| !never_watched(path)).collect();
+    if relevant.is_empty() {
+        return Heard::Nothing;
+    }
+    let (known, unknown): (Vec<CompactString>, Vec<&CompactString>) = {
+        let mut known = Vec::new();
+        let mut unknown = Vec::new();
+        for path in relevant {
+            if files.iter().any(|file| file.relative_path == path.as_str()) {
+                known.push(path.clone());
+            } else {
+                unknown.push(path);
+            }
+        }
+        (known, unknown)
+    };
+    if unknown.iter().any(|path| might_be_source(path)) {
+        return Heard::Rescan;
+    }
+    if known.is_empty() {
+        return Heard::Nothing;
+    }
+    match reread_modified(files, &known) {
+        Some(moved) => Heard::Read(moved),
+        None => Heard::Rescan,
+    }
+}
+
+/// Paths no selection ever includes: what uf and the package manager write.
+///
+/// Heard because FSEvents reports a directory's whole subtree however it was
+/// asked, and `uf test` itself writes `.uf/test-timings.json` after every run;
+/// a session that rescanned on its own writes would walk the project after
+/// every run for nothing.
+fn never_watched(path: &str) -> bool {
+    path.split('/')
+        .any(|part| matches!(part, ".uf" | ".git" | "node_modules" | "target" | "dist"))
+}
+
+/// Whether a path the session does not hold could be a new source file, and
+/// so worth a walk. An editor's swap file, a lock file, a build log are not.
+fn might_be_source(path: &str) -> bool {
+    matches!(
+        path.rsplit_once('.').map(|(_, extension)| extension),
+        Some("js" | "jsx" | "mjs" | "cjs" | "json")
+    )
+}
+
+/// Walk the selection again and say which paths moved, keeping the new list.
+fn rescan(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    args: &TestArgs,
+    files: &mut Vec<ProjectFile>,
+) -> Result<Vec<String>> {
+    let refreshed = scan_selected_source_files(root, config, &args.paths)?.files;
+    let moved = changed_paths(files, &refreshed);
+    *files = refreshed;
+    Ok(moved)
+}
+
+/// Read again the files the watcher saw move, and say which of them changed.
+///
+/// The fast path of the loop: an edit to a file the session already holds is
+/// one `stat` that moved and one read, rather than a walk and a read of every
+/// file in the selection — which on a repository of a few thousand files is
+/// most of the time between a save and a rerun. The truth is still contents,
+/// as in [`changed_paths`]: a file whose stamp moved and whose text did not
+/// (a `touch`, a save of the same bytes) is not a change.
+///
+/// `None` when any of them cannot be read or is not one the session holds —
+/// it went between the poll and the read, or it is new — and the caller then
+/// rescans the whole selection, which is what sees those.
+fn reread_modified(files: &mut [ProjectFile], modified: &[CompactString]) -> Option<Vec<String>> {
+    let mut read = Vec::with_capacity(modified.len());
+    for path in modified {
+        let index = files
+            .iter()
+            .position(|file| file.relative_path == path.as_str())?;
+        let source = std::fs::read_to_string(files[index].absolute_path.as_std_path()).ok()?;
+        read.push((index, source));
+    }
+    let mut moved = Vec::new();
+    for (index, source) in read {
+        if files[index].source != source {
+            files[index].source = source;
+            moved.push(files[index].relative_path.clone());
+        }
+    }
+    Some(moved)
 }
 
 /// Every path that was added, removed, or whose contents differ.
@@ -224,6 +497,7 @@ fn affected(
 
 /// Run `subset`, recording timings against the whole project so that files this
 /// cycle did not touch keep the durations they already had.
+#[allow(clippy::too_many_arguments)]
 fn run_and_report(
     ui: &mut Ui,
     root: &Utf8Path,
@@ -232,6 +506,7 @@ fn run_and_report(
     subset: &[ProjectFile],
     args: &TestArgs,
     moved: Option<&[String]>,
+    pool: Option<&WorkerPool>,
 ) {
     if let Some(moved) = moved {
         let message = format!(
@@ -248,7 +523,7 @@ fn run_and_report(
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(root);
     let report = timer.measure("run", || {
-        run_once(ui, root, host, subset, args, timings.clone())
+        run_once(ui, root, host, subset, args, timings.clone(), pool)
     });
     let duration = timer.total();
     // A run that could not start at all is reported and the watch continues:
@@ -286,12 +561,32 @@ fn run_and_report(
     );
 }
 
-fn announce(ui: &mut Ui, files: usize, interval: std::time::Duration) {
-    let message = format!(
-        "watching {} every {}",
-        plural(files, "file"),
-        uf_term::format_duration(interval)
-    );
+/// Say what the session is watching, and how.
+///
+/// With kernel events there is no interval to print. A chosen interval is
+/// printed; an adaptive one is not, because it follows what a poll costs and
+/// moves from one poll to the next. When events were wanted and could not be
+/// had, the reason is printed, so a session that is slower than it should be
+/// says why.
+fn announce(
+    ui: &mut Ui,
+    files: usize,
+    interval: Option<std::time::Duration>,
+    unavailable: Option<&str>,
+) {
+    let mut message = match interval {
+        Some(interval) if unavailable.is_none() => format!(
+            "watching {} every {}",
+            plural(files, "file"),
+            uf_term::format_duration(interval)
+        ),
+        _ => format!("watching {}", plural(files, "file")),
+    };
+    if let Some(reason) = unavailable {
+        message.push_str(&format!(
+            " by polling; file events are unavailable: {reason}"
+        ));
+    }
     ui.render(|renderer, out| {
         renderer.blank(out);
         renderer.status(out, Status::Info, &message);

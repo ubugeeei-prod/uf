@@ -75,9 +75,16 @@ import { run } from "./internal/run.js";
 // has the global like Node and Bun. A shim for a host uf no longer starts would
 // be a line claiming to be load-bearing while holding nothing up.
 
-/** What `uf` sends for one file. */
+/** What `uf` sends for one file, or to say which files changed. */
 type Request = {|
-  readonly file: string,
+  readonly file?: string,
+  /**
+   * Files that changed since this worker last ran one, as absolute paths.
+   *
+   * Sent on its own, between runs, to a `uf test --watch` worker that is kept
+   * for the next run; see [`invalidate`].
+   */
+  readonly invalidate?: $ReadOnlyArray<string>,
   readonly filter?: string | null,
   readonly timeoutMs?: number,
   /**
@@ -87,6 +94,12 @@ type Request = {|
    * own count of the requests it has served, which is the same number.
    */
   readonly generation?: number,
+|};
+
+/** A request that names a file, which is every request but an invalidation. */
+type FileRequest = {|
+  ...Request,
+  readonly file: string,
 |};
 
 /**
@@ -166,7 +179,7 @@ function benching(): boolean {
   return value != null && value !== "" && value !== "0";
 }
 
-async function runFile(request: Request, generation: number): Promise<void> {
+async function runFile(request: FileRequest, generation: number): Promise<void> {
   const started = performance.now();
   // Everything the previous file changed and this package shares with it goes
   // back: the registry, the stubbed environment and globals, the clock, the
@@ -216,7 +229,7 @@ async function runFile(request: Request, generation: number): Promise<void> {
  * either of the two `return`s below escaping it.
  */
 async function runImportedFile(
-  request: Request,
+  request: FileRequest,
   generation: number,
   url: string,
   started: number,
@@ -289,6 +302,25 @@ async function runImportedFile(
 }
 
 /**
+ * Load the modules `changed` reaches afresh from the next import on.
+ *
+ * A `uf test --watch` worker is kept between runs, and an edit has to reach
+ * it: the changed files, and every module this process loaded that imports
+ * one, are given a new URL by `@uniflowed/host`'s resolve hook, so the next
+ * file imports them as they are on disk now and shares everything else, as a
+ * worker's files always have. `false` when that cannot be promised — no such
+ * hook in this process, or an edit that reaches a module `require()` loaded —
+ * and `uf` then runs the next file in a fresh worker instead.
+ */
+function invalidate(changed: $ReadOnlyArray<string>): boolean {
+  const epochs = (globalThis as $FlowFixMe)[Symbol.for("@uniflowed/host/module-epochs")];
+  if (epochs == null || typeof epochs.invalidate !== "function") {
+    return false;
+  }
+  return epochs.invalidate(changed) === true;
+}
+
+/**
  * Serve requests until stdin closes.
  *
  * Requests are queued and served strictly in order: a worker runs one file at
@@ -324,13 +356,24 @@ function serve(): void {
       return;
     }
     served += 1;
+    if (request.file == null) {
+      const at = request.generation ?? served;
+      const changed = request.invalidate ?? [];
+      queue = queue.then(() =>
+        serving.run(at, () => {
+          write({ event: "invalidated", ok: invalidate(changed) });
+        }),
+      );
+      return;
+    }
+    const file = request.file;
     // `uf` chooses the number, because `uf` is the side that checks it. This
     // count of served requests is the same sequence and stands in for a `uf`
     // too old to send one — without something monotonic here the import below
     // would be cache-busted with `undefined` and a watch-mode rerun would see
     // the module it already had.
     const at = request.generation ?? served;
-    queue = queue.then(() => serving.run(at, () => runFile(request, at)));
+    queue = queue.then(() => serving.run(at, () => runFile({ ...request, file }, at)));
   });
 
   process.stdin.on("close", () => {

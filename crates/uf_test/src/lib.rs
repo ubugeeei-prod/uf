@@ -64,12 +64,14 @@
 pub mod browser;
 mod coverage;
 mod discovery;
+mod events;
 mod filter;
 mod graph;
 mod host;
 mod options;
 mod path;
 mod plan;
+mod pool;
 mod report;
 mod reporters;
 mod retry_schedule;
@@ -91,6 +93,7 @@ pub use crate::coverage::{
     parse_document, read_directory, read_document,
 };
 pub use crate::discovery::{MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, discover_tests, merge_plans};
+pub use crate::events::{EVENT_BURST_LIMIT, EVENT_QUIET, EventBatch, EventWatcher};
 pub use crate::filter::{MAX_PATTERN_BYTES, PathPatternList, TestFilter};
 pub use crate::graph::{ImportGraph, MAX_IMPORTS_PER_MODULE, MAX_MODULES, MODULE_EXTENSIONS};
 pub use crate::host::{FileOutcome, HostCommand, HostKind, SpawnError, Worker};
@@ -103,6 +106,7 @@ pub use crate::plan::{
     AncestorList, NAME_SEPARATOR, PlanResolution, Selection, SkipReason, TestCase, TestKind,
     TestModifier, TestPlan, UnsupportedDeclaration,
 };
+pub use crate::pool::{INVALIDATE_TIMEOUT, MAX_REQUESTS_PER_KEPT_WORKER, WorkerPool};
 pub use crate::report::{
     AssertionFailure, BenchStats, FileReport, FileStatus, MAX_BENCH_SAMPLES, MAX_EXPRESSION_BYTES,
     MAX_OUTPUT_BYTES_PER_FILE, OutputChunk, OutputStream, TestRecord, TestRunReport, TestStatus,
@@ -132,9 +136,11 @@ pub use crate::timings::{
     timings_path,
 };
 pub use crate::watch::{
-    ChangeSet, DEFAULT_POLL_INTERVAL, MAX_POLL_INTERVAL, MIN_POLL_INTERVAL, WatchOptions, Watcher,
-    next_poll_at,
+    ChangeSet, DEFAULT_POLL_INTERVAL, MAX_POLL_INTERVAL, MIN_POLL_INTERVAL, POLL_DUTY_DIVISOR,
+    WatchOptions, Watcher, adaptive_interval, next_poll_at,
 };
+/// Why kernel file events could not be started or kept; see [`EventWatcher`].
+pub use notify::Error as EventError;
 
 /// Errors emitted by native test execution.
 ///

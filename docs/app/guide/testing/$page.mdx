@@ -670,6 +670,38 @@ my edit break the nearby tests?", not for whole-project proof, so it cannot be
 combined with `--json` or `--coverage`: both promise a single report about one
 complete suite.
 
+A watch session keeps its workers between runs, so a rerun costs the files it
+runs and the modules the edit touched rather than a host start and the whole
+dependency graph. Before each rerun a kept worker is told which files changed,
+and it imports those, and every module it loaded that reaches one, afresh; the
+rest keep the instance they have, as they do between two files in one worker.
+A worker that cannot promise that — a host without an in-thread loader, or an
+edit that reaches a module `require()` loaded — is replaced with a fresh one.
+Without `--watch-interval` the session asks the operating system to say when a
+file changes — FSEvents on macOS, inotify on Linux — so a save is heard as it
+happens and an idle session costs nothing. Before relying on that it writes a
+probe file under `.uf/` and waits up to two seconds to hear about it: a sandbox
+that denies the file-event service, and many network and container file
+systems, accept the watch and then report nothing. Where the probe is not
+heard, the announcement says why and the session polls instead, as often as
+costs about 2% of a core — every 50 ms on a few hundred files, backing off
+towards 250 ms as the project grows; on this repository, whose 1,169 source
+files take 4.4 ms to stat, that is about every 220 ms. `--watch-interval MS`
+asks for polling at that interval.
+
+From saving a file to its result on this repository, with polling (the
+numbers were taken in a sandbox that denies file events, so the event path is
+not among them):
+
+| save | before | kept workers, adaptive polling | kept workers, `--watch-interval 50` |
+| --- | --- | --- | --- |
+| a small test file | 435 ms | 148 ms | 59 ms |
+| a small React test file | 756 ms | 194 ms | 61 ms |
+| a `packages/ui` module several tests import | 1,768 ms | 309 ms | — |
+
+Medians of six to ten saves on a 12-core Apple Silicon laptop under heavy load
+from other work (load average 22–28), Node 24.14.
+
 `--changed REF` asks the same question of a branch, once, which is what a pull
 request's CI wants from a suite too large to run on every push:
 
@@ -938,7 +970,7 @@ refuses by name, because `bun:test` has no benchmarks.
 | `-t PATTERN` | Only tests whose full name contains PATTERN |
 | `PATH...` | Only files whose path contains one of these |
 | `--watch` | Re-run what the change affected |
-| `--watch-interval MS` | Poll for watched changes at this interval |
+| `--watch-interval MS` | Poll for watched changes at this interval (default: adapts, 50–250 ms) |
 | `--changed REF` | Only the test files a change since REF reaches |
 | `--shard INDEX/COUNT` | Run one part of a suite split across machines |
 | `--merge-shards [DIR]` | Report the shards' records as one run |
