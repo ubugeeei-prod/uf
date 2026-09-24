@@ -1,7 +1,10 @@
 /**
- * @fileoverview The Fetch `Response` class, with the static `json` the vendored
- * one is missing, and `AbortSignal`, whose factories the vendored one declares
- * on the wrong side.
+ * @fileoverview The Fetch classes where the vendored declarations fall short:
+ * `Response` without its static `json`, `AbortSignal` with its factories on the
+ * wrong side, `Headers` without `getSetCookie`, a `Request` that will not take
+ * another `Request` as its init, `RequestOptions` without `duplex`, and
+ * `HeadersInit`/`URLSearchParams` that insist on a writable table. Each
+ * declaration below says what it changes and why.
  *
  * Flow's `evals/flow-typed/environment/bom.js` declares `Response.error()` and
  * `Response.redirect()` and stops there. `Response.json(data, init)`, from the
@@ -79,4 +82,140 @@ declare class AbortSignal extends EventTarget {
   static timeout(milliseconds: number): AbortSignal;
   /** A signal that aborts when any of `signals` does, with that one's reason. */
   static any(signals: Iterable<AbortSignal>): AbortSignal;
+}
+
+/**
+ * What a `Headers` or a request's `headers` may be built from.
+ *
+ * The vendored alias asks for a writable `{ [key: string]: string }` and a
+ * mutable `Array`. The constructor only reads its argument, so a readonly map
+ * or a `$ReadOnlyArray` of pairs, which is what a module that keeps its
+ * defaults in a frozen table has, was refused. Both are accepted here.
+ */
+type HeadersInit =
+  | Headers
+  | $ReadOnlyArray<[string, string]>
+  | { readonly [key: string]: string, ... };
+
+/**
+ * The `Headers` class, with `getSetCookie`.
+ *
+ * `getSetCookie()` returns each `Set-Cookie` header on its own, where `get`
+ * joins them with a comma that is also legal inside a cookie's expiry. It is
+ * in the Fetch standard and in every runtime uf targets. The rest is
+ * `bom.js`'s, unchanged, apart from taking the readonly `HeadersInit` above.
+ */
+declare class Headers {
+  @@iterator(): Iterator<[string, string]>;
+  constructor(init?: HeadersInit): void;
+  append(name: string, value: string): void;
+  delete(name: string): void;
+  entries(): Iterator<[string, string]>;
+  forEach<This>(
+    callback: (this: This, value: string, name: string, headers: Headers) => mixed,
+    thisArg: This,
+  ): void;
+  get(name: string): null | string;
+  /** Every `Set-Cookie` header, one string each. */
+  getSetCookie(): Array<string>;
+  has(name: string): boolean;
+  keys(): Iterator<string>;
+  set(name: string, value: string): void;
+  values(): Iterator<string>;
+}
+
+/**
+ * `URLSearchParams`, taking a readonly map or list of pairs for the same
+ * reason as `HeadersInit`: the constructor only reads it. The rest is
+ * `bom.js`'s, unchanged.
+ */
+declare class URLSearchParams {
+  @@iterator(): Iterator<[string, string]>;
+
+  size: number;
+
+  constructor(
+    init?:
+      | string
+      | URLSearchParams
+      | $ReadOnlyArray<[string, string]>
+      | { readonly [string]: string, ... },
+  ): void;
+  append(name: string, value: string): void;
+  delete(name: string, value?: string): void;
+  entries(): Iterator<[string, string]>;
+  forEach<This>(
+    callback: (this: This, value: string, name: string, params: URLSearchParams) => mixed,
+    thisArg: This,
+  ): void;
+  get(name: string): null | string;
+  getAll(name: string): Array<string>;
+  has(name: string, value?: string): boolean;
+  keys(): Iterator<string>;
+  set(name: string, value: string): void;
+  sort(): void;
+  values(): Iterator<string>;
+  toString(): string;
+}
+
+/**
+ * The options a `Request` or a `fetch` takes, with `duplex`.
+ *
+ * `duplex: "half"` is what the Fetch standard requires beside a streaming
+ * request body, and Node refuses a stream body without it. The rest is
+ * `bom.js`'s, unchanged. A Node `Readable` is still not a `BodyInit`: only
+ * Node takes one, and uf targets Deno and Bun as well.
+ */
+type RequestOptions = {
+  body?: ?BodyInit,
+  cache?: CacheType,
+  credentials?: CredentialsType,
+  duplex?: "half",
+  headers?: HeadersInit,
+  integrity?: string,
+  keepalive?: boolean,
+  method?: string,
+  mode?: ModeType,
+  redirect?: RedirectType,
+  referrer?: string,
+  referrerPolicy?: ReferrerPolicyType,
+  signal?: ?AbortSignal,
+  window?: any,
+  ...
+};
+
+/**
+ * The `Request` class, taking another `Request` as its init.
+ *
+ * `new Request(url, request)` copies `request`'s method, headers, body and
+ * the rest onto a new URL. The standard reads the init as a dictionary, so
+ * any object with those members works, and a `Request` is one. The vendored
+ * declaration took only the `RequestOptions` object type, which a class
+ * instance is never a subtype of. The rest is `bom.js`'s, unchanged.
+ */
+declare class Request {
+  constructor(input: RequestInfo, init?: RequestOptions | Request): void;
+  clone(): Request;
+
+  url: string;
+
+  cache: CacheType;
+  credentials: CredentialsType;
+  headers: Headers;
+  integrity: string;
+  method: string;
+  mode: ModeType;
+  redirect: RedirectType;
+  referrer: string;
+  referrerPolicy: ReferrerPolicyType;
+  readonly signal: AbortSignal;
+
+  // Body methods and attributes
+  bodyUsed: boolean;
+
+  arrayBuffer(): Promise<ArrayBuffer>;
+  blob(): Promise<Blob>;
+  formData(): Promise<FormData>;
+  json(): Promise<any>;
+  text(): Promise<string>;
 }

@@ -53,7 +53,22 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
     environment!("serviceworkers.js"),
     environment!("webassembly.js"),
     environment!("intl.js"),
+    // `Intl` with `RelativeTimeFormat`. Before `uf-intl.js`, whose namespace
+    // types are looked up on the last `Intl` declared. See the file's header.
+    (
+        "intl-relative-time.js",
+        include_str!("../../libdefs/intl-relative-time.js"),
+    ),
     environment!("node.js"),
+    // Node's `url`, `fs` and `async_hooks`, after `node.js` so that each
+    // replaces the module of the same name, and whole for the same reason as
+    // `web-crypto.js`. See each file's header and #1451.
+    ("node-url.js", include_str!("../../libdefs/node-url.js")),
+    ("node-fs.js", include_str!("../../libdefs/node-fs.js")),
+    (
+        "node-async-hooks.js",
+        include_str!("../../libdefs/node-async-hooks.js"),
+    ),
     // TypeScript declarations name Intl's option dictionaries through the
     // `Intl` namespace, while Flow's libdefs expose the older `$` aliases.
     // This bridges those spellings for packages translated from `.d.ts`. See
@@ -93,8 +108,9 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
     // targets implements. After `bom.js` so that its `Crypto` is the one that
     // shadows, and whole rather than partial for the same reason. See #619.
     ("web-crypto.js", include_str!("../../libdefs/web-crypto.js")),
-    // Fetch's `Response`, of which the vendored `bom.js` has the instance half
-    // and the statics without `json`. After `bom.js` so that it shadows, and
+    // Fetch's `Response`, `Request`, `Headers` and `URLSearchParams`, and
+    // `AbortSignal`, each redeclared with what the vendored `bom.js` and
+    // `dom.js` leave out or put on the wrong side. After `bom.js` so that it shadows, and
     // whole for the same reason as `web-crypto.js`. See #1451.
     ("fetch.js", include_str!("../../libdefs/fetch.js")),
 ];
