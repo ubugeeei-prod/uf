@@ -371,16 +371,39 @@ async function isrOnDemand({ base, deployDir, restart }) {
   return notes;
 }
 
-/** RSC navigation: the Flight payload a `<Link>` fetches, prerendered and rendered. */
-async function rscPayload({ base }) {
+/**
+ * RSC navigation: the Flight payload a `<Link>` fetches, prerendered and
+ * rendered.
+ *
+ * `expect: "static"` is a static host, which serves the prerendered payload as
+ * a file with whatever type it gives an unknown extension — none, on Workers
+ * assets — and renders nothing. There the payload must be a `200` whose first
+ * line is a Flight row, which is what the client router accepts from an
+ * untyped answer (#1495); the browser row checks that it does.
+ */
+async function rscPayload({ base, expect }) {
   const prerendered = await request(base, "/posts/first/__uf.flight");
   expectStatus(prerendered, 200, "GET /posts/first/__uf.flight");
-  assert.match(
-    prerendered.headers.get("content-type") ?? "",
-    /text\/x-component/,
-    `GET /posts/first/__uf.flight is not a Flight payload\n  ${describe(prerendered)}`,
-  );
+  const type = prerendered.headers.get("content-type") ?? "";
+  if (expect === "static" && !/text\/x-component/.test(type)) {
+    assert.ok(
+      ["", "application/octet-stream", "binary/octet-stream"].includes(type.split(";")[0].trim()),
+      `GET /posts/first/__uf.flight is typed ${type}, which the router takes for a document`,
+    );
+    assert.match(
+      prerendered.body,
+      /^[0-9a-f]+:/i,
+      "the untyped payload does not open with a Flight row",
+    );
+  } else {
+    assert.match(
+      type,
+      /text\/x-component/,
+      `GET /posts/first/__uf.flight is not a Flight payload\n  ${describe(prerendered)}`,
+    );
+  }
   expectBody(prerendered, "post: first", "GET /posts/first/__uf.flight");
+  if (expect === "static") return [`prerendered payload content-type: ${type || "(none)"}`];
   const id = unique("payload");
   const rendered = await request(base, `/ssr/${id}/__uf.flight`);
   expectStatus(rendered, 200, `GET /ssr/${id}/__uf.flight`);
