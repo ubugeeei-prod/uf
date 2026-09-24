@@ -7,7 +7,6 @@ const { findRelease, autoRelease, runWorkflow, VERIFY_JOB } = require("./auto-re
 
 const repository = "owner/project";
 const commit = "c".repeat(40);
-const parent = "p".repeat(40);
 const version = "0.3.0";
 const branch = `release/v${version}`;
 
