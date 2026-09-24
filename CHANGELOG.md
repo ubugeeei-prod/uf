@@ -1,5 +1,122 @@
 # Changelog
 
+## uf@0.3.0
+
+This minor release has three breaking changes: `@uniflowed/ui`'s namespaces, `uf test`'s
+per-file module scope, and spy calls in Vitest's shape. Each is described below with how
+to move. Commands, configuration and package APIs may still change between `0.x` releases.
+
+### Breaking changes
+
+- **`@uniflowed/ui` exports each component's parts through its namespace only** (#1481,
+  #1506). `DialogRoot` is now `Dialog.Root`. Components that `uf ui add` writes export
+  their parts unprefixed (`Root`, `Trigger`, `Content`), and a page imports them as
+  `import * as Dialog from "./components/ui/dialog.js"`. `uf migrate` rewrites both: the
+  `ui-namespaces-1453` codemod updates imports of the package, and
+  `ui-registry-namespaces-1453` updates the copies a project already added. Anything
+  either cannot rewrite without guessing is reported and left as it was.
+- **`uf test` gives every test file its own copy of the project's modules** (#1504). A
+  module's state no longer leaks from one test file into the next file on the same worker.
+  A suite that relied on that leak, for example one file setting up state that another
+  reads, has to set it up in each file.
+- **Spies record calls in Vitest's shape** (#1510). `spy.mock.calls[0]` is the argument
+  array, not `{ args, returned }`. `mock` also gains `lastCall`, `settledResults`,
+  `contexts`, `instances` and `invocationCallOrder`, and `results` gains `"incomplete"`.
+
+### Highlights
+
+- **UI motion** (#1463): the default styles get crafted, visible enter transitions, with
+  named properties only, no bounce or overshoot, and `prefers-reduced-motion` honoured.
+- **uf test** (#1519): `uf test --watch` keeps its workers between runs and reloads only
+  the modules an edit reaches.
+- **Server Components**: server actions run in the rsc graph beside the pages they change,
+  so an action's writes to module state reach the page (#1488). New RSC testing helpers,
+  and a guide whose every sample CI runs (#1476). Fixes to server actions, redirects,
+  payload responses and error boundaries (#1464, #1467, #1472, #1475, #1479, #1486,
+  #1491, #1498, #1503, #1508, #1512).
+- **Deploy**: a Vercel adapter, as a Build Output API directory (#1515). Every adapter is
+  served under its platform emulator and checked against every rendering mode (#1480).
+  Fixes for the container and Deno outputs, and for Workers (#1499, #1505).
+- **Editors** (#1477): `uf editor install <editor>` and `uf editor setup` for VS Code,
+  Cursor, Zed, Emacs, JetBrains, Neovim and Vim. The VS Code extension installs from the
+  release's `.vsix` after its digest is checked.
+- **uf lint**: every rule documents a Good and a Bad example, and both run as tests
+  (#1474). A `uf-lint-disable` comment that silences nothing is reported (#1449). Several
+  false positives are fixed (#1465, #1522, #1525, #1533).
+- **uf check**: unused suppressions are reported, and deliberate type errors are marked
+  with `$FlowExpectedError` (#1492). Most packages' own sources now type-check under
+  `uf check` with far fewer errors (the `fix(types)` and per-package `fix` entries below).
+
+### All changes
+
+- fix: a release-only suite's findings from main, fixed in this release PR: `server/vercel.js` spells read-only fields `readonly`, `router/testing.js` is a named server module, and the straggler-output test shares its switch through `globalThis` after #1504
+- test(sqlc): accept a whole-second timestamp in the PGlite overrides case (#1553) (e9618982)
+- test(rsc): an error boundary without use client is refused, naming its file (#1512) (85c4db1f)
+- test(deploy): serve every adapter under its platform emulator and check every rendering mode (#1480) (8a66d5fa)
+- feat(deploy): a Vercel adapter, as the Build Output API directory (#1515) (82833ded)
+- fix(vite, router): run server actions in the rsc graph, beside the pages they change (#1488) (9431a161)
+- test(router): read a stream to its end with a loop Flow can see ends (#1549) (f4d7a53f)
+- fix(server): StandaloneApp is Application (API decision) (#1550) (845fdee3)
+- test(server): type @uniflowed/server's test fixtures against the contracts they stand in for (#1540) (05ac6370)
+- fix(server): send a Worker's streamed responses uncompressed (#1505) (e19deb29)
+- fix(check): report unused suppressions, and mark deliberate type errors with $FlowExpectedError (#1492) (f2d94e05)
+- fix(test)!: record spy calls in Vitest's shape (#1510) (61a9fed5)
+- fix(lint): say why a component should be exported by name (#1533) (f7bfe0ff)
+- feat(router): RSC testing helpers and a guide whose every sample CI runs (#1476) (9d91b718)
+- fix(ui): the package's sources check clean, and its suites nearly (#1532) (acd3a2b9)
+- fix(std): end the read loops with the exit Flow can see (#1546) (1f9ec24c)
+- fix(router): type-check @uniflowed/router, 270 errors to 16 (#1542) (1e66a056)
+- fix(server): the type errors in @uniflowed/server's own modules (#1517) (87a06cc3)
+- fix(router): send a loader's non-Error throw into the payload as an Error (#1483) (0a7c9843)
+- fix(server): keep every redirect and request URL on the host the browser asked (#1464) (8399b24e)
+- fix(types): type the CI and ARIA scripts in Flow's comment syntax (#1513) (3916e933)
+- perf(test): keep watch-mode workers between runs and reload only what an edit reaches (#1519) (230c610a)
+- fix(types): type-check the tui and route-cache benches (#1551) (12490c21)
+- fix(web): drop the renders annotations Flow rejects (81 → 10) (#1529) (27405fd1)
+- fix(state, cell, immer, validator): type-check under uf check (#1543) (040d2e94)
+- fix(effect): an unannotated generator body and a lone requirement type-check (#1526) (e7d44eff)
+- fix(react-testing): queries answer HTMLElement, and the package checks clean (#1530) (25bfd6ba)
+- fix(hooks): a ref to any element fits the element hooks (#1531) (bdd23a59)
+- feat(ui)!: export the registry's parts unprefixed, and import each copy as a namespace (#1506) (97a6fdbe)
+- fix(types): @uniflowed/vite's tests typed as they run (#1536) (0e9fbf5f)
+- fix(query): type placeholderData as the query's data (API decision) (#1548) (d79a7954)
+- fix(types): type the VS Code API the extension uses (#1547) (cb75431e)
+- test(rsc): hold the split, cache and streaming claims no case reached (#1507) (afc8775b)
+- fix(types): write the loops and string walks Flow bans in the form it accepts (#1545) (c5be8b5d)
+- feat(ui)!: export each component's parts through its namespace only (#1481) (0d8847d8)
+- fix(std): type-check @uniflowed/std under uf check (#1539) (5ac4b712)
+- fix(types): tests/library typed as it runs (175 → 32 errors) (#1538) (044d0ca6)
+- fix(types): markdown's renders annotation, and the host, story and registry tests typed (#1537) (1ccee066)
+- fix(form): type the rule checks and the field source, and name values where Flow cannot infer them (#1535) (8aa4bcf7)
+- fix(stylex): type stylex.create as the compiled namespaces it returns (#1534) (4387141f)
+- fix(test): negated DOM matchers report their failure, and 89 more type errors (#1528) (9ca3a0c2)
+- fix(tui): type-check @uniflowed/tui (134 → 6) (#1527) (b36f3ac4)
+- fix(lint): a structural role is not an interactive one (#1525) (076e9efd)
+- fix(fetch, mock, infra): the type errors in @uniflowed/fetch, the mock tests and the Workers (#1523) (7b503d3c)
+- fix(lint): react/hook-syntax reports exported, async and arrow hooks (#1522) (1fa898ed)
+- fix(graphql, relay): type-check both packages cleanly (#1520) (8780ec91)
+- fix(query): type-check @uniflowed/query without the escapes it had (#1518) (2db133ba)
+- fix(check): AbortSignal's factories are statics (#1516) (bc62d538)
+- ci: run the RSC and browser job on the pull requests that can break it (#1484) (79ea1aeb)
+- docs(lint): every rule with a Good and a Bad example, run as tests (#1474) (d9a74327)
+- fix(test)!: give every test file its own copy of the project's modules (#1504) (5d9f60de)
+- fix(router): navigate on a payload a static host served untyped (#1508) (a7069858)
+- fix(server): stream the request that fills the route cache (#1503) (9ca88fac)
+- test(router): hold the server-action claims no test reached, and correct three doc claims (#1502) (b0e47918)
+- fix(deploy): let the container and deno outputs write the route cache (#1499) (2bbd70f2)
+- fix(router): unmount what base-path.test.js hydrates, and let hydrate() hand back its root (#1541) (bc9a7955)
+- fix(server): answer a prerendered payload as text/x-component on a Worker (#1498) (24adea70)
+- fix(server): keep every Set-Cookie separate when writing to a Node response (#1491) (3037e8d4)
+- fix(router): refuse javascript: URLs in redirect() and router navigation (#1467) (a4f94cef)
+- fix(vite): refuse an $error.js without "use client" when the route table is built (#1486) (7b6f9b75)
+- fix(server): answer every Flight payload with nosniff (#1479) (ea69dae6)
+- fix(router): carry redirect() and the other routing calls back from a hydrated action (#1475) (5efe81c7)
+- feat(cli): uf editor install and uf editor setup (#1477) (02bb926c)
+- fix(router): hold a server action call to one value budget, counted before queueing (#1472) (7e500af0)
+- fix(lint): a React Compiler finding's message is one line (#1465) (f73bd35f)
+- feat(ui): give the default styles crafted, visible motion with enter transitions (#1463) (efa4ee04)
+- feat(lint): report a uf-lint-disable comment that silences nothing, and remove the 21 that do (#1449) (a5dc3259)
+
 ## Unreleased
 
 - No codemod (fix(test)!: give every test file its own copy of the project's modules): only tests that share state between files through a project module are affected, and moving that state to globalThis depends on what the files share.

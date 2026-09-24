@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/tui",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A React renderer whose host is a terminal, following OpenTUI, for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -31,7 +31,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/react": "0.2.0",
+    "@uniflowed/react": "0.3.0",
     "react-reconciler": "^0.34.0"
   }
 }

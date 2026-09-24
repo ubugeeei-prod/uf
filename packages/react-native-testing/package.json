@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/react-native-testing",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Native component tests and renderer-independent tree queries for Flow.",
   "type": "module",
   "license": "MIT",
