@@ -105,6 +105,11 @@
         "images": {
           "status": "planned",
           "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1552,
+          "note": "tee-bun-deno"
         }
       }
     },
@@ -117,6 +122,11 @@
         "images": {
           "status": "planned",
           "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1552,
+          "note": "tee-bun-deno"
         }
       }
     },
@@ -191,10 +201,7 @@
           "status": "rejected",
           "note": "ppr-serverless",
           "refusal": {
-            "features": [
-              "ppr",
-              "s3cache"
-            ],
+            "features": ["ppr", "s3cache"],
             "config": "serverless",
             "pattern": "prerendered 1 page partially \\(/ppr\\).*--adapter serverless. buffers every response"
           }
@@ -203,9 +210,7 @@
           "status": "verified",
           "note": "s3",
           "refusal": {
-            "features": [
-              "isr"
-            ],
+            "features": ["isr"],
             "config": "full",
             "pattern": "regenerates 2 pages \\(/isr, /tagged\\).*--adapter serverless. has nowhere of its own"
           }
@@ -245,9 +250,7 @@
         "ssr": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "ssr"
-            ],
+            "features": ["ssr"],
             "config": "full",
             "pattern": "/ssr/:id \\(app/ssr/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
           }
@@ -255,9 +258,7 @@
         "streaming": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "streaming"
-            ],
+            "features": ["streaming"],
             "config": "full",
             "pattern": "/stream/:id \\(app/stream/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
           }
@@ -265,9 +266,7 @@
         "ppr": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "ppr"
-            ],
+            "features": ["ppr"],
             "config": "full",
             "pattern": "/ppr \\(app/ppr/\\$page\\.js\\) — it reads the request inside a `<Suspense>` boundary"
           }
@@ -275,9 +274,7 @@
         "isr-time": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "isr"
-            ],
+            "features": ["isr"],
             "config": "full",
             "pattern": "/isr \\(app/isr/\\$page\\.js\\) — it regenerates"
           }
@@ -285,9 +282,7 @@
         "isr-on-demand": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "isr"
-            ],
+            "features": ["isr"],
             "config": "full",
             "pattern": "/tagged \\(app/tagged/\\$page\\.js\\) — it regenerates"
           }
@@ -295,9 +290,7 @@
         "action-json": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "actions"
-            ],
+            "features": ["actions"],
             "config": "full",
             "pattern": "add \\(app/actions/_actions/counter\\.js\\) — a server action"
           }
@@ -305,9 +298,7 @@
         "action-form": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "actions"
-            ],
+            "features": ["actions"],
             "config": "full",
             "pattern": "saveNote \\(app/actions/_actions/counter\\.js\\) — a server action"
           }
@@ -315,9 +306,7 @@
         "route-handlers": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "handlers"
-            ],
+            "features": ["handlers"],
             "config": "full",
             "pattern": "/api/echo \\(app/api/echo/\\$route\\.js\\) — a route handler"
           }
@@ -325,9 +314,7 @@
         "cookies": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "handlers"
-            ],
+            "features": ["handlers"],
             "config": "full",
             "pattern": "/api/cookies \\(app/api/cookies/\\$route\\.js\\) — a route handler"
           }
@@ -335,9 +322,7 @@
         "middleware": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "middleware"
-            ],
+            "features": ["middleware"],
             "config": "full",
             "pattern": "/gated \\(app/gated/\\$middleware\\.js\\) — a middleware"
           }
@@ -357,9 +342,7 @@
         "error-boundary": {
           "status": "rejected",
           "refusal": {
-            "features": [
-              "errors"
-            ],
+            "features": ["errors"],
             "config": "full",
             "pattern": "/boom/:id \\(app/boom/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
           }
@@ -385,6 +368,7 @@
     "kumo-cookies": "Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.",
     "images": "The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.",
     "workers-gzip": "Under `wrangler dev`, gzip compression for a client that accepts it holds the static shell until the document ends (shell and hole together at ~1.2 s); with `accept-encoding: identity` the shell arrives at ~4 ms. The Worker streams; the host's compression buffers.",
-    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it."
+    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it.",
+    "tee-bun-deno": "The route-cache fill streams since #1503 under Node; under Bun and Deno the teed branch still reaches the client only when the document ends."
   }
 }

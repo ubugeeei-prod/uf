@@ -177,32 +177,33 @@ in the run that passed, not that a deployment to the cloud does — that is the
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Static (SSG), incl. `generateStaticParams` | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI |
 | SSR per request | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Unsupported (rejected) |
-| Streaming SSR with Suspense | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Known bug (#1494) [1] | Verified in CI [2] | Unsupported (rejected) |
-| Static shell with holes (`ppr`) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Known bug (#1494) [1] | Unsupported (rejected) [3] | Unsupported (rejected) |
-| ISR, time-based | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI [4] | Verified in CI [5] | Unsupported (rejected) |
-| ISR, on demand (`revalidateTag`) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI [4] | Verified in CI [5] | Unsupported (rejected) |
-| RSC navigation (Flight payload) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI [6] |
-| Server action, JSON call | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Not emulated [7] | Unsupported (rejected) |
-| Server action, form before hydration | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Not emulated [7] | Unsupported (rejected) |
+| Streaming SSR with Suspense | Verified in CI | Known bug (#1552) [1] | Known bug (#1552) [1] | Verified in CI | Known bug (#1494) [2] | Verified in CI [3] | Unsupported (rejected) |
+| Static shell with holes (`ppr`) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Known bug (#1494) [2] | Unsupported (rejected) [4] | Unsupported (rejected) |
+| ISR, time-based | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI [5] | Verified in CI [6] | Unsupported (rejected) |
+| ISR, on demand (`revalidateTag`) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI [5] | Verified in CI [6] | Unsupported (rejected) |
+| RSC navigation (Flight payload) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI [7] |
+| Server action, JSON call | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Not emulated [8] | Unsupported (rejected) |
+| Server action, form before hydration | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Not emulated [8] | Unsupported (rejected) |
 | Route handlers | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Unsupported (rejected) |
-| Cookies in and out | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Not emulated [8] | Unsupported (rejected) |
+| Cookies in and out | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Not emulated [9] | Unsupported (rejected) |
 | Middleware rewrite | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Unsupported (rejected) |
 | Redirects, rewrites, headers | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Unsupported (rejected) |
 | Not-found boundary (404) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI |
 | Error boundary (500) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Unsupported (rejected) |
 | Hashed client assets | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI |
 | Hydration and client navigation (browser) | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI | Verified in CI |
-| Image optimiser (`/__uf/image`) | Planned [9] | Planned [9] | Planned [9] | Planned [9] | Planned [9] | Planned [9] | Planned [9] |
+| Image optimiser (`/__uf/image`) | Planned [10] | Planned [10] | Planned [10] | Planned [10] | Planned [10] | Planned [10] | Planned [10] |
 
-1. Under `wrangler dev`, gzip compression for a client that accepts it holds the static shell until the document ends (shell and hole together at ~1.2 s); with `accept-encoding: identity` the shell arrives at ~4 ms. The Worker streams; the host's compression buffers.
-2. A Lambda response is one JSON value, so a streaming page arrives whole; the check asserts it is complete and that the fallback and the content arrive together.
-3. `uf build --adapter serverless` refuses a page prerendered as a static shell, naming it, because a buffered response would send the shell with its holes.
-4. Regenerated pages and invalidations are kept in Workers KV (`UF_CACHE`, the binding `uf build --adapter edge` writes), in Wrangler's local KV; the check restarts the Worker and reads them back.
-5. With a project provider in `rendering.cache.store` (the fixture's `s3-cache.js`, over an S3 bucket in Kumo); the check restarts the function container and reads the page back from S3. Without a provider the build refuses the regenerating pages by name, which is checked too.
-6. Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it.
-7. Kumo 0.30.0's HTTP API event carries no `host` header and no `requestContext.domainName`, so uf's same-origin check refuses every action (as it should for a request that names no host). Real API Gateway sends both. The check runs and is expected to fail until Kumo does.
-8. Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.
-9. The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.
+1. The route-cache fill streams since #1503 under Node; under Bun and Deno the teed branch still reaches the client only when the document ends.
+2. Under `wrangler dev`, gzip compression for a client that accepts it holds the static shell until the document ends (shell and hole together at ~1.2 s); with `accept-encoding: identity` the shell arrives at ~4 ms. The Worker streams; the host's compression buffers.
+3. A Lambda response is one JSON value, so a streaming page arrives whole; the check asserts it is complete and that the fallback and the content arrive together.
+4. `uf build --adapter serverless` refuses a page prerendered as a static shell, naming it, because a buffered response would send the shell with its holes.
+5. Regenerated pages and invalidations are kept in Workers KV (`UF_CACHE`, the binding `uf build --adapter edge` writes), in Wrangler's local KV; the check restarts the Worker and reads them back.
+6. With a project provider in `rendering.cache.store` (the fixture's `s3-cache.js`, over an S3 bucket in Kumo); the check restarts the function container and reads the page back from S3. Without a provider the build refuses the regenerating pages by name, which is checked too.
+7. Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it.
+8. Kumo 0.30.0's HTTP API event carries no `host` header and no `requestContext.domainName`, so uf's same-origin check refuses every action (as it should for a request that names no host). Real API Gateway sends both. The check runs and is expected to fail until Kumo does.
+9. Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.
+10. The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.
 
 | Target | Adapter | Run as |
 | --- | --- | --- |
