@@ -49,7 +49,7 @@ to move. Commands, configuration and package APIs may still change between `0.x`
 
 ### All changes
 
-- fix: a release-only suite's findings from main, fixed in this release PR: `server/vercel.js` spells read-only fields `readonly`, `router/testing.js` is a named server module, and the straggler-output test shares its switch through `globalThis` after #1504
+- fix: a release-only suite's findings from main, fixed in this release PR: `server/vercel.js` spells read-only fields `readonly`, `router/testing.js` is a named server module, the straggler-output test shares its switch through `globalThis` after #1504, and the alpha-series migrate test asserts only its own migration
 - test(sqlc): accept a whole-second timestamp in the PGlite overrides case (#1553) (e9618982)
 - test(rsc): an error boundary without use client is refused, naming its file (#1512) (85c4db1f)
 - test(deploy): serve every adapter under its platform emulator and check every rendering mode (#1480) (8a66d5fa)
