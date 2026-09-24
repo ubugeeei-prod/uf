@@ -21,6 +21,20 @@ import { Font, Icon, IconSprite, Image, OgImage } from "@uniflowed/web";
 
 import { assetModuleSource, withUrls } from "./internal/assets.js";
 
+/** The one image on screen, as the element whose inline style a test reads. */
+function renderedImage(): HTMLElement {
+  const image = screen.getByRole("img");
+  if (!(image instanceof HTMLElement)) throw new Error("the image is not an HTML element");
+  return image;
+}
+
+/** The rendered document's `<head>`, which React hoists preloads and styles into. */
+function documentHead(): HTMLHeadElement {
+  const head = globalThis.document.head;
+  if (head == null) throw new Error("the test document has no <head>");
+  return head;
+}
+
 /** A reply from `uf assets` for a photograph: three JPEG widths, no WebP. */
 const photograph = () => ({
   width: 1600,
@@ -208,13 +222,13 @@ describe("Image, given an imported image", () => {
   it("shows the blur placeholder until the real bytes land", () => {
     render(<Image src={withUrls(photograph(), "/assets/")} alt="a" />);
 
-    expect(screen.getByRole("img").style.backgroundImage).toContain("data:image/jpeg;base64,QUJD");
+    expect(renderedImage().style.backgroundImage).toContain("data:image/jpeg;base64,QUJD");
   });
 
   it("can be told not to", () => {
     render(<Image src={withUrls(photograph(), "/assets/")} alt="a" placeholder={false} />);
 
-    expect(screen.getByRole("img").style.backgroundImage).toBe("");
+    expect(renderedImage().style.backgroundImage).toBe("");
   });
 
   it("refuses to render an image whose size it does not know", () => {
@@ -284,7 +298,7 @@ describe("Image, given an imported image", () => {
 describe("Image, above the fold", () => {
   /** The preload React hoisted into `<head>` for one href. */
   function preloadFor(href: string): Element | null {
-    return globalThis.document.head.querySelector(`link[rel="preload"][href="${href}"]`);
+    return documentHead().querySelector(`link[rel="preload"][href="${href}"]`);
   }
 
   it("preloads the one image the page is judged on", () => {
@@ -333,7 +347,7 @@ describe("Font, given an imported font", () => {
    * `style[href]` finds nothing and finds it silently.
    */
   function sheetFor(href: string): Element | null {
-    return globalThis.document.head.querySelector(`style[data-href="${href}"]`);
+    return documentHead().querySelector(`style[data-href="${href}"]`);
   }
 
   const inter = () => ({
@@ -380,7 +394,7 @@ describe("Font, given an imported font", () => {
 
   it("still preloads, with the crossOrigin that stops the second request", () => {
     render(<Font src={inter()} />);
-    const link = globalThis.document.head.querySelector(
+    const link = documentHead().querySelector(
       'link[rel="preload"][href="/assets/Inter.99aabbcc.woff2"]',
     );
 
@@ -397,7 +411,11 @@ describe("Font, given an imported font", () => {
 });
 
 describe("Font, given a family split by unicode-range", () => {
-  /** What `uf assets` replies for a family split into three buckets. */
+  /**
+   * What `uf assets` replies for a family split into three buckets, as far as
+   * `FontAsset` types it: the reply's `subset` and each face's `file` are not
+   * part of the type a page imports, so they are not here either.
+   */
   const split = () => ({
     src: "/assets/Noto.11aa-latin.woff",
     family: "Noto",
@@ -405,11 +423,9 @@ describe("Font, given a family split by unicode-range", () => {
     fontFamily: '"Noto", "Noto Fallback", "Arial"',
     type: "font/woff",
     css: '@font-face{font-family:"Noto";src:url("/assets/Noto.11aa-latin.woff") format("woff");unicode-range:U+20-7E;}',
-    subset: "ranges",
     subsetDeclined: null,
     faces: [
       {
-        file: "Noto.11aa-latin.woff",
         url: "/assets/Noto.11aa-latin.woff",
         mime: "font/woff",
         bytes: 9_000,
@@ -418,7 +434,6 @@ describe("Font, given a family split by unicode-range", () => {
         preload: true,
       },
       {
-        file: "Noto.22bb-cyrillic.woff",
         url: "/assets/Noto.22bb-cyrillic.woff",
         mime: "font/woff",
         bytes: 7_000,
@@ -427,7 +442,6 @@ describe("Font, given a family split by unicode-range", () => {
         preload: false,
       },
       {
-        file: "Noto.33cc-greek.woff",
         url: "/assets/Noto.33cc-greek.woff",
         mime: "font/woff",
         bytes: 6_000,
@@ -439,7 +453,7 @@ describe("Font, given a family split by unicode-range", () => {
   });
 
   function preloads(): Array<string> {
-    return [...globalThis.document.head.querySelectorAll('link[rel="preload"][as="font"]')].map(
+    return [...documentHead().querySelectorAll('link[rel="preload"][as="font"]')].map(
       (link) => link.getAttribute("href") ?? "",
     );
   }
@@ -475,9 +489,7 @@ describe("Font, given a family split by unicode-range", () => {
 
   it("still declares every bucket, because the browser chooses between them", () => {
     const { container } = render(<Font src={split()} />);
-    const style = globalThis.document.head.querySelector(
-      'style[data-href="/assets/Noto.11aa-latin.woff"]',
-    );
+    const style = documentHead().querySelector('style[data-href="/assets/Noto.11aa-latin.woff"]');
 
     expect(style?.textContent).toContain("unicode-range:");
     expect(container.querySelector("style")).toBe(null);
@@ -548,8 +560,8 @@ describe("OgImage", () => {
 
   function meta(property: string): string | null {
     const node =
-      globalThis.document.head.querySelector(`meta[property="${property}"]`) ??
-      globalThis.document.head.querySelector(`meta[name="${property}"]`);
+      documentHead().querySelector(`meta[property="${property}"]`) ??
+      documentHead().querySelector(`meta[name="${property}"]`);
     return node?.getAttribute("content") ?? null;
   }
 

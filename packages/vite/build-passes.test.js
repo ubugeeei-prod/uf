@@ -32,7 +32,7 @@ const NODE = String(
 ).trim();
 
 /** A `uf transform` that notes its own start and answers every module. */
-function standIn(root: string): { +command: string, +starts: () => number } {
+function standIn(root: string): { readonly command: string, readonly starts: () => number } {
   const log = path.join(root, "starts.log");
   const command = path.join(root, "uf");
   fs.writeFileSync(

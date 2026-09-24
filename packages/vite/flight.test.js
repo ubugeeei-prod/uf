@@ -283,7 +283,9 @@ describe("a file of an installed uf package, in the browser under `uf dev`", () 
 
 describe("the stylesheets a development document links from the rsc graph", () => {
   /** A dev server whose rsc graph holds `modules`, as `[id, { file, url }]`. */
-  function serverWith(modules: Array<[string, { +file: ?string, +url: string }]>): $FlowFixMe {
+  function serverWith(
+    modules: Array<[string, { readonly file: ?string, readonly url: string }]>,
+  ): $FlowFixMe {
     return {
       config: { root: "/repo/docs", base: "/" },
       environments: { [RSC_ENVIRONMENT]: { moduleGraph: { idToModuleMap: new Map(modules) } } },
