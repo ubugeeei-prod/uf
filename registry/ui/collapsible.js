@@ -33,7 +33,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Collapsible } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -90,7 +90,7 @@ const styles = stylex.create({
 });
 
 /** The trigger and its region, open or closed. Uncontrolled unless `open` is given. */
-export component Collapsible(
+component CollapsibleRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
@@ -101,15 +101,15 @@ export component Collapsible(
 ) {
   return (
     <div {...rest} className={classNames(props(styles.root, xstyle).className, className)}>
-      <Primitive.Collapsible.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+      <Collapsible.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
         {children}
-      </Primitive.Collapsible.Root>
+      </Collapsible.Root>
     </div>
   );
 }
 
 /** The button that shows and hides the region. */
-export component CollapsibleTrigger(
+component CollapsibleTrigger(
   children: React.Node,
   disabled?: boolean = false,
   xstyle?: StyleArgument,
@@ -117,7 +117,7 @@ export component CollapsibleTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Collapsible.Trigger
+    <Collapsible.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
       disabled={disabled}
@@ -138,24 +138,24 @@ export component CollapsibleTrigger(
       >
         <path d="m6 9 6 6 6-6" />
       </svg>
-    </Primitive.Collapsible.Trigger>
+    </Collapsible.Trigger>
   );
 }
 
 /** The region the trigger shows. */
-export component CollapsibleContent(
+component CollapsibleContent(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Collapsible.Content
+    <Collapsible.Content
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.Collapsible.Content>
+    </Collapsible.Content>
   );
 }
 
@@ -175,3 +175,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Collapsible from "./collapsible.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Collapsible.Root>`
+ * and `<Collapsible.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `CollapsibleRoot` rather than `Root`.
+ */
+export { CollapsibleRoot as Root, CollapsibleTrigger as Trigger, CollapsibleContent as Content };

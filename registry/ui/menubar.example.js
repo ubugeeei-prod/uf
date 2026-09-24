@@ -1,40 +1,32 @@
 // @flow
-import {
-  Menubar,
-  MenubarCheckboxItem,
-  MenubarContent,
-  MenubarItem,
-  MenubarMenu,
-  MenubarSeparator,
-  MenubarTrigger,
-} from "./menubar.js";
+import * as Menubar from "./menubar.js";
 
 /** An editor's File, Edit and View menus. */
 export component Example() {
   return (
-    <Menubar aria-label="Editor">
-      <MenubarMenu value="file">
-        <MenubarTrigger>File</MenubarTrigger>
-        <MenubarContent>
-          <MenubarItem>New</MenubarItem>
-          <MenubarItem>Open</MenubarItem>
-          <MenubarSeparator />
-          <MenubarItem disabled>Print</MenubarItem>
-        </MenubarContent>
-      </MenubarMenu>
-      <MenubarMenu value="edit">
-        <MenubarTrigger>Edit</MenubarTrigger>
-        <MenubarContent>
-          <MenubarItem>Undo</MenubarItem>
-          <MenubarItem>Redo</MenubarItem>
-        </MenubarContent>
-      </MenubarMenu>
-      <MenubarMenu value="view">
-        <MenubarTrigger>View</MenubarTrigger>
-        <MenubarContent>
-          <MenubarCheckboxItem defaultChecked>Show toolbar</MenubarCheckboxItem>
-        </MenubarContent>
-      </MenubarMenu>
-    </Menubar>
+    <Menubar.Root aria-label="Editor">
+      <Menubar.Menu value="file">
+        <Menubar.Trigger>File</Menubar.Trigger>
+        <Menubar.Content>
+          <Menubar.Item>New</Menubar.Item>
+          <Menubar.Item>Open</Menubar.Item>
+          <Menubar.Separator />
+          <Menubar.Item disabled>Print</Menubar.Item>
+        </Menubar.Content>
+      </Menubar.Menu>
+      <Menubar.Menu value="edit">
+        <Menubar.Trigger>Edit</Menubar.Trigger>
+        <Menubar.Content>
+          <Menubar.Item>Undo</Menubar.Item>
+          <Menubar.Item>Redo</Menubar.Item>
+        </Menubar.Content>
+      </Menubar.Menu>
+      <Menubar.Menu value="view">
+        <Menubar.Trigger>View</Menubar.Trigger>
+        <Menubar.Content>
+          <Menubar.CheckboxItem defaultChecked>Show toolbar</Menubar.CheckboxItem>
+        </Menubar.Content>
+      </Menubar.Menu>
+    </Menubar.Root>
   );
 }

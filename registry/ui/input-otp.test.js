@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 
-import { InputOtp, InputOtpSlot } from "./input-otp.js";
+import * as InputOtp from "./input-otp.js";
 import { Example } from "./input-otp.example.js";
 
 afterEach(() => {
@@ -55,18 +55,18 @@ describe("InputOtp", () => {
   it("reports the code once every box is full", async () => {
     const codes: Array<string> = [];
     render(
-      <InputOtp
+      <InputOtp.Root
         label="Code"
         length={4}
         onComplete={(code) => {
           codes.push(code);
         }}
       >
-        <InputOtpSlot index={0} />
-        <InputOtpSlot index={1} />
-        <InputOtpSlot index={2} />
-        <InputOtpSlot index={3} />
-      </InputOtp>,
+        <InputOtp.Slot index={0} />
+        <InputOtp.Slot index={1} />
+        <InputOtp.Slot index={2} />
+        <InputOtp.Slot index={3} />
+      </InputOtp.Root>,
     );
     await userEvent.type(html(screen.getByRole("textbox", { name: "Code" })), "4821");
     expect(codes).toEqual(["4821"]);

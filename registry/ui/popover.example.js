@@ -4,7 +4,7 @@ import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
 import { Button } from "./button.js";
-import { Popover, PopoverContent, PopoverTrigger } from "./popover.js";
+import * as Popover from "./popover.js";
 
 const styles = stylex.create({
   stack: {
@@ -44,9 +44,9 @@ const styles = stylex.create({
 /** A share link, beside the button that asked for it. */
 export component Example() {
   return (
-    <Popover>
-      <PopoverTrigger>Share</PopoverTrigger>
-      <PopoverContent>
+    <Popover.Root>
+      <Popover.Trigger>Share</Popover.Trigger>
+      <Popover.Content>
         <div {...props(styles.stack)}>
           <p {...props(styles.note)}>Anyone with the link can read this page.</p>
           <div {...props(styles.field)}>
@@ -64,7 +64,7 @@ export component Example() {
             Copy link
           </Button>
         </div>
-      </PopoverContent>
-    </Popover>
+      </Popover.Content>
+    </Popover.Root>
   );
 }

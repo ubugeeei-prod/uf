@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { I18nProvider as HeadlessI18nProvider } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 const styles = stylex.create({
@@ -22,12 +22,12 @@ export component I18nProvider(
   ...rest: Rest
 ) {
   return (
-    <Primitive.I18nProvider
+    <HeadlessI18nProvider
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children}
-    </Primitive.I18nProvider>
+    </HeadlessI18nProvider>
   );
 }
 

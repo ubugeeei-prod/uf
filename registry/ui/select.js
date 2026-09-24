@@ -33,9 +33,9 @@
 //
 // # What to keep true when you change it
 //
-// * **Label it.** `SelectLabel` names the trigger through `aria-labelledby`,
+// * **Label it.** `Select.Label` names the trigger through `aria-labelledby`,
 //   and a select with no label is a combobox with no name. A design with no
-//   visible label passes `aria-label` to `SelectTrigger`.
+//   visible label passes `aria-label` to `Select.Trigger`.
 // * **Draw the cursor.** However you restyle an option, `data-active` needs a
 //   difference a sighted keyboard user can see. Here the background and the
 //   text both change, `accent` on `accentSoft`, a pair
@@ -54,7 +54,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { Align, LogicalSide } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Select } from "@uniflowed/ui";
 
 /**
  * Every prop a caller passes that this file does not name, on its way to the
@@ -231,7 +231,7 @@ const styles = stylex.create({
  *       </SelectList>
  *     </Select>
  */
-export component Select(
+component SelectRoot(
   children: React.Node,
   value?: string | null,
   defaultValue?: string | null = null,
@@ -246,7 +246,7 @@ export component Select(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Select.Root
+    <Select.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultOpen={defaultOpen}
@@ -259,47 +259,47 @@ export component Select(
       value={value}
     >
       {children}
-    </Primitive.Select.Root>
+    </Select.Root>
   );
 }
 
 /** The field's name, which is also the trigger's accessible name. */
-export component SelectLabel(
+component SelectLabel(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Select.Label
+    <Select.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.Select.Label>
+    </Select.Label>
   );
 }
 
 /** The button that opens the list, drawn as a field with a chevron. */
-export component SelectTrigger(
+component SelectTrigger(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Select.Trigger
+    <Select.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
       {children}
       <ChevronIcon />
-    </Primitive.Select.Trigger>
+    </Select.Trigger>
   );
 }
 
 /** What the trigger says: the chosen option, or the placeholder. */
-export component SelectValue(
+component SelectValue(
   placeholder?: React.Node,
   children?: React.Node,
   xstyle?: StyleArgument,
@@ -307,18 +307,18 @@ export component SelectValue(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Select.Value
+    <Select.Value
       {...forwarded(rest)}
       className={classNames(props(xstyle).className, className)}
       placeholder={placeholder}
     >
       {children}
-    </Primitive.Select.Value>
+    </Select.Value>
   );
 }
 
 /** The list of options, under the trigger and as wide as it. */
-export component SelectList(
+component SelectList(
   children: renders* (SelectOption | SelectGroup | SelectSeparator),
   align?: Align = "start",
   alignOffset?: number = 0,
@@ -331,7 +331,7 @@ export component SelectList(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Select.List
+    <Select.List
       {...forwarded(rest)}
       align={align}
       alignOffset={alignOffset}
@@ -342,12 +342,12 @@ export component SelectList(
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.Select.List>
+    </Select.List>
   );
 }
 
 /** One option, with the check that shows when it is the chosen one. */
-export component SelectOption(
+component SelectOption(
   value: string,
   children: React.Node,
   label?: string,
@@ -355,10 +355,10 @@ export component SelectOption(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Select.Option {
+) renders Select.Option {
   const styled = props(styles.option, disabled && styles.optionDisabled, xstyle);
   return (
-    <Primitive.Select.Option
+    <Select.Option
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
@@ -367,52 +367,52 @@ export component SelectOption(
     >
       <span {...props(styles.optionText)}>{children}</span>
       <CheckIcon />
-    </Primitive.Select.Option>
+    </Select.Option>
   );
 }
 
 /** A named group of options. */
-export component SelectGroup(
+component SelectGroup(
   children: renders* (SelectOption | SelectGroupLabel),
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Select.Group {
+) renders Select.Group {
   return (
-    <Primitive.Select.Group
+    <Select.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.Select.Group>
+    </Select.Group>
   );
 }
 
 /** The heading that names a group, which the arrow keys pass over. */
-export component SelectGroupLabel(
+component SelectGroupLabel(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Select.GroupLabel {
+) renders Select.GroupLabel {
   return (
-    <Primitive.Select.GroupLabel
+    <Select.GroupLabel
       {...forwarded(rest)}
       className={classNames(props(styles.groupLabel, xstyle).className, className)}
     >
       {children}
-    </Primitive.Select.GroupLabel>
+    </Select.GroupLabel>
   );
 }
 
 /** A rule between groups: decoration, and out of the accessibility tree. */
-export component SelectSeparator(
+component SelectSeparator(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Select.Separator {
+) renders Select.Separator {
   return (
-    <Primitive.Select.Separator
+    <Select.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     />
@@ -481,3 +481,23 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Select from "./select.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Select.Root>`
+ * and `<Select.Label>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `SelectRoot` rather than `Root`.
+ */
+export {
+  SelectRoot as Root,
+  SelectLabel as Label,
+  SelectTrigger as Trigger,
+  SelectValue as Value,
+  SelectList as List,
+  SelectOption as Option,
+  SelectGroup as Group,
+  SelectGroupLabel as GroupLabel,
+  SelectSeparator as Separator,
+};

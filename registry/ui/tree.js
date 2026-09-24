@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Tree as HeadlessTree } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 import type { CollectionItem, CollectionItemState } from "@uniflowed/ui";
@@ -64,7 +64,7 @@ export component Tree(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Tree
+    <HeadlessTree
       {...forwarded(rest)}
       items={items}
       className={classNames(props(styles.root, xstyle).className, className)}
@@ -80,7 +80,7 @@ export component Tree(
           {children?.(item, state) ?? item.textValue}
         </span>
       )}
-    </Primitive.Tree>
+    </HeadlessTree>
   );
 }
 

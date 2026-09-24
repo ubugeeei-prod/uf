@@ -2,7 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
+import * as Resizable from "./resizable.js";
 
 const styles = stylex.create({
   frame: {
@@ -29,15 +29,15 @@ const styles = stylex.create({
 export component Example() {
   return (
     <div {...props(styles.frame)}>
-      <ResizablePanelGroup defaultValue={30} max={80} min={20}>
-        <ResizablePanel primary>
+      <Resizable.PanelGroup defaultValue={30} max={80} min={20}>
+        <Resizable.Panel primary>
           <div {...props(styles.pane)}>Files</div>
-        </ResizablePanel>
-        <ResizableHandle label="Resize file list" />
-        <ResizablePanel>
+        </Resizable.Panel>
+        <Resizable.Handle label="Resize file list" />
+        <Resizable.Panel>
           <div {...props(styles.pane)}>Editor</div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        </Resizable.Panel>
+      </Resizable.PanelGroup>
     </div>
   );
 }

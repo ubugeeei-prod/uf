@@ -24,8 +24,8 @@
 // * **`side` is physical.** `left` is the left of the screen in every writing
 //   direction, because a design that puts a panel against the left edge means
 //   that edge; what the writing direction changes is the reading order inside.
-// * **A sheet needs a name.** `SheetTitle` is what `aria-labelledby` points
-//   at. A design with no visible title passes `aria-label` to `SheetContent`.
+// * **A sheet needs a name.** `Sheet.Title` is what `aria-labelledby` points
+//   at. A design with no visible title passes `aria-label` to `Sheet.Content`.
 // * **The close button is last in the markup and first on the screen.** Focus
 //   moves to the first thing worth acting on, which should be the sheet's own
 //   content rather than the corner `×`. Its name is `closeLabel`.
@@ -47,7 +47,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { Edge } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Sheet } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
@@ -198,7 +198,7 @@ const styles = stylex.create({
 });
 
 /** The sheet, open or closed, against `side`. Uncontrolled unless `open` is given. */
-export component Sheet(
+component SheetRoot(
   children: React.Node,
   side?: Edge = "right",
   defaultOpen?: boolean = false,
@@ -206,19 +206,14 @@ export component Sheet(
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.Sheet.Root
-      defaultOpen={defaultOpen}
-      onOpenChange={onOpenChange}
-      open={open}
-      side={side}
-    >
+    <Sheet.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open} side={side}>
       {children}
-    </Primitive.Sheet.Root>
+    </Sheet.Root>
   );
 }
 
 /** The button that opens the sheet. It is a `Button` unless `render` says otherwise. */
-export component SheetTrigger(
+component SheetTrigger(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -228,7 +223,7 @@ export component SheetTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sheet.Trigger
+    <Sheet.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -244,7 +239,7 @@ export component SheetTrigger(
       }
     >
       {children}
-    </Primitive.Sheet.Trigger>
+    </Sheet.Trigger>
   );
 }
 
@@ -252,7 +247,7 @@ export component SheetTrigger(
  * The scrim and the panel, with a close button in the corner. Everything it
  * does not name reaches `Sheet.Body`, `aria-label` included.
  */
-export component SheetContent(
+component SheetContent(
   children: React.Node,
   closeLabel?: string = "Close",
   hideClose?: boolean = false,
@@ -262,92 +257,92 @@ export component SheetContent(
 ) {
   return (
     <>
-      <Primitive.Sheet.Overlay className={props(styles.overlay).className} />
-      <Primitive.Sheet.Body
+      <Sheet.Overlay className={props(styles.overlay).className} />
+      <Sheet.Body
         {...forwarded(rest)}
         className={classNames(props(styles.panel, xstyle).className, className)}
       >
         {children}
         {hideClose ? null : (
-          <Primitive.Sheet.Close aria-label={closeLabel} className={props(styles.close).className}>
+          <Sheet.Close aria-label={closeLabel} className={props(styles.close).className}>
             <CloseIcon />
-          </Primitive.Sheet.Close>
+          </Sheet.Close>
         )}
-      </Primitive.Sheet.Body>
+      </Sheet.Body>
     </>
   );
 }
 
 /** The title and description, stacked. */
-export component SheetHeader(
+component SheetHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sheet.Header
+    <Sheet.Header
       {...forwarded(rest)}
       className={classNames(props(styles.header, xstyle).className, className)}
     >
       {children}
-    </Primitive.Sheet.Header>
+    </Sheet.Header>
   );
 }
 
 /** The row the actions sit in, pushed to the far end of the panel. */
-export component SheetFooter(
+component SheetFooter(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sheet.Footer
+    <Sheet.Footer
       {...forwarded(rest)}
       className={classNames(props(styles.footer, xstyle).className, className)}
     >
       {children}
-    </Primitive.Sheet.Footer>
+    </Sheet.Footer>
   );
 }
 
 /** The sheet's name. */
-export component SheetTitle(
+component SheetTitle(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sheet.Title
+    <Sheet.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
     >
       {children}
-    </Primitive.Sheet.Title>
+    </Sheet.Title>
   );
 }
 
 /** What the sheet is for, read with its name when focus arrives. */
-export component SheetDescription(
+component SheetDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sheet.Description
+    <Sheet.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.Sheet.Description>
+    </Sheet.Description>
   );
 }
 
 /** A button that closes the sheet: Done, Apply, or Cancel. */
-export component SheetClose(
+component SheetClose(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -357,7 +352,7 @@ export component SheetClose(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Sheet.Close
+    <Sheet.Close
       {...forwarded(rest)}
       render={
         render ??
@@ -373,7 +368,7 @@ export component SheetClose(
       }
     >
       {children}
-    </Primitive.Sheet.Close>
+    </Sheet.Close>
   );
 }
 
@@ -416,3 +411,22 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Sheet from "./sheet.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Sheet.Root>`
+ * and `<Sheet.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `SheetRoot` rather than `Root`.
+ */
+export {
+  SheetRoot as Root,
+  SheetTrigger as Trigger,
+  SheetContent as Content,
+  SheetHeader as Header,
+  SheetFooter as Footer,
+  SheetTitle as Title,
+  SheetDescription as Description,
+  SheetClose as Close,
+};

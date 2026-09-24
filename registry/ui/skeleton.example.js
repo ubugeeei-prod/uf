@@ -2,7 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import { Skeleton, SkeletonBox } from "./skeleton.js";
+import * as Skeleton from "./skeleton.js";
 
 const styles = stylex.create({
   row: {
@@ -23,15 +23,15 @@ const styles = stylex.create({
 /** A comment still on its way: an avatar, two lines and the text under them. */
 export component Example() {
   return (
-    <Skeleton>
+    <Skeleton.Root>
       <div {...props(styles.row)}>
-        <SkeletonBox shape="circle" />
+        <Skeleton.Box shape="circle" />
         <div {...props(styles.lines)}>
-          <SkeletonBox />
-          <SkeletonBox xstyle={styles.short} />
+          <Skeleton.Box />
+          <Skeleton.Box xstyle={styles.short} />
         </div>
       </div>
-      <SkeletonBox shape="block" />
-    </Skeleton>
+      <Skeleton.Box shape="block" />
+    </Skeleton.Root>
   );
 }

@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { act, cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.js";
+import * as Tooltip from "./tooltip.js";
 import { Example } from "./tooltip.example.js";
 
 afterEach(() => {
@@ -34,12 +34,12 @@ describe("Tooltip", () => {
   // asks for no wait so that what is checked here is the dressing.
   it("opens for a pointer, and describes its trigger once it is there", () => {
     render(
-      <Tooltip openDelay={0}>
-        <TooltipTrigger aria-label="Bold" size="icon" tone="ghost">
+      <Tooltip.Root openDelay={0}>
+        <Tooltip.Trigger aria-label="Bold" size="icon" tone="ghost">
           B
-        </TooltipTrigger>
-        <TooltipContent>Bold (⌘B)</TooltipContent>
-      </Tooltip>,
+        </Tooltip.Trigger>
+        <Tooltip.Content>Bold (⌘B)</Tooltip.Content>
+      </Tooltip.Root>,
     );
     const trigger = html(screen.getByRole("button", { name: "Bold" }));
 

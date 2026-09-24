@@ -25,9 +25,9 @@
 //! dialog": the scrim, the spacing, which tone the trigger wears. A focus-trap
 //! fix still reaches a project that ran `uf ui add dialog` a year ago, the day it
 //! upgrades `@uniflowed/ui`. And the composition constraints survive the copy:
-//! `TabsTab` declares `renders Primitive.Tabs.Tab` and `TabsList` takes
-//! `renders* TabsTab`, so a `<button>` dropped into the copied tab list is still
-//! a Flow error, in the project's own file.
+//! the copied `Tabs.Tab` declares `renders` `@uniflowed/ui`'s `Tabs.Tab`, and the
+//! copied `Tabs.List` takes `renders*` the copied one, so a `<button>` dropped
+//! into the copied tab list is still a Flow error, in the project's own file.
 //!
 //! # Where the registry lives: in this repository, inside the binary
 //!

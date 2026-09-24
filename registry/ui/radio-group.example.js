@@ -1,17 +1,17 @@
 // @flow
 import * as React from "@uniflowed/react";
 
-import { RadioGroup, RadioGroupItem } from "./radio-group.js";
+import * as RadioGroup from "./radio-group.js";
 
 /** A plan, one of which is chosen and one of which is unavailable. */
 export component Example() {
   return (
-    <RadioGroup aria-label="Plan" defaultValue="team" name="plan">
-      <RadioGroupItem value="personal">Personal</RadioGroupItem>
-      <RadioGroupItem value="team">Team</RadioGroupItem>
-      <RadioGroupItem disabled value="enterprise">
+    <RadioGroup.Root aria-label="Plan" defaultValue="team" name="plan">
+      <RadioGroup.Item value="personal">Personal</RadioGroup.Item>
+      <RadioGroup.Item value="team">Team</RadioGroup.Item>
+      <RadioGroup.Item disabled value="enterprise">
         Enterprise
-      </RadioGroupItem>
-    </RadioGroup>
+      </RadioGroup.Item>
+    </RadioGroup.Root>
   );
 }

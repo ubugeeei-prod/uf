@@ -1,7 +1,8 @@
 "use client";
 // @flow
 import { Button } from "./button.js";
-import { ToastDescription, ToastTitle, Toaster, toast } from "./toast.js";
+import { toast } from "./toast.js";
+import * as Toast from "./toast.js";
 
 /** A button that raises a notice, and the corner the notice shows in. */
 export component Example() {
@@ -11,8 +12,8 @@ export component Example() {
         onClick={() => {
           toast(
             <>
-              <ToastTitle>Draft saved</ToastTitle>
-              <ToastDescription>Your changes are kept on this device.</ToastDescription>
+              <Toast.Title>Draft saved</Toast.Title>
+              <Toast.Description>Your changes are kept on this device.</Toast.Description>
             </>,
             { duration: null },
           );
@@ -20,7 +21,7 @@ export component Example() {
       >
         Save draft
       </Button>
-      <Toaster />
+      <Toast.Region />
     </>
   );
 }

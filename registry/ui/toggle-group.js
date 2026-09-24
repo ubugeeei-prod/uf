@@ -36,7 +36,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { ToggleGroupType } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { ToggleGroup } from "@uniflowed/ui";
 
 /** Which way the segments run. */
 export type ToggleGroupOrientation = "horizontal" | "vertical";
@@ -111,7 +111,7 @@ const styles = stylex.create({
  * The row. `type="multiple"` presses any number of items and `type="single"`
  * chooses one; `value` is a list either way.
  */
-export component ToggleGroup(
+component ToggleGroupRoot(
   children: renders* ToggleGroupItem,
   type?: ToggleGroupType = "multiple",
   defaultValue?: $ReadOnlyArray<string>,
@@ -124,7 +124,7 @@ export component ToggleGroup(
 ) {
   return (
     <OrientationContext.Provider value={orientation}>
-      <Primitive.ToggleGroup.Root
+      <ToggleGroup.Root
         {...forwarded(rest)}
         className={classNames(props(styles.root, xstyle).className, className)}
         defaultValue={defaultValue}
@@ -134,20 +134,20 @@ export component ToggleGroup(
         value={value}
       >
         {children}
-      </Primitive.ToggleGroup.Root>
+      </ToggleGroup.Root>
     </OrientationContext.Provider>
   );
 }
 
 /** One segment. `disabled` keeps it in the row, announced as unavailable. */
-export component ToggleGroupItem(
+component ToggleGroupItem(
   value: string,
   children?: React.Node,
   disabled?: boolean = false,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.ToggleGroup.Item {
+) renders ToggleGroup.Item {
   const orientation = useContext(OrientationContext);
   const styled = props(
     styles.item,
@@ -155,14 +155,14 @@ export component ToggleGroupItem(
     xstyle,
   );
   return (
-    <Primitive.ToggleGroup.Item
+    <ToggleGroup.Item
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
       value={value}
     >
       {children}
-    </Primitive.ToggleGroup.Item>
+    </ToggleGroup.Item>
   );
 }
 
@@ -182,3 +182,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as ToggleGroup from "./toggle-group.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<ToggleGroup.Root>`
+ * and `<ToggleGroup.Item>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `ToggleGroupRoot` rather than `Root`.
+ */
+export { ToggleGroupRoot as Root, ToggleGroupItem as Item };

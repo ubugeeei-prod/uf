@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 import type { Edge } from "@uniflowed/ui";
 
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./sheet.js";
+import * as Sheet from "./sheet.js";
 import { Example } from "./sheet.example.js";
 
 afterEach(() => {
@@ -72,12 +72,12 @@ describe("Sheet", () => {
     const sides: $ReadOnlyArray<Edge> = ["top", "right", "bottom", "left"];
     for (const side of sides) {
       render(
-        <Sheet side={side}>
-          <SheetTrigger>Open</SheetTrigger>
-          <SheetContent>
-            <SheetTitle>Panel</SheetTitle>
-          </SheetContent>
-        </Sheet>,
+        <Sheet.Root side={side}>
+          <Sheet.Trigger>Open</Sheet.Trigger>
+          <Sheet.Content>
+            <Sheet.Title>Panel</Sheet.Title>
+          </Sheet.Content>
+        </Sheet.Root>,
       );
       await userEvent.click(html(screen.getByRole("button", { name: "Open" })));
       expect(screen.getByRole("dialog", { name: "Panel" })).toHaveAttribute("data-side", side);

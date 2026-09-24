@@ -267,6 +267,56 @@ pub(super) fn part(name: &str) -> Option<(&'static str, &'static str)> {
         .max_by_key(|(namespace, _)| namespace.len())
 }
 
+/// Whether `name` is one of `@uniflowed/ui`'s namespaces: `Dialog`, `Tabs`.
+pub(super) fn is_namespace(name: &str) -> bool {
+    PARTS.iter().any(|(namespace, _)| *namespace == name)
+}
+
+/// Where an import comes from, as far as this migration is concerned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Origin {
+    /// `@uniflowed/ui` itself: `DialogRoot` becomes `Dialog.Root`, and the
+    /// namespace is imported by name from the package, `import { Dialog }`.
+    Package,
+    /// A file `uf ui add` wrote, by component: `DialogTrigger` from
+    /// `./components/ui/dialog.js` becomes `Dialog.Trigger`, and the
+    /// namespace is the module, `import * as Dialog from "./components/ui/dialog.js"`.
+    /// See [`super::ui_copies`].
+    Copy(&'static str),
+}
+
+impl Origin {
+    /// The namespace and the member a removed name from this origin is now.
+    fn lookup(self, name: &str) -> Option<(String, &'static str)> {
+        match self {
+            Self::Package => part(name).map(|(namespace, member)| (namespace.to_owned(), member)),
+            Self::Copy(component) => super::ui_copies::old_part(component, name)
+                .map(|member| (uf_ui::registry::namespace_name(component), member)),
+        }
+    }
+
+    /// What a local namespace binding is prefixed with when the file already
+    /// uses the namespace's own name: `UiDialog` for the package's, and
+    /// `StyledDialog` for a copy's, so the two stay apart in a file that
+    /// imports both.
+    fn alias_prefix(self) -> &'static str {
+        match self {
+            Self::Package => "Ui",
+            Self::Copy(_) => "Styled",
+        }
+    }
+}
+
+/// Which of the two rewrites a codemod run makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Steps {
+    /// [`Origin::Package`]: `@uniflowed/ui`'s prefixed names (0.3.0).
+    pub(super) package: bool,
+    /// [`Origin::Copy`]: the copies `uf ui add` wrote, and every import of one
+    /// (0.3.0). See [`super::ui_copies`].
+    pub(super) copies: bool,
+}
+
 /// Add every rewrite this project needs to `plan`, one change per file.
 ///
 /// Walks the project's own sources — `.js`, `.jsx`, `.mjs` and `.cjs`, not
@@ -275,7 +325,16 @@ pub(super) fn part(name: &str) -> Option<(&'static str, &'static str)> {
 /// large project costs one read per file and a token scan of the few that
 /// import it. Nothing is written here: the plan is applied, or printed by
 /// `--dry-run`, by the caller.
-pub(super) fn plan_project(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
+///
+/// With [`Steps::copies`], a file `uf ui add` wrote is first given the
+/// registry's new export shape ([`super::ui_copies::reshape`]), and every
+/// import of a copy is rewritten after the package's. The steps are chained per
+/// file and yield one change for it, all or nothing. A result is formatted with
+/// the project's formatter when the file it replaces was formatted, so a copy
+/// matches the registry's text byte for byte where nobody edited it, and
+/// `uf ui update` later merges without conflicts.
+pub(super) fn plan_project(root: &Utf8Path, plan: &mut Plan, steps: Steps) -> Result<()> {
+    let mut files: Vec<(String, String)> = Vec::new();
     let walk = walkdir::WalkDir::new(root)
         .sort_by_file_name()
         .into_iter()
@@ -298,19 +357,61 @@ pub(super) fn plan_project(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
         let Ok(before) = std::fs::read_to_string(entry.path()) else {
             continue;
         };
-        if !before.contains(PACKAGE) {
-            continue;
-        }
         let path = entry
             .path()
             .strip_prefix(root)?
             .to_string_lossy()
             .replace('\\', "/");
-        match rewrite(&before) {
-            Ok(Some(after)) => plan.write(&path, before, after),
-            Ok(None) => {}
-            Err(reason) => plan.unmapped.push(format!("{path}: {reason}")),
+        files.push((path, before));
+    }
+
+    let copies = if steps.copies {
+        super::ui_copies::copies(&files)
+    } else {
+        BTreeMap::new()
+    };
+    let fmt = uf_config::load_config(root)
+        .ok()
+        .map(|resolved| resolved.config.fmt);
+    for (path, before) in files {
+        let mut text = before.clone();
+        let outcome = (|| -> Result<(), String> {
+            if let Some(component) = copies.get(path.as_str())
+                && let Some(after) = super::ui_copies::reshape(&text, component)?
+            {
+                text = after;
+            }
+            if steps.package
+                && text.contains(PACKAGE)
+                && let Some(after) = rewrite(&text)?
+            {
+                text = after;
+            }
+            if !copies.is_empty() {
+                let resolve = |specifier: &str| {
+                    super::ui_copies::resolve(&path, specifier, &copies).map(Origin::Copy)
+                };
+                if let Some(after) = rewrite_with(&text, &resolve)? {
+                    text = after;
+                }
+            }
+            Ok(())
+        })();
+        if let Err(reason) = outcome {
+            plan.unmapped.push(format!("{path}: {reason}"));
+            continue;
         }
+        if text == before {
+            continue;
+        }
+        if let Some(config) = &fmt {
+            let was_formatted =
+                uf_fmt::format_source(&before, config).is_ok_and(|result| !result.changed);
+            if was_formatted && let Ok(result) = uf_fmt::format_source(&text, config) {
+                text = result.output;
+            }
+        }
+        plan.write(&path, before, text);
     }
     Ok(())
 }
@@ -323,6 +424,17 @@ pub(super) fn plan_project(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
 /// comments, strings and formatting outside the rewritten tokens byte for byte
 /// as they were, and a second run over the output a no-op.
 pub(super) fn rewrite(source: &str) -> Result<Option<String>, String> {
+    rewrite_with(source, &|specifier: &str| {
+        (specifier == PACKAGE).then_some(Origin::Package)
+    })
+}
+
+/// [`rewrite`], for every import whose specifier `resolve` places: the package
+/// and, for the second step, the copies `uf ui add` wrote.
+pub(super) fn rewrite_with(
+    source: &str,
+    resolve: &dyn Fn(&str) -> Option<Origin>,
+) -> Result<Option<String>, String> {
     let tokens = uf_flow::scan::tokenize_jsx(source);
     if tokens.iter().any(|token| token.kind == TokenKind::Invalid) {
         return if names_a_removed_part(source, &tokens) {
@@ -334,7 +446,7 @@ pub(super) fn rewrite(source: &str) -> Result<Option<String>, String> {
             Ok(None)
         };
     }
-    let imports = package_imports(source, &tokens)?;
+    let imports = package_imports(source, &tokens, resolve)?;
     if imports.is_empty() {
         return Ok(None);
     }
@@ -342,22 +454,23 @@ pub(super) fn rewrite(source: &str) -> Result<Option<String>, String> {
     // What each import binds: removed parts by their local name, the
     // namespaces already imported, and the `* as ui` bindings whose members
     // are rewritten in place.
-    let mut renamed: BTreeMap<&str, (&'static str, &'static str)> = BTreeMap::new();
+    let mut renamed: BTreeMap<&str, (Origin, String, &'static str)> = BTreeMap::new();
     let mut imported_namespaces: BTreeMap<&str, &str> = BTreeMap::new();
-    let mut star_locals: BTreeSet<&str> = BTreeSet::new();
+    let mut star_locals: BTreeMap<&str, Origin> = BTreeMap::new();
     for import in &imports {
         if let Some(local) = import.star {
-            star_locals.insert(local);
+            star_locals.insert(local, import.origin);
         }
         for specifier in &import.named {
             if specifier.type_only {
                 continue;
             }
-            if let Some(found) = part(specifier.imported) {
-                renamed.insert(specifier.local, found);
-            } else if PARTS
-                .iter()
-                .any(|(namespace, _)| *namespace == specifier.imported)
+            if let Some((namespace, member)) = import.origin.lookup(specifier.imported) {
+                renamed.insert(specifier.local, (import.origin, namespace, member));
+            } else if import.origin == Origin::Package
+                && PARTS
+                    .iter()
+                    .any(|(namespace, _)| *namespace == specifier.imported)
             {
                 imported_namespaces.insert(specifier.imported, specifier.local);
             }
@@ -374,61 +487,101 @@ pub(super) fn rewrite(source: &str) -> Result<Option<String>, String> {
         .filter(|(index, token)| {
             token.kind == TokenKind::Ident
                 && !inside_imports(token.start)
+                // A local being renamed away frees its name: every reference
+                // to it is rewritten, so the namespace can take it.
+                && !renamed.contains_key(token.text(source))
+                // `export { DialogRoot as Root }` exports a name; it binds none.
+                && !is_exported_alias(source, &tokens, *index)
                 && !index
                     .checked_sub(1)
                     .is_some_and(|previous| tokens[previous].is_punct(b'.'))
         })
         .map(|(_, token)| token.text(source))
         .collect();
-    let mut locals: BTreeMap<&'static str, String> = BTreeMap::new();
+    // Keyed by origin as well as name: a page may import the package's
+    // `Dialog` and its own copy's in one file, and they are two bindings.
+    let mut locals: BTreeMap<(Origin, String), String> = BTreeMap::new();
+    let mut taken: BTreeSet<String> = BTreeSet::new();
     let mut added: Vec<String> = Vec::new();
-    for (namespace, _) in renamed.values() {
-        if locals.contains_key(namespace) {
+    for (origin, namespace, _) in renamed.values() {
+        let key = (*origin, namespace.clone());
+        if locals.contains_key(&key) {
             continue;
         }
-        if let Some(local) = imported_namespaces.get(namespace) {
-            locals.insert(namespace, (*local).to_owned());
+        if *origin == Origin::Package
+            && let Some(local) = imported_namespaces.get(namespace.as_str())
+        {
+            locals.insert(key, (*local).to_owned());
             continue;
         }
-        let mut local = (*namespace).to_owned();
+        let mut local = namespace.clone();
         let mut attempt = 1;
-        while bound.contains(local.as_str()) || renamed.contains_key(local.as_str()) {
+        while bound.contains(local.as_str()) || taken.contains(&local) {
+            let prefix = origin.alias_prefix();
             local = if attempt == 1 {
-                format!("Ui{namespace}")
+                format!("{prefix}{namespace}")
             } else {
-                format!("Ui{namespace}{attempt}")
+                format!("{prefix}{namespace}{attempt}")
             };
             attempt += 1;
         }
-        added.push(if local == *namespace {
-            local.clone()
-        } else {
-            format!("{namespace} as {local}")
-        });
-        locals.insert(namespace, local);
+        taken.insert(local.clone());
+        if *origin == Origin::Package {
+            added.push(if local == *namespace {
+                local.clone()
+            } else {
+                format!("{namespace} as {local}")
+            });
+        }
+        locals.insert(key, local);
     }
 
     let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
 
-    // The imports: the removed specifiers out, the namespaces in, once, in the
-    // first statement that lost a specifier.
+    // The imports: the removed specifiers out, the namespaces in, once. The
+    // package's namespaces join the first statement that lost a specifier;
+    // a copy's is `import * as Dialog from "…"`, a statement of its own after
+    // whatever the copy's import keeps.
     let mut pending = Some(added);
+    let mut starred: BTreeSet<String> = BTreeSet::new();
     for import in &imports {
-        if !import
-            .named
-            .iter()
-            .any(|s| !s.type_only && part(s.imported).is_some())
-        {
+        let removed =
+            |s: &Specifier<'_>| !s.type_only && import.origin.lookup(s.imported).is_some();
+        if !import.named.iter().any(removed) {
             continue;
         }
-        let mut kept: Vec<String> = import
+        let kept: Vec<String> = import
             .named
             .iter()
-            .filter(|s| s.type_only || part(s.imported).is_none())
+            .filter(|s| !removed(s))
             .map(|s| source[s.range.clone()].to_owned())
             .collect();
-        kept.extend(pending.take().unwrap_or_default());
-        edits.push((import.braces.clone(), braces(&kept, import.indent(source))));
+        match import.origin {
+            Origin::Package => {
+                let mut kept = kept;
+                kept.extend(pending.take().unwrap_or_default());
+                edits.push((import.braces.clone(), braces(&kept, import.indent(source))));
+            }
+            Origin::Copy(component) => {
+                let namespace = uf_ui::registry::namespace_name(component);
+                let local = &locals[&(import.origin, namespace)];
+                let indent = import.indent(source);
+                let mut statement = String::new();
+                if !kept.is_empty() {
+                    statement.push_str(&format!(
+                        "import {} from {};\n{indent}",
+                        braces(&kept, indent),
+                        import.specifier
+                    ));
+                }
+                if starred.insert(import.specifier.to_owned()) {
+                    statement.push_str(&format!("import * as {local} from {};", import.specifier));
+                } else if statement.ends_with(indent) {
+                    statement.truncate(statement.len() - indent.len() - 1);
+                }
+                edits.push((import.range.clone(), statement));
+            }
+        }
     }
 
     // Every reference.
@@ -444,16 +597,23 @@ pub(super) fn rewrite(source: &str) -> Result<Option<String>, String> {
             // property called `DialogRoot` on any other object is not ours.
             let owner = index.checked_sub(2).map(|at| &tokens[at]);
             let before_owner = index.checked_sub(3).map(|at| &tokens[at]);
-            if let (Some(owner), Some((namespace, member))) = (owner, part(text))
+            if let Some(owner) = owner
                 && owner.kind == TokenKind::Ident
-                && star_locals.contains(owner.text(source))
+                && let Some(origin) = star_locals.get(owner.text(source))
+                && let Some((namespace, member)) = origin.lookup(text)
                 && !before_owner.is_some_and(|it| it.is_punct(b'.'))
             {
-                edits.push((token.start..token.end, format!("{namespace}.{member}")));
+                // The package's namespace is a level below it; a copy's is the
+                // module the star already binds.
+                let replacement = match origin {
+                    Origin::Package => format!("{namespace}.{member}"),
+                    Origin::Copy(_) => member.to_owned(),
+                };
+                edits.push((token.start..token.end, replacement));
             }
             continue;
         }
-        let Some((namespace, member)) = renamed.get(text) else {
+        let Some((origin, namespace, member)) = renamed.get(text) else {
             continue;
         };
         let next = tokens.get(index + 1);
@@ -475,10 +635,8 @@ pub(super) fn rewrite(source: &str) -> Result<Option<String>, String> {
                 ));
             }
         }
-        edits.push((
-            token.start..token.end,
-            format!("{}.{member}", locals[namespace]),
-        ));
+        let local = &locals[&(*origin, namespace.clone())];
+        edits.push((token.start..token.end, format!("{local}.{member}")));
     }
 
     if edits.is_empty() {
@@ -497,7 +655,7 @@ pub(super) fn rewrite(source: &str) -> Result<Option<String>, String> {
     let parses = |text: &str| uf_flow::validate_source(text).is_ok_and(|outcome| outcome.is_ok());
     if parses(source) && !parses(&after) {
         return Err(
-            "the rewritten file does not parse; rewrite its `@uniflowed/ui` names by hand"
+            "the rewritten file does not parse; rewrite its `@uniflowed/ui` and `uf ui add` names by hand"
                 .to_owned(),
         );
     }
@@ -526,6 +684,10 @@ struct Import<'a> {
     named: Vec<Specifier<'a>>,
     /// The local name of `* as ui`, when the statement is that form.
     star: Option<&'a str>,
+    /// Where the specifier leads.
+    origin: Origin,
+    /// The specifier as written, quotes included.
+    specifier: &'a str,
 }
 
 impl Import<'_> {
@@ -558,8 +720,13 @@ fn braces(specifiers: &[String], indent: &str) -> String {
     out
 }
 
-/// Every value import of [`PACKAGE`], or the reason the file is left alone.
-fn package_imports<'a>(source: &'a str, tokens: &[Token]) -> Result<Vec<Import<'a>>, String> {
+/// Every value import whose specifier `resolve` places, or the reason the file
+/// is left alone.
+fn package_imports<'a>(
+    source: &'a str,
+    tokens: &[Token],
+    resolve: &dyn Fn(&str) -> Option<Origin>,
+) -> Result<Vec<Import<'a>>, String> {
     let mut imports = Vec::new();
     for (index, token) in tokens.iter().enumerate() {
         let keyword = token.text(source);
@@ -599,9 +766,12 @@ fn package_imports<'a>(source: &'a str, tokens: &[Token]) -> Result<Vec<Import<'
         };
         let literal = &tokens[from + 1];
         let specifier = literal.text(source);
-        if specifier.len() < 2 || &specifier[1..specifier.len() - 1] != PACKAGE {
+        if specifier.len() < 2 {
             continue;
         }
+        let Some(origin) = resolve(&specifier[1..specifier.len() - 1]) else {
+            continue;
+        };
         let clause = &tokens[index + 1..from];
         if clause
             .first()
@@ -622,9 +792,9 @@ fn package_imports<'a>(source: &'a str, tokens: &[Token]) -> Result<Vec<Import<'
             _ => Vec::new(),
         };
         if keyword == "export" {
-            if let Some(found) = named.iter().find(|s| part(s.imported).is_some()) {
+            if let Some(found) = named.iter().find(|s| origin.lookup(s.imported).is_some()) {
                 return Err(format!(
-                    "re-exports `{}` from {PACKAGE}; a re-export is this file's own surface, so rename it by hand",
+                    "re-exports `{}` from {specifier}; a re-export is this file's own surface, so rename it by hand",
                     found.imported
                 ));
             }
@@ -642,6 +812,8 @@ fn package_imports<'a>(source: &'a str, tokens: &[Token]) -> Result<Vec<Import<'
             },
             named,
             star,
+            origin,
+            specifier,
         });
     }
     Ok(imports)
@@ -713,6 +885,29 @@ fn is_jsx_container(source: &str, tokens: &[Token], index: usize) -> bool {
         .take(256)
         .find(|it| matches!(it.kind, TokenKind::JsxTagOpen | TokenKind::JsxTagClose))
         .is_some_and(|it| it.kind == TokenKind::JsxTagOpen && !source[it.start..].starts_with("</"))
+}
+
+/// Whether the token at `index` is the `Y` of `X as Y` in an `export { … }`
+/// list, which names an export rather than binding anything in the file.
+fn is_exported_alias(source: &str, tokens: &[Token], index: usize) -> bool {
+    if !index
+        .checked_sub(1)
+        .is_some_and(|previous| tokens[previous].is_ident(source, "as"))
+    {
+        return false;
+    }
+    for at in (0..index).rev() {
+        let token = &tokens[at];
+        if token.is_punct(b';') || token.is_punct(b'}') {
+            return false;
+        }
+        if token.is_punct(b'{') {
+            return at
+                .checked_sub(1)
+                .is_some_and(|previous| tokens[previous].is_ident(source, "export"));
+        }
+    }
+    false
 }
 
 /// The bracket — `(`, `[` or `{` — the token at `index` sits directly inside,
@@ -925,7 +1120,15 @@ export component Page(role: DialogRole) renders Dialog.Root {
         );
 
         let mut plan = Plan::new("codemod");
-        plan_project(root, &mut plan).unwrap();
+        plan_project(
+            root,
+            &mut plan,
+            Steps {
+                package: true,
+                copies: true,
+            },
+        )
+        .unwrap();
 
         let paths: Vec<&str> = plan.changes.iter().map(|c| c.path.as_str()).collect();
         assert_eq!(paths, ["app/$page.js"]);

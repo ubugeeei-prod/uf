@@ -34,11 +34,11 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { DatePicker } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
-import { CalendarHeader, CalendarMonth, CalendarNext, CalendarPrevious } from "./calendar.js";
+import * as Calendar from "./calendar.js";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -115,21 +115,21 @@ const styles = stylex.create({
 });
 
 /** The date picker. Every prop of `DatePicker.Root` passes through. */
-export component DatePicker(children: React.Node, ...rest: Rest) {
-  return <Primitive.DatePicker.Root {...forwarded(rest)}>{children}</Primitive.DatePicker.Root>;
+component DatePickerRoot(children: React.Node, ...rest: Rest) {
+  return <DatePicker.Root {...forwarded(rest)}>{children}</DatePicker.Root>;
 }
 
 /** The field and its button, side by side. */
-export component DatePickerGroup(children: React.Node, xstyle?: StyleArgument, className?: string) {
+component DatePickerGroup(children: React.Node, xstyle?: StyleArgument, className?: string) {
   return (
     <div className={classNames(props(styles.group, xstyle).className, className)}>{children}</div>
   );
 }
 
 /** The text field the date is typed into. Give it an `id` a `<label>` points at. */
-export component DatePickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
+component DatePickerInput(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.DatePicker.Input
+    <DatePicker.Input
       {...forwarded(rest)}
       className={classNames(props(styles.input, xstyle).className, className)}
     />
@@ -137,7 +137,7 @@ export component DatePickerInput(xstyle?: StyleArgument, className?: string, ...
 }
 
 /** The button that opens the calendar. It is a `Button` showing a calendar icon. */
-export component DatePickerTrigger(
+component DatePickerTrigger(
   label?: string = "Choose a date",
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -146,7 +146,7 @@ export component DatePickerTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DatePicker.Trigger
+    <DatePicker.Trigger
       {...forwarded(rest)}
       aria-label={label}
       render={(trigger: Rest) => (
@@ -174,7 +174,7 @@ export component DatePickerTrigger(
         <rect height="18" rx="2" width="18" x="3" y="4" />
         <path d="M16 2v4M8 2v4M3 10h18" />
       </svg>
-    </Primitive.DatePicker.Trigger>
+    </DatePicker.Trigger>
   );
 }
 
@@ -182,7 +182,7 @@ export component DatePickerTrigger(
  * The panel the calendar opens in. With no children it holds the month buttons
  * and the month; give it children to lay the calendar out another way.
  */
-export component DatePickerContent(
+component DatePickerContent(
   children?: React.Node,
   sideOffset?: number = 4,
   xstyle?: StyleArgument,
@@ -190,21 +190,21 @@ export component DatePickerContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.DatePicker.Calendar
+    <DatePicker.Calendar
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       sideOffset={sideOffset}
     >
       {children ?? (
         <>
-          <CalendarHeader>
-            <CalendarPrevious />
-            <CalendarNext />
-          </CalendarHeader>
-          <CalendarMonth />
+          <Calendar.Header>
+            <Calendar.Previous />
+            <Calendar.Next />
+          </Calendar.Header>
+          <Calendar.Month />
         </>
       )}
-    </Primitive.DatePicker.Calendar>
+    </DatePicker.Calendar>
   );
 }
 
@@ -224,3 +224,19 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as DatePicker from "./date-picker.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<DatePicker.Root>`
+ * and `<DatePicker.Group>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `DatePickerRoot` rather than `Root`.
+ */
+export {
+  DatePickerRoot as Root,
+  DatePickerGroup as Group,
+  DatePickerInput as Input,
+  DatePickerTrigger as Trigger,
+  DatePickerContent as Content,
+};

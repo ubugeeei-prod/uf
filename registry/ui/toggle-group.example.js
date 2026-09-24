@@ -2,7 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import { ToggleGroup, ToggleGroupItem } from "./toggle-group.js";
+import * as ToggleGroup from "./toggle-group.js";
 
 const styles = stylex.create({
   stack: {
@@ -16,8 +16,8 @@ const styles = stylex.create({
 export component Example() {
   return (
     <div {...props(styles.stack)}>
-      <ToggleGroup aria-label="Formatting" defaultValue={["bold"]} type="multiple">
-        <ToggleGroupItem aria-label="Bold" value="bold">
+      <ToggleGroup.Root aria-label="Formatting" defaultValue={["bold"]} type="multiple">
+        <ToggleGroup.Item aria-label="Bold" value="bold">
           <svg
             aria-hidden="true"
             fill="none"
@@ -32,8 +32,8 @@ export component Example() {
           >
             <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
           </svg>
-        </ToggleGroupItem>
-        <ToggleGroupItem aria-label="Italic" value="italic">
+        </ToggleGroup.Item>
+        <ToggleGroup.Item aria-label="Italic" value="italic">
           <svg
             aria-hidden="true"
             fill="none"
@@ -47,13 +47,13 @@ export component Example() {
           >
             <path d="M14 5h-4M14 19h-4M13 5l-2 14" />
           </svg>
-        </ToggleGroupItem>
-      </ToggleGroup>
-      <ToggleGroup aria-label="Alignment" defaultValue={["left"]} type="single">
-        <ToggleGroupItem value="left">Left</ToggleGroupItem>
-        <ToggleGroupItem value="center">Centre</ToggleGroupItem>
-        <ToggleGroupItem value="right">Right</ToggleGroupItem>
-      </ToggleGroup>
+        </ToggleGroup.Item>
+      </ToggleGroup.Root>
+      <ToggleGroup.Root aria-label="Alignment" defaultValue={["left"]} type="single">
+        <ToggleGroup.Item value="left">Left</ToggleGroup.Item>
+        <ToggleGroup.Item value="center">Centre</ToggleGroup.Item>
+        <ToggleGroup.Item value="right">Right</ToggleGroup.Item>
+      </ToggleGroup.Root>
     </div>
   );
 }

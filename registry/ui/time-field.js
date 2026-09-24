@@ -9,7 +9,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { TimeField as HeadlessTimeField } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
 const styles = stylex.create({
@@ -38,7 +38,7 @@ const styles = stylex.create({
 });
 export component TimeField(xstyle?: StyleArgument, className?: string, ...rest: Rest) {
   return (
-    <Primitive.TimeField
+    <HeadlessTimeField
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     />

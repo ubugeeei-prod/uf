@@ -13,7 +13,8 @@ use crate::project::{
     AddAction, AddError, CopyState, ProjectCopy, apply, inspect, package_spec, plan_add, survey,
 };
 use crate::registry::{
-    EMBEDDED, REGISTRY_VERSION, Registry, RegistryError, description, imports, is_component_name,
+    EMBEDDED, REGISTRY_VERSION, Registry, RegistryError, description, exported_components, imports,
+    is_component_name, namespace_name,
 };
 use crate::stamp::{Copy, Stamp, digest, stamped};
 use crate::update::{self, UpdateAction, UpdateError, base_of, plan_update};
@@ -344,8 +345,8 @@ fn imports_are_read_in_every_shape_the_formatter_writes() {
 import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import {
-  DialogRoot,
-  DialogTrigger,
+  Dialog,
+  Tabs,
 } from "@uniflowed/ui";
 import "./side-effect.js";
 export { Button } from "./button.js";
@@ -1006,4 +1007,100 @@ fn a_name_the_project_never_added_is_refused_and_a_foreign_file_is_left_alone() 
     assert_eq!(plan.steps.len(), 1);
     assert_eq!(plan.steps[0].action, UpdateAction::Foreign);
     assert!(!plan.writes());
+}
+
+// --- One name per component --------------------------------------------------
+
+/// Every registry component follows `@uniflowed/ui`'s own export convention
+/// (ubugeeei-prod/uf#1453), because a page imports both and should not have to
+/// remember which of the two spells a part `DialogTitle` and which
+/// `Dialog.Title`.
+///
+/// * A component with parts exports them unprefixed — `Root`, `Trigger`,
+///   `Content` — so `import * as Dialog from "./dialog.js"` gives
+///   `Dialog.Trigger`. A prefixed export (`DialogTrigger`) is the second
+///   spelling the change removed.
+/// * A component with one part exports it under the module's own name:
+///   `button.js` exports `Button`.
+/// * Its example imports it that way, since the example is what the reference
+///   renders beside the source and what a reader copies.
+/// * It imports `@uniflowed/ui` by name, never `import * as … from
+///   "@uniflowed/ui"`: `@uniflowed/vite` rewrites a named import to the one
+///   module it names, and leaves a namespace import of the barrel loading every
+///   module the package has.
+#[test]
+fn every_component_is_one_name_and_its_parts_are_members_of_it() {
+    let registry = Registry::embedded().expect("the embedded registry reads");
+    let root = repository_root().join("registry/ui");
+    let mut wrong = Vec::new();
+    for component in registry.components() {
+        let namespace = namespace_name(component.name);
+        let parts = component.components();
+        match parts.as_slice() {
+            [] => wrong.push(format!("{}: exports no component", component.name)),
+            [one] if *one != namespace => wrong.push(format!(
+                "{}: its one component is `{one}`, not `{namespace}`",
+                component.name
+            )),
+            [_] => {}
+            many => {
+                for part in many {
+                    let prefixed = part
+                        .strip_prefix(namespace.as_str())
+                        .is_some_and(|rest| rest.chars().next().is_some_and(char::is_uppercase));
+                    if prefixed || *part == namespace {
+                        wrong.push(format!(
+                            "{}: exports `{part}`, which a page would write as `{namespace}.{part}`; export it unprefixed",
+                            component.name
+                        ));
+                    }
+                }
+            }
+        }
+        if component.source.lines().any(|line| {
+            line.starts_with("import * as") && line.ends_with("from \"@uniflowed/ui\";")
+        }) {
+            wrong.push(format!(
+                "{}: imports `@uniflowed/ui` as a namespace; import the components it uses by name",
+                component.name
+            ));
+        }
+        let example = fs::read_to_string(root.join(format!("{}.example.js", component.name)))
+            .expect("every component has an example");
+        let spelled = component.import_statement(&format!("./{}", component.file_name()));
+        if !example.contains(&spelled) {
+            wrong.push(format!(
+                "{}.example.js does not import it the way the documentation does: {spelled}",
+                component.name
+            ));
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the registry and its convention disagree:\n  {}",
+        wrong.join("\n  ")
+    );
+}
+
+#[test]
+fn a_component_is_imported_as_a_namespace_or_by_its_one_name() {
+    let source = "// @flow\n// Thing: a thing.\ncomponent ThingRoot() {}\ncomponent ThingItem() {}\nexport type ThingTone = \"a\";\nexport function thing() {}\nexport { ThingRoot as Root, ThingItem as Item };\nexport {\n  Body,\n  Label as Heading,\n} from \"./other.js\";\n";
+    assert_eq!(
+        exported_components(source),
+        ["Root", "Item", "Body", "Heading"]
+    );
+    assert_eq!(namespace_name("alert-dialog"), "AlertDialog");
+    assert_eq!(namespace_name("i18n-provider"), "I18nProvider");
+
+    let registry = Registry::embedded().expect("the embedded registry reads");
+    let dialog = registry.get("dialog").expect("dialog");
+    assert_eq!(
+        dialog.import_statement("./components/ui/dialog.js"),
+        "import * as Dialog from \"./components/ui/dialog.js\";"
+    );
+    let button = registry.get("button").expect("button");
+    assert_eq!(
+        button.import_statement("./components/ui/button.js"),
+        "import { Button } from \"./components/ui/button.js\";"
+    );
 }

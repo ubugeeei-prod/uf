@@ -24,11 +24,11 @@
 //
 // # What to keep true when you change it
 //
-// * **A tab list holds tabs and nothing else.** `TabsList` takes
-//   `renders* TabsTab`, and `TabsTab` renders `@uniflowed/ui`'s tab, so a
+// * **A tab list holds tabs and nothing else.** `Tabs.List` takes
+//   `renders* TabsTab`, and `Tabs.Tab` renders `@uniflowed/ui`'s tab, so a
 //   `<button>` dropped into the row is a Flow error here exactly as it is in
 //   the package. The constraint survives the copy.
-// * **Name the list.** `aria-label` on `TabsList` says what the tabs choose
+// * **Name the list.** `aria-label` on `Tabs.List` says what the tabs choose
 //   between; without it a reader hears "tab list" and no subject.
 // * **Selected is drawn twice.** The underline, and the text going from `muted`
 //   to `ink`, because colour alone does not tell a reader which tab is chosen
@@ -48,7 +48,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { ActivationMode } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Tabs } from "@uniflowed/ui";
 
 /** Which way the row runs, and so which arrow keys move along it. */
 export type TabsOrientation = "horizontal" | "vertical";
@@ -173,7 +173,7 @@ const styles = stylex.create({
  *       <TabsPanel value="activity">…</TabsPanel>
  *     </Tabs>
  */
-export component Tabs(
+component TabsRoot(
   children: React.Node,
   defaultValue: string,
   value?: string,
@@ -187,7 +187,7 @@ export component Tabs(
   const styled = props(styles.root, orientation === "vertical" && styles.rootVertical, xstyle);
   return (
     <OrientationContext.Provider value={orientation}>
-      <Primitive.Tabs.Root
+      <Tabs.Root
         {...forwarded(rest)}
         activationMode={activationMode}
         className={classNames(styled.className, className)}
@@ -197,13 +197,13 @@ export component Tabs(
         value={value}
       >
         {children}
-      </Primitive.Tabs.Root>
+      </Tabs.Root>
     </OrientationContext.Provider>
   );
 }
 
 /** The row of tabs. Give it an `aria-label` that says what they choose between. */
-export component TabsList(
+component TabsList(
   children: renders* TabsTab,
   xstyle?: StyleArgument,
   className?: string,
@@ -212,37 +212,37 @@ export component TabsList(
   const orientation = useContext(OrientationContext);
   const styled = props(styles.list, orientation === "vertical" && styles.listVertical, xstyle);
   return (
-    <Primitive.Tabs.List {...forwarded(rest)} className={classNames(styled.className, className)}>
+    <Tabs.List {...forwarded(rest)} className={classNames(styled.className, className)}>
       {children}
-    </Primitive.Tabs.List>
+    </Tabs.List>
   );
 }
 
 /** One tab. `disabled` keeps it in the row, announced and unavailable. */
-export component TabsTab(
+component TabsTab(
   value: string,
   children: React.Node,
   disabled?: boolean = false,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Tabs.Tab {
+) renders Tabs.Tab {
   const orientation = useContext(OrientationContext);
   const styled = props(styles.tab, orientation === "vertical" && styles.tabVertical, xstyle);
   return (
-    <Primitive.Tabs.Tab
+    <Tabs.Tab
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       disabled={disabled}
       value={value}
     >
       {children}
-    </Primitive.Tabs.Tab>
+    </Tabs.Tab>
   );
 }
 
 /** The panel a tab shows, in the document only while its tab is selected. */
-export component TabsPanel(
+component TabsPanel(
   value: string,
   children: React.Node,
   xstyle?: StyleArgument,
@@ -250,13 +250,13 @@ export component TabsPanel(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Tabs.Panel
+    <Tabs.Panel
       {...forwarded(rest)}
       className={classNames(props(styles.panel, xstyle).className, className)}
       value={value}
     >
       {children}
-    </Primitive.Tabs.Panel>
+    </Tabs.Panel>
   );
 }
 
@@ -280,3 +280,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Tabs from "./tabs.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Tabs.Root>`
+ * and `<Tabs.List>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `TabsRoot` rather than `Root`.
+ */
+export { TabsRoot as Root, TabsList as List, TabsTab as Tab, TabsPanel as Panel };

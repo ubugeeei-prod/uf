@@ -29,7 +29,7 @@
 // * **Draw marks from what is announced.** The check and the dot follow
 //   `aria-checked`, so what a sighted reader sees is what a screen reader
 //   hears.
-// * **Keep shortcuts out of the name.** `MenuShortcut` is `aria-hidden`; tell
+// * **Keep shortcuts out of the name.** `Menu.Shortcut` is `aria-hidden`; tell
 //   assistive technology the keys with `aria-keyshortcuts` on the row.
 // * **Name a menu nothing names.** A context menu's panel needs an
 //   `aria-label`.
@@ -39,7 +39,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 import type { Align, LogicalSide, MenuSelect } from "@uniflowed/ui";
-import * as Primitive from "@uniflowed/ui";
+import { Menu } from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";
@@ -176,16 +176,16 @@ const styles = stylex.create({
 });
 
 /** The menu, open or closed. Uncontrolled unless `open` is given. */
-export component Menu(
+component MenuRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.Menu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Menu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.Menu.Root>
+    </Menu.Root>
   );
 }
 
@@ -193,7 +193,7 @@ export component Menu(
  * The button that opens the menu, names it, and gets focus back. It is a
  * `Button` unless `render` says otherwise.
  */
-export component MenuTrigger(
+component MenuTrigger(
   children: React.Node,
   tone?: ButtonTone = "neutral",
   size?: ButtonSize = "md",
@@ -203,7 +203,7 @@ export component MenuTrigger(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Menu.Trigger
+    <Menu.Trigger
       {...forwarded(rest)}
       render={
         render ??
@@ -219,15 +219,15 @@ export component MenuTrigger(
       }
     >
       {children}
-    </Primitive.Menu.Trigger>
+    </Menu.Trigger>
   );
 }
 
 /**
  * The panel of rows: under its trigger unless it does not fit, and to the
- * inline end of the row that opens it inside a `MenuSub`.
+ * inline end of the row that opens it inside a `Menu.Sub`.
  */
-export component MenuContent(
+component MenuContent(
   children: renders* (
     | MenuItem
     | MenuCheckboxItem
@@ -245,7 +245,7 @@ export component MenuContent(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Menu.Body
+    <Menu.Body
       {...forwarded(rest)}
       align={align}
       className={classNames(props(styles.content, xstyle).className, className)}
@@ -254,12 +254,12 @@ export component MenuContent(
       sideOffset={sideOffset}
     >
       {children}
-    </Primitive.Menu.Body>
+    </Menu.Body>
   );
 }
 
 /** A row that does something, and closes the menu unless `closeOnSelect` is false. */
-export component MenuItem(
+component MenuItem(
   children: React.Node,
   disabled?: boolean = false,
   closeOnSelect?: boolean = true,
@@ -267,9 +267,9 @@ export component MenuItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Menu.Item {
+) renders Menu.Item {
   return (
-    <Primitive.Menu.Item
+    <Menu.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       closeOnSelect={closeOnSelect}
@@ -277,12 +277,12 @@ export component MenuItem(
       onSelect={onSelect}
     >
       {children}
-    </Primitive.Menu.Item>
+    </Menu.Item>
   );
 }
 
 /** A row that turns something on or off, with a check while it is on. */
-export component MenuCheckboxItem(
+component MenuCheckboxItem(
   children: React.Node,
   checked?: boolean,
   defaultChecked?: boolean = false,
@@ -293,9 +293,9 @@ export component MenuCheckboxItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Menu.CheckboxItem {
+) renders Menu.CheckboxItem {
   return (
-    <Primitive.Menu.CheckboxItem
+    <Menu.CheckboxItem
       {...forwarded(rest)}
       checked={checked}
       className={classNames(props(styles.item, xstyle).className, className)}
@@ -322,12 +322,12 @@ export component MenuCheckboxItem(
         </svg>
       </span>
       {children}
-    </Primitive.Menu.CheckboxItem>
+    </Menu.CheckboxItem>
   );
 }
 
-/** Rows of which one is chosen. A `MenuLabel` inside names the group. */
-export component MenuRadioGroup(
+/** Rows of which one is chosen. A `Menu.Label` inside names the group. */
+component MenuRadioGroup(
   children: renders* (MenuRadioItem | MenuLabel | MenuSeparator),
   value?: string | null,
   defaultValue?: string | null = null,
@@ -335,9 +335,9 @@ export component MenuRadioGroup(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Menu.RadioGroup {
+) renders Menu.RadioGroup {
   return (
-    <Primitive.Menu.RadioGroup
+    <Menu.RadioGroup
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
       defaultValue={defaultValue}
@@ -345,12 +345,12 @@ export component MenuRadioGroup(
       value={value}
     >
       {children}
-    </Primitive.Menu.RadioGroup>
+    </Menu.RadioGroup>
   );
 }
 
-/** One choice in a `MenuRadioGroup`, with a dot while it is the chosen one. */
-export component MenuRadioItem(
+/** One choice in a `Menu.RadioGroup`, with a dot while it is the chosen one. */
+component MenuRadioItem(
   children: React.Node,
   value: string,
   disabled?: boolean = false,
@@ -359,9 +359,9 @@ export component MenuRadioItem(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Menu.RadioItem {
+) renders Menu.RadioItem {
   return (
-    <Primitive.Menu.RadioItem
+    <Menu.RadioItem
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       closeOnSelect={closeOnSelect}
@@ -375,52 +375,52 @@ export component MenuRadioItem(
         </svg>
       </span>
       {children}
-    </Primitive.Menu.RadioItem>
+    </Menu.RadioItem>
   );
 }
 
-/** Rows kept together. A `MenuLabel` inside names the group. */
-export component MenuGroup(
+/** Rows kept together. A `Menu.Label` inside names the group. */
+component MenuGroup(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Menu.Group {
+) renders Menu.Group {
   return (
-    <Primitive.Menu.Group
+    <Menu.Group
       {...forwarded(rest)}
       className={classNames(props(styles.group, xstyle).className, className)}
     >
       {children}
-    </Primitive.Menu.Group>
+    </Menu.Group>
   );
 }
 
 /** The name of the group it is in, which the keyboard passes over. */
-export component MenuLabel(
+component MenuLabel(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Menu.Label {
+) renders Menu.Label {
   return (
-    <Primitive.Menu.Label
+    <Menu.Label
       {...forwarded(rest)}
       className={classNames(props(styles.label, xstyle).className, className)}
     >
       {children}
-    </Primitive.Menu.Label>
+    </Menu.Label>
   );
 }
 
 /** A line between groups of rows. */
-export component MenuSeparator(
+component MenuSeparator(
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.Menu.Separator {
+) renders Menu.Separator {
   return (
-    <Primitive.Menu.Separator
+    <Menu.Separator
       {...forwarded(rest)}
       className={classNames(props(styles.separator, xstyle).className, className)}
     />
@@ -428,7 +428,7 @@ export component MenuSeparator(
 }
 
 /** The keys that do the same as a row, at its end and out of its name. */
-export component MenuShortcut(
+component MenuShortcut(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -445,29 +445,29 @@ export component MenuShortcut(
   );
 }
 
-/** A submenu: a `MenuSubTrigger` and the `MenuContent` it opens. */
-export component MenuSub(
+/** A submenu: a `Menu.SubTrigger` and the `Menu.Content` it opens. */
+component MenuSub(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
-) renders Primitive.Menu.Sub {
+) renders Menu.Sub {
   return (
-    <Primitive.Menu.Sub defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <Menu.Sub defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.Menu.Sub>
+    </Menu.Sub>
   );
 }
 
 /** The row that opens a submenu, with an arrow toward it. */
-export component MenuSubTrigger(
+component MenuSubTrigger(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Menu.SubTrigger
+    <Menu.SubTrigger
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
     >
@@ -487,7 +487,7 @@ export component MenuSubTrigger(
       >
         <path d="m9 18 6-6-6-6" />
       </svg>
-    </Primitive.Menu.SubTrigger>
+    </Menu.SubTrigger>
   );
 }
 
@@ -507,3 +507,27 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Menu from "./menu.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Menu.Root>`
+ * and `<Menu.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `MenuRoot` rather than `Root`.
+ */
+export {
+  MenuRoot as Root,
+  MenuTrigger as Trigger,
+  MenuContent as Content,
+  MenuItem as Item,
+  MenuCheckboxItem as CheckboxItem,
+  MenuRadioGroup as RadioGroup,
+  MenuRadioItem as RadioItem,
+  MenuGroup as Group,
+  MenuLabel as Label,
+  MenuSeparator as Separator,
+  MenuShortcut as Shortcut,
+  MenuSub as Sub,
+  MenuSubTrigger as SubTrigger,
+};

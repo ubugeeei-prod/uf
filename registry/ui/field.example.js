@@ -2,14 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldInput,
-  FieldLabel,
-  FieldTextarea,
-} from "./field.js";
+import * as Field from "./field.js";
 
 const styles = stylex.create({
   form: {
@@ -23,20 +16,20 @@ const styles = stylex.create({
 export component Example() {
   return (
     <form {...props(styles.form)}>
-      <Field required>
-        <FieldLabel>Name</FieldLabel>
-        <FieldInput autoComplete="name" defaultValue="Ada Lovelace" name="name" />
-        <FieldDescription>As it should appear on receipts.</FieldDescription>
-      </Field>
-      <Field invalid required>
-        <FieldLabel>Email</FieldLabel>
-        <FieldInput autoComplete="email" defaultValue="ada@example" name="email" type="email" />
-        <FieldError>Enter an address with a domain, like ada@example.com.</FieldError>
-      </Field>
-      <Field>
-        <FieldLabel>Note</FieldLabel>
-        <FieldTextarea name="note" placeholder="Anything we should know" />
-      </Field>
+      <Field.Root required>
+        <Field.Label>Name</Field.Label>
+        <Field.Input autoComplete="name" defaultValue="Ada Lovelace" name="name" />
+        <Field.Description>As it should appear on receipts.</Field.Description>
+      </Field.Root>
+      <Field.Root invalid required>
+        <Field.Label>Email</Field.Label>
+        <Field.Input autoComplete="email" defaultValue="ada@example" name="email" type="email" />
+        <Field.Error>Enter an address with a domain, like ada@example.com.</Field.Error>
+      </Field.Root>
+      <Field.Root>
+        <Field.Label>Note</Field.Label>
+        <Field.Textarea name="note" placeholder="Anything we should know" />
+      </Field.Root>
     </form>
   );
 }

@@ -9,10 +9,10 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { RangeCalendar as HeadlessRangeCalendar } from "@uniflowed/ui";
 
 type Rest = { readonly key?: empty, readonly [string]: mixed };
-import { CalendarHeader, CalendarMonth, CalendarNext, CalendarPrevious } from "./calendar.js";
+import * as Calendar from "./calendar.js";
 const styles = stylex.create({
   // The same frame as `Calendar`'s. A block, because the month buttons hang
   // on the caption's line from a zero-height row; `calendar.js` says why.
@@ -37,20 +37,20 @@ export component RangeCalendar(
   ...rest: Rest
 ) {
   return (
-    <Primitive.RangeCalendar.Root
+    <HeadlessRangeCalendar.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
     >
       {children ?? (
         <>
-          <CalendarHeader>
-            <CalendarPrevious />
-            <CalendarNext />
-          </CalendarHeader>
-          <CalendarMonth />
+          <Calendar.Header>
+            <Calendar.Previous />
+            <Calendar.Next />
+          </Calendar.Header>
+          <Calendar.Month />
         </>
       )}
-    </Primitive.RangeCalendar.Root>
+    </HeadlessRangeCalendar.Root>
   );
 }
 

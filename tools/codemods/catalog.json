@@ -8,5 +8,10 @@
     "version": "0.3.0",
     "implementation": "crates/uf_cli/src/commands/migrate/ui_namespaces.rs",
     "fixture": "crates/uf_cli/tests/fixtures/migrations/ui-namespaces/before.js"
+  },
+  "ui-registry-namespaces-1453": {
+    "version": "0.3.0",
+    "implementation": "crates/uf_cli/src/commands/migrate/ui_copies.rs",
+    "fixture": "crates/uf_cli/tests/fixtures/migrations/ui-copies/dialog.js"
   }
 }

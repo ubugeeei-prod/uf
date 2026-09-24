@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { act, cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 
 import { Example } from "./toast.example.js";
-import { ToastAction, ToastTitle, dismissAllToasts, toast } from "./toast.js";
+import { dismissAllToasts, toast } from "./toast.js";
+import * as Toast from "./toast.js";
 
 afterEach(() => {
   act(() => {
@@ -55,8 +56,8 @@ describe("Toast", () => {
     act(() => {
       toast(
         <>
-          <ToastTitle>Export ready</ToastTitle>
-          <ToastAction>Open</ToastAction>
+          <Toast.Title>Export ready</Toast.Title>
+          <Toast.Action>Open</Toast.Action>
         </>,
         { duration: null },
       );

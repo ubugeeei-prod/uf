@@ -18,7 +18,7 @@
 //
 // # What to keep true when you change it
 //
-// * **The title is a heading at the level the page needs.** `CardTitle` takes
+// * **The title is a heading at the level the page needs.** `Card.Title` takes
 //   `level`, which is 3 by default and typed as 1 to 6, so a level that does
 //   not exist fails `uf check` instead of rendering a `<div>`. Screen reader
 //   users move through a page by its headings. A card title styled to look like
@@ -26,7 +26,7 @@
 // * **A card that goes somewhere has one link, on its title.** Wrapping the
 //   whole card in `<a>` makes a screen reader read every word in the card as the
 //   link's name. It also cannot hold a second control. Put the link in
-//   `CardTitle`, and stretch its hit area with CSS if the whole card should
+//   `Card.Title`, and stretch its hit area with CSS if the whole card should
 //   respond to a click.
 // * **Content order is reading order.** The footer's actions come after the
 //   content in the DOM, so a keyboard reaches them after reading what they act
@@ -94,7 +94,7 @@ const styles = stylex.create({
 });
 
 /** The surface. */
-export component Card(
+component CardRoot(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -108,7 +108,7 @@ export component Card(
 }
 
 /** The title, the description under it, and anything that sits beside them. */
-export component CardHeader(
+component CardHeader(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -122,7 +122,7 @@ export component CardHeader(
 }
 
 /** What the card is about, as a heading at `level`. */
-export component CardTitle(
+component CardTitle(
   children: React.Node,
   level?: CardTitleLevel = 3,
   xstyle?: StyleArgument,
@@ -144,7 +144,7 @@ export component CardTitle(
 }
 
 /** A line under the title, in the quieter colour. */
-export component CardDescription(
+component CardDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -158,7 +158,7 @@ export component CardDescription(
 }
 
 /** The body. */
-export component CardContent(
+component CardContent(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -172,7 +172,7 @@ export component CardContent(
 }
 
 /** The actions, after the content they act on. */
-export component CardFooter(
+component CardFooter(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -190,3 +190,20 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Card from "./card.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Card.Root>`
+ * and `<Card.Header>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `CardRoot` rather than `Root`.
+ */
+export {
+  CardRoot as Root,
+  CardHeader as Header,
+  CardTitle as Title,
+  CardDescription as Description,
+  CardContent as Content,
+  CardFooter as Footer,
+};

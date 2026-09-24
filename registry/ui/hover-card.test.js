@@ -8,7 +8,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { act, cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./hover-card.js";
+import * as HoverCard from "./hover-card.js";
 import { Example } from "./hover-card.example.js";
 
 afterEach(() => {
@@ -42,12 +42,12 @@ describe("HoverCard", () => {
   // asks for no wait so that what is checked here is the dressing.
   it("opens for a pointer", () => {
     render(
-      <HoverCard openDelay={0}>
-        <HoverCardTrigger href="/people/ada">Ada Lovelace</HoverCardTrigger>
-        <HoverCardContent>
+      <HoverCard.Root openDelay={0}>
+        <HoverCard.Trigger href="/people/ada">Ada Lovelace</HoverCard.Trigger>
+        <HoverCard.Content>
           <p>A preview.</p>
-        </HoverCardContent>
-      </HoverCard>,
+        </HoverCard.Content>
+      </HoverCard.Root>,
     );
     const trigger = html(screen.getByRole("link", { name: "Ada Lovelace" }));
 

@@ -2,7 +2,7 @@
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import { Avatar, AvatarFallback, AvatarImage } from "./avatar.js";
+import * as Avatar from "./avatar.js";
 
 const styles = stylex.create({
   row: {
@@ -19,11 +19,11 @@ const styles = stylex.create({
 export component Example() {
   return (
     <div {...props(styles.row)}>
-      <Avatar>
+      <Avatar.Root>
         {/* No picture yet: an empty source is nothing coming, so the initials show at once. */}
-        <AvatarImage src="" />
-        <AvatarFallback>AL</AvatarFallback>
-      </Avatar>
+        <Avatar.Image src="" />
+        <Avatar.Fallback>AL</Avatar.Fallback>
+      </Avatar.Root>
       <span>Ada Lovelace</span>
     </div>
   );

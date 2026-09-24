@@ -1,42 +1,32 @@
 // @flow
 import * as React from "@uniflowed/react";
 
-import {
-  Select,
-  SelectGroup,
-  SelectGroupLabel,
-  SelectLabel,
-  SelectList,
-  SelectOption,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "./select.js";
+import * as Select from "./select.js";
 
 /** A country, in two named groups, with one option unavailable. */
 export component Example() {
   return (
-    <Select name="country">
-      <SelectLabel>Country</SelectLabel>
-      <SelectTrigger>
-        <SelectValue placeholder="Choose a country" />
-      </SelectTrigger>
-      <SelectList>
-        <SelectGroup>
-          <SelectGroupLabel>Europe</SelectGroupLabel>
-          <SelectOption value="fr">France</SelectOption>
-          <SelectOption value="de">Germany</SelectOption>
-          <SelectOption value="gb">United Kingdom</SelectOption>
-        </SelectGroup>
-        <SelectSeparator />
-        <SelectGroup>
-          <SelectGroupLabel>Asia</SelectGroupLabel>
-          <SelectOption value="jp">Japan</SelectOption>
-          <SelectOption disabled value="kr">
+    <Select.Root name="country">
+      <Select.Label>Country</Select.Label>
+      <Select.Trigger>
+        <Select.Value placeholder="Choose a country" />
+      </Select.Trigger>
+      <Select.List>
+        <Select.Group>
+          <Select.GroupLabel>Europe</Select.GroupLabel>
+          <Select.Option value="fr">France</Select.Option>
+          <Select.Option value="de">Germany</Select.Option>
+          <Select.Option value="gb">United Kingdom</Select.Option>
+        </Select.Group>
+        <Select.Separator />
+        <Select.Group>
+          <Select.GroupLabel>Asia</Select.GroupLabel>
+          <Select.Option value="jp">Japan</Select.Option>
+          <Select.Option disabled value="kr">
             South Korea
-          </SelectOption>
-        </SelectGroup>
-      </SelectList>
-    </Select>
+          </Select.Option>
+        </Select.Group>
+      </Select.List>
+    </Select.Root>
   );
 }

@@ -19,7 +19,7 @@
 //
 // # What to keep true when you change it
 //
-// * **Name the panel.** No trigger names it, so `ContextMenuContent` needs an
+// * **Name the panel.** No trigger names it, so `ContextMenu.Content` needs an
 //   `aria-label`.
 // * **Keep the area focusable.** Its menu opens from the keyboard only when the
 //   area can take focus.
@@ -30,21 +30,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
-
-import {
-  MenuCheckboxItem,
-  MenuContent,
-  MenuGroup,
-  MenuItem,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuShortcut,
-  MenuSub,
-  MenuSubTrigger,
-} from "./menu.js";
+import { ContextMenu } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -59,49 +45,54 @@ const styles = stylex.create({
 });
 
 /** The context menu, open or closed. Uncontrolled unless `open` is given. */
-export component ContextMenu(
+component ContextMenuRoot(
   children: React.Node,
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
 ) {
   return (
-    <Primitive.ContextMenu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+    <ContextMenu.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
       {children}
-    </Primitive.ContextMenu.Root>
+    </ContextMenu.Root>
   );
 }
 
 /** The area whose menu this is. */
-export component ContextMenuTrigger(
+component ContextMenuTrigger(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.ContextMenu.Trigger
+    <ContextMenu.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.area, xstyle).className, className)}
     >
       {children}
-    </Primitive.ContextMenu.Trigger>
+    </ContextMenu.Trigger>
   );
 }
 
+/**
+ * The menu parts, which are `menu.js`'s own: a context menu is a menu opened another
+ * way, so `<ContextMenu.Item>` is the styled `Menu.Item` and a change to it there
+ * reaches both.
+ */
 export {
-  MenuCheckboxItem as ContextMenuCheckboxItem,
-  MenuContent as ContextMenuContent,
-  MenuGroup as ContextMenuGroup,
-  MenuItem as ContextMenuItem,
-  MenuLabel as ContextMenuLabel,
-  MenuRadioGroup as ContextMenuRadioGroup,
-  MenuRadioItem as ContextMenuRadioItem,
-  MenuSeparator as ContextMenuSeparator,
-  MenuShortcut as ContextMenuShortcut,
-  MenuSub as ContextMenuSub,
-  MenuSubTrigger as ContextMenuSubTrigger,
-};
+  CheckboxItem,
+  Content,
+  Group,
+  Item,
+  Label,
+  RadioGroup,
+  RadioItem,
+  Separator,
+  Shortcut,
+  Sub,
+  SubTrigger,
+} from "./menu.js";
 
 /**
  * A caller's props on their way into a part rather than onto an element. Flow
@@ -119,3 +110,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as ContextMenu from "./context-menu.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<ContextMenu.Root>`
+ * and `<ContextMenu.Trigger>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `ContextMenuRoot` rather than `Root`.
+ */
+export { ContextMenuRoot as Root, ContextMenuTrigger as Trigger };

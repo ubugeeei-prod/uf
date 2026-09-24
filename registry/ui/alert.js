@@ -19,7 +19,7 @@
 //
 // * **`live` is for an alert that appears.** A save that failed, a connection
 //   that dropped. A notice that is always on the page leaves it off.
-// * **The heading level fits the page.** `AlertTitle` takes `level`, 3 by
+// * **The heading level fits the page.** `Alert.Title` takes `level`, 3 by
 //   default.
 // * **A tone is more than a colour.** `danger` and `info` add a thick edge and
 //   the title's words should say what happened; the colour alone says nothing
@@ -32,7 +32,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Alert } from "@uniflowed/ui";
 
 /** What the alert is about, drawn as the colour of its edge. */
 export type AlertTone = "neutral" | "info" | "danger";
@@ -79,7 +79,7 @@ const styles = stylex.create({
 });
 
 /** A callout. `live` only for one that appears after the page has loaded. */
-export component Alert(
+component AlertRoot(
   children: React.Node,
   tone?: AlertTone = "neutral",
   live?: boolean = false,
@@ -97,18 +97,18 @@ export component Alert(
     xstyle,
   );
   return (
-    <Primitive.Alert.Root
+    <Alert.Root
       {...forwarded(rest)}
       className={classNames(styled.className, className)}
       live={live}
     >
       {children}
-    </Primitive.Alert.Root>
+    </Alert.Root>
   );
 }
 
 /** What happened, as a heading at `level`. */
-export component AlertTitle(
+component AlertTitle(
   children: React.Node,
   level?: number = 3,
   xstyle?: StyleArgument,
@@ -116,30 +116,30 @@ export component AlertTitle(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Alert.Title
+    <Alert.Title
       {...forwarded(rest)}
       className={classNames(props(styles.title, xstyle).className, className)}
       level={level}
     >
       {children}
-    </Primitive.Alert.Title>
+    </Alert.Title>
   );
 }
 
 /** What it means, and what to do about it. */
-export component AlertDescription(
+component AlertDescription(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.Alert.Description
+    <Alert.Description
       {...forwarded(rest)}
       className={classNames(props(styles.description, xstyle).className, className)}
     >
       {children}
-    </Primitive.Alert.Description>
+    </Alert.Description>
   );
 }
 
@@ -159,3 +159,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Alert from "./alert.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Alert.Root>`
+ * and `<Alert.Title>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `AlertRoot` rather than `Root`.
+ */
+export { AlertRoot as Root, AlertTitle as Title, AlertDescription as Description };

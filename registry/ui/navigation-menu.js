@@ -34,7 +34,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { NavigationMenu } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
@@ -146,7 +146,7 @@ const styles = stylex.create({
 });
 
 /** The navigation. Uncontrolled unless `value`, the open item's, is given. */
-export component NavigationMenu(
+component NavigationMenuRoot(
   children: renders* NavigationMenuList,
   defaultValue?: string | null = null,
   value?: string | null,
@@ -156,7 +156,7 @@ export component NavigationMenu(
   ...rest: Rest
 ) {
   return (
-    <Primitive.NavigationMenu.Root
+    <NavigationMenu.Root
       {...forwarded(rest)}
       className={classNames(props(styles.root, xstyle).className, className)}
       defaultValue={defaultValue}
@@ -164,58 +164,58 @@ export component NavigationMenu(
       value={value}
     >
       {children}
-    </Primitive.NavigationMenu.Root>
+    </NavigationMenu.Root>
   );
 }
 
 /** The row of items. */
-export component NavigationMenuList(
+component NavigationMenuList(
   children: renders* NavigationMenuItem,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.NavigationMenu.List {
+) renders NavigationMenu.List {
   return (
-    <Primitive.NavigationMenu.List
+    <NavigationMenu.List
       {...forwarded(rest)}
       className={classNames(props(styles.list, xstyle).className, className)}
     >
       {children}
-    </Primitive.NavigationMenu.List>
+    </NavigationMenu.List>
   );
 }
 
 /**
- * One item: a `NavigationMenuTrigger` and the `NavigationMenuContent` it opens,
- * or a `NavigationMenuTopLink`.
+ * One item: a `NavigationMenu.Trigger` and the `NavigationMenu.Content` it opens,
+ * or a `NavigationMenu.TopLink`.
  */
-export component NavigationMenuItem(
+component NavigationMenuItem(
   value: string,
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.NavigationMenu.Item {
+) renders NavigationMenu.Item {
   return (
-    <Primitive.NavigationMenu.Item
+    <NavigationMenu.Item
       {...forwarded(rest)}
       className={classNames(props(styles.item, xstyle).className, className)}
       value={value}
     >
       {children}
-    </Primitive.NavigationMenu.Item>
+    </NavigationMenu.Item>
   );
 }
 
 /** The button that opens an item's panel, with an arrow that turns while it is open. */
-export component NavigationMenuTrigger(
+component NavigationMenuTrigger(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.NavigationMenu.Trigger
+    <NavigationMenu.Trigger
       {...forwarded(rest)}
       className={classNames(props(styles.trigger, xstyle).className, className)}
     >
@@ -235,46 +235,46 @@ export component NavigationMenuTrigger(
       >
         <path d="m6 9 6 6 6-6" />
       </svg>
-    </Primitive.NavigationMenu.Trigger>
+    </NavigationMenu.Trigger>
   );
 }
 
 /** The panel of links under an item, named by its trigger. */
-export component NavigationMenuContent(
+component NavigationMenuContent(
   children: renders* NavigationMenuLink,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
 ) {
   return (
-    <Primitive.NavigationMenu.Body
+    <NavigationMenu.Body
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
     >
       {children}
-    </Primitive.NavigationMenu.Body>
+    </NavigationMenu.Body>
   );
 }
 
 /** A link in a panel, which closes the panel when it is followed. */
-export component NavigationMenuLink(
+component NavigationMenuLink(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
-) renders Primitive.NavigationMenu.Link {
+) renders NavigationMenu.Link {
   return (
-    <Primitive.NavigationMenu.Link
+    <NavigationMenu.Link
       {...forwarded(rest)}
       className={classNames(props(styles.link, xstyle).className, className)}
     >
       {children}
-    </Primitive.NavigationMenu.Link>
+    </NavigationMenu.Link>
   );
 }
 
 /** A link on the bar itself, drawn like a trigger, for an item with no panel. */
-export component NavigationMenuTopLink(
+component NavigationMenuTopLink(
   children: React.Node,
   xstyle?: StyleArgument,
   className?: string,
@@ -303,3 +303,21 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as NavigationMenu from "./navigation-menu.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<NavigationMenu.Root>`
+ * and `<NavigationMenu.List>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `NavigationMenuRoot` rather than `Root`.
+ */
+export {
+  NavigationMenuRoot as Root,
+  NavigationMenuList as List,
+  NavigationMenuItem as Item,
+  NavigationMenuTrigger as Trigger,
+  NavigationMenuContent as Content,
+  NavigationMenuLink as Link,
+  NavigationMenuTopLink as TopLink,
+};

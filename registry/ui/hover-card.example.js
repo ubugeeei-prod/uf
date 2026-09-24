@@ -3,7 +3,7 @@ import * as React from "@uniflowed/react";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./hover-card.js";
+import * as HoverCard from "./hover-card.js";
 
 const styles = stylex.create({
   stack: {
@@ -30,9 +30,9 @@ export component Example() {
   return (
     <div>
       Reviewed by{" "}
-      <HoverCard>
-        <HoverCardTrigger href="?person=ada">Ada Lovelace</HoverCardTrigger>
-        <HoverCardContent>
+      <HoverCard.Root>
+        <HoverCard.Trigger href="?person=ada">Ada Lovelace</HoverCard.Trigger>
+        <HoverCard.Content>
           <div {...props(styles.stack)}>
             <p {...props(styles.name)}>Ada Lovelace</p>
             <p {...props(styles.note)}>Writes the notes that outlive the engine.</p>
@@ -40,8 +40,8 @@ export component Example() {
               Read her notes
             </a>
           </div>
-        </HoverCardContent>
-      </HoverCard>
+        </HoverCard.Content>
+      </HoverCard.Root>
       .
     </div>
   );

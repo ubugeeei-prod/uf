@@ -29,7 +29,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui";
+import { Avatar } from "@uniflowed/ui";
 
 /** How big the circle is. */
 export type AvatarSize = "sm" | "md" | "lg";
@@ -83,7 +83,7 @@ const styles = stylex.create({
 });
 
 /** The circle. */
-export component Avatar(
+component AvatarRoot(
   children: React.Node,
   size?: AvatarSize = "md",
   xstyle?: StyleArgument,
@@ -100,14 +100,14 @@ export component Avatar(
     xstyle,
   );
   return (
-    <Primitive.Avatar.Root {...forwarded(rest)} className={classNames(styled.className, className)}>
+    <Avatar.Root {...forwarded(rest)} className={classNames(styled.className, className)}>
       {children}
-    </Primitive.Avatar.Root>
+    </Avatar.Root>
   );
 }
 
 /** The picture. `alt` stays empty when the person's name is beside it. */
-export component AvatarImage(
+component AvatarImage(
   src?: string | null,
   alt?: string = "",
   xstyle?: StyleArgument,
@@ -115,7 +115,7 @@ export component AvatarImage(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Avatar.Image
+    <Avatar.Image
       {...forwarded(rest)}
       alt={alt}
       className={classNames(props(styles.image, xstyle).className, className)}
@@ -125,7 +125,7 @@ export component AvatarImage(
 }
 
 /** What shows while there is no picture: initials, usually. */
-export component AvatarFallback(
+component AvatarFallback(
   children: React.Node,
   delay?: number = 300,
   xstyle?: StyleArgument,
@@ -133,13 +133,13 @@ export component AvatarFallback(
   ...rest: Rest
 ) {
   return (
-    <Primitive.Avatar.Fallback
+    <Avatar.Fallback
       {...forwarded(rest)}
       className={classNames(props(styles.fallback, xstyle).className, className)}
       delay={delay}
     >
       {children}
-    </Primitive.Avatar.Fallback>
+    </Avatar.Fallback>
   );
 }
 
@@ -159,3 +159,13 @@ function classNames(...names: $ReadOnlyArray<?string>): string | void {
   const present = names.filter((name) => name != null && name !== "");
   return present.length === 0 ? undefined : present.join(" ");
 }
+
+/**
+ * The parts, under the names `import * as Avatar from "./avatar.js"` gives them.
+ *
+ * One name per component (ubugeeei-prod/uf#1453): a page writes `<Avatar.Root>`
+ * and `<Avatar.Image>`, the way it writes `@uniflowed/ui`'s own parts. Each
+ * is declared under its full name, so React DevTools and an error say
+ * `AvatarRoot` rather than `Root`.
+ */
+export { AvatarRoot as Root, AvatarImage as Image, AvatarFallback as Fallback };
