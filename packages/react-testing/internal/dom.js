@@ -15,14 +15,6 @@
 import { Window } from "happy-dom";
 
 /**
- * A function this module found on a window and knows nothing else about.
- *
- * `mixed` in and `mixed` out is the whole contract: these are copied across
- * for React and for components to call, and nothing here ever calls one.
- */
-type HostFunction = (...args: $ReadOnlyArray<mixed>) => mixed;
-
-/**
  * Values kept by name, which is all this module knows about a window, the
  * global object, or a Storage.
  *
@@ -36,8 +28,8 @@ type Named = { readonly [string]: mixed };
 /**
  * A window, as this module uses one.
  *
- * A table of globals to copy, plus the three functions that are *bound* rather
- * than copied — and those are named because binding is the one thing an
+ * A table of globals to copy, plus the three functions that are forwarded to
+ * the window rather than copied — and those are named because binding is the one thing an
  * indexer cannot describe. `typeof win[name] === "function"` refines a `mixed`
  * to a function whose parameters Flow does not know, and `.bind` is not
  * something that can be done to one of those:
@@ -49,16 +41,27 @@ type Named = { readonly [string]: mixed };
  * beside the other three arrays, is this part of the type instead. One list
  * rather than two, and it is the one the checker reads.
  *
- * `happy-dom` ships TypeScript rather than Flow, so `new Window(…)` is `any`.
- * This annotation is the first statement anywhere about what comes back, not a
- * cast that discards one.
+ * An interface rather than an object type, because a `happy-dom` `Window` is
+ * a class instance, which is only ever a subtype of an interface. `uf check`
+ * reads `happy-dom`'s TypeScript declarations now, so what `new Window(…)`
+ * answers has to fit this, where it used to be `any`.
+ *
+ * The three are *methods* here, and are called through the window rather than
+ * detached from it (see `apply`): reading a method off an instance as a value
+ * is the `method-unbinding` error, which is the checker saying exactly what
+ * `.bind` was there to prevent. Their parameters are `empty` because this
+ * module passes through whatever React calls them with and never calls one
+ * itself; `empty` is the one parameter type every window's own signature
+ * accepts.
  */
-type HostWindow = {
-  readonly getComputedStyle?: HostFunction,
-  readonly requestAnimationFrame?: HostFunction,
-  readonly cancelAnimationFrame?: HostFunction,
-  readonly [string]: mixed,
-};
+interface HostWindow {
+  getComputedStyle(...args: Array<empty>): mixed;
+  requestAnimationFrame(...args: Array<empty>): mixed;
+  cancelAnimationFrame(...args: Array<empty>): mixed;
+  /** The window's document, which becomes the global `document`. */
+  readonly document: mixed;
+  readonly [string]: mixed;
+}
 
 /**
  * The global object, under the one description this module has of it.
@@ -247,11 +250,12 @@ let created: Created | null = null;
  */
 export function installDom(): HostWindow {
   installActEnvironment();
-  if (created != null) {
-    if (!created.applied) {
-      apply(created);
+  const existing = created;
+  if (existing != null) {
+    if (!existing.applied) {
+      apply(existing);
     }
-    return created.win;
+    return existing.win;
   }
   if (installed != null) {
     return installed;
@@ -287,13 +291,15 @@ function apply(dom: Created): void {
       defineFor(dom, name, value);
     }
   }
-  // The three by name rather than from a list: see `HostWindow`.
-  for (const name of ["getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"]) {
-    const fn = win[name];
-    if (typeof fn === "function") {
-      defineFor(dom, name, fn.bind(win));
-    }
-  }
+  // The three by name rather than from a list, each called through the window
+  // it belongs to, which is what binding it did: see `HostWindow`.
+  defineFor(dom, "getComputedStyle", (...args: Array<empty>) => win.getComputedStyle(...args));
+  defineFor(dom, "requestAnimationFrame", (...args: Array<empty>) =>
+    win.requestAnimationFrame(...args),
+  );
+  defineFor(dom, "cancelAnimationFrame", (...args: Array<empty>) =>
+    win.cancelAnimationFrame(...args),
+  );
   for (const name of OBJECTS) {
     const value = win[name];
     if (value !== undefined && globals[name] === undefined) {
@@ -425,9 +431,9 @@ function restoreBetweenFiles(): void {
   }
   if (declared) {
     if (actFlagBefore === undefined) {
-      Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+      Reflect.deleteProperty(globalThis, ACT_ENVIRONMENT);
     } else {
-      Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", actFlagBefore);
+      Object.defineProperty(globalThis, ACT_ENVIRONMENT, actFlagBefore);
     }
     declared = false;
   }
@@ -516,12 +522,23 @@ export function setActEnvironment(active: boolean): void {
  */
 function declareActEnvironment(active: boolean): void {
   if (!declared) {
-    actFlagBefore = Reflect.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    actFlagBefore = Reflect.getOwnPropertyDescriptor(globalThis, ACT_ENVIRONMENT);
     registerBetweenFiles();
   }
   declared = true;
-  define("IS_REACT_ACT_ENVIRONMENT", active);
+  define(ACT_ENVIRONMENT, active);
 }
+
+/**
+ * The global React reads to decide whether updates outside `act` deserve a
+ * warning.
+ *
+ * Named once, as a `string`, because every use is a property this module adds
+ * to and removes from the global object by name. Flow checks a literal key
+ * against `globalThis`'s declared members, and this one is React's, declared
+ * nowhere.
+ */
+const ACT_ENVIRONMENT: string = "IS_REACT_ACT_ENVIRONMENT";
 
 /** What `IS_REACT_ACT_ENVIRONMENT` was before this module set it. */
 let actFlagBefore: PropertyDescriptor<mixed> | void = undefined;
