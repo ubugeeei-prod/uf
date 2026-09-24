@@ -530,7 +530,14 @@ export function createJSONStorage<T>(
         return;
       }
       try {
-        store.setItem(key, JSON.stringify(value));
+        const serialized = JSON.stringify(value);
+        // `undefined` has no JSON. Nothing stored reads back as the initial
+        // value, which is what a stored "undefined" failing to parse did.
+        if (serialized === undefined) {
+          store.removeItem(key);
+        } else {
+          store.setItem(key, serialized);
+        }
       } catch {
         // Out of quota, or site data blocked. The value is still the atom's;
         // it simply will not outlive the tab.
@@ -558,7 +565,7 @@ export function createJSONStorage<T>(
         if (event.key != null && event.key !== key) {
           return;
         }
-        onChange(parse(event.key == null ? null : event.newValue, initial));
+        onChange(parse(event.key == null ? null : (event.newValue ?? null), initial));
       };
       host.addEventListener("storage", listener);
       return () => {
@@ -816,7 +823,7 @@ export function unwrap<T>(
   return defineSelector((get) => {
     const settled = get(target);
     return match (settled) {
-      {state: "hasData", data: const data, ...} => data,
+      {state: "hasData", data: const data} => data,
       _ => fallback,
     };
   }, null);

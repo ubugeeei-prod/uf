@@ -19,6 +19,7 @@ import {
   update,
   write,
 } from "@uniflowed/cell";
+import type { Cell } from "@uniflowed/cell";
 
 /**
  * A load whose promises the test settles by hand, one per key.
@@ -204,9 +205,10 @@ describe("derived", () => {
   });
 
   it("names a self-referential derive instead of overflowing the stack", () => {
-    let loop = null;
-    loop = derived(() => (loop == null ? 0 : read(loop)));
-    expect(() => read(loop)).toThrow("depends on itself");
+    let loop: null | Cell<number> = null;
+    const cyclic = derived(() => (loop == null ? 0 : read(loop)));
+    loop = cyclic;
+    expect(() => read(cyclic)).toThrow("depends on itself");
   });
 
   it("does not record what untracked read", () => {
@@ -337,7 +339,9 @@ describe("unsubscribing inside a batch", () => {
   it("does not call a listener that was torn down before the flush", () => {
     const value = state(0);
     const calls = [];
-    const stop = subscribe(value, () => calls.push("listener"));
+    const stop = subscribe(value, () => {
+      calls.push("listener");
+    });
 
     batch(() => {
       write(value, 1);
@@ -352,8 +356,12 @@ describe("unsubscribing inside a batch", () => {
   it("still calls the listeners that remain", () => {
     const value = state(0);
     const calls = [];
-    const stopFirst = subscribe(value, () => calls.push("first"));
-    subscribe(value, () => calls.push("second"));
+    const stopFirst = subscribe(value, () => {
+      calls.push("first");
+    });
+    subscribe(value, () => {
+      calls.push("second");
+    });
 
     batch(() => {
       write(value, 1);
@@ -500,13 +508,17 @@ describe("dynamic dependencies", () => {
     const left = state("L", {
       onMount: () => {
         events.push("left on");
-        return () => events.push("left off");
+        return () => {
+          events.push("left off");
+        };
       },
     });
     const right = state("R", {
       onMount: () => {
         events.push("right on");
-        return () => events.push("right off");
+        return () => {
+          events.push("right off");
+        };
       },
     });
     const chosen = derived(() => (read(useLeft) ? read(left) : read(right)));
@@ -586,7 +598,9 @@ describe("liveness", () => {
     const source = state(0, {
       onMount: () => {
         events.push("start");
-        return () => events.push("stop");
+        return () => {
+          events.push("stop");
+        };
       },
     });
     const doubled = derived(() => read(source) * 2);
@@ -608,7 +622,9 @@ describe("liveness", () => {
     });
     const doubled = derived(() => read(feed) * 2);
     const seen = [];
-    subscribe(doubled, () => seen.push(read(doubled)));
+    subscribe(doubled, () => {
+      seen.push(read(doubled));
+    });
     expect(read(doubled)).toBe(42);
     expect(seen).toEqual([42]);
   });
@@ -635,7 +651,9 @@ describe("effect", () => {
     const stop = effect(() => {
       const value = read(source);
       events.push(`run ${value}`);
-      return () => events.push(`clean ${value}`);
+      return () => {
+        events.push(`clean ${value}`);
+      };
     });
     write(source, 2);
     stop();
@@ -690,7 +708,8 @@ describe("peek", () => {
 
 describe("equals", () => {
   it("uses the cell's own comparison to decide what changed", () => {
-    const sameLength = (previous, next) => previous.length === next.length;
+    const sameLength = (previous: $ReadOnlyArray<string>, next: $ReadOnlyArray<string>) =>
+      previous.length === next.length;
     const rows = state(["a", "b"], { equals: sameLength });
     const listener = fn();
     subscribe(rows, listener);
@@ -762,7 +781,7 @@ describe("an asynchronous cell that reloads", () => {
   it("does not reload for a write to something the load never read", async () => {
     const id = state("a");
     const unrelated = state(0);
-    const load = fn((key) => Promise.resolve(`value ${key}`));
+    const load = fn((key: string) => Promise.resolve(`value ${key}`));
     const loaded = resource(() => load(read(id)));
     subscribe(loaded, () => {});
     await Promise.resolve();

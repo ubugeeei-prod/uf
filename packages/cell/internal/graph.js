@@ -222,7 +222,10 @@ type Node<T> = {
  * holding the second may write a `Cat` into it. `crates/uf_lib/tests/flow`
  * keeps the fixture that records this.
  */
-export opaque type Cell<T> = Node<T>;
+// The `{...}` bound tells other modules a cell is an object, and nothing else
+// about it: enough to key a `WeakMap` by one, which `@uniflowed/state`'s
+// `bindCell` does, without opening the representation.
+export opaque type Cell<T>: { ... } = Node<T>;
 
 /**
  * The dependency list the evaluation currently running is collecting.
