@@ -35,6 +35,7 @@
 //! | `container` | the same `server.js` | the same directory | `Dockerfile`, `.dockerignore` |
 //! | `edge` | `worker.js`, `export default { fetch }` | Cloudflare's asset server, through `env.ASSETS` | `wrangler.json` |
 //! | `serverless` | `lambda.js`, `export const handler` | the deployment package | — |
+//! | `vercel` | `index.js`, a Node.js function's default export | the function's directory | `config.json`, `.vc-config.json` |
 //!
 //! # And one that is not a seam at all
 //!
@@ -106,6 +107,20 @@ const WORK_DIR: &str = ".uf/build/deploy";
 /// would double every number in the report and ship the server bundle to the
 /// browser.
 const OUTPUT_DIR: &str = ".uf/deploy";
+
+/// Where the `vercel` target's function lives inside its directory.
+///
+/// Vercel's Build Output API (v3) is a directory tree rather than a flat
+/// directory: `.vercel/output/config.json` routes requests, and each function
+/// is `.vercel/output/functions/<name>.func` with a `.vc-config.json` in it.
+/// `vercel deploy --prebuilt` uploads `.vercel/output` from the directory it is
+/// run in, so the artefact is `.uf/deploy/vercel` and the application — the
+/// same `handler.js`, its entry and `static/` every target writes — is this
+/// one function inside it, named `uf` because `config.json` routes to `/uf`.
+const VERCEL_FUNCTION: &str = ".vercel/output/functions/uf.func";
+
+/// Where the `vercel` target's routing table lives inside its directory.
+const VERCEL_CONFIG: &str = ".vercel/output/config.json";
 
 /// A finished artefact.
 #[derive(Debug, Clone)]
@@ -287,13 +302,21 @@ pub(crate) fn deploy(
         rsc_manifest,
     } = link;
     let work = root.join(WORK_DIR);
-    let directory = root.join(OUTPUT_DIR).join(adapter.as_str());
+    // The artefact, and the directory the application is linked into — the
+    // same one for every target but `vercel`, whose function is a directory
+    // inside the Build Output API tree; see [`VERCEL_FUNCTION`].
+    let deployment = root.join(OUTPUT_DIR).join(adapter.as_str());
+    let directory = if adapter == DeployAdapter::Vercel {
+        deployment.join(VERCEL_FUNCTION)
+    } else {
+        deployment.clone()
+    };
 
     // Removed rather than written over: a rebuild that renamed a hashed asset
     // would otherwise leave the previous build's copy in `static/`, and the
     // directory a person copies would carry files no version of the site ever
     // referenced.
-    fs::remove_dir_all(directory.as_std_path()).or_else(ignore_missing)?;
+    fs::remove_dir_all(deployment.as_std_path()).or_else(ignore_missing)?;
     fs::create_dir_all(directory.as_std_path())
         .with_context(|| format!("failed to create {directory}"))?;
 
@@ -386,7 +409,13 @@ pub(crate) fn deploy(
         directory.join("package.json"),
         "{\n  \"private\": true,\n  \"type\": \"module\"\n}\n".to_owned(),
     )];
-    files.extend(platform_files(adapter, root, &directory, schedules));
+    files.extend(platform_files(
+        adapter,
+        root,
+        &deployment,
+        &directory,
+        schedules,
+    ));
     for (file, contents) in &files {
         fs::write(file.as_std_path(), contents)
             .with_context(|| format!("failed to write {file}"))?;
@@ -407,7 +436,7 @@ pub(crate) fn deploy(
 
     Ok(Deployed {
         adapter,
-        directory,
+        directory: deployment,
         files: copied.files,
         bytes: copied.bytes,
     })
@@ -521,6 +550,7 @@ const fn entry_files(adapter: DeployAdapter) -> &'static [&'static str] {
         | DeployAdapter::Container => &["handler.js", "server.js"],
         DeployAdapter::Edge => &["handler.js", "worker.js"],
         DeployAdapter::Serverless => &["handler.js", "lambda.js"],
+        DeployAdapter::Vercel => &["handler.js", "index.js"],
         // `static` links nothing and so promises no entry — it is written by
         // [`deploy_static`], which never reaches this table, and its own shape
         // check is that the copy was not empty.
@@ -538,6 +568,7 @@ const fn entry_files(adapter: DeployAdapter) -> &'static [&'static str] {
 fn platform_files(
     adapter: DeployAdapter,
     root: &Utf8Path,
+    deployment: &Utf8Path,
     directory: &Utf8Path,
     schedules: &[schedules::DeclaredSchedule],
 ) -> Vec<(Utf8PathBuf, String)> {
@@ -554,6 +585,13 @@ fn platform_files(
         DeployAdapter::Container => vec![
             (directory.join("Dockerfile"), DOCKERFILE.to_owned()),
             (directory.join(".dockerignore"), DOCKERIGNORE.to_owned()),
+        ],
+        DeployAdapter::Vercel => vec![
+            (
+                directory.join(".vc-config.json"),
+                VERCEL_FUNCTION_CONFIG.to_owned(),
+            ),
+            (deployment.join(VERCEL_CONFIG), VERCEL_ROUTES.to_owned()),
         ],
         // `static` is the build's own output and nothing else: a
         // `package.json` or a platform file written into it would be a file a
@@ -756,6 +794,35 @@ CMD ["node", "server.js"]
 /// image are not part of it.
 const DOCKERIGNORE: &str = "Dockerfile\n.dockerignore\n";
 
+/// The `.vc-config.json` of the `vercel` target's one function.
+///
+/// Vercel's Node.js launcher, calling `index.js`'s default export with Node's
+/// request and response — the listener `@uniflowed/server/vercel` makes.
+/// `shouldAddHelpers: false` because uf parses the request itself and a second
+/// parser (Vercel's `req.query`, `req.body`) would read the body uf is about to
+/// stream; `supportsResponseStreaming` because a document's shell is meant to
+/// arrive before its holes. The Node version is uf's own supported one.
+const VERCEL_FUNCTION_CONFIG: &str = r#"{
+  "runtime": "nodejs24.x",
+  "handler": "index.js",
+  "launcherType": "Nodejs",
+  "shouldAddHelpers": false,
+  "supportsResponseStreaming": true
+}
+"#;
+
+/// The `vercel` target's `config.json`: every request to the one function.
+///
+/// No `"handle": "filesystem"` phase, deliberately: files are served by the
+/// function from its `static/`, behind `app.router`'s redirects and headers,
+/// because the adapter contract puts those rules in front of the files and
+/// they are the application's to apply. See `@uniflowed/server/vercel`.
+const VERCEL_ROUTES: &str = r#"{
+  "version": 3,
+  "routes": [{ "src": "/(.*)", "dest": "/uf" }]
+}
+"#;
+
 /// The command a reader runs next, per adapter.
 ///
 /// In the `uf build` summary, because the whole claim of this directory is
@@ -772,6 +839,10 @@ pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &
         }
         DeployAdapter::Edge => format!("cd {directory} && npx wrangler deploy"),
         DeployAdapter::Serverless => format!("cd {directory} && zip -r ../function.zip ."),
+        // `--prebuilt` uploads `.vercel/output` as it is, without building
+        // again; the directory has to be linked to a project first
+        // (`vercel link`), which is the reader's account and not uf's.
+        DeployAdapter::Vercel => format!("cd {directory} && vercel deploy --prebuilt"),
         // No command, because there is nothing to start: the directory is the
         // site, and what happens next is an upload to a host uf knows nothing
         // about. Naming one — `npx wrangler pages deploy`, say — would be uf
@@ -960,6 +1031,56 @@ mod tests {
         assert!(
             chown < user,
             "the chown has to run before the image drops to `node`"
+        );
+    }
+
+    #[test]
+    fn the_vercel_output_routes_every_request_to_one_node_function() {
+        let root = Utf8Path::new("/tmp/my-app");
+        let deployment = root.join(OUTPUT_DIR).join("vercel");
+        let function = deployment.join(VERCEL_FUNCTION);
+        let files = platform_files(DeployAdapter::Vercel, root, &deployment, &function, &[]);
+        let paths = files
+            .iter()
+            .map(|(path, _)| path.as_str().to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            paths,
+            vec![
+                "/tmp/my-app/.uf/deploy/vercel/.vercel/output/functions/uf.func/.vc-config.json",
+                "/tmp/my-app/.uf/deploy/vercel/.vercel/output/config.json",
+            ]
+        );
+
+        // The function: Node's launcher over `index.js`, streaming, no helpers.
+        let function_config: serde_json::Value =
+            serde_json::from_str(VERCEL_FUNCTION_CONFIG).expect("valid JSON");
+        assert_eq!(function_config["handler"], "index.js");
+        assert_eq!(function_config["launcherType"], "Nodejs");
+        assert_eq!(function_config["shouldAddHelpers"], false);
+        assert_eq!(function_config["supportsResponseStreaming"], true);
+        assert!(
+            function_config["runtime"]
+                .as_str()
+                .is_some_and(|runtime| runtime.starts_with("nodejs")),
+            "a Node.js runtime: {function_config}"
+        );
+        assert!(
+            entry_files(DeployAdapter::Vercel).contains(&"index.js"),
+            "the handler the config names is an entry the link has to write"
+        );
+
+        // The routes: Build Output API v3, everything to the function the
+        // directory is named for.
+        let routes: serde_json::Value = serde_json::from_str(VERCEL_ROUTES).expect("valid JSON");
+        assert_eq!(routes["version"], 3);
+        assert_eq!(routes["routes"][0]["src"], "/(.*)");
+        assert_eq!(routes["routes"][0]["dest"], "/uf");
+        assert!(VERCEL_FUNCTION.ends_with("/uf.func"));
+
+        assert_eq!(
+            next_command(DeployAdapter::Vercel, root, ".uf/deploy/vercel"),
+            "cd .uf/deploy/vercel && vercel deploy --prebuilt"
         );
     }
 

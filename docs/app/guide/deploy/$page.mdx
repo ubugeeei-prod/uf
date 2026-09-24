@@ -134,6 +134,7 @@ half.
 | Container | [`uf build --adapter container`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/container`, 19 files, `docker build -t web-deploy .uf/deploy/container && docker run -p 3000:3000 web-deploy` |
 | Edge | [`uf build --adapter edge`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/edge`, 18 files, `cd .uf/deploy/edge && npx wrangler deploy` |
 | Serverless | [`uf build --adapter serverless`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/serverless`, 17 files, `cd .uf/deploy/serverless && zip -r ../function.zip .` |
+| Vercel | [`uf build --adapter vercel`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/vercel` (its `.vercel/output`), `cd .uf/deploy/vercel && vercel deploy --prebuilt`; added after the rest of this table was checked |
 | Static | [`uf build --adapter static`](/reference/cli#uf-build---adapter-target) | `.uf/deploy/static`, 14 files, `upload the contents of .uf/deploy/static to a static host` |
 
 The successful adapter commands built the directories. They did not deploy them

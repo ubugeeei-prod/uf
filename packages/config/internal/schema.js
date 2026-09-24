@@ -123,7 +123,8 @@ export type DeployAdapter =
   | "edge"
   | "serverless"
   | "static"
-  | "container";
+  | "container"
+  | "vercel";
 
 // # Tools, declared where they are used
 //

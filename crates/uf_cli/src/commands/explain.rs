@@ -1638,6 +1638,7 @@ fn adapter_entries(adapter: DeployAdapter) -> &'static str {
         DeployAdapter::Container => "handler.js, server.js, Dockerfile",
         DeployAdapter::Edge => "handler.js, worker.js, wrangler.json",
         DeployAdapter::Serverless => "handler.js, lambda.js",
+        DeployAdapter::Vercel => "handler.js, index.js, .vc-config.json, config.json",
         // `static` never reaches here — it has no entry and [`adapter_stage`]
         // describes it without asking this table.
         DeployAdapter::Static => "nothing yet",

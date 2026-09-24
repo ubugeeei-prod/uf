@@ -64,6 +64,8 @@ pub(crate) enum DeployAdapterOption {
     Static,
     /// A container image.
     Container,
+    /// Vercel's Build Output API.
+    Vercel,
 }
 
 impl From<DeployAdapterOption> for DeployAdapter {
@@ -76,6 +78,7 @@ impl From<DeployAdapterOption> for DeployAdapter {
             DeployAdapterOption::Serverless => Self::Serverless,
             DeployAdapterOption::Static => Self::Static,
             DeployAdapterOption::Container => Self::Container,
+            DeployAdapterOption::Vercel => Self::Vercel,
         }
     }
 }

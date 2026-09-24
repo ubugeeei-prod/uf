@@ -33,6 +33,7 @@
     "./schedule": "./schedule.js",
     "./socket": "./socket.js",
     "./standalone": "./standalone.js",
+    "./vercel": "./vercel.js",
     "./instrumentation": "./instrumentation.js"
   },
   "files": [
@@ -59,6 +60,7 @@
     "schedule.js",
     "socket.js",
     "standalone.js",
+    "vercel.js",
     "internal/*.js",
     "!*.test.js"
   ],
