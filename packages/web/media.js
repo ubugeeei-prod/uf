@@ -249,7 +249,7 @@ export component Image(
   className?: string,
   style?: { readonly [string]: string | number },
   ...rest: { readonly [string]: mixed }
-) renders React.Node {
+) {
   // Refined rather than cast: `src` is a union and `typeof` narrows it, so
   // neither branch needs `any`. A cast here would be the one place in this
   // module where the manifest's shape stopped being checked.
@@ -392,7 +392,7 @@ export component Picture(
   sources?: $ReadOnlyArray<Source> = [],
   loading?: Loading = "lazy",
   className?: string,
-) renders React.Node {
+) {
   return (
     <picture>
       {sources.map((source) => (
@@ -476,7 +476,7 @@ export component Font(
   type?: string,
   crossOrigin?: "anonymous" | "use-credentials" = "anonymous",
   preload?: boolean,
-) renders React.Node {
+) {
   const asset: FontAsset | null = typeof src === "string" ? null : src;
   const url: string = typeof src === "string" ? src : src.src;
   const finalType = type ?? asset?.type ?? "font/woff2";
@@ -554,7 +554,7 @@ export component Font(
  * here is that the string was produced by uf from files in the repository, not
  * by anything at runtime.
  */
-export component IconSprite(sprite: SpriteAsset) renders React.Node {
+export component IconSprite(sprite: SpriteAsset) {
   return (
     <div
       // Out of the flow entirely rather than `display: none`: a `<use>` may
@@ -605,7 +605,7 @@ export component Icon(
   height?: number,
   className?: string,
   ...rest: { readonly [string]: mixed }
-) renders React.Node {
+) {
   return (
     <svg
       viewBox={icon.viewBox}
@@ -646,7 +646,7 @@ export component Icon(
  * template. It is a template and not a renderer: uf will not turn JSX into an
  * image, and it refuses text it cannot lay out rather than drawing it wrong.
  */
-export component OgImage(card: OgAsset, origin: string, alt?: string) renders React.Node {
+export component OgImage(card: OgAsset, origin: string, alt?: string) {
   const absolute = card.url.startsWith("http")
     ? card.url
     : `${origin.replace(/\/+$/, "")}/${card.url.replace(/^\/+/, "")}`;

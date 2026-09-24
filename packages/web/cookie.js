@@ -93,7 +93,7 @@ export function serialize(name: string, value: string, options?: CookieOptions):
 
 /** Whatever cookies are readable here, server or browser. */
 function readAll(): { [string]: string } {
-  const host = (globalThis: $FlowFixMe);
+  const host = globalThis as $FlowFixMe;
   if (host.document != null) {
     return parse(host.document.cookie);
   }
@@ -123,7 +123,7 @@ export function useCookie(
 
   const write = React.useCallback(
     (next: string, options?: CookieOptions) => {
-      const host = (globalThis: $FlowFixMe);
+      const host = globalThis as $FlowFixMe;
       if (host.document == null) {
         throw new Error(
           `useCookie: ${name} cannot be written during a server render. ` +
