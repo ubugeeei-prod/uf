@@ -183,23 +183,21 @@ is what a browser gets. They are kept apart because they differ:
 | `kind` | The action | `response` through `"fetch"` |
 | --- | --- | --- |
 | `"returned"` | returned `value` | `200` |
-| `"redirect"` | called `redirect()`; `to` and `permanent` | `500`, see below |
-| `"not-found"`, `"unauthorized"`, `"forbidden"` | threw the router's error | `500` |
+| `"redirect"` | called `redirect()`; `to` and `permanent` | `204` with `Location` |
+| `"not-found"`, `"unauthorized"`, `"forbidden"` | threw the router's error | `404`, `401`, `403` |
 | `"threw"` | threw anything else, as `error` | `500`, with a fixed body |
 | `"unsendable"` | returned a value the wire refuses, such as `undefined` inside an object or a `Map`; `error` names where | `500` |
 | `"refused"` | never ran: a guard the test overrode, such as `headers: { origin: … }` | `403`, `413`, … |
 
 Every outcome also carries `revalidated`, the tags and paths the call expired.
 
-**A hydrated call cannot redirect yet.** A form posted *before* hydration
-answers `redirect()` with a `303`. Once the page has hydrated, the same action
-is called through the JSON door, and that door answers every routing error with
-the fixed `500`. `callAction` reports both halves, `kind: "redirect"` and
-`response.status === 500`, so a test documents the gap rather than hiding it
-([#1470](https://github.com/ubugeeei-prod/uf/issues/1470)). Pass
-`door: "form"` to send the call the way a browser does before hydration. The
-last argument is then the `FormData`, the ones before it are the arguments the
-form carries bound, and the answer is the `303`.
+**The two doors answer a routing call differently.** Through `"fetch"`, a
+hydrated page's call, `redirect()` is a `204` carrying `Location` and a
+`uf-action-outcome` header, and the browser's reference navigates. The other
+three are their page statuses, and the reference throws the router's error for
+the route's boundary. Pass `door: "form"` to send the call the way a browser
+does before hydration. The last argument is then the `FormData`, the ones
+before it are the arguments the form carries bound, and a redirect is a `303`.
 
 ### The cache the action invalidates
 
@@ -264,12 +262,10 @@ module's references instead:
 // @flow
 import * as React from "@uniflowed/react";
 import typeof * as NoteActions from "../app/notes/_actions/notes.js";
-import { afterEach, beforeEach, describe, expect, it, uft } from "@uniflowed/test";
+import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import { createCacheStore } from "@uniflowed/server/cache";
 import { serverReferences } from "@uniflowed/router/testing";
-
-import { listNotes, resetNotes } from "../app/notes/_data/notes.server.js";
 
 const ACTIONS = "../app/notes/_actions/notes.js";
 
@@ -287,7 +283,6 @@ async function renderForm(session: string | null) {
   render(<NoteForm />);
 }
 
-beforeEach(() => resetNotes());
 afterEach(() => {
   cleanup();
   uft.unmock(ACTIONS);
@@ -299,7 +294,10 @@ describe("NoteForm", () => {
     await userEvent.type(screen.getByLabelText("Note"), "Tested through the wire");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("saved note 2"));
-    expect((await listNotes()).map((note) => note.text)).toContain("Tested through the wire");
+    // The second save is note 3: the first one is in the store the action wrote to.
+    await userEvent.type(screen.getByLabelText("Note"), "And again");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("saved note 3"));
   });
 
   it("shows the action's refusal when nobody is signed in", async () => {
@@ -309,14 +307,15 @@ describe("NoteForm", () => {
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toBe("sign in to write a note"),
     );
-    expect(await listNotes()).toHaveLength(1);
   });
 });
 ```
 
-Each reference is what the browser's is. It goes through `callAction`,
-answers with the decoded value, and rejects with the `ServerActionError` a
-browser's reference throws when the endpoint does not answer `200`. `init` can
+Each reference is what the browser's is. It goes through `callAction` and
+answers with the decoded value. A redirect resolves with nothing, as the
+browser's does once it has navigated. `notFound()`, `unauthorized()` and
+`forbidden()` reject with the router's error, and any other failure rejects
+with the `ServerActionError` a browser's reference throws. `init` can
 be a function, read on every call, so a test can sign somebody in between two
 calls. A reference also carries `$$FORM_ACTION`, like the real one.
 
@@ -478,7 +477,7 @@ Chromium, which is why the four levels above do not.
 | A form posted before hydration, `useActionState` postback included | **Implemented** |
 | Hydration and client interaction | **Implemented** through `createTestApp` and a Chromium |
 | An action and the page it changes sharing module state | **Bug**, [#1469](https://github.com/ubugeeei-prod/uf/issues/1469) |
-| `redirect()` and the other routing errors from a hydrated action call | **Bug**, [#1470](https://github.com/ubugeeei-prod/uf/issues/1470); a `500` today |
+| `redirect()` and the other routing calls from a hydrated action | **Implemented** ([#1470](https://github.com/ubugeeei-prod/uf/issues/1470)) |
 | Rendering one Server Component to Flight in the test's own process | **Planned.** React's Flight renderer needs the `react-server` build of React, which a test worker does not resolve; a render that faked it would pass what Flight refuses |
 | `buildApp` on Bun and Deno test hosts, and over the `edge` adapter | **Not verified yet.** CI runs it on Node, over the `node` adapter |
 

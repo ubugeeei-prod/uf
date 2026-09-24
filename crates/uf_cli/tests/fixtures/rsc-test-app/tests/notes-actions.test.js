@@ -60,10 +60,10 @@ describe("deleteNote", () => {
     expect(await listNotes()).toEqual([]);
   });
 
-  it("refuses anyone else, and the browser sees only a 500", async () => {
+  it("refuses anyone else with a 403, which the page's error boundary shows", async () => {
     const outcome = await callAction(deleteNote, ["1"], { cookies: { session: "mallory" } });
     expect(outcome.kind).toBe("forbidden");
-    expect(outcome.response.status).toBe(500);
+    expect(outcome.response.status).toBe(403);
     expect(await listNotes()).toHaveLength(1);
   });
 

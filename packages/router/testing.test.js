@@ -140,13 +140,14 @@ describe("callAction through the fetch door", () => {
     expect(await outcome.response.text()).not.toContain("database");
   });
 
-  it("tells a redirect from a failure, and says the fetch door answers it with 500", async () => {
+  it("tells a redirect from a failure, and shows the 204 and Location the fetch door answers with", async () => {
     const outcome = await callAction(async () => redirect("/notes"), []);
     expect(outcome.kind).toBe("redirect");
     if (outcome.kind !== "redirect") return;
     expect(outcome.to).toBe("/notes");
     expect(outcome.permanent).toBe(false);
-    expect(outcome.response.status).toBe(500);
+    expect(outcome.response.status).toBe(204);
+    expect(outcome.response.headers.get("location")).toBe("/notes");
   });
 
   it("names notFound(), unauthorized() and forbidden()", async () => {

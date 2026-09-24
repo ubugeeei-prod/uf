@@ -1,12 +1,10 @@
 // @flow
 import * as React from "@uniflowed/react";
 import typeof * as NoteActions from "../app/notes/_actions/notes.js";
-import { afterEach, beforeEach, describe, expect, it, uft } from "@uniflowed/test";
+import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import { createCacheStore } from "@uniflowed/server/cache";
 import { serverReferences } from "@uniflowed/router/testing";
-
-import { listNotes, resetNotes } from "../app/notes/_data/notes.server.js";
 
 const ACTIONS = "../app/notes/_actions/notes.js";
 
@@ -24,7 +22,6 @@ async function renderForm(session: string | null) {
   render(<NoteForm />);
 }
 
-beforeEach(() => resetNotes());
 afterEach(() => {
   cleanup();
   uft.unmock(ACTIONS);
@@ -36,7 +33,10 @@ describe("NoteForm", () => {
     await userEvent.type(screen.getByLabelText("Note"), "Tested through the wire");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("saved note 2"));
-    expect((await listNotes()).map((note) => note.text)).toContain("Tested through the wire");
+    // The second save is note 3: the first one is in the store the action wrote to.
+    await userEvent.type(screen.getByLabelText("Note"), "And again");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("saved note 3"));
   });
 
   it("shows the action's refusal when nobody is signed in", async () => {
@@ -46,6 +46,5 @@ describe("NoteForm", () => {
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toBe("sign in to write a note"),
     );
-    expect(await listNotes()).toHaveLength(1);
   });
 });

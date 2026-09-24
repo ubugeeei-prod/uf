@@ -231,11 +231,11 @@ export type ActionCallInit = {|
  * What one call to a server action came to.
  *
  * `kind` is what the *action* did. `response` is what the endpoint answered,
- * which is what a browser gets, and the two are not always the same thing:
- * an action that calls `redirect()` is `kind: "redirect"`, and through the
- * `"fetch"` door its response is the fixed `500` every failure is, because
- * that door has no way to carry a redirect yet. Assert on both when both
- * matter.
+ * which is what a browser gets, and the two doors answer the same kind
+ * differently: `redirect()` is a `204` carrying `Location` and the
+ * `uf-action-outcome` header through `"fetch"`, and a `303` through `"form"`;
+ * `notFound()`, `unauthorized()` and `forbidden()` are their page statuses
+ * through `"fetch"`. Assert on both when both matter.
  *
  * Every outcome has been settled — `after()` callbacks have run — and carries
  * what the call did to the cache in `revalidated`.
@@ -413,8 +413,10 @@ export async function callAction<Args extends $ReadOnlyArray<ActionArgument>, R>
  * function directly, outside any request, with arguments nothing encoded.
  * Handing these to `uft.mock` instead makes each call what it is in a
  * browser: encoded, posted to the endpoint, run inside a request carrying
- * `init`'s cookies, and decoded. A call the endpoint does not answer with
- * `200` rejects with the `ServerActionError` a browser's reference throws.
+ * `init`'s cookies, and decoded. A routing call is followed as the browser's
+ * reference follows it (a redirect resolves with nothing; `notFound()`,
+ * `unauthorized()` and `forbidden()` reject with the router's error), and any
+ * other failure rejects with the `ServerActionError` a browser's reference throws.
  *
  * `init` may be a function, read on every call, so a test can change who is
  * signed in between two calls. Every non-function export is passed through.
@@ -445,9 +447,19 @@ export function serverReferences<M extends { readonly [string]: mixed }>(
         name: label,
         door: "fetch",
       });
+      // What the browser's reference does with each outcome: a redirect
+      // resolves with nothing once it has navigated (there is no navigation
+      // here, so it resolves at once), and the other three routing calls
+      // reject with the error the server caught, for the route's boundary.
       if (outcome.kind === "returned") {
         return outcome.value;
       }
+      if (outcome.kind === "redirect") {
+        return undefined;
+      }
+      if (outcome.kind === "not-found") throw new NotFoundError();
+      if (outcome.kind === "unauthorized") throw new UnauthorizedError();
+      if (outcome.kind === "forbidden") throw new ForbiddenError();
       throw new ServerActionError(label, outcome.response.status);
     };
     // The same `$$FORM_ACTION` the browser's reference carries, so a form
