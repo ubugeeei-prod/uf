@@ -22,6 +22,8 @@ to move. Commands, configuration and package APIs may still change between `0.x`
 - **Spies record calls in Vitest's shape** (#1510). `spy.mock.calls[0]` is the argument
   array, not `{ args, returned }`. `mock` also gains `lastCall`, `settledResults`,
   `contexts`, `instances` and `invocationCallOrder`, and `results` gains `"incomplete"`.
+- No codemod (fix(test)!: give every test file its own copy of the project's modules): only tests that share state between files through a project module are affected, and moving that state to globalThis depends on what the files share.
+- No codemod (fix(test)!: record spy calls in Vitest's shape): the one mechanical rewrite, `.mock.calls[n].args` to `.mock.calls[n]`, is a search and replace, and the rest depends on how each test reads a call.
 
 ### Highlights
 
@@ -118,9 +120,6 @@ to move. Commands, configuration and package APIs may still change between `0.x`
 - feat(lint): report a uf-lint-disable comment that silences nothing, and remove the 21 that do (#1449) (a5dc3259)
 
 ## Unreleased
-
-- No codemod (fix(test)!: give every test file its own copy of the project's modules): only tests that share state between files through a project module are affected, and moving that state to globalThis depends on what the files share.
-- No codemod (fix(test)!: record spy calls in Vitest's shape): the one mechanical rewrite, `.mock.calls[n].args` to `.mock.calls[n]`, is a search and replace, and the rest depends on how each test reads a call.
 
 ## uf@0.2.0
 
