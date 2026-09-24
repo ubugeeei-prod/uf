@@ -15,6 +15,146 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { UnsupportedError, describe, expect, it, uft } from "@uniflowed/test";
 
+describe("the mock state, as Vitest documents it", () => {
+  // Each case is the example on https://vitest.dev/api/mock for that property,
+  // so a test carried over from Vitest reads the same thing here. `mock.calls`
+  // held `{ args, returned }` objects until this shape was adopted, and
+  // `mock.calls.map((args) => args[0])` — the everyday Vitest and Jest idiom —
+  // read `undefined` from every one of them.
+
+  it("keeps one array of arguments per call in mock.calls", () => {
+    const spy = uft.fn();
+
+    spy("arg1", "arg2");
+    spy("arg3");
+
+    expect(spy.mock.calls).toEqual([["arg1", "arg2"], ["arg3"]]);
+    expect(spy.mock.calls.map((args) => args[0])).toEqual(["arg1", "arg3"]);
+    expect(spy.mock.lastCall).toEqual(["arg3"]);
+  });
+
+  it("keeps a type and a value per call in mock.results", () => {
+    const failure = new Error("thrown error");
+    const spy = uft
+      .fn()
+      .mockReturnValueOnce("result")
+      .mockImplementationOnce(() => {
+        throw failure;
+      });
+
+    spy();
+    expect(() => spy()).toThrow("thrown error");
+
+    expect(spy.mock.results).toEqual([
+      { type: "return", value: "result" },
+      { type: "throw", value: failure },
+    ]);
+  });
+
+  it("says a call that has not returned yet is incomplete", () => {
+    const seen: Array<mixed> = [];
+    const spy: $FlowFixMe = uft.fn(() => {
+      seen.push({ ...spy.mock.results[0] });
+      return "done";
+    });
+
+    spy();
+
+    expect(seen).toEqual([{ type: "incomplete", value: undefined }]);
+    expect(spy.mock.results).toEqual([{ type: "return", value: "done" }]);
+  });
+
+  it("records what a promise settled to in mock.settledResults", async () => {
+    const spy = uft.fn().mockResolvedValueOnce("result").mockRejectedValueOnce("reason");
+
+    const resolved = spy();
+    const rejected = spy();
+    expect(spy.mock.settledResults).toEqual([
+      { type: "incomplete", value: undefined },
+      { type: "incomplete", value: undefined },
+    ]);
+    await resolved;
+    await rejected.catch(() => {});
+
+    expect(spy.mock.settledResults).toEqual([
+      { type: "fulfilled", value: "result" },
+      { type: "rejected", value: "reason" },
+    ]);
+    // A promise is still a return as far as mock.results is concerned.
+    expect(spy.mock.results.map((result) => result.type)).toEqual(["return", "return"]);
+  });
+
+  it("settles a value that is not a promise as the call returns", () => {
+    const spy = uft.fn(() => 3);
+
+    spy();
+
+    expect(spy.mock.settledResults).toEqual([{ type: "fulfilled", value: 3 }]);
+  });
+
+  it("numbers calls across every spy in mock.invocationCallOrder", () => {
+    const first = uft.fn();
+    const second = uft.fn();
+
+    first();
+    second();
+    first();
+
+    const [a, c] = first.mock.invocationCallOrder;
+    const [b] = second.mock.invocationCallOrder;
+    expect([b - a, c - a]).toEqual([1, 2]);
+  });
+
+  it("records the receiver of each call in mock.contexts", () => {
+    const spy = uft.fn();
+    const context = {};
+
+    spy.call(context);
+    spy.bind(context)();
+
+    expect(spy.mock.contexts).toEqual([context, context]);
+    expect(spy.mock.contexts[0]).toBe(context);
+  });
+
+  it("records what new constructed in mock.instances", () => {
+    const Spy = uft.fn(function (this: { made: boolean }) {
+      this.made = true;
+    });
+
+    const made = new Spy();
+
+    expect(Spy.mock.instances[0]).toBe(made);
+    expect(Spy.mock.contexts[0]).toBe(made);
+    expect(made.made).toBe(true);
+  });
+
+  it("forgets every part of it on mockClear", () => {
+    const spy = uft.fn(() => 1);
+    spy();
+
+    spy.mockClear();
+
+    expect(spy.mock.calls).toEqual([]);
+    expect(spy.mock.results).toEqual([]);
+    expect(spy.mock.settledResults).toEqual([]);
+    expect(spy.mock.contexts).toEqual([]);
+    expect(spy.mock.instances).toEqual([]);
+    expect(spy.mock.invocationCallOrder).toEqual([]);
+    expect(spy.mock.lastCall).toBe(undefined);
+  });
+
+  it("matches toHaveBeenCalledWith and toHaveBeenLastCalledWith against those arrays", () => {
+    const spy = uft.fn();
+
+    spy(1, { a: 2 });
+    spy("last");
+
+    expect(spy).toHaveBeenCalledWith(1, { a: 2 });
+    expect(spy).toHaveBeenLastCalledWith("last");
+    expect(spy).not.toHaveBeenCalledWith(1);
+  });
+});
+
 describe("uft.fn", () => {
   it("records the calls and what they returned", () => {
     const add = uft.fn((a: number, b: number) => a + b);
@@ -22,7 +162,7 @@ describe("uft.fn", () => {
     expect(add(1, 2)).toBe(3);
     expect(add(3, 4)).toBe(7);
     expect(add.mock.calls.length).toBe(2);
-    expect(add.mock.calls[0].args).toEqual([1, 2]);
+    expect(add.mock.calls[0]).toEqual([1, 2]);
     expect(add.mock.results[1]).toEqual({ type: "return", value: 7 });
     expect(add.mock.lastCall).toEqual([3, 4]);
   });

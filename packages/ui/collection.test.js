@@ -494,5 +494,5 @@ it("reports each gesture once under Strict Mode", () => {
   const list = screen.getByRole("listbox");
   fireEvent.keyDown(list, { key: "ArrowDown" });
   fireEvent.keyDown(list, { key: "ArrowDown", shiftKey: true });
-  expect(change.mock.calls.map((call) => call.args[0])).toEqual([["b"], ["b", "c"]]);
+  expect(change.mock.calls.map((args) => args[0])).toEqual([["b"], ["b", "c"]]);
 });

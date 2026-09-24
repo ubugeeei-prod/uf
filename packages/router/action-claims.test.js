@@ -202,7 +202,7 @@ describe("what a failure says, and to whom", () => {
     const body = (await response?.text()) ?? "";
     expect(body).not.toContain("recordCount");
     expect(body).not.toContain("ledger");
-    const report = logged.mock.calls.map((call) => call.args.map(String).join(" ")).join("\n");
+    const report = logged.mock.calls.map((args) => args.map(String).join(" ")).join("\n");
     expect(report).toContain("recordCount");
     expect(report).toContain(MODULE);
   });

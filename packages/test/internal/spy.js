@@ -3,9 +3,27 @@
 // Internal to `@uniflowed/test`: the spy behind `fn` and `uft.spyOn`.
 //
 // Shaped after Vitest's, because a project moving to uf should not have to
-// rewrite its assertions. That means `mock.calls`, `mock.results`,
-// `mock.lastCall`, the `Once` variants, and `mockReset` and `mockRestore`
-// meaning the two different things they mean there.
+// rewrite its assertions. That means `mock` holds exactly what Vitest's does,
+// in the same shapes:
+//
+// * `calls` — one array of arguments per call, so `mock.calls[0][0]` is the
+//   first call's first argument and `mock.calls.map((args) => args[0])` works
+//   as it does there. It used to hold `{ args, returned }` objects, which read
+//   well and broke every assertion carried over from Vitest or Jest.
+// * `results` — `{ type, value }` per call: `"return"` or `"throw"`, and
+//   `"incomplete"` while the call has not returned yet (a spy asked about
+//   itself from inside its own implementation).
+// * `settledResults` — `{ type, value }` per call once the value settled:
+//   `"fulfilled"` or `"rejected"` for a promise, `"fulfilled"` at once for
+//   anything else, `"incomplete"` until then.
+// * `contexts` — the `this` of each call; `instances` — the same, except that
+//   a call made with `new` records the instance it constructed, in both.
+// * `invocationCallOrder` — a number per call, counted across every spy in the
+//   process, so two spies can say which was called first.
+// * `lastCall` — the last call's arguments, or `undefined` before any.
+//
+// And the `Once` variants, and `mockReset` and `mockRestore` meaning the two
+// different things they mean there.
 //
 // The three reset verbs are easy to conflate and are genuinely different:
 //
@@ -18,17 +36,35 @@
 // Every spy is registered, so `uft.clearAllMocks` and its siblings can reach the
 // ones a test never held a reference to.
 
-/** One call: what went in, and what came out. */
-export type SpyCall = {
-  readonly args: $ReadOnlyArray<mixed>,
-  readonly returned?: mixed,
-  readonly threw?: mixed,
-};
+/** One call's arguments, as Vitest's `mock.calls` holds them. */
+export type SpyCall = $ReadOnlyArray<mixed>;
 
-/** One call's outcome, in the shape Vitest reports it. */
+/**
+ * One call's outcome, in the shape Vitest reports it.
+ *
+ * `"incomplete"` is a call that has not returned yet — only ever seen from
+ * inside the call itself — and its `value` is `undefined`.
+ */
 export type SpyResult =
   | { readonly type: "return", readonly value: mixed }
-  | { readonly type: "throw", readonly value: mixed };
+  | { readonly type: "throw", readonly value: mixed }
+  | { readonly type: "incomplete", readonly value: void };
+
+/**
+ * One call's value once it settled, in the shape Vitest reports it.
+ *
+ * A promise settles when it does; anything else settles as the call returns.
+ */
+export type SpySettledResult =
+  | { readonly type: "fulfilled", readonly value: mixed }
+  | { readonly type: "rejected", readonly value: mixed }
+  | { readonly type: "incomplete", readonly value: void };
+
+/**
+ * The order calls happened in, across every spy in the process: Vitest's
+ * `invocationCallOrder`, which starts at one.
+ */
+let invocations = 0;
 
 /** Every spy made in this process, so the `All` verbs can reach them. */
 const registry: Array<$FlowFixMe> = [];
@@ -44,8 +80,11 @@ type Restore = null | (() => void);
  */
 function makeSpy(implementation: mixed, restore: Restore, name: string): $FlowFixMe {
   const calls: Array<SpyCall> = [];
-  const results: Array<SpyResult> = [];
+  const results: Array<$FlowFixMe> = [];
+  const settledResults: Array<$FlowFixMe> = [];
+  const contexts: Array<mixed> = [];
   const instances: Array<mixed> = [];
+  const invocationCallOrder: Array<number> = [];
   // Implementations queued by the `Once` variants, taken from the front.
   const queued: Array<mixed> = [];
 
@@ -54,35 +93,83 @@ function makeSpy(implementation: mixed, restore: Restore, name: string): $FlowFi
   let mockName = name;
 
   const spy: $FlowFixMe = function (this: mixed, ...args: $ReadOnlyArray<mixed>) {
+    // Recorded before the implementation runs, as Vitest records it, so a spy
+    // that asks about itself from inside its own call sees that call already.
+    calls.push(args);
+    invocations += 1;
+    invocationCallOrder.push(invocations);
+    const result: $FlowFixMe = { type: "incomplete", value: undefined };
+    const settled: $FlowFixMe = { type: "incomplete", value: undefined };
+    results.push(result);
+    settledResults.push(settled);
     // `this` is recorded because a spy on a method is often called as one, and
-    // `mock.instances` is how a test asserts on the receiver.
-    instances.push(this);
+    // `mock.contexts` is how a test asserts on the receiver. A construction has
+    // no receiver yet; the instance it makes is recorded once there is one.
+    const constructing = new.target !== undefined;
+    const context = constructing ? undefined : this;
+    const at = contexts.push(context) - 1;
+    instances.push(context);
     const body = queued.length > 0 ? queued.shift() : current;
+    let returned;
     try {
-      const returned = typeof body === "function" ? body.apply(this, args) : undefined;
-      calls.push({ args, returned });
-      results.push({ type: "return", value: returned });
-      return returned;
+      if (constructing) {
+        returned =
+          typeof body === "function"
+            ? Reflect.construct(body as $FlowFixMe, [...args], new.target)
+            : this;
+      } else {
+        returned = typeof body === "function" ? body.apply(this, args) : undefined;
+      }
     } catch (thrown) {
-      calls.push({ args, threw: thrown });
-      results.push({ type: "throw", value: thrown });
+      result.type = "throw";
+      result.value = thrown;
+      settled.type = "rejected";
+      settled.value = thrown;
       throw thrown;
     }
+    result.type = "return";
+    result.value = returned;
+    if (constructing) {
+      contexts[at] = returned;
+      instances[at] = returned;
+    }
+    if (returned instanceof Promise) {
+      returned.then(
+        (value) => {
+          settled.type = "fulfilled";
+          settled.value = value;
+        },
+        (reason) => {
+          settled.type = "rejected";
+          settled.value = reason;
+        },
+      );
+    } else {
+      settled.type = "fulfilled";
+      settled.value = returned;
+    }
+    return returned;
   };
 
   spy.mock = {
     calls,
     results,
+    settledResults,
+    contexts,
     instances,
-    get lastCall(): $ReadOnlyArray<mixed> | void {
-      return calls.length === 0 ? undefined : calls[calls.length - 1].args;
+    invocationCallOrder,
+    get lastCall(): SpyCall | void {
+      return calls.length === 0 ? undefined : calls[calls.length - 1];
     },
   };
 
   spy.mockClear = () => {
     calls.length = 0;
     results.length = 0;
+    settledResults.length = 0;
+    contexts.length = 0;
     instances.length = 0;
+    invocationCallOrder.length = 0;
     return spy;
   };
   spy.mockReset = () => {

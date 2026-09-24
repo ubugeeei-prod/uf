@@ -577,8 +577,8 @@ function verdicts(received: mixed): {
       requireSpy("toHaveBeenCalledWith");
       const calls = spyCalls();
       return simple(
-        calls.some((call) => equals([...call.args], [...args])),
-        `to have been called with ${render(args)}; the calls were ${render(calls.map((call) => call.args))}`,
+        calls.some((call) => equals([...call], [...args])),
+        `to have been called with ${render(args)}; the calls were ${render(calls)}`,
         args,
       );
     },
@@ -587,8 +587,8 @@ function verdicts(received: mixed): {
       const calls = spyCalls();
       const last = calls.length === 0 ? undefined : calls[calls.length - 1];
       return simple(
-        last != null && equals([...last.args], [...args]),
-        `to have last been called with ${render(args)}, not ${render(last == null ? undefined : last.args)}`,
+        last != null && equals([...last], [...args]),
+        `to have last been called with ${render(args)}, not ${render(last)}`,
         args,
       );
     },
