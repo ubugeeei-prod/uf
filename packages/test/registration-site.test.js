@@ -12,7 +12,12 @@
 import { describe, expect, it } from "@uniflowed/test";
 
 import { type Site, callerSite, firstUserSite } from "./internal/frames.js";
-import { it as registerCase, reset } from "./internal/registry.js";
+import {
+  describe as registerSuite,
+  it as registerCase,
+  reset,
+  setKnownSites,
+} from "./internal/registry.js";
 import { type Result, run as runRegistered } from "./internal/run.js";
 
 type Both = {| readonly structured: Site | null | void, readonly printed: Site | null |};
@@ -87,5 +92,68 @@ describe("the registration site", () => {
     expect(above).not.toBe(null);
     const line = above?.line ?? 0;
     expect(results.map((result) => result.line)).toEqual([line + 1, line + 2, line + 3]);
+  });
+});
+
+describe("a position uf already read off the source", () => {
+  // `uf` sends the positions its discovery found with each request, and a
+  // registration whose full name is among them takes that position instead of
+  // capturing a stack: cheaper, and right where a source map is not. The
+  // positions here are deliberately not where the calls are, which is how the
+  // cases can tell which one was used.
+
+  async function registered(body: () => void): Promise<Array<Result>> {
+    const results: Array<Result> = [];
+    reset();
+    try {
+      body();
+      await runRegistered({ file: "virtual.test.js" }, (result) => {
+        results.push(result);
+      });
+    } finally {
+      reset();
+      setKnownSites(null);
+    }
+    return results;
+  }
+
+  it("is taken for a name uf placed, suites and cases alike", async () => {
+    setKnownSites({ outer: [40, 1], "outer > inner": [41, 3], plain: [50, 1] });
+    const results = await registered(() => {
+      registerSuite("outer", () => {
+        registerCase("inner", () => {});
+      });
+      registerCase("plain", () => {});
+    });
+
+    expect(results.map((result) => [result.name, result.line, result.column])).toEqual([
+      ["outer > inner", 41, 3],
+      ["plain", 50, 1],
+    ]);
+  });
+
+  it("reads the stack for a name uf did not place, or one with a modifier", async () => {
+    // A name made at run time is not in the table, and a modifier is never
+    // sent: the stack's column for `it.skip(` is at `skip`, and the table's
+    // would be at `it`.
+    setKnownSites({ "skipped by name": [60, 1] });
+    const above = probe().printed;
+    const results = await registered(() => {
+      registerCase(`made at ${String(1 + 1)}`, () => {});
+      registerCase.skip("skipped by name", () => {});
+    });
+
+    const line = above?.line ?? 0;
+    expect(results.map((result) => result.line)).toEqual([line + 2, line + 3]);
+  });
+
+  it("falls back to the stack for anything it cannot read", async () => {
+    setKnownSites({ plain: "line five", other: [1] });
+    const above = probe().printed;
+    const results = await registered(() => {
+      registerCase("plain", () => {});
+    });
+
+    expect(results.map((result) => result.line)).toEqual([(above?.line ?? 0) + 2]);
   });
 });

@@ -14,6 +14,7 @@
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+use uf_infra::FxHashMap;
 
 /// The enclosing `describe` chain of one case, outermost first.
 pub type AncestorList = SmallVec<[usize; 4]>;
@@ -193,6 +194,66 @@ impl TestPlan {
     pub fn resolve(&self) -> PlanResolution {
         PlanResolution::new(self)
     }
+
+    /// Where each declaration the worker can be told about was written.
+    ///
+    /// A worker used to find out where each `describe` and `it` was called by
+    /// capturing a stack at registration and mapping its first frame through
+    /// the module's source map — about a fifth of a worker's CPU on a suite of
+    /// many small files, for a position this scan already read off the source.
+    /// Read off the source, it is also right where the stack is not: a module
+    /// whose transform moves lines, or one whose map was not found, reported
+    /// the wrong line or none.
+    ///
+    /// Only what the name alone identifies is handed over:
+    ///
+    /// * a name declared once in the file — two declarations under one name
+    ///   are two positions, and a worker told either would put the other's
+    ///   failure on the wrong line;
+    /// * a declaration with no modifier — `it.skip(` is reported by the stack
+    ///   at `skip` and by this scan at `it`, and a column that moved under a
+    ///   report would be a change nobody asked for.
+    ///
+    /// Everything else — those, and any name made at run time (`it(name, …)`
+    /// in a loop) — the worker still reads off the stack.
+    pub fn known_sites(&self) -> Vec<KnownSite> {
+        let resolution = self.resolve();
+        let names: Vec<String> = (0..self.cases.len())
+            .map(|index| {
+                let mut name = String::new();
+                resolution.push_full_name(self, index, &mut name);
+                name
+            })
+            .collect();
+        let mut declared: FxHashMap<&str, usize> = FxHashMap::default();
+        for name in &names {
+            *declared.entry(name.as_str()).or_default() += 1;
+        }
+        self.cases
+            .iter()
+            .zip(&names)
+            .filter(|(case, name)| {
+                case.modifier == TestModifier::None && declared.get(name.as_str()) == Some(&1)
+            })
+            .map(|(case, name)| KnownSite {
+                name: name.clone(),
+                line: case.line,
+                column: case.column,
+            })
+            .collect()
+    }
+}
+
+/// One declaration's full name and where it was written, as
+/// [`TestPlan::known_sites`] hands it to a worker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnownSite {
+    /// The full name, parents first, joined by [`NAME_SEPARATOR`].
+    pub name: String,
+    /// One-based line of the call.
+    pub line: usize,
+    /// One-based column of the call.
+    pub column: usize,
 }
 
 /// Why a declaration will not run.

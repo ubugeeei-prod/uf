@@ -435,3 +435,28 @@ fn a_renamed_import_binds_the_name_it_was_renamed_to() {
     assert_eq!(renamed.runnable_count(), 0);
     assert_eq!(renamed.unsupported.len(), 1, "{renamed:?}");
 }
+
+#[test]
+fn a_worker_is_told_where_each_declaration_it_can_place_was_written() {
+    let plan = discover_tests(
+        "sites.test.js",
+        "describe(\"outer\", () => {\n  it(\"inner\", () => {});\n  it.skip(\"skipped\", () => {});\n});\n\
+         it(\"twice\", () => {});\nit(\"twice\", () => {});\n",
+    );
+
+    let sites: Vec<(String, usize, usize)> = plan
+        .known_sites()
+        .into_iter()
+        .map(|site| (site.name, site.line, site.column))
+        .collect();
+
+    // A modifier is left to the stack, whose column is at the modifier; a
+    // name declared twice is two positions, and neither is sent.
+    assert_eq!(
+        sites,
+        vec![
+            (String::from("outer"), 1, 1),
+            (String::from("outer > inner"), 2, 3),
+        ]
+    );
+}

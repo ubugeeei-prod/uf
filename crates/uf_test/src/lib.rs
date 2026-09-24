@@ -100,8 +100,8 @@ pub use crate::options::{
 };
 pub use crate::path::{MAX_RELATIVE_PATH_BYTES, is_safe_relative, normalize_relative};
 pub use crate::plan::{
-    AncestorList, NAME_SEPARATOR, PlanResolution, Selection, SkipReason, TestCase, TestKind,
-    TestModifier, TestPlan, UnsupportedDeclaration,
+    AncestorList, KnownSite, NAME_SEPARATOR, PlanResolution, Selection, SkipReason, TestCase,
+    TestKind, TestModifier, TestPlan, UnsupportedDeclaration,
 };
 pub use crate::report::{
     AssertionFailure, BenchStats, FileReport, FileStatus, MAX_BENCH_SAMPLES, MAX_EXPRESSION_BYTES,

@@ -56,6 +56,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { installInSourceTests } from "./in-source.js";
 import { restoreSharedState } from "./internal/isolation.js";
+import { setKnownSites } from "./internal/registry.js";
 import { run } from "./internal/run.js";
 
 // `process` is imported rather than read off the global because this file is
@@ -84,6 +85,12 @@ type Request = {|
    * own count of the requests it has served, which is the same number.
    */
   readonly generation?: number,
+  /**
+   * Where `uf` found the file's declarations, by full name, as
+   * `[line, column]`. Absent from a `uf` older than the field; see
+   * `setKnownSites` in `internal/registry.js`.
+   */
+  readonly sites?: { readonly [name: string]: [number, number] },
 |};
 
 /**
@@ -178,6 +185,9 @@ async function runFile(request: Request, generation: number): Promise<void> {
   // Before the import rather than after the run, so a file that throws while
   // loading still hands the next one a clean process.
   restoreSharedState();
+  // After the restore, which empties the registry: the positions are for the
+  // file about to register, and for nothing that registered before it.
+  setKnownSites(request.sites ?? null);
   // Not a restore, and so not on that list: this is the output budget for the
   // file about to run, rather than something the previous file left behind.
   output.startFile();

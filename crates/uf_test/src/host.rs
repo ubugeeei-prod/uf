@@ -40,7 +40,7 @@ use std::time::{Duration, Instant};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 
-use crate::plan::SkipReason;
+use crate::plan::{KnownSite, SkipReason};
 use crate::report::{
     AssertionFailure, FileStatus, MAX_OUTPUT_BYTES_PER_FILE, OutputChunk, OutputStream, TestRecord,
     TestStatus,
@@ -418,6 +418,37 @@ struct Request<'a> {
     /// its count is only ever used as a fallback for a host too old to send
     /// this field.
     generation: u64,
+    /// Where the declarations discovery could place were written, by full
+    /// name; see [`crate::TestPlan::known_sites`].
+    ///
+    /// A worker that finds a registration's name here takes its position from
+    /// this rather than from a stack, which is most of what registering a case
+    /// used to cost. Absent when there is nothing to say, and ignored by a
+    /// worker older than the field, which reads the stack as it always did.
+    #[serde(skip_serializing_if = "SiteTable::is_empty")]
+    sites: SiteTable<'a>,
+}
+
+/// [`KnownSite`]s written as one JSON object, `{ "a > b": [line, column] }`:
+/// the shape a worker looks names up in.
+#[derive(Debug, Clone, Copy)]
+struct SiteTable<'a>(&'a [KnownSite]);
+
+impl SiteTable<'_> {
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Serialize for SiteTable<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap as _;
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for site in self.0 {
+            map.serialize_entry(&site.name, &[site.line, site.column])?;
+        }
+        map.end()
+    }
 }
 
 /// One line the worker wrote.
@@ -1018,6 +1049,22 @@ impl Worker {
         case_timeout: Duration,
         deadline: Duration,
     ) -> FileOutcome {
+        self.run_file_with_sites(file, relative, filter, case_timeout, deadline, &[])
+    }
+
+    /// [`Worker::run_file`], telling the worker where the declarations
+    /// discovery could place were written, so it need not read them off a
+    /// stack; see [`crate::TestPlan::known_sites`]. A registration whose name
+    /// is not among `sites` is placed from the stack, as before.
+    pub fn run_file_with_sites(
+        &mut self,
+        file: &str,
+        relative: &str,
+        filter: Option<&str>,
+        case_timeout: Duration,
+        deadline: Duration,
+        sites: &[KnownSite],
+    ) -> FileOutcome {
         // Pushed before the request is sent, so the generation is the file's
         // place in this worker's history whether or not the send succeeds. A
         // send that fails ends the worker anyway.
@@ -1029,6 +1076,7 @@ impl Worker {
             filter,
             timeout_ms: case_timeout.as_millis().min(u128::from(u64::MAX)) as u64,
             generation,
+            sites: SiteTable(sites),
         };
         let mut line = match serde_json::to_string(&request) {
             Ok(line) => line,
@@ -1812,6 +1860,44 @@ mod tests {
             let event = serde_json::from_str::<Event>(line).expect("an event must parse");
             assert_eq!(event.generation(), 4, "in {line}");
         }
+    }
+
+    #[test]
+    fn a_request_names_the_positions_discovery_found_by_full_name() {
+        let sites = [
+            KnownSite {
+                name: String::from("outer > inner"),
+                line: 2,
+                column: 3,
+            },
+            KnownSite {
+                name: String::from("plain"),
+                line: 5,
+                column: 1,
+            },
+        ];
+        let request = Request {
+            file: "/p/a.test.js",
+            filter: None,
+            timeout_ms: 5000,
+            generation: 1,
+            sites: SiteTable(&sites),
+        };
+        assert_eq!(
+            serde_json::to_string(&request).expect("a request serialises"),
+            r#"{"file":"/p/a.test.js","timeoutMs":5000,"generation":1,"sites":{"outer > inner":[2,3],"plain":[5,1]}}"#
+        );
+
+        // Nothing to say is said by leaving the field out, which is also what
+        // a worker older than it expects.
+        let bare = Request {
+            sites: SiteTable(&[]),
+            ..request
+        };
+        assert_eq!(
+            serde_json::to_string(&bare).expect("a request serialises"),
+            r#"{"file":"/p/a.test.js","timeoutMs":5000,"generation":1}"#
+        );
     }
 
     #[test]

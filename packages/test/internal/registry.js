@@ -102,6 +102,67 @@ let root: Suite = suite("", "none", 0, 0);
 /** The suite `describe`/`it` calls attach to right now. */
 let current: Suite = root;
 
+/** The names of the suites being registered into, outermost first. */
+let path: Array<string> = [];
+
+/** A position a registration was written at: one-based line and column. */
+type Position = {| readonly line: number, readonly column: number |};
+
+/**
+ * Where discovery placed this file's declarations, by full name, or `null`
+ * when `uf` said nothing.
+ *
+ * `uf` reads every `describe` and `it` off the source before it starts a
+ * worker, so it already knows where each one was written, and it hands that
+ * over with the request. Capturing a stack for each registration and mapping
+ * it through a source map was about a fifth of a worker's CPU on a suite of
+ * many small files, and it was the less reliable of the two: a module whose
+ * transform moved lines, or whose map was not found, was placed on the wrong
+ * line or on none. A name discovery could not pin down — made at run time,
+ * declared twice, or carrying a modifier — is not in the table and is still
+ * read off the stack.
+ */
+let known: Map<string, Position> | null = null;
+
+/**
+ * Take the positions `uf` sent with the request for the file about to be
+ * imported. Anything but an object of `[line, column]` pairs is ignored, so a
+ * worker handed nothing, or something it cannot read, falls back to the stack
+ * for every registration.
+ */
+export function setKnownSites(sites: mixed): void {
+  known = null;
+  if (sites == null || typeof sites !== "object" || Array.isArray(sites)) {
+    return;
+  }
+  const table = new Map<string, Position>();
+  for (const [name, position] of Object.entries(sites)) {
+    if (
+      Array.isArray(position) &&
+      typeof position[0] === "number" &&
+      typeof position[1] === "number"
+    ) {
+      table.set(name, { line: position[0], column: position[1] });
+    }
+  }
+  known = table;
+}
+
+/** The same separator the report and discovery join names with. */
+const SEPARATOR = " > ";
+
+/** Where the registration of `name`, in the suite being collected, was written. */
+function siteOf(name: string): Position {
+  if (known != null) {
+    const full = [...path, name].filter((part) => part !== "").join(SEPARATOR);
+    const found = known.get(full);
+    if (found != null) {
+      return found;
+    }
+  }
+  return callSite();
+}
+
 /**
  * Start collecting a new file, discarding anything from the last one.
  *
@@ -112,6 +173,7 @@ let current: Suite = root;
 export function reset(): void {
   root = suite("", "none", 0, 0);
   current = root;
+  path = [];
 }
 
 /** The tree collected since the last [`reset`]. */
@@ -136,14 +198,16 @@ function callSite(): {| readonly line: number, readonly column: number |} {
 }
 
 function addSuite(name: string, body: Body, modifier: Modifier): void {
-  const position = callSite();
+  const position = modifier === "none" ? siteOf(name) : callSite();
   const child = suite(name, modifier, position.line, position.column);
   current.children.push(child);
   const parent = current;
   current = child;
+  path.push(name);
   try {
     body();
   } finally {
+    path.pop();
     current = parent;
   }
 }
@@ -156,7 +220,7 @@ function addCase(
   skipReason: string | null = null,
   bench: BenchOptions | null = null,
 ): void {
-  const position = callSite();
+  const position = modifier === "none" ? siteOf(name) : callSite();
   current.children.push({
     kind: bench == null ? "test" : "bench",
     name,

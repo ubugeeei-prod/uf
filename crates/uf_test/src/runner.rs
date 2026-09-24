@@ -41,7 +41,7 @@ use crate::discovery::merge_plans;
 use crate::filter::TestFilter;
 use crate::host::{FileOutcome, HostCommand, SpawnError, Worker};
 use crate::options::{Bail, Concurrency, RunOptions};
-use crate::plan::TestPlan;
+use crate::plan::{KnownSite, TestPlan};
 use crate::report::{FileReport, FileStatus, TestRunReport, TestStatus, TestSummary};
 use crate::schedule::{ScheduleEntry, auto_workers, schedule_files};
 use crate::timings::TestTimings;
@@ -439,10 +439,13 @@ impl TestRunner {
                 };
             }
 
+            // Before the clock starts: reading the plan is the runner's work,
+            // not the file's.
+            let sites = selected.plan.known_sites();
             let started = Instant::now();
             let mut outcome = worker
                 .as_mut()
-                .map(|worker| self.run_one(worker, file))
+                .map(|worker| self.run_one(worker, file, &sites))
                 .unwrap_or(FileOutcome {
                     status: FileStatus::HostFailed {
                         message: String::from("no worker"),
@@ -522,14 +525,16 @@ impl TestRunner {
         }
     }
 
-    /// Run one file once.
-    fn run_one(&self, worker: &mut Worker, file: &TestFile) -> FileOutcome {
-        worker.run_file(
+    /// Run one file once, telling the worker where discovery placed its
+    /// declarations.
+    fn run_one(&self, worker: &mut Worker, file: &TestFile, sites: &[KnownSite]) -> FileOutcome {
+        worker.run_file_with_sites(
             file.absolute.as_str(),
             &file.relative,
             self.filter.name_pattern(),
             self.options.effective_file_timeout(),
             self.options.effective_file_timeout() * MAX_CASES_PER_FILE_BUDGET,
+            sites,
         )
     }
 
