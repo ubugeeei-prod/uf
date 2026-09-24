@@ -438,7 +438,9 @@ async function serverless(deployDir) {
   };
   const ready = async () => {
     try {
-      await waitUntilAnswering(base, { alive: running });
+      // Not before the function answers: Kumo answers `500` itself while the
+      // runtime container is still starting.
+      await waitUntilAnswering(base, { alive: running, answered: (status) => status < 500 });
     } catch (error) {
       throw new Error(
         `the function did not answer through Kumo: ${error.message}\n--- function ---\n${functionLogs().slice(-4000)}\n--- kumo ---\n${server.output().slice(-4000)}`,

@@ -95,7 +95,11 @@ export function arrivalOf(answer, needle) {
  * waited on for the whole timeout.
  *
  * @param {string} base
- * @param {{ timeoutMs?: number, alive?: () => boolean, path?: string, headers?: Record<string, string> }} [options]
+ * `answered` narrows "anything": a host behind a gateway (Kumo in front of the
+ * Lambda runtime) answers `500` itself until the function behind it is up,
+ * and that `500` is the gateway's, not the application's.
+ *
+ * @param {{ timeoutMs?: number, alive?: () => boolean, path?: string, headers?: Record<string, string>, answered?: (status: number) => boolean }} [options]
  */
 export async function waitUntilAnswering(base, options = {}) {
   const deadline = Date.now() + (options.timeoutMs ?? 90_000);
@@ -111,7 +115,8 @@ export async function waitUntilAnswering(base, options = {}) {
         signal: AbortSignal.timeout(5_000),
       });
       await response.arrayBuffer();
-      return;
+      if (options.answered == null || options.answered(response.status)) return;
+      last = `status ${response.status}`;
     } catch (error) {
       last = String(error?.cause?.code ?? error?.message ?? error);
     }
