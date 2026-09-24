@@ -1,5 +1,39 @@
 # Changelog
 
+## uf@0.5.0
+
+This minor release has no breaking changes. Commands, configuration and package APIs may
+still change between `0.x` releases.
+
+### Highlights
+
+- **A faster `uf test`** (#1559, #1560). On this repository's own suite, about a quarter
+  less CPU for the same run:
+  - The in-thread loader remembers, per worker, what it resolved and loaded for a test
+    file's copy of a project module, instead of resolving, hashing and reading it again
+    for every file.
+  - A Node worker hands V8 each module without its inline source map and maps a stack
+    only when one is read, with frames written exactly as `--enable-source-maps` writes
+    them. A run collecting coverage keeps Node's own maps.
+  - `test.splitFiles: true` in `uf.config.js` lets a file long enough to hold up the run
+    run as shares on several workers, each importing the file and running its own
+    contiguous run of cases; the report is the one an unsplit run makes. Off by default,
+    because it holds only when no case relies on the ones above it having run in the
+    same process. `.uf/test-timings.json` gains an optional `cases` map, which older
+    releases ignore.
+- **Every case is visible while it runs.** On a terminal, the progress line is now a live
+  region: a row per running file counting its cases as they finish and naming the one that
+  just did, and a row for the run's cases, files, failures and clock. Pipes and CI logs
+  are unchanged.
+- **`uf check --no-lint`** type-checks the same files without linting them, for a caller
+  that only reads `typeCheck`.
+
+### All changes
+
+- fix(host): do not read the lazy source map variable on Deno (#1563) (0a926965)
+- perf(host): map a test worker's stacks when they are read, not per module (#1560) (8984f7a4)
+- perf(test): split long files across workers, stream every case, stop re-resolving (#1559) (1f154215)
+
 ## uf@0.4.0
 
 This minor release has no breaking changes. Commands, configuration and package APIs may
