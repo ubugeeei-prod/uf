@@ -414,7 +414,7 @@ async function nativeFormPost(
     if (stateKey == null || postback == null) {
       // Post/redirect/get: the page again, by a `GET`, so a reload does not
       // submit the form a second time.
-      return seeOther(addressOf(url.pathname + url.search));
+      return seeOther(addressOf(withOneLeadingSlash(url.pathname) + url.search));
     }
     try {
       // Held to the grammar for the reason the JSON door holds a result to it:
@@ -527,6 +527,28 @@ function routingOutcome(error: mixed): Response | null {
     status: status.code,
     headers,
   });
+}
+
+/**
+ * `path` with a leading run of `/` counted down to one.
+ *
+ * The post/redirect/get above answers with the path the form was posted to,
+ * and that path is the request's: `https://app.example//evil.example/notes` is
+ * a link anybody can write, its page posts its forms back to the same address,
+ * and a URL parser reads `/\evil.example` as the same two slashes. Written
+ * into `Location` as it stands, `//evil.example/notes` is a network-path
+ * reference and the browser follows it to another host — after the person
+ * submitted a form on this one. `@uniflowed/server` makes the same repair to
+ * the trailing-slash redirect (`withOneLeadingSlash` in its `routing.js`); the
+ * router cannot import it, so it is spelled here as a counted loop, never a
+ * pattern (`docs/security.md`, rule 5).
+ */
+function withOneLeadingSlash(path: string): string {
+  let start = 0;
+  while (start + 1 < path.length && path.charCodeAt(start + 1) === 47) {
+    start += 1;
+  }
+  return path.charCodeAt(0) === 47 ? path.slice(start) : path;
 }
 
 /** A `303 See Other`, which a browser follows with a `GET`. */

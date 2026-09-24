@@ -234,6 +234,31 @@ function withoutTrailingSlashes(value: string): string {
 }
 
 /**
+ * `path` with a leading run of `/` counted down to one.
+ *
+ * Every `Location` uf writes from a request's own path goes through this, and
+ * the threat is specific: a pathname that opens with two slashes — `//evil.example/x`,
+ * which a request-target may carry and which a URL parser also makes of
+ * `/\evil.example/x` — is, written into `Location` as it stands, a
+ * *network-path reference*. A browser resolves it against the scheme alone and
+ * lands on `evil.example`, so a redirect that only meant to add or remove a
+ * trailing slash becomes an open redirect on the application's own domain —
+ * the phishing link that is genuinely yours.
+ *
+ * Collapsed rather than refused, because `//guide` is a typo a person can make
+ * and `/guide` is what they meant; a counted loop rather than a pattern, per
+ * `docs/security.md` rule 5. A path that does not start with `/` is returned
+ * untouched: it is not a path this module wrote.
+ */
+export function withOneLeadingSlash(path: string): string {
+  let start = 0;
+  while (start + 1 < path.length && path.charCodeAt(start + 1) === 47) {
+    start += 1;
+  }
+  return path.charCodeAt(0) === 47 ? path.slice(start) : path;
+}
+
+/**
  * The application path an address's pathname names, or `null` outside the
  * base. `/docs/guide` is `/guide` under `/docs`; `/docs` and `/docs/` are both
  * `/`; `/docsx` is outside it, because a base is whole segments.
@@ -406,7 +431,10 @@ export function admit(rules: ?RoutingRules, request: Request): Admission {
     flightDocumentPath(application) == null &&
     !application.startsWith("/__uf/")
   ) {
-    const address = `${compiled.base}${spellPath(application, compiled.slash, compiled.base !== "")}`;
+    // One leading slash before it is spelled: see `withOneLeadingSlash` for the
+    // open redirect a second one would be.
+    const path = withOneLeadingSlash(application);
+    const address = `${compiled.base}${spellPath(path, compiled.slash, compiled.base !== "")}`;
     if (address !== url.pathname) {
       return {
         kind: "answer",

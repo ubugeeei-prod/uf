@@ -765,3 +765,50 @@ describe("a draft request, at every front door", () => {
     }
   });
 });
+
+// Every door that starts from Node's `IncomingMessage` builds the `Request`'s
+// URL from `Host` and the request-target. The authority is `Host`'s alone:
+// `new URL(target, base)` would read a target of `//evil.example/x` — which a
+// browser sends for the link `https://app.example//evil.example/x` — as a
+// network-path reference and make `evil.example` the request's host. Every
+// check that asks `new URL(request.url).host` (the OAuth routes' same-origin
+// test among them), and every redirect an application builds with
+// `new URL("/sign-in", request.url)`, would then be answering about somebody
+// else's origin.
+describe("a Node request as a `Request`", () => {
+  const incoming = (url: string, host: string = "app.example") => ({
+    method: "GET",
+    url,
+    headers: { host },
+  });
+
+  it("takes the host from `Host`, whatever the request-target says", async () => {
+    const node = await import("@uniflowed/server/node");
+    const vite = await import("../../packages/vite/internal/http.js");
+    const build = [
+      (target: string, host?: string) => node.toRequest(incoming(target, host)),
+      (target: string, host?: string) => vite.toRequest(incoming(target, host), undefined),
+      (target: string, host?: string) => vite.toAddressRequest(incoming(target, host)),
+    ];
+    for (const make of build) {
+      const cases: $ReadOnlyArray<[string, string]> = [
+        ["/notes?draft=1", "http://app.example/notes?draft=1"],
+        ["//evil.example/x", "http://app.example//evil.example/x"],
+        ["/\\evil.example/x", "http://app.example//evil.example/x"],
+        // Absolute-form, which a proxy sends and a browser never does: its
+        // path and query are kept and its authority is not.
+        ["http://evil.example/x?y=1", "http://app.example/x?y=1"],
+      ];
+      for (const [target, expected] of cases) {
+        const request = await make(target);
+        expect(request.url).toBe(expected);
+      }
+      // A `Host` that is not a host — a path, a user name, a fragment in it —
+      // is not believed either.
+      for (const host of ["evil.example/x", "user@evil.example", "evil.example#"]) {
+        const request = await make("/notes", host);
+        expect(new URL(request.url).host).toBe("localhost");
+      }
+    }
+  });
+});
