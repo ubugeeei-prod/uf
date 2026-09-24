@@ -35,6 +35,7 @@
 // refusal, same reason.
 
 import * as output from "../output.js";
+import { importModuleAt } from "../import-at.js";
 import { run } from "../run.js";
 import { installInSourceTests } from "../../in-source.js";
 
@@ -120,7 +121,7 @@ async function runFile(request: PageRequest): Promise<void> {
   const uninstall = installInSourceTests(url);
   try {
     try {
-      await import(url);
+      await importModuleAt(url);
     } catch (thrown) {
       const error = asError(thrown);
       write({

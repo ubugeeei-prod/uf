@@ -52,6 +52,7 @@ import {
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
+import { importModuleAt } from "./import-at.js";
 import { UnsupportedError } from "./unsupported.js";
 import { frameFile, isInternalFrame } from "./frames.js";
 import { fn } from "./spy.js";
@@ -189,7 +190,7 @@ export function mock<Module extends ModuleNamespace>(
   const url = resolveSpecifier(specifier, callerURL("mock"));
 
   if (factory == null) {
-    return importURL<ModuleNamespace>(actualUrl(url, isPathSpecifier(specifier))).then((actual) => {
+    return importModuleAt(actualUrl(url, isPathSpecifier(specifier))).then((actual) => {
       defineModuleMock(url, automock(actual, AUTOMOCK_DEPTH, new Map()));
     });
   }
@@ -228,7 +229,11 @@ export function unmock(specifier: string): void {
 export function importActual<Module extends ModuleNamespace>(specifier: string): Promise<Module> {
   requireInterception("importActual");
   const url = resolveSpecifier(specifier, callerURL("importActual"));
-  return importURL(actualUrl(url, isPathSpecifier(specifier)));
+  // The caller names the module type it expects, as it does with Vitest's
+  // `importActual<T>`; the namespace is what was actually loaded.
+  return importModuleAt(actualUrl(url, isPathSpecifier(specifier))).then(
+    (actual) => actual as $FlowFixMe,
+  );
 }
 
 /**
@@ -241,7 +246,7 @@ export function importActual<Module extends ModuleNamespace>(specifier: string):
 export function importMock<Module extends ModuleNamespace>(specifier: string): Promise<Module> {
   requireInterception("importMock");
   const url = resolveSpecifier(specifier, callerURL("importMock"));
-  return importURL<ModuleNamespace>(actualUrl(url, isPathSpecifier(specifier))).then(
+  return importModuleAt(actualUrl(url, isPathSpecifier(specifier))).then(
     (actual) => automock(actual, AUTOMOCK_DEPTH, new Map()) as $FlowFixMe,
   );
 }
@@ -283,11 +288,6 @@ export function resetModuleState(): void {
  */
 function isPathSpecifier(specifier: string): boolean {
   return specifier.startsWith("./") || specifier.startsWith("../") || specifier.startsWith("/");
-}
-
-/** `import()`, in one place, so the marker parameter is never spelled twice. */
-function importURL<Module>(url: string): Promise<Module> {
-  return import(url) as $FlowFixMe;
 }
 
 /** Whether `value` is a promise, or near enough for `then` to be meant. */

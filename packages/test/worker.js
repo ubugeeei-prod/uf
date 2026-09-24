@@ -55,6 +55,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { installInSourceTests } from "./in-source.js";
+import { importModuleAt } from "./internal/import-at.js";
 import { restoreSharedState } from "./internal/isolation.js";
 import { run } from "./internal/run.js";
 
@@ -224,7 +225,7 @@ async function runImportedFile(
       const { loadNativeFile } = await import("./internal/native-host.js");
       closeNative = await loadNativeFile(request.file);
     } else {
-      await import(`${url}?uf-run=${generation}`);
+      await importModuleAt(`${url}?uf-run=${generation}`);
     }
   } catch (thrown) {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
