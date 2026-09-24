@@ -313,8 +313,27 @@ the full integration suite and builds and installs all five native archives.
 This full validation runs once, on the final commit with current `main`, before
 merge. The command updates the PR with current `main` when needed.
 
-After merge, the command publishes and verifies npm packages, then publishes
-the tested native archives. The GitHub Release creates the tag only after the
+After merge, publication starts on its own. `Release automation`
+(`.github/workflows/release-automation.yml`, `tools/release/auto-release.cjs`)
+runs on every push to `main`. It recognises a release by two facts: the commit
+changes `.github/release.json`, and the release PR on the branch that file names
+merged at exactly that commit. For a release, it takes the successful
+merge-queue `ci.yml` run for the commit and dispatches `publish.yml`, then
+`release.yml` with the publish run as `npm_run`, then `editors.yml`, waiting for
+each. It finds a run by name before dispatching one, so it never duplicates a
+run that the release command or a person already started. If `publish.yml`'s
+"Verify the npm release" is its only failed job, it reruns that job once,
+because npm's registry can lag a publish. Any other failure stops it with the
+run's URL; fix the cause, then rerun the failed jobs of that workflow and
+dispatch the ones after it by hand with the same inputs. Those runs act as
+`github-actions[bot]`, so `tools/release/policy.cjs` authorizes them on the
+release PR instead of the dispatching account: a maintainer authored it, it
+merged at that commit, and the queue validated that commit. A maintainer can
+still dispatch the same three workflows by hand, authorized as before.
+
+The release command waits for the same runs, so it finishes whichever of it and
+the automation gets there first. Publication first publishes and verifies the
+npm packages, then publishes the tested native archives. The GitHub Release creates the tag only after the
 archives are ready. It then runs the editor packaging and publication workflow,
 which publishes the VS Code extension as `uniflowed.uf`. That step needs two
 repository secrets: `VSCE_PAT`, an Azure DevOps token with the Marketplace
