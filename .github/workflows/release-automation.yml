@@ -1,0 +1,36 @@
+name: Release automation
+run-name: Release automation (${{ github.sha }})
+
+# After a release PR merges through the queue, publish it: `publish.yml`, then
+# `release.yml`, then `editors.yml`, each dispatched and waited for. Every other
+# push to main is recognised as "not a release" in a few seconds and does
+# nothing. `tools/release/auto-release.cjs` says how a release is recognised,
+# and `tools/release/policy.cjs` authorizes each dispatched run as before.
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: release-automation-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish a merged release
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      actions: write # Dispatch publish, release and editors, and rerun a lagging npm check.
+      contents: read # Read the release request at the pushed commit.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - run: node tools/release/auto-release.cjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.sha }}

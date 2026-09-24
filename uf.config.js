@@ -81,6 +81,7 @@ export default defineConfig({
     "tools/ci/test-change-scope.cjs",
     "tools/release/test-policy.cjs",
     "tools/release/test-trusted-policy.cjs",
+    "tools/release/test-auto-release.cjs",
   ],
 
   test: {

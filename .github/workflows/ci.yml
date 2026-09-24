@@ -818,7 +818,7 @@ jobs:
       # a list somebody has to add to. This reads the workflow and says so
       # when it does not, and checks that every required context is a job
       # that cannot report `skipped`. See #367.
-      - run: node --test tools/ci/test-change-scope.cjs tools/release/test-policy.cjs tools/release/test-trusted-policy.cjs
+      - run: node --test tools/ci/test-change-scope.cjs tools/release/test-policy.cjs tools/release/test-trusted-policy.cjs tools/release/test-auto-release.cjs
       - run: ./target/release/uf run ci:gate
       - run: ./target/release/uf run ci:gate:test
       - run: ./target/release/uf run ci:semver:test
