@@ -837,7 +837,7 @@ const MAX_CASES_PER_FILE_BUDGET: u32 = 60;
 /// Not one: a file exactly a worker's share long still ends the run late when
 /// it happens to start after the others have begun, and splitting a little
 /// earlier than strictly needed costs one more import of the file.
-const SPLIT_FRACTION: u64 = 2;
+const SPLIT_FRACTION: u64 = 3;
 
 /// The shortest share a file is split into, in microseconds.
 ///

@@ -79,6 +79,7 @@ import {
   writeCached,
 } from "./flow-cache.js";
 import { fileScoped } from "./file-scope.js";
+import { installLazySourceMaps, lazySourceMapsWanted } from "./lazy-source-maps.js";
 import { moduleEpochs } from "./module-epochs.js";
 
 /**
@@ -118,6 +119,9 @@ export function installFlowHooks(root) {
   const resolutions = new Map();
   const loaded = new Map();
   const rootURL = pathToFileURL(root).href.replace(/\/?$/, "/");
+  // A `uf test` worker's modules, handed to V8 without their source maps; see
+  // `./lazy-source-maps.js`. Everything else keeps the module as framed.
+  const detach = lazySourceMapsWanted() ? installLazySourceMaps() : (_filename, output) => output;
 
   return nodeModule.registerHooks({
     resolve(specifier, context, nextResolve) {
@@ -155,8 +159,9 @@ export function installFlowHooks(root) {
       }
       const cached = readCached(cacheEntryFor(cacheDirectory, identity, source, filename));
       if (cached != null) {
-        if (identity != null) loaded.set(filename, { identity, source, output: cached });
-        return { format: "module", source: cached, shortCircuit: true };
+        const output = detach(filename, cached);
+        if (identity != null) loaded.set(filename, { identity, source, output });
+        return { format: "module", source: output, shortCircuit: true };
       }
 
       compiler ??= globalThis.Deno != null ? spawnedCompiler() : startCompiler();
@@ -167,7 +172,7 @@ export function installFlowHooks(root) {
       // uf projects are ES modules. Forcing the format here means a project
       // whose package.json forgot `"type": "module"` still runs, rather than
       // failing on an `import` in what Node would have guessed was CommonJS.
-      return { format: "module", source: output, shortCircuit: true };
+      return { format: "module", source: detach(filename, output), shortCircuit: true };
     },
   });
 }

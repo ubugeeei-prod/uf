@@ -177,6 +177,9 @@ pub struct HostCommand {
 /// [`HostCommand::with_kept_workers`].
 const KEEP_WORKERS: &str = "UF_TEST_KEEP_WORKERS";
 
+/// What a Node worker is started with to map stacks lazily.
+const LAZY_SOURCE_MAPS: &str = "UF_TEST_LAZY_SOURCE_MAPS";
+
 impl HostCommand {
     /// A command that runs the worker with no loader registered.
     ///
@@ -993,6 +996,16 @@ impl Worker {
         {
             use std::os::unix::process::CommandExt as _;
             process.process_group(0);
+        }
+        // A Node worker maps its stacks when one is read rather than when each
+        // module is compiled; see `packages/host/internal/lazy-source-maps.js`.
+        // Asked for rather than assumed, and the worker keeps
+        // `--enable-source-maps` either way, so an `@uniflowed/host` that does
+        // not know the variable maps every module the way it always did. Not
+        // for a run collecting coverage, which reads every module's map out
+        // of the `source-map-cache` Node writes beside the counts.
+        if command.kind == HostKind::Node && !command.collects_coverage() {
+            process.env(LAZY_SOURCE_MAPS, "1");
         }
         if let Some(binary) = &command.uf_binary {
             process.env("UF_BINARY", binary.as_str());
