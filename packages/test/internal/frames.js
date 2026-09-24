@@ -252,6 +252,14 @@ function sourceMapsForCallSites(): FindSourceMap | false {
     nodeSourceMaps = false;
     return false;
   }
+  // A `uf test` worker whose loader maps lazily holds the maps Node would
+  // have, and answers for them the way `findSourceMap` would; see
+  // `@uniflowed/host`'s `internal/lazy-source-maps.js`.
+  const lazy = host[Symbol.for("@uniflowed/host/source-maps")];
+  if (typeof lazy?.findSourceMap === "function") {
+    nodeSourceMaps = (file) => lazy.findSourceMap(file);
+    return nodeSourceMaps;
+  }
   const findSourceMap = process.getBuiltinModule("node:module")?.findSourceMap;
   nodeSourceMaps =
     typeof findSourceMap === "function"
