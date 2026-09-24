@@ -1425,11 +1425,32 @@ function unsafeSettled<A>(value: mixed): A {
  * bare `yield effect` works too and produces `mixed`, which is occasionally
  * what a caller wants and never what it should reach for first.
  *
+ * # The signature callers see
+ *
+ * `body` is typed with `Next = void`, which is what Flow gives a generator
+ * function nobody annotated, and that is almost every body anybody writes. The
+ * implementation below is typed with `EffectGenerator`, whose `Next` is `mixed`.
+ * `Next` is contravariant, so a generator Flow inferred as `Generator<…, void>`
+ * is not an `EffectGenerator`. With only the implementation's signature,
+ * `effect(function* () { … })` was a type error at every call: 103 of them in
+ * this package's own tests (ubugeeei-prod/uf#1451).
+ *
+ * The declared signature accepts both kinds. An annotated `EffectGenerator`
+ * body still passes, because `void` flows into `mixed`. What it cannot express
+ * is the driver sending each step's value back with `next(value)`: an
+ * unannotated body's bare `yield` is typed `void` while the driver hands it the
+ * effect's value. `yield*` is unaffected, and it is the typed form this
+ * documentation recommends. A bare `yield` whose value you read wants an
+ * `EffectGenerator` annotation, which types it `mixed`.
+ *
  * Both a synchronous and an asynchronous driver, because a pipeline of
  * synchronous steps has a synchronous answer and `runSync` should be able to
  * ask for it. The synchronous driver refuses at the first step that has no
  * synchronous kernel, with the same defect any other such effect gives.
  */
+declare export function effect<A, E, R>(
+  body: () => Generator<Effect<mixed, E, R>, A, void>,
+): Effect<A, E, R>;
 export function effect<A, E, R>(body: () => EffectGenerator<A, E, R>): Effect<A, E, R> {
   return makeEffect({
     run: async (runContext) => {
@@ -2176,7 +2197,22 @@ export function acquireRelease<A, E, R>(
  * A finalizer that fails turns into a defect and only replaces a success — a
  * body that already failed keeps its own failure, which is the more useful
  * half of the news.
+ *
+ * # Two signatures
+ *
+ * The first is for the common case, where the `Scope` is the *only* requirement.
+ * With just the general signature, Flow has no lower bound for the rest of
+ * the requirement channel there (everything the argument needs is the
+ * `Scope` being discharged), so an unannotated `const program = scoped(…)`
+ * was an `underconstrained-implicit-instantiation` error, and a run of it
+ * failed to typecheck. The first signature says the answer, which is that
+ * nothing is left. The general one,
+ * `scoped<A, E, R>(self: Effect<A, E, R | Scope>): Effect<A, E, R>`,
+ * handles every other case, with the subtraction caveat described above.
+ * ubugeeei-prod/uf#1451.
  */
+declare export function scoped<A, E>(self: Effect<A, E, Scope>): Effect<A, E>;
+declare export function scoped<A, E, R>(self: Effect<A, E, R | Scope>): Effect<A, E, R>;
 export function scoped<A, E, R>(self: Effect<A, E, R | Scope>): Effect<A, E, R> {
   return makeEffect({
     run: async (runContext) => {
@@ -2285,7 +2321,32 @@ export function tag<Service>(identifier: string): Tag<Service> {
   return makeTag(identifier);
 }
 
-/** Satisfy one requirement with a value already in hand. */
+/**
+ * Satisfy one requirement with a value already in hand.
+ *
+ * # Two signatures
+ *
+ * The first is for the common case, where the service is the *only* requirement.
+ * With just the general signature, Flow has no lower bound for the rest of
+ * the requirement channel there (everything the argument needs is the
+ * service being discharged), so an unannotated `const program = provideService(…)`
+ * was an `underconstrained-implicit-instantiation` error, and a run of it
+ * failed to typecheck. The first signature says the answer, which is that
+ * nothing is left. The general one,
+ * `provideService<A, E, R, Service>(self: Effect<A, E, R | Service>, tag: Tag<Service>, service: Service): Effect<A, E, R>`,
+ * handles every other case, with the subtraction caveat described above.
+ * ubugeeei-prod/uf#1451.
+ */
+declare export function provideService<A, E, Service>(
+  self: Effect<A, E, Service>,
+  serviceTag: Tag<Service>,
+  service: Service,
+): Effect<A, E>;
+declare export function provideService<A, E, R, Service>(
+  self: Effect<A, E, R | Service>,
+  serviceTag: Tag<Service>,
+  service: Service,
+): Effect<A, E, R>;
 export function provideService<A, E, R, Service>(
   self: Effect<A, E, R | Service>,
   serviceTag: Tag<Service>,
@@ -2313,7 +2374,28 @@ export function provideService<A, E, R, Service>(
  * would silently discharge the `Scope` an `acquireRelease` inside it requires,
  * and the requirement channel would go on saying otherwise; `scoped` is still
  * the only thing that answers for an effect's own resources.
+ *
+ * # Two signatures
+ *
+ * The first is for the common case, where what the layer provides is the *only* requirement.
+ * With just the general signature, Flow has no lower bound for the rest of
+ * the requirement channel there (everything the argument needs is what
+ * the layer provides), so an unannotated `const program = provide(…)`
+ * was an `underconstrained-implicit-instantiation` error, and a run of it
+ * failed to typecheck. The first signature says the answer, which is that
+ * nothing is left. The general one,
+ * `provide<A, E, R, Out, LayerError, In>(self: Effect<A, E, R | Out>, layer: Layer<Out, LayerError, In>): Effect<A, E | LayerError, R | In>`,
+ * handles every other case, with the subtraction caveat described above.
+ * ubugeeei-prod/uf#1451.
  */
+declare export function provide<A, E, Out, LayerError, In>(
+  self: Effect<A, E, Out>,
+  layer: Layer<Out, LayerError, In>,
+): Effect<A, E | LayerError, In>;
+declare export function provide<A, E, R, Out, LayerError, In>(
+  self: Effect<A, E, R | Out>,
+  layer: Layer<Out, LayerError, In>,
+): Effect<A, E | LayerError, R | In>;
 export function provide<A, E, R, Out, LayerError, In>(
   self: Effect<A, E, R | Out>,
   layer: Layer<Out, LayerError, In>,
@@ -2406,7 +2488,28 @@ export function layerEffect<Service, E, R>(
  *
  * The resource outlives the build and dies with the `provide`, which is the
  * whole reason a pool belongs in a layer rather than in the body.
+ *
+ * # Two signatures
+ *
+ * The first is for the common case, where the `Scope` is the *only* requirement.
+ * With just the general signature, Flow has no lower bound for the rest of
+ * the requirement channel there (everything the argument needs is the
+ * `Scope` being discharged), so an unannotated `const program = layerScoped(…)`
+ * was an `underconstrained-implicit-instantiation` error, and a run of it
+ * failed to typecheck. The first signature says the answer, which is that
+ * nothing is left. The general one,
+ * `layerScoped<Service, E, R>(tag: Tag<Service>, build: Effect<Service, E, R | Scope>): Layer<Service, E, R>`,
+ * handles every other case, with the subtraction caveat described above.
+ * ubugeeei-prod/uf#1451.
  */
+declare export function layerScoped<Service, E>(
+  serviceTag: Tag<Service>,
+  build: Effect<Service, E, Scope>,
+): Layer<Service, E>;
+declare export function layerScoped<Service, E, R>(
+  serviceTag: Tag<Service>,
+  build: Effect<Service, E, R | Scope>,
+): Layer<Service, E, R>;
 export function layerScoped<Service, E, R>(
   serviceTag: Tag<Service>,
   build: Effect<Service, E, R | Scope>,
@@ -2470,7 +2573,26 @@ export function layerMerge<Out1, Out2, E1, E2, In1, In2>(
  *
  * `outer` is built first and through the pass's memo, so a `Config` that two
  * layers both provide into is built once.
+ *
+ * # Two signatures
+ *
+ * The first is for the common case, where everything `inner` needs is what
+ * `outer` provides. With only the general signature, Flow has no lower bound
+ * for `In1` there, so an unannotated call was an
+ * `underconstrained-implicit-instantiation` error, and the discharged service
+ * could stay in the result's `In`, which then failed at `provide`. The first
+ * signature says the answer, which is that nothing of `inner`'s is left. The
+ * general one is `layerProvide<Out, E1, In1, Out2, E2, In2>(inner: Layer<Out, E1, In1 | Out2>, outer: Layer<Out2, E2, In2>): Layer<Out, E1 | E2, In1 | In2>`.
+ * ubugeeei-prod/uf#1451.
  */
+declare export function layerProvide<Out, E1, Out2, E2, In2>(
+  inner: Layer<Out, E1, Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out, E1 | E2, In2>;
+declare export function layerProvide<Out, E1, In1, Out2, E2, In2>(
+  inner: Layer<Out, E1, In1 | Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out, E1 | E2, In1 | In2>;
 export function layerProvide<Out, E1, In1, Out2, E2, In2>(
   inner: Layer<Out, E1, In1 | Out2>,
   outer: Layer<Out2, E2, In2>,
@@ -2501,7 +2623,26 @@ export function layerProvide<Out, E1, In1, Out2, E2, In2>(
  * For the ordinary case where `Config` is wanted by the application as well as
  * by the `Database` it was built for. Free, because the merge is the one line
  * that differs.
+ *
+ * # Two signatures
+ *
+ * The first is for the common case, where everything `inner` needs is what
+ * `outer` provides. With only the general signature, Flow has no lower bound
+ * for `In1` there, so an unannotated call was an
+ * `underconstrained-implicit-instantiation` error, and the discharged service
+ * could stay in the result's `In`, which then failed at `provide`. The first
+ * signature says the answer, which is that nothing of `inner`'s is left. The
+ * general one is `layerProvideMerge<Out, E1, In1, Out2, E2, In2>(inner: Layer<Out, E1, In1 | Out2>, outer: Layer<Out2, E2, In2>): Layer<Out | Out2, E1 | E2, In1 | In2>`.
+ * ubugeeei-prod/uf#1451.
  */
+declare export function layerProvideMerge<Out, E1, Out2, E2, In2>(
+  inner: Layer<Out, E1, Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out | Out2, E1 | E2, In2>;
+declare export function layerProvideMerge<Out, E1, In1, Out2, E2, In2>(
+  inner: Layer<Out, E1, In1 | Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out | Out2, E1 | E2, In1 | In2>;
 export function layerProvideMerge<Out, E1, In1, Out2, E2, In2>(
   inner: Layer<Out, E1, In1 | Out2>,
   outer: Layer<Out2, E2, In2>,
