@@ -1,0 +1,363 @@
+{
+  "$comment": [
+    "The deployment compatibility matrix: every (target x rendering mode) cell and what CI does about it.",
+    "This file is the source of truth. `tools/deploy-matrix/run.mjs --target <id>` runs a column and fails when a cell does not behave as it says;",
+    "`tools/deploy-matrix/report.mjs` joins every column's results and fails on a cell whose evidence is missing;",
+    "`tests/library/deploy-matrix.test.js` fails when the table in docs/app/guide/deploy/$page.mdx is not `report.mjs --docs` of this file.",
+    "Statuses: verified (the check runs and must pass), rejected (unsupported by design: the build must refuse, naming it),",
+    "not-emulated (the target supports it but the emulator cannot show it: the check runs and must fail, so a fixed emulator is noticed),",
+    "known-bug (a uf bug with an open issue: the check runs and must fail; `knownBug` on a target means its host cannot start),",
+    "planned (no check yet)."
+  ],
+  "modes": [
+    {
+      "id": "ssg",
+      "title": "Static (SSG), incl. `generateStaticParams`"
+    },
+    {
+      "id": "ssr",
+      "title": "SSR per request"
+    },
+    {
+      "id": "streaming",
+      "title": "Streaming SSR with Suspense"
+    },
+    {
+      "id": "ppr",
+      "title": "Static shell with holes (`ppr`)"
+    },
+    {
+      "id": "isr-time",
+      "title": "ISR, time-based"
+    },
+    {
+      "id": "isr-on-demand",
+      "title": "ISR, on demand (`revalidateTag`)"
+    },
+    {
+      "id": "rsc-payload",
+      "title": "RSC navigation (Flight payload)"
+    },
+    {
+      "id": "action-json",
+      "title": "Server action, JSON call"
+    },
+    {
+      "id": "action-form",
+      "title": "Server action, form before hydration"
+    },
+    {
+      "id": "route-handlers",
+      "title": "Route handlers"
+    },
+    {
+      "id": "cookies",
+      "title": "Cookies in and out"
+    },
+    {
+      "id": "middleware",
+      "title": "Middleware rewrite"
+    },
+    {
+      "id": "router-rules",
+      "title": "Redirects, rewrites, headers"
+    },
+    {
+      "id": "not-found",
+      "title": "Not-found boundary (404)"
+    },
+    {
+      "id": "error-boundary",
+      "title": "Error boundary (500)"
+    },
+    {
+      "id": "static-assets",
+      "title": "Hashed client assets"
+    },
+    {
+      "id": "hydration",
+      "title": "Hydration and client navigation (browser)"
+    },
+    {
+      "id": "images",
+      "title": "Image optimiser (`/__uf/image`)"
+    }
+  ],
+  "targets": [
+    {
+      "id": "node",
+      "title": "Node",
+      "adapter": "node",
+      "runtime": "`node server.js`, Node 24",
+      "cells": {
+        "images": {
+          "status": "planned",
+          "note": "images"
+        }
+      }
+    },
+    {
+      "id": "bun",
+      "title": "Bun",
+      "adapter": "bun",
+      "runtime": "`bun server.js`, Bun 1.3.14",
+      "cells": {
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1552,
+          "note": "tee-bun-deno"
+        }
+      }
+    },
+    {
+      "id": "deno",
+      "title": "Deno",
+      "adapter": "deno",
+      "runtime": "`deno run --allow-net --allow-read --allow-env --allow-write=.uf server.js` (the command `uf build` prints), Deno 2.9.7",
+      "cells": {
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "streaming": {
+          "status": "known-bug",
+          "issue": 1552,
+          "note": "tee-bun-deno"
+        }
+      }
+    },
+    {
+      "id": "container",
+      "title": "Container",
+      "adapter": "container",
+      "runtime": "`docker build` + `docker run` of the generated `Dockerfile`",
+      "cells": {
+        "images": {
+          "status": "planned",
+          "note": "images"
+        }
+      }
+    },
+    {
+      "id": "edge",
+      "title": "Cloudflare Workers",
+      "adapter": "edge",
+      "runtime": "`wrangler dev --local` (workerd), Wrangler 4.128.0, local Workers KV",
+      "cells": {
+        "isr-time": {
+          "status": "verified",
+          "note": "kv"
+        },
+        "isr-on-demand": {
+          "status": "verified",
+          "note": "kv"
+        },
+        "images": {
+          "status": "planned",
+          "note": "images"
+        }
+      }
+    },
+    {
+      "id": "serverless",
+      "title": "AWS Lambda",
+      "adapter": "serverless",
+      "runtime": "API Gateway HTTP API in Kumo 0.30.0, function in the AWS Lambda Node 24 image (RIE)",
+      "build": {
+        "features": [
+          "ssr",
+          "streaming",
+          "isr",
+          "actions",
+          "handlers",
+          "middleware",
+          "redirects",
+          "errors",
+          "s3cache"
+        ],
+        "config": "serverless"
+      },
+      "cells": {
+        "streaming": {
+          "status": "verified",
+          "expect": "whole",
+          "note": "buffered"
+        },
+        "ppr": {
+          "status": "rejected",
+          "note": "ppr-serverless",
+          "refusal": {
+            "features": ["ppr", "s3cache"],
+            "config": "serverless",
+            "pattern": "prerendered 1 page partially \\(/ppr\\).*--adapter serverless. buffers every response"
+          }
+        },
+        "isr-time": {
+          "status": "verified",
+          "note": "s3",
+          "refusal": {
+            "features": ["isr"],
+            "config": "full",
+            "pattern": "regenerates 2 pages \\(/isr, /tagged\\).*--adapter serverless. has nowhere of its own"
+          }
+        },
+        "isr-on-demand": {
+          "status": "verified",
+          "note": "s3"
+        },
+        "action-json": {
+          "status": "not-emulated",
+          "note": "kumo-host"
+        },
+        "action-form": {
+          "status": "not-emulated",
+          "note": "kumo-host"
+        },
+        "cookies": {
+          "status": "not-emulated",
+          "note": "kumo-cookies"
+        },
+        "images": {
+          "status": "planned",
+          "note": "images"
+        }
+      }
+    },
+    {
+      "id": "static",
+      "title": "Static host",
+      "adapter": "static",
+      "runtime": "Workers static assets under `wrangler dev --local` (`html_handling: drop-trailing-slash`, `404-page`), no Worker script",
+      "build": {
+        "features": [],
+        "config": "static"
+      },
+      "cells": {
+        "ssr": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["ssr"],
+            "config": "full",
+            "pattern": "/ssr/:id \\(app/ssr/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
+          }
+        },
+        "streaming": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["streaming"],
+            "config": "full",
+            "pattern": "/stream/:id \\(app/stream/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
+          }
+        },
+        "ppr": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["ppr"],
+            "config": "full",
+            "pattern": "/ppr \\(app/ppr/\\$page\\.js\\) — it reads the request inside a `<Suspense>` boundary"
+          }
+        },
+        "isr-time": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["isr"],
+            "config": "full",
+            "pattern": "/isr \\(app/isr/\\$page\\.js\\) — it regenerates"
+          }
+        },
+        "isr-on-demand": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["isr"],
+            "config": "full",
+            "pattern": "/tagged \\(app/tagged/\\$page\\.js\\) — it regenerates"
+          }
+        },
+        "action-json": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["actions"],
+            "config": "full",
+            "pattern": "add \\(app/actions/_actions/counter\\.js\\) — a server action"
+          }
+        },
+        "action-form": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["actions"],
+            "config": "full",
+            "pattern": "saveNote \\(app/actions/_actions/counter\\.js\\) — a server action"
+          }
+        },
+        "route-handlers": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["handlers"],
+            "config": "full",
+            "pattern": "/api/echo \\(app/api/echo/\\$route\\.js\\) — a route handler"
+          }
+        },
+        "cookies": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["handlers"],
+            "config": "full",
+            "pattern": "/api/cookies \\(app/api/cookies/\\$route\\.js\\) — a route handler"
+          }
+        },
+        "middleware": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["middleware"],
+            "config": "full",
+            "pattern": "/gated \\(app/gated/\\$middleware\\.js\\) — a middleware"
+          }
+        },
+        "router-rules": {
+          "status": "rejected",
+          "refusal": {
+            "features": [],
+            "config": "full",
+            "pattern": "/moved/:slug"
+          }
+        },
+        "not-found": {
+          "status": "verified",
+          "expect": "static"
+        },
+        "error-boundary": {
+          "status": "rejected",
+          "refusal": {
+            "features": ["errors"],
+            "config": "full",
+            "pattern": "/boom/:id \\(app/boom/\\[id\\]/\\$page\\.js\\) — the build wrote no document for it"
+          }
+        },
+        "images": {
+          "status": "planned",
+          "note": "images"
+        },
+        "rsc-payload": {
+          "status": "verified",
+          "expect": "static",
+          "note": "flight-type"
+        }
+      }
+    }
+  ],
+  "notes": {
+    "kv": "Regenerated pages and invalidations are kept in Workers KV (`UF_CACHE`, the binding `uf build --adapter edge` writes), in Wrangler's local KV; the check restarts the Worker and reads them back.",
+    "buffered": "A Lambda response is one JSON value, so a streaming page arrives whole; the check asserts it is complete and that the fallback and the content arrive together.",
+    "ppr-serverless": "`uf build --adapter serverless` refuses a page prerendered as a static shell, naming it, because a buffered response would send the shell with its holes.",
+    "s3": "With a project provider in `rendering.cache.store` (the fixture's `s3-cache.js`, over an S3 bucket in Kumo); the check restarts the function container and reads the page back from S3. Without a provider the build refuses the regenerating pages by name, which is checked too.",
+    "kumo-host": "Kumo 0.30.0's HTTP API event carries no `host` header and no `requestContext.domainName`, so uf's same-origin check refuses every action (as it should for a request that names no host). Real API Gateway sends both. The check runs and is expected to fail until Kumo does.",
+    "kumo-cookies": "Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.",
+    "images": "The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.",
+    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it.",
+    "tee-bun-deno": "The route-cache fill streams since #1503 under Node; under Bun and Deno the teed branch still reaches the client only when the document ends."
+  }
+}

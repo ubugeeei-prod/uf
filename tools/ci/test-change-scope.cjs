@@ -4,7 +4,7 @@ const { execFileSync, spawnSync } = require("node:child_process");
 const { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
-const { needsFullSuite, needsRscSuite } = require("./change-scope.cjs");
+const { needsFullSuite, needsRscSuite, touchesDeployment } = require("./change-scope.cjs");
 
 test("documentation edits retain site checks without the workspace suite", () => {
   assert.equal(
@@ -50,6 +50,20 @@ test("a change nothing in the RSC and browser job reaches leaves it to the full 
   ])
     assert.equal(needsRscSuite([path]), false, path);
 });
+test("the deploy matrix runs for adapters, the router, the build and itself", () => {
+  for (const path of [
+    "packages/server/lambda.js",
+    "packages/router/internal/action-endpoint.js",
+    "packages/vite/driver.js",
+    "crates/uf_cli/src/commands/deploy/static_host.rs",
+    "tools/deploy-matrix/matrix.json",
+    ".github/workflows/ci.yml",
+  ])
+    assert.equal(touchesDeployment(["README.md", path]), true, path);
+  for (const path of ["crates/uf_fmt/src/lib.rs", "packages/ui/index.js", "docs/app/guide/start/$page.mdx"])
+    assert.equal(touchesDeployment([path]), false, path);
+  assert.equal(touchesDeployment([]), true);
+});
 test("missing history cannot suppress tests", () => {
   const dir = mkdtempSync(join(tmpdir(), "uf-ci-scope-"));
   try {
@@ -59,7 +73,7 @@ test("missing history cannot suppress tests", () => {
       env: { ...process.env, BASE_SHA: "a".repeat(40), GITHUB_OUTPUT: output },
       stdio: "pipe",
     });
-    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrsc=true\nrelease=false\nversion=\n");
+    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrsc=true\nrelease=false\nversion=\ndeploy=true\n");
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -147,6 +161,6 @@ test("only the final release merge group gets full validation", () => {
       console: { log() {} },
     });
     // Cargo.toml reaches nothing the RSC job tests, so only the full run takes it.
-    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\n`, event);
+    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\ndeploy=${full}\n`, event);
   }
 });

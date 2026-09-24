@@ -51,10 +51,40 @@ function needsRscSuite(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
   );
 }
 
+// What the deploy matrix (`tools/deploy-matrix`, CI's `Deploy matrix` jobs)
+// is about: the adapters and what they wrap, the build that writes them, the
+// matrix itself, and the workflow and lockfile that run it. A pull request
+// touching none of these skips the emulators; the release queue runs them
+// whatever changed.
+const deploymentPaths = [
+  "packages/server/",
+  "packages/router/",
+  "packages/vite/",
+  "packages/react/",
+  "crates/uf_cli/src/commands/deploy",
+  "crates/uf_cli/src/commands/build",
+  "crates/uf_router/",
+  "crates/uf_rsc/",
+  "crates/uf_config/",
+  "tools/deploy-matrix/",
+  "tools/ci/edge-worker-smoke.sh",
+  ".github/workflows/ci.yml",
+  "package-lock.json",
+];
+
+/** Whether a change reaches what the deploy matrix tests. */
+function touchesDeployment(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
+  return (
+    paths.length === 0 ||
+    paths.some((path) => deploymentPaths.some((prefix) => path.startsWith(prefix)))
+  );
+}
+
 if (require.main === module) {
   let full = true;
   let code = true;
   let rsc = true;
+  let deploy = true;
   let release = false;
   let paths;
   const base = process.env.BASE_SHA ?? "";
@@ -76,8 +106,9 @@ if (require.main === module) {
     // The queue validates the final main merge once, before it can land.
     full = release && process.env.GITHUB_EVENT_NAME === "merge_group";
     rsc = rsc || full;
+    deploy = full || touchesDeployment(paths);
     console.log(
-      `${paths.length} changed files; code: ${String(code)}; rsc: ${String(rsc)}; full suite: ${String(full)}`,
+      `${paths.length} changed files; code: ${String(code)}; rsc: ${String(rsc)}; deploy: ${String(deploy)}; full suite: ${String(full)}`,
     );
   }
   const version = release
@@ -94,7 +125,8 @@ code=${String(code)}
 rsc=${String(rsc)}
 release=${String(release)}
 version=${version}
+deploy=${String(deploy)}
 `,
   );
 }
-module.exports = { needsFullSuite, needsRscSuite };
+module.exports = { needsFullSuite, needsRscSuite, touchesDeployment };

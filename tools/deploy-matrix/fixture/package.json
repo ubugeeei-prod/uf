@@ -1,0 +1,16 @@
+{
+  "name": "uf-deploy-matrix-fixture",
+  "private": true,
+  "type": "module",
+  "description": "One application with every rendering mode uf deploys, built for every adapter by tools/deploy-matrix.",
+  "dependencies": {
+    "@uniflowed/config": "0.0.0-alpha.5",
+    "@uniflowed/react": "0.0.0-alpha.5",
+    "@uniflowed/router": "0.0.0-alpha.5",
+    "@uniflowed/server": "0.0.0-alpha.5",
+    "@uniflowed/vite": "0.0.0-alpha.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-server-dom-parcel": "^19.3.0"
+  }
+}
