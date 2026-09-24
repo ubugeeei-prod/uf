@@ -96,7 +96,7 @@ pub use crate::discovery::{MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, discover_tests,
 pub use crate::events::{EVENT_BURST_LIMIT, EVENT_QUIET, EventBatch, EventWatcher};
 pub use crate::filter::{MAX_PATTERN_BYTES, PathPatternList, TestFilter};
 pub use crate::graph::{ImportGraph, MAX_IMPORTS_PER_MODULE, MAX_MODULES, MODULE_EXTENSIONS};
-pub use crate::host::{FileOutcome, HostCommand, HostKind, SpawnError, Worker};
+pub use crate::host::{FileOutcome, FileRun, HostCommand, HostKind, Part, SpawnError, Worker};
 pub use crate::options::{
     BROWSER_FILE_TIMEOUT, Bail, Concurrency, DEFAULT_FILE_TIMEOUT, DEFAULT_MAX_ASSERTIONS_PER_TEST,
     MAX_ATTEMPTS, MAX_FILE_TIMEOUT, MAX_RETRY_DELAY, MIN_FILE_TIMEOUT, RetryPolicy, RunOptions,

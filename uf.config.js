@@ -85,6 +85,11 @@ export default defineConfig({
   ],
 
   test: {
+    // A file long enough to hold up the run — the transform-cache suites
+    // start a Node process per case — runs as shares on several workers. Every
+    // case in this repository sets up what it reads, which is the promise the
+    // setting makes; a file that cannot keep it is one to fix, not to exempt.
+    splitFiles: true,
     // `uf run test:lib:coverage` measures the packages this repository ships,
     // and nothing else. The suite that drives them now lives *inside* them —
     // `packages/ui/ui.test.js` beside `packages/ui/alert.js`, the way

@@ -284,6 +284,14 @@ pub(crate) enum Commands {
         /// declaration and why — for the package named here.
         #[arg(long, value_name = "PACKAGE")]
         explain_any: Option<String>,
+        /// Type check without linting.
+        ///
+        /// The same files, the same batch and the same type diagnostics as
+        /// `uf check`, with none of `uf lint`'s. For a caller that only wants
+        /// to know what Flow says — a negative type test is one — and would
+        /// otherwise spend most of a warm run on rules it throws away.
+        #[arg(long, conflicts_with_all = ["fix", "fix_unsafe"])]
+        no_lint: bool,
         /// Only check files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -1670,6 +1678,7 @@ mod tests {
                 fix: false,
                 fix_unsafe: false,
                 explain_any: None,
+                no_lint: false,
                 paths: Vec::new()
             }
             .wants_json()

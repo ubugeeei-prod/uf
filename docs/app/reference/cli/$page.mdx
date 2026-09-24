@@ -1161,7 +1161,10 @@ apply the *lint* fixes. Type inference has no fix catalogue — a type error is
 not something uf knows how to rewrite. `--explain-any <package>` lists every
 place a dependency typed from its TypeScript declarations is `any`: each hole
 the translation left, and each error Flow reports inside the translation. Every
-entry gives the declaration file, the line and the declaration.
+entry gives the declaration file, the line and the declaration. `--no-lint`
+type-checks the same files without linting them: the report's `diagnostics` is
+empty and `typeCheck` is what it would have been, for a caller that only wants
+to know what Flow says and would otherwise spend most of a warm run on rules.
 
 #### The `--json` report has two lists of diagnostics
 
@@ -1330,10 +1333,20 @@ Runs the test suite. A PATH argument keeps only files whose path contains it.
 Each file is reported on stdout as it finishes — its mark, duration and
 counts, and under it any failure with its code frame — and the summary follows
 once the run is over, naming the failures again. On an interactive terminal a
-progress line on stderr (files done of the total, failures, running workers,
-elapsed time) is redrawn in place and removed before the summary; with `CI` or
-`NO_COLOR` set, or on a pipe, the per-file lines still stream and nothing is
-redrawn. `--json` prints one document at the end and nothing while it runs.
+live region on stderr has a row for each file being run — its cases so far out
+of those it declares, and the case that just finished — and a last row with the
+run's cases, files done of the total, failures and elapsed time; it is redrawn
+in place and removed before the summary. With `CI` or `NO_COLOR` set, or on a
+pipe, the per-file lines still stream and nothing is redrawn. `--json` prints
+one document at the end and nothing while it runs.
+
+With `test.splitFiles` set in `uf.config.js`, a file long enough to hold up the
+run — longer than half a worker's share of the suite, by the durations the last
+run recorded — runs as shares on several workers, each importing the file and
+running its own contiguous run of cases. The report is the one an unsplit run
+makes. It is off unless a project turns it on, because it holds only for a
+suite whose cases do not rely on the ones above them having run in the same
+process.
 
 Coverage is reported against the Flow source, mapped back through the
 transform's own source map, and a threshold in `uf.config.js` that is not

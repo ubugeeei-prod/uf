@@ -86,7 +86,7 @@ describe("the props a part spreads onto its element", () => {
   // an issue about `Field.Control`, not in an assertion about `merge-props.js`.
 
   it("does not make React's key mixed", () => {
-    const run = spawnSync(UF, ["check", "packages/ui", "--json"], {
+    const run = spawnSync(UF, ["check", "packages/ui", "--json", "--no-lint"], {
       cwd: repository,
       encoding: "utf8",
       maxBuffer: 32 * 1024 * 1024,

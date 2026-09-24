@@ -515,7 +515,7 @@ function ufCheck(patterns: Array<string>): Promise<$FlowFixMe> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       binary,
-      ["check", "--cwd", repository, "--color", "never", "--json", ...patterns],
+      ["check", "--cwd", repository, "--color", "never", "--json", "--no-lint", ...patterns],
       // Its stderr is captured rather than inherited: this repository's own
       // lint reports errors, so `uf check` always ends by saying so, and a
       // line of somebody else's verdict in the middle of this suite's report

@@ -204,6 +204,18 @@ pub(crate) struct LintRun {
 }
 
 pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
+    collect_and_lint(cwd, paths, true)
+}
+
+/// [`run_lint`], or only its collection when `lint` is false.
+///
+/// `uf check --no-lint` wants the batch the linter would have read and not one
+/// verdict of the linter's: a negative type test asks the checker whether a
+/// fixture is refused, and on a warm cache the lint was nine tenths of what
+/// that question cost. Skipping it leaves an empty report over the same files,
+/// so everything downstream — the batch, the counts, the payload — is shaped
+/// exactly as before.
+pub(crate) fn collect_and_lint(cwd: &Utf8Path, paths: &[String], lint: bool) -> Result<LintRun> {
     let resolved = load_config(cwd)?;
     // Flow only. Discovery also returns the JSON, CSS and TypeScript that
     // `uf fmt` hands to the non-Flow formatter, and uf's linter is a Flow
@@ -267,6 +279,21 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
             bail!("{libdef} is a library definition, not a source file uf lints");
         }
         bail!("no file matched {}", quoted_list(paths));
+    }
+    if !lint {
+        return Ok(LintRun {
+            report: LintReport {
+                diagnostics: Vec::new(),
+                files_checked: sources.len(),
+                unavailable: Vec::new(),
+            },
+            sources,
+            unreadable,
+            root: resolved.root,
+            available,
+            ignore_deprecation: ignore_deprecation(&resolved.config),
+            project_rules: plugins::ProjectRules::default(),
+        });
     }
     let mut report = if available.is_empty() {
         lint_sources(&sources, &resolved.config)?

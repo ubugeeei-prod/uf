@@ -413,6 +413,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             fix,
             fix_unsafe,
             explain_any,
+            no_lint,
             paths,
         } => commands::check::check(
             &cwd,
@@ -421,6 +422,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             fix_mode(fix, fix_unsafe),
             &paths,
             explain_any.as_deref(),
+            !no_lint,
         ),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);
@@ -667,6 +669,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 reporter,
                 reporter_outfile,
                 paths,
+                split_files: false,
             },
         ),
         Commands::Pm { command } => match command {

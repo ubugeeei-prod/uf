@@ -27,8 +27,8 @@ use uf_term::Status;
 use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Tone, push_spaces};
 
 use crate::commands::lint::{
-    LintCommand, LintRun, Verdict, group_by_path, lint_payload, plugins, render_fix_summary,
-    render_group, render_unreadable, render_verdict, run_lint, severity_count,
+    LintCommand, LintRun, Verdict, collect_and_lint, group_by_path, lint_payload, plugins,
+    render_fix_summary, render_group, render_unreadable, render_verdict, severity_count,
 };
 use crate::fix::files::{FixMode, FixSummary, fix_project};
 #[cfg(feature = "upstream-typecheck")]
@@ -252,6 +252,7 @@ pub(crate) fn check(
     fix: FixMode,
     paths: &[String],
     explain_any: Option<&str>,
+    lint: bool,
 ) -> Result<()> {
     let profile = Profile::start();
     let started = std::time::Instant::now();
@@ -275,7 +276,7 @@ pub(crate) fn check(
         available,
         ignore_deprecation,
         project_rules,
-    } = run_lint(cwd, paths)?;
+    } = collect_and_lint(cwd, paths, lint)?;
     progress.draw("type checking");
     let types = type_check(&sources, &available, &root, explain_any);
     progress.finish();

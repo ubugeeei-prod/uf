@@ -436,6 +436,9 @@ struct Request<'a> {
     filter: Option<&'a str>,
     /// Per-case budget in milliseconds.
     timeout_ms: u64,
+    /// Run only this share of the file's cases; see [`Part`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    part: Option<Part>,
     /// Which request this is, counting from one within this worker.
     ///
     /// The worker stamps it on every event it writes while serving this
@@ -451,6 +454,42 @@ struct Request<'a> {
     /// its count is only ever used as a fallback for a host too old to send
     /// this field.
     generation: u64,
+}
+
+/// One share of a file's cases, for a file run on several workers at once.
+///
+/// A file's cases are numbered in the order the file registers them, and share
+/// `index` of `count` is the contiguous run of them from `index * n / count`
+/// up to `(index + 1) * n / count`, `n` being how many there are. Every share
+/// imports the whole file — a case cannot be reached without the module that
+/// declares it — and runs, and reports, its own cases and no others, so the
+/// shares of one file between them report every case exactly once.
+///
+/// Contiguous rather than dealt round-robin, so a `beforeAll` that sets up for
+/// a `describe` is run by as few shares as the split allows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Part {
+    /// Which share, from zero.
+    pub index: usize,
+    /// How many shares the file is split into.
+    pub count: usize,
+}
+
+/// One request for [`Worker::run`]: which file, and how to run it.
+#[derive(Debug, Clone, Copy)]
+pub struct FileRun<'a> {
+    /// Absolute path the worker imports.
+    pub file: &'a str,
+    /// The path records are reported under.
+    pub relative: &'a str,
+    /// Keep only cases whose full name contains this.
+    pub filter: Option<&'a str>,
+    /// Run only this share of the cases; all of them when `None`.
+    pub part: Option<Part>,
+    /// The budget for one case.
+    pub case_timeout: Duration,
+    /// The budget for the whole file, after which the worker is killed.
+    pub deadline: Duration,
 }
 
 /// The files that changed, sent to a kept worker between runs.
@@ -1078,6 +1117,34 @@ impl Worker {
         case_timeout: Duration,
         deadline: Duration,
     ) -> FileOutcome {
+        self.run(
+            FileRun {
+                file,
+                relative,
+                filter,
+                part: None,
+                case_timeout,
+                deadline,
+            },
+            &mut |_| {},
+        )
+    }
+
+    /// [`Worker::run_file`], for a [`FileRun`] — which may be one share of a
+    /// file — calling `on_test` with each case as the worker reports it.
+    ///
+    /// `on_test` is how a case reaches the screen while the rest of its file
+    /// is still running. It sees the record as it arrived, before a retry
+    /// could change it; the [`FileOutcome`] is what the report is made of.
+    pub fn run(&mut self, run: FileRun<'_>, on_test: &mut dyn FnMut(&TestRecord)) -> FileOutcome {
+        let FileRun {
+            file,
+            relative,
+            filter,
+            part,
+            case_timeout,
+            deadline,
+        } = run;
         // Pushed before the request is sent, so the generation is the file's
         // place in this worker's history whether or not the send succeeds. A
         // send that fails ends the worker anyway.
@@ -1088,6 +1155,7 @@ impl Worker {
             file,
             filter,
             timeout_ms: case_timeout.as_millis().min(u128::from(u64::MAX)) as u64,
+            part,
             generation,
         };
         let mut line = match serde_json::to_string(&request) {
@@ -1137,6 +1205,7 @@ impl Worker {
                     Ok(Event::Test(event)) => {
                         let mut record = record_of(relative, event);
                         record.output = pending.take(&record.name);
+                        on_test(&record);
                         records.push(record);
                     }
                     Ok(Event::Output(event)) => pending.push(event),

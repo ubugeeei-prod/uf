@@ -39,12 +39,12 @@ use camino::Utf8PathBuf;
 
 use crate::discovery::merge_plans;
 use crate::filter::TestFilter;
-use crate::host::{FileOutcome, HostCommand, SpawnError, Worker};
+use crate::host::{FileOutcome, FileRun, HostCommand, HostKind, Part, SpawnError, Worker};
 use crate::options::{Bail, Concurrency, RunOptions};
 use crate::plan::TestPlan;
 use crate::pool::WorkerPool;
-use crate::report::{FileReport, FileStatus, TestRunReport, TestStatus, TestSummary};
-use crate::schedule::{ScheduleEntry, auto_workers, schedule_files};
+use crate::report::{FileReport, FileStatus, TestRecord, TestRunReport, TestStatus, TestSummary};
+use crate::schedule::{ScheduleBasis, ScheduleEntry, auto_workers, schedule_files};
 use crate::timings::TestTimings;
 
 /// One file a run will execute.
@@ -125,6 +125,15 @@ pub trait RunObserver: Sync {
     /// Not called for a file the run bailed before, which never starts, nor
     /// again for a retry, which is part of the file's one run.
     fn file_started(&self, _file: &str) {}
+
+    /// One case of `file` finished, as its worker reported it.
+    ///
+    /// Called while the rest of the file is still running, which is the point:
+    /// a file of five hundred cases is visibly getting through them rather
+    /// than silent until it ends. The [`FileReport`] handed to
+    /// [`RunObserver::file_finished`] later is what the report is made of — a
+    /// retry can still change a case after it was seen here.
+    fn test_finished(&self, _file: &str, _record: &TestRecord) {}
 
     /// One file finished. `completed` counts finished files including this one.
     fn file_finished(&self, completed: usize, total: usize, report: &FileReport);
@@ -305,6 +314,7 @@ impl TestRunner {
         let host = self.host.as_ref().ok_or(RunError::NoHost)?;
 
         let workers = self.worker_count(&schedule);
+        let jobs = self.jobs(host, &selected, &schedule, workers);
         // A host that will not start is a run that cannot happen. Finding that
         // out once, here, turns it into one clear error instead of `workers`
         // identical file failures.
@@ -325,6 +335,7 @@ impl TestRunner {
             completed: AtomicUsize::new(0),
             total: schedule.len(),
             outcomes: Mutex::new(vec![None; schedule.len()]),
+            shares: Mutex::new((0..schedule.len()).map(|_| Shares::default()).collect()),
             first: Mutex::new(Some(first)),
             start_ups: Mutex::new(Vec::with_capacity(workers)),
         };
@@ -332,9 +343,9 @@ impl TestRunner {
         std::thread::scope(|scope| {
             let mut handles = Vec::with_capacity(workers);
             for _ in 0..workers {
-                handles.push(
-                    scope.spawn(|| self.drive(host, &selected, &schedule, &state, observer, pool)),
-                );
+                handles.push(scope.spawn(|| {
+                    self.drive(host, &selected, &schedule, &jobs, &state, observer, pool);
+                }));
             }
             for handle in handles {
                 let _ = handle.join();
@@ -364,6 +375,99 @@ impl TestRunner {
         report.summary.workers = workers;
         report.summary.worker_start_micros = median(&mut start_ups);
         Ok(report)
+    }
+
+    /// What the workers are handed: each file of the schedule, or — for a
+    /// file long enough to hold up the run — several shares of it.
+    ///
+    /// # Why a file is split
+    ///
+    /// A run finishes when its last file does, and longest-first only helps
+    /// while every file is shorter than a worker's share of the suite. One
+    /// that is not — a file of fifty cases that each start a process, say —
+    /// is the whole run's length on its own, and no order of the rest shortens
+    /// it. Its cases are independent of each other's workers, though, so a
+    /// file expected to take longer than [`SPLIT_FRACTION`] of a worker's share
+    /// runs as that many shares, each importing the file and running its own
+    /// contiguous run of cases ([`Part`]), side by side.
+    ///
+    /// # When it is not
+    ///
+    /// Only on a duration a previous run recorded — a size says nothing about
+    /// where a file's time goes — and only with a file of at least two cases.
+    /// Only when most of that duration was its cases: every share imports the
+    /// file, so time spent importing is time a split pays once per share, and
+    /// the shares are as many as it takes for the import and a share of the
+    /// cases to fit in a worker's share of the suite.
+    /// Never when `-u` may rewrite snapshots, which a file keeps one of for all
+    /// its cases and two shares would each write; never for `--bench`, which
+    /// runs one file at a time on purpose; never on the browser host, whose
+    /// page runs a whole file; and never when [`RunOptions::split_files`] is
+    /// off.
+    fn jobs(
+        &self,
+        host: &HostCommand,
+        selected: &[SelectedFile<'_>],
+        schedule: &[ScheduleEntry],
+        workers: usize,
+    ) -> Vec<Job> {
+        let splits = self.options.split_files
+            && workers > 1
+            && !host.update_snapshots
+            && !host.bench
+            && matches!(host.kind, HostKind::Node | HostKind::Bun | HostKind::Deno);
+        let total: u64 = schedule
+            .iter()
+            .map(|entry| entry.weight_micros)
+            .fold(0, u64::saturating_add);
+        let share = (total / workers.max(1) as u64 / SPLIT_FRACTION).max(MIN_SHARE_MICROS);
+        let mut jobs = Vec::with_capacity(schedule.len());
+        for (at, entry) in schedule.iter().enumerate() {
+            let declared = selected
+                .get(entry.index)
+                .map_or(0, |selected| selected.plan.runnable_count());
+            // What the cases cost between them, and what every share pays
+            // again whatever it runs: importing the file.
+            let cases = self
+                .timings
+                .cases(&entry.file)
+                .unwrap_or(0)
+                .min(entry.weight_micros);
+            let import = entry.weight_micros - cases;
+            let count = if splits
+                && entry.basis == ScheduleBasis::Recorded
+                && entry.weight_micros > share
+                && cases >= import
+                && import < share
+            {
+                usize::try_from(cases.div_ceil(share - import))
+                    .unwrap_or(usize::MAX)
+                    .min(declared)
+                    .min(workers)
+                    .min(MAX_SHARES)
+            } else {
+                1
+            };
+            if count < 2 {
+                jobs.push(Job {
+                    at,
+                    part: None,
+                    weight: entry.weight_micros,
+                });
+                continue;
+            }
+            for index in 0..count {
+                jobs.push(Job {
+                    at,
+                    part: Some(Part { index, count }),
+                    weight: import + cases / count as u64,
+                });
+            }
+        }
+        // Longest first again, now that a split file's shares are each shorter
+        // than the file was. Stable, so a file's shares keep their order.
+        jobs.sort_by_key(|job| std::cmp::Reverse(job.weight));
+        jobs
     }
 
     /// How many workers to start: never more than there are files, never more
@@ -420,38 +524,53 @@ impl TestRunner {
             .collect()
     }
 
-    /// One worker: take the next file until there are none, or the run bails.
+    /// One worker: take the next job until there are none, or the run bails.
+    #[allow(clippy::too_many_arguments)]
     fn drive(
         &self,
         host: &HostCommand,
         selected: &[SelectedFile<'_>],
         schedule: &[ScheduleEntry],
+        jobs: &[Job],
         state: &RunState,
         observer: &dyn RunObserver,
         pool: Option<&WorkerPool>,
     ) {
         let mut worker: Option<Worker> = None;
         loop {
-            let at = state.next.fetch_add(1, Ordering::Relaxed);
-            if at >= schedule.len() {
+            let next = state.next.fetch_add(1, Ordering::Relaxed);
+            let Some(job) = jobs.get(next) else {
                 match (pool, worker.take()) {
                     (Some(pool), Some(healthy)) => pool.give_back(healthy),
                     (_, mut last) => retire(&mut last, host),
                 }
                 return;
-            }
-            if self.bailed(state) {
-                // Leave the slot empty; `assemble` reports it as not run.
-                continue;
-            }
+            };
+            let at = job.at;
             let Some(selected) = selected.get(schedule[at].index) else {
                 continue;
             };
             let file = selected.file;
+            if self.bailed(state) {
+                // A file nothing of has started is left empty, and `assemble`
+                // reports it as not run. A share of one that has started is
+                // put in as not run, so the shares that did run still reach the
+                // report.
+                if let Some(part) = job.part
+                    && let Some(merged) = state.share_done(at, part, Piece::not_run())
+                    && !matches!(merged.outcome.status, FileStatus::NotRun)
+                {
+                    self.finish(state, observer, selected, at, merged);
+                }
+                continue;
+            }
             // Before the worker is found, so a file whose worker will not
             // start is still one that started and finished: a caller counting
-            // what is running never sees a finish it did not see begin.
-            observer.file_started(&file.relative);
+            // what is running never sees a finish it did not see begin. Once
+            // per file, however many shares it runs as.
+            if state.share_started(at) {
+                observer.file_started(&file.relative);
+            }
 
             if worker.is_none() {
                 worker = state.take_first();
@@ -459,120 +578,150 @@ impl TestRunner {
             if worker.is_none() {
                 worker = pool.and_then(WorkerPool::take);
             }
-            if worker.is_none() {
-                worker = match Worker::spawn(host) {
-                    Ok(worker) => Some(worker),
-                    Err(error) => {
-                        state.record(
-                            at,
-                            FileReport {
-                                file: file.relative.clone(),
-                                status: FileStatus::HostFailed {
-                                    message: error.message,
-                                },
-                                duration_micros: 0,
-                                records: Vec::new(),
-                                output: Vec::new(),
-                            },
-                            observer,
-                        );
-                        continue;
+            let piece = match worker.as_mut() {
+                Some(active) => self.run_job(file, job, active, state, observer),
+                None => match Worker::spawn(host) {
+                    Ok(fresh) => {
+                        let active = worker.insert(fresh);
+                        self.run_job(file, job, active, state, observer)
                     }
-                };
-            }
-
-            let started = Instant::now();
-            let mut outcome = worker
-                .as_mut()
-                .map(|worker| self.run_one(worker, file))
-                .unwrap_or(FileOutcome {
-                    status: FileStatus::HostFailed {
-                        message: String::from("no worker"),
+                    Err(error) => Piece {
+                        outcome: FileOutcome {
+                            status: FileStatus::HostFailed {
+                                message: error.message,
+                            },
+                            records: Vec::new(),
+                            output: Vec::new(),
+                        },
+                        duration_micros: 0,
                     },
-                    records: Vec::new(),
-                    output: Vec::new(),
-                });
-
-            // A worker's first file is also the worker booting: `uf` starts the
-            // clock when it writes the request, and the process is not ready to
-            // read it for tens of milliseconds. Measured here — before a retry
-            // sends the worker another request, or a failure retires it — and
-            // taken back out of the file's duration below, so the slowest-files
-            // table and the recorded timings describe files rather than which
-            // file each worker happened to start on.
-            let first_answer = micros(started.elapsed());
-            let start_up = worker.as_ref().and_then(Worker::start_micros);
-            let charged = match (start_up, worker.as_ref().and_then(Worker::reported_micros)) {
-                (Some(_), Some(reported)) => first_answer.saturating_sub(reported),
-                _ => 0,
+                },
             };
-            if let Some(start_up) = start_up {
-                state.note_start_up(start_up);
-            }
 
             // A file that timed out or lost its host killed the worker; the
             // next file needs a fresh one.
-            if !matches!(
-                outcome.status,
-                FileStatus::Completed | FileStatus::LoadFailed { .. }
-            ) {
-                retire(&mut worker, host);
-            } else if self.options.retry.max_attempts() > 1 {
-                self.retry_failures(host, file, &mut outcome, &mut worker);
-            }
-
-            // A file that loaded, finished, and reported not one case, when
-            // discovery said it holds cases. The worker reports every
-            // declaration it registered — a skip and a filtered-out case
-            // included — so an empty report from a file with declarations in
-            // it means none of them reached `@uniflowed/test`, and the run
-            // executed nothing while counting the file as done. See
-            // [`FileStatus::RegisteredNothing`], and ubugeeei-prod/uf#482 for
-            // the migration this hid: two hundred cases reported green.
-            //
-            // After the retries, not before: a status set here is not a reason
-            // to throw away a working worker, and nothing above can produce
-            // this shape without also producing records.
-            // Benchmarks count. The worker reports every one, run or skipped,
-            // so a benchmark that never reached `@uniflowed/test` is as missing
-            // as a test would be.
-            let declared = selected.plan.runnable_count() + selected.plan.bench_count();
-            if declared > 0
-                && outcome.records.is_empty()
-                && matches!(outcome.status, FileStatus::Completed)
-            {
-                outcome.status = FileStatus::RegisteredNothing { declared };
-            }
-
-            let report = FileReport {
-                file: file.relative.clone(),
-                status: outcome.status,
-                duration_micros: micros(started.elapsed()).saturating_sub(charged),
-                records: outcome.records,
-                output: outcome.output,
+            let piece = match piece.outcome.status {
+                FileStatus::Completed | FileStatus::LoadFailed { .. } => {
+                    let mut piece = piece;
+                    if self.options.retry.max_attempts() > 1 {
+                        self.retry_failures(host, file, &mut piece.outcome, &mut worker);
+                    }
+                    piece
+                }
+                _ => {
+                    retire(&mut worker, host);
+                    piece
+                }
             };
-            let failed = report
-                .records
-                .iter()
-                .filter(|record| record.status.is_failed())
-                .count()
-                + usize::from(report.status.is_fatal());
-            if failed > 0 {
-                state.failures.fetch_add(failed, Ordering::SeqCst);
+
+            let merged = match job.part {
+                None => Some(piece),
+                Some(part) => state.share_done(at, part, piece),
+            };
+            if let Some(merged) = merged {
+                self.finish(state, observer, selected, at, merged);
             }
-            state.record(at, report, observer);
         }
     }
 
-    /// Run one file once.
-    fn run_one(&self, worker: &mut Worker, file: &TestFile) -> FileOutcome {
-        worker.run_file(
-            file.absolute.as_str(),
-            &file.relative,
-            self.filter.name_pattern(),
-            self.options.effective_file_timeout(),
-            self.options.effective_file_timeout() * MAX_CASES_PER_FILE_BUDGET,
-        )
+    /// Run one job on `worker`, and time it as a file's run is timed.
+    fn run_job(
+        &self,
+        file: &TestFile,
+        job: &Job,
+        worker: &mut Worker,
+        state: &RunState,
+        observer: &dyn RunObserver,
+    ) -> Piece {
+        let started = Instant::now();
+        let outcome = worker.run(
+            FileRun {
+                file: file.absolute.as_str(),
+                relative: &file.relative,
+                filter: self.filter.name_pattern(),
+                part: job.part,
+                case_timeout: self.options.effective_file_timeout(),
+                deadline: self.options.effective_file_timeout() * MAX_CASES_PER_FILE_BUDGET,
+            },
+            &mut |record| observer.test_finished(&file.relative, record),
+        );
+
+        // A worker's first file is also the worker booting: `uf` starts the
+        // clock when it writes the request, and the process is not ready to
+        // read it for tens of milliseconds. Measured here — before a retry
+        // sends the worker another request, or a failure retires it — and
+        // taken back out of the file's duration below, so the slowest-files
+        // table and the recorded timings describe files rather than which
+        // file each worker happened to start on.
+        let first_answer = micros(started.elapsed());
+        let start_up = worker.start_micros();
+        let charged = match (start_up, worker.reported_micros()) {
+            (Some(_), Some(reported)) => first_answer.saturating_sub(reported),
+            _ => 0,
+        };
+        if let Some(start_up) = start_up {
+            state.note_start_up(start_up);
+        }
+        Piece {
+            outcome,
+            duration_micros: first_answer.saturating_sub(charged),
+        }
+    }
+
+    /// Report a file whose every share has finished.
+    fn finish(
+        &self,
+        state: &RunState,
+        observer: &dyn RunObserver,
+        selected: &SelectedFile<'_>,
+        at: usize,
+        piece: Piece,
+    ) {
+        let Piece {
+            mut outcome,
+            duration_micros,
+        } = piece;
+        // A file that loaded, finished, and reported not one case, when
+        // discovery said it holds cases. The worker reports every
+        // declaration it registered — a skip and a filtered-out case
+        // included — so an empty report from a file with declarations in
+        // it means none of them reached `@uniflowed/test`, and the run
+        // executed nothing while counting the file as done. See
+        // [`FileStatus::RegisteredNothing`], and ubugeeei-prod/uf#482 for
+        // the migration this hid: two hundred cases reported green.
+        //
+        // After the retries, not before: a status set here is not a reason
+        // to throw away a working worker, and nothing above can produce
+        // this shape without also producing records. And over the whole
+        // file, not one share: a share may own nothing that ran.
+        // Benchmarks count. The worker reports every one, run or skipped,
+        // so a benchmark that never reached `@uniflowed/test` is as missing
+        // as a test would be.
+        let declared = selected.plan.runnable_count() + selected.plan.bench_count();
+        if declared > 0
+            && outcome.records.is_empty()
+            && matches!(outcome.status, FileStatus::Completed)
+        {
+            outcome.status = FileStatus::RegisteredNothing { declared };
+        }
+
+        let report = FileReport {
+            file: selected.file.relative.clone(),
+            status: outcome.status,
+            duration_micros,
+            records: outcome.records,
+            output: outcome.output,
+        };
+        let failed = report
+            .records
+            .iter()
+            .filter(|record| record.status.is_failed())
+            .count()
+            + usize::from(report.status.is_fatal());
+        if failed > 0 {
+            state.failures.fetch_add(failed, Ordering::SeqCst);
+        }
+        state.record(at, report, observer);
     }
 
     /// Re-run each failing case, up to the configured number of attempts.
@@ -682,6 +831,105 @@ fn retire(worker: &mut Option<Worker>, host: &HostCommand) {
 /// it is deliberately generous.
 const MAX_CASES_PER_FILE_BUDGET: u32 = 60;
 
+/// A file expected to take longer than a worker's share of the suite divided
+/// by this is split; see [`TestRunner::jobs`].
+///
+/// Not one: a file exactly a worker's share long still ends the run late when
+/// it happens to start after the others have begun, and splitting a little
+/// earlier than strictly needed costs one more import of the file.
+const SPLIT_FRACTION: u64 = 2;
+
+/// The shortest share a file is split into, in microseconds.
+///
+/// Every share imports the whole file, so a share shorter than an import is
+/// mostly import; below this a split costs more than it saves.
+const MIN_SHARE_MICROS: u64 = 250_000;
+
+/// The most shares one file is split into.
+const MAX_SHARES: usize = 16;
+
+/// One thing a worker is handed: a file, or one share of one.
+#[derive(Debug, Clone, Copy)]
+struct Job {
+    /// The file's slot in the schedule, and in the run's outcomes.
+    at: usize,
+    /// Which share, for a split file.
+    part: Option<Part>,
+    /// Expected cost in microseconds, which is what jobs are ordered by.
+    weight: u64,
+}
+
+/// What one job produced.
+#[derive(Debug)]
+struct Piece {
+    outcome: FileOutcome,
+    /// How long it took, less the worker's start-up.
+    duration_micros: u64,
+}
+
+impl Piece {
+    /// A share the run bailed before.
+    fn not_run() -> Self {
+        Self {
+            outcome: FileOutcome {
+                status: FileStatus::NotRun,
+                records: Vec::new(),
+                output: Vec::new(),
+            },
+            duration_micros: 0,
+        }
+    }
+
+    /// The shares of one file, in order, as the one run of it they add up to.
+    ///
+    /// The cases in share order, which is the order the file declares them —
+    /// each share is a contiguous run of them. The status of the first share
+    /// that did not complete, because that is the one to explain: a file that
+    /// failed to load failed in every share, and one share that timed out is a
+    /// file that did. The duration is the sum, which is what the file costs
+    /// and what the next run's schedule has to know to split it again.
+    fn merge(pieces: Vec<Self>) -> Self {
+        let mut status = FileStatus::Completed;
+        let mut records = Vec::new();
+        let mut output = Vec::new();
+        let mut duration_micros = 0u64;
+        let mut ran = false;
+        for piece in pieces {
+            duration_micros = duration_micros.saturating_add(piece.duration_micros);
+            records.extend(piece.outcome.records);
+            output.extend(piece.outcome.output);
+            match piece.outcome.status {
+                FileStatus::Completed => ran = true,
+                FileStatus::NotRun => {}
+                other => {
+                    ran = true;
+                    if matches!(status, FileStatus::Completed) {
+                        status = other;
+                    }
+                }
+            }
+        }
+        if !ran {
+            status = FileStatus::NotRun;
+        }
+        Self {
+            outcome: FileOutcome {
+                status,
+                records,
+                output,
+            },
+            duration_micros,
+        }
+    }
+}
+
+/// The shares of one file seen so far.
+#[derive(Debug, Default)]
+struct Shares {
+    started: bool,
+    finished: Vec<(usize, Piece)>,
+}
+
 /// Shared state across the pool.
 #[derive(Debug)]
 struct RunState {
@@ -690,6 +938,8 @@ struct RunState {
     completed: AtomicUsize,
     total: usize,
     outcomes: Mutex<Vec<Option<FileReport>>>,
+    /// Each split file's shares, until the last of them finishes.
+    shares: Mutex<Vec<Shares>>,
     /// The worker started to prove the host starts, until a thread takes it.
     ///
     /// Still here when the run ends only if no thread ever wanted a worker, and
@@ -706,6 +956,33 @@ impl RunState {
         if let Ok(mut outcomes) = self.outcomes.lock() {
             outcomes[at] = Some(report);
         }
+    }
+
+    /// Note that a job of the file at `at` is starting, and answer whether it
+    /// is the file's first.
+    fn share_started(&self, at: usize) -> bool {
+        let Ok(mut shares) = self.shares.lock() else {
+            return true;
+        };
+        shares
+            .get_mut(at)
+            .is_none_or(|shares| !std::mem::replace(&mut shares.started, true))
+    }
+
+    /// Keep one share's piece, and hand back the whole file once `part` was
+    /// the last of its shares to finish.
+    fn share_done(&self, at: usize, part: Part, piece: Piece) -> Option<Piece> {
+        let mut shares = self.shares.lock().ok()?;
+        let file = shares.get_mut(at)?;
+        file.finished.push((part.index, piece));
+        if file.finished.len() < part.count {
+            return None;
+        }
+        let mut finished = std::mem::take(&mut file.finished);
+        finished.sort_by_key(|(index, _)| *index);
+        Some(Piece::merge(
+            finished.into_iter().map(|(_, piece)| piece).collect(),
+        ))
     }
 
     /// The first worker, for the first thread to ask.

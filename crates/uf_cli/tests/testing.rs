@@ -218,6 +218,84 @@ fn a_serial_run_and_a_parallel_run_produce_the_same_results() {
     similar_asserts::assert_eq!(without_timings(&serial), without_timings(&parallel));
 }
 
+/// A project whose one long file writes down which process ran each case.
+fn split_project(split: bool) -> Project {
+    let mut long = String::from(
+        "// @flow\nimport fs from \"node:fs\";\nimport path from \"node:path\";\n\
+         import { describe, expect, it } from \"@uniflowed/test\";\n\n\
+         const ran = (name: string) => {\n  \
+           const dir = path.join(process.env.UF_PROJECT_ROOT ?? \".\", \"ran\");\n  \
+           fs.mkdirSync(dir, { recursive: true });\n  \
+           fs.writeFileSync(path.join(dir, name), String(process.pid));\n};\n\n\
+         describe(\"long\", () => {\n",
+    );
+    for case in 0..8 {
+        long.push_str(&format!(
+            "  it(\"case {case}\", () => {{\n    ran(\"{case}\");\n    expect({case}).toBe({case});\n  }});\n"
+        ));
+    }
+    long.push_str("});\n");
+    let project = Project::new(&[
+        ("src/long.test.js", long.as_str()),
+        (
+            "src/a.test.js",
+            "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"a\", () => {\n  expect(1).toBe(1);\n});\n",
+        ),
+        (
+            "src/b.test.js",
+            "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"b\", () => {\n  expect(2).toBe(2);\n});\n",
+        ),
+    ]);
+    project.write(
+        "uf.config.js",
+        &format!(
+            "// @flow\nimport {{ defineConfig }} from \"@uniflowed/config\";\n\n\
+             export default defineConfig({{ test: {{ splitFiles: {split} }} }});\n"
+        ),
+    );
+    // As a previous run would have recorded them: one file that is the whole
+    // suite's length, nearly all of it in its cases, and two that are nothing.
+    project.write(
+        ".uf/test-timings.json",
+        r#"{"version":1,"workerStartMicros":1000,"files":{"src/long.test.js":8000000,"src/a.test.js":1000,"src/b.test.js":1000},"cases":{"src/long.test.js":7900000}}"#,
+    );
+    project
+}
+
+/// How many processes ran the long file's cases, and how many cases ran.
+fn processes_that_ran(project: &Project) -> (usize, usize) {
+    let dir = project.path().join("ran");
+    let mut pids = std::collections::BTreeSet::new();
+    let mut cases = 0;
+    for entry in std::fs::read_dir(&dir).expect("the cases ran") {
+        let entry = entry.unwrap();
+        pids.insert(std::fs::read_to_string(entry.path()).unwrap());
+        cases += 1;
+    }
+    let _ = std::fs::remove_dir_all(dir);
+    (pids.len(), cases)
+}
+
+#[test]
+fn a_long_file_runs_as_shares_when_the_project_says_it_may() {
+    if !host_ready() {
+        return;
+    }
+    let whole = split_project(false);
+    let (_, unsplit, _) = run(whole.path(), &["--json", "-j", "4"]);
+    assert_eq!(processes_that_ran(&whole), (1, 8));
+
+    let split = split_project(true);
+    let (_, shares, _) = run(split.path(), &["--json", "-j", "4"]);
+    let (processes, cases) = processes_that_ran(&split);
+    assert_eq!(cases, 8, "every case ran once");
+    assert!(processes > 1, "the long file ran on {processes} worker");
+
+    // And the report cannot tell: every case once, in the file's order, under
+    // the one file — only the timings differ.
+    similar_asserts::assert_eq!(without_timings(&unsplit), without_timings(&shares));
+}
+
 #[test]
 fn a_failure_is_shown_as_a_code_frame_at_the_assertion() {
     if !host_ready() {

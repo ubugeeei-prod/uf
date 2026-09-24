@@ -58,7 +58,7 @@
 
 import * as nodeModule from "node:module";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   TransformError,
@@ -112,11 +112,18 @@ export function installFlowHooks(root) {
   // each module once and has no use for the graph.
   const epochs = environmentVariable("UF_TEST_KEEP_WORKERS") === "1" ? moduleEpochs() : null;
 
+  // What this process already worked out, so the second test file to reach a
+  // module does not work it out again; see `rememberedResolve` and
+  // `rememberedLoad` below.
+  const resolutions = new Map();
+  const loaded = new Map();
+  const rootURL = pathToFileURL(root).href.replace(/\/?$/, "/");
+
   return nodeModule.registerHooks({
     resolve(specifier, context, nextResolve) {
       let resolved;
       try {
-        resolved = nextResolve(specifier, context);
+        resolved = rememberedResolve(specifier, context, nextResolve, resolutions, rootURL);
       } catch (error) {
         if (isTestCompilerRuntime(specifier) && error.code === "ERR_MODULE_NOT_FOUND") {
           return { url: TEST_COMPILER_RUNTIME_URL, shortCircuit: true };
@@ -141,10 +148,14 @@ export function installFlowHooks(root) {
       if (!isFlowModule(filename)) return nextLoad(url, context);
 
       const source = readFileSync(filename, "utf8");
-      const cached = readCached(
-        cacheEntryFor(cacheDirectory, ufBinaryIdentity(), source, filename),
-      );
+      const identity = ufBinaryIdentity();
+      const known = loaded.get(filename);
+      if (known != null && known.identity === identity && known.source === source) {
+        return { format: "module", source: known.output, shortCircuit: true };
+      }
+      const cached = readCached(cacheEntryFor(cacheDirectory, identity, source, filename));
       if (cached != null) {
+        if (identity != null) loaded.set(filename, { identity, source, output: cached });
         return { format: "module", source: cached, shortCircuit: true };
       }
 
@@ -159,6 +170,40 @@ export function installFlowHooks(root) {
       return { format: "module", source: output, shortCircuit: true };
     },
   });
+}
+
+/**
+ * `nextResolve`, remembered for a parent that is one test file's copy of a
+ * project module.
+ *
+ * `uf test` gives every test file its own instance of the project's modules
+ * (`./file-scope.js`), and it does that by URL: `a.js?uf-file=7` is a module
+ * Node has never seen, so every import in it is resolved from nothing again —
+ * the `stat`s, the `realpath`s, the `package.json` walks — for every file a
+ * worker runs. The answer cannot differ between two copies of one module, since
+ * Node resolves against the parent's path and not its query, so it is kept
+ * here under the parent's path and asked of Node once.
+ *
+ * Only for such a parent, and only for an answer inside the project: a parent
+ * with no query is one Node already caches the resolutions of itself, and a
+ * file outside the project — a scratch module a test writes to a temporary
+ * directory and deletes again — is one whose answer may not outlive the file.
+ */
+function rememberedResolve(specifier, context, nextResolve, resolutions, rootURL) {
+  const parentURL = context?.parentURL;
+  const query = typeof parentURL === "string" ? parentURL.indexOf("?") : -1;
+  if (query === -1 || !parentURL.startsWith("file:")) return nextResolve(specifier, context);
+  const key =
+    `${specifier}\0${parentURL.slice(0, query)}\0` +
+    `${String(context.conditions)}\0${JSON.stringify(context.importAttributes ?? null)}`;
+  const known = resolutions.get(key);
+  if (known != null) return known;
+  const resolved = nextResolve(specifier, context);
+  if (typeof resolved?.url === "string" && resolved.url.startsWith(rootURL)) {
+    // Answered without asking Node next time, which Node requires be said.
+    resolutions.set(key, { ...resolved, shortCircuit: true });
+  }
+  return resolved;
 }
 
 /**
