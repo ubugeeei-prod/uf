@@ -122,7 +122,7 @@ const BUDGET = { timeout: 60_000 };
 
 describe("a kept worker told that a file changed", () => {
   it(
-    "runs the next file against the edit, and keeps what the edit does not reach",
+    "runs the next file against the edit, through every module in between",
     async () => {
       const { root, test, write } = project();
       const worker = startWorker(true);
@@ -142,8 +142,11 @@ describe("a kept worker told that a file changed", () => {
         // Through `mid.js`, which re-exports it: the edit reaches the test
         // however many modules are in between.
         expect(printed(second).value).toBe("after");
-        // And `other.js`, which no edit reached, is the instance it was.
-        expect(printed(second).instance).toBe(printed(first).instance);
+        // `other.js` is evaluated afresh too, but not because of the edit:
+        // every test file gets its own copy of the project's modules
+        // (ubugeeei-prod/uf#1443). What a kept worker keeps between runs is
+        // what the file scope shares — installed packages and the runner.
+        expect(printed(second).instance).not.toBe(printed(first).instance);
         expect(second.find((event) => event.event === "file")?.status).toBe("completed");
       } finally {
         worker.stop();

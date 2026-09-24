@@ -78,12 +78,8 @@ import {
   readCached,
   writeCached,
 } from "./flow-cache.js";
-      // A test file's own copy of the project's modules; see `./file-scope.js`.
-      let url = fileScoped(context?.parentURL, resolved?.url, isImport(context));
-      // A kept watch worker's record of what it loaded, and a fresh URL for
-      // what an edit reached; see `./module-epochs.js`. A URL the file scope
-      // already gave a query keeps it: that instance is the file's own.
-      if (epochs != null) url = epochs.resolved(context?.parentURL, url, isImport(context));
+import { fileScoped } from "./file-scope.js";
+import { moduleEpochs } from "./module-epochs.js";
 
 /**
  * Install the hooks for the rest of this thread, compiling under `root`.
