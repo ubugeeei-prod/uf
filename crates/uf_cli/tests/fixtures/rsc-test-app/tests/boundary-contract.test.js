@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, expect, it, uft } from "@uniflowed/test";
+import { afterAll, expect, it } from "@uniflowed/test";
 import { buildApp } from "@uniflowed/router/testing";
 
 // `docs/app/guide/server-components/$page.mdx`: "`$error.js` is a client
@@ -11,8 +11,7 @@ import { buildApp } from "@uniflowed/router/testing";
 // named." (ubugeeei-prod/uf#1501)
 //
 // A copy of this project with the directive taken off `app/notes/$error.js`,
-// built for real, because the refusal is the rsc graph's and only a build has
-// one. The copy lives under `.uf/`, inside the project, so its packages resolve
+// built for real, because only a build decides it. The copy lives under `.uf/`, inside the project, so its packages resolve
 // from the project's own `node_modules`.
 
 const PROJECT = path.resolve(fileURLToPath(String(import.meta.url)), "../..");
@@ -44,31 +43,11 @@ it(
     const source = fs.readFileSync(boundary, "utf8");
     fs.writeFileSync(boundary, source.replace(/^"use client";\n/, ""));
 
-    const app = await buildApp({ root: COPY });
-    // Whatever the host reports through: the console, or the process logger's
-    // own writes.
-    const logged = [
-      uft.spyOn(console, "error").mockImplementation(() => {}),
-      uft.spyOn(process.stderr, "write").mockImplementation(() => true),
-      uft.spyOn(process.stdout, "write").mockImplementation(() => true),
-    ];
-    try {
-      const response = await app.render("/notes/1");
-      const html = await response.text();
-      expect(response.status).toBe(500);
-      const said = [
-        ...app.errors(),
-        ...logged.flatMap((spy) => spy.mock.calls.flatMap((call) => call.args)),
-      ]
-        .map((value) => (value instanceof Error ? value.message : String(value)))
-        .join("\n");
-      expect(said).toContain("app/notes/$error.js");
-      expect(said).toContain("use client directive");
-      // The reason is the operator's, not the visitor's.
-      expect(html).not.toContain("use client directive");
-    } finally {
-      for (const spy of logged) spy.mockRestore();
-    }
+    // The build refuses it, before anything can be served: the refusal names
+    // the file and says what to add.
+    const refused = buildApp({ root: COPY });
+    await expect(refused).rejects.toThrow("app/notes/$error.js");
+    await expect(refused).rejects.toThrow('"use client"');
   },
   { timeout: 120_000 },
 );
