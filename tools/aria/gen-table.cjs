@@ -13,6 +13,42 @@
 // `--role-elements` also emits the role-to-element table, and `--reserved` the
 // elements ARIA reserves; only the rules that read a role against an element
 // need either.
+/*::
+// The shapes this script reads out of `aria-query`, which ships no types. Flow
+// comment syntax, because the script runs on plain `node`.
+//
+// An ARIA attribute: its value type, the tokens it takes, and for the 1.3
+// index-text names below, the 1.2 attribute each is the text form of.
+type AttributeSpec = {
+  readonly type: string,
+  readonly values?: $ReadOnlyArray<string | boolean>,
+  readonly mirrors?: string,
+  ...
+};
+
+// An element that implies a role, with the attribute constraints that decide it.
+type Implicit = {
+  readonly element: string,
+  readonly attributes: $ReadOnlyArray<{
+    readonly name: string,
+    readonly value: string | null,
+    readonly set: boolean,
+    readonly undefinedConstraint: boolean,
+  }>,
+  readonly constrained: boolean,
+  readonly role: string,
+};
+
+// A role, and the elements that carry it natively.
+type RoleElements = {
+  readonly role: string,
+  readonly tags: $ReadOnlyArray<{
+    readonly name: string,
+    readonly attributes: $ReadOnlyArray<{ readonly name: string, readonly value: string | null }>,
+  }>,
+};
+*/
+
 const q = require("aria-query");
 const version = require("aria-query/package.json").version;
 
@@ -29,18 +65,20 @@ const version = require("aria-query/package.json").version;
 // puts them into a role's mask: aria-query knows which roles take
 // `aria-colindex`, and `aria-colindextext` is supported by exactly those.
 // https://w3c.github.io/aria/#aria-colindextext
-const EXTRA = {
+const EXTRA /*: { readonly [string]: AttributeSpec } */ = {
   "aria-colindextext": { type: "string", mirrors: "aria-colindex" },
   "aria-rowindextext": { type: "string", mirrors: "aria-rowindex" },
 };
 
 const fromAriaQuery = Object.fromEntries(q.aria.keys().map((name) => [name, q.aria.get(name)]));
-const attributes = { ...fromAriaQuery, ...EXTRA };
+const attributes /*: { readonly [string]: AttributeSpec } */ = { ...fromAriaQuery, ...EXTRA };
 const attributeNames = Object.keys(attributes).sort();
 const attributeIndex = new Map(attributeNames.map((name, at) => [name, at]));
 if (attributeNames.length > 64) throw new Error("mask no longer fits in a u64");
 
-const KIND = {
+// `void` for a type aria-query adds and this table has not met, which the
+// emitter below refuses by name.
+const KIND /*: { readonly [string]: ((spec: AttributeSpec) => string) | void } */ = {
   boolean: () => "Kind::Boolean",
   tristate: () => "Kind::Tristate",
   integer: () => "Kind::Integer",
@@ -54,18 +92,20 @@ const KIND = {
 
 // `aria-current` and friends list `true`/`false` among their tokens; those are
 // the boolean spellings of the same attribute and are handled by the kind.
-const tokens = (spec) =>
+const tokens = (spec /*: AttributeSpec */) /*: string */ =>
   (spec.values || [])
     .filter((value) => typeof value === "string" && value !== "undefined")
     .map((value) => JSON.stringify(value))
     .join(", ");
 
 // A token attribute that also lists true/false takes the boolean spellings.
-const takesBoolean = (spec) => (spec.values || []).some((value) => typeof value === "boolean");
+const takesBoolean = (spec /*: AttributeSpec */) /*: boolean */ =>
+  (spec.values || []).some((value) => typeof value === "boolean");
 // `aria-orientation`'s "undefined" is a real token in the spec.
-const takesUndefined = (spec) => (spec.values || []).includes("undefined");
+const takesUndefined = (spec /*: AttributeSpec */) /*: boolean */ =>
+  (spec.values || []).includes("undefined");
 
-const mask = (names) => {
+const mask = (names /*: $ReadOnlyArray<string> */) /*: string */ => {
   let bits = 0n;
   for (const name of names) {
     const at = attributeIndex.get(name);
@@ -80,7 +120,7 @@ const mask = (names) => {
 // ---------------------------------------------------------------------------
 
 const roleNames = q.roles.keys().slice().sort();
-const isA = (name, ancestor) =>
+const isA = (name /*: string */, ancestor /*: string */) /*: boolean */ =>
   (q.roles.get(name).superClass || []).some((chain) => chain.includes(ancestor));
 
 // Every role `name` is a kind of, flattened out of aria-query's superclass
@@ -89,7 +129,7 @@ const isA = (name, ancestor) =>
 // something sharper about the element rather than something else, while
 // `button` is no kind of `list` and `<ul role="button">` is two claims that
 // disagree. A rule cannot draw that line from the widget flag alone.
-const ancestorsOf = (name) =>
+const ancestorsOf = (name /*: string */) /*: Array<string> */ =>
   [...new Set((q.roles.get(name).superClass || []).flat())]
     .filter((ancestor) => ancestor !== name)
     .sort();
@@ -121,7 +161,10 @@ const GLOBAL = Object.keys(q.roles.get("roletype").props || {});
 // `none` — so a mask built from `props` alone left both supporting nothing,
 // and `a11y/role-supports-aria-props` would have rejected `aria-hidden` on
 // `<div role="none">`, which is working markup.
-const supportedProps = (name, seen = new Set()) => {
+const supportedProps = (
+  name /*: string */,
+  seen /*: Set<string> */ = new Set(),
+) /*: Array<string> */ => {
   if (seen.has(name)) return [];
   seen.add(name);
   const role = q.roles.get(name);
@@ -140,15 +183,16 @@ const supportedProps = (name, seen = new Set()) => {
 // role. `a11y/role-supports-aria-props` is an `error`, so it rejected
 // `<td role="cell" aria-colindextext="Q1">` — valid markup, and a false
 // positive is the worst way for a lint rule to be wrong.
-const withExtras = (supported) => {
+const withExtras = (supported /*: $ReadOnlyArray<string> */) /*: Array<string> */ => {
   const set = new Set(supported);
-  for (const [name, spec] of Object.entries(EXTRA)) {
-    if (spec.mirrors && set.has(spec.mirrors)) set.add(name);
+  for (const name of Object.keys(EXTRA)) {
+    const mirrors = EXTRA[name].mirrors;
+    if (mirrors != null && set.has(mirrors)) set.add(name);
   }
   return [...set];
 };
 
-const roleRow = (name) => {
+const roleRow = (name /*: string */) /*: string */ => {
   const role = q.roles.get(name);
   const supported = withExtras(supportedProps(name));
   // A role an author may write that takes nothing at all is a table bug, not a
@@ -163,9 +207,10 @@ const roleRow = (name) => {
   // Asserted against the list the mask is built from, not against `withExtras`
   // called a second time: a check that re-derives its own answer passes even
   // when the emitted row is wrong, which is how this escaped review once.
-  for (const [extra, spec] of Object.entries(EXTRA)) {
-    if (spec.mirrors && supported.includes(spec.mirrors) && !supported.includes(extra)) {
-      throw new Error(`role ${name} takes ${spec.mirrors} but would not support ${extra}`);
+  for (const extra of Object.keys(EXTRA)) {
+    const mirrors = EXTRA[extra].mirrors;
+    if (mirrors != null && supported.includes(mirrors) && !supported.includes(extra)) {
+      throw new Error(`role ${name} takes ${mirrors} but would not support ${extra}`);
     }
   }
   const required = Object.keys(role.requiredProps || {});
@@ -196,7 +241,7 @@ const roleRow = (name) => {
 // sits — "scoped to the body element", "direct descendant of ul" — which is a
 // question about the document, not about the element. uf keeps those and marks
 // them, so a rule can decide for itself whether to answer.
-const implicit = [];
+const implicit /*: Array<Implicit> */ = [];
 for (const [concept, roles] of q.elementRoles.entries()) {
   const role = Array.from(roles)[0];
   if (!role) continue;
@@ -221,19 +266,19 @@ implicit.sort((left, right) =>
       : 1,
 );
 
-const implicitRow = (entry) => {
+const implicitRow = (entry /*: Implicit */) /*: string */ => {
   const attributes = entry.attributes
     .map(
       (attribute) =>
         `Required { name: ${JSON.stringify(attribute.name)}, value: ${
           attribute.value === null ? "None" : `Some(${JSON.stringify(attribute.value)})`
-        }, set: ${attribute.set}, unset: ${attribute.undefinedConstraint} }`,
+        }, set: ${String(attribute.set)}, unset: ${String(attribute.undefinedConstraint)} }`,
     )
     .join(", ");
   return `    Implicit {
         element: ${JSON.stringify(entry.element)},
         attributes: &[${attributes}],
-        placed: ${entry.constrained},
+        placed: ${String(entry.constrained)},
         role: ${JSON.stringify(entry.role)},
     },`;
 };
@@ -242,7 +287,7 @@ const implicitRow = (entry) => {
 // Role -> elements (prefer-tag-over-role)
 // ---------------------------------------------------------------------------
 
-const roleElements = [];
+const roleElements /*: Array<RoleElements> */ = [];
 for (const [role, concepts] of q.roleElements.entries()) {
   const tags = Array.from(concepts).map((concept) => ({
     name: concept.name,
@@ -255,7 +300,7 @@ for (const [role, concepts] of q.roleElements.entries()) {
 }
 roleElements.sort((left, right) => (left.role < right.role ? -1 : 1));
 
-const tagRow = (entry) => {
+const tagRow = (entry /*: RoleElements */) /*: string */ => {
   const tags = entry.tags
     .map((tag) => {
       const attributes = tag.attributes
@@ -307,8 +352,8 @@ for (const name of attributeNames) {
   out.push(`    Spec {
         name: ${JSON.stringify(name)},
         kind: ${kind(spec)},
-        boolean_spelling: ${takesBoolean(spec)},
-        undefined_token: ${takesUndefined(spec)},
+        boolean_spelling: ${String(takesBoolean(spec))},
+        undefined_token: ${String(takesUndefined(spec))},
     },`);
 }
 out.push(`];`);

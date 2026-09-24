@@ -31,8 +31,21 @@
 
 import process from "node:process";
 
+/*::
+// What a question sends: a method and a body, and sometimes a header.
+type Init = {
+  readonly method: string,
+  readonly body: string,
+  // Only the skew questions send a header, and it is always this one.
+  readonly headers?: { readonly "uf-deployment": string },
+};
+
+// `[label, path, init, header]`, as `questions` describes.
+type Question = [label: string, path: string, init?: Init | void, header?: string];
+*/
+
 const argv = process.argv.slice(2);
-const option = (name) => {
+const option = (name /*: string */) /*: string | null */ => {
   const at = argv.indexOf(`--${name}`);
   return at === -1 ? null : (argv[at + 1] ?? null);
 };
@@ -40,15 +53,9 @@ const option = (name) => {
 const reference = option("reference");
 const deployed = option("deployed");
 const label = option("label") ?? "deployed";
-if (reference == null || deployed == null) {
-  process.stderr.write(
-    "usage: node tools/ci/deployed-parity.mjs --reference <url> --deployed <url> [--label <name>]\n",
-  );
-  process.exit(2);
-}
 
 /** The deployment id the reference's documents publish, for the skew questions. */
-async function deploymentOf(base) {
+async function deploymentOf(base /*: string */) /*: Promise<string | null> */ {
   const response = await fetch(new URL("/posts/hello-world", base));
   const html = await response.text();
   return /<meta name="uf:deployment" content="([^"]+)">/.exec(html)?.[1] ?? null;
@@ -58,9 +65,9 @@ async function deploymentOf(base) {
  * Every question, as `[label, path, init, header]`. `header` is the one header
  * the answer is about, when the answer is a header; otherwise the body is.
  */
-function questions(live) {
-  const post = { method: "POST", body: JSON.stringify({ name: "uf" }) };
-  const asked = [
+function questions(live /*: string | null */) /*: Array<Question> */ {
+  const post /*: Init */ = { method: "POST", body: JSON.stringify({ name: "uf" }) };
+  const asked /*: Array<Question> */ = [
     ["handler-get", "/api/health"],
     ["handler-post", "/api/health", post],
     ["rendered", "/posts/hello-world"],
@@ -89,7 +96,10 @@ function questions(live) {
 }
 
 /** One answer, as the line two doors are compared on. */
-async function ask(base, [name, path, init, header]) {
+async function ask(
+  base /*: string */,
+  [name, path, init, header] /*: Question */,
+) /*: Promise<string> */ {
   const response = await fetch(new URL(path, base), {
     ...init,
     headers: { accept: "text/html", ...init?.headers },
@@ -110,32 +120,50 @@ async function ask(base, [name, path, init, header]) {
   return `${name} ${response.status} ${header}=${value}`;
 }
 
-const live = await deploymentOf(reference);
-const failures = [];
-for (const question of questions(live)) {
-  const [expected, answered] = await Promise.all([
-    ask(reference, question),
-    ask(deployed, question),
-  ]);
-  if (expected === answered) {
-    process.stdout.write(`  ok  ${question[0]}\n`);
-  } else {
-    failures.push(`${question[0]}\n    uf start: ${expected}\n    ${label}: ${answered}`);
-    process.stdout.write(`  FAIL  ${question[0]}\n`);
+/**
+ * Ask both doors every question and report where they differ. Exits non-zero
+ * when any answer differs.
+ */
+async function compare(reference /*: string */, deployed /*: string */) /*: Promise<void> */ {
+  const live = await deploymentOf(reference);
+  const failures = [];
+  for (const question of questions(live)) {
+    const [expected, answered] = await Promise.all([
+      ask(reference, question),
+      ask(deployed, question),
+    ]);
+    if (expected === answered) {
+      process.stdout.write(`  ok  ${question[0]}\n`);
+    } else {
+      failures.push(`${question[0]}\n    uf start: ${expected}\n    ${label}: ${answered}`);
+      process.stdout.write(`  FAIL  ${question[0]}\n`);
+    }
   }
+  if (live == null) {
+    // Not a failure of the deployment: a reference build that publishes no id is
+    // a build from before skew protection, and the two questions are skipped by
+    // name rather than silently.
+    process.stdout.write(
+      "  skip  skew-refused, skew-live: the reference publishes no deployment id\n",
+    );
+  }
+  if (failures.length > 0) {
+    process.stderr.write(
+      `\n${label} answered differently from uf start:\n\n${failures.join("\n\n")}\n`,
+    );
+    process.exit(1);
+  }
+  process.stdout.write(`\n${label} answered every question the way uf start did.\n`);
 }
-if (live == null) {
-  // Not a failure of the deployment: a reference build that publishes no id is
-  // a build from before skew protection, and the two questions are skipped by
-  // name rather than silently.
-  process.stdout.write(
-    "  skip  skew-refused, skew-live: the reference publishes no deployment id\n",
-  );
-}
-if (failures.length > 0) {
+
+// Checked here rather than where the options are read: Flow does not treat
+// `process.exit` as the end of the branch, so the two URLs are only known to be
+// strings inside the `else`.
+if (reference == null || deployed == null) {
   process.stderr.write(
-    `\n${label} answered differently from uf start:\n\n${failures.join("\n\n")}\n`,
+    "usage: node tools/ci/deployed-parity.mjs --reference <url> --deployed <url> [--label <name>]\n",
   );
-  process.exit(1);
+  process.exit(2);
+} else {
+  await compare(reference, deployed);
 }
-process.stdout.write(`\n${label} answered every question the way uf start did.\n`);

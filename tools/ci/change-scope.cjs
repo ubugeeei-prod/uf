@@ -11,7 +11,7 @@ const rootDocumentation = new Set([
 
 // Unknown paths and missing history run the full suite. Check both sides of
 // renames so moving source into docs cannot hide a code change.
-function needsFullSuite(paths) {
+function needsFullSuite(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
   return (
     paths.length === 0 ||
     paths.some(
@@ -45,7 +45,7 @@ const RSC_LANE = [
 ];
 
 /** Whether a change reaches what the RSC and browser job tests. */
-function needsRscSuite(paths) {
+function needsRscSuite(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
   return (
     paths.length === 0 || paths.some((path) => RSC_LANE.some((prefix) => path.startsWith(prefix)))
   );
@@ -57,9 +57,9 @@ if (require.main === module) {
   let rsc = true;
   let release = false;
   let paths;
-  const base = process.env.BASE_SHA;
+  const base = process.env.BASE_SHA ?? "";
   try {
-    if (!/^[a-f0-9]{40}$/.test(base || "") || /^0+$/.test(base)) throw new Error("No base commit");
+    if (!/^[a-f0-9]{40}$/.test(base) || /^0+$/.test(base)) throw new Error("No base commit");
     paths = execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", base, "HEAD"], {
       encoding: "utf8",
     })
@@ -76,14 +76,25 @@ if (require.main === module) {
     // The queue validates the final main merge once, before it can land.
     full = release && process.env.GITHUB_EVENT_NAME === "merge_group";
     rsc = rsc || full;
-    console.log(`${paths.length} changed files; code: ${code}; rsc: ${rsc}; full suite: ${full}`);
+    console.log(
+      `${paths.length} changed files; code: ${String(code)}; rsc: ${String(rsc)}; full suite: ${String(full)}`,
+    );
   }
   const version = release
     ? JSON.parse(require("node:fs").readFileSync("packages/core/package.json", "utf8")).version
     : "";
+  // Written only on CI, where Actions names the file; a local run has nowhere to
+  // write the answer and says so rather than passing `undefined` to `fs`.
+  const output = process.env.GITHUB_OUTPUT;
+  if (output == null) throw new Error("GITHUB_OUTPUT is not set");
   appendFileSync(
-    process.env.GITHUB_OUTPUT,
-    `full=${full}\ncode=${code}\nrsc=${rsc}\nrelease=${release}\nversion=${version}\n`,
+    output,
+    `full=${String(full)}
+code=${String(code)}
+rsc=${String(rsc)}
+release=${String(release)}
+version=${version}
+`,
   );
 }
 module.exports = { needsFullSuite, needsRscSuite };

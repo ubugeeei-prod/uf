@@ -4,8 +4,8 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
 const destination = process.argv[2];
-const packed = {};
-function pack(name) {
+const packed /*: { [string]: string } */ = {};
+function pack(name /*: string */) /*: void */ {
   if (packed[name]) return;
   const directory = `packages/${name.slice("@uniflowed/".length)}`;
   const manifest = JSON.parse(fs.readFileSync(`${directory}/package.json`, "utf8"));

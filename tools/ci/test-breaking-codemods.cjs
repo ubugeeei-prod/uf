@@ -5,7 +5,8 @@ const fs = require("node:fs"),
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-breaking-codemods-"));
-const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+const git = (...args /*: Array<string> */) /*: string */ =>
+  execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 try {
   fs.mkdirSync(path.join(root, "tools/codemods"), { recursive: true });
   fs.writeFileSync(path.join(root, "tools/codemods/catalog.json"), "{}");

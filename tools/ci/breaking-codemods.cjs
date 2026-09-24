@@ -1,8 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-function check(root, base) {
-  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+function check(root /*: string */, base /*: string */) /*: Array<string> */ {
+  const git = (...args /*: Array<string> */) /*: string */ =>
+    execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
   const catalog = JSON.parse(
     fs.readFileSync(path.join(root, "tools/codemods/catalog.json"), "utf8"),
   );
