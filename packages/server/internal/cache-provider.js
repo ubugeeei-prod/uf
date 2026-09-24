@@ -299,7 +299,7 @@ function base64Of(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
   for (let at = 0; at < bytes.length; at += chunk) {
-    binary += String.fromCharCode.apply(null, (bytes.subarray(at, at + chunk): $FlowFixMe));
+    binary += String.fromCharCode.apply(null, bytes.subarray(at, at + chunk) as $FlowFixMe);
   }
   return btoa(binary);
 }

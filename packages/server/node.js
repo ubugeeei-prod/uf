@@ -229,7 +229,11 @@ export function toRequest(
     init.body = incoming;
     init.duplex = "half";
   }
-  // $FlowFixMe[incompatible-call] - `incoming` is a stream, which `Request` accepts.
+  // `incoming` is a Node stream, which Node's `Request` accepts as a body with
+  // `duplex: "half"`. Flow's library definition has neither: its `BodyInit`
+  // is the web types only and its `RequestOptions` has no `duplex`. The code
+  // read `incompatible-call` before Flow renamed it.
+  // $FlowFixMe[incompatible-type]
   return new Request(url, init);
 }
 
@@ -428,7 +432,7 @@ export function nodeListener(
     // it was would be the state ubugeeei-prod/uf#405 describes.
     const target = incoming.originalUrl ?? incoming.url ?? "/";
     try {
-      const request = toRequest(incoming, options);
+      const request = toRequest(incoming, { secure: options.secure });
       lifecycle = options.beginRequest(request);
       await lifecycle.run(async () => {
         await send(outgoing, await handle(request));
@@ -563,7 +567,7 @@ function unpinned(argument: mixed, pinned: Map<string, string>): mixed {
         (entry) => !pinned.has(String(Array.isArray(entry) ? entry[0] : "").toLowerCase()),
       );
     }
-    const kept = [];
+    const kept: Array<mixed> = [];
     for (let at = 0; at + 1 < argument.length; at += 2) {
       if (!pinned.has(String(argument[at]).toLowerCase())) {
         kept.push(argument[at], argument[at + 1]);

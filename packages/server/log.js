@@ -90,7 +90,12 @@ const installed: {| current: Logger | null, chosen?: boolean |} = processWide(
  * were imported before it was called.
  */
 export function processLogger(): Logger {
-  return (installed.current ??= createLogger());
+  // Spelled out rather than `??=`, whose result Flow types as still possibly
+  // `null`.
+  if (installed.current == null) {
+    installed.current = createLogger();
+  }
+  return installed.current;
 }
 
 /**

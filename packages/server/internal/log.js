@@ -91,7 +91,7 @@ import { Temporal } from "@uniflowed/core/temporal";
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 /** The varying half of a record: everything that is not the constant message. */
-export type LogFields = { +[string]: mixed };
+export type LogFields = { readonly [string]: mixed };
 
 /** One thing worth saying, before anybody has decided how to spell it. */
 export type LogRecord = {|
@@ -436,7 +436,7 @@ export function safeFields(fields: LogFields): LogFields {
   return safeObject(fields, 0);
 }
 
-function safeObject(value: { +[string]: mixed }, depth: number): { [string]: mixed } {
+function safeObject(value: { readonly [string]: mixed }, depth: number): { [string]: mixed } {
   const out: { [string]: mixed } = {};
   let kept = 0;
   for (const name of Object.keys(value)) {
@@ -558,12 +558,7 @@ function jsonSpelling(value: mixed): string | null {
  * might reach for; see [`REDACTED_FIELDS`].
  */
 export function isRedacted(name: string): boolean {
-  let normalised = "";
-  for (const character of name.toLowerCase()) {
-    if (character !== "-" && character !== "_" && character !== ".") {
-      normalised += character;
-    }
-  }
+  const normalised = name.toLowerCase().replace(/[-_.]/g, "");
   return REDACTED_FIELDS.has(normalised);
 }
 

@@ -66,7 +66,7 @@ import { createServer } from "node:http";
 
 import { copyHeaders, pinHeaders, reportMalformedRequests, send } from "./node.js";
 
-import type { FormState } from "./internal/application.js";
+import type { Application, FormState } from "./internal/application.js";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import { refuseOtherDeployment } from "./internal/deployment.js";
@@ -106,8 +106,14 @@ type NodeRequest = {
 
 type NodeResponse = {
   statusCode: number,
+  // `send` and `pinHeaders` in `./node.js` read and write these, and this
+  // module hands them its responses: a type without them described a response
+  // those functions could not have been given.
+  statusMessage: string,
+  headersSent: boolean,
   setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed,
-  write(chunk: Uint8Array | string): mixed,
+  // A `boolean`, as `./node.js` needs it: `send` paces a body by it.
+  write(chunk: Uint8Array | string): boolean,
   end(chunk?: Uint8Array | string): mixed,
   // Required rather than optional, because the one case it exists for is the
   // one where nothing else will do: a render that fails after the shell has
@@ -174,6 +180,11 @@ export type StandaloneApp = {|
     readonly stream: () => ReadableStream<Uint8Array>,
   |}>,
   readonly dispatch: (request: Request) => Promise<Response | null>,
+  /**
+   * A route's Flight payload, for a browser that is navigating; see
+   * `./internal/application.js`. Absent on a bundle rendered from its modules.
+   */
+  readonly flight?: Application["flight"],
   /**
    * The server action this request names, or `null` when it names none.
    *
@@ -274,7 +285,11 @@ export async function serve(options: ServeOptions): Promise<{|
   readonly port: number,
   readonly close: () => Promise<void>,
 |}> {
-  const handle = createHandler(options);
+  const handle = createHandler({
+    app: options.app,
+    assets: options.assets,
+    document: options.document,
+  });
 
   // Said before the socket, not after it, and that ordering is the point. It
   // is the one fact about a compiled binary that cannot be checked from
@@ -290,7 +305,7 @@ export async function serve(options: ServeOptions): Promise<{|
       // no framework above it and no log drain beside it. Report it on stderr
       // and answer 500, rather than letting the host's unhandled-rejection
       // policy decide whether the process survives.
-      process.stderr.write(`uf: ${String(error?.stack ?? error)}\n`);
+      process.stderr.write(`uf: ${described(error)}\n`);
       try {
         response.statusCode = 500;
         response.setHeader("content-type", "text/plain; charset=utf-8");
@@ -344,11 +359,16 @@ export async function serve(options: ServeOptions): Promise<{|
  * megabytes of sourcemaps should not spend the startup decoding the ones this
  * process will never be asked for.
  */
-function index(assets: EmbeddedAssets): Map<string, {| +type: string, +bytes: () => Buffer |}> {
-  const files = new Map();
+function index(
+  assets: EmbeddedAssets,
+): Map<string, {| readonly type: string, readonly bytes: () => Uint8Array |}> {
+  // `Uint8Array` rather than `Buffer` in the types: a `Buffer` is one, it is all
+  // `sendBytes` needs, and `Buffer` imported from `node:buffer` is a value to
+  // Flow rather than a type.
+  const files = new Map<string, {| readonly type: string, readonly bytes: () => Uint8Array |}>();
   for (const path of Object.keys(assets)) {
     const asset = assets[path];
-    let decoded: Buffer | null = null;
+    let decoded: Uint8Array | null = null;
     files.set(path, {
       type: asset.type,
       bytes: () => {
@@ -604,8 +624,9 @@ export function createHandler(
         response.statusCode = rendered.status;
         response.setHeader("content-type", "text/html; charset=utf-8");
         response.setHeader("cache-control", DOCUMENT_CACHE_CONTROL);
-        for (const name of Object.keys(rendered.headers ?? {})) {
-          response.setHeader(name, (rendered.headers ?? {})[name]);
+        const documentHeaders: { readonly [string]: string } = rendered.headers ?? {};
+        for (const name of Object.keys(documentHeaders)) {
+          response.setHeader(name, documentHeaders[name]);
         }
         // No `content-length`: the length is not known until the last byte, and
         // waiting for it is the whole of what streaming is not. `HEAD` gets the
@@ -634,7 +655,7 @@ export function createHandler(
         try {
           await rendered.pipe(response);
         } catch (error) {
-          process.stderr.write(`uf: ${String(error?.stack ?? error)}\n`);
+          process.stderr.write(`uf: ${described(error)}\n`);
           response.destroy(error);
         }
       });
@@ -709,7 +730,11 @@ function toRequest(incoming: NodeRequest, url: URL): Request {
     init.body = incoming;
     init.duplex = "half";
   }
-  // $FlowFixMe[incompatible-call] - `incoming` is a stream, which `Request` accepts.
+  // `incoming` is a Node stream, which Node's `Request` accepts as a body with
+  // `duplex: "half"`. Flow's library definition has neither: its `BodyInit`
+  // is the web types only and its `RequestOptions` has no `duplex`. The code
+  // read `incompatible-call` before Flow renamed it.
+  // $FlowFixMe[incompatible-type]
   return new Request(url, init);
 }
 
@@ -753,13 +778,24 @@ function sendBytes(
   status: number,
   type: string,
   cacheControl: string,
-  bytes: Buffer,
+  bytes: Uint8Array,
 ): void {
   outgoing.statusCode = status;
   outgoing.setHeader("content-type", type);
   outgoing.setHeader("cache-control", cacheControl);
   outgoing.setHeader("content-length", String(bytes.byteLength));
   outgoing.end(method === "HEAD" ? undefined : bytes);
+}
+
+/**
+ * An error as a line on stderr: its stack when it has one, and what it is
+ * otherwise, since a `throw "text"` has no stack to give.
+ */
+function described(error: mixed): string {
+  if (typeof error === "object" && error != null && typeof error.stack === "string") {
+    return error.stack;
+  }
+  return String(error);
 }
 
 /** The value of a `--flag value` pair on the command line, if it is there. */

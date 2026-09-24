@@ -316,7 +316,12 @@ export function runWithContext<T>(context: RequestContext, body: () => T): T {
 export function contextFor(request: Request): RequestContext {
   const headers = request.headers;
   let cookies: { [string]: string } | null = null;
-  const parsed = () => (cookies ??= parseCookies(headers.get("cookie")));
+  const parsed = (): { [string]: string } => {
+    if (cookies == null) {
+      cookies = parseCookies(headers.get("cookie"));
+    }
+    return cookies;
+  };
 
   return {
     headers: {
@@ -387,7 +392,12 @@ function newRequestId(): string {
  * the context instead of generating one where it is needed.
  */
 export function nonceFor(context: RequestContext): string {
-  return (context.nonce ??= newNonce());
+  // Spelled out rather than `??=`, whose result Flow types as still possibly
+  // `null`.
+  if (context.nonce == null) {
+    context.nonce = newNonce();
+  }
+  return context.nonce;
 }
 
 /**

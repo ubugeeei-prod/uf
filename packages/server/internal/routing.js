@@ -639,7 +639,11 @@ export function withHeaders(response: Response, pairs: $ReadOnlyArray<[string, s
     }
     return response;
   } catch {
-    const copy = new Response(response.body, response);
+    const copy = new Response(response.body, {
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
     for (const [name, value] of pairs) {
       copy.headers.set(name, value);
     }
@@ -655,6 +659,15 @@ export function withHeaders(response: Response, pairs: $ReadOnlyArray<[string, s
  * read, and the original is left unusable rather than read twice.
  */
 export function requestAt(request: Request, url: URL): Request {
-  // $FlowFixMe[incompatible-call] - a `Request` is read as the `RequestInit` it satisfies.
+  // A `Request` is read as the `RequestInit` it satisfies, which Flow's library
+  // definition cannot say: `RequestOptions` is an object type, so a class
+  // instance is not one, and it has no `duplex`. Spelling the init out instead
+  // would be wrong rather than merely long: a navigation request's `mode` is
+  // `navigate`, which the constructor refuses from an init and accepts from a
+  // `Request`. The codes are the three errors that one fact produces; they
+  // read `incompatible-call` before Flow renamed it.
+  // $FlowFixMe[class-object-subtyping]
+  // $FlowFixMe[incompatible-variance]
+  // $FlowFixMe[incompatible-type]
   return new Request(url.href, request);
 }

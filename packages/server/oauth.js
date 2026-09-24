@@ -164,7 +164,7 @@ export type OAuthIdentity = {|
    */
   readonly subject: string,
   /** Anything else worth keeping about them. Readable by the application. */
-  readonly claims?: { +[string]: mixed },
+  readonly claims?: { readonly [string]: mixed },
 |};
 
 /**
@@ -208,7 +208,7 @@ export type OAuthProvider = {|
 /** What an application sees of somebody who is signed in. */
 export type Session = {|
   readonly subject: string,
-  readonly claims: { +[string]: mixed },
+  readonly claims: { readonly [string]: mixed },
   /**
    * The session is gone after this.
    *

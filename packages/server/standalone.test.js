@@ -143,7 +143,11 @@ function recorder(options?: {| readonly full?: boolean |}) {
   const listeners: Map<string, Array<() => mixed>> = new Map();
   return {
     statusCode: 0,
-    headers: ({}: { [string]: string }),
+    // A real `ServerResponse` has both, and `send` in `./node.js` reads and
+    // writes them.
+    statusMessage: "",
+    headersSent: false,
+    headers: {} as { [string]: string },
     setHeader(name: string, value: string) {
       this.headers[name.toLowerCase()] = value;
     },
@@ -182,7 +186,7 @@ function recorder(options?: {| readonly full?: boolean |}) {
     },
     // A real `ServerResponse` has one, and the handler needs it: a render that
     // fails after the shell has no status left to answer with.
-    destroyed: (null: mixed),
+    destroyed: null as mixed,
     destroy(error) {
       this.destroyed = error ?? true;
       return this;

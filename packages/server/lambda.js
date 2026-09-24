@@ -150,10 +150,9 @@ export type LambdaHandlerOptions = {|
  * not would throw here rather than at the point the cookies were set, so the
  * absence is checked.
  */
-type SetCookieReader = {
-  readonly getSetCookie?: () => $ReadOnlyArray<string>,
-  ...
-};
+interface SetCookieReader {
+  readonly getSetCookie?: () => $ReadOnlyArray<string>;
+}
 
 /**
  * Media types whose bodies are text, and therefore not base64.
@@ -208,7 +207,7 @@ export function toRequest(event: LambdaHttpEvent): Request {
   }
 
   const headers = new Headers();
-  const source = event.headers ?? {};
+  const source: { readonly [string]: mixed } = event.headers ?? {};
   for (const name of Object.keys(source)) {
     const value = source[name];
     if (typeof value === "string") headers.set(name, value);
@@ -221,7 +220,7 @@ export function toRequest(event: LambdaHttpEvent): Request {
   const query = event.rawQueryString ?? "";
   const url = new URL(`https://${authority}${rawPath}${query === "" ? "" : `?${query}`}`);
 
-  const init: { [string]: mixed } = { method: method.toUpperCase(), headers };
+  const init: RequestOptions = { method: method.toUpperCase(), headers };
   // `Request` refuses a body on a `GET` or a `HEAD`, and API Gateway is under
   // no obligation not to send one: a client can, and the invocation would then
   // fail with a `TypeError` from the constructor rather than answer.

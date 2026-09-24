@@ -21,8 +21,8 @@ function writtenHandler(answer: (request: Request) => Promise<Response>) {
   const events: Array<string> = [];
   const beginRequest = (request: Request) => {
     events.push(`begin ${new URL(request.url).pathname}`);
-    return ({
-      context: ({}: $FlowFixMe),
+    return {
+      context: {} as $FlowFixMe,
       run: async <T>(body: () => Promise<T>): Promise<T> => {
         events.push("run");
         return await body();
@@ -30,7 +30,7 @@ function writtenHandler(answer: (request: Request) => Promise<Response>) {
       settle: async () => {
         events.push("settle");
       },
-    }: $FlowFixMe);
+    } as $FlowFixMe;
   };
   const fetch = async (request: Request) => {
     events.push("fetch");
