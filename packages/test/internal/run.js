@@ -75,6 +75,19 @@ export type RunOptions = {|
    * round. `uf test --bench` sets it.
    */
   readonly bench?: boolean,
+  /**
+   * Run only share `index` of `count` of the file's cases, and report nothing
+   * about the rest.
+   *
+   * `uf test` splits a file long enough to hold up a run across several
+   * workers, and each is handed one share: the cases are numbered in the
+   * order the file registered them, and share `index` is the contiguous run
+   * from `index * n / count` to `(index + 1) * n / count`. Every worker
+   * imports the whole file and walks the same tree, so the shares between
+   * them report every case once. A case outside the share is not reported at
+   * all — not as skipped — because another worker is reporting it.
+   */
+  readonly part?: {| readonly index: number, readonly count: number |} | null,
 |};
 
 /** Default budget for one case, matching what most runners use. */
@@ -381,7 +394,7 @@ async function runSuite(
   options: RunOptions,
   onlyMode: boolean,
   emit: (result: Result) => void,
-  state: {| bail: boolean |},
+  state: {| bail: boolean, readonly owned: Set<Case> | null |},
   setUpAncestors: () => Promise<void>,
 ): Promise<boolean> {
   const skipped = context.skipped || node.modifier === "skip" || node.modifier === "todo";
@@ -430,6 +443,10 @@ async function runSuite(
       break;
     }
     if (child.kind !== "suite") {
+      // Another worker's share: it reports this case, and sets up for it.
+      if (state.owned != null && !state.owned.has(child)) {
+        continue;
+      }
       const willRun =
         !inner.skipped &&
         child.modifier !== "skip" &&
@@ -490,6 +507,7 @@ async function runSuite(
 export async function run(options: RunOptions, emit: (result: Result) => void): Promise<void> {
   const root = collected();
   const onlyMode = hasOnly(root, false);
+  const owned = share(root, options.part);
   const context: Context = {
     path: [],
     beforeEach: [],
@@ -497,5 +515,36 @@ export async function run(options: RunOptions, emit: (result: Result) => void): 
     skipped: false,
     onlyPath: !onlyMode,
   };
-  await runSuite(root, context, options, onlyMode, emit, { bail: false }, async () => {});
+  await runSuite(root, context, options, onlyMode, emit, { bail: false, owned }, async () => {});
+}
+
+/**
+ * The cases of `part`, or `null` for a run of every case.
+ *
+ * Numbered in the order a walk of the tree meets them, which is the order the
+ * file registered them and the order `runSuite` runs them in — the same in
+ * every worker that imported the file, which is what lets each work out its
+ * own share without being told the others'.
+ */
+function share(
+  root: Suite,
+  part: ?{| readonly index: number, readonly count: number |},
+): Set<Case> | null {
+  if (part == null || part.count < 2) {
+    return null;
+  }
+  const cases: Array<Case> = [];
+  const walk = (node: Suite) => {
+    for (const child of node.children) {
+      if (child.kind === "suite") {
+        walk(child);
+      } else {
+        cases.push(child);
+      }
+    }
+  };
+  walk(root);
+  const from = Math.floor((part.index * cases.length) / part.count);
+  const to = Math.floor(((part.index + 1) * cases.length) / part.count);
+  return new Set(cases.slice(from, to));
 }

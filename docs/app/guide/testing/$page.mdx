@@ -564,7 +564,8 @@ uf test · shop
          │                                    ^
         expected  3
         received  4
-⠹ 3/4 files · 1 failed · 1 running · 0.2s
+⠹ src/search.test.js     18/40   › search > ranks exact matches first
+  51 cases · 3/4 files · 1 failed · 0.2s
 ```
 
 </figure>
@@ -580,10 +581,14 @@ The frame points at the Flow source: the transform emits a source map, the
 worker runs with source maps on, and the runner's own stack frames are trimmed
 out so the top frame is yours.
 
-The last line is the progress line: files finished out of the total, how many
-failed, how many are running, and how long the run has taken. It is redrawn in
-place on stderr and taken away before the summary, and it is only drawn on an
-interactive terminal with neither `CI` nor `NO_COLOR` set. A pipe or a CI log
+Under the finished files is what is still running: a row per file a worker has
+in hand, counting its cases as they finish out of the ones it declares and
+naming the one that just did, and a last row with the cases finished so far,
+files finished out of the total, how many failed, and how long the run has
+taken. A file of five hundred cases is visibly getting through them rather than
+silent until it ends. The region is redrawn in place on stderr and taken away
+before the summary, and it is only drawn on an interactive terminal with
+neither `CI` nor `NO_COLOR` set. A pipe or a CI log
 gets the same per-file lines as they finish, as plain text, and nothing is
 redrawn; `--json` gets one document at the end and nothing else.
 

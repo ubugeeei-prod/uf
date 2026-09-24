@@ -3,7 +3,8 @@
 //! `uf test` used to draw nothing but a spinner until the last file finished,
 //! and then everything at once. The results were never the problem: the
 //! runner hands each [`FileReport`] to an observer the moment that file's
-//! worker answers. Nothing drew them. This module does.
+//! worker answers, and each case the moment the worker reports it. Nothing
+//! drew them. This module does.
 //!
 //! # What goes where
 //!
@@ -11,13 +12,21 @@
 //!   by [`render_file`] — the same function a merge of shards draws its files
 //!   with, so a streamed run and a merged one read alike. A failure's frame is
 //!   in that block, so it is on screen while the rest of the suite runs.
-//! * **stderr** gets a single progress line under the blocks — files done out
-//!   of the total, how many failed, how many are running, and how long the run
-//!   has taken — redrawn in place and taken off the screen before each block
-//!   and before the summary, so the scrollback holds results and never a
-//!   stale progress line.
+//! * **stderr** gets a small live region under the blocks: a row for each file
+//!   a worker is running — its cases so far out of those it declares, and the
+//!   one that just finished — and a last row with the whole run's count of
+//!   cases and files, how many failed, and how long it has taken. It is
+//!   redrawn in place as cases finish and taken off the screen before each
+//!   block and before the summary, so the scrollback holds results and never a
+//!   stale frame.
 //!
-//! The progress line is drawn only where redrawing is safe to do: stderr is a
+//! A row per running file rather than one line for the run, because a file is
+//! where the time goes: a suite of four thousand cases is a few files of five
+//! hundred and many of ten, and a count of finished *files* sat still for
+//! seconds while the big ones worked through their cases. Watching the cases
+//! go by is how a person sees what the run is doing, and how fast.
+//!
+//! The region is drawn only where redrawing is safe to do: stderr is a
 //! terminal, the command is not rendering JSON, and neither `CI` nor
 //! `NO_COLOR` is set. Everywhere else — a pipe, a CI log — the blocks still
 //! stream, one plain block per file, and nothing is ever redrawn. Under
@@ -26,11 +35,11 @@
 //!
 //! # Threads
 //!
-//! Files finish on the runner's worker threads, and the elapsed time has to
-//! keep moving while a slow file holds every worker, so a third party — a
-//! ticker thread — redraws the line between results. All three reach the
-//! terminal through one lock around the [`Ui`] and the progress line, which
-//! is what keeps a block and a redraw from interleaving mid-line.
+//! Files and cases finish on the runner's worker threads, and the elapsed time
+//! has to keep moving while a slow case holds every worker, so a third party —
+//! a ticker thread — redraws the region between results. All three reach the
+//! terminal through one lock around the [`Ui`] and the region, which is what
+//! keeps a block and a redraw from interleaving mid-line.
 
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -38,36 +47,57 @@ use std::sync::Mutex;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use uf_term::{DEFAULT_TICK, GlyphSet, Progress};
-use uf_test::{FileReport, RunObserver};
+use uf_term::{DEFAULT_TICK, GlyphSet, Live};
+use uf_test::{FileReport, RunObserver, TestRecord};
 
 use super::render::{path_column, render_banner, render_file};
 use crate::ui::Ui;
 
 /// The observer that draws each file as it finishes.
 ///
-/// Generic over where the progress line goes only so a test can read the
-/// bytes; `uf test` draws it on stderr.
+/// Generic over where the live region goes only so a test can read the bytes;
+/// `uf test` draws it on stderr.
 pub(super) struct Stream<'a, W: Write + Send = io::Stderr> {
     state: Mutex<State<'a, W>>,
 }
 
 struct State<'a, W: Write> {
     ui: &'a mut Ui,
-    /// `None` when the line may not be drawn; see the module documentation.
-    progress: Option<Progress<W>>,
+    /// `None` when the region may not be drawn; see the module documentation.
+    live: Option<Live<W>>,
     /// Each file's source by its path, for the code frame under a failure.
     sources: BTreeMap<&'a str, &'a str>,
+    /// How many cases each file declares, as discovery counts them; only
+    /// worked out when there is a region to show them in.
+    declared: BTreeMap<&'a str, usize>,
     path_width: usize,
-    /// Between the counts on the progress line.
+    /// Between the counts on the last row.
     separator: &'static str,
+    /// Before a case that just finished on a file's row.
+    pointer: &'static str,
     started: Instant,
     total: usize,
     finished: usize,
-    running: usize,
     failed_files: usize,
-    line: String,
+    cases: usize,
+    failed_cases: usize,
+    /// The files being run, in the order they started.
+    running: Vec<Running>,
+    rows: Vec<String>,
 }
+
+/// One file a worker is running, as its row shows it.
+struct Running {
+    file: String,
+    done: usize,
+    failed: usize,
+    /// The case that finished last.
+    last: String,
+}
+
+/// The most running files the region gives a row of their own; the rest are
+/// counted on one.
+const MAX_FILE_ROWS: usize = 16;
 
 impl<'a> Stream<'a> {
     /// A stream over `files` — each one's path and source, the files the run
@@ -80,54 +110,71 @@ impl<'a> Stream<'a> {
         files: impl IntoIterator<Item = (&'a str, &'a str)>,
         label: &str,
     ) -> Self {
-        let progress = live_line_allowed(ui).then(|| ui.progress());
+        let live = live_region_allowed(ui).then(|| ui.live());
         let glyphs = ui.stderr_capabilities().glyphs();
-        Stream::with_progress(ui, files, label, progress, glyphs)
+        Stream::with_live(ui, files, label, live, glyphs)
     }
 }
 
 impl<'a, W: Write + Send> Stream<'a, W> {
-    /// [`Stream::start`], with the progress line — or `None` for no line —
+    /// [`Stream::start`], with the live region — or `None` for no region —
     /// and the glyphs it is drawn in handed over rather than found.
-    pub(super) fn with_progress(
+    pub(super) fn with_live(
         ui: &'a mut Ui,
         files: impl IntoIterator<Item = (&'a str, &'a str)>,
         label: &str,
-        progress: Option<Progress<W>>,
+        live: Option<Live<W>>,
         glyphs: GlyphSet,
     ) -> Self {
         ui.render(|renderer, out| render_banner(renderer, out, label));
-        let separator = match glyphs {
-            GlyphSet::Unicode => " · ",
-            GlyphSet::Ascii => ", ",
+        let (separator, pointer) = match glyphs {
+            GlyphSet::Unicode => (" · ", "› "),
+            GlyphSet::Ascii => (", ", "> "),
         };
         let sources: BTreeMap<&str, &str> = files.into_iter().collect();
+        let declared = if live.is_some() {
+            sources
+                .iter()
+                .map(|(file, source)| {
+                    (
+                        *file,
+                        uf_test::discover_tests(file, source).runnable_count(),
+                    )
+                })
+                .collect()
+        } else {
+            BTreeMap::new()
+        };
         let path_width = path_column(sources.keys().copied());
         Self {
             state: Mutex::new(State {
                 ui,
-                progress,
+                live,
                 total: sources.len(),
                 sources,
+                declared,
                 path_width,
                 separator,
+                pointer,
                 started: Instant::now(),
                 finished: 0,
-                running: 0,
                 failed_files: 0,
-                line: String::new(),
+                cases: 0,
+                failed_cases: 0,
+                running: Vec::new(),
+                rows: Vec::new(),
             }),
         }
     }
 
-    /// Whether a progress line is being drawn, which is whether a ticker is
+    /// Whether a live region is being drawn, which is whether a ticker is
     /// worth starting.
     pub(super) fn is_live(&self) -> bool {
-        self.with(|state| state.progress.is_some())
+        self.with(|state| state.live.is_some())
     }
 
-    /// Run `body` — the run itself — keeping the progress line's clock moving
-    /// until it returns, and take the line off the screen afterwards.
+    /// Run `body` — the run itself — keeping the region's clock moving until
+    /// it returns, and take the region off the screen afterwards.
     pub(super) fn drive<T>(&self, body: impl FnOnce() -> T) -> T {
         if !self.is_live() {
             return body();
@@ -135,8 +182,8 @@ impl<'a, W: Write + Send> Stream<'a, W> {
         let (stop, stopped) = mpsc::channel::<()>();
         let result = std::thread::scope(|scope| {
             scope.spawn(move || {
-                // A result redraws the line itself; this only has to keep the
-                // clock honest while every worker is busy with a slow file.
+                // A result redraws the region itself; this only has to keep
+                // the clock honest while every worker is busy with a slow case.
                 while let Err(mpsc::RecvTimeoutError::Timeout) =
                     stopped.recv_timeout(TICKER_INTERVAL)
                 {
@@ -151,13 +198,13 @@ impl<'a, W: Write + Send> Stream<'a, W> {
         result
     }
 
-    /// Take the progress line off the screen for good.
+    /// Take the region off the screen for good.
     pub(super) fn finish(&self) {
         self.with(|state| {
-            if let Some(progress) = state.progress.as_mut() {
-                progress.finish();
+            if let Some(live) = state.live.as_mut() {
+                live.finish();
             }
-            state.progress = None;
+            state.live = None;
         });
     }
 
@@ -170,10 +217,10 @@ impl<'a, W: Write + Send> Stream<'a, W> {
     }
 }
 
-/// How often the ticker redraws while no file finishes.
+/// How often the ticker redraws while nothing finishes.
 ///
-/// The progress line's own rate limit, so a redraw the ticker asks for is one
-/// the line would draw.
+/// The region's own rate limit, so a redraw the ticker asks for is one the
+/// region would draw.
 const TICKER_INTERVAL: Duration = DEFAULT_TICK;
 
 impl<W: Write + Send> RunObserver for Stream<'_, W> {
@@ -184,9 +231,33 @@ impl<W: Write + Send> RunObserver for Stream<'_, W> {
         });
     }
 
-    fn file_started(&self, _file: &str) {
+    fn file_started(&self, file: &str) {
         self.with(|state| {
-            state.running += 1;
+            state.running.push(Running {
+                file: file.to_owned(),
+                done: 0,
+                failed: 0,
+                last: String::new(),
+            });
+            state.redraw();
+        });
+    }
+
+    fn test_finished(&self, file: &str, record: &TestRecord) {
+        self.with(|state| {
+            let failed = record.status.is_failed();
+            state.cases += 1;
+            state.failed_cases += usize::from(failed);
+            if let Some(running) = state
+                .running
+                .iter_mut()
+                .find(|running| running.file == file)
+            {
+                running.done += 1;
+                running.failed += usize::from(failed);
+                running.last.clear();
+                running.last.push_str(&record.name);
+            }
             state.redraw();
         });
     }
@@ -195,14 +266,14 @@ impl<W: Write + Send> RunObserver for Stream<'_, W> {
         self.with(|state| {
             state.finished = completed;
             state.total = total;
-            state.running = state.running.saturating_sub(1);
+            state.running.retain(|running| running.file != report.file);
             if super::render::file_status(report) == uf_term::Status::Error {
                 state.failed_files += 1;
             }
             // Off the screen before the block, so the block lands where the
-            // line was rather than after it; back on straight after.
-            if let Some(progress) = state.progress.as_mut() {
-                progress.finish();
+            // region was rather than after it; back on straight after.
+            if let Some(live) = state.live.as_mut() {
+                live.clear();
             }
             let source = state.sources.get(report.file.as_str()).copied();
             let path_width = state.path_width;
@@ -215,60 +286,100 @@ impl<W: Write + Send> RunObserver for Stream<'_, W> {
 }
 
 impl<W: Write> State<'_, W> {
-    /// Redraw the line, if the rate limit allows.
+    /// Redraw the region, if the rate limit allows.
     fn redraw(&mut self) {
-        if self.progress.is_none() {
+        if !self.live.as_ref().is_some_and(Live::is_due) {
             return;
         }
-        self.compose();
-        if let Some(progress) = self.progress.as_mut() {
-            progress.tick(&self.line);
-        }
+        self.draw();
     }
 
-    /// Redraw the line now, whatever the rate limit says: it has just been
+    /// Redraw the region now, whatever the rate limit says: it has just been
     /// taken off the screen, and a gap until the next tick reads as a stall.
     fn draw(&mut self) {
-        if self.progress.is_none() {
+        if self.live.is_none() {
             return;
         }
         self.compose();
-        if let Some(progress) = self.progress.as_mut() {
-            progress.draw(&self.line);
+        if let Some(live) = self.live.as_mut() {
+            let rows: Vec<&str> = self.rows.iter().map(String::as_str).collect();
+            live.draw(&rows);
         }
     }
 
-    /// `12/40 files · 1 failed · 4 running · 3.2s`
+    /// ```text
+    /// ⠋ packages/ui/ui.test.js       312/525 › Dialog > opens on click
+    /// ⠋ packages/form/form.test.js    40/92  › validates on blur
+    ///   3120 cases · 45/230 files · 1 failed · 2.4s
+    /// ```
     fn compose(&mut self) {
         use std::fmt::Write as _;
-        self.line.clear();
-        let _ = write!(self.line, "{}/{} files", self.finished, self.total);
+        let spinner = self.live.as_ref().map_or("", Live::spinner);
+        self.rows.clear();
+        let width = self
+            .running
+            .iter()
+            .take(MAX_FILE_ROWS)
+            .map(|running| running.file.chars().count())
+            .max()
+            .unwrap_or(0)
+            .min(self.path_width.max(1));
+        for running in self.running.iter().take(MAX_FILE_ROWS) {
+            let mut row = String::new();
+            let _ = write!(row, "{spinner} {:<width$} ", running.file);
+            match self.declared.get(running.file.as_str()) {
+                Some(&declared) if declared >= running.done && declared > 0 => {
+                    let _ = write!(row, "{:>4}/{declared:<4}", running.done);
+                }
+                _ => {
+                    let _ = write!(row, "{:>4}     ", running.done);
+                }
+            }
+            if running.failed > 0 {
+                let _ = write!(row, " {} failed", running.failed);
+            }
+            if !running.last.is_empty() {
+                row.push(' ');
+                row.push_str(self.pointer);
+                row.push_str(&running.last);
+            }
+            self.rows.push(row);
+        }
+        if self.running.len() > MAX_FILE_ROWS {
+            self.rows
+                .push(format!("  and {} more", self.running.len() - MAX_FILE_ROWS));
+        }
         let separator = self.separator;
-        if self.failed_files > 0 {
-            let _ = write!(self.line, "{separator}{} failed", self.failed_files);
+        let mut last = String::from("  ");
+        let _ = write!(last, "{} cases", self.cases);
+        let _ = write!(last, "{separator}{}/{} files", self.finished, self.total);
+        if self.failed_cases > 0 || self.failed_files > 0 {
+            let _ = write!(
+                last,
+                "{separator}{} failed",
+                self.failed_cases.max(self.failed_files)
+            );
         }
-        if self.running > 0 {
-            let _ = write!(self.line, "{separator}{} running", self.running);
-        }
-        self.line.push_str(separator);
+        last.push_str(separator);
         // Seconds to one decimal, always: a clock whose unit changes from
         // `ms` to `s` mid-run, or that shows microseconds changing on every
         // frame, is noise rather than information.
-        let _ = write!(self.line, "{:.1}s", self.started.elapsed().as_secs_f64());
+        let _ = write!(last, "{:.1}s", self.started.elapsed().as_secs_f64());
+        self.rows.push(last);
     }
 }
 
-/// Whether the progress line may be drawn at all.
+/// Whether the live region may be drawn at all.
 ///
-/// [`Ui::progress`] already refuses a stream that is not a terminal and a
-/// command rendering JSON. Two more signals say "do not redraw" even on a
-/// terminal: `CI`, which hosted runners set and some of them set on a
-/// pseudo-terminal whose log keeps every frame, and `NO_COLOR`, which asks for
-/// plain output and gets the plain form of this — the blocks, streamed, and no
-/// escape sequences between them.
-fn live_line_allowed(ui: &Ui) -> bool {
+/// [`Ui::live`] already refuses a stream that is not a terminal and a command
+/// rendering JSON. Two more signals say "do not redraw" even on a terminal:
+/// `CI`, which hosted runners set and some of them set on a pseudo-terminal
+/// whose log keeps every frame, and `NO_COLOR`, which asks for plain output and
+/// gets the plain form of this — the blocks, streamed, and no escape sequences
+/// between them.
+fn live_region_allowed(ui: &Ui) -> bool {
     let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
-    ui.progress().is_enabled() && !set("CI") && !set("NO_COLOR")
+    ui.live().is_enabled() && !set("CI") && !set("NO_COLOR")
 }
 
 #[cfg(test)]
@@ -346,7 +457,7 @@ mod tests {
         let files = [("src/a.test.js", SOURCE), ("src/b.test.js", SOURCE)];
         {
             let stream =
-                Stream::<io::Sink>::with_progress(&mut ui, files, "demo", None, GlyphSet::Unicode);
+                Stream::<io::Sink>::with_live(&mut ui, files, "demo", None, GlyphSet::Unicode);
             stream.run_started(2, 2);
             stream.file_started("src/a.test.js");
             stream.file_finished(1, 2, &failing("src/a.test.js"));
@@ -367,7 +478,7 @@ mod tests {
         {
             let mut ui = Ui::capturing(OutputMode::Human);
             let stream =
-                Stream::<io::Sink>::with_progress(&mut ui, files, "demo", None, GlyphSet::Unicode);
+                Stream::<io::Sink>::with_live(&mut ui, files, "demo", None, GlyphSet::Unicode);
             stream.file_finished(1, 2, &passing("src/b.test.js"));
             drop(stream);
             let drawn = ui.take_captured();
@@ -380,20 +491,21 @@ mod tests {
         }
     }
 
-    /// The progress line is taken off the screen before each block and put
-    /// back straight after, says how far the run has got, and is gone for
-    /// good when the run is.
+    /// The region is taken off the screen before each block and put back
+    /// straight after, has a row for each running file that counts its cases
+    /// as they finish, says how far the run has got, and is gone for good when
+    /// the run is.
     #[test]
-    fn the_progress_line_is_lifted_for_each_file_and_removed_at_the_end() {
+    fn the_region_is_lifted_for_each_file_and_removed_at_the_end() {
         let mut ui = Ui::capturing(OutputMode::Human);
         let mut line: Vec<u8> = Vec::new();
         {
-            let progress = Progress::new(interactive(), &mut line);
-            let stream = Stream::with_progress(
+            let live = Live::new(interactive(), &mut line);
+            let stream = Stream::with_live(
                 &mut ui,
                 [("src/a.test.js", SOURCE), ("src/b.test.js", SOURCE)],
                 "demo",
-                Some(progress),
+                Some(live),
                 GlyphSet::Unicode,
             );
             assert!(stream.is_live());
@@ -401,23 +513,28 @@ mod tests {
                 stream.run_started(2, 2);
                 stream.file_started("src/a.test.js");
                 stream.file_started("src/b.test.js");
+                stream.test_finished(
+                    "src/b.test.js",
+                    &record("src/b.test.js", "passes", TestStatus::Passed),
+                );
                 stream.file_finished(1, 2, &failing("src/a.test.js"));
                 stream.file_finished(2, 2, &passing("src/b.test.js"));
                 "done"
             });
             assert_eq!(report, "done");
-            assert!(!stream.is_live(), "the line is gone once the run is");
+            assert!(!stream.is_live(), "the region is gone once the run is");
         }
         let line = String::from_utf8(line).expect("utf-8");
+        assert!(line.contains("src/b.test.js"), "{line:?}");
+        assert!(line.contains("1/1"), "the file's cases so far: {line:?}");
         assert!(
-            line.contains("1/2 files · 1 failed · 1 running"),
-            "{line:?}"
+            line.contains("› passes"),
+            "the case that just finished: {line:?}"
         );
-        assert!(line.contains("2/2 files · 1 failed"), "{line:?}");
-        // Erased once per finished file and once at the end, and the cursor is
-        // never hidden.
-        assert!(line.matches("\r\x1b[K").count() >= 3, "{line:?}");
-        assert!(line.ends_with("\r\x1b[K\x1b[?25h"), "{line:?}");
+        assert!(line.contains("1 cases · 1/2 files · 1 failed"), "{line:?}");
+        assert!(line.contains("1 cases · 2/2 files · 1 failed"), "{line:?}");
+        // The cursor is shown again at the end, and never hidden.
+        assert!(line.ends_with("\x1b[?25h"), "{line:?}");
         assert!(!line.contains("\x1b[?25l"), "{line:?}");
 
         let drawn = ui.take_captured();
@@ -434,7 +551,7 @@ mod tests {
     fn a_stream_without_a_line_draws_only_blocks() {
         let mut ui = Ui::capturing(OutputMode::Human);
         {
-            let stream = Stream::<io::Sink>::with_progress(
+            let stream = Stream::<io::Sink>::with_live(
                 &mut ui,
                 [("src/a.test.js", SOURCE)],
                 "demo",

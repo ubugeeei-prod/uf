@@ -44,6 +44,7 @@
 //
 // `unsorted` is the only opt-out, and the check counts those too.
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -364,8 +365,56 @@ export function disorders(listing: Listing): Array<Disorder> {
  * Symbolic links are not followed: a link inside the repository points at a
  * file the walk reaches anyway, one outside it is not this repository's
  * prose, and a dangling one would otherwise throw.
+ *
+ * "Owns" is git's answer when there is a git to ask: tracked files, and
+ * untracked ones `.gitignore` does not exclude. A checkout holds a great deal
+ * that is not the repository's — `tests/fixtures/git` alone is fifty thousand
+ * files of other projects, cloned there on demand and ignored — and a walk by
+ * directory name read every one of them. That was most of what the two
+ * suites asking this question cost, and it made their verdict depend on which
+ * fixtures a machine happened to have cloned: a README in somebody else's
+ * project failed this repository's check. Outside a checkout, the walk is
+ * what there is.
+ *
+ * Remembered per root, because both checks that ask ask more than once.
  */
 export function documents(root: string): Array<string> {
+  const known = remembered.get(root);
+  if (known != null) return [...known];
+  const found = (owned(root) ?? walked(root)).sort(compareNames);
+  remembered.set(root, found);
+  return [...found];
+}
+
+const remembered: Map<string, $ReadOnlyArray<string>> = new Map();
+
+/** {@link documents} as git lists them, or `null` when git cannot answer. */
+function owned(root: string): Array<string> | null {
+  const listed = spawnSync(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md", "*.mdx"],
+    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (listed.error != null || listed.status !== 0) return null;
+  const found = [];
+  for (const relative of String(listed.stdout).split("\0")) {
+    if (relative === "" || relative.split("/").some((part) => SKIP.has(part))) continue;
+    const full = path.join(root, relative);
+    // A tracked file deleted in the working tree is still listed, and a link
+    // is left alone here as it is by the walk.
+    let stat;
+    try {
+      stat = fs.lstatSync(full);
+    } catch {
+      continue;
+    }
+    if (stat.isFile()) found.push(full);
+  }
+  return found;
+}
+
+/** {@link documents} by walking the tree, for a root git knows nothing about. */
+function walked(root: string): Array<string> {
   const found: Array<string> = [];
   const walk = (dir: string) => {
     for (const name of fs.readdirSync(dir)) {
@@ -384,7 +433,7 @@ export function documents(root: string): Array<string> {
     }
   };
   walk(root);
-  return found.sort(compareNames);
+  return found;
 }
 
 /** The whole check over a repository: what it read, and what is out of order. */

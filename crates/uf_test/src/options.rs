@@ -202,6 +202,13 @@ pub struct RunOptions {
     pub max_source_bytes: usize,
     /// Cap on assertions recorded from one test body.
     pub max_assertions_per_test: usize,
+    /// Whether a file long enough to hold up the run may be split into
+    /// shares that run on several workers at once; see [`crate::Part`].
+    ///
+    /// On unless turned off. A file whose cases only pass in the order they
+    /// were written, each relying on what the one before it left behind, is
+    /// the reason it can be.
+    pub split_files: bool,
 }
 
 impl Default for RunOptions {
@@ -213,6 +220,7 @@ impl Default for RunOptions {
             file_timeout: DEFAULT_FILE_TIMEOUT,
             max_source_bytes: MAX_SOURCE_BYTES,
             max_assertions_per_test: DEFAULT_MAX_ASSERTIONS_PER_TEST,
+            split_files: true,
         }
     }
 }

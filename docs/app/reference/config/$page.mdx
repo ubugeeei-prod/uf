@@ -843,6 +843,7 @@ uf's rule table, and a test asserts the table matches the descriptors.
 | `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |
 | `runner.officialFlowParser` | `true` | Discovery reads Flow with the official parser |
 | `reactTestingLibraryNative` | `false` | Whether component tests can run without a DOM |
+| `splitFiles` | `false` | Run a file long enough to hold up the run as shares on several workers, each importing it and running its own run of cases. Only for a suite whose cases do not rely on the ones above them |
 | `coverage.enabled` | `false` | Collect coverage on every run, without `--coverage` |
 | `coverage.directory` | `"coverage"` | Where the reports are written |
 | `coverage.reporters` | `["text", "lcov"]` | `text` is the terminal table; `lcov` and `cobertura` are files |

@@ -502,7 +502,9 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
                 arguments.get("id").and_then(Value::as_str),
             )
         }
-        "uf_check" => commands::check::check(cwd, &mut ui, json, FixMode::Report, &paths, None),
+        "uf_check" => {
+            commands::check::check(cwd, &mut ui, json, FixMode::Report, &paths, None, true)
+        }
         "uf_lint" => commands::lint::lint_command(
             cwd,
             &mut ui,

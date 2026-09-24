@@ -86,6 +86,8 @@ type Request = {|
    */
   readonly invalidate?: $ReadOnlyArray<string>,
   readonly filter?: string | null,
+  /** Run only this share of the file's cases; see `RunOptions.part`. */
+  readonly part?: {| readonly index: number, readonly count: number |} | null,
   readonly timeoutMs?: number,
   /**
    * Which request this is, counting from one within this worker.
@@ -259,6 +261,7 @@ async function runImportedFile(
     await run(
       {
         filter: request.filter ?? null,
+        part: request.part ?? null,
         timeoutMs: request.timeoutMs,
         file: absolute,
         bench: benching(),

@@ -243,7 +243,9 @@ export function oneCheckPerCommand(run: Checker = runEveryTime): Checker {
  * empty set of expectations.
  */
 function checkReport(paths: $ReadOnlyArray<string>, checker: Checker): CheckReport {
-  const argv = ["check", ...paths, "--json"];
+  // `--no-lint`: only `typeCheck` is read here, and on a warm cache the lint
+  // was nine tenths of what each of these commands cost.
+  const argv = ["check", ...paths, "--json", "--no-lint"];
   const run = checker(argv);
   if (run.stdout === "") {
     throw new Error(

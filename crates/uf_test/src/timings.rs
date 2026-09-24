@@ -143,6 +143,17 @@ pub struct TestTimings {
     /// the file took. It is what [`crate::auto_workers`] weighs a file's
     /// duration against, and without it a run starts a worker per core.
     worker_start_micros: Option<u64>,
+    /// How much of each file's duration its cases account for, in
+    /// microseconds: the rest is importing the file and whatever it does at
+    /// the top level.
+    ///
+    /// What decides whether a long file is worth splitting (see
+    /// `TestRunner::jobs`): every share of a file imports it, so a file whose
+    /// time is spent at import — one that asks `npm` a question while its
+    /// `describe` is being collected — is a file splitting only makes run the
+    /// same import twice. Optional in the document, as `workerStartMicros` is,
+    /// so one written before it existed still reads.
+    cases: FxHashMap<CompactString, u64>,
 }
 
 impl TestTimings {
@@ -184,9 +195,26 @@ impl TestTimings {
         self.entries.insert(CompactString::from(file), micros);
     }
 
+    /// How much of `file`'s recorded duration its cases took, in microseconds.
+    pub fn cases(&self, file: &str) -> Option<u64> {
+        self.cases.get(file).copied()
+    }
+
+    /// Record how long `file`'s cases took between them, clamped to
+    /// [`MAX_TIMING_MICROS`]. Only for a file whose duration is recorded, so
+    /// the two maps describe the same files.
+    pub fn record_cases(&mut self, file: &str, micros: u64) {
+        if let Some((known, _)) = self.entries.get_key_value(file) {
+            let known = known.clone();
+            self.cases.insert(known, micros.min(MAX_TIMING_MICROS));
+        }
+    }
+
     /// Drop every entry `keep` rejects, so deleted files do not live forever.
     pub fn retain_files(&mut self, keep: impl Fn(&str) -> bool) {
         self.entries.retain(|file, _| keep(file.as_str()));
+        let entries = &self.entries;
+        self.cases.retain(|file, _| entries.contains_key(file));
     }
 
     /// How many files are described.
@@ -236,6 +264,18 @@ impl TestTimings {
                 None => audit.rejected_durations += 1,
             }
         }
+        for (file, value) in document.cases {
+            if !timings.entries.contains_key(file.as_str()) {
+                // Nothing to be a part of: not an error, and not believed.
+                continue;
+            }
+            match believable_micros(&value) {
+                Some(micros) => {
+                    timings.cases.insert(CompactString::from(file), micros);
+                }
+                None => audit.rejected_durations += 1,
+            }
+        }
         if let Some(value) = document.worker_start_micros {
             // Held to the same test as a file's duration. A start-up of a year
             // would tell the next run that no suite is ever worth a second
@@ -275,7 +315,23 @@ impl TestTimings {
         if !files.is_empty() {
             out.push_str("\n  ");
         }
-        out.push_str("}\n}\n");
+        out.push('}');
+        let mut cases: Vec<(&CompactString, &u64)> = self.cases.iter().collect();
+        cases.sort_unstable_by(|a, b| a.0.cmp(b.0));
+        if !cases.is_empty() {
+            out.push_str(",\n  \"cases\": {");
+            for (index, (file, micros)) in cases.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                out.push_str("\n    ");
+                push_json_string(&mut out, file);
+                out.push_str(": ");
+                out.push_str(&micros.to_string());
+            }
+            out.push_str("\n  }");
+        }
+        out.push_str("\n}\n");
         out
     }
 }
@@ -317,6 +373,9 @@ struct TimingsDocument {
     /// same check a hostile file duration is.
     #[serde(default)]
     worker_start_micros: Option<serde_json::Value>,
+    /// Optional for the same reason; see [`TestTimings::cases`].
+    #[serde(default)]
+    cases: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Where recorded timings live for a project rooted at `root`.

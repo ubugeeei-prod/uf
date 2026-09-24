@@ -27,27 +27,16 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "@uniflowed/test";
 
+import { documents as ownedDocuments } from "../../tools/docs/trees.js";
+
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** Directories that are not this repository's prose. */
-const SKIP = new Set(["node_modules", "dist", ".uf", "target", "upstream", ".git", "coverage"]);
-
-/** Every Markdown and MDX file the repository owns. */
+/**
+ * Every Markdown and MDX file the repository owns — the same list, and the
+ * same answer to "owns", as the tree check's; see `documents` there.
+ */
 function documents(): Array<string> {
-  const found = [];
-  const walk = (dir: string) => {
-    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (item.isDirectory()) {
-        if (!SKIP.has(item.name)) {
-          walk(path.join(dir, item.name));
-        }
-      } else if (item.name.endsWith(".md") || item.name.endsWith(".mdx")) {
-        found.push(path.join(dir, item.name));
-      }
-    }
-  };
-  walk(REPO);
-  return found;
+  return ownedDocuments(REPO);
 }
 
 /**

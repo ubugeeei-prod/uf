@@ -46,6 +46,52 @@ fn the_worker_start_up_survives_a_round_trip() {
 }
 
 #[test]
+fn what_a_files_cases_took_survives_a_round_trip() {
+    let mut timings = TestTimings::new();
+    timings.record("src/a.test.js", 9_000);
+    timings.record_cases("src/a.test.js", 8_000);
+    // Only for a file whose duration is recorded: the part of nothing.
+    timings.record_cases("src/b.test.js", 5_000);
+
+    let (read, audit) = parse(&timings.to_json()).unwrap();
+    assert!(audit.is_clean());
+    assert_eq!(read.cases("src/a.test.js"), Some(8_000));
+    assert_eq!(read.cases("src/b.test.js"), None);
+    assert_eq!(read, timings);
+}
+
+#[test]
+fn a_document_without_case_times_still_reads_and_writes_the_same() {
+    let text = "{\n  \"version\": 1,\n  \"files\": {\n    \"src/a.test.js\": 1234\n  }\n}\n";
+    let (timings, audit) = parse(text).unwrap();
+    assert!(audit.is_clean());
+    assert_eq!(timings.cases("src/a.test.js"), None);
+    assert_eq!(timings.to_json(), text);
+}
+
+#[test]
+fn case_times_are_held_to_the_same_test_as_durations() {
+    let (timings, audit) = parse(
+        r#"{"version": 1, "files": {"src/a.test.js": 10, "src/b.test.js": 10},
+            "cases": {"src/a.test.js": -1, "src/b.test.js": 7, "src/gone.test.js": 3}}"#,
+    )
+    .unwrap();
+    assert_eq!(audit.rejected_durations, 1);
+    assert_eq!(timings.cases("src/a.test.js"), None);
+    assert_eq!(timings.cases("src/b.test.js"), Some(7));
+    assert_eq!(timings.cases("src/gone.test.js"), None);
+}
+
+#[test]
+fn a_file_that_is_forgotten_takes_its_case_time_with_it() {
+    let mut timings = TestTimings::new();
+    timings.record("src/a.test.js", 10);
+    timings.record_cases("src/a.test.js", 9);
+    timings.retain_files(|_| false);
+    assert_eq!(timings.cases("src/a.test.js"), None);
+}
+
+#[test]
 fn an_unbelievable_worker_start_up_is_dropped_rather_than_trusted() {
     for value in ["-1", "1.5", "\"fast\"", "null", "{}", "86400000001"] {
         let text = format!(r#"{{"version": 1, "workerStartMicros": {value}, "files": {{}}}}"#);

@@ -1072,6 +1072,13 @@ export type UniflowedConfig = {
         },
     readonly reactTestingLibraryNative?: true,
     /**
+     * Let `uf test` split a long test file into shares that run on several
+     * workers at once, each importing the file and running its own contiguous
+     * run of cases. Off by default: turn it on only when no case relies on
+     * one written above it having run in the same process.
+     */
+    readonly splitFiles?: boolean,
+    /**
      * What `uf test --coverage` measures, writes and fails on.
      *
      * The thresholds live here rather than on the command line because a

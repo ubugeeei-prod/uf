@@ -1379,6 +1379,16 @@ pub struct TestConfig {
     /// and [`TestConfig::native_runner`] for the object's fields.
     pub runner: Option<TestRunnerConfig>,
     pub react_testing_library_native: bool,
+    /// Whether uf's runner may split a long test file into shares that run
+    /// on several workers at once: `uf_test::Part`.
+    ///
+    /// Off unless a project turns it on, because it is a promise about the
+    /// project's tests rather than a setting of the runner: every share
+    /// imports the file and runs its own run of cases, so a case that only
+    /// passes after the one written above it has run in the same process —
+    /// a `describe` reading what the previous one's `afterAll` left — would
+    /// fail in a share of its own.
+    pub split_files: bool,
     pub coverage: CoverageConfig,
 }
 
@@ -1390,6 +1400,7 @@ impl Default for TestConfig {
             target: None,
             runner: None,
             react_testing_library_native: true,
+            split_files: false,
             coverage: CoverageConfig::default(),
         }
     }

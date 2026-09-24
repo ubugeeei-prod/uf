@@ -119,6 +119,9 @@ pub(crate) struct TestArgs {
     pub(crate) reporter_outfile: Option<String>,
     /// Only run files whose path contains one of these patterns.
     pub(crate) paths: Vec<String>,
+    /// Whether a long file may run as shares on several workers; the
+    /// project's `test.splitFiles`, not a flag.
+    pub(crate) split_files: bool,
 }
 
 impl TestArgs {
@@ -147,6 +150,7 @@ impl TestArgs {
             } else {
                 uf_test::DEFAULT_FILE_TIMEOUT
             },
+            split_files: self.split_files,
             ..RunOptions::default()
         }
     }
@@ -169,7 +173,7 @@ impl TestArgs {
     }
 }
 
-pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
+pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()> {
     // Watch mode prints a report per change; `--json` promises one document and
     // nothing else. Rather than quietly picking one, say so.
     if args.watch && args.json {
@@ -243,6 +247,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             &resolved.config,
         )?;
     }
+    args.split_files = resolved.config.test.split_files;
     let root = resolved.root.clone();
     if test_application_target(&resolved.config) == TestApplicationTarget::ReactNative {
         let tables = uf_router::native::discover_native_route_tables(&root, &resolved.config)?;
@@ -1304,6 +1309,12 @@ pub(crate) fn record_timings(
     for file in &report.files {
         if file.status == FileStatus::Completed {
             timings.record(&file.file, file.duration_micros);
+            let cases = file
+                .records
+                .iter()
+                .map(|record| record.duration_micros)
+                .fold(0, u64::saturating_add);
+            timings.record_cases(&file.file, cases);
         }
     }
     // What a worker cost to start in this run, for the next run to size its
