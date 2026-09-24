@@ -97,8 +97,9 @@ type Step = {
  * React update rather than a fresh mount — the question is what an *existing*
  * application pays to move its window.
  */
-const line = (index: number) =>
-  React.createElement(Text, { key: String(index), wrap: "none" }, `line ${index}`);
+const line = (index: number): React.Node => (
+  <Text key={String(index)} wrap="none">{`line ${index}`}</Text>
+);
 
 component Log(rows: number) {
   const [top, setTop] = useState<number>(0);
@@ -140,15 +141,15 @@ component Log(rows: number) {
       setLines((list) => [...list, line(list.length)]);
     }
   });
-  return React.createElement(
-    ScrollBox,
-    {
-      height: HEIGHT,
-      width: WIDTH,
-      scrollbar: false,
-      scrollTop: following ? Number.MAX_SAFE_INTEGER : top,
-    },
-    lines,
+  return (
+    <ScrollBox
+      height={HEIGHT}
+      scrollTop={following ? Number.MAX_SAFE_INTEGER : top}
+      scrollbar={false}
+      width={WIDTH}
+    >
+      {lines}
+    </ScrollBox>
   );
 }
 
@@ -167,7 +168,7 @@ const summarise = (times: Array<number>): Row => ({
 
 /** Mount `rows` rows, and time the first frame — the pass that is allowed to grow. */
 function mount(rows: number): { handle: TestHandle, first: number } {
-  const handle = testRender(React.createElement(Log, { rows }), {
+  const handle = testRender(<Log rows={rows} />, {
     width: WIDTH,
     height: HEIGHT,
   });

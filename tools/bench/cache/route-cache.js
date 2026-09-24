@@ -42,6 +42,7 @@ import process from "node:process";
 
 import { cacheLife, createCacheStore } from "@uniflowed/server/cache";
 import { createFetchHandler } from "@uniflowed/server/fetch";
+import type { Application } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 
 /** How long the page's loader takes. */
@@ -55,13 +56,6 @@ const SIMULTANEOUS = 10;
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
-/** The half of a `ReadableStream` controller this fixture uses. */
-type StreamController = {
-  readonly enqueue: (chunk: Uint8Array) => mixed,
-  readonly close: () => mixed,
-  ...
-};
-
 function sleep(millis: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, millis);
@@ -74,18 +68,16 @@ function sleep(millis: number): Promise<void> {
  * `renders` is the count that makes the cache visible without a clock: a
  * request that did not render is a request the cache answered.
  */
-function slowApp(): {|
-  renders: Array<string>,
-  beginRequest: typeof beginRequest,
-  runMiddleware: (request: Request) => Promise<Response | null>,
-  dispatch: (request: Request) => Promise<Response | null>,
-  render: (url: string) => Promise<mixed>,
-|} {
+function slowApp(): {| app: Application, renders: Array<string> |} {
   const renders: Array<string> = [];
-  return {
-    renders,
+  // `Application` is exact, so the render count is kept beside the app rather
+  // than on it.
+  const app: Application = {
     beginRequest,
     runMiddleware: async () => null,
+    // Part of the `Application` contract. It declines every request here: the
+    // benchmark serves a page, and an action call never reaches a render.
+    callAction: async (_request: Request) => null,
     dispatch: async () => null,
     render: async (url: string) => {
       renders.push(url);
@@ -97,13 +89,17 @@ function slowApp(): {|
       const html = `<!doctype html><title>posts</title><p>${url}</p>`;
       return {
         status: 200,
-        pipe: (destination: { write: (chunk: string) => mixed, end: () => mixed, ... }) => {
+        pipe: (destination: {
+          readonly write: (chunk: string) => mixed,
+          readonly end: () => mixed,
+          ...
+        }) => {
           destination.write(html);
           destination.end();
         },
         stream: () =>
           new ReadableStream({
-            start(controller: StreamController) {
+            start(controller: ReadableStreamDefaultController<Uint8Array>) {
               controller.enqueue(new TextEncoder().encode(html));
               controller.close();
             },
@@ -111,10 +107,15 @@ function slowApp(): {|
       };
     },
   };
+  return { app, renders };
 }
 
 /** Answer one request the way a host does: begin, run, settle. */
-async function serve(handle, app, url: string): Promise<Response> {
+async function serve(
+  handle: (request: Request) => Promise<Response>,
+  app: Application,
+  url: string,
+): Promise<Response> {
   const request = new Request(`http://localhost${url}`);
   const { run, settle } = app.beginRequest(request);
   try {
@@ -152,7 +153,7 @@ async function column(cached: boolean): Promise<Column> {
   let renders = 0;
 
   for (let run = 0; run < RUNS; run += 1) {
-    const app = slowApp();
+    const { app, renders: rendered } = slowApp();
     const store = createCacheStore();
     const handle = createFetchHandler({
       app,
@@ -169,11 +170,11 @@ async function column(cached: boolean): Promise<Column> {
     await (await serve(handle, app, url)).text();
     seconds.push(performance.now() - warmAt);
 
-    renders += app.renders.length;
+    renders += rendered.length;
   }
 
   // And what a median cannot show: a cold page asked for by everybody at once.
-  const app = slowApp();
+  const { app, renders: stampede } = slowApp();
   const store = createCacheStore();
   const handle = createFetchHandler({
     app,
@@ -190,7 +191,7 @@ async function column(cached: boolean): Promise<Column> {
     firstMs: median(firsts),
     secondMs: median(seconds),
     rendersPerPair: renders / RUNS,
-    coalescedRenders: app.renders.length,
+    coalescedRenders: stampede.length,
   };
 }
 

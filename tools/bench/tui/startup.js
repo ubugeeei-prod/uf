@@ -37,11 +37,11 @@ import { Box, Text, render } from "@uniflowed/tui";
 
 /** A frame with enough in it to have cost something to lay out. */
 component Startup() {
-  return React.createElement(
-    Box,
-    { border: true, borderStyle: "rounded", padding: 1, title: " uf ", width: 40 },
-    React.createElement(Text, { bold: true }, "a Flow entry point on the JS host"),
-    React.createElement(Text, { fg: "gray" }, "drew this before printing the time"),
+  return (
+    <Box border borderStyle="rounded" padding={1} title=" uf " width={40}>
+      <Text bold>a Flow entry point on the JS host</Text>
+      <Text fg="gray">drew this before printing the time</Text>
+    </Box>
   );
 }
 
@@ -52,14 +52,14 @@ const sink = {
   rows: 24,
   bytes: 0,
   write(chunk: string): boolean {
-    this.bytes += Buffer.byteLength(chunk, "utf8");
+    sink.bytes += Buffer.byteLength(chunk, "utf8");
     return true;
   },
   on() {},
   off() {},
 };
 
-const handle = render(React.createElement(Startup), {
+const handle = render(<Startup />, {
   stdout: sink,
   stdin: { isTTY: false },
   color: "never",
