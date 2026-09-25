@@ -344,8 +344,9 @@ function callServerActionFor(id: string, name: string): ServerActionFunction {
  * - `not-found`, `unauthorized`, `forbidden`: throw the same error the server
  *   caught. React hands an error thrown by an action to the nearest error
  *   boundary, and uf's route boundary already tells `unauthorized()` and
- *   `forbidden()` apart. `notFound()` arrives as a `NotFoundError`, which an
- *   `$error.js` can test for.
+ *   `forbidden()` apart. `notFound()` arrives as a `NotFoundError`, which the
+ *   boundary answers with the URL's not-found page rather than its error view
+ *   (ubugeeei-prod/uf#1489).
  *
  * Any other value is a server this reference does not understand, and it is
  * the same `ServerActionError` as any other failure.

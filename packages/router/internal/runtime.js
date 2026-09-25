@@ -101,6 +101,7 @@ import {
   routeNavigations,
 } from "./navigation-cache.js";
 import {
+  NotFoundError,
   hasClientPage,
   matchRoute,
   nearestBoundary,
@@ -112,6 +113,7 @@ import {
   beneath,
   interceptingRoutes,
   loadOnce,
+  resolveFailure,
   resolveInterception,
   resolveMatch,
 } from "./resolve.js";
@@ -370,16 +372,58 @@ export type Router = {|
  */
 let mountedRouter: Router | null = null;
 
-/** Publish `router` as [`mountedRouter`] while its provider is mounted. */
-hook useMountedRouter(router: Router): void {
+/**
+ * How the provider on screen shows its not-found page for the URL it is on, or
+ * `null` when none is mounted. See [`showNotFoundPage`].
+ */
+let mountedNotFound: ShowNotFound | null = null;
+
+/**
+ * Show the not-found page for the URL on screen, and run `alongside` in the
+ * same transition as the commit that shows it. Resolves `false`, having shown
+ * nothing, when there is no not-found page to be had for it.
+ */
+type ShowNotFound = (alongside: () => void) => Promise<boolean>;
+
+/**
+ * Publish `router` as [`mountedRouter`], and its not-found page as
+ * [`mountedNotFound`], while its provider is mounted.
+ */
+hook useMountedRouter(router: Router, showNotFound: ShowNotFound): void {
   useEffect(() => {
     mountedRouter = router;
+    mountedNotFound = showNotFound;
     return () => {
       if (mountedRouter === router) {
         mountedRouter = null;
+        mountedNotFound = null;
       }
     };
   });
+}
+
+/**
+ * Show the page a loader's `notFound()` would have shown for the URL on screen,
+ * because something below the route's error boundary threw `NotFoundError`.
+ *
+ * What a loader's `notFound()` shows is not a boundary catching it: the
+ * resolver resolves the route again as its not-found page (`resolveFailure`).
+ * A hydrated server action that calls `notFound()` throws the same error in the
+ * browser (`../action.js`), React hands it to the nearest boundary, and the
+ * boundary asks for that same resolution here rather than rendering the error
+ * view (ubugeeei-prod/uf#1489). A page rendered from its modules resolves it
+ * in the browser; a page React Server Components rendered asks the server for
+ * the not-found payload of its URL, because only the server has the module.
+ *
+ * `alongside` is the boundary letting go of the error, run in the transition
+ * that commits the not-found page so the page that threw is never rendered
+ * again in between. `false` when there is nothing to show — no router mounted,
+ * or a host that did not answer with a not-found payload — and the boundary
+ * then shows its error view, as it did before.
+ */
+export function showNotFoundPage(alongside: () => void): Promise<boolean> {
+  const show = mountedNotFound;
+  return show == null ? Promise.resolve(false) : show(alongside);
 }
 
 /**
@@ -1046,7 +1090,25 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     },
   };
 
-  useMountedRouter(router);
+  // The URL on screen resolved as its not-found page, in the page: the table
+  // this router resolves from has the not-found modules too. No history entry
+  // is written, because the URL is still the one the visitor is on.
+  const showNotFound = async (alongside: () => void): Promise<boolean> => {
+    if (!isBrowser()) {
+      return false;
+    }
+    const here =
+      (applicationPathOf(window.location.pathname) ?? window.location.pathname) +
+      window.location.search;
+    const nextResolved = await resolveFailure(routeTable(), here, new NotFoundError());
+    startTransition(() => {
+      show(nextResolved);
+      alongside();
+    });
+    return true;
+  };
+
+  useMountedRouter(router, showNotFound);
 
   const value: RouterState = {
     route: routeState(resolved),
@@ -1320,7 +1382,37 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     },
   };
 
-  useMountedRouter(router);
+  // The URL on screen as its not-found page, asked of the server: the payload
+  // for this URL with `notFound`, which renders the not-found resolution a
+  // loader's `notFound()` would have. Not kept in the navigation cache, because
+  // it is not what a navigation to this URL shows. Anything that is not such a
+  // payload — a document, a payload another build rendered, a host that ignored
+  // the request and answered the page — is nothing to show, and the boundary
+  // falls back to its error view.
+  const showNotFound = async (alongside: () => void): Promise<boolean> => {
+    if (!isBrowser()) {
+      return false;
+    }
+    const fetched = await fetchFlight(window.location.pathname + window.location.search, {
+      ...flightFetchOptions(root.route.interception?.from ?? null),
+      notFound: true,
+    });
+    if (fetched.kind === "document") {
+      return false;
+    }
+    const payload = fetched.root;
+    const nextRoot = await payload;
+    if (fromAnotherDeployment(nextRoot.deployment) || nextRoot.route.status !== 404) {
+      return false;
+    }
+    startTransition(() => {
+      show(payload, nextRoot);
+      alongside();
+    });
+    return true;
+  };
+
+  useMountedRouter(router, showNotFound);
 
   const value: RouterState = {
     route: root.route,

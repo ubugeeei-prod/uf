@@ -111,6 +111,7 @@ import {
   FLIGHT_BROWSER_DEPENDENCIES,
   FLIGHT_VIRTUAL,
   INTERCEPTED_FROM_HEADER,
+  NOT_FOUND_HEADER,
   RSC_ENVIRONMENT,
   builtBridgeSource,
   builtReferencesSource,
@@ -1139,6 +1140,7 @@ function flowPlugin({
                 const answered = await entry.flight(target, {
                   onError: (error) => reportRenderError(devServer, target, error),
                   interceptedFrom,
+                  notFound: asRequest.headers.get(NOT_FOUND_HEADER) === "1",
                 });
                 if (answered.error != null) reportRenderError(devServer, target, answered.error);
                 if (request.method === "HEAD") await answered.stream?.cancel();

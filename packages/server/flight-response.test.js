@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import { INTERCEPTED_FROM_HEADER, flightResponse } from "./internal/flight.js";
+import { INTERCEPTED_FROM_HEADER, NOT_FOUND_HEADER, flightResponse } from "./internal/flight.js";
 
 /** A server bundle whose `flight` answers with `answer`, and records its URL. */
 function appAnswering(answer: mixed): $FlowFixMe {
@@ -89,5 +89,22 @@ describe("answering a payload request", () => {
 
     expect(app.asked).toEqual(["/feed/photo/1"]);
     expect(app.options.map((option) => option?.interceptedFrom)).toEqual(["/feed"]);
+  });
+
+  it("asks the renderer for the not-found page only when the header says 1", async () => {
+    const app = appAnswering({ status: 404, headers: {}, stream: null });
+
+    for (const value of ["1", "true", null]) {
+      await flightResponse(
+        app,
+        new Request("http://uf.test/notes/7/__uf.flight", {
+          headers: value == null ? {} : { [NOT_FOUND_HEADER]: value },
+        }),
+        { onError: () => {} },
+      );
+    }
+
+    expect(app.asked).toEqual(["/notes/7", "/notes/7", "/notes/7"]);
+    expect(app.options.map((option) => option?.notFound)).toEqual([true, false, false]);
   });
 });

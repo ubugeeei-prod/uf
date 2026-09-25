@@ -24,6 +24,13 @@ export const FLIGHT_SEGMENT = "__uf.flight";
 export const INTERCEPTED_FROM_HEADER = "uf-intercepted-from";
 
 /**
+ * The request header asking for a URL's not-found payload rather than its
+ * route, sent with the value `1` by a page whose server action called
+ * `notFound()` (ubugeeei-prod/uf#1489).
+ */
+export const NOT_FOUND_HEADER = "uf-not-found";
+
+/**
  * The document a payload URL is for, or `null` for any other path.
  *
  * `/guide/__uf.flight` is `/guide`, and `/__uf.flight` is `/`.
@@ -91,6 +98,7 @@ export async function flightResponse(
     render(document + url.search, {
       onError: options.onError,
       interceptedFrom: interceptedFrom(request),
+      notFound: request.headers.get(NOT_FOUND_HEADER) === "1",
     });
   const answered = await (options.within == null ? body() : options.within(body));
   // The exception the route resolved to its error boundary for, which never
