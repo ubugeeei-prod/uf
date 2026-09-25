@@ -576,6 +576,38 @@ fn a_contract_violation_fails_the_build_before_vite_runs() {
     );
 }
 
+/// A contract violation is diagnostic in `uf dev`: the same project that
+/// `uf build` refuses remains available while its author fixes the source.
+#[test]
+fn a_contract_violation_does_not_end_the_dev_server() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files[2] = (
+        "app/$page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport function remember(slug: string): void {\n  localStorage.setItem(\"last-seen\", slug);\n}\n\nexport component Page() {\n  return <main>home</main>;\n}\n",
+    );
+    let project = Project::new(&files);
+
+    serve_dev_on_any_port(project.path(), |server, port, said, body| {
+        assert!(body.starts_with("HTTP/1.1 200"), "{body}");
+        assert!(
+            server_said(said).contains("rsc/client-only-api-in-server"),
+            "the violation was not reported:\n{}",
+            server_said(said)
+        );
+        assert!(
+            server.child.try_wait().unwrap().is_none(),
+            "a diagnostic ended `uf dev`"
+        );
+        assert!(
+            get(server, port, "/", said).starts_with("HTTP/1.1 200"),
+            "the server stopped answering after the diagnostic"
+        );
+    });
+}
+
 /// A server-only import that a client component reaches fails the build, and
 /// the failure names the chain of imports that put it in the client graph.
 ///
