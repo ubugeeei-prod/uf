@@ -44,8 +44,8 @@ import { locateStatic, offerBuildFiles, staticRoot } from "./internal/static.js"
 import type { Schedule } from "./schedule.js";
 import { startSchedules } from "./schedule.js";
 import type { Logger } from "./internal/log.js";
-import { elapsedMs, logRequest, processLogger } from "./log.js";
-import { Temporal } from "@uniflowed/core/temporal";
+import { processLogger } from "./log.js";
+import { answerReturned } from "./internal/returned-response.js";
 
 /**
  * What a Bun host can do, plus whatever the deployment supplied.
@@ -197,7 +197,7 @@ export async function serve(options: {|
     hostname: host,
     port,
     fetch: (request: Request): Promise<Response> =>
-      answer(request, handle, options.beginRequest, log),
+      answerReturned(request, handle, options.beginRequest, log),
   });
 
   // `0.0.0.0` is not a URL anybody can open, so the loopback spelling is what
@@ -217,60 +217,6 @@ export async function serve(options: {|
       await server.stop(true);
     },
   };
-}
-
-/**
- * One request: begun, answered inside its context, logged, and settled.
- *
- * The counterpart of `./node.js`'s `nodeListener`, and it makes the same
- * promise that module's header makes — `after()` runs once the response has
- * gone. It is shorter for one reason: this host hands back a `Response` rather
- * than writing to a socket, so "the response has gone" is a thing the runtime
- * decides. `settle` therefore runs after `run` resolves rather than after the
- * last byte, which is the honest place for it here and is why streaming a body
- * and deferring work with `after()` are documented as ordered against each
- * other only on Node.
- */
-async function answer(
-  request: Request,
-  handle: (request: Request) => Promise<Response>,
-  beginRequest: (request: Request) => RequestLifecycle,
-  log: Logger,
-): Promise<Response> {
-  // uf's clock, not the host's: `@uniflowed/server/log`'s `elapsedMs` reads the
-  // same one at the other end.
-  const started = Temporal.Now.instant();
-  const target = new URL(request.url).pathname;
-  let lifecycle: RequestLifecycle | null = null;
-  let response: Response;
-  try {
-    lifecycle = beginRequest(request);
-    response = await lifecycle.run(() => handle(request));
-  } catch (error) {
-    // `error` is a field rather than part of the message: an exception's text
-    // is the varying half of what happened, and a logger that interpolated it
-    // would produce a million distinct messages for one fault.
-    log.error("request failed", { error, path: target });
-    response = new Response("500 Internal Server Error\n", {
-      status: 500,
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
-  } finally {
-    logRequest(log, {
-      // A request that never got a context still gets a line; it gets an empty
-      // id rather than a fabricated one, because inventing an id for a request
-      // that had none would put a value in the log that nothing else in the
-      // system has ever seen.
-      requestId: lifecycle?.context.id ?? "",
-      method: request.method.toUpperCase(),
-      path: target,
-      route: lifecycle?.context.route ?? null,
-      status: response?.status ?? 500,
-      durationMs: elapsedMs(started),
-    });
-    if (lifecycle != null) await lifecycle.settle();
-  }
-  return response;
 }
 
 function argument(name: string): string | null {

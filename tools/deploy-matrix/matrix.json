@@ -105,11 +105,6 @@
         "images": {
           "status": "planned",
           "note": "images"
-        },
-        "streaming": {
-          "status": "known-bug",
-          "issue": 1552,
-          "note": "tee-bun-deno"
         }
       }
     },
@@ -122,11 +117,6 @@
         "images": {
           "status": "planned",
           "note": "images"
-        },
-        "streaming": {
-          "status": "known-bug",
-          "issue": 1552,
-          "note": "tee-bun-deno"
         }
       }
     },
@@ -357,7 +347,6 @@
     "kumo-host": "Kumo 0.30.0's HTTP API event carries no `host` header and no `requestContext.domainName`, so uf's same-origin check refuses every action (as it should for a request that names no host). Real API Gateway sends both. The check runs and is expected to fail until Kumo does.",
     "kumo-cookies": "Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.",
     "images": "The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.",
-    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it.",
-    "tee-bun-deno": "The route-cache fill streams since #1503 under Node; under Bun and Deno the teed branch still reaches the client only when the document ends."
+    "flight-type": "Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it."
   }
 }

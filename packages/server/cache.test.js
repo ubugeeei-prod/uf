@@ -50,6 +50,9 @@ import { createFetchHandler } from "@uniflowed/server/fetch";
 import type { Application } from "@uniflowed/server/fetch";
 import type { WritableLike } from "../../packages/server/internal/application.js";
 import { beginRequest } from "@uniflowed/server/host";
+import { recordingLogger } from "@uniflowed/server/log";
+import { serve as serveOnBun } from "@uniflowed/server/bun";
+import { serve as serveOnDeno } from "@uniflowed/server/deno";
 
 // Not a package export, deliberately — `serve.test.js` says why. It is what
 // `uf preview` and `uf start` build their handler with, and it is the only
@@ -207,6 +210,116 @@ function servingWith(options: AppOptions, cacheOptions?: {| route?: boolean, fet
     cache: { store, route: cacheOptions?.route ?? true, fetch: cacheOptions?.fetch ?? false },
   });
   return { app, handle, store, time };
+}
+
+/**
+ * The route cache's filling request, answered through an adapter's `serve`,
+ * and read the way a client reads it: the shell before the boundary resolves,
+ * and then the rest.
+ */
+async function fillsThroughAdapter(runtime: string, serveOn: typeof serveOnBun): Promise<void> {
+  let resolveBoundary = (_text: string) => {};
+  const boundary: Promise<string> = new Promise((resolve) => {
+    resolveBoundary = resolve;
+  });
+  const { app, handle } = servingWith({
+    render: () => {
+      cacheLife({ revalidate: 60 });
+    },
+    later: boundary,
+  });
+  const answer = await withRuntimeServe(runtime, () =>
+    serveOn({
+      staticDir: tempDirectory(),
+      handle,
+      beginRequest: app.beginRequest,
+      host: "127.0.0.1",
+      port: 0,
+      log: recordingLogger().logger,
+    }),
+  );
+
+  let returned = false;
+  const answered = answer(request("/posts")).then((response) => {
+    returned = true;
+    return response;
+  });
+  // Everything but the boundary gets its turn: a host that waited for the
+  // document would still be waiting after all of it.
+  for (let turn = 0; turn < 20; turn += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(returned).toBe(true);
+
+  const response = await answered;
+  expect(response.headers.get("x-uf-cache")).toBe("MISS");
+  const reader = response.body?.getReader();
+  const shell = await reader?.read();
+  expect(new TextDecoder().decode(shell?.value)).toBe("<!doctype html><p>/posts</p><b>1</b>");
+
+  resolveBoundary("<i>boundary</i>");
+  const rest = await reader?.read();
+  expect(new TextDecoder().decode(rest?.value)).toBe("<i>boundary</i>");
+  expect((await reader?.read())?.done).toBe(true);
+
+  // And the entry is still the whole document.
+  const second = await answer(request("/posts"));
+  expect(second.headers.get("x-uf-cache")).toBe("HIT");
+  expect(await second.text()).toBe("<!doctype html><p>/posts</p><b>1</b><i>boundary</i>");
+  expect(rendersOf(app).length).toBe(1);
+}
+
+/**
+ * Start `start` — an adapter's `serve` — against a runtime `serve` that keeps
+ * the request handler instead of taking a socket, and hand back that handler.
+ *
+ * `Bun.serve({ fetch })` and `Deno.serve(options, handler)` are the only calls
+ * of the runtime's the adapters make to serve, so replacing them is the whole
+ * of what separates this from a listening server. The runtime's own `serve`,
+ * where there is one, is put back before this returns.
+ */
+async function withRuntimeServe(
+  runtime: string,
+  start: () => Promise<mixed>,
+): Promise<(request: Request) => Promise<Response>> {
+  let kept: ((request: Request) => Promise<Response>) | null = null;
+  const fake =
+    runtime === "bun"
+      ? (options: { fetch: (request: Request) => Promise<Response>, ... }) => {
+          kept = options.fetch;
+          return { port: 0, hostname: "127.0.0.1", stop: () => {} };
+        }
+      : (_options: mixed, handler: (request: Request) => Promise<Response>) => {
+          kept = handler;
+          return {
+            addr: { hostname: "127.0.0.1", port: 0, transport: "tcp" },
+            shutdown: async () => {},
+          };
+        };
+  // Through `Reflect`, because what is being replaced is a runtime's global,
+  // which the type of `globalThis` rightly says nothing may write.
+  const name = runtime === "bun" ? "Bun" : "Deno";
+  const existing: mixed = Reflect.get(globalThis, name);
+  let restore;
+  if (existing != null && typeof existing === "object") {
+    const original: mixed = Reflect.get(existing, "serve");
+    Reflect.set(existing, "serve", fake);
+    restore = () => {
+      Reflect.set(existing, "serve", original);
+    };
+  } else {
+    Reflect.set(globalThis, name, { serve: fake });
+    restore = () => {
+      Reflect.deleteProperty(globalThis, name);
+    };
+  }
+  try {
+    await start();
+  } finally {
+    restore();
+  }
+  if (kept == null) throw new Error(`the ${runtime} adapter never called ${name}.serve`);
+  return kept;
 }
 
 /**
@@ -702,6 +815,26 @@ describe("the route cache", () => {
     expect(second.headers.get("x-uf-cache")).toBe("HIT");
     expect(await second.text()).toBe("<!doctype html><p>/posts</p><b>1</b><i>boundary</i>");
     expect(rendersOf(app).length).toBe(1);
+  });
+
+  // The same fill, answered the way `bun server.js` and `deno run server.js`
+  // answer it. Those hosts hand the runtime a `Response` rather than writing a
+  // socket, and until #1552 they settled the request before returning it —
+  // and the fill's settle is the entry being kept, which waits for the whole
+  // document. So the response, shell and all, reached the runtime only once
+  // the page had finished: in one read under Bun and Deno, streamed under
+  // Node, whose host settles after the last byte.
+  //
+  // `serve` itself, with the runtime's `serve` replaced by one that keeps the
+  // handler instead of taking a socket, so this runs on every host the suite
+  // runs on — the Deno library lane among them — and the deploy matrix makes
+  // the same check over a real socket.
+  it("streams the request that fills under the bun adapter", async () => {
+    await fillsThroughAdapter("bun", serveOnBun);
+  });
+
+  it("streams the request that fills under the deno adapter", async () => {
+    await fillsThroughAdapter("deno", serveOnDeno);
   });
 
   it("streams a page it will not keep, and says BYPASS", async () => {
