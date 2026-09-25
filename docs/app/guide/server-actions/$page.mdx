@@ -374,7 +374,7 @@ went wrong:
 | Status | When |
 | --- | --- |
 | `200` | The action ran and its result crossed |
-| `400` | The payload is not this grammar |
+| `400` | The payload is not this grammar, including a body that is not UTF-8 |
 | `403` | `Origin` is absent, unparseable, or not equal to `Host` |
 | `404` | No row has that id — malformed, well-formed but unknown, or not callable |
 | `405` | Not a `POST`. Carries `Allow: POST` |
