@@ -161,3 +161,35 @@ jobs:
           name: bench-comparison
           path: ${{ runner.temp }}/bench/results.json
           retention-days: 90
+
+  ssr:
+    name: Bench production SSR
+    needs: build
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 45
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund --prefix tools/bench/toolchain/rivals
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: uf-bench
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: |
+          UF_BINARY="$PWD/target/release/uf" \
+            UF_BENCH_SSR_WORK_DIR="$RUNNER_TEMP/uf-bench-ssr" \
+            UF_BENCH_SSR_OUT="$RUNNER_TEMP/bench-ssr/results.json" \
+            node --import @uniflowed/host/register tools/bench/toolchain/ssr.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: bench-ssr
+          path: ${{ runner.temp }}/bench-ssr/results.json
+          retention-days: 90
