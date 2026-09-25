@@ -49,22 +49,6 @@ export function classify(report) {
       file.reason.includes("Cannot find native binding.")
     ) {
       skips.push({ file: file.file, reason: NATIVE });
-    } else if (
-      file.file === "tests/library/payload.test.js" &&
-      file.status === "host-failed" &&
-      // Since #1427 the worker reports the exception it died of instead of
-      // its exit status, so the same death has two spellings (#1433).
-      (file.reason === "the host failed: the worker exited (exit status: 1)" ||
-        file.reason ===
-          "the host failed: uncaught exception: The server could not finish this Suspense boundary, likely due to an error during server rendering. Switched to client rendering.") &&
-      report.tests.filter((t) => t.file === file.file).at(-1)?.name ===
-        "the browser applying a payload > hydrates from the rows the document carried, without running the loader again"
-    ) {
-      skips.push({
-        file: file.file,
-        reason:
-          "Deno exits during deferred hydration in the simulated DOM; the remaining hydration cases are covered on Node.",
-      });
     } else failures.push({ file: file.file, reason: file.reason });
   }
   for (const test of report.tests) {

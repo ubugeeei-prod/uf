@@ -24,12 +24,19 @@ export function hydrationOptions(
   recovery: ?Recovery,
   formState: FormState | void,
 ): HydrationOptions | void {
-  if (recovery == null && formState == null) {
+  // React's default reporter dispatches a global error for a boundary it
+  // recovers by rendering on the client. Deno's Node compatibility layer
+  // treats that dispatch as an uncaught exception and exits the process.
+  // Keep the error visible without turning successful recovery into a crash.
+  const deno = "Deno" in globalThis;
+  if (recovery == null && formState == null && !deno) {
     return undefined;
   }
   const options: HydrationOptions = {};
   if (recovery != null) {
     options.onRecoverableError = recovery;
+  } else if (deno) {
+    options.onRecoverableError = (error) => console.error(error);
   }
   if (formState != null) {
     options.formState = formState;
