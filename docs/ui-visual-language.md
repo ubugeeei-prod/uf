@@ -120,8 +120,8 @@ which was a different failure. The rules below are the middle.
   | Tabs | underline and label colour change together | base, standard |
   | Progress | the fill's `scaleX` moves to the new value | slow, standard |
   | Chevrons (accordion, collapsible, select, navigation menu) | a half turn | base, standard |
-| Menu item highlight | background follows the pointer | fast, standard |
-| Field | border colour turns; focus ring draws outward | fast, standard |
+  | Menu item highlight | background follows the pointer | fast, standard |
+  | Field | border colour turns; focus ring draws outward | fast, standard |
 
 - **The preset moves the same way.** `@uniflowed/stylex/preset` is the
   default look for a project that styles `@uniflowed/ui` without the
