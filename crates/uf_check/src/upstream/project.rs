@@ -705,7 +705,11 @@ impl ProjectModules {
             path.rsplit(['/', '\\']).next(),
             Some("uf.config.js" | "uf.config.mjs" | "uf.config.cjs" | "uf.config.flow")
         ) || (path.rsplit(['/', '\\']).next() == Some("app.js")
-            && source.contains("export default routerView("))
+            && source.contains("export default routerView(")
+            && source
+                .lines()
+                .filter(|line| line.trim_start().starts_with("export "))
+                .all(|line| line.trim_start().starts_with("export default routerView(")))
         {
             return ErrorSet::new();
         }

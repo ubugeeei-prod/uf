@@ -662,6 +662,14 @@ fn a_router_view_app_entry_keeps_its_runtime_export() {
     // An ordinary module exporting the same call still has a signature error.
     let module = batch(&[Source::new("project/other.js", source)]);
     assert!(codes(&module).contains(&"signature-verification-failure"));
+
+    // A second export makes the app entry a typed module too. Its signature
+    // errors must remain visible even when the runtime default is present.
+    let mixed = batch(&[Source::new(
+        "project/app.js",
+        "// @flow\nfunction routerView(root: string): mixed { return root; }\nexport default routerView('./app');\nexport const signup = () => null;\n",
+    )]);
+    assert!(codes(&mixed).contains(&"signature-verification-failure"));
 }
 
 #[test]
