@@ -68,7 +68,7 @@ args=()
 for arg in "$@"; do
   case "$arg" in --allow-read=*|--allow-write=*|--allow-env=*|--allow-run=*) ;; *) args+=("$arg") ;; esac
 done
-exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run --allow-ffi --allow-sys=uid,homedir --allow-net=127.0.0.1,localhost,[::1],0.0.0.0,[::] "\${args[@]}"
+exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run --allow-ffi --allow-sys=uid,homedir,osRelease --allow-net=127.0.0.1,localhost,[::1],0.0.0.0,[::] --preload ${quote(path.join(root, "tools/ci/deno-native-preload.js"))} "\${args[@]}"
 `,
     { mode: 0o755 },
   );

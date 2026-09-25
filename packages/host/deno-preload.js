@@ -39,16 +39,4 @@
 import { installFlowHooks } from "./internal/sync-hooks.js";
 import { environmentVariable } from "./transform.js";
 
-// Deno 2.9.x dispatches a native addon through a registered load hook as
-// JavaScript, even when that hook delegates to nextLoad. Vite tests import
-// Rolldown after the hook is installed; loading its addon here first lets
-// those tests exercise Vite instead of failing before their first case.
-// A normal application does not pay for a test-only dependency.
-if (environmentVariable("UF_IN_SOURCE_TESTS") === "1") {
-  try {
-    await import("rolldown");
-  } catch (error) {
-    if (error?.code !== "ERR_MODULE_NOT_FOUND") throw error;
-  }
-}
 installFlowHooks(environmentVariable("UF_PROJECT_ROOT") ?? process.cwd());
