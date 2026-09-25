@@ -446,22 +446,36 @@ export function declaresDefaultExport(source) {
  * the endpoint, a route handler and a server component call exactly what they
  * called before. See ubugeeei-prod/uf#1358.
  *
+ * In the rsc graph (`flight`) each one is also registered with React as a
+ * server reference under its id (`registerServerFunction` in
+ * `@uniflowed/router/rsc`), so a Server Component can pass it to a Client
+ * Component as a prop. An export with no manifest row is not callable, is not
+ * registered, and Flight still refuses to send it. See ubugeeei-prod/uf#1359.
+ *
  * @param {string} file absolute path of the module
  * @param {Array<{id: string, module: string, export: string}>} actions its callable exports
  * @param {boolean} hasDefault whether the file declares a default export
+ * @param {boolean} [flight] whether this is the rsc graph
  */
-export function serverActionSource(file, actions, hasDefault) {
+export function serverActionSource(file, actions, hasDefault, flight = false) {
   const impl = JSON.stringify(`${file}${SERVER_ACTION_IMPL_QUERY}`);
   const lines = [
     'import { registerServerAction } from "@uniflowed/router/action";',
+    ...(flight ? ['import { registerServerFunction } from "@uniflowed/router/rsc";'] : []),
     `import * as impl from ${impl};`,
     `export * from ${impl};`,
   ];
   if (hasDefault) lines.push(`export { default } from ${impl};`);
   for (const action of actions) {
-    lines.push(
-      `registerServerAction(impl[${JSON.stringify(action.export)}], ${JSON.stringify(action.id)});`,
-    );
+    const binding = `impl[${JSON.stringify(action.export)}]`;
+    lines.push(`registerServerAction(${binding}, ${JSON.stringify(action.id)});`);
+    if (flight) {
+      lines.push(
+        `registerServerFunction(${binding}, ${JSON.stringify(action.id)}, ${JSON.stringify(
+          `${action.module}#${action.export}`,
+        )});`,
+      );
+    }
   }
   return `${lines.join("\n")}\n`;
 }

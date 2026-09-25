@@ -91,3 +91,76 @@ describe("the notes route, built", () => {
     expect(await (await app.render("/notes/1")).text()).toContain("by ada");
   });
 });
+
+/** A server reference as a payload writes it: the reference's id and what is bound to it. */
+type SentReference = {| readonly id: string, readonly bound: $ReadOnlyArray<mixed> |};
+
+/**
+ * The server reference to `name` in a Flight payload, read off its rows.
+ *
+ * React writes one as an outlined row, `{"id":…,"bound":"$@<row>"}`, with the
+ * bound arguments in the row it points at. Read here the way the browser's
+ * Flight client reads it, so the test can make the call that client would.
+ */
+function sentReference(payload: string, name: string): SentReference {
+  const rows: Map<string, string> = new Map();
+  for (const line of payload.split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon > 0) rows.set(line.slice(0, colon), line.slice(colon + 1));
+  }
+  for (const row of rows.values()) {
+    if (!row.startsWith("{") || !row.includes(`#${name}"`)) continue;
+    const reference: { readonly id?: mixed, readonly bound?: mixed, ... } = JSON.parse(row);
+    const { id, bound } = reference;
+    if (typeof id !== "string") continue;
+    const boundRow = typeof bound === "string" ? rows.get(bound.slice(2)) : null;
+    const boundArguments: $ReadOnlyArray<mixed> = boundRow == null ? [] : JSON.parse(boundRow);
+    return { id, bound: boundArguments };
+  }
+  throw new Error(`no server reference to ${name} in the payload:\n${payload}`);
+}
+
+describe("a server action a Server Component hands to a Client Component (#1359)", () => {
+  it("crosses as a server reference under the action's id, with the note's id bound", async () => {
+    const payload = await (await app.flight("/notes/1")).text();
+    const reference = sentReference(payload, "app/notes/_actions/notes.js#deleteNote");
+    expect(reference.id).toMatch(/^[0-9a-f]{64}#app\/notes\/_actions\/notes\.js#deleteNote$/);
+    expect(reference.bound).toEqual(["1"]);
+    // The HTML renderer decodes the same payload and renders the button.
+    expect(await (await app.render("/notes/1")).text()).toContain("Delete</button>");
+  });
+
+  it("reaches the action over the JSON wire, with the bound id first", async () => {
+    const payload = await (await app.flight("/notes/1")).text();
+    const { id, bound } = sentReference(payload, "app/notes/_actions/notes.js#deleteNote");
+    // What the reference the browser decodes sends: the action's id in
+    // `uf-action`, and the bound arguments ahead of the call's own.
+    const answer = await app.fetch("/notes/1", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost",
+        "content-type": "application/json",
+        "uf-action": id.slice(0, id.indexOf("#")),
+      },
+      cookies: { session: "mallory" },
+      body: JSON.stringify({ args: bound }),
+    });
+    // The action found note 1 from the bound id and refused mallory, who did
+    // not write it: `forbidden()`, not the `notFound()` a missing id would be.
+    expect(answer.status).toBe(403);
+    expect(answer.headers.get("uf-action-outcome")).toBe("forbidden");
+  });
+
+  it("still refuses a function that is not a server action", async () => {
+    // Flight writes an error row where the prop would have been: the function
+    // is not sent, and nothing can call it.
+    const payload = await (await app.flight("/claims/plain-function")).text();
+    const row = /"remove":"\$([0-9a-f]+)"/.exec(payload)?.[1];
+    expect(row).not.toBe(undefined);
+    expect(payload).toContain(`\n${row ?? ""}:E{`);
+    // And the document is the route's error boundary.
+    const response = await app.render("/claims/plain-function");
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain("This page could not be rendered.");
+  });
+});

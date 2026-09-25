@@ -23,8 +23,13 @@
 // and turning it into an `import()` would be letting bytes decide which script
 // runs.
 
-import { createFromFetch, createFromReadableStream } from "react-server-dom-parcel/client.browser";
+import {
+  createFromFetch,
+  createFromReadableStream,
+  setServerCallback,
+} from "react-server-dom-parcel/client.browser";
 
+import { callServerReference } from "../action.js";
 import { withDeployment } from "./deployment.js";
 import { FLIGHT_CHUNK_ATTRIBUTE, flightChunkBytes } from "./flight-chunks.js";
 import {
@@ -44,6 +49,21 @@ type ModuleNamespace = { readonly [string]: mixed };
 
 /** The entry a refusal names: the one an application reaches this module through. */
 const ENTRY = "@uniflowed/router/rsc/client";
+
+/**
+ * Install the call React's Flight client makes for a server reference.
+ *
+ * A Server Component that passes a `"use server"` function to a Client
+ * Component as a prop sends a server reference, and React's browser client
+ * decodes it into a function that calls this one callback with the reference's
+ * id and its arguments, bound ones first. uf answers with the call an imported
+ * reference makes, over the same JSON action wire (`callServerReference` in
+ * `../action.js`). See ubugeeei-prod/uf#1359.
+ */
+export function installServerCallback(): void {
+  requireServerComponentsReact(ENTRY);
+  setServerCallback(callServerReference);
+}
 
 /**
  * Install the module hook React's Flight client resolves references through.

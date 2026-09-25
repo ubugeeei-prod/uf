@@ -109,6 +109,54 @@ nothing in it. That half needs nothing from the runtime, and
 `tests/type-tests/server-actions.js` exists so that a change which breaks it is
 caught by a test rather than by a user.
 
+### Handed down by a Server Component
+
+Under React Server Components a Server Component may also pass an action to a
+client component as a prop, bound to arguments or not. The client component
+then does not import the action module at all:
+
+```js fragment source=crates/uf_cli/tests/fixtures/rsc-test-app/app/notes/[id]/$page.js
+  return (
+    <article>
+      <h1>{note.text}</h1>
+      <p>{`by ${note.author}`}</p>
+      <DeleteNote remove={deleteNote.bind(null, note.id)} />
+    </article>
+  );
+```
+
+```js source=crates/uf_cli/tests/fixtures/rsc-test-app/app/notes/_components/DeleteNote.js
+export component DeleteNote(remove: () => Promise<void>) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        startTransition(async () => {
+          await remove();
+        });
+      }}>
+      Delete
+    </button>
+  );
+}
+```
+
+In the `rsc` graph each callable export of a `"use server"` module is
+registered with React as a server reference under its id. Flight sends the
+reference and its bound arguments, and React's browser client turns it into a
+function that makes the same call an imported reference makes: the same JSON
+wire, grammar, `Origin` check and deployment header, with the bound arguments
+first. A function that is not a callable export of a `"use server"` module is
+not registered, and Flight still refuses to send it.
+
+**Bound arguments are the visitor's to change.** They travel to the browser in
+the payload and come back in the call, in plain text. `deleteNote.bind(null,
+note.id)` does not stop anyone from calling `deleteNote` with another id, so
+the action checks the id it is given, as it would any argument
+([An action authorizes itself](#an-action-authorizes-itself)).
+
 ## Forms
 
 A reference is an ordinary async function, which is all React 19's form APIs
@@ -467,16 +515,19 @@ imports the action already has its type.
 - **Uploads.** A `File` entry is refused by name at the call site. Multipart
   parsing is its own attack surface and is deliberately absent; use a route
   handler.
-- **Inline `"use server"` closures, and a server function as a prop.** A closure
-  whose body opens with the directive is recognised, keyed and written into the
-  manifest, but it has no export name to import — so it gets no reference in the
-  client bundle and no row in the server's table, and nothing can call it. The
-  Flight payload routes render with could carry a reference to one, but Flight
-  server references are not wired, so a server function cannot be handed to a
-  client component as a prop either
-  ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359),
-  [#1360](https://github.com/ubugeeei-prod/uf/issues/1360)). Until then, write a
-  module export and import it from the client component.
+- **Inline `"use server"` closures.** A closure whose body opens with the
+  directive is recognised, keyed and written into the manifest, but it has no
+  export name to import. So it gets no reference in the client bundle, no row in
+  the server's table and no server reference, and nothing can call it
+  ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)). Until then, write a
+  module export. A Server Component can pass that export to a client component
+  as a prop ([Handed down by a Server Component](#handed-down-by-a-server-component)).
+- **A form before hydration, with an action that arrived as a prop.** The form
+  fields a form writes for a pre-hydration post come from the imported
+  reference. An action handed down as a prop is React's own stub on the server
+  that renders HTML, and a form bound to it cannot be posted until the page has
+  hydrated. Import the action in the client component when the form has to work
+  without JavaScript.
 - **A reference format.** Nothing in an action's arguments can name a function,
   a module, a class, a prototype, a React element or a reference, and this
   grammar is not where one grows quietly. The Flight payload a route renders

@@ -1023,6 +1023,30 @@ describe("the module the browser is given in place of a `use server` file", () =
     expect(declaresDefaultExport("export async function go() {}")).toBe(false);
   });
 
+  it("registers each callable export as a server reference in the rsc graph only", () => {
+    // So a Server Component can pass the action to a Client Component as a
+    // prop, and Flight sends it as a reference under its id (ubugeeei-prod/uf#1359).
+    const rows = [
+      { id: RECORD, module: "app/a.js", export: "go" },
+      { id: RECORD.replace(/^./, "0"), module: "app/a.js", export: "stop" },
+    ];
+    const rsc = serverActionSource("/p/app/a.js", rows, false, true);
+    expect(rsc).toContain('import { registerServerFunction } from "@uniflowed/router/rsc";');
+    expect(rsc).toContain(`registerServerFunction(impl["go"], "${RECORD}", "app/a.js#go");`);
+    expect(rsc).toContain(
+      `registerServerFunction(impl["stop"], "${RECORD.replace(/^./, "0")}", "app/a.js#stop");`,
+    );
+    // Only the rows: an export the manifest does not list is not callable, is
+    // not registered, and Flight still refuses to send it.
+    expect(rsc.match(/registerServerFunction\(/g)?.length).toBe(2);
+    // The form property is still given first, as in the ssr graph.
+    expect(rsc).toContain(`registerServerAction(impl["go"], "${RECORD}");`);
+
+    const ssr = serverActionSource("/p/app/a.js", rows, false);
+    expect(ssr).not.toContain("registerServerFunction");
+    expect(ssr).not.toContain("@uniflowed/router/rsc");
+  });
+
   it("leaves every other module alone in both environments", () => {
     const page = path.join(root, "app", "counter", "$page.js");
     expect(loaded(page, false)).toBe(null);
