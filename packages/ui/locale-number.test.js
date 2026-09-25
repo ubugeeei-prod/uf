@@ -104,7 +104,27 @@ describe("NumberField", () => {
           <Field.Root>
             <Field.Label>Weight</Field.Label>
             <NumberField.Root defaultValue={1} min={0} max={2} step={0.5} onValueChange={changed}>
-              <Field.Control render={(props) => <NumberField.Input {...props} />} />
+              <Field.Control
+                render={(props) => {
+                  const id = props.id;
+                  const labelledBy = props["aria-labelledby"];
+                  const describedBy = props["aria-describedby"];
+                  if (
+                    typeof id !== "string" ||
+                    typeof labelledBy !== "string" ||
+                    (describedBy != null && typeof describedBy !== "string")
+                  ) {
+                    throw new Error("the field needs its input and description ids");
+                  }
+                  return (
+                    <NumberField.Input
+                      id={id}
+                      aria-labelledby={labelledBy}
+                      aria-describedby={describedBy}
+                    />
+                  );
+                }}
+              />
               <NumberField.Decrement />
               <NumberField.Increment />
             </NumberField.Root>

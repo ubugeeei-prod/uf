@@ -7646,16 +7646,24 @@ describe("RadioGroup", () => {
       <Field.Root>
         <Field.Label>Plan</Field.Label>
         <Field.Control
-          render={(props) => (
-            <RadioGroup.Root {...props} defaultValue="free" orientation={orientation}>
-              <RadioGroup.Item value="free">
-                Free
-                <RadioGroup.Indicator>dot</RadioGroup.Indicator>
-              </RadioGroup.Item>
-              <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
-              <RadioGroup.Item value="team">Team</RadioGroup.Item>
-            </RadioGroup.Root>
-          )}
+          render={(props) => {
+            const labelledBy = props["aria-labelledby"];
+            if (typeof labelledBy !== "string") throw new Error("the field needs a label id");
+            return (
+              <RadioGroup.Root
+                aria-labelledby={labelledBy}
+                defaultValue="free"
+                orientation={orientation}
+              >
+                <RadioGroup.Item value="free">
+                  Free
+                  <RadioGroup.Indicator>dot</RadioGroup.Indicator>
+                </RadioGroup.Item>
+                <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+                <RadioGroup.Item value="team">Team</RadioGroup.Item>
+              </RadioGroup.Root>
+            );
+          }}
         />
       </Field.Root>
     );
@@ -9892,26 +9900,28 @@ describe("the escape hatch, exercised", () => {
 
   it("puts the part's own semantics on top of the caller's props", async () => {
     const theirs = fn();
-    // The redundant `role="link"` on an `<a href>` below is the subject of this
-    // test, not an oversight: what is asserted is that the part's own
-    // `role="menuitem"` survives a caller's role written before the spread.
-    // `a11y/no-redundant-roles` is right about that markup in isolation.
-    // uf-lint-disable a11y/no-redundant-roles
+    // The caller's `role="link"` is the subject of this test: the part's own
+    // `role="menuitem"` must override it.
     render(
       <Menu.Root defaultOpen>
         <Menu.Trigger>File</Menu.Trigger>
         <Menu.Body>
-          <Menu.Item onClick={theirs} render={(props) => <a href="/open" role="link" {...props} />}>
+          <Menu.Item
+            onClick={theirs}
+            role="link"
+            render={(props) => {
+              const role = props.role;
+              if (typeof role !== "string") throw new Error("the menu item needs a role");
+              return <a {...props} href="/open" role={role} />;
+            }}
+          >
             Open
           </Menu.Item>
         </Menu.Body>
       </Menu.Root>,
     );
-    // uf-lint-enable a11y/no-redundant-roles
-    // The caller wrote `role="link"` *before* the spread, so the part's
-    // `role="menuitem"` is what survives — the same rule
-    // `internal/merge-props.js` states for a caller's props on a part's own
-    // element, applied where the element is the caller's.
+    // The caller wrote `role="link"` on the part, so the part's
+    // `role="menuitem"` must be what its render callback receives.
     const item = screen.getByRole("menuitem", { name: "Open" });
     expect(item.tagName).toBe("A");
     expect(item.getAttribute("role")).toBe("menuitem");

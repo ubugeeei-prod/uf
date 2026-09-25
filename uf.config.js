@@ -353,6 +353,13 @@ export default defineConfig({
       // The same superset, for the same reason, over the same binary.
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },
+    // The UI subtree now passes the type checker, including its imported
+    // dependencies. Keep that area green while the root check is repaired.
+    "check:ui": {
+      command: "./target/release/uf check packages/ui",
+      dependsOn: ["build"],
+      inputs: ["**", "!upstream/**", "target/release/uf"],
+    },
 
     // The formatter, over the same. `--check` rather than a write, because CI
     // reporting a diff is useful and CI committing one is not.
@@ -1120,6 +1127,7 @@ export default defineConfig({
         "flow:test",
         "fmt:check",
         "check:lib",
+        "check:ui",
         "test:lib",
         "test:lib:deno",
         "edge:smoke",
