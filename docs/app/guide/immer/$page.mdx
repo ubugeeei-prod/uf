@@ -1,0 +1,77 @@
+---
+title: "Immutable updates · uf"
+description: "Change a draft with produce, keep unchanged branches, and record patches when needed."
+readiness: "Implemented"
+---
+
+<p className="eyebrow">Build an app</p>
+
+# Immutable updates
+
+`@uniflowed/immer` lets a state update read as an edit while returning a new
+value. The recipe receives a temporary draft. The base is left alone, and
+unchanged branches keep their identity.
+
+```js
+// @flow
+import { produce } from "@uniflowed/immer";
+
+const before = {
+  title: "Notes",
+  items: [{ text: "Draft", done: false }],
+};
+
+const after = produce(before, (draft) => {
+  draft.items[0].done = true;
+});
+```
+
+`before.items[0].done` is still `false`. `after.items[0].done` is `true`.
+When the recipe changes nothing, `produce` returns the original value by
+identity. That matters to React memoisation and to selectors that compare
+references.
+
+## Use a recipe in a reducer
+
+The one-argument form returns a function that accepts the current state and
+passes later arguments to the recipe. It fits a reducer without a React-specific
+binding:
+
+```js
+// @flow
+import { produce } from "@uniflowed/immer";
+
+const increment = produce((draft, by: number) => {
+  draft.count += by;
+});
+
+const next = increment({ count: 1 }, 2);
+```
+
+A recipe can change its draft **or** return a replacement. Doing both throws;
+neither change is silently discarded. A draft is revoked after the recipe, so
+keep the returned value and do not store the draft in a component or a cache.
+
+## Record changes only when you need them
+
+`produceWithPatches` returns the next value, forward patches and inverse
+patches. Use the inverse for an undo operation; ordinary `produce` does not pay
+to record patches.
+
+```js
+// @flow
+import { applyPatches, produceWithPatches } from "@uniflowed/immer";
+
+const base = { count: 1 };
+const [next, patches, inverse] = produceWithPatches(base, (draft) => {
+  draft.count = 2;
+});
+const replayed = applyPatches(base, patches);
+const undone = applyPatches(next, inverse);
+```
+
+Results are frozen by default. `setAutoFreeze(false)` changes that policy for
+the process; choose it deliberately if another library needs to mutate the
+returned value. For state shared across components, start with the
+[State guide](/guide/state); `produce` changes how a value is updated, not who
+owns or subscribes to it.

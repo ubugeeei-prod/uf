@@ -12,7 +12,7 @@ import { Link, useRoute } from "@uniflowed/router";
 import { goals } from "./goals.js";
 import type { Goal } from "./goals.js";
 import { NavOverflow } from "./nav-overflow.js";
-import { currentHref, featuredIn, openSectionFor, sections } from "./nav.js";
+import { currentHref, featuredIn, openSectionFor, readinessFor, sections } from "./nav.js";
 import type { Entry, Section } from "./nav.js";
 
 /**
@@ -26,6 +26,17 @@ export component Eyebrow(children: React.Node) {
 /** The one paragraph under a title that says what the page is for. */
 export component Lede(children: React.Node) {
   return <p className="lede">{children}</p>;
+}
+
+/** The page's declared capability status, in words and linked to its meaning. */
+export component PageReadiness(pathname: string) {
+  const readiness = readinessFor(pathname);
+  if (readiness == null) return null;
+  return (
+    <p className="page-readiness">
+      <Link to="/guide/goals">Readiness</Link>: <strong>{readiness}</strong>
+    </p>
+  );
 }
 
 /**

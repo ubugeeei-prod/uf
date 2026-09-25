@@ -35,6 +35,28 @@ export type Entry = {|
   readonly blurb: string,
 |};
 
+export type Readiness = "Implemented" | "Experimental" | "Planned";
+
+// The statuses that differ from the manual's implemented default. Every MDX
+// page declares its own readiness too; docs-nav.test.js holds the two views to
+// the same value so the visible label cannot drift from the page's front matter.
+const experimentalPages = new Set([
+  "/guide/benchmarks",
+  "/guide/deploy",
+  "/guide/editors/zed",
+  "/guide/graphql-relay",
+  "/guide/nextjs",
+  "/guide/react-native",
+  "/guide/sqlc",
+  "/guide/targets",
+]);
+
+export function readinessFor(pathname: string): Readiness | null {
+  const href = currentHref(pathname);
+  if (href == null) return null;
+  return experimentalPages.has(href) ? "Experimental" : "Implemented";
+}
+
 /** The pages one kind of reader needs, and where that reader goes after. */
 export type Section = {|
   readonly title: string,
@@ -261,6 +283,11 @@ export const sections: $ReadOnlyArray<Section> = [
           "A query cache for what the browser fetches after the page has arrived, with requests that fail honestly and answers checked where they enter.",
       },
       {
+        href: "/guide/i18n",
+        title: "Languages and messages",
+        blurb: "Route by locale and format MessageFormat 2 messages with checked arguments.",
+      },
+      {
         href: "/guide/validation",
         title: "Validating input",
         blurb:
@@ -275,6 +302,12 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/state",
         title: "State",
         blurb: "Atoms, a store, and where this parts company with Jotai.",
+      },
+      {
+        href: "/guide/immer",
+        title: "Immutable updates",
+        blurb:
+          "Change a draft with produce, keep unchanged branches, and record patches when needed.",
       },
       {
         href: "/guide/styling",
@@ -309,6 +342,18 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Images, fonts, icons and cards",
         blurb:
           "Resized, self-hosted, subsetted and drawn at build time, remote images on request — and what that stops short of.",
+      },
+      {
+        href: "/guide/web",
+        title: "Web components",
+        blurb:
+          "Use the browser-facing package for media, time, document regions, cookies and vitals.",
+      },
+      {
+        href: "/guide/temporal",
+        title: "Dates and time",
+        blurb:
+          "Represent an instant without a host time zone, then choose a zone when displaying it.",
       },
       {
         href: "/guide/cache",
