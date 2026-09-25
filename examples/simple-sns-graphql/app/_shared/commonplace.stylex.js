@@ -1,11 +1,17 @@
 // @flow
 
-import { props, stylex, type StyleArgument, type StyleProps } from "@uniflowed/stylex";
+import {
+  props,
+  stylex,
+  type CompiledStyle,
+  type StyleArgument,
+  type StyleProps,
+} from "@uniflowed/stylex";
 
 // Values come directly from Commonplace's original CSS. Resets, descendant
 // selectors, responsive layout and media state remain in base.css.
 
-export const styles = stylex.create({
+export const styles: { readonly [string]: CompiledStyle } = stylex.create({
   srOnly: {
     position: "absolute",
     width: "1px",
