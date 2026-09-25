@@ -775,6 +775,7 @@ fn render_pages(docs: &[(&'static RuleDescriptor, RuleDoc)]) -> BTreeMap<String,
         "---\n\
          title: \"Lint rules · uf\"\n\
          description: \"Every rule uf lint runs, with an example it reports and one it accepts.\"\n\
+         readiness: \"Implemented\"\n\
          ---\n\n\
          {/* Generated from crates/uf_lint/rules by `UF_BLESS=1 cargo test -p uf_lint --lib rule_docs`. Edit the examples there, not this page. */}\n\n\
          <p className=\"eyebrow\">Reference</p>\n\n\
