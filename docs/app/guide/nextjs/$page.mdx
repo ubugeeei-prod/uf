@@ -141,12 +141,16 @@ has every row and how it was taken.
 | dev server, first document, warm | **875 ms** | 1,020 ms |
 | build, cold | **2,547 ms** | 3,053 ms |
 | build, warm | 2,419 ms | **1,399 ms** |
-| production server throughput | not measured | not measured |
+| production SSR, mixed static/dynamic/streamed requests | **2,470 req/s** | 1,526 req/s |
 
 uf loses the cold dev start by about 8% and the warm build by about 1.7 times.
-There is no production-server comparison yet, so nothing on this site claims uf
-renders faster than `next start`;
-[#1363](https://github.com/ubugeeei-prod/uf/issues/1363) adds that row.
+The production row comes from [the first production SSR Bench run](https://github.com/ubugeeei-prod/uf/actions/runs/36109636634):
+a 10-second mixed request stream at concurrency 16 on the same 32-core AMD EPYC
+runner. It is one run, not a long-term baseline. uf's peak RSS was higher
+(392.6 MiB versus 361.5 MiB), and its static-page p50 was slower (4.6 ms
+versus 3.3 ms). For the mixed stream, uf's p99 was 16.7 ms versus 24.4 ms for
+Next.js. The [benchmark harness](https://github.com/ubugeeei-prod/uf/blob/main/tools/bench/toolchain/ssr.mjs)
+keeps the request mix and measurement settings reproducible.
 
 ## Where to go next
 
