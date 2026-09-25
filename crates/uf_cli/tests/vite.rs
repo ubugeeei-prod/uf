@@ -9235,17 +9235,19 @@ fn a_dynamic_value_uf_does_not_implement_is_named() {
     if !fixture_ready() {
         return;
     }
-    let mut files = minimal_app();
-    files.push((
-        "app/now/$page.js",
-        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"force-static\";\n\nexport component Page() {\n  return <main>now</main>;\n}\n",
-    ));
-    let project = Project::new(&files);
+    for value in ["force-static", "error"] {
+        let source = format!(
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"{value}\";\n\nexport component Page() {{\n  return <main>now</main>;\n}}\n"
+        );
+        let mut files = minimal_app();
+        files.push(("app/now/$page.js", source.as_str()));
+        let project = Project::new(&files);
 
-    let (succeeded, said) = build_output(project.path());
-    assert!(!succeeded, "the build should have refused:\n{said}");
-    assert!(said.contains("force-static"), "{said}");
-    assert!(said.contains("force-dynamic"), "{said}");
+        let (succeeded, said) = build_output(project.path());
+        assert!(!succeeded, "the build should have refused {value}:\n{said}");
+        assert!(said.contains(value), "{said}");
+        assert!(said.contains("force-dynamic"), "{said}");
+    }
 }
 
 /// The seam is a seam: a builder that is not `@uniflowed/vite` runs.

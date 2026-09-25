@@ -153,6 +153,13 @@ struct ViteBuild {
     split: Option<(u64, u64)>,
 }
 
+/// Show the client route count only when the split actually removed a page.
+fn split_summary(split: Option<(u64, u64)>) -> Option<String> {
+    split
+        .filter(|(pages, routes)| pages < routes)
+        .map(|(pages, routes)| format!("{pages} of {routes}"))
+}
+
 /// What `uf build` writes about the bundles, beyond the bundles themselves.
 ///
 /// One value rather than a flag apiece: both are reports on the same output,
@@ -761,10 +768,7 @@ pub(crate) fn build(
     // finding, on every build of every application whose root layout imports
     // one client component. The absence of the row means what it meant before
     // any of this existed — every page went to the browser.
-    let split_count = vite
-        .split
-        .filter(|(pages, routes)| pages < routes)
-        .map(|(pages, routes)| format!("{pages} of {routes}"));
+    let split_count = split_summary(vite.split);
     let action_count = rsc.callable_action_count().to_string();
     let kept = (carried > 0).then(|| format!("{} (for one build)", plural(carried, "file")));
     // What the build decided, in the words a reader can act on. Named in the
@@ -1686,6 +1690,13 @@ fn enforce_budgets(ui: &mut Ui, report: &BundleReport, budgets: &BundleBudgets) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_client_bundle_row_is_absent_when_no_page_was_removed() {
+        assert_eq!(split_summary(Some((2, 5))), Some("2 of 5".to_owned()));
+        assert_eq!(split_summary(Some((5, 5))), None);
+        assert_eq!(split_summary(None), None);
+    }
 
     /// A `ClientOnlyApiInServerModule` for `module` at `line`, which is the
     /// ordinary shape: a diagnostic that points somewhere.

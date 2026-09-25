@@ -123,6 +123,25 @@ fn a_client_component_or_a_server_action_does_not_make_a_render_read_the_request
 }
 
 #[test]
+fn a_dynamic_import_does_not_make_a_static_render_read_the_request() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/$page.js",
+        "// @flow\nexport async function load() { return import('./session.js'); }\n",
+    );
+    builder.add_source(
+        "app/session.js",
+        "// @flow\nimport { cookies } from '@uniflowed/server';\n",
+    );
+    let graph = builder.build();
+
+    assert_eq!(
+        graph.request_state_read(&ids(&graph, &["app/$page.js"])),
+        None
+    );
+}
+
+#[test]
 fn a_namespace_import_or_another_export_of_the_server_package_is_not_a_read() {
     let mut builder = RscGraphBuilder::new();
     builder.add_source(

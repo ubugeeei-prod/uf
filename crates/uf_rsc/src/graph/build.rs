@@ -115,6 +115,14 @@ impl RscGraphBuilder {
             );
             let (request_state_imports, cache_lifetime_import) =
                 super::render::import_sites(&resolved[position].external);
+            let mut render_imports = InlineVec::new();
+            for edge in &resolved[position].resolved {
+                if edge.import.kind != ImportKind::Dynamic && !render_imports.contains(&edge.target)
+                {
+                    render_imports.push(edge.target);
+                }
+            }
+            render_imports.sort_unstable();
             graph_modules.push(RscModule {
                 request_state_imports,
                 cache_lifetime_import,
@@ -123,6 +131,7 @@ impl RscGraphBuilder {
                 reachability,
                 proximity: proximity[position],
                 imports: resolved[position].imports.clone(),
+                render_imports,
                 external_imports: resolved[position]
                     .external
                     .iter()

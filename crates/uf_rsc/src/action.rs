@@ -170,8 +170,11 @@ impl BuildId {
 
     /// Read `UF_BUILD_ID` when it is set and usable, otherwise generate one.
     pub fn from_env_or_generate() -> Self {
-        std::env::var("UF_BUILD_ID")
-            .ok()
+        Self::from_supplied_or_generate(std::env::var("UF_BUILD_ID").ok())
+    }
+
+    fn from_supplied_or_generate(value: Option<String>) -> Self {
+        value
             .and_then(|value| Self::new(value).ok())
             .unwrap_or_else(Self::generate)
     }

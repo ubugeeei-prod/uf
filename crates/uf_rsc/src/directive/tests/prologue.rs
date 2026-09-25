@@ -206,6 +206,7 @@ fn a_directive_after_a_statement_is_rejected() {
             column: 1,
         }]
     );
+    assert_eq!(scan.issues[0].rule(), "rsc/directive-not-in-prologue");
 }
 
 #[test]
@@ -244,6 +245,7 @@ fn conflicting_directives_keep_the_first_and_report() {
         scan.issues.as_slice(),
         &[DirectiveIssue::Conflicting { line: 2, column: 1 }]
     );
+    assert_eq!(scan.issues[0].rule(), "rsc/conflicting-directives");
 }
 
 #[test]

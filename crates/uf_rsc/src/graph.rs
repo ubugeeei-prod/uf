@@ -340,6 +340,8 @@ pub struct RscModule {
     pub proximity: ClientBoundaryProximity,
     /// Modules imported from this one, sorted and deduplicated.
     pub imports: InlineVec<ModuleId, 8>,
+    /// Imports evaluated during a render; dynamic `import()` is excluded.
+    pub(crate) render_imports: InlineVec<ModuleId, 8>,
     /// Import specifiers that do not resolve to a module of this graph.
     pub external_imports: InlineVec<CompactString, 4>,
     /// Exported bindings.

@@ -169,7 +169,7 @@ impl RscGraph {
                 chain.reverse();
                 return Some(RenderReach { site, chain });
             }
-            for target in self.modules[current.index()].imports.iter().copied() {
+            for target in self.modules[current.index()].render_imports.iter().copied() {
                 if seen[target.index()] || !self.renders_on_the_server(target) {
                     continue;
                 }
