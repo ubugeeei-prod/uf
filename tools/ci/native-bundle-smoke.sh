@@ -14,6 +14,13 @@ for provider in expo react-native; do
   app="$scratch/uf-smoke-$provider"
   if [ "$provider" = expo ]; then
     npm exec --yes --package=create-expo-app@4.0.0 -- create-expo-app "$app" --template expo-template-blank@57.0.26 --no-install
+    # Expo's JavaScript starter is not Flow-annotated. Keep it outside the
+    # Flow signature check while the adopted app's Flow test runs below.
+    node --input-type=commonjs - "$app/App.js" <<'NODE'
+const fs = require('node:fs');
+const file = process.argv[2];
+fs.writeFileSync(file, `// @noflow\n${fs.readFileSync(file, 'utf8')}`);
+NODE
   fi
   mkdir -p "$app/app" "$app/assets"
   node --input-type=commonjs - "$app" "$scratch/packs" "$provider" <<'NODE'
