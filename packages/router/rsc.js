@@ -81,6 +81,11 @@ export { installRouting } from "./internal/base-path.js";
 // same instance of every module they share (ubugeeei-prod/uf#1469). The host
 // reaches it through the bridge, as it reaches `renderFlight`.
 export { createActionDispatcher } from "./internal/action-endpoint.js";
+// And the route handlers and the middleware, for the same reason: a `POST` a
+// `$route.js` answers writes to the same instance of a module that the page
+// reading it renders from (ubugeeei-prod/uf#1487).
+export { createDispatcher } from "./handler.js";
+export { createMiddlewareRunner } from "./middleware.js";
 
 /** What a host may tell the renderer about one render. */
 export type FlightOptions = {|

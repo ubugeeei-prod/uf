@@ -574,22 +574,30 @@ function flowPlugin({
       if (id === AUDIT_RESOLVED_ID) return auditRuntimeSource(accessibility?.axe);
       if (id === resolved(VIRTUAL.routes)) {
         const table = scanRoutes(appRoot, { target: routeTarget });
-        // Under React Server Components the table is split by graph rather than
-        // filtered. The rsc graph renders routes, so it gets every route and
-        // boundary and no handler or middleware: those answer a request, and
-        // importing one here would resolve its dependencies under
-        // `react-server` for nothing. The ssr graph gets exactly those two,
-        // because every route it renders reaches it as a payload.
+        // Under React Server Components the whole table is the rsc graph's:
+        // every route and boundary, and the route handlers and the middleware
+        // too. A handler used to be the ssr graph's, so a module it and a page
+        // both imported was evaluated once in each, and a `POST` the handler
+        // answered wrote to a copy the page never read (ubugeeei-prod/uf#1487).
+        // The ssr graph reaches all of it through the bridge and imports none
+        // of it itself; see `rscEntrySource`.
         if (flightState != null && this.environment?.name === RSC_ENVIRONMENT) {
           // The graph that renders routes is where a boundary has to be a
           // client reference, so this is where one that is not fails — the
           // build, and `uf dev`'s table — rather than the first page that
           // throws in production. See `./internal/error-boundaries.js`.
           refuseServerErrorBoundaries(table, root);
-          return routesModuleSource({ ...table, handlers: [], middleware: [] });
+          return routesModuleSource(table);
         }
         if (flightState != null && isSsr(this, loadOptions)) {
-          return routesModuleSource({ ...table, routes: [], notFound: [], errors: [] });
+          return routesModuleSource({
+            ...table,
+            routes: [],
+            notFound: [],
+            errors: [],
+            handlers: [],
+            middleware: [],
+          });
         }
         // The server renders every route, so the server's table is the whole
         // one and is generated with no filter at all. Only the browser's copy
@@ -921,9 +929,18 @@ function flowPlugin({
       const reserved = new RegExp(`/(${stems})(\\.[a-z]+)?\\.(js|jsx|mdx)$`);
       const onRouteFile = (file) => {
         if (!reserved.test(file) || !file.startsWith(appRoot)) return;
-        for (const id of [VIRTUAL.routes, VIRTUAL.server, VIRTUAL.client]) {
-          const module = devServer.moduleGraph.getModuleById(resolved(id));
-          if (module) devServer.moduleGraph.invalidateModule(module);
+        // The rsc graph's table too, where the pages, the route handlers and
+        // the middleware of an application React Server Components render
+        // live (ubugeeei-prod/uf#1487).
+        const graphs = [
+          devServer.moduleGraph,
+          devServer.environments?.[RSC_ENVIRONMENT]?.moduleGraph,
+        ].filter((graph) => graph != null);
+        for (const graph of graphs) {
+          for (const id of [VIRTUAL.routes, VIRTUAL.server, VIRTUAL.client]) {
+            const module = graph.getModuleById(resolved(id));
+            if (module) graph.invalidateModule(module);
+          }
         }
         devServer.ws.send({ type: "full-reload", path: "*" });
       };

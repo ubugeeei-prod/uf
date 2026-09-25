@@ -92,6 +92,32 @@ describe("the router entry an application starts from", () => {
     expect(builtBridgeSource("/out/rsc/index.js")).toContain("callAction");
     expect(devBridgeSource()).toContain("(await load()).callAction(request, settings)");
   });
+
+  it("builds the route handlers and the middleware in the rsc graph, beside the pages", () => {
+    // A `$route.js` that writes to a module a page reads must write to the
+    // page's instance of it. In the ssr graph it had one of its own
+    // (ubugeeei-prod/uf#1487).
+    const rsc = rscEntrySource("virtual:uf/routes", {}, null, "virtual:uf/actions");
+    expect(rsc).toContain(
+      'import { routes, notFound, errors, handlers, middleware } from "virtual:uf/routes";',
+    );
+    expect(rsc).toContain("export const dispatch = createDispatcher({ handlers });");
+    expect(rsc).toContain("export const runMiddleware = createMiddlewareRunner({ middleware });");
+
+    const server = flightServerSource("/project/app.js", "virtual:uf/routes");
+    expect(server).not.toContain("virtual:uf/routes");
+    expect(server).not.toContain("createDispatcher");
+    expect(server).not.toContain("createMiddlewareRunner");
+    expect(server).toContain("dispatch as dispatchInRsc");
+    expect(server).toContain("runMiddleware as runMiddlewareInRsc");
+
+    const built = builtBridgeSource("/out/rsc/index.js");
+    for (const name of ["dispatch", "runMiddleware", "handlers", "middleware"]) {
+      expect(built).toContain(name);
+    }
+    expect(devBridgeSource()).toContain("(await load()).dispatch(request)");
+    expect(devBridgeSource()).toContain("(await load()).runMiddleware(request)");
+  });
 });
 
 describe("what a project needs before its routes render as Server Components", () => {

@@ -17,15 +17,14 @@
 //     renderer (`@uniflowed/router/rsc`). A module that opens with the use
 //     client directive is not evaluated here: it is replaced by a client
 //     reference per export, naming the chunk the browser loads it from.
-//   * **`ssr`**, Vite's own server environment. It holds the HTML renderer, the
-//     route handlers, the middleware — and the *server copy* of every client
-//     module, which is what renders a client component into HTML. It reaches
-//     the rsc graph through one module, the bridge, for the payload and for
-//     the server-action endpoint: the action table is the rsc graph's, so an
-//     action shares every module instance with the pages that show what it
-//     wrote (ubugeeei-prod/uf#1469). A route handler and a middleware do not
-//     yet: a module one of them imports and a page imports is evaluated once in
-//     each graph.
+//   * **`ssr`**, Vite's own server environment. It holds the HTML renderer and
+//     the *server copy* of every client module, which is what renders a client
+//     component into HTML. It reaches the rsc graph through one module, the
+//     bridge, for the payload and for everything else that answers a request
+//     with the application's own code: the server-action endpoint
+//     (ubugeeei-prod/uf#1469), the route handlers and the middleware
+//     (ubugeeei-prod/uf#1487). All three are the rsc graph's, so each shares
+//     every module instance with the pages that show what it wrote.
 //   * **`client`**, the browser's. Its entry hydrates from the payload the
 //     document carries, and it holds no page, layout or loader — only the
 //     client modules, each an entry of its own, loaded when a payload names it.
@@ -533,14 +532,28 @@ export function rscEntrySource(routesId, routing = {}, deployment = null, action
       ? "export const callAction = createActionDispatcher({ actions: [] });"
       : `import { actions } from ${JSON.stringify(actionsId)};
 export const callAction = createActionDispatcher({ actions });`;
-  return `import { createActionDispatcher, createFlightRenderer, installRouting } from "@uniflowed/router/rsc";
-import { routes, notFound, errors } from ${JSON.stringify(routesId)};
+  // The route handlers and the middleware are built here for the same reason
+  // (ubugeeei-prod/uf#1487): a `POST` a handler answers writes to the module
+  // the page reads, and a rate limiter a middleware keeps is the one every
+  // request is counted against. They resolve their imports under
+  // `react-server`, as the pages do; the server-components guide says what that
+  // asks of a handler.
+  return `import {
+  createActionDispatcher,
+  createDispatcher,
+  createFlightRenderer,
+  createMiddlewareRunner,
+  installRouting,
+} from "@uniflowed/router/rsc";
+import { routes, notFound, errors, handlers, middleware } from ${JSON.stringify(routesId)};
 installRouting(${JSON.stringify(settings)});
-export { routes, notFound, errors };
+export { routes, notFound, errors, handlers, middleware };
 export const renderFlight = createFlightRenderer({ routes, notFound, errors, deployment: ${JSON.stringify(
     deployment ?? null,
   )} });
 ${actions}
+export const dispatch = createDispatcher({ handlers });
+export const runMiddleware = createMiddlewareRunner({ middleware });
 `;
 }
 
@@ -566,13 +579,19 @@ export async function renderFlight(url, options) {
 export async function callAction(request, settings) {
   return (await load()).callAction(request, settings);
 }
-export const { routes, notFound, errors } = await load();
+export async function dispatch(request) {
+  return (await load()).dispatch(request);
+}
+export async function runMiddleware(request) {
+  return (await load()).runMiddleware(request);
+}
+export const { routes, notFound, errors, handlers, middleware } = await load();
 `;
 }
 
 /** `virtual:uf/rsc-bridge` in a build: the rsc build's output, bundled in. */
 export function builtBridgeSource(rscOutput) {
-  return `export { renderFlight, callAction, routes, notFound, errors } from ${JSON.stringify(rscOutput)};\n`;
+  return `export { renderFlight, callAction, dispatch, runMiddleware, routes, notFound, errors, handlers, middleware } from ${JSON.stringify(rscOutput)};\n`;
 }
 
 /**
@@ -713,9 +732,10 @@ ${clientInstrumentationSource(options.instrumentation)}hydrateFlight({ App${stri
  * `createDocumentRenderer` from `@uniflowed/router/rsc/ssr`, an entry of its own
  * for the reason `flightClientSource` gives. It renders the payload the rsc graph
  * writes rather than the route's modules, and adds `flight` for a browser that
- * is navigating. And `routes`, `notFound` and `errors` come through the bridge,
- * because the page modules they import are the rsc graph's: the driver reads a
- * page's `generateStaticParams` from the graph that renders it.
+ * is navigating. And the route table comes through the bridge, because the
+ * modules it imports are the rsc graph's: the driver reads a page's
+ * `generateStaticParams` from the graph that renders it, and the route handlers
+ * and the middleware run there too (see `rscEntrySource`).
  */
 export function flightServerSource(
   appEntry,
@@ -727,18 +747,19 @@ export function flightServerSource(
   createInstrumentation,
   instrumentRender,
   traceRequestPhase,
-  createDispatcher,
-  createMiddlewareRunner,
   installRouting,
 } from "@uniflowed/router/server";
 import { createDocumentRenderer } from "@uniflowed/router/rsc/ssr";
-import { handlers, middleware } from ${JSON.stringify(routesId)};
 import {
   renderFlight,
   callAction as callActionInRsc,
+  dispatch as dispatchInRsc,
+  runMiddleware as runMiddlewareInRsc,
   routes,
   notFound,
   errors,
+  handlers,
+  middleware,
 } from ${JSON.stringify(FLIGHT_VIRTUAL.bridge)};
 import { loadClientModule } from ${JSON.stringify(FLIGHT_VIRTUAL.references)};
 import App from ${JSON.stringify(appEntry)};
@@ -759,12 +780,12 @@ export const flight = (url, options = {}) => instrumentRender(
   (onError) => renderer.flight(url, { ...options, onError }), options.onError,
 );
 export { shellDocument } from "@uniflowed/router/server";
-const dispatchRoute = createDispatcher({ handlers });
-export const dispatch = (request) => traceRequestPhase("route", () => dispatchRoute(request));
-// Built in the rsc graph and reached through the bridge; see \`rscEntrySource\`.
+// The route handlers, the action endpoint and the middleware are built in the
+// rsc graph and reached through the bridge; see \`rscEntrySource\`.
+export const dispatch = (request) => traceRequestPhase("route", () => dispatchInRsc(request));
 export const callAction = callActionInRsc;
-const guard = createMiddlewareRunner({ middleware });
-export const runMiddleware = (request) => traceRequestPhase("middleware", () => guard(request));
+export const runMiddleware = (request) =>
+  traceRequestPhase("middleware", () => runMiddlewareInRsc(request));
 `;
 }
 

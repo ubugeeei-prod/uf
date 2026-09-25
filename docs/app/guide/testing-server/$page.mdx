@@ -423,6 +423,16 @@ that is already built.
     expect(await (await app.render("/notes")).text()).toContain("Seen by the page");
   });
 
+  it("lists a note a route handler saved on the next render", async () => {
+    // The handler and the page share one instance of `notes.server.js` (#1487).
+    const answer = await app.fetch("/api/notes", {
+      method: "POST",
+      body: new URLSearchParams({ text: "Posted to the handler" }),
+    });
+    expect(answer.status).toBe(201);
+    expect(await (await app.render("/notes")).text()).toContain("Posted to the handler");
+  });
+
   it("refuses a note from nobody, as state the page renders", async () => {
     const page = await (await app.submit("/notes", { text: "anonymous" })).text();
     expect(page).toContain("sign in to write a note");
@@ -448,11 +458,12 @@ key. It then posts them with `fields`, as a browser without JavaScript does,
 through the endpoint's second door. A `useActionState` form comes back as the
 page rendered with the action's result.
 
-The second case is the one a unit test cannot make: the action writes, and
-the next render of the page reads what it wrote. That holds because server
-actions run in the same module graph as the pages
-([#1469](https://github.com/ubugeeei-prod/uf/issues/1469)). Route handlers and
-middleware do not yet ([Server Components](/guide/server-components#what-is-not-here)).
+The second and third cases are ones a unit test cannot make: an action or a
+route handler writes, and the next render of the page reads what it wrote. That
+holds because server actions, route handlers and middleware run in the same
+module graph as the pages
+([#1469](https://github.com/ubugeeei-prod/uf/issues/1469),
+[#1487](https://github.com/ubugeeei-prod/uf/issues/1487)).
 
 A build takes seconds. Build once per file in `beforeAll`, and keep one
 project's build tests in one file: two files building the same project at once

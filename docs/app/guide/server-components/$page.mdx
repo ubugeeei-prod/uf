@@ -286,16 +286,24 @@ client modules. In the `rsc` graph a `"use client"` module is replaced by one
 client reference per export, which is why none of its code runs there and none
 of a server component's code reaches the browser.
 
-**Server actions run in the `rsc` graph**, beside the pages. A module an action
-and a page both import is one instance, so what an action writes to it is what
-the next render reads, including the page a form posted before hydration gets
-back ([#1469](https://github.com/ubugeeei-prod/uf/issues/1469)). Route handlers
-and middleware still run in `ssr`. A module one of them shares with a page is
-evaluated once in each graph, so module-level state (an in-memory store, a
-cache, a connection pool) is not shared between them. Keep state that both
-halves need outside the process, in a database or an upstream service, as a
-deployed application with more than one process has to anyway
-([#1487](https://github.com/ubugeeei-prod/uf/issues/1487)).
+**All of your server code runs in the `rsc` graph**: pages, layouts, loaders,
+server actions, route handlers (`$route.js`) and middleware (`$middleware.js`).
+A module that any two of them import is one instance per process. What an
+action or a `POST` handler writes to an in-memory store is what the next render
+reads, including the page a form posted before hydration gets back. A
+module-level cache, rate limiter or connection pool is likewise shared by
+everything that imports it
+([#1469](https://github.com/ubugeeei-prod/uf/issues/1469),
+[#1487](https://github.com/ubugeeei-prod/uf/issues/1487)). One instance per
+*process* only: a deployment with more than one process still needs shared
+state outside the process.
+
+The cost is that a route handler and a middleware resolve their imports under
+the `react-server` condition, the way the pages do. A package that ships a
+different build under that condition gives them that build. In particular,
+`react-dom/server` does not load there, so a handler cannot call
+`renderToString` to render an email. Do that rendering outside the handler, for
+example in a service that the handler calls.
 
 **What that asks of a project.**
 

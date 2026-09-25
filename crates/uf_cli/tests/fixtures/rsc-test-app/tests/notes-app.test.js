@@ -64,6 +64,16 @@ describe("the notes route, built", () => {
     expect(await (await app.render("/notes")).text()).toContain("Seen by the page");
   });
 
+  it("lists a note a route handler saved on the next render", async () => {
+    // The handler and the page share one instance of `notes.server.js` (#1487).
+    const answer = await app.fetch("/api/notes", {
+      method: "POST",
+      body: new URLSearchParams({ text: "Posted to the handler" }),
+    });
+    expect(answer.status).toBe(201);
+    expect(await (await app.render("/notes")).text()).toContain("Posted to the handler");
+  });
+
   it("refuses a note from nobody, as state the page renders", async () => {
     const page = await (await app.submit("/notes", { text: "anonymous" })).text();
     expect(page).toContain("sign in to write a note");

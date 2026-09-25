@@ -846,7 +846,8 @@ a thing Node or a bundler will do, so `@uniflowed/vite` declares a third Vite
 environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
 
 - **`rsc`**, resolved under `react-server` with every dependency bundled in,
-  holds the route table, every page, layout and loader, and
+  holds the route table, every page, layout and loader, the server-action
+  endpoint, the route handlers and the middleware, and
   `@uniflowed/router/rsc`'s `createFlightRenderer`. A `"use client"` module is
   replaced there by one `createClientReference` per export, so its code never
   runs in that graph and a server component's code never reaches the browser.
@@ -859,6 +860,35 @@ environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
   (`@uniflowed/router/rsc/client`'s `hydrateFlight`) and holds no page, layout
   or loader — only the client modules, each an entry of its own, loaded when a
   payload names its chunk.
+
+**Everything that runs the application's server code is in `rsc`.** That
+includes the pages, the server actions (#1469), the route handlers (`$route.js`)
+and the middleware (`$middleware.js`) (#1487). `ssr` renders HTML and imports
+none of that code. It calls the action endpoint, the handler dispatcher and the
+middleware runner through the bridge, the same way it calls `renderFlight`. The
+reason is module identity. Each graph evaluates its own instance of every
+module it imports, so a module shared across two graphs is two modules. Before
+this, a `POST` that a handler answered wrote to an in-memory store the page
+never read. A module-level cache, rate limiter or connection pool split the
+same way. With one graph for server code, one module is one instance per
+process, which is what an author assumes.
+
+The alternative was to keep handlers and middleware in `ssr` and document the
+split as a contract: shared module state lives outside the process. That was
+rejected. It would have been a rule that no tool enforces, broken silently by
+the most ordinary thing a handler does. It would also have left uf's two
+rendering modes with different semantics for the same `$route.js`, because
+under `app.rsc: false` every server module is in one graph.
+
+The cost is that a handler and a middleware resolve their imports under the
+`react-server` condition. That is Next.js's choice too: its route handlers run
+in its `react-server` layer. A package that ships a different build under that
+condition gives the handler that build. The case that matters is
+`react-dom/server`: its `react-server` build refuses to load, so a handler
+cannot render an email with `renderToString`. A handler that needs a package's
+ordinary build has to get it from outside this graph, for example a service
+that does the rendering. The server-components guide states this for
+application authors.
 
 Those three entries are the only modules of the router that reach
 `react-server-dom-parcel`, and each refuses a React older than 19.3 before it

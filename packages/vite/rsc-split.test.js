@@ -790,7 +790,13 @@ it("keeps HTTP handlers out of the browser route graph, including interactive ro
   plugin.configResolved({ root, base: "/" });
   const client = plugin.load("\0virtual:uf/routes", { ssr: false });
   const server = plugin.load("\0virtual:uf/routes", { ssr: true });
+  const rsc = plugin.load.call({ environment: { name: "rsc" } }, "\0virtual:uf/routes", {
+    ssr: true,
+  });
   expect(client).not.toContain("$route.js");
   expect(client).toContain("$page.js");
-  expect(server).toContain("/auth/session/$route.js");
+  // The rsc graph's, beside the pages, and not a second copy in the ssr graph
+  // (ubugeeei-prod/uf#1487).
+  expect(rsc).toContain("/auth/session/$route.js");
+  expect(server).not.toContain("$route.js");
 });
