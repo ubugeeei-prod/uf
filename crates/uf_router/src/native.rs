@@ -48,8 +48,8 @@ use uf_config::UniflowedConfig;
 use walkdir::WalkDir;
 
 use super::{
-    MODULE_EXTENSIONS, PAGE_EXTENSIONS, RESERVED_LAYOUT_STEM, Route, RouteParamKind, RouteTarget,
-    RouterError, discover_routes_for_target, find_module_for_target, generate_router_flow,
+    MODULE_EXTENSIONS, PAGE_EXTENSIONS, RESERVED_LAYOUT_STEM, Route, RouteTarget, RouterError,
+    discover_routes_for_target, find_module_for_target, generate_router_flow,
     route_path_and_params, slot_in,
 };
 use crate::reserved::ReservedRole;
@@ -353,7 +353,7 @@ pub fn generate_native_router_flow(
                 format!(
                     "{{ name: {}, catchAll: {} }}",
                     js_string(&param.name),
-                    matches!(param.kind, RouteParamKind::CatchAll)
+                    param.kind.is_catch_all()
                 )
             })
             .collect::<Vec<_>>()

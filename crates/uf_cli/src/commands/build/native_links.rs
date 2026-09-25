@@ -28,15 +28,27 @@ pub(crate) fn write(
             }
         }
     }
+    let wildcard = |route: &str| {
+        route
+            .split('/')
+            .map(|part| if part.starts_with(':') { "*" } else { part })
+            .collect::<Vec<_>>()
+            .join("/")
+    };
     let patterns: Vec<_> = links
         .routes
         .iter()
-        .map(|route| {
-            route
-                .split('/')
-                .map(|part| if part.starts_with(':') { "*" } else { part })
-                .collect::<Vec<_>>()
-                .join("/")
+        .flat_map(|route| {
+            // An optional catch-all serves the path above it too, and `/docs/*`
+            // does not match `/docs`, so that one is claimed on its own.
+            let parent = route
+                .rsplit_once('/')
+                .filter(|(_, last)| last.starts_with(':') && last.ends_with("*?"))
+                .map(|(parent, _)| match parent {
+                    "" => "/".to_owned(),
+                    parent => wildcard(parent),
+                });
+            std::iter::once(wildcard(route)).chain(parent)
         })
         .collect();
     let components: Vec<_> = patterns

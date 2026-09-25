@@ -2834,11 +2834,11 @@ async function renderingPlan(server, prerender) {
 }
 
 function fillParams(routePath, params) {
-  return routePath
+  const filled = routePath
     .split("/")
     .map((segment) => {
-      if (segment.endsWith("*")) {
-        const value = params[segment.slice(1, -1)];
+      if (segment.startsWith(":") && (segment.endsWith("*") || segment.endsWith("*?"))) {
+        const value = params[segment.slice(1, segment.endsWith("?") ? -2 : -1)];
         return Array.isArray(value)
           ? value.map(encodeURIComponent).join("/")
           : encodeURIComponent(String(value ?? ""));
@@ -2848,6 +2848,9 @@ function fillParams(routePath, params) {
       return segment;
     })
     .join("/");
+  // An optional catch-all given no segments is its parent path, which is
+  // `/docs` rather than `/docs/`, and `/` rather than an empty string.
+  return filled.length > 1 && filled.endsWith("/") ? filled.slice(0, -1) : filled || "/";
 }
 
 /**

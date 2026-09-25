@@ -116,6 +116,7 @@ fn parameters(route: &Route) -> String {
         .map(|param| match param.kind {
             RouteParamKind::Single => format!("[{}]", param.name),
             RouteParamKind::CatchAll => format!("[...{}]", param.name),
+            RouteParamKind::OptionalCatchAll => format!("[[...{}]]", param.name),
         })
         .collect::<Vec<_>>()
         .join(" ")

@@ -490,6 +490,9 @@ fn route_specificity_scores_the_way_the_runtime_does() {
     assert_eq!(route("/about").specificity(), 3);
     assert_eq!(route("/posts/:slug").specificity(), 5);
     assert_eq!(route("/docs/:slug*").specificity(), 4);
+    // An optional catch-all is the least specific thing a segment can be.
+    assert_eq!(route("/docs/:slug*?").specificity(), 3);
+    assert!(route("/docs/:slug*").specificity() > route("/docs/:slug*?").specificity());
 
     // The pair literal-counting could not tell apart: two literals each, and
     // the parameter route is the more specific one.
@@ -551,6 +554,184 @@ fn a_terminal_catch_all_is_discovered() {
             .collect::<Vec<_>>(),
         ["/docs/:slug*", "/files/:path*"]
     );
+}
+
+/// `[[...slug]]` is a route of its own: spelled `:slug*?`, a list parameter,
+/// and — unlike `[...slug]` — serving the directory it sits in as well as
+/// every path below it. Zero, one and many segments, and a `(group)` below it
+/// leaves it last the way it does a required catch-all. #1361.
+#[test]
+fn an_optional_catch_all_serves_zero_one_and_many_segments() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/docs/[[...slug]]")).unwrap();
+    fs::create_dir_all(root.join("app/files/[[...path]]/(internal)")).unwrap();
+    fs::write(root.join("app/docs/[[...slug]]/$page.js"), "// @flow\n").unwrap();
+    fs::write(
+        root.join("app/files/[[...path]]/(internal)/$page.js"),
+        "// @flow\n",
+    )
+    .unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(
+        routes
+            .iter()
+            .map(|route| route.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/docs/:slug*?", "/files/:path*?"]
+    );
+    assert_eq!(
+        routes[0].params,
+        [RouteParam {
+            name: "slug".into(),
+            kind: RouteParamKind::OptionalCatchAll,
+        }]
+    );
+    let docs = &routes[0];
+    assert!(docs.matches_url("/docs"), "zero segments");
+    assert!(docs.matches_url("/docs/"), "zero segments, with a slash");
+    assert!(docs.matches_url("/docs/guide"), "one segment");
+    assert!(docs.matches_url("/docs/guide/routing/files"), "many");
+    assert!(!docs.matches_url("/"), "not the path above its own");
+    assert!(!docs.matches_url("/documents"));
+}
+
+/// Below a required and an optional catch-all alike, a routing directory is a
+/// page no URL can reach, and the refusal names the directory as written.
+#[test]
+fn an_optional_catch_all_with_a_directory_below_it_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/docs/[[...slug]]/edit")).unwrap();
+    fs::write(
+        root.join("app/docs/[[...slug]]/edit/$page.js"),
+        "// @flow\n",
+    )
+    .unwrap();
+
+    let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+    assert!(
+        matches!(
+            &error,
+            RouterError::NonTerminalCatchAll { catch_all, following, parameter, .. }
+                if catch_all == "[[...slug]]" && following == "edit" && parameter == "slug"
+        ),
+        "{error}"
+    );
+}
+
+/// An optional catch-all and a page at the path above it are two answers to
+/// one URL. Refused by name, both files in the sentence — including when the
+/// page is in a `(group)`, or spells its parameter differently, because it is
+/// the URL they share and not their directories.
+#[test]
+fn an_optional_catch_all_beside_a_page_at_its_parent_path_is_refused() {
+    for (other, catch_all, parent) in [
+        (
+            "app/docs/$page.js",
+            "app/docs/[[...slug]]/$page.js",
+            "/docs",
+        ),
+        (
+            "app/(site)/docs/$page.mdx",
+            "app/docs/[[...slug]]/$page.js",
+            "/docs",
+        ),
+        ("app/$page.js", "app/[[...slug]]/$page.js", "/"),
+        (
+            "app/users/[id]/$page.js",
+            "app/users/[uid]/[[...slug]]/$page.js",
+            "/users/:uid",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        for file in [other, catch_all] {
+            fs::create_dir_all(root.join(file).parent().unwrap()).unwrap();
+            fs::write(root.join(file), "// @flow\n").unwrap();
+        }
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let RouterError::OptionalCatchAllBesidePage {
+            page,
+            other: found,
+            path,
+            ..
+        } = &error
+        else {
+            panic!("{other} and {catch_all}: {error}");
+        };
+        assert_eq!(page, &root.join(catch_all));
+        assert_eq!(found, &root.join(other));
+        assert_eq!(path, parent);
+        let message = error.to_string();
+        assert!(message.contains("[[...slug]]"), "{message}");
+        assert!(message.contains("[...slug]"), "the way out: {message}");
+    }
+}
+
+/// A required catch-all beside a page at the parent path is the ordinary
+/// shape and stays one: the catch-all needs a segment, so `/docs` is the
+/// page's alone. So is an optional catch-all with a page *below* its parent.
+#[test]
+fn a_required_catch_all_beside_a_page_at_its_parent_path_is_not_a_collision() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    for file in [
+        "app/docs/$page.js",
+        "app/docs/[...slug]/$page.js",
+        "app/guide/intro/$page.js",
+        "app/guide/[[...slug]]/$page.js",
+    ] {
+        fs::create_dir_all(root.join(file).parent().unwrap()).unwrap();
+        fs::write(root.join(file), "// @flow\n").unwrap();
+    }
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(
+        routes
+            .iter()
+            .map(|route| route.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/docs", "/docs/:slug*", "/guide/:slug*?", "/guide/intro"]
+    );
+}
+
+/// The generated types: an optional catch-all takes a list, which may be
+/// empty, and `route("/docs/:slug*?", { slug: [] })` is the call for `/docs`.
+#[test]
+fn an_optional_catch_all_is_a_list_in_the_generated_types() {
+    let source = generate_router_flow(&[Route {
+        path: "/docs/:slug*?".into(),
+        directory: Utf8PathBuf::from("app/docs/[[...slug]]"),
+        page: Utf8PathBuf::from("app/docs/[[...slug]]/$page.js"),
+        params: vec![RouteParam {
+            name: "slug".into(),
+            kind: RouteParamKind::OptionalCatchAll,
+        }],
+        has_layout: false,
+        middleware: Vec::new(),
+    }]);
+
+    assert!(
+        source.contains(r#"export type RoutePath = "/docs/:slug*?";"#),
+        "{source}"
+    );
+    assert!(
+        source.contains(r#"  "/docs/:slug*?": { slug: $ReadOnlyArray<string> },"#),
+        "{source}"
+    );
+    assert!(
+        source.contains(r#"  "/docs/:slug*?": [{ slug: $ReadOnlyArray<string> }],"#),
+        "{source}"
+    );
+    let formatted = uf_fmt::format_source(&source, &uf_config::FmtConfig::default());
+    assert!(formatted.is_ok(), "{formatted:?}");
 }
 
 /// The two routers have to accept the same files, and this is the only thing

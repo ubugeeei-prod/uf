@@ -10,7 +10,10 @@
 /** One parameter a route path captures. */
 export type RouteParamSpec = {| readonly name: string, readonly catchAll: boolean |};
 
-/** The parameters captured from a URL. A catch-all captures the rest as a list. */
+/**
+ * The parameters captured from a URL. A catch-all captures the rest as a list:
+ * `[...slug]` at least one segment, `[[...slug]]` any number, none included.
+ */
 export type RouteParams = { readonly [string]: string | $ReadOnlyArray<string> };
 
 /** The query string, as a read-only map. */
@@ -281,13 +284,21 @@ export class RedirectError extends Error {
 type Segment =
   | {| readonly kind: "static", readonly value: string |}
   | {| readonly kind: "param", readonly name: string |}
-  | {| readonly kind: "catchAll", readonly name: string |};
+  | {| readonly kind: "catchAll", readonly name: string |}
+  | {| readonly kind: "optionalCatchAll", readonly name: string |};
 
+/**
+ * A route path, as segments: `posts` is static, `:slug` a parameter, `:slug*`
+ * a catch-all (`[...slug]`) and `:slug*?` an optional one (`[[...slug]]`).
+ */
 function compile(routePath: string): $ReadOnlyArray<Segment> {
   return routePath
     .split("/")
     .filter((segment) => segment !== "")
     .map((segment): Segment => {
+      if (segment.startsWith(":") && segment.endsWith("*?")) {
+        return { kind: "optionalCatchAll", name: segment.slice(1, -2) };
+      }
       if (segment.startsWith(":") && segment.endsWith("*")) {
         return { kind: "catchAll", name: segment.slice(1, -1) };
       }
@@ -300,7 +311,8 @@ function compile(routePath: string): $ReadOnlyArray<Segment> {
 
 /**
  * How specific a route is, for ranking: a static segment outranks a parameter,
- * which outranks a catch-all, and a longer path outranks a shorter one.
+ * which outranks a catch-all, which outranks an optional one, and a longer
+ * path outranks a shorter one.
  */
 function specificity(segments: $ReadOnlyArray<Segment>): number {
   let score = 0;
@@ -309,6 +321,7 @@ function specificity(segments: $ReadOnlyArray<Segment>): number {
       {kind: "static", ...} => 3,
       {kind: "param", ...} => 2,
       {kind: "catchAll", ...} => 1,
+      {kind: "optionalCatchAll", ...} => 0,
     };
   }
   return score;
@@ -336,6 +349,17 @@ function matchSegments(
         index += 1;
       }
       {kind: "catchAll", name: const name} => {
+        // `[...slug]` needs something to take: `/docs` is not
+        // `/docs/[...slug]`, which is what `[[...slug]]` is for. Without
+        // this a catch-all outranked the page at its parent path — one more
+        // segment is one more point — and answered `/docs` in its place.
+        if (index >= parts.length) {
+          return null;
+        }
+        params[name] = parts.slice(index).map(decodeSegment);
+        index = parts.length;
+      }
+      {kind: "optionalCatchAll", name: const name} => {
         params[name] = parts.slice(index).map(decodeSegment);
         index = parts.length;
       }
@@ -374,6 +398,26 @@ export function buildRoute(routePath: string, params?: RouteParams): string {
         if (value == null || typeof value === "string") {
           throw new Error(
             `route ${routePath} takes an array of segments for :${name}*, and got ` +
+              describeParam(value),
+          );
+        }
+        // The URL an empty list builds is the parent path, which this route
+        // does not serve — a link that 404s. An optional catch-all does.
+        if (value.length === 0) {
+          throw new Error(
+            `route ${routePath} takes at least one segment for :${name}*, and got an empty ` +
+              `array; a route that also serves its parent path is [[...${name}]], :${name}*?`,
+          );
+        }
+        for (const part of value) {
+          parts.push(encodeURIComponent(part));
+        }
+      }
+      {kind: "optionalCatchAll", name: const name} => {
+        const value = values[name];
+        if (value == null || typeof value === "string") {
+          throw new Error(
+            `route ${routePath} takes an array of segments for :${name}*?, and got ` +
               describeParam(value),
           );
         }
@@ -455,7 +499,8 @@ function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>
     const next = match (segment) {
       {kind: "static", value: const value} => parts[index] === value ? index + 1 : -1,
       {kind: "param", ...} => index < parts.length ? index + 1 : -1,
-      {kind: "catchAll", ...} => parts.length,
+      {kind: "catchAll", ...} => index < parts.length ? parts.length : -1,
+      {kind: "optionalCatchAll", ...} => parts.length,
     };
     if (next === -1) {
       return false;

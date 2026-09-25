@@ -444,7 +444,7 @@ deployment record does not have yet.
 | Next.js | uf |
 | --- | --- |
 | `app/page.tsx`, `app/layout.tsx` | `app/$page.js`, `app/$layout.js` |
-| `app/[slug]/`, `app/[...rest]/`, `app/(group)/` | the same directories; parameters arrive as props |
+| `app/[slug]/`, `app/[...rest]/`, `app/[[...rest]]/`, `app/(group)/` | the same directories; parameters arrive as props |
 | `loading.tsx` | `$loading.js` — a `<Suspense>` boundary per segment, streamed by `uf dev`, `uf start`, `uf preview` and every adapter but `serverless`, which buffers |
 | `error.tsx` | `$error.js`, a `"use client"` module: one file for 401, 403 and 500, as cases of `RouteError` |
 | `not-found.tsx`, `template.tsx`, `default.tsx` | `$not-found.js`, `$template.js`, `$default.js` |
@@ -547,9 +547,6 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
 - **A slot is not a request boundary.** It holds no `$not-found.js`,
   `$route.js` or `$middleware.js`, and an interception is always shown in a
   slot rather than replacing `children`.
-- **Optional catch-alls.** `[[...slug]]` is not a route segment yet; write
-  `[...slug]` and a page at the parent path
-  ([#1361](https://github.com/ubugeeei-prod/uf/issues/1361)).
 - **The rest of ISR and PPR.** A `--compile` binary carries no cache and
   renders a partially prerendered page whole, per request; `serverless` refuses
   a partially prerendered page; and there is no `experimental_ppr` export or

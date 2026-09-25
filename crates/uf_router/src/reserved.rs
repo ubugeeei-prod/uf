@@ -482,7 +482,12 @@ pub enum RouteSegment<'a> {
     /// `[slug]` — captures one URL segment, under the borrowed name.
     Param(&'a str),
     /// `[...path]` — captures the rest of the URL, under the borrowed name.
+    /// There has to be some: `app/docs/[...path]/` does not serve `/docs`.
     CatchAll(&'a str),
+    /// `[[...path]]` — captures the rest of the URL, which may be nothing,
+    /// under the borrowed name: `app/docs/[[...path]]/` serves `/docs` with
+    /// an empty list as well as `/docs/a/b`.
+    OptionalCatchAll(&'a str),
     /// An ordinary URL segment, spelled exactly as the directory is.
     Literal(&'a str),
     /// `@team` — a parallel-route slot, under the borrowed name.
@@ -574,9 +579,12 @@ impl<'a> RouteSegment<'a> {
     pub fn is_supported(&self, inside_slot: bool) -> bool {
         match self {
             Self::Interception { .. } => inside_slot && self.interception_climb().is_some(),
-            Self::Group | Self::Param(_) | Self::CatchAll(_) | Self::Literal(_) | Self::Slot(_) => {
-                true
-            }
+            Self::Group
+            | Self::Param(_)
+            | Self::CatchAll(_)
+            | Self::OptionalCatchAll(_)
+            | Self::Literal(_)
+            | Self::Slot(_) => true,
         }
     }
 
@@ -719,7 +727,7 @@ impl<'a> RouteSegment<'a> {
 }
 
 /// Whether what follows an interception marker is a segment a URL has — a
-/// literal, a `[param]` or a `[...rest]`.
+/// literal, a `[param]`, a `[...rest]` or a `[[...rest]]`.
 ///
 /// A `(group)` or a `@slot` after the marker contributes no URL segment of its
 /// own, so there is nothing for the interception to stand in for, and reading
@@ -728,7 +736,10 @@ impl<'a> RouteSegment<'a> {
 fn names_a_url_segment(route: &str) -> bool {
     matches!(
         classify_route_segment(route),
-        RouteSegment::Literal(_) | RouteSegment::Param(_) | RouteSegment::CatchAll(_)
+        RouteSegment::Literal(_)
+            | RouteSegment::Param(_)
+            | RouteSegment::CatchAll(_)
+            | RouteSegment::OptionalCatchAll(_)
     )
 }
 
@@ -820,6 +831,14 @@ pub fn classify_route_segment(segment: &str) -> RouteSegment<'_> {
     // convention anybody writes, and stays the group it has always been.
     if segment.starts_with('(') && segment.ends_with(')') {
         return RouteSegment::Group;
+    }
+    // Before the other two bracket spellings, both of which it also matches:
+    // read as `[...name]` it would be a catch-all named `[...name]`'s inside.
+    if let Some(name) = segment
+        .strip_prefix("[[...")
+        .and_then(|name| name.strip_suffix("]]"))
+    {
+        return RouteSegment::OptionalCatchAll(name);
     }
     if let Some(name) = segment
         .strip_prefix("[...")
@@ -1136,11 +1155,17 @@ mod tests {
             classify_route_segment("[...path]"),
             RouteSegment::CatchAll("path")
         );
+        // Not a `[param]` named `[...path]`, which is what it was read as
+        // before it meant anything.
+        assert_eq!(
+            classify_route_segment("[[...path]]"),
+            RouteSegment::OptionalCatchAll("path")
+        );
         assert_eq!(
             classify_route_segment("posts"),
             RouteSegment::Literal("posts")
         );
-        for segment in ["(marketing)", "[slug]", "[...path]", "posts"] {
+        for segment in ["(marketing)", "[slug]", "[...path]", "[[...path]]", "posts"] {
             // Everywhere: only an interception's answer depends on where it is.
             assert!(
                 classify_route_segment(segment).is_supported(false),
@@ -1377,7 +1402,14 @@ mod tests {
 
     #[test]
     fn a_segment_uf_serves_has_no_reason_to_refuse_it() {
-        for segment in ["(marketing)", "[slug]", "[...path]", "posts", "@team"] {
+        for segment in [
+            "(marketing)",
+            "[slug]",
+            "[...path]",
+            "[[...path]]",
+            "posts",
+            "@team",
+        ] {
             assert_eq!(
                 classify_route_segment(segment).unsupported_reason(segment),
                 None,
@@ -1398,6 +1430,9 @@ mod tests {
             "()x",
             "[",
             "[...]",
+            "[[...]]",
+            "[[...",
+            "[[...x]",
             "(.)(",
             "\u{1f600}",
         ] {

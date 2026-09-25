@@ -45,8 +45,11 @@ describe("a route pattern and its parameters become a URL", () => {
 
   it("spreads a catch-all over every remaining segment", () => {
     expect(buildRoute("/docs/:path*", { path: ["guide", "routing"] })).toBe("/docs/guide/routing");
-    // Nothing to spread is the parent path, not a trailing slash.
-    expect(buildRoute("/docs/:path*", { path: [] })).toBe("/docs");
+    expect(buildRoute("/docs/:path*?", { path: ["guide", "routing"] })).toBe("/docs/guide/routing");
+    // Nothing to spread is the parent path, not a trailing slash — which an
+    // optional catch-all serves, and a required one does not.
+    expect(buildRoute("/docs/:path*?", { path: [] })).toBe("/docs");
+    expect(buildRoute("/:path*?", { path: [] })).toBe("/");
   });
 
   it("encodes each segment, so a value cannot become two", () => {
@@ -69,6 +72,7 @@ describe("a built URL matches the route it was built from", () => {
     record("/posts/:slug"),
     record("/users/:id/edit"),
     record("/docs/:path*"),
+    record("/guide/:path*?"),
   ];
 
   it("round-trips every kind of segment", () => {
@@ -78,6 +82,9 @@ describe("a built URL matches the route it was built from", () => {
       ["/posts/:slug", { slug: "hello-world" }],
       ["/users/:id/edit", { id: "42" }],
       ["/docs/:path*", { path: ["guide", "routing"] }],
+      ["/guide/:path*?", { path: [] }],
+      ["/guide/:path*?", { path: ["one"] }],
+      ["/guide/:path*?", { path: ["one", "two", "three"] }],
     ]) {
       const url = buildRoute(pattern, params);
       const matched = matchRoute(routes, url);
@@ -107,9 +114,58 @@ describe("a parameter that is not what the route takes is refused", () => {
 
   it("refuses a single segment where a catch-all belongs", () => {
     expect(() => buildRoute("/docs/:path*", { path: "guide" })).toThrow(/:path\*/);
+    expect(() => buildRoute("/docs/:path*?", { path: "guide" })).toThrow(/:path\*\?/);
+  });
+
+  it("refuses an empty list for a catch-all that needs a segment", () => {
+    // `/docs` is not a URL `/docs/:path*` serves, so the link would 404; the
+    // message names the spelling that would serve it.
+    expect(() => buildRoute("/docs/:path*", { path: [] })).toThrow(/\[\[\.\.\.path\]\]/);
   });
 
   it("refuses an array where a single segment belongs", () => {
     expect(() => buildRoute("/posts/:slug", { slug: ["a", "b"] })).toThrow(/:slug/);
+  });
+});
+
+describe("zero, one and many segments", () => {
+  // #1361: `[...slug]` is one or more segments and `[[...slug]]` zero or more.
+  // The matcher used to let `[...slug]` take none, where it outranked the page
+  // at its parent path and answered `/docs` in the page's place.
+  it("matches an optional catch-all for none, one and many", () => {
+    const routes = [record("/docs/:slug*?")];
+    expect(matchRoute(routes, "/docs")?.params).toEqual({ slug: [] });
+    expect(matchRoute(routes, "/docs/")?.params).toEqual({ slug: [] });
+    expect(matchRoute(routes, "/docs/a")?.params).toEqual({ slug: ["a"] });
+    expect(matchRoute(routes, "/docs/a/b/c")?.params).toEqual({ slug: ["a", "b", "c"] });
+    expect(matchRoute(routes, "/")).toBe(null);
+    expect(matchRoute(routes, "/documents")).toBe(null);
+  });
+
+  it("matches an optional catch-all at the router root for every path", () => {
+    const routes = [record("/:slug*?")];
+    expect(matchRoute(routes, "/")?.params).toEqual({ slug: [] });
+    expect(matchRoute(routes, "/a/b")?.params).toEqual({ slug: ["a", "b"] });
+  });
+
+  it("does not match a required catch-all for none", () => {
+    const routes = [record("/docs/:slug*")];
+    expect(matchRoute(routes, "/docs")).toBe(null);
+    expect(matchRoute(routes, "/docs/a")?.params).toEqual({ slug: ["a"] });
+    expect(matchRoute(routes, "/docs/a/b")?.params).toEqual({ slug: ["a", "b"] });
+  });
+
+  it("leaves the parent path to its own page beside a required catch-all", () => {
+    const routes = [record("/docs"), record("/docs/:slug*")];
+    expect(matchRoute(routes, "/docs")?.route.path).toBe("/docs");
+    expect(matchRoute(routes, "/docs/a")?.route.path).toBe("/docs/:slug*");
+  });
+
+  it("ranks an optional catch-all below everything else that matches", () => {
+    const routes = [record("/docs/:slug*?"), record("/docs/:id"), record("/docs/intro")];
+    expect(matchRoute(routes, "/docs/intro")?.route.path).toBe("/docs/intro");
+    expect(matchRoute(routes, "/docs/other")?.route.path).toBe("/docs/:id");
+    expect(matchRoute(routes, "/docs/a/b")?.route.path).toBe("/docs/:slug*?");
+    expect(matchRoute(routes, "/docs")?.route.path).toBe("/docs/:slug*?");
   });
 });

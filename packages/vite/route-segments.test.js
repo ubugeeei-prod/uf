@@ -277,3 +277,44 @@ describe("scanning a router root that holds one", () => {
     );
   });
 });
+
+describe("an optional catch-all, [[...slug]]", () => {
+  // #1361. `[...slug]` needs at least one segment; `[[...slug]]` serves the
+  // directory it sits in too, and so is a route path of its own: `:slug*?`.
+  it("is a kind of its own rather than a parameter named `[...slug]`", () => {
+    expect(classifyRouteSegment("[[...slug]]")).toEqual({ kind: "optionalCatchAll", name: "slug" });
+    const route = routeFromSegments(["docs", "[[...slug]]"]);
+    expect(route.path).toBe("/docs/:slug*?");
+    expect(route.params).toEqual([{ name: "slug", catchAll: true }]);
+  });
+
+  it("is scanned into the table", () => {
+    const table = scanRoutes(appRoot([path.join("docs", "[[...slug]]", "$page.js")]));
+    expect(table.routes.map((route) => route.path)).toEqual(["/docs/:slug*?"]);
+  });
+
+  it("refuses a page at its parent path by name, in a group or not", () => {
+    for (const [other, catchAll] of [
+      [path.join("docs", "$page.js"), path.join("docs", "[[...slug]]", "$page.js")],
+      [path.join("(site)", "docs", "$page.mdx"), path.join("docs", "[[...slug]]", "$page.js")],
+      ["$page.js", path.join("[[...slug]]", "$page.js")],
+      [
+        path.join("users", "[id]", "$page.js"),
+        path.join("users", "[uid]", "[[...tab]]", "$page.js"),
+      ],
+    ]) {
+      const root = appRoot([other, catchAll]);
+      const message = thrownBy(() => scanRoutes(root)) ?? "";
+      expect(message).toContain(path.join(root, catchAll));
+      expect(message).toContain(path.join(root, other));
+      expect(message).toContain("optional catch-all");
+    }
+  });
+
+  it("leaves a required catch-all beside a page at its parent path alone", () => {
+    const table = scanRoutes(
+      appRoot([path.join("docs", "$page.js"), path.join("docs", "[...slug]", "$page.js")]),
+    );
+    expect(table.routes.map((route) => route.path)).toEqual(["/docs", "/docs/:slug*"]);
+  });
+});

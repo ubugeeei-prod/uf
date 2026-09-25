@@ -139,6 +139,7 @@ pub(crate) fn run_router_unsupported_segment(
                 }
                 uf_router::RouteSegment::Param(_)
                 | uf_router::RouteSegment::CatchAll(_)
+                | uf_router::RouteSegment::OptionalCatchAll(_)
                 | uf_router::RouteSegment::Literal(_) => depth += 1,
             }
             continue;

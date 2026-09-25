@@ -207,6 +207,9 @@ export function nativeScreenName(routePath: string): string {
   }
   const name = segments
     .map((segment) => {
+      if (segment.startsWith(":") && segment.endsWith("*?")) {
+        return `Any${titlePart(segment.slice(1, -2))}`;
+      }
       if (segment.startsWith(":") && segment.endsWith("*")) {
         return `All${titlePart(segment.slice(1, -1))}`;
       }

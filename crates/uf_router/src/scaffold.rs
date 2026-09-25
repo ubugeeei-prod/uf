@@ -134,10 +134,10 @@ pub enum ScaffoldError {
         parameter: String,
     },
     /// A segment that is empty or that names a parameter with no name:
-    /// `//`, `[]`, `[...]`.
+    /// `//`, `[]`, `[...]`, `[[...]]`.
     #[error(
         "`{segment}` is not a path segment uf can turn into a directory. A segment is a name, \
-         `[name]`, `[...name]` or `(group)`."
+         `[name]`, `[...name]`, `[[...name]]` or `(group)`."
     )]
     EmptySegment {
         /// The segment, as it was written.
@@ -188,7 +188,10 @@ fn route_directory(path: &str) -> Result<Utf8PathBuf, ScaffoldError> {
         }
         if matches!(
             classified,
-            RouteSegment::Param("") | RouteSegment::CatchAll("") | RouteSegment::Literal("")
+            RouteSegment::Param("")
+                | RouteSegment::CatchAll("")
+                | RouteSegment::OptionalCatchAll("")
+                | RouteSegment::Literal("")
         ) {
             return Err(ScaffoldError::EmptySegment {
                 segment: segment.to_owned(),
@@ -200,15 +203,20 @@ fn route_directory(path: &str) -> Result<Utf8PathBuf, ScaffoldError> {
         if classified != RouteSegment::Group {
             if let Some(found) = catch_all {
                 return Err(ScaffoldError::NonTerminalCatchAll {
-                    parameter: found
-                        .trim_start_matches("[...")
-                        .trim_end_matches(']')
-                        .to_owned(),
+                    parameter: match classify_route_segment(found) {
+                        RouteSegment::CatchAll(name) | RouteSegment::OptionalCatchAll(name) => {
+                            name.to_owned()
+                        }
+                        _ => found.to_owned(),
+                    },
                     catch_all: found.to_owned(),
                     following: segment.to_owned(),
                 });
             }
-            if matches!(classified, RouteSegment::CatchAll(_)) {
+            if matches!(
+                classified,
+                RouteSegment::CatchAll(_) | RouteSegment::OptionalCatchAll(_)
+            ) {
                 catch_all = Some(segment);
             }
         }
@@ -293,7 +301,9 @@ fn parameters(relative: &Utf8Path) -> Vec<(&str, bool)> {
         .filter(|segment| !segment.is_empty())
         .filter_map(|segment| match classify_route_segment(segment) {
             RouteSegment::Param(name) => Some((name, false)),
-            RouteSegment::CatchAll(name) => Some((name, true)),
+            RouteSegment::CatchAll(name) | RouteSegment::OptionalCatchAll(name) => {
+                Some((name, true))
+            }
             _ => None,
         })
         .collect()
@@ -317,7 +327,9 @@ fn heading(relative: &Utf8Path) -> String {
         .filter(|segment| !segment.is_empty())
         .filter_map(|segment| match classify_route_segment(segment) {
             RouteSegment::Group => None,
-            RouteSegment::Param(name) | RouteSegment::CatchAll(name) => Some(name),
+            RouteSegment::Param(name)
+            | RouteSegment::CatchAll(name)
+            | RouteSegment::OptionalCatchAll(name) => Some(name),
             RouteSegment::Literal(name) => Some(name),
             RouteSegment::Slot(_) | RouteSegment::Interception { .. } => None,
         })
@@ -550,6 +562,23 @@ mod tests {
         assert!(matches!(error, ScaffoldError::NonTerminalCatchAll { .. }));
         assert!(error.to_string().contains("[...path]"));
         assert!(error.to_string().contains("[path]"));
+    }
+
+    #[test]
+    fn an_optional_catch_all_is_scaffolded_last_and_typed_as_a_list() {
+        assert_eq!(directory("/docs/[[...path]]").unwrap(), "docs/[[...path]]");
+        let error = directory("/docs/[[...path]]/edit").unwrap_err();
+        assert!(
+            matches!(&error, ScaffoldError::NonTerminalCatchAll { parameter, .. } if parameter == "path"),
+            "{error}"
+        );
+        assert!(matches!(
+            directory("/docs/[[...]]"),
+            Err(ScaffoldError::EmptySegment { .. })
+        ));
+        let source = page_source(Utf8Path::new("docs/[[...path]]"), false);
+        assert!(source.contains("+path: $ReadOnlyArray<string>"), "{source}");
+        assert!(source.contains("params.path.join"), "{source}");
     }
 
     #[test]

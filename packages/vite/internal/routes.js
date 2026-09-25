@@ -593,7 +593,38 @@ export function scanRoutes(appRoot, options = {}) {
   // intercepting page is only as good as the ordinary page that serves its URL
   // to everybody the interception does not.
   refuseInterceptionsWithoutPages(appRoot, routes);
+  refuseOptionalCatchAllCollisions(routes);
   return { routes, handlers, middleware, notFound, errors };
+}
+
+/**
+ * Refuse a `[[...param]]` page that shares its parent path with a page.
+ *
+ * An optional catch-all serves the directory it sits in as well as every path
+ * below it, so `app/docs/[[...slug]]/$page.js` and `app/docs/$page.js` are two
+ * answers to `/docs`. Compared by the path's shape rather than by directory,
+ * because a `(group)` or a differently named parameter does not change which
+ * URLs a page serves. Mirrors `uf_router`'s
+ * `refuse_optional_catch_all_collisions`.
+ */
+function refuseOptionalCatchAllCollisions(routes) {
+  const shape = (routePath) => routePath.replace(/:[^/*?]+/g, ":");
+  for (const route of routes) {
+    const last = route.params.at(-1);
+    if (last == null || !route.path.endsWith(`:${last.name}*?`)) continue;
+    const parent = route.path.slice(0, route.path.lastIndexOf("/")) || "/";
+    const other = routes.find((candidate) => shape(candidate.path) === shape(parent));
+    if (other != null) {
+      throw new Error(
+        `${route.page}: \`[[...${last.name}]]\` is an optional catch-all, so it serves ` +
+          `\`${parent}\` itself as well as every path below it, and \`${other.page}\` serves ` +
+          `\`${parent}\` too — one URL with two pages, and nothing in the URL says which. ` +
+          `Remove \`${other.page}\` and render \`${parent}\` here, where \`${last.name}\` is ` +
+          `an empty list, or make it \`[...${last.name}]\`, which leaves \`${parent}\` to ` +
+          `\`${other.page}\`.`,
+      );
+    }
+  }
 }
 
 /**
@@ -620,11 +651,13 @@ function refuseInterceptionsWithoutPages(appRoot, routes) {
             .split("/")
             .filter((part) => part !== "")
             .map((part) =>
-              part.startsWith(":") && part.endsWith("*")
-                ? `[...${part.slice(1, -1)}]`
-                : part.startsWith(":")
-                  ? `[${part.slice(1)}]`
-                  : part,
+              part.startsWith(":") && part.endsWith("*?")
+                ? `[[...${part.slice(1, -2)}]]`
+                : part.startsWith(":") && part.endsWith("*")
+                  ? `[...${part.slice(1, -1)}]`
+                  : part.startsWith(":")
+                    ? `[${part.slice(1)}]`
+                    : part,
             );
           const ordinary = path.join(appRoot, ...directories, `${RESERVED.page}.js`);
           throw new Error(
@@ -651,18 +684,23 @@ function refuseInterceptionsWithoutPages(appRoot, routes) {
  * Whether every URL the route path `intercepted` matches is one `ordinary`
  * serves: segment by segment, the way the runtime's matcher reads both. A
  * static segment serves only itself, a parameter any one segment but not a
- * catch-all's many, and a catch-all whatever is left as long as something is.
- * Mirrors `uf_router`'s `serves_every_url_of`.
+ * catch-all's many, a catch-all whatever is left as long as something is, and
+ * an optional catch-all whatever is left. Mirrors `uf_router`'s
+ * `serves_every_url_of`.
  */
 function servesEveryUrlOf(ordinary, intercepted) {
   const theirs = ordinary.split("/").filter((part) => part !== "");
   const ours = intercepted.split("/").filter((part) => part !== "");
+  const optional = (part) => part.startsWith(":") && part.endsWith("*?");
   for (let index = 0; index < theirs.length; index += 1) {
     const segment = theirs[index];
-    if (segment.startsWith(":") && segment.endsWith("*")) return ours.length > index;
+    if (optional(segment)) return true;
+    if (segment.startsWith(":") && segment.endsWith("*")) {
+      return ours.length > index && !optional(ours[index]);
+    }
     const other = ours[index];
     if (other === undefined) return false;
-    const otherIsCatchAll = other.startsWith(":") && other.endsWith("*");
+    const otherIsCatchAll = other.startsWith(":") && (other.endsWith("*") || optional(other));
     const serves = segment.startsWith(":")
       ? !otherIsCatchAll
       : !other.startsWith(":") && other === segment;
@@ -965,7 +1003,7 @@ function unsupportedSlotBoundaryRole(fileName) {
 /**
  * What one directory name means to the route path.
  *
- * Mirrors `uf_router::classify_route_segment`, which is the same six answers
+ * Mirrors `uf_router::classify_route_segment`, which is the same seven answers
  * in the same order. The order is load-bearing in one place: an interception
  * marker is a `(…)` *prefix* with a route after it, and a `(group)` is a
  * segment that ends in `)`, so the interception test has to come first or
@@ -975,6 +1013,7 @@ function unsupportedSlotBoundaryRole(fileName) {
  * @returns {{kind: "group"}
  *   | {kind: "param", name: string}
  *   | {kind: "catchAll", name: string}
+ *   | {kind: "optionalCatchAll", name: string}
  *   | {kind: "literal", name: string}
  *   | {kind: "slot", name: string}
  *   | {kind: "interception", marker: string, route: string}}
@@ -984,6 +1023,9 @@ export function classifyRouteSegment(segment) {
   const intercepted = interceptionMarker(segment);
   if (intercepted != null) return { kind: "interception", ...intercepted };
   if (segment.startsWith("(") && segment.endsWith(")")) return { kind: "group" };
+  if (segment.startsWith("[[...") && segment.endsWith("]]")) {
+    return { kind: "optionalCatchAll", name: segment.slice(5, -2) };
+  }
   if (segment.startsWith("[...") && segment.endsWith("]")) {
     return { kind: "catchAll", name: segment.slice(4, -1) };
   }
@@ -1046,7 +1088,7 @@ function readInterception(classified) {
   const climb = interceptionClimb(classified.marker);
   const route = classifyRouteSegment(classified.route);
   if (climb == null) return null;
-  if (route.kind !== "literal" && route.kind !== "param" && route.kind !== "catchAll") {
+  if (!["literal", "param", "catchAll", "optionalCatchAll"].includes(route.kind)) {
     return null;
   }
   return { climb, route };
@@ -1139,7 +1181,8 @@ function climbReason(segment, depth) {
  * Turn directory segments into a route path and its parameters.
  *
  * `(group)` segments organise files without appearing in the URL, `[name]`
- * captures one segment, and `[...name]` captures the rest of the path. A
+ * captures one segment, `[...name]` captures the rest of the path, and
+ * `[[...name]]` captures the rest of it, which may be none. A
  * `@slot` contributes nothing either — it is a named place a route renders
  * into, matched against the URL of the segment that declares it — so a slot's
  * pages are matched against ordinary paths and add none of their own.
@@ -1174,7 +1217,9 @@ export function routeFromSegments(segments) {
       out = read.climb === "root" ? [] : out.slice(0, out.length - read.climb);
       named = read.route;
     }
-    if (named.kind === "catchAll") {
+    if (named.kind === "optionalCatchAll") {
+      out.push({ spelling: `:${named.name}*?`, param: { name: named.name, catchAll: true } });
+    } else if (named.kind === "catchAll") {
       out.push({ spelling: `:${named.name}*`, param: { name: named.name, catchAll: true } });
     } else if (named.kind === "param") {
       out.push({ spelling: `:${named.name}`, param: { name: named.name, catchAll: false } });
@@ -1184,7 +1229,7 @@ export function routeFromSegments(segments) {
   }
   const routePath = out.length === 0 ? "/" : `/${out.map((entry) => entry.spelling).join("/")}`;
   const params = out.flatMap((entry) => (entry.param == null ? [] : [entry.param]));
-  return { path: routePath, pattern: routePath.replace(/:(\w+)\*/g, "*$1"), params };
+  return { path: routePath, pattern: routePath.replace(/:(\w+)\*\??/g, "*$1"), params };
 }
 
 /**

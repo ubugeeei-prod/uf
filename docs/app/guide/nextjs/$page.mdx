@@ -55,8 +55,7 @@ dropped.
 | `route.js` | `$route.js`, which may also export `QUERY` | Implemented |
 | `middleware.ts`, one at the root | `$middleware.js` at any depth, chosen by the request path and never by a header ([Answering requests](/guide/routing/requests#middleware)) | Implemented |
 | `(group)` | `(group)` | Implemented |
-| `[slug]`, `[...slug]` | the same | Implemented |
-| `[[...slug]]`, the optional catch-all | nothing; write `[...slug]` and a page at the parent path | Planned, [#1361](https://github.com/ubugeeei-prod/uf/issues/1361) |
+| `[slug]`, `[...slug]`, `[[...slug]]` | the same ([Paths](/guide/routing#paths)) | Implemented |
 | `@slot` parallel routes | the same ([Parallel routes](/guide/routing#parallel-routes)) | Implemented |
 | `(.)`, `(..)`, `(...)` intercepting routes | the same markers, only inside a slot, under Server Components and without them ([Intercepting routes](/guide/routing#intercepting-routes)) | Implemented |
 | `redirects`, `rewrites`, `headers` in `next.config` | `app.router` in `uf.config.js` | Implemented |

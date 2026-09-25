@@ -188,6 +188,7 @@ describe("@uniflowed/router/native", () => {
     expect(nativeScreenName("/settings")).toBe("Settings");
     expect(nativeScreenName("/users/:id")).toBe("UsersById");
     expect(nativeScreenName("/docs/:slug*")).toBe("DocsAllSlug");
+    expect(nativeScreenName("/docs/:slug*?")).toBe("DocsAnySlug");
   });
 
   it("refuses duplicate generated native screen names", () => {

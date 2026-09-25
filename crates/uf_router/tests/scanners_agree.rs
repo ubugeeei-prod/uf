@@ -92,6 +92,8 @@ fn router_tree() -> (tempfile::TempDir, Utf8PathBuf) {
         "app/users/[id]/settings/$page.jsx",
         "app/docs/[...slug]/$page.js",
         "app/docs/[...slug]/$not-found.web.js",
+        "app/guide/[[...slug]]/$page.js",
+        "app/guide/[[...slug]]/$page.native.jsx",
         "app/web-only/$page.web.js",
         "app/android-only/$page.android.js",
     ] {
