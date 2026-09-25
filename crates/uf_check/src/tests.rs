@@ -611,6 +611,68 @@ fn a_value_imported_from_another_file_has_the_exported_type() {
 }
 
 #[test]
+fn an_unannotated_export_cannot_silently_become_any_in_an_importer() {
+    require_checker!();
+
+    // A call has no annotation the module signature can carry. The imported
+    // `typeof Signup` must not let the wrong age pass with no diagnostic.
+    let report = batch(&[
+        Source::new(
+            "signup.js",
+            "// @flow\nfunction make(): { age: number } { return { age: 18 }; }\nexport const Signup = make();\n",
+        ),
+        Source::new(
+            "use.js",
+            "// @flow\nimport { Signup } from './signup.js';\ntype SignupType = typeof Signup;\nconst wrong: SignupType = { age: '36' };\n",
+        ),
+    ]);
+
+    assert!(
+        report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == Some("signature-verification-failure")
+                && diagnostic.primary.path == "signup.js"
+        }),
+        "an export that becomes any must be reported: {:?}",
+        codes(&report)
+    );
+}
+
+#[test]
+fn a_static_uf_config_keeps_its_inline_default_export() {
+    require_checker!();
+
+    let source = "// @flow\nfunction defineConfig(config: {}): {} { return config; }\nexport default defineConfig({});\n";
+    let config = batch(&[Source::new("project/uf.config.js", source)]);
+    assert!(config.diagnostics.is_empty(), "{:?}", codes(&config));
+
+    // Only the config path is special. The same call exported from an ordinary
+    // module still needs an annotation before another module can import it.
+    let module = batch(&[Source::new("project/other.js", source)]);
+    assert!(codes(&module).contains(&"signature-verification-failure"));
+}
+
+#[test]
+fn a_router_view_app_entry_keeps_its_runtime_export() {
+    require_checker!();
+
+    let source = "// @flow\nfunction routerView(root: string): mixed { return root; }\nexport default routerView('./app');\n";
+    let app = batch(&[Source::new("project/app.js", source)]);
+    assert!(app.diagnostics.is_empty(), "{:?}", codes(&app));
+
+    // An ordinary module exporting the same call still has a signature error.
+    let module = batch(&[Source::new("project/other.js", source)]);
+    assert!(codes(&module).contains(&"signature-verification-failure"));
+
+    // A second export makes the app entry a typed module too. Its signature
+    // errors must remain visible even when the runtime default is present.
+    let mixed = batch(&[Source::new(
+        "project/app.js",
+        "// @flow\nfunction routerView(root: string): mixed { return root; }\nexport default routerView('./app');\nexport const signup = () => null;\n",
+    )]);
+    assert!(codes(&mixed).contains(&"signature-verification-failure"));
+}
+
+#[test]
 fn an_error_about_an_imported_value_can_point_into_the_file_that_declared_it() {
     require_checker!();
 
@@ -1319,8 +1381,8 @@ fn a_package_is_merged_once_however_it_is_spelled() {
     let mut sources = cell_package();
     sources.push(Source::new(
         "by-name.js",
-        "// @flow\nimport { cell } from \"@uniflowed/cell\";\n\
-         export const one = cell(1);\n",
+        "// @flow\nimport { cell, type Cell } from \"@uniflowed/cell\";\n\
+         export const one: Cell<number> = cell(1);\n",
     ));
     sources.push(Source::new(
         "by-path.js",

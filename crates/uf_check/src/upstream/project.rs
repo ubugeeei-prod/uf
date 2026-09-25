@@ -91,12 +91,15 @@ use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser::loc::{LOC_NONE, Loc};
 use flow_type_sig::compact_table::Index;
 use flow_type_sig::packed_type_sig::Module;
+use flow_type_sig::type_sig::Errno;
 use flow_type_sig::type_sig_options::TypeSigOptions;
 use flow_type_sig::type_sig_pack as Pack;
 use flow_type_sig::type_sig_utils;
 use flow_typing::merge;
 use flow_typing_builtins::builtins::Builtins;
 use flow_typing_context::{Context, Metadata, ResolvedRequire, make_ccx};
+use flow_typing_errors::error_message::ErrorMessage;
+use flow_typing_errors::flow_error::{self, ErrorSet};
 use flow_typing_type::type_::constraint::forcing_state::ModuleTypeForcingState;
 use flow_typing_type::type_::{ModuleType, Type};
 use flow_typing_utils::annotation_inference;
@@ -138,6 +141,8 @@ struct Signature {
     metadata: Metadata,
     type_sig: Arc<Module<Loc>>,
     aloc_table: LazyALocTable,
+    /// Errors in the export signature belong to the defining file, not an importer.
+    errors: ErrorSet,
     /// What a dependent has to notice about this file, in thirty-two bytes.
     ///
     /// Over the packed signature *and* the table of locations it was packed
@@ -688,6 +693,30 @@ impl ProjectModules {
         signature
     }
 
+    /// Flow's signature diagnostics for the file itself, including an export
+    /// whose type cannot be expressed without an annotation. A uf config is
+    /// read as data by the bootstrap loader, which deliberately requires an
+    /// inline `export default defineConfig({ ... })`. An app entry likewise
+    /// exports `routerView(...)` for the runtime to load. Neither is a typed
+    /// interface imported by application source modules.
+    pub(super) fn signature_errors(&self, index: usize) -> ErrorSet {
+        let (path, source) = self.source(index);
+        if matches!(
+            path.rsplit(['/', '\\']).next(),
+            Some("uf.config.js" | "uf.config.mjs" | "uf.config.cjs" | "uf.config.flow")
+        ) || (path.rsplit(['/', '\\']).next() == Some("app.js")
+            && source.contains("export default routerView(")
+            && source
+                .lines()
+                .filter(|line| line.trim_start().starts_with("export "))
+                .all(|line| line.trim_start().starts_with("export default routerView(")))
+        {
+            return ErrorSet::new();
+        }
+        self.signature(index)
+            .map_or_else(ErrorSet::new, |signature| signature.errors.dupe())
+    }
+
     /// Parse one source and pack its signature.
     ///
     /// The AST is dropped when this returns; see [`Signature`].
@@ -716,7 +745,7 @@ impl ProjectModules {
             false,
         );
         let arena = bumpalo::Bump::new();
-        let (_signature_errors, locs, type_sig) = type_sig_utils::parse_and_pack_module(
+        let (signature_errors, locs, type_sig) = type_sig_utils::parse_and_pack_module(
             &sig_options,
             &arena,
             parsed.docblock.is_strict(),
@@ -729,11 +758,27 @@ impl ProjectModules {
             Some(file_key.dupe()),
             parsed.ast.as_ref(),
         );
-        // The signature's own errors are the "this export cannot be given a
-        // signature" diagnostics Flow raises on the *defining* file. That file
-        // is checked in its own right, where inference reports the same problem
-        // against the code that caused it, so reporting them here as well would
-        // attach a second copy to whoever imported it.
+        // Inference does not report every signature error. In particular an
+        // unannotated call exported as a value becomes `any` to importers if
+        // its signature error is discarded. Flow reports these on the defining
+        // file, and so do we; they are never attached to the importer.
+        let errors: ErrorSet = signature_errors
+            .into_iter()
+            .filter_map(|error| {
+                let message = match error {
+                    Errno::SigError(error) => ErrorMessage::ESignatureVerification(
+                        error.map(&mut (), |_, index| ALoc::of_loc(locs.get(*index).dupe())),
+                    ),
+                    Errno::BindingValidationError(error) => {
+                        ErrorMessage::ESignatureBindingValidation(
+                            error.map(&mut (), |_, index| ALoc::of_loc(locs.get(*index).dupe())),
+                        )
+                    }
+                    Errno::CheckError => return None,
+                };
+                Some(flow_error::error_of_msg(file_key.dupe(), message))
+            })
+            .collect();
 
         // Both halves, before `locs` is consumed: see [`Signature::digest`].
         let mut fields = Fields::new("uf-check-signature-v1");
@@ -757,6 +802,7 @@ impl ProjectModules {
             metadata: parsed.metadata.clone(),
             type_sig: Arc::new(type_sig),
             aloc_table,
+            errors,
             digest,
         })
     }

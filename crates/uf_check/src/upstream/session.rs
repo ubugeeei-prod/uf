@@ -303,7 +303,11 @@ impl Worker {
         let (errors, warnings) = suppressed(
             &checked.inferred.cx,
             &checked.parsed,
-            checked.inferred.cx.errors(),
+            checked
+                .inferred
+                .cx
+                .errors()
+                .union(&modules.signature_errors(index)),
             &modules,
         );
         let found: Rc<[TypeDiagnostic]> = convert::diagnostics(&errors, &warnings, path).into();
