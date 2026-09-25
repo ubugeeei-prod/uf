@@ -340,8 +340,6 @@ pub struct RscModule {
     pub proximity: ClientBoundaryProximity,
     /// Modules imported from this one, sorted and deduplicated.
     pub imports: InlineVec<ModuleId, 8>,
-    /// Imports evaluated during a render; dynamic `import()` is excluded.
-    pub(crate) render_imports: InlineVec<ModuleId, 8>,
     /// Import specifiers that do not resolve to a module of this graph.
     pub external_imports: InlineVec<CompactString, 4>,
     /// Exported bindings.
@@ -385,6 +383,8 @@ impl RscModule {
 #[derive(Debug, Clone)]
 pub struct RscGraph {
     modules: Vec<RscModule>,
+    /// Edges evaluated during a render, indexed by module id.
+    render_imports: Vec<InlineVec<ModuleId, 8>>,
     index: FxHashMap<Utf8PathBuf, ModuleId>,
     boundaries: Vec<ClientBoundary>,
     bundle_roots: Vec<ClientBoundaryTarget>,
