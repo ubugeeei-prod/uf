@@ -52,7 +52,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
@@ -784,22 +783,7 @@ fn hex(bytes: &[u8]) -> String {
 /// The `uf` this process is running, as path, size and modification time —
 /// `uf_check`'s cache identity, for the same reason.
 fn binary_identity() -> Option<String> {
-    let path = std::env::current_exe().ok()?;
-    let metadata = fs::metadata(&path).ok()?;
-    if !metadata.is_file() {
-        return None;
-    }
-    let modified = metadata
-        .modified()
-        .ok()?
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_nanos();
-    Some(format!(
-        "{}\0{}\0{modified}",
-        path.display(),
-        metadata.len()
-    ))
+    uf_infra::cache::binary_identity()
 }
 
 #[cfg(test)]

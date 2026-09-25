@@ -554,13 +554,26 @@ tell from a real one ([#565](https://github.com/ubugeeei-prod/uf/issues/565)).
 The bound against inference that does not terminate is Flow's own recursion
 limit, which counts work rather than time.
 
-All three disk caches — `.uf/cache/check`, `.uf/cache/transform` and
-`.uf/cache/task` — are bounded by one policy in `uf_infra::cache`: 128 MiB per
+The lint half of `uf check`, and `uf lint` itself, keep a cache of their own.
+The React tree rules — the `react-compiler/*` rules and `react/no-redundant-memo`
+— hand each module to the official React Compiler, about 27 ms of CPU a module,
+and that was nine tenths of a warm `uf check` until their answer was kept in
+`.uf/cache/lint/` ([#1442](https://github.com/ubugeeei-prod/uf/issues/1442)).
+One record per module, keyed like `.uf/cache/check`'s: the identity of the `uf`
+that wrote it, the module's path and text, and the question the rules asked —
+which analyses were wanted, the one validation a project switches on through
+`react-compiler/exhaustive-effect-dependencies`, and the compiler mode. A record
+holds the raw findings, and each rule's level is applied on the way out, so
+changing a level reuses it. Anything unreadable, of another version or about
+another file is a miss.
+
+All four disk caches — `.uf/cache/check`, `.uf/cache/lint`, `.uf/cache/transform`
+and `.uf/cache/task` — are bounded by one policy in `uf_infra::cache`: 128 MiB per
 directory, swept to 96 MiB, coldest entry first, where "coldest" is the later
 of a file's access and modification times. Every key names the `uf` that wrote
 it, so a rebuild orphans a whole generation at once and none of them could
 give a byte back before this existed. The sweep runs once at the start of the
-command that is about to add to a cache — `uf check`, `uf run`, and
+command that is about to add to a cache — `uf check`, `uf lint`, `uf run`, and
 `uf transform`, which a host starts only when something actually has to be
 compiled — and it never rewrites a file, only unlinks one, and never unlinks
 one used in the last minute, which is what makes it safe beside the twelve

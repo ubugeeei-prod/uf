@@ -8,7 +8,7 @@
 //! | | costs | removed by |
 //! | --- | --- | --- |
 //! | `dist/` — the build's output | a rebuild | `uf clean` |
-//! | `.uf/cache/` — transform and check answers | a rebuild, slower | `uf clean` |
+//! | `.uf/cache/` — transform, check and lint answers | a rebuild, slower | `uf clean` |
 //! | `.uf/` — the rest of uf's per-project state | a re-resolve | `uf clean` |
 //! | `node_modules/` and the lockfile's store | a network round trip | `--deps` |
 //!

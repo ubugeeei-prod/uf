@@ -1,9 +1,9 @@
 //! Keeping a cache directory under a bound.
 //!
-//! uf keeps three answer caches under `.uf/cache/` — `transform/` written by
-//! the Capability JS Host's loader, `check/` written by `uf check`, `task/`
-//! written by `uf run` — and until this existed none of them ever gave a byte
-//! back. Every one is content-addressed, so an entry is orphaned the moment
+//! uf keeps four answer caches under `.uf/cache/` — `transform/` written by
+//! the Capability JS Host's loader, `check/` written by `uf check`, `lint/`
+//! written by `uf lint` and `uf check`, `task/` written by `uf run` — and until
+//! this existed none of them ever gave a byte back. Every one is content-addressed, so an entry is orphaned the moment
 //! anything in its key changes: editing a file orphans one entry, and
 //! rebuilding `uf` orphans an entire generation at once because the compiler's
 //! identity is in every key. On this repository that is about 330 modules and
@@ -89,7 +89,42 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+/// The `uf` this process is running, as path, size and modification time, or
+/// [`None`] when it cannot say.
+///
+/// The compiler identity every cache linked into `uf` keys on: `.uf/cache/check`
+/// and `.uf/cache/lint` both hold answers a *build* of uf decided, so a rebuilt
+/// binary has to miss what the previous one wrote. Size and modification time
+/// rather than a version, for #219's reason: every build between two releases
+/// shares a version, and it is builds that change the answers. Not a hash of
+/// the binary, which is thirty megabytes and would cost more than the work it
+/// is meant to save.
+///
+/// Read it once per process and keep it: the binary this process is executing
+/// was fixed at `exec`, and a `cargo build` that replaces the file halfway
+/// through a run must not have that run's answers filed under the next build's
+/// name. `uf_check::cache` has the whole argument.
+#[must_use]
+pub fn binary_identity() -> Option<String> {
+    let path = std::env::current_exe().ok()?;
+    let metadata = fs::metadata(&path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    let modified = metadata
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    Some(format!(
+        "{}\0{}\0{modified}",
+        path.display(),
+        metadata.len()
+    ))
+}
 
 /// How much one cache directory may hold before a sweep, in bytes.
 ///
