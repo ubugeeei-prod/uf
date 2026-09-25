@@ -611,6 +611,33 @@ fn a_value_imported_from_another_file_has_the_exported_type() {
 }
 
 #[test]
+fn an_unannotated_export_cannot_silently_become_any_in_an_importer() {
+    require_checker!();
+
+    // A call has no annotation the module signature can carry. The imported
+    // `typeof Signup` must not let the wrong age pass with no diagnostic.
+    let report = batch(&[
+        Source::new(
+            "signup.js",
+            "// @flow\nfunction make(): { age: number } { return { age: 18 }; }\nexport const Signup = make();\n",
+        ),
+        Source::new(
+            "use.js",
+            "// @flow\nimport { Signup } from './signup.js';\ntype SignupType = typeof Signup;\nconst wrong: SignupType = { age: '36' };\n",
+        ),
+    ]);
+
+    assert!(
+        report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == Some("signature-verification-failure")
+                && diagnostic.primary.path == "signup.js"
+        }),
+        "an export that becomes any must be reported: {:?}",
+        codes(&report)
+    );
+}
+
+#[test]
 fn an_error_about_an_imported_value_can_point_into_the_file_that_declared_it() {
     require_checker!();
 
@@ -1319,8 +1346,8 @@ fn a_package_is_merged_once_however_it_is_spelled() {
     let mut sources = cell_package();
     sources.push(Source::new(
         "by-name.js",
-        "// @flow\nimport { cell } from \"@uniflowed/cell\";\n\
-         export const one = cell(1);\n",
+        "// @flow\nimport { cell, type Cell } from \"@uniflowed/cell\";\n\
+         export const one: Cell<number> = cell(1);\n",
     ));
     sources.push(Source::new(
         "by-path.js",

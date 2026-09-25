@@ -645,7 +645,8 @@ fn check_one(
     // Suppression filtering and the translation into uf's diagnostics, together
     // because they are one phase from outside: what the check has to say.
     profile_span!("check::infer_diagnostics");
-    let (errors, warnings) = suppressed(&inferred.cx, &parsed, inferred.cx.errors(), modules);
+    let errors = inferred.cx.errors().union(&modules.signature_errors(index));
+    let (errors, warnings) = suppressed(&inferred.cx, &parsed, errors, modules);
     Ok(convert::diagnostics(&errors, &warnings, source.path))
 }
 

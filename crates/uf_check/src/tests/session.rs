@@ -101,6 +101,35 @@ fn a_member_access_is_typed_through_the_imported_type() {
 }
 
 #[test]
+fn an_unannotated_export_is_diagnosed_in_the_editor() {
+    require_checker!();
+
+    let session = Session::start(Vec::new(), CheckLimits::default()).expect("starts");
+    session
+        .load(vec![
+            OwnedSource::new(
+                "src/model.js",
+                "// @flow\nfunction make(): { age: number } { return { age: 18 }; }\nexport const Signup = make();\n",
+            ),
+            OwnedSource::new(
+                "src/app.js",
+                "// @flow\nimport { Signup } from './model.js';\ntype SignupType = typeof Signup;\nconst wrong: SignupType = { age: '36' };\n",
+            ),
+        ])
+        .expect("loads");
+
+    let diagnostics = session
+        .diagnostics("src/model.js")
+        .expect("checks")
+        .expect("checked file");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == Some("signature-verification-failure") })
+    );
+}
+
+#[test]
 fn nothing_typed_under_the_cursor_is_no_answer() {
     require_checker!();
     let session = session();
