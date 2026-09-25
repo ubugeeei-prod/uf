@@ -1,0 +1,67 @@
+---
+title: "Web components · uf"
+description: "Use the browser-facing package for media, time, document regions, cookies and vitals."
+readiness: "Implemented"
+---
+
+<p className="eyebrow">Build an app</p>
+
+# Web components
+
+`@uniflowed/web` groups the small parts of a page whose server and browser
+behaviour must agree: media, time, landmarks, cookies, head entries and web
+vitals. Routing is in `@uniflowed/router`; this package does not re-export it.
+
+## Reserve space for media
+
+Give a remote `Image` dimensions so the page can reserve its space before the
+bytes arrive. A local imported asset already carries its build-time metadata.
+
+```js
+// @flow
+import { Image } from "@uniflowed/web";
+
+export component Portrait() {
+  return (
+    <Image src="/people/ada.jpg" alt="Ada at her desk" width={480} height={640} />
+  );
+}
+```
+
+The [Images, fonts, icons and cards guide](/guide/assets) covers `Picture`,
+`Font`, `Icon`, `IconSprite`, `OgImage`, optimization and the rules for fetching
+remote images. Request-time remote optimization requires an explicit allow-list
+in `uf.config.js`; a URL alone does not opt a remote host in.
+
+## Render an instant, then localise it
+
+`Time` always puts the exact instant in the `<time>` element's `dateTime`.
+With `format="local"`, it first renders stable text on both sides and switches
+to the reader's locale after hydration. Use a fixed format when the visible
+text must stay the same without JavaScript.
+
+```js
+// @flow
+import { Time } from "@uniflowed/web";
+
+export component Timestamp() {
+  return <Time value="2026-09-04T06:00:00Z" format="local" />;
+}
+```
+
+The [Dates and time guide](/guide/temporal) explains the underlying instant
+and zone model.
+
+## Use the right boundary
+
+`Page`, `Layout`, `SkipLink` and `Announcer` provide document regions and
+accessible announcements. `useCookie` reads a cookie in a component from the
+request during server rendering and from `document.cookie` in a browser.
+Writing a cookie during a server render has no defined response moment: set it
+from a route handler or server action instead. `useHead` describes head entries
+from a component without changing the router's route metadata API.
+
+`collectVitals`, `useVitals` and `vitalsBeacon` read five browser metrics.
+Nothing is sent until the application supplies a beacon destination. See
+[Web vitals](/guide/vitals) for collection, thresholds and the privacy
+boundary.

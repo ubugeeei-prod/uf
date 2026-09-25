@@ -1,0 +1,76 @@
+---
+title: "Languages and messages · uf"
+description: "Route by locale and format MessageFormat 2 messages with checked arguments."
+readiness: "Implemented"
+---
+
+<p className="eyebrow">Build an app</p>
+
+# Languages and messages
+
+Use `@uniflowed/i18n` for two related jobs: choosing the language of a route
+and formatting messages in that language. The route decides which catalogue to
+load; the catalogue decides which arguments each message needs.
+
+## Put the locale in the URL
+
+Create a shared routing value, then use it in middleware and pages. A URL such
+as `/ja/notes` can be shared and rendered without a cookie.
+
+```js
+// @flow
+// locales.js
+import { createLocaleRouting } from "@uniflowed/i18n/routing";
+
+export const locales = createLocaleRouting({
+  locales: ["en", "ja"],
+  defaultLocale: "en",
+});
+```
+
+```js
+// @flow
+// app/$middleware.js
+import { locales } from "../locales.js";
+
+export default locales.middleware;
+```
+
+Place translated pages under `app/[locale]/`. Set
+`generateStaticParams = locales.staticParams` for a page that should be built
+for every supported locale. Use `locales.locale(params)` after validating the
+route; the [locale routing reference](/reference/i18n#locale-routes) shows the
+loader, metadata and not-found case together. Middleware redirects `/` using
+the supported cookie first and then `Accept-Language`; it does not treat an
+arbitrary cookie value as a destination.
+
+## Make message arguments part of the type
+
+A message's source and its parameter kinds live together. The imported `string`
+and `number` below are runtime parameter declarations, not Flow type names.
+
+```js
+// @flow
+import { defineCatalogue, message, number, string } from "@uniflowed/i18n";
+
+const en = defineCatalogue("en-US", {
+  hello: message("Hello, {$name}!", { name: string }),
+  count: message("{$count :number} notes", { count: number }),
+});
+
+en.t("hello", { name: "Ada" });
+en.t("count", { count: 3 });
+```
+
+Flow checks keys and argument types at a call. `message` also checks the
+pattern against its declared parameters when the catalogue is built. A
+translation supplies strings for the same keys; it does not declare a second
+set of parameter types. See the [i18n reference](/reference/i18n) for loading
+translations, negotiation and the exact MessageFormat 2 subset supported.
+
+## Know the boundary
+
+The formatter returns a string. MessageFormat 2 markup and attributes are not
+rendered as rich React nodes, and draft functions such as `:currency` are
+refused. The supported functions use the host's `Intl` locale data, so a host
+without the relevant locale data cannot format that locale by guessing English.

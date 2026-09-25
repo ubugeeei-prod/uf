@@ -1353,6 +1353,19 @@ tbody tr:last-child :is(td, th) {
  * Next page
  * ------------------------------------------------------------------ */
 
+.page-readiness {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  margin: 0 0 1.5rem;
+}
+
+.page-readiness strong {
+  color: var(--doc-ink);
+  font-weight: 600;
+}
+
 /* The pages either side, as two halves of one rule: the previous page on
    the left, the next on the right, each with a small running label. */
 .page-turn {

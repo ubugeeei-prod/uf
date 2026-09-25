@@ -45,6 +45,7 @@ import {
   openSectionFor,
   pages,
   previousBefore,
+  readinessFor,
   sections,
   sourceFor,
 } from "../../docs/app/_design/nav.js";
@@ -189,6 +190,21 @@ describe("the manual's navigation", () => {
       }
     }
     expect(disagreeing).toEqual([]);
+  });
+
+  it("shows the readiness each page declares in its front matter", () => {
+    const wrong = [];
+    for (const page of pages) {
+      const file = pageFile(page.href);
+      if (file == null) continue;
+      const frontmatter = fs.readFileSync(file, "utf8").split("\n---\n", 1)[0];
+      const declared = frontmatter.match(/^readiness:\s*"(.*)"\s*$/m)?.[1] ?? null;
+      const shown = readinessFor(page.href);
+      if (!["Implemented", "Experimental", "Planned"].includes(declared) || declared !== shown) {
+        wrong.push({ href: page.href, declared, shown });
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 
   // The home page and each landing page lead with a section's featured pages

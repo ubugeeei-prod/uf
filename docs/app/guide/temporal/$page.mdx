@@ -1,0 +1,57 @@
+---
+title: "Dates and time · uf"
+description: "Represent an instant without a host time zone, then choose a zone when displaying it."
+readiness: "Implemented"
+---
+
+<p className="eyebrow">Build an app</p>
+
+# Dates and time
+
+`@uniflowed/temporal` gives an event a precise instant without borrowing the
+server's or reader's time zone. Decide how to display it later. This keeps a
+date written by a server in UTC from changing meaning when a browser opens it
+in another zone.
+
+```js
+// @flow
+import { Temporal } from "@uniflowed/temporal";
+
+const published = Temporal.Instant.from("2026-09-04T06:00:00Z");
+const tokyo = published.toZonedDateTimeISO("Asia/Tokyo");
+const day = tokyo.toPlainDate().toString();
+```
+
+The instant is the same event everywhere. `tokyo` is its wall clock in a
+chosen zone; `day` is the calendar date in that zone. Store the instant for a
+timestamp and choose the zone at the edge where someone reads it. A string
+without an offset, such as `"2026-09-04"`, is a date rather than an instant.
+
+## Render it without a hydration mismatch
+
+`Time` from `@uniflowed/web` renders a `<time>` whose `dateTime` stays the
+exact instant. `iso`, `date` and `zoned` use a deterministic zone on server and
+browser. `local` and `relative` begin with that stable text, then update after
+hydration to the reader's locale or the current time.
+
+```js
+// @flow
+import { Time } from "@uniflowed/web";
+
+export component PublishedAt() {
+  return <Time value="2026-09-04T06:00:00Z" format="zoned" zone="Asia/Tokyo" />;
+}
+```
+
+The [Web components guide](/guide/web) covers the other browser-facing
+primitives. Use `Temporal.Now.instant()` when the current clock is the input;
+tests that need a fixed clock should inject one through uf's render context.
+
+## Check which implementation is active
+
+`isLite` reports whether the host is using uf's ISO 8601 subset or native
+Temporal. The five core value types and ISO arithmetic are available on both.
+Non-ISO calendar arithmetic through `withCalendar` still requires uf's native
+runtime and raises `NativeRuntimeRequiredError` in this package. Formatting a
+date with `Intl` in another calendar is a different operation and can use the
+host's locale data.

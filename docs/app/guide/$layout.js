@@ -11,7 +11,7 @@ import { useRoute } from "@uniflowed/router";
 
 import { CodeCopy } from "../_design/code-copy.js";
 import { Outline } from "../_design/outline.js";
-import { ManualNav, PageSource, PageTurn } from "../_design/parts.js";
+import { ManualNav, PageReadiness, PageSource, PageTurn } from "../_design/parts.js";
 import { nextAfter, previousBefore, sourceFor } from "../_design/nav.js";
 
 export component Layout(children: React.Node) {
@@ -39,6 +39,7 @@ export component Layout(children: React.Node) {
         <a className="to-contents" href="#manual-nav">
           All pages <span aria-hidden="true">↓</span>
         </a>
+        <PageReadiness pathname={pathname} />
         {children}
         <PageTurn previous={previous} next={next} />
         {source != null ? <PageSource file={source} /> : null}
