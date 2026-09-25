@@ -233,13 +233,13 @@ export function createActionDispatcher(options: {|
     }
 
     const body = await readBoundedText(request, MAX_ACTION_BODY_BYTES);
-    if (body == null) {
-      return refusal(413);
+    if (body.kind !== "text") {
+      return refusal(body.kind === "too-large" ? 413 : 400);
     }
 
     let args: Array<ActionArgument>;
     try {
-      args = decodeActionArguments(body);
+      args = decodeActionArguments(body.value);
     } catch (error) {
       // The reason is the sender's own payload described back to them, which
       // is a thing to write in a log and not a thing to answer with.
@@ -344,10 +344,10 @@ async function nativeFormPost(
   // A copy, so that a form which turns out not to be an action post reaches the
   // route handler with its body unread.
   const text = await readBoundedText(request.clone(), MAX_ACTION_BODY_BYTES);
-  if (text == null) {
+  if (text.kind !== "text") {
     return null;
   }
-  const post = readFormPost(new URLSearchParams(text));
+  const post = readFormPost(new URLSearchParams(text.value));
   if (post == null) {
     return null;
   }
@@ -659,12 +659,20 @@ function isMedia(declared: string | null, expected: string): boolean {
  * each bad sequence with U+FFFD, which is `docs/security.md`'s row about
  * non-UTF-8 input applied at the one place uf decodes bytes a client sent.
  */
-async function readBoundedText(request: Request, limit: number): Promise<string | null> {
+type BoundedText =
+  | {| readonly kind: "text", readonly value: string |}
+  | {| readonly kind: "too-large" |}
+  | {| readonly kind: "invalid" |};
+
+async function readBoundedText(request: Request, limit: number): Promise<BoundedText> {
   const declared = request.headers.get("content-length");
   if (declared != null) {
     const size = Number(declared);
-    if (!Number.isInteger(size) || size < 0 || size > limit) {
-      return null;
+    if (!Number.isInteger(size) || size < 0) {
+      return { kind: "invalid" };
+    }
+    if (size > limit) {
+      return { kind: "too-large" };
     }
   }
 
@@ -675,7 +683,7 @@ async function readBoundedText(request: Request, limit: number): Promise<string 
   // rather than written here.
   const body: ReadableStream | null = (request as $FlowFixMe).body;
   if (body == null) {
-    return "";
+    return { kind: "text", value: "" };
   }
 
   const reader = body.getReader();
@@ -695,12 +703,12 @@ async function readBoundedText(request: Request, limit: number): Promise<string 
         // declarations uf checks against require one, and "too large" is what
         // a cancelled read of an oversized body is about.
         await reader.cancel("the body is larger than a server action accepts");
-        return null;
+        return { kind: "too-large" };
       }
       chunks.push(chunk);
     }
   } catch {
-    return null;
+    return { kind: "invalid" };
   }
 
   const joined = new Uint8Array(total);
@@ -710,9 +718,9 @@ async function readBoundedText(request: Request, limit: number): Promise<string 
     at += chunk.byteLength;
   }
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(joined);
+    return { kind: "text", value: new TextDecoder("utf-8", { fatal: true }).decode(joined) };
   } catch {
-    return null;
+    return { kind: "invalid" };
   }
 }
 

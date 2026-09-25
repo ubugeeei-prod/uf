@@ -130,7 +130,7 @@ describe("the body", () => {
       0x7d,
     ]);
     const response = await server.dispatch(call(bytes));
-    expect(response?.status).not.toBe(200);
+    expect(response?.status).toBe(400);
     expect(await response?.text()).toBe('{"error":"server action refused"}');
     expect(server.ran()).toBe(0);
   });
