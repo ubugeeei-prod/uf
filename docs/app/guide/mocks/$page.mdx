@@ -329,11 +329,11 @@ suite's default. `resetHandlers()` in an `afterEach` takes every layer away,
 so an override disappears at the end of its test rather than at the end of the
 file.
 
-When one `use` call is given two handlers that match the same request, the
-*last* of them is asked first — the opposite of the order `mock(...)` asks its
-declared handlers in. Until that settles, give a `once` handler and its
-fallback to `mock(...)` in the order you want them asked, as the retry example
-above does, or pass them to separate `use` calls, fallback first.
+Within one `use` call, handlers are asked in the order they are written, as
+`mock(...)` asks its declared handlers and as MSW's `server.use(a, b)` does —
+so `api.use(onceHandler, fallback)` answers the first request with the `once`
+handler and every later one with the fallback. A later `use` call still wins
+over every handler of an earlier one.
 
 ## What was asked
 
@@ -407,7 +407,7 @@ you ask for them by name:
 | `listen({ onUnhandledRequest })` | What an unclaimed request does |
 | --- | --- |
 | `"error"` (the default) | Rejects with `UnhandledRequestError` |
-| `"warn"` | Prints the same message with `console.warn` — once per request — and goes to the network |
+| `"warn"` | Prints the same message with `console.warn` and goes to the network. Warns once per distinct method and URL for each `listen()`, so a component that polls one endpoint warns once |
 | `"bypass"` | Goes to the network silently — for a suite that mocks one host and talks to a local server for the rest |
 
 Either way the request is in the log with `handled: false`.
@@ -443,11 +443,11 @@ and may change; a suite that relies on it should say
 `api.listen({ origin: "https://app.example.test" })`.
 
 **Browser mode.** Every sample on this page runs in Node mode. Under
-`uf test --browser` the test file runs in a page, and that page's runner sends
-its results back to `uf` with `fetch` — to relative `/uf-test/…` URLs a
-listening registry would see and, under the default policy, reject. Keep
-request-mocked files on the Node host until that interaction has been worked
-out.
+`uf test --browser` the test file runs in a page, and that page's runner talks
+to `uf` over HTTP — `/uf-test/…` URLs for results and for `createBrowser`. It
+sends those through the `fetch` the page had before any test file ran, not
+through `globalThis.fetch`, so a listening registry never sees them and its
+policy does not apply to them.
 
 ## With a rendered component
 
@@ -833,11 +833,11 @@ package, and it is the reason `storyTest` exists.
 ## Finding every story
 
 A story file is called `$story.js` and sits beside the component it describes.
-**The name is experimental.** It follows uf's reserved-file grammar,
-`$<role>[.<variant>].js`, and uses the router's variants: `$story.native.js`
-is recognised and skipped, because there is no React Native story renderer.
-`uf lint` accepts `$story.js` today, but the package's own readiness notes
-still list the name as experimental, and so does this page.
+It follows uf's reserved-file grammar, `$<role>[.<variant>].js` — `story` is
+one of the roles the router defines, so `uf lint` accepts `$story.js` and
+reports a misspelling such as `$stori.js` — and uses the router's variants:
+`$story.native.js` and the other variants are recognised and skipped, because
+only the default variant is a story a renderer mounts.
 
 ```js
 // @flow
@@ -947,8 +947,7 @@ From `@uniflowed/mock`'s readiness notes:
 
 From `@uniflowed/story`'s:
 
-- **Experimental:** the `$story.js` name and `describeStories`, for the reasons
-  above.
+- **Experimental:** `describeStories`, for the reason above.
 - No `uf story` command, development server, browser canvas or static story
   site. The package produces the index and the markup those would need, and
   nothing renders them for a person yet beyond a string.

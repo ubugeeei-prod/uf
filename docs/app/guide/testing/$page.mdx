@@ -1184,6 +1184,26 @@ number of different pixels, zero by default; a dimension change always fails.
 `page.screenshot(name, { threshold, baselines })` can override those two settings.
 Baselines and failure artifacts stay inside the test project.
 
+`setContent(html)` replaces the page's document with a string instead of
+navigating to a URL, which is how a test screenshots markup it rendered
+itself — for example `renderStoryToHtml`'s output, as the
+[Mocks and stories](/guide/mocks) guide does. It does not navigate, so the
+page keeps its current URL (`about:blank` for a new page) and relative URLs in
+the markup resolve against it; inline the styles the markup needs, or `visit`
+a server that serves them.
+
+```js
+const page = await createBrowser();
+try {
+  await page.viewport({ width: 800, height: 600 });
+  await page.setContent('<main id="ready"><h1>Hello</h1></main>');
+  await page.waitFor("#ready");
+  await page.screenshot("hello");
+} finally {
+  await page.close();
+}
+```
+
 Missing baselines fail. Record or deliberately replace them with
 `uf test --browser -u`; normal runs never update them. A mismatch writes
 `<name>.actual.png` and `<name>.diff.png` and fails with their location. Keep

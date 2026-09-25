@@ -451,6 +451,30 @@ describe("overrides", () => {
     expect(await (await fetch("https://api.test/user")).json()).toEqual({ name: "second" });
   });
 
+  it("asks the handlers of one use call in the order they were written", async () => {
+    api.use(
+      http.get("https://api.test/user", () => HttpResponse.json({ name: "written first" })),
+      http.get("https://api.test/user", () => HttpResponse.json({ name: "written second" })),
+    );
+
+    expect(await (await fetch("https://api.test/user")).json()).toEqual({
+      name: "written first",
+    });
+  });
+
+  it("still lets a later use call win over every handler of an earlier one", async () => {
+    api.use(
+      http.get("https://api.test/user", () => HttpResponse.json({ name: "earlier, a" })),
+      http.get("https://api.test/user", () => HttpResponse.json({ name: "earlier, b" })),
+    );
+    api.use(
+      http.get("https://api.test/user", () => HttpResponse.json({ name: "later, a" })),
+      http.get("https://api.test/user", () => HttpResponse.json({ name: "later, b" })),
+    );
+
+    expect(await (await fetch("https://api.test/user")).json()).toEqual({ name: "later, a" });
+  });
+
   it("restores a handler a once had spent", async () => {
     api.use(
       http.get("https://api.test/user", () => HttpResponse.json({ name: "once" }), { once: true }),
@@ -638,6 +662,36 @@ describe("unhandled requests", () => {
     }
     expect(warned.length).toBe(1);
     expect(warned[0]).toContain("no handler for GET https://api.test/anything");
+  });
+
+  it("warns once per distinct request, not once per call", async () => {
+    const network = withNetwork(() => new Response("from the network"));
+    const warned = [];
+    const warn = console.warn;
+    replaceGlobal(console, "warn", (message: mixed) => {
+      warned.push(String(message));
+    });
+    try {
+      await withMock([], { onUnhandledRequest: "warn" }, async () => {
+        await fetch("https://api.test/poll");
+        await fetch("https://api.test/poll");
+        await fetch("https://api.test/poll", { method: "POST" });
+        await fetch("https://api.test/other");
+      });
+      // A fresh listen is a fresh run: the same request warns again.
+      await withMock([], { onUnhandledRequest: "warn" }, async () => {
+        await fetch("https://api.test/poll");
+      });
+    } finally {
+      replaceGlobal(console, "warn", warn);
+      network.restore();
+    }
+    expect(network.urls.length).toBe(5);
+    expect(warned.length).toBe(4);
+    expect(warned[0]).toContain("no handler for GET https://api.test/poll");
+    expect(warned[1]).toContain("no handler for POST https://api.test/poll");
+    expect(warned[2]).toContain("no handler for GET https://api.test/other");
+    expect(warned[3]).toContain("no handler for GET https://api.test/poll");
   });
 });
 

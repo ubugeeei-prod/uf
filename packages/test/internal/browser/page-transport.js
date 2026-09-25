@@ -1,5 +1,6 @@
 // @flow
 import type { BrowserTransport, ControlOptions } from "./cdp.js";
+import { runnerFetch } from "./runner-fetch.js";
 
 export async function createTransport(options: ControlOptions): Promise<BrowserTransport> {
   if (options.executable != null)
@@ -12,7 +13,8 @@ export async function createTransport(options: ControlOptions): Promise<BrowserT
     method: string,
     args: $ReadOnlyArray<mixed> = [],
   ): Promise<$FlowFixMe> {
-    const response = await fetch("/uf-test/browser", {
+    // The platform's `fetch`, not the global a test's request mock replaced.
+    const response = await runnerFetch("/uf-test/browser", {
       method: "POST",
       headers: { "content-type": "application/json", "uf-test-browser": token },
       body: JSON.stringify({ id, method, args }),

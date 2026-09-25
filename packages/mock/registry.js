@@ -63,7 +63,11 @@ import { isPassthrough } from "./response.js";
 export type UnhandledPolicy =
   /** Reject the caller's `fetch`. The default. */
   | "error"
-  /** Warn once and let it reach the network. */
+  /**
+   * Warn and let it reach the network. One warning per distinct request —
+   * method and URL — for as long as the registry listens, so a component that
+   * polls one endpoint says so once rather than once a tick.
+   */
   | "warn"
   /** Let it reach the network, silently. */
   | "bypass";
@@ -88,7 +92,12 @@ export type MockRegistry = {|
   readonly listen: (options?: MockOptions) => void,
   /** Stop, and put the platform's `fetch` back. */
   readonly close: () => void,
-  /** Add handlers that win over the declared set, until the next reset. */
+  /**
+   * Add handlers that win over the declared set, until the next reset.
+   *
+   * A later call wins over an earlier one; within one call the handlers are
+   * asked in the order written, as they are by `mock()`.
+   */
   readonly use: (...handlers: $ReadOnlyArray<MockHandler>) => void,
   /**
    * Drop every override, restoring the set `mock()` was given — or, when
@@ -161,25 +170,29 @@ function defaultOrigin(): string {
  */
 export function mock(...handlers: $ReadOnlyArray<MockHandler>): MockRegistry {
   let declared: Array<MockHandler> = [...handlers];
+  // Newest `use()` call first; each call's handlers in the order written.
   let overrides: Array<MockHandler> = [];
   let spent: Set<MockHandler> = new Set();
   let policy: UnhandledPolicy = "error";
   let stop: (() => void) | null = null;
+  // `"warn"` keys: `METHOD url`. Cleared by `listen()`, not by a reset, so a
+  // request that warned in one test does not warn again in the next.
+  let warned: Set<string> = new Set();
 
   const log = createRequestLog();
 
   /**
    * The handlers a request is offered, most specific first.
    *
-   * Overrides before declared handlers, and the most recent override first, so
-   * `use()` inside a test wins over `use()` in a `beforeEach` which wins over
-   * the suite's default. A handler that has spent its `once` is not offered.
+   * Overrides before declared handlers, and the most recent `use()` call
+   * first, so `use()` inside a test wins over `use()` in a `beforeEach` which
+   * wins over the suite's default. The handlers of one call keep the order
+   * they were written in — `use(a, b)` asks `a` first, as `mock(a, b)` and
+   * MSW's `server.use(a, b)` do. A handler that has spent its `once` is not
+   * offered.
    */
   const inForce = (): Array<MockHandler> =>
-    [...overrides]
-      .reverse()
-      .concat(declared)
-      .filter((handler) => !spent.has(handler));
+    overrides.concat(declared).filter((handler) => !spent.has(handler));
 
   const dispatch = async (request: Request): Promise<Response | null> => {
     const url = new URL(request.url);
@@ -223,7 +236,11 @@ export function mock(...handlers: $ReadOnlyArray<MockHandler>): MockRegistry {
       return null;
     }
     if (policy === "warn") {
-      console.warn(describeUnhandled(request.method, request.url, offered));
+      const key = `${request.method} ${request.url}`;
+      if (!warned.has(key)) {
+        warned.add(key);
+        console.warn(describeUnhandled(request.method, request.url, offered));
+      }
       return null;
     }
     throw new UnhandledRequestError(request.method, request.url, offered);
@@ -232,6 +249,7 @@ export function mock(...handlers: $ReadOnlyArray<MockHandler>): MockRegistry {
   return {
     listen(options?: MockOptions) {
       policy = options?.onUnhandledRequest ?? "error";
+      warned = new Set();
       stop = installFetch(dispatch, options?.origin ?? defaultOrigin());
     },
     close() {
@@ -244,7 +262,7 @@ export function mock(...handlers: $ReadOnlyArray<MockHandler>): MockRegistry {
       }
     },
     use(...next: $ReadOnlyArray<MockHandler>) {
-      overrides = overrides.concat(next);
+      overrides = next.concat(overrides);
     },
     resetHandlers(...next: $ReadOnlyArray<MockHandler>) {
       overrides = [];
