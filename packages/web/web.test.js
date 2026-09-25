@@ -27,6 +27,7 @@ import {
 } from "@uniflowed/web";
 
 import { remoteSources } from "./internal/remote-image.js";
+import { parse as parseCookie } from "./cookie.js";
 
 // Loaded the way `hooks-ssr.test.js` loads it: through a synchronous require, so
 // that importing this file costs nothing until a test asks for server markup.
@@ -47,6 +48,14 @@ const markupOf = (element: React.Node): string => String(server.renderToStaticMa
 function preloadFor(href: string): Element | null {
   return globalThis.document.head?.querySelector(`link[rel="preload"][href="${href}"]`) ?? null;
 }
+
+it("keeps a cookie named __proto__ without changing the result's prototype", () => {
+  const cookies = parseCookie("__proto__=safe; other=value");
+  expect(Object.getPrototypeOf(cookies)).toBe(null);
+  expect(Object.hasOwn(cookies, "__proto__")).toBe(true);
+  expect(cookies["__proto__"]).toBe("safe");
+  expect(cookies.other).toBe("value");
+});
 
 describe("Image", () => {
   it("carries the dimensions that reserve the space", () => {

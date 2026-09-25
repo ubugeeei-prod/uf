@@ -1,0 +1,67 @@
+From: uf maintainers
+Subject: [PATCH] Type Intl.RelativeTimeFormat in Flow's environment
+
+Issue: https://github.com/ubugeeei-prod/uf/issues/1451
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+The pinned Flow environment omits a standard Intl constructor and its unit
+type. Code using relative time must otherwise cross an untyped boundary.
+Regression: crates/uf_check/tests/intl.rs
+
+diff --git a/evals/flow-typed/environment/intl.js b/evals/flow-typed/environment/intl.js
+index af471aedf..3e0595e35 100644
+--- a/evals/flow-typed/environment/intl.js
++++ b/evals/flow-typed/environment/intl.js
+@@ -16,2 +16,3 @@ declare var Intl: {
+   PluralRules: ?Class<Intl$PluralRules>,
++  RelativeTimeFormat: Class<Intl$RelativeTimeFormat>,
+   Segmenter: Class<Intl$Segmenter>,
+@@ -235 +236,47 @@ declare type Intl$SegmentData = {
+ };
++
++type Intl$RelativeTimeFormatUnit =
++  | 'second' | 'seconds'
++  | 'minute' | 'minutes'
++  | 'hour' | 'hours'
++  | 'day' | 'days'
++  | 'week' | 'weeks'
++  | 'month' | 'months'
++  | 'quarter' | 'quarters'
++  | 'year' | 'years';
++
++declare type Intl$RelativeTimeFormatOptions = {
++  localeMatcher?: 'lookup' | 'best fit',
++  numeric?: 'always' | 'auto',
++  style?: 'long' | 'short' | 'narrow',
++  ...
++};
++
++declare class Intl$RelativeTimeFormat {
++  constructor (
++    locales?: Intl$Locales,
++    options?: Intl$RelativeTimeFormatOptions
++  ): Intl$RelativeTimeFormat;
++
++  format (value: number, unit: Intl$RelativeTimeFormatUnit): string;
++
++  formatToParts (value: number, unit: Intl$RelativeTimeFormatUnit): Array<{
++    type: string,
++    value: string,
++    unit?: string,
++    ...
++  }>;
++
++  resolvedOptions (): {
++    locale: Intl$Locale,
++    numberingSystem: string,
++    numeric: 'always' | 'auto',
++    style: 'long' | 'short' | 'narrow',
++    ...
++  };
++
++  static supportedLocalesOf (
++    locales?: Intl$Locales,
++    options?: { localeMatcher?: 'lookup' | 'best fit', ... }
++  ): Intl$Locale[];
++}

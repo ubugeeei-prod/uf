@@ -49,7 +49,7 @@ const SERVER_COOKIES: string = "__ufServerCookies";
  * sharing it would mean importing that package here.
  */
 export function parse(header: string | null): { [string]: string } {
-  const out: { [string]: string } = Object.create(null);
+  const out: { [string]: string } = Object.setPrototypeOf({}, null);
   if (header == null || header === "") {
     return out;
   }
