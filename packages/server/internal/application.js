@@ -120,6 +120,8 @@ export type Application = {|
     options?: {|
       readonly onError?: (error: mixed) => void,
       readonly interceptedFrom?: string,
+      /** Render the URL's not-found page rather than its route. */
+      readonly notFound?: boolean,
     |},
   ) => Promise<{|
     readonly status: number,

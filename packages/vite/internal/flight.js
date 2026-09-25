@@ -131,6 +131,9 @@ export const FLIGHT_SEGMENT = "__uf.flight";
 /** The header a browser sends when a Flight payload should render an interception. */
 export const INTERCEPTED_FROM_HEADER = "uf-intercepted-from";
 
+/** The header a browser sends, as `1`, for a URL's not-found payload rather than its route. */
+export const NOT_FOUND_HEADER = "uf-not-found";
+
 /** The document a payload path is for, or `null` for any other path. */
 export function flightDocumentPath(pathname) {
   const suffix = `/${FLIGHT_SEGMENT}`;

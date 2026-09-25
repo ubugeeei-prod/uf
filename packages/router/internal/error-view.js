@@ -17,7 +17,8 @@ import * as React from "react";
 import type { RouteError } from "./routing.js";
 import type { ErrorModule } from "./resolve.js";
 import { errorTitle, renderable, routeErrorFor } from "./resolve.js";
-import { useRouterState } from "./runtime.js";
+import { NotFoundError } from "./routing.js";
+import { showNotFoundPage, useRouterState } from "./runtime.js";
 
 /**
  * The framework's error page, for a project that declares no `$error.js`.
@@ -143,7 +144,20 @@ type RouteErrorBoundaryProps = {|
   readonly children: React.Node,
 |};
 
-type RouteErrorBoundaryState = {| readonly error: ?RouteError |};
+type RouteErrorBoundaryState = {|
+  readonly error: ?RouteError,
+  /**
+   * The subtree threw `NotFoundError`, and the router has been asked for the
+   * not-found page of the URL on screen. See [`RouteErrorBoundary`].
+   */
+  readonly notFound: boolean,
+  /**
+   * How many times the boundary has let go of a `NotFoundError`: the key of the
+   * subtree, so what renders after it is mounted afresh. See
+   * [`RouteErrorBoundary`].
+   */
+  readonly generation: number,
+|};
 
 /**
  * The boundary that catches a throw while the browser renders the subtree.
@@ -157,6 +171,20 @@ type RouteErrorBoundaryState = {| readonly error: ?RouteError |};
  * navigation, error or not, and everything below the boundary goes with it —
  * which is the layouts, whose whole purpose is to survive navigation with
  * their scroll position and their open sections intact.
+ *
+ * # `notFound()` is not an error to show
+ *
+ * A loader's `notFound()` shows the project's not-found page because the
+ * resolver resolves the route again as that page, not because a boundary
+ * catches it. A `NotFoundError` that reaches this boundary — a hydrated server
+ * action that called `notFound()`, which React hands to the nearest boundary —
+ * gets the same page: the boundary renders nothing while the router resolves
+ * the not-found page for the URL on screen (`showNotFoundPage`), and lets go of
+ * the error in the transition that commits it (ubugeeei-prod/uf#1489). Letting
+ * go remounts the subtree, because a component that threw an action's error
+ * — a `useActionState` — throws it again on every render until it is
+ * remounted. Where the router has no not-found page to show, the error view is
+ * what renders, as it did before.
  */
 export class RouteErrorBoundary extends React.Component<
   RouteErrorBoundaryProps,
@@ -164,11 +192,33 @@ export class RouteErrorBoundary extends React.Component<
 > {
   constructor(props: RouteErrorBoundaryProps) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, notFound: false, generation: 0 };
   }
 
-  static getDerivedStateFromError(error: mixed): RouteErrorBoundaryState {
+  static getDerivedStateFromError(error: mixed): Partial<RouteErrorBoundaryState> {
+    if (error instanceof NotFoundError) {
+      return { error: null, notFound: true };
+    }
     return { error: routeErrorFor(error) };
+  }
+
+  componentDidCatch(error: mixed) {
+    if (!(error instanceof NotFoundError)) {
+      return;
+    }
+    const recover = () => {
+      this.setState((state) => ({
+        error: null,
+        notFound: false,
+        generation: state.generation + 1,
+      }));
+    };
+    const giveUp = (failure: mixed) => {
+      this.setState({ error: routeErrorFor(failure), notFound: false });
+    };
+    showNotFoundPage(recover).then((shown) => {
+      if (!shown) giveUp(error);
+    }, giveUp);
   }
 
   componentDidUpdate(previous: RouteErrorBoundaryProps) {
@@ -178,9 +228,12 @@ export class RouteErrorBoundary extends React.Component<
   }
 
   render(): React.Node {
-    const { error } = this.state;
+    const { error, notFound, generation } = this.state;
+    if (notFound) {
+      return null;
+    }
     if (error == null) {
-      return this.props.children;
+      return <React.Fragment key={generation}>{this.props.children}</React.Fragment>;
     }
     return (
       <RouteErrorView

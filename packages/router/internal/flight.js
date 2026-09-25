@@ -80,6 +80,13 @@ export type FlightInterception = {|
 /** What the browser may send with a payload request. */
 export type FlightFetchOptions = {|
   readonly interceptedFrom?: string,
+  /**
+   * Ask for the URL's not-found page rather than its route: the payload a
+   * loader's `notFound()` would have answered with. What a route's error
+   * boundary asks for when a hydrated server action called `notFound()`
+   * (ubugeeei-prod/uf#1489).
+   */
+  readonly notFound?: boolean,
 |};
 
 /**
@@ -188,6 +195,12 @@ export const FLIGHT_CONTENT_TYPE: string = "text/x-component";
 
 /** The request header that carries the page an intercepted payload is rendered over. */
 export const INTERCEPTED_FROM_HEADER: string = "uf-intercepted-from";
+
+/**
+ * The request header that asks for a URL's not-found payload instead of its
+ * route. Its one value is `1`; see [`FlightFetchOptions`].
+ */
+export const NOT_FOUND_HEADER: string = "uf-not-found";
 
 /**
  * The URL of `url`'s payload: its pathname with [`FLIGHT_SEGMENT`] appended,

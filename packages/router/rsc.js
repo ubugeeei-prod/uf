@@ -70,7 +70,7 @@ import type {
 } from "./internal/resolve.js";
 import { resolveFailure, resolveInterception, resolveMatch } from "./internal/resolve.js";
 import type { RouteParams, SearchParams } from "./internal/routing.js";
-import { RedirectError, nearestBoundary } from "./internal/routing.js";
+import { NotFoundError, RedirectError, nearestBoundary } from "./internal/routing.js";
 import { withServerRoute } from "./internal/server-route.js";
 
 export type { FlightRoot, RouteState } from "./internal/flight.js";
@@ -117,6 +117,16 @@ export type FlightOptions = {|
    * render the intercepted tree.
    */
   readonly interceptedFrom?: string,
+  /**
+   * Render the URL's not-found page rather than its route: what a loader's
+   * `notFound()` would have rendered for it.
+   *
+   * What a browser asks for when a hydrated server action called `notFound()`
+   * and the route's error boundary caught it (ubugeeei-prod/uf#1489). The
+   * error is made here, in this graph, because the resolver tells a not-found
+   * by `instanceof` against its own copy of the class.
+   */
+  readonly notFound?: boolean,
   /** Stops the render, for a reader that went away. */
   readonly signal?: AbortSignal,
 |};
@@ -183,7 +193,8 @@ export function createFlightRenderer(options: {|
   return async function renderFlight(url: string, settings?: FlightOptions): Promise<FlightRender> {
     let resolved: ResolvedRoute;
     try {
-      const failure = settings?.failure;
+      const failure =
+        settings?.failure ?? (settings?.notFound === true ? { error: new NotFoundError() } : null);
       if (failure == null) {
         const defer = settings?.defer !== false;
         const intercepted = await resolveFlightInterception(

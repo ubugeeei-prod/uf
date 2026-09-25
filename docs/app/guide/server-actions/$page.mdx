@@ -398,13 +398,18 @@ behaves the same whether or not the page has hydrated:
 | Called | Before hydration (the form post) | After hydration (the JSON call) |
 | --- | --- | --- |
 | `redirect(to)` | `303 See Other` to `to` | the endpoint answers `204` with `Location`. The reference moves the router on screen there, as `router.push` would, or loads the document when `to` is another origin. The call then resolves with `undefined` |
-| `notFound()` | `404` | `404`. The reference throws `NotFoundError` |
+| `notFound()` | `404` | `404`. The reference throws `NotFoundError`, and the route's error boundary shows the not-found page a loader's `notFound()` would, for the same URL |
 | `unauthorized()` | `401` | `401`. The reference throws `UnauthorizedError`, which the route's error boundary shows as "unauthorized" |
 | `forbidden()` | `403` | `403`. The reference throws `ForbiddenError`, which the boundary shows as "forbidden" |
 
 React passes an error thrown by an action called from a form or a transition to
-the nearest error boundary. So those three reach your `$error.js`, which can
-check what it was given.
+the nearest error boundary. `unauthorized()` and `forbidden()` reach your
+`$error.js`, which can check what it was given. `notFound()` does not: the
+boundary asks the router for the nearest `$not-found.js` of the URL on screen
+instead, and the URL stays as it is. A page rendered from its modules resolves
+that page in the browser. A page React Server Components rendered fetches the
+URL's not-found payload from the server. If neither can be had, the boundary
+shows the error view.
 
 The JSON call's answer carries a `uf-action-outcome` header naming the kind.
 That is how `notFound()`'s `404` is kept apart from the `404` for an id nobody

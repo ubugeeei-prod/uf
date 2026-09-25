@@ -30,6 +30,7 @@ import { FLIGHT_CHUNK_ATTRIBUTE, flightChunkBytes } from "./flight-chunks.js";
 import {
   FLIGHT_CONTENT_TYPE,
   INTERCEPTED_FROM_HEADER,
+  NOT_FOUND_HEADER,
   type FetchedFlight,
   type FlightFetchOptions,
   type FlightRoot,
@@ -212,6 +213,9 @@ export async function fetchFlight(
   const interceptedFrom = options?.interceptedFrom;
   if (interceptedFrom != null) {
     headers.set(INTERCEPTED_FROM_HEADER, interceptedFrom);
+  }
+  if (options?.notFound === true) {
+    headers.set(NOT_FOUND_HEADER, "1");
   }
   let response: Response;
   try {

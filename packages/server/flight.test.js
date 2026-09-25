@@ -14,9 +14,15 @@ import { describe, expect, it } from "@uniflowed/test";
 import {
   FLIGHT_SEGMENT as ROUTER_SEGMENT,
   INTERCEPTED_FROM_HEADER as ROUTER_INTERCEPTED_FROM_HEADER,
+  NOT_FOUND_HEADER as ROUTER_NOT_FOUND_HEADER,
   flightUrl,
 } from "../router/internal/flight.js";
-import { FLIGHT_SEGMENT, INTERCEPTED_FROM_HEADER, flightDocumentPath } from "./internal/flight.js";
+import {
+  FLIGHT_SEGMENT,
+  INTERCEPTED_FROM_HEADER,
+  NOT_FOUND_HEADER,
+  flightDocumentPath,
+} from "./internal/flight.js";
 
 describe("the payload URL", () => {
   it("is the same segment in the router and in the server", () => {
@@ -25,6 +31,10 @@ describe("the payload URL", () => {
 
   it("uses the same intercepted-from header in the router and in the server", () => {
     expect(INTERCEPTED_FROM_HEADER).toBe(ROUTER_INTERCEPTED_FROM_HEADER);
+  });
+
+  it("uses the same not-found header in the router and in the server", () => {
+    expect(NOT_FOUND_HEADER).toBe(ROUTER_NOT_FOUND_HEADER);
   });
 
   it("leads every URL the router writes back to the document it is for", () => {
@@ -40,6 +50,7 @@ describe("the payload URL", () => {
     const vite = await import("../vite/internal/flight.js");
     expect(vite.FLIGHT_SEGMENT).toBe(FLIGHT_SEGMENT);
     expect(vite.INTERCEPTED_FROM_HEADER).toBe(INTERCEPTED_FROM_HEADER);
+    expect(vite.NOT_FOUND_HEADER).toBe(NOT_FOUND_HEADER);
     for (const pathname of ["/", "/guide", "/guide/rendering"]) {
       const written = new URL(flightUrl(pathname), "http://uf.test").pathname;
       expect(vite.flightDocumentPath(written)).toBe(pathname);

@@ -28,7 +28,12 @@ import {
   installServerModules,
   readPayload,
 } from "./internal/flight-ssr.js";
-import { FLIGHT_CONTENT_TYPE, INTERCEPTED_FROM_HEADER, flightUrl } from "./internal/flight.js";
+import {
+  FLIGHT_CONTENT_TYPE,
+  INTERCEPTED_FROM_HEADER,
+  NOT_FOUND_HEADER,
+  flightUrl,
+} from "./internal/flight.js";
 import { type StreamRecord, streamReporter } from "./internal/inspector.js";
 import { requireServerComponentsReact } from "./internal/react-version.js";
 import { RedirectError } from "./internal/routing.js";
@@ -456,11 +461,13 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     settings?: {|
       readonly onError?: (error: mixed) => void,
       readonly interceptedFrom?: string,
+      readonly notFound?: boolean,
     |},
   ): Promise<FlightResponse> {
     const rendered = await renderFlight(url, {
       onError: settings?.onError,
       interceptedFrom: settings?.interceptedFrom,
+      notFound: settings?.notFound,
     });
     if (rendered.kind === "redirect") {
       const { location } = rendered;
@@ -479,7 +486,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       status: rendered.status,
       headers: {
         "content-type": FLIGHT_CONTENT_TYPE,
-        vary: INTERCEPTED_FROM_HEADER,
+        vary: `${INTERCEPTED_FROM_HEADER}, ${NOT_FOUND_HEADER}`,
         // The payload carries the page's strings as they were rendered — a
         // comment body with `<img onerror>` in it included — and its URL is one
         // anybody can open as a document. `text/x-component` is not a type a

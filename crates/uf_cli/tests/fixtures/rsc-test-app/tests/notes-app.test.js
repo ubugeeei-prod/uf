@@ -36,6 +36,16 @@ describe("the notes route, built", () => {
     expect(await response.text()).toContain("No such note.");
   });
 
+  it("answers a payload asked for as not found with that page, for a URL that exists", async () => {
+    // What a page asks for when a hydrated action called `notFound()` (#1489):
+    // the not-found page a loader's `notFound()` would have shown, and a 404.
+    const response = await app.flight("/notes/1", { headers: { "uf-not-found": "1" } });
+    expect(response.status).toBe(404);
+    const payload = await response.text();
+    expect(payload).toContain("No such note.");
+    expect(payload).not.toContain("by ada");
+  });
+
   it("saves a note from a form posted before hydration, and says so on the page", async () => {
     const page = await app.submit(
       "/notes",
