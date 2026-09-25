@@ -3,7 +3,7 @@
 // same ink, muted and rule colours, 6 px corners, hairline rules between rows
 // rather than cards, and a 32 px medium heading.
 
-import { stylex } from "@uniflowed/stylex/native";
+import { stylex, type NativeStyle } from "@uniflowed/stylex/native";
 
 /** For the few values React Navigation takes as options rather than as styles. */
 
@@ -21,7 +21,7 @@ export const UNDERLINED: {| readonly textDecorationLine: "underline" |} = {
 };
 export const TOP_ALIGNED: {| readonly textAlignVertical: "top" |} = { textAlignVertical: "top" };
 
-export const styles = stylex.create({
+export const styles: { readonly [string]: NativeStyle } = stylex.create({
   page: { flex: 1, backgroundColor: "#f8f8f8" },
   content: { paddingLeft: 20, paddingRight: 20, paddingTop: 18, paddingBottom: 40 },
 
