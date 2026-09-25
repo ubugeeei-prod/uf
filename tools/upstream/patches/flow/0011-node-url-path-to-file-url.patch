@@ -1,0 +1,24 @@
+From: uf maintainers
+Subject: [PATCH] Give Node pathToFileURL its URL return type
+
+Issue: https://github.com/ubugeeei-prod/uf/issues/1451
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+Node's pathToFileURL returns a URL instance, whose href is always a string.
+The legacy url$urlObject shape describes parsed URLs and makes href optional,
+so valid callers fail type checking. `fileURLToPath` also accepts the returned
+URL. Keep the optional shape for legacy parse/format callers.
+Regression: crates/uf_check/tests/node_url.rs
+
+diff --git a/evals/flow-typed/environment/node.js b/evals/flow-typed/environment/node.js
+index 8f71a6a48..9895207a9 100644
+--- a/evals/flow-typed/environment/node.js
++++ b/evals/flow-typed/environment/node.js
+@@ -2589,4 +2589,4 @@ declare module "url" {
+   declare function domainToUnicode(domain: string): string;
+-  declare function pathToFileURL(path: string): url$urlObject;
+-  declare function fileURLToPath(path: url$urlObject | string): string;
++  declare function pathToFileURL(path: string): URL;
++  declare function fileURLToPath(path: URL | url$urlObject | string): string;
+   declare class URLSearchParams {
