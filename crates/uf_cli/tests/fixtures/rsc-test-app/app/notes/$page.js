@@ -12,7 +12,7 @@ async function NoteCount() {
   return <p id="count">{`${notes.length} notes`}</p>;
 }
 
-export async function Page() {
+export async function Page(): Promise<React.Node> {
   const notes = await listNotes();
   return (
     <main>

@@ -35,7 +35,7 @@
 import * as React from "react";
 import { Suspense, use } from "@uniflowed/react";
 import { act } from "@uniflowed/react-testing";
-import { routerView } from "@uniflowed/router";
+import { NotFoundError, routerView } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { describe, expect, it } from "@uniflowed/test";
 
@@ -770,7 +770,7 @@ describe("the browser applying a payload", () => {
     expect(seen.loads).toBe(1);
   });
 
-  it("sends a rejected row that arrives after hydration through the route error boundary", async () => {
+  async function rejectedRowReachesBoundary(reason: () => Error): Promise<void> {
     // A row that carries a failure must wake the same promise the page is
     // using. If it only rejected inside the reader, the visible route would
     // stay on its Suspense fallback forever and the error boundary would never
@@ -830,7 +830,7 @@ describe("the browser applying a payload", () => {
     const shell = await stream.next();
     expect(shell).toContain("waiting for the row");
     expect(shell).not.toContain("the row reached the error boundary");
-    late.reject(new Error("the loader could not answer"));
+    late.reject(reason());
     await stream.rest();
 
     installDom();
@@ -865,5 +865,13 @@ describe("the browser applying a payload", () => {
     expect(text).toContain("the row reached the error boundary");
     expect(text).not.toContain("waiting for the row");
     expect(seen.loads).toBe(1);
+  }
+
+  it("sends an ordinary failure from a deferred row through the route error boundary", async () => {
+    await rejectedRowReachesBoundary(() => new Error("the loader could not answer"));
+  });
+
+  it("sends deferred notFound() through the route error boundary", async () => {
+    await rejectedRowReachesBoundary(() => new NotFoundError());
   });
 });

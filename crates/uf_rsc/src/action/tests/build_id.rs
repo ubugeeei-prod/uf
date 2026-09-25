@@ -35,6 +35,23 @@ fn a_generated_build_id_is_long_and_unique() {
 }
 
 #[test]
+fn an_unset_or_out_of_range_build_id_is_generated() {
+    let supplied = BuildId::from_supplied_or_generate(Some("valid-build-id".to_owned()));
+    assert_eq!(supplied, BuildId::new("valid-build-id").unwrap());
+
+    for candidate in [
+        None,
+        Some("short".to_owned()),
+        Some("x".repeat(MAX_BUILD_ID_BYTES + 1)),
+    ] {
+        let first = BuildId::from_supplied_or_generate(candidate.clone());
+        let second = BuildId::from_supplied_or_generate(candidate);
+        assert_eq!(first.value.len(), 64);
+        assert_ne!(first, second);
+    }
+}
+
+#[test]
 fn a_build_id_never_prints_itself() {
     let formatted = format!("{:?}", build_id());
     assert_eq!(formatted, "BuildId(<redacted>)");

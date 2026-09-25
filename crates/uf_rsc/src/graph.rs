@@ -383,6 +383,8 @@ impl RscModule {
 #[derive(Debug, Clone)]
 pub struct RscGraph {
     modules: Vec<RscModule>,
+    /// Edges evaluated during a render, indexed by module id.
+    render_imports: Vec<InlineVec<ModuleId, 8>>,
     index: FxHashMap<Utf8PathBuf, ModuleId>,
     boundaries: Vec<ClientBoundary>,
     bundle_roots: Vec<ClientBoundaryTarget>,

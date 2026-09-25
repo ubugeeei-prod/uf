@@ -27,6 +27,8 @@ const nativeFiles = new Set([
   "packages/vite/flight-dev-urls.test.js",
   "packages/vite/flight.test.js",
   "packages/vite/rsc-requirements.test.js",
+  // The RSC HMR hook is in the Vite plugin and imports Rolldown (#1433).
+  "packages/vite/rsc-hmr.test.js",
   "packages/vite/rsc-split.test.js",
   "tests/library/server-actions.test.js",
 ]);

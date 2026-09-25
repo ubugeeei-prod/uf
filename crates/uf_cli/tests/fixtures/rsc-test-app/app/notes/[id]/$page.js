@@ -11,7 +11,7 @@ export async function Page({
 }: {
   readonly params: {| readonly id: string |},
   ...
-}) {
+}): Promise<React.Node> {
   // A malformed id is a bug in whatever linked here, not a missing note.
   if (!/^[0-9]+$/.test(params.id)) {
     throw new Error(`note ids are numbers, not ${JSON.stringify(params.id)}`);

@@ -102,6 +102,7 @@ impl RscGraphBuilder {
         let hook_classifications = HookClassifications::new(&modules, &resolved);
 
         let mut graph_modules = Vec::with_capacity(modules.len());
+        let mut render_edges = Vec::with_capacity(modules.len());
         for (position, module) in modules.iter().enumerate() {
             let reachability =
                 ModuleReachability::from_colours(server_seen[position], client_seen[position]);
@@ -115,6 +116,15 @@ impl RscGraphBuilder {
             );
             let (request_state_imports, cache_lifetime_import) =
                 super::render::import_sites(&resolved[position].external);
+            let mut render_imports = InlineVec::new();
+            for edge in &resolved[position].resolved {
+                if edge.import.kind != ImportKind::Dynamic && !render_imports.contains(&edge.target)
+                {
+                    render_imports.push(edge.target);
+                }
+            }
+            render_imports.sort_unstable();
+            render_edges.push(render_imports);
             graph_modules.push(RscModule {
                 request_state_imports,
                 cache_lifetime_import,
@@ -149,6 +159,7 @@ impl RscGraphBuilder {
 
         RscGraph {
             modules: graph_modules,
+            render_imports: render_edges,
             index,
             boundaries,
             bundle_roots,
