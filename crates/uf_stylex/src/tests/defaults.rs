@@ -279,8 +279,12 @@ const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[(
 )];
 
 /// What deserves motion and must have it: `(file, style, property)` where the
-/// style transitions `property`, and — for an overlay, marked `true` — enters
-/// from a `@starting-style`.
+/// style transitions `property`, and — for an overlay, marked `true` — enters:
+/// it fades in from a `@starting-style` opacity, starts `property` from a
+/// `@starting-style` too, and arrives on `easingEnter`.
+///
+/// A style is found by its name in the file, so a name listed here has to be
+/// unique there; the preset's recipes name their namespaces for that reason.
 ///
 /// This is the half of the rules that keeps the defaults from going quiet
 /// again. #1414 made motion so restrained it was nearly absent, and a rule
@@ -327,6 +331,27 @@ const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
     ("registry/ui/tabs.js", "tab", "border-color", false),
     ("registry/ui/progress.js", "fill", "transform", false),
     ("registry/ui/accordion.js", "chevron", "transform", false),
+    ("registry/ui/collapsible.js", "chevron", "transform", false),
+    ("registry/ui/select.js", "chevron", "transform", false),
+    (
+        "registry/ui/navigation-menu.js",
+        "arrow",
+        "transform",
+        false,
+    ),
+    // `@uniflowed/stylex/preset`, which a project reaches without the
+    // registry: the same overlays enter and the same controls move.
+    ("packages/stylex/preset.js", "backdrop", "opacity", true),
+    ("packages/stylex/preset.js", "dialog", "transform", true),
+    ("packages/stylex/preset.js", "menu", "transform", true),
+    (
+        "packages/stylex/preset.js",
+        "item",
+        "background-color",
+        false,
+    ),
+    ("packages/stylex/preset.js", "tab", "border-color", false),
+    ("packages/stylex/preset.js", "tab", "outline-width", false),
 ];
 
 /// The value a token declares.
@@ -579,9 +604,24 @@ fn what_deserves_motion_has_it() {
             .rules()
             .map(|rule| (rule.class.as_str(), rule))
             .collect();
-        let Some(style) = module.styles.iter().find(|style| style.name == *name) else {
-            found.push(format!("{path} has no `{name}` style"));
-            continue;
+        let named: Vec<_> = module
+            .styles
+            .iter()
+            .filter(|style| style.name == *name)
+            .collect();
+        let style = match named.as_slice() {
+            [style] => *style,
+            [] => {
+                found.push(format!("{path} has no `{name}` style"));
+                continue;
+            }
+            _ => {
+                found.push(format!(
+                    "{path} has {} styles named `{name}`, so this cannot tell which must move",
+                    named.len()
+                ));
+                continue;
+            }
         };
         let rules = |key: &str| -> Vec<(&StyleCondition, &str)> {
             style
@@ -612,18 +652,29 @@ fn what_deserves_motion_has_it() {
             found.push(format!("{path} `{name}` does not transition `{moved}`"));
         }
         if *enters {
-            let key = if *moved == "opacity" {
-                "opacity"
-            } else {
-                "transform"
-            };
-            let starts = rules(key)
+            let mut keys = vec!["opacity"];
+            if *moved != "opacity" {
+                keys.push("transform");
+            }
+            for key in keys {
+                let starts = rules(key)
+                    .iter()
+                    .any(|(condition, _)| condition.at_rule() == Some(STARTING_STYLE));
+                if !starts {
+                    found.push(format!(
+                        "{path} `{name}` has no `{STARTING_STYLE}` for `{key}`, so it appears \
+                         rather than entering"
+                    ));
+                }
+            }
+            let enter = format!("var({})", variable_name(NAMESPACE, "easingEnter"));
+            let decelerates = rules("transitionTimingFunction")
                 .iter()
-                .any(|(condition, _)| condition.at_rule() == Some(STARTING_STYLE));
-            if !starts {
+                .any(|(condition, value)| **condition == StyleCondition::Base && *value == enter);
+            if !decelerates {
                 found.push(format!(
-                    "{path} `{name}` has no `{STARTING_STYLE}` for `{key}`, so it appears \
-                     rather than entering"
+                    "{path} `{name}` does not arrive on `easingEnter`, the curve an entrance \
+                     settles on"
                 ));
             }
         }

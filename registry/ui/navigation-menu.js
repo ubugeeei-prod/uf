@@ -96,6 +96,11 @@ const styles = stylex.create({
   arrow: {
     flexShrink: 0,
     transform: "rotate(var(--uf-navigation-arrow-turn, 0deg))",
+    // A half turn as its panel opens, like every other chevron. Under reduced
+    // motion the arrow is simply the other way up.
+    transitionProperty: { default: "transform", "@media (prefers-reduced-motion: reduce)": "none" },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easing,
   },
   content: {
     position: "absolute",

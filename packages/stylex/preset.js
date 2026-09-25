@@ -212,6 +212,14 @@ const fields = stylex.create({
     outlineStyle: "solid",
     outlineColor: ufTokens.focus,
     outlineOffset: "1px",
+    // The border turns and the focus ring draws outward in `durationFast`;
+    // only the colours stay under reduced motion.
+    transitionProperty: {
+      default: "background-color, border-color, outline-width",
+      "@media (prefers-reduced-motion: reduce)": "background-color, border-color",
+    },
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   invalid: {
     borderColor: ufTokens.danger,
@@ -225,16 +233,37 @@ const fields = stylex.create({
 });
 
 const overlays = stylex.create({
+  // Enter: the wash fades in over `durationSlow`, the same time as the panel
+  // in front of it. A fade is what reduced motion keeps, so it keeps this.
   backdrop: {
     position: "fixed",
     inset: 0,
     backgroundColor: ufTokens.scrim,
+    opacity: { default: 1, "@starting-style": 0 },
+    transitionProperty: "opacity",
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
   },
-  panel: {
+  // Enter: the panel fades in and grows from 96% of its size where it rests,
+  // on the decelerating curve, so it is legible almost at once and is seen
+  // settling rather than popping. The centring translate is part of both
+  // values, or the panel would start in the corner. Under reduced motion it
+  // only fades.
+  dialog: {
     position: "fixed",
     top: "50%",
     left: "50%",
-    transform: "translate(-50%, -50%)",
+    opacity: { default: 1, "@starting-style": 0 },
+    transform: {
+      default: "translate(-50%, -50%)",
+      "@starting-style": "translate(-50%, -50%) scale(0.96)",
+    },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationSlow,
+    transitionTimingFunction: ufTokens.easingEnter,
     width: "calc(100% - 32px)",
     maxWidth: "32rem",
     backgroundColor: ufTokens.surface,
@@ -249,7 +278,31 @@ const overlays = stylex.create({
 });
 
 const menus = stylex.create({
-  list: {
+  // Enter: it fades in while travelling 4px out of its trigger, from the side
+  // `@uniflowed/ui` put it on (`data-side`), the way `registry/ui/menu.js`
+  // does. Under reduced motion it only fades.
+  menu: {
+    "--uf-enter-x": {
+      default: "0px",
+      ":is([data-side=left])": "4px",
+      ":is([data-side=right])": "-4px",
+    },
+    "--uf-enter-y": {
+      default: "0px",
+      ":is([data-side=top])": "4px",
+      ":is([data-side=bottom])": "-4px",
+    },
+    opacity: { default: 1, "@starting-style": 0 },
+    transform: {
+      default: "none",
+      "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+    },
+    transitionProperty: {
+      default: "opacity, transform",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easingEnter,
     minWidth: "12rem",
     margin: 0,
     padding: ufTokens.space1,
@@ -274,6 +327,11 @@ const menus = stylex.create({
     color: ufTokens.ink,
     backgroundColor: { default: "transparent", ":hover": ufTokens.surfaceHover },
     cursor: "pointer",
+    // The highlight follows the pointer in `durationFast`: long enough to be
+    // seen, short enough never to trail it. Colour, so reduced motion keeps it.
+    transitionProperty: "background-color, color",
+    transitionDuration: ufTokens.durationFast,
+    transitionTimingFunction: ufTokens.easing,
   },
   active: {
     backgroundColor: ufTokens.accentSoft,
@@ -309,6 +367,18 @@ const tabs = stylex.create({
     fontWeight: ufTokens.weightMedium,
     color: { default: ufTokens.muted, ":hover": ufTokens.ink },
     cursor: "pointer",
+    // The underline and the label change together, and the focus ring draws
+    // outward; only the colours stay under reduced motion.
+    transitionProperty: {
+      default: "border-color, color, outline-width",
+      "@media (prefers-reduced-motion: reduce)": "border-color, color",
+    },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easing,
+    outlineWidth: { default: "0", ":focus-visible": "2px" },
+    outlineStyle: "solid",
+    outlineColor: ufTokens.focus,
+    outlineOffset: "-2px",
   },
   selected: {
     color: ufTokens.ink,
@@ -457,12 +527,12 @@ export function backdropStyles(): StyleProps {
 
 /** A centred modal panel. */
 export function dialogStyles(): StyleProps {
-  return props(overlays.panel);
+  return props(overlays.dialog);
 }
 
 /** The box a menu's options sit in. */
 export function menuStyles(): StyleProps {
-  return props(menus.list);
+  return props(menus.menu);
 }
 
 /** One option in a menu. */
