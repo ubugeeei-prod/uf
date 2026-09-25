@@ -767,6 +767,9 @@ async function build() {
   await vite.build({
     ...inline,
     customLogger: eventLogger("warn"),
+    // It bundles the rsc graph's output, and whatever addon that left on disk
+    // stays there; see `nativeAddonsStayOnDisk`.
+    plugins: [...(inline.plugins ?? []), nativeAddonsStayOnDisk()],
     build: {
       ...inline.build,
       manifest: false,
@@ -2505,6 +2508,39 @@ function nativeAddonGuard() {
 }
 
 /**
+ * Leave a native addon out of the rsc graph, as an import of the file on disk.
+ *
+ * The rsc graph bundles every dependency (`noExternal: true`, so each resolves
+ * under `react-server`), and since the route handlers and the middleware
+ * moved into it (#1487) that includes whatever a handler imports. A `.node`
+ * file is a shared object, not a module Rolldown can read, so a handler that
+ * reached one failed `uf build` with `"default" is not exported by
+ * "….node"`, where the server build had always left the package to Node.
+ *
+ * External, then, by its absolute path: the output imports the file where it
+ * is, which is what loading the package from `node_modules` did. Used by the
+ * rsc build and by the server build that bundles its output. A build that has
+ * to stand alone (`--compile`, `--adapter`) still refuses it by name, because
+ * it bundles that output too and [`nativeAddonGuard`] sees the import there.
+ */
+function nativeAddonsStayOnDisk() {
+  return {
+    name: "uf:native-addons-stay-on-disk",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (!source.endsWith(".node")) return null;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      const id =
+        resolved?.id ??
+        (importer != null && source.startsWith(".")
+          ? path.resolve(path.dirname(importer), source)
+          : source);
+      return { id, external: "absolute" };
+    },
+  };
+}
+
+/**
  * Say which Node built-ins the Worker being linked reaches and does not have.
  *
  * `--adapter edge` only. Every import the bundler resolves passes through here,
@@ -2591,6 +2627,7 @@ async function buildRscGraph(vite, inline, state, { outDir, conditions }) {
   const builder = await vite.createBuilder({
     ...inline,
     customLogger: eventLogger("warn"),
+    plugins: [...(inline.plugins ?? []), nativeAddonsStayOnDisk()],
     environments: { [RSC_ENVIRONMENT]: environment },
   });
   await builder.build(builder.environments[RSC_ENVIRONMENT]);
