@@ -59,6 +59,7 @@
 // an instant (`time.js`) or about a stored value (`cookie.js`).
 
 import * as React from "@uniflowed/react";
+import type * as ReactTypes from "react";
 
 import { IMAGE_ENDPOINT } from "./internal/image-endpoint.js";
 import { remoteSources } from "./internal/remote-image.js";
@@ -248,7 +249,7 @@ export component Image(
   unoptimized?: boolean = false,
   className?: string,
   style?: { readonly [string]: string | number },
-  ...rest: { readonly [string]: mixed }
+  ...rest: ReactTypes.ElementConfig<"img">
 ) {
   // Refined rather than cast: `src` is a union and `typeof` narrows it, so
   // neither branch needs `any`. A cast here would be the one place in this
@@ -290,6 +291,7 @@ export component Image(
 
   const image = (
     <img
+      {...rest}
       src={finalUrl}
       alt={alt}
       width={finalWidth}
@@ -313,13 +315,12 @@ export component Image(
               // it needs no element, it cannot be announced twice to a screen
               // reader, and the browser paints over it as the real image
               // decodes instead of swapping one node for another.
-              backgroundImage: `url("${blur}")`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
               ...style,
+              backgroundImage: style?.backgroundImage ?? `url("${blur}")`,
+              backgroundSize: style?.backgroundSize ?? "cover",
+              backgroundPosition: style?.backgroundPosition ?? "center",
             }
       }
-      {...rest}
     />
   );
 
@@ -604,10 +605,11 @@ export component Icon(
   width?: number,
   height?: number,
   className?: string,
-  ...rest: { readonly [string]: mixed }
+  ...rest: ReactTypes.ElementConfig<"svg">
 ) {
   return (
     <svg
+      {...rest}
       viewBox={icon.viewBox}
       width={width ?? size}
       height={height ?? size}
@@ -619,7 +621,6 @@ export component Icon(
       aria-label={label}
       aria-hidden={label == null ? true : undefined}
       focusable="false"
-      {...rest}
     >
       <use href={icon.href} />
     </svg>

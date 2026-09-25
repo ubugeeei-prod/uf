@@ -123,3 +123,29 @@ fn relative_time_format_options_are_inheritable() {
         "expected only the bad numeric value to fail; got {found:?}"
     );
 }
+
+#[test]
+fn relative_time_formatter_and_unit_are_typed() {
+    let source = r#"// @flow
+const unit: Intl$RelativeTimeFormatUnit = "minute";
+const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+export const text: string = formatter.format(3, unit);
+const badUnit: Intl$RelativeTimeFormatUnit = "fortnight";
+formatter.format("3", "day");
+"#;
+    let diagnostics = check("relative_time_format.js", source);
+    let found = lines_and_codes(&diagnostics);
+
+    assert!(
+        found.iter().any(|(line, _)| *line == 5),
+        "a nonstandard relative time unit was accepted: {found:?}"
+    );
+    assert!(
+        found.iter().any(|(line, _)| *line == 6),
+        "a string count was accepted: {found:?}"
+    );
+    assert!(
+        found.iter().all(|(line, _)| *line == 5 || *line == 6),
+        "the valid formatter use must check clean: {found:?}"
+    );
+}

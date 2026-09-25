@@ -318,6 +318,7 @@ jobs:
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run check:lib
       - run: ./target/release/uf run check:ui
+      - run: ./target/release/uf run check:web
 
   docs:
     name: Docs build

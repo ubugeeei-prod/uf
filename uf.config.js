@@ -360,6 +360,12 @@ export default defineConfig({
       dependsOn: ["build"],
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },
+    // Keep the web primitives typechecked, including their imported types.
+    "check:web": {
+      command: "./target/release/uf check packages/web",
+      dependsOn: ["build"],
+      inputs: ["**", "!upstream/**", "target/release/uf"],
+    },
 
     // The formatter, over the same. `--check` rather than a write, because CI
     // reporting a diff is useful and CI committing one is not.
@@ -1128,6 +1134,7 @@ export default defineConfig({
         "fmt:check",
         "check:lib",
         "check:ui",
+        "check:web",
         "test:lib",
         "test:lib:deno",
         "edge:smoke",
