@@ -694,8 +694,18 @@ impl ProjectModules {
     }
 
     /// Flow's signature diagnostics for the file itself, including an export
-    /// whose type cannot be expressed without an annotation.
+    /// whose type cannot be expressed without an annotation. A uf config is
+    /// read as data by the bootstrap loader, which deliberately requires an
+    /// inline `export default defineConfig({ ... })`; its exported value is not
+    /// a type interface for another source module.
     pub(super) fn signature_errors(&self, index: usize) -> ErrorSet {
+        let (path, _) = self.source(index);
+        if matches!(
+            path.rsplit(['/', '\\']).next(),
+            Some("uf.config.js" | "uf.config.mjs" | "uf.config.cjs" | "uf.config.flow")
+        ) {
+            return ErrorSet::new();
+        }
         self.signature(index)
             .map_or_else(ErrorSet::new, |signature| signature.errors.dupe())
     }

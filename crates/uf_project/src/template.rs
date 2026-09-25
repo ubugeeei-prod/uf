@@ -99,7 +99,6 @@ fn monorepo_package_json(name: &str) -> String {
 
 fn monorepo_config() -> String {
     r#"// @flow
-import type { UniflowedConfig } from "@uniflowed/config";
 import { defineConfig } from "@uniflowed/config";
 
 // The repository's configuration. `uf fmt`, `uf lint`, `uf check` and `uf test`
@@ -110,7 +109,7 @@ import { defineConfig } from "@uniflowed/config";
 // `uf build#packages/ui` runs `uf build` in that package, which is how a task
 // here reaches one package. `uf run bundle` verifies the repository, builds
 // the library, then builds the application that consumes it.
-const config: UniflowedConfig = defineConfig({
+export default defineConfig({
   tasks: {
     "serve:web": { command: "uf dev#apps/web" },
     "verify:format": { command: "uf fmt --check" },
@@ -120,7 +119,6 @@ const config: UniflowedConfig = defineConfig({
     bundle: { command: "uf build#apps/web", dependsOn: ["bundle:ui"] },
   },
 });
-export default config;
 "#
     .to_string()
 }
@@ -367,10 +365,9 @@ fn lib_package_json(name: &str) -> String {
 
 fn app_config() -> String {
     r#"// @flow
-import type { UniflowedConfig } from "@uniflowed/config";
 import { defineConfig } from "@uniflowed/config";
 
-const config: UniflowedConfig = defineConfig({
+export default defineConfig({
   tasks: {
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
@@ -378,7 +375,6 @@ const config: UniflowedConfig = defineConfig({
     bundle: { command: "uf build", dependsOn: ["verify"] },
   },
 });
-export default config;
 "#
     .to_string()
 }
@@ -396,10 +392,9 @@ export default config;
 /// side: a library has no application to serve.
 fn lib_config() -> String {
     r#"// @flow
-import type { UniflowedConfig } from "@uniflowed/config";
 import { defineConfig } from "@uniflowed/config";
 
-const config: UniflowedConfig = defineConfig({
+export default defineConfig({
   app: {
     // Turning the file-system router off is what makes this a library:
     // `uf build` compiles index.js to dist/ rather than looking for an
@@ -415,7 +410,6 @@ const config: UniflowedConfig = defineConfig({
     bundle: { command: "uf build", dependsOn: ["verify"] },
   },
 });
-export default config;
 "#
     .to_string()
 }

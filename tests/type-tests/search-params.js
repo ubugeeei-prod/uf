@@ -32,7 +32,7 @@ import {
 
 export const searchParams: Schema<{
   page: number,
-  tag: Array<string>,
+  tag: $ReadOnlyArray<string>,
   q?: string,
   sort: boolean,
 }> = object({

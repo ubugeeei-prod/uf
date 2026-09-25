@@ -638,6 +638,20 @@ fn an_unannotated_export_cannot_silently_become_any_in_an_importer() {
 }
 
 #[test]
+fn a_static_uf_config_keeps_its_inline_default_export() {
+    require_checker!();
+
+    let source = "// @flow\nfunction defineConfig(config: {}): {} { return config; }\nexport default defineConfig({});\n";
+    let config = batch(&[Source::new("project/uf.config.js", source)]);
+    assert!(config.diagnostics.is_empty(), "{:?}", codes(&config));
+
+    // Only the config path is special. The same call exported from an ordinary
+    // module still needs an annotation before another module can import it.
+    let module = batch(&[Source::new("project/other.js", source)]);
+    assert!(codes(&module).contains(&"signature-verification-failure"));
+}
+
+#[test]
 fn an_error_about_an_imported_value_can_point_into_the_file_that_declared_it() {
     require_checker!();
 
