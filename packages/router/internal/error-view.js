@@ -33,6 +33,7 @@ import { showNotFoundPage, useRouterState } from "./runtime.js";
 component DefaultRouteError(error: RouteError, reset: () => void) {
   const title = errorTitle(error);
   const detail = match (error) {
+    {kind: "badRequest", ...} => "This page cannot answer the query in its address.",
     {kind: "unauthorized"} => "This page needs you to be signed in.",
     {kind: "forbidden"} => "You do not have access to this page.",
     {kind: "thrown", ...} => "This page could not be rendered.",

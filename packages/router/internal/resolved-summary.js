@@ -6,12 +6,12 @@ import { routeBoundaries, suspenseId } from "./boundary-data.js";
 import type { RouteBoundary } from "./boundary-data.js";
 import type { RouteParams, SearchParams } from "./routing.js";
 
-type RouteStatus = 200 | 401 | 403 | 404 | 500;
+type RouteStatus = 200 | 400 | 401 | 403 | 404 | 500;
 
 type RouteMetadata = { readonly [string]: mixed, ... };
 
 type RouteErrorLike = {
-  readonly kind: "thrown" | "unauthorized" | "forbidden",
+  readonly kind: "thrown" | "unauthorized" | "forbidden" | "badRequest",
   ...
 };
 
@@ -71,7 +71,8 @@ export type ResolvedTemplateSummary = {|
 export type ResolvedRouteErrorSummary =
   | {| readonly kind: "thrown" |}
   | {| readonly kind: "unauthorized" |}
-  | {| readonly kind: "forbidden" |};
+  | {| readonly kind: "forbidden" |}
+  | {| readonly kind: "badRequest" |};
 
 export type ResolvedErrorBoundarySummary = {|
   readonly above: number,
@@ -194,6 +195,9 @@ function summarizeError(error: ?RouteErrorLike): ?ResolvedRouteErrorSummary {
   }
   if (error.kind === "forbidden") {
     return { kind: "forbidden" };
+  }
+  if (error.kind === "badRequest") {
+    return { kind: "badRequest" };
   }
   return { kind: "thrown" };
 }

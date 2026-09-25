@@ -2781,6 +2781,16 @@ async function renderingPlan(server, prerender) {
       });
       continue;
     }
+    // A page that declares a schema for its query renders what the query
+    // says, and a prerendered file is one answer for every query: `/search`
+    // written once would be served for `/search?q=anything`. ubugeeei-prod/uf#1362.
+    if (module.searchParams != null) {
+      perRequest.push({
+        path: route.path,
+        why: "its page exports a `searchParams` schema, so what it renders depends on the query",
+      });
+      continue;
+    }
     if (route.params.length === 0) {
       urls.push(route.path);
       continue;

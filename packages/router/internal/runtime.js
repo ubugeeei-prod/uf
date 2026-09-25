@@ -113,18 +113,27 @@ import {
   beneath,
   interceptingRoutes,
   loadOnce,
+  pageSearchParams,
   resolveFailure,
   resolveInterception,
   resolveMatch,
 } from "./resolve.js";
 import type { Metadata, ResolvedRoute, RouteTable } from "./resolve.js";
 
-export type { RouteError, RouteParamSpec, RouteParams, SearchParams } from "./routing.js";
+export type {
+  RouteError,
+  RouteParamSpec,
+  RouteParams,
+  SearchParams,
+  SearchParamsAll,
+  SearchParamsIssue,
+} from "./routing.js";
 
 export {
   ForbiddenError,
   NotFoundError,
   RedirectError,
+  SearchParamsError,
   UnauthorizedError,
   buildRoute,
   forbidden,
@@ -132,6 +141,7 @@ export {
   matchRoute,
   notFound,
   parseSearch,
+  parseSearchAll,
   permanentRedirect,
   redirect,
   routeErrorStatus,
@@ -1708,7 +1718,7 @@ component RenderedPage(data: mixed) {
   // uf-lint-disable react-compiler/static-components
   return (
     <>
-      <Page params={resolved.params} searchParams={resolved.searchParams} data={data} />
+      <Page params={resolved.params} searchParams={pageSearchParams(resolved)} data={data} />
       {payloadElements(data)}
     </>
   );

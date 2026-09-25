@@ -152,6 +152,7 @@ function webProject(): string {
       "react-dom": installed("react-dom"),
       "@uniflowed/hooks": sibling("hooks"),
       "@uniflowed/server": sibling("server"),
+      "@uniflowed/validator": sibling("validator"),
     });
   }
   return web;
@@ -168,6 +169,7 @@ function olderReactProject(): string {
         "react-server-dom-parcel": installed("react-server-dom-parcel"),
         "@uniflowed/hooks": sibling("hooks"),
         "@uniflowed/server": sibling("server"),
+        "@uniflowed/validator": sibling("validator"),
       },
       reactReporting("19.2.3"),
     );

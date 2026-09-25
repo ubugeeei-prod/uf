@@ -16,8 +16,27 @@ export type RouteParamSpec = {| readonly name: string, readonly catchAll: boolea
  */
 export type RouteParams = { readonly [string]: string | $ReadOnlyArray<string> };
 
-/** The query string, as a read-only map. */
+/** The query string, as a read-only map. A repeated key keeps its last value. */
 export type SearchParams = { readonly [string]: string };
+
+/**
+ * The query string with every value of a repeated key kept, in order:
+ * `?tag=a&tag=b` is `{ tag: ["a", "b"] }`. See [`parseSearchAll`].
+ */
+export type SearchParamsAll = { readonly [string]: $ReadOnlyArray<string> };
+
+/**
+ * One reason a query did not fit the schema a page declared for it.
+ *
+ * The shape of `@uniflowed/validator`'s `Issue`, written out here so that this
+ * file stays free of imports: `path` is where in the query the problem is —
+ * `["tags", "1"]` for the second `tag`.
+ */
+export type SearchParamsIssue = {|
+  readonly code: string,
+  readonly message: string,
+  readonly path?: $ReadOnlyArray<string>,
+|};
 
 /** A lazy route module entry from the generated route table. */
 export type RouteModule<TModule = mixed> = () => Promise<TModule>;
@@ -168,11 +187,18 @@ export type RouteMatch<TRoute extends { readonly path: string, ... } = UnknownRo
 export type RouteError =
   | {| readonly kind: "thrown", readonly error: mixed |}
   | {| readonly kind: "unauthorized" |}
-  | {| readonly kind: "forbidden" |};
+  | {| readonly kind: "forbidden" |}
+  /**
+   * The query did not fit the schema the page exports as `searchParams`.
+   * The request's fault rather than the page's, so a `400` — and the issues
+   * say which parameter and why, so an `$error.js` can say so too.
+   */
+  | {| readonly kind: "badRequest", readonly issues: $ReadOnlyArray<SearchParamsIssue> |};
 
 /** The status a `RouteError` answers with. */
-export function routeErrorStatus(error: RouteError): 401 | 403 | 500 {
+export function routeErrorStatus(error: RouteError): 400 | 401 | 403 | 500 {
   return match (error) {
+    {kind: "badRequest", ...} => 400,
     {kind: "unauthorized"} => 401,
     {kind: "forbidden"} => 403,
     {kind: "thrown", ...} => 500,
@@ -192,6 +218,24 @@ export class UnauthorizedError extends Error {
   constructor() {
     super("unauthorized");
     this.name = "UnauthorizedError";
+  }
+}
+
+/**
+ * Thrown when a query does not fit the page's `searchParams` schema; the
+ * renderer answers with the error boundary, as a `400`.
+ */
+export class SearchParamsError extends Error {
+  issues: $ReadOnlyArray<SearchParamsIssue>;
+
+  constructor(issues: $ReadOnlyArray<SearchParamsIssue>) {
+    super(
+      `the query string does not fit this page's searchParams schema: ${issues
+        .map((issue) => `${(issue.path ?? []).join(".") || "(query)"}: ${issue.message}`)
+        .join("; ")}`,
+    );
+    this.name = "SearchParamsError";
+    this.issues = issues;
   }
 }
 
@@ -560,6 +604,31 @@ export function parseSearch(search: string): SearchParams {
     params[key] = value;
   }
   return params;
+}
+
+/**
+ * Every value of every key in a query string, in order.
+ *
+ * [`parseSearch`] keeps the last value of a repeated key, which is what a page
+ * that reads `searchParams.q` wants and loses `?tag=a&tag=b`'s first tag. This
+ * is the same query with nothing dropped, for a page that declares no schema
+ * and needs the repeats; a page that declares one gets arrays wherever the
+ * schema says array.
+ */
+export function parseSearchAll(search: string): SearchParamsAll {
+  // A `Map` and then `Object.fromEntries`, which defines own properties: a
+  // query is written by whoever sent the request, and `?__proto__=x` must be a
+  // key like any other rather than a lookup that finds `Object.prototype`.
+  const params = new Map<string, Array<string>>();
+  for (const [key, value] of new URLSearchParams(search)) {
+    const values = params.get(key);
+    if (values == null) {
+      params.set(key, [value]);
+    } else {
+      values.push(value);
+    }
+  }
+  return Object.fromEntries(params);
 }
 
 /** Stop rendering the current page and show the not-found page instead. */

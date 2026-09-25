@@ -151,14 +151,18 @@ fn is_prerendered(root: &Utf8Path, route: &Route, graph: &RscGraph) -> bool {
     if scan_exported_string(&source, "dynamic").as_deref() == Some("force-dynamic") {
         return false;
     }
-    route.params.is_empty()
-        || graph
+    let exports = |name: &str| {
+        graph
             .module(relative_to(root, &route.page))
-            .is_some_and(|page| {
-                page.exports
-                    .iter()
-                    .any(|export| export.name == "generateStaticParams")
-            })
+            .is_some_and(|page| page.exports.iter().any(|export| export.name == name))
+    };
+    // A page that declares a schema for its query renders what the query says,
+    // so `@uniflowed/vite`'s prerender leaves it to a server the way it does a
+    // `force-dynamic` one. ubugeeei-prod/uf#1362.
+    if exports("searchParams") {
+        return false;
+    }
+    route.params.is_empty() || exports("generateStaticParams")
 }
 
 /// The project-relative path of a module in `graph`.

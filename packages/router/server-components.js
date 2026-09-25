@@ -37,7 +37,7 @@ import type { Metadata } from "./internal/resolve.js";
 import type { RouteInfo, Router } from "./internal/runtime.js";
 import { serverRoute } from "./internal/server-route.js";
 
-export type { ErrorProps, LayoutProps, PageProps } from "./index.js";
+export type { ErrorProps, LayoutProps, PageProps, SearchParamsOf } from "./index.js";
 
 export type {
   AppProps,
@@ -81,6 +81,7 @@ export {
   ForbiddenError,
   NotFoundError,
   RedirectError,
+  SearchParamsError,
   UnauthorizedError,
   buildRoute,
   forbidden,
@@ -88,6 +89,7 @@ export {
   matchRoute,
   notFound,
   parseSearch,
+  parseSearchAll,
   permanentRedirect,
   redirect,
   routeErrorStatus,
