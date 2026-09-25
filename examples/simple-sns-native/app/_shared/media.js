@@ -27,7 +27,11 @@ export function portrait(id: string): ImageSourcePropType | null {
   };
 }
 
-export const POSTERS = {
+export const POSTERS: {
+  readonly city: ImageSourcePropType,
+  readonly rail: ImageSourcePropType,
+  readonly park: ImageSourcePropType,
+} = {
   city: asset(city),
   rail: asset(rail),
   park: asset(park),
