@@ -4609,6 +4609,8 @@ dependencies = [
  "phf",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "thiserror",
  "uf_config",
  "uf_flow",

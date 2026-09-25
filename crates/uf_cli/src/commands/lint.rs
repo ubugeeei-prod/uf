@@ -34,9 +34,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
 use uf_infra::FxHashSet;
-use uf_lint::{
-    Diagnostic, LintReport, Severity, SourceFile, lint_sources, lint_sources_with_context,
-};
+use uf_lint::{Diagnostic, LintCache, LintReport, Severity, SourceFile, lint_sources_cached};
 use uf_project::{SourceKind, scan_selected_source_files_matching};
 use uf_term::{CodeFrame, DiagnosticLevel, Status, format_duration};
 
@@ -295,11 +293,21 @@ pub(crate) fn collect_and_lint(cwd: &Utf8Path, paths: &[String], lint: bool) -> 
             project_rules: plugins::ProjectRules::default(),
         });
     }
-    let mut report = if available.is_empty() {
-        lint_sources(&sources, &resolved.config)?
+    // Under the project root, as `.uf/cache/check` is: what the React tree
+    // rules worked out about a module is kept there between runs, so a module
+    // nobody touched is not handed to the React Compiler again. Swept once,
+    // before this run adds to it, by the policy every `.uf/cache/` directory
+    // shares. ubugeeei-prod/uf#1442.
+    let cache = LintCache::open(resolved.root.as_std_path());
+    if let Some(cache) = &cache {
+        cache.sweep();
+    }
+    let context = if available.is_empty() {
+        &sources
     } else {
-        lint_sources_with_context(&sources, &available, &resolved.config)?
+        &available
     };
+    let mut report = lint_sources_cached(&sources, context, &resolved.config, cache.as_ref())?;
     // Over the same narrowed sources, so a path argument means the same thing
     // to a project rule as to uf's own. Nothing starts when none is enabled.
     let mut project_rules = plugins::run(&resolved.root, &resolved.config, &sources)?;

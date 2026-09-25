@@ -273,7 +273,11 @@ JSON report carries the same numbers in `typeCheck`: `filesChecked`, `requested`
 `filesFromCache`, `elapsedMs`, `builtinsMs` and `builtinsCold`, with the imports
 typed `any` in `untypedModules`.
 
-The lint half runs on every core. Inference runs on one thread. There is no watch
+The lint half runs on every core. Inference runs on one thread. What the React
+Compiler reports about each module — nearly all of what the lint half costs — is
+cached under `.uf/cache/lint/`, keyed on the module's path and text, the React
+rules' switches and the `uf` binary, so `uf lint` and `uf check` hand only the
+modules that changed to the compiler again. There is no watch
 mode and no daemon; `uf check` starts, answers and exits. The editor is where the
 same checker stays warm: `uf lsp` pushes these errors for the files you have open
 once typing pauses, from the same modules and suppression comments, beside hover,

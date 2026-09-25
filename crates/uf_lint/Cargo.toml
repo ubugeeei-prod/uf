@@ -27,10 +27,13 @@ uf_transform = { path = "../uf_transform" }
 phf.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The key of `.uf/cache/lint`, as it is the key of `.uf/cache/check`.
+sha2.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+tempfile.workspace = true
 
 [[bench]]
 name = "lint"

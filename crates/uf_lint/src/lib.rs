@@ -20,6 +20,7 @@
 //! each diagnostic under the rule named for its category, with the compiler's
 //! message. Nothing here decides whether a component breaks a rule of React.
 
+mod cache;
 mod flow_builtin;
 mod rules;
 mod runner;
@@ -32,6 +33,7 @@ use serde_json::Value;
 use thiserror::Error;
 use uf_config::{RuleLevel, UniflowedConfig};
 
+pub use crate::cache::LintCache;
 pub use crate::flow_builtin::{FLOW_NAMESPACE, FlowBuiltinLint, FlowLintParseError};
 pub use crate::rules::{
     RuleCategory, RuleDescriptor, RuleRequirement, canonical_rule_id, rule, rules,
@@ -257,9 +259,23 @@ pub fn lint_sources_with_context(
     context_files: &[SourceFile],
     config: &UniflowedConfig,
 ) -> Result<LintReport, LintError> {
+    lint_sources_cached(files, context_files, config, None)
+}
+
+/// [`lint_sources_with_context`], reading and filing what the React tree
+/// rules work out in `cache`.
+///
+/// The report is the one an uncached run gives: a cache changes what a module
+/// costs, never what it reports. See [`LintCache`].
+pub fn lint_sources_cached(
+    files: &[SourceFile],
+    context_files: &[SourceFile],
+    config: &UniflowedConfig,
+    cache: Option<&LintCache>,
+) -> Result<LintReport, LintError> {
     let context = LintContext::from_sources(context_files, config);
     let per_file = uf_infra::parallel::map(files, |file| {
-        lint_file(file, config, &context, Scope::Project)
+        lint_file(file, config, &context, Scope::Project, cache)
     })?;
 
     let mut diagnostics = per_file.into_iter().flatten().collect::<Vec<_>>();
@@ -275,7 +291,7 @@ pub fn lint_sources_with_context(
 /// Lint a single file.
 pub fn lint_source(file: &SourceFile, config: &UniflowedConfig) -> Result<LintReport, LintError> {
     let context = LintContext::default();
-    let mut diagnostics = lint_file(file, config, &context, Scope::File)?;
+    let mut diagnostics = lint_file(file, config, &context, Scope::File, None)?;
     sort_diagnostics(&mut diagnostics);
 
     Ok(LintReport {
@@ -318,6 +334,7 @@ fn lint_file(
     config: &UniflowedConfig,
     context: &LintContext,
     scope: Scope,
+    cache: Option<&LintCache>,
 ) -> Result<Vec<Diagnostic>, LintError> {
     // Blanked before anything reads a line, so no rule has to know that a
     // comment can sit in the middle of one. See `scan::mask_inline_comments`.
@@ -342,7 +359,7 @@ fn lint_file(
 
     // One parse serves `flow/syntax`, the JSX rules and the two `react/*`
     // tree rules. See `runner::module_tree`.
-    run_module_tree_rules(&scan, config, &mut diagnostics)?;
+    run_module_tree_rules(&scan, config, cache, &mut diagnostics)?;
     run_no_tabs(&scan, config, &mut diagnostics);
     run_no_trailing_whitespace(&scan, config, &mut diagnostics);
     run_no_npm_script_invocation(&scan, config, &mut diagnostics);

@@ -26,10 +26,16 @@
 use uf_config::UniflowedConfig;
 use uf_profiler::profile_span;
 
+use crate::cache::LintCache;
 use crate::scan::FileScan;
 use crate::{Diagnostic, LintError};
 
 /// Read the module once and report every rule that needed it.
+///
+/// With a `cache`, the React tree rules' answer — nearly all of what a module
+/// costs to lint — is read from `.uf/cache/lint` when an earlier run filed one
+/// for this path, text and question, and filed there when it is worked out
+/// here. See [`crate::cache`].
 ///
 /// # Errors
 ///
@@ -38,6 +44,7 @@ use crate::{Diagnostic, LintError};
 pub(crate) fn run_module_tree_rules(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
+    cache: Option<&LintCache>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), LintError> {
     profile_span!("run_module_tree_rules");
@@ -50,6 +57,27 @@ pub(crate) fn run_module_tree_rules(
     }
 
     let source = &scan.file.source;
+    let path = scan.file.path.as_str();
+    let question = react_work
+        .as_ref()
+        .map(|work| super::react_tree::question(config, work));
+    let filed: Option<super::react_tree::ReactAnswer> = cache
+        .zip(question.as_deref())
+        .and_then(|(cache, question)| cache.read(path, source, question));
+
+    // Nothing else wants the tree, so there is nothing to parse it for. An
+    // answer is filed only for a text that parsed cleanly, and this is that
+    // text, so the parse this skips is one that would have succeeded.
+    if let (Some(work), Some(answer)) = (&react_work, &filed)
+        && syntax.is_none()
+        && tree_work.is_none()
+        && jsx_work.is_none()
+    {
+        super::react_tree::report(scan, work, answer.clone(), diagnostics);
+        return Ok(());
+    }
+
+    let filed_ref = filed.as_ref();
     let work = || {
         let outcome = match uf_flow::parse(source) {
             // A ceiling, or a parser that panicked. `uf_flow::upstream` turned
@@ -82,8 +110,13 @@ pub(crate) fn run_module_tree_rules(
                         outcome.jsx = super::react_jsx::walk(&parsed, work);
                     }
                     if let Some(work) = &react_work {
-                        outcome.react =
-                            super::react_tree::analyse_parsed(&parsed, scan, config, work);
+                        outcome.react = Some(match filed_ref {
+                            Some(answer) => answer.clone(),
+                            None => {
+                                outcome.worked_out = true;
+                                super::react_tree::analyse_parsed(&parsed, scan, config, work)
+                            }
+                        });
                     }
                 }
                 outcome
@@ -125,8 +158,13 @@ pub(crate) fn run_module_tree_rules(
     if let Some(work) = &jsx_work {
         super::react_jsx::report(scan, work, outcome.jsx, diagnostics);
     }
-    if let Some(work) = &react_work {
-        super::react_tree::report(scan, work, outcome.react, diagnostics);
+    if let (Some(work), Some(answer)) = (&react_work, outcome.react) {
+        if outcome.worked_out
+            && let (Some(cache), Some(question)) = (cache, &question)
+        {
+            cache.write(path, source, question, &answer);
+        }
+        super::react_tree::report(scan, work, answer, diagnostics);
     }
     Ok(())
 }
@@ -137,5 +175,10 @@ struct Outcome {
     syntax: Vec<uf_flow::ParseDiagnostic>,
     tree: Vec<super::tree::Finding>,
     jsx: Vec<super::react_jsx::Finding>,
-    react: Vec<super::react_tree::TreeFinding>,
+    /// What the React tree rules worked out, or [`None`] when they did not
+    /// run: nobody asked, or the tree was recovered from errors.
+    react: Option<super::react_tree::ReactAnswer>,
+    /// Whether [`Self::react`] was worked out here rather than read from the
+    /// cache, and so is new to it.
+    worked_out: bool,
 }

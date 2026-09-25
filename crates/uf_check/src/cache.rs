@@ -111,7 +111,6 @@
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 
 use compact_str::{CompactString, ToCompactString};
 use serde::{Deserialize, Serialize};
@@ -485,27 +484,8 @@ impl CheckCache {
     }
 }
 
-/// The `uf` this process is running, as path, size and modification time.
-///
-/// Size and modification time rather than a version, for #219's reason: every
-/// build between two releases shares a version, and it is builds that change
-/// what the checker decides. Not a hash of the binary, which is thirty
-/// megabytes and would cost more than the check it is meant to save.
+/// The `uf` this process is running: [`uf_infra::cache::binary_identity`],
+/// which `.uf/cache/lint` keys on as well.
 fn binary_identity() -> Option<String> {
-    let path = std::env::current_exe().ok()?;
-    let metadata = fs::metadata(&path).ok()?;
-    if !metadata.is_file() {
-        return None;
-    }
-    let modified = metadata
-        .modified()
-        .ok()?
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_nanos();
-    Some(format!(
-        "{}\0{}\0{modified}",
-        path.display(),
-        metadata.len()
-    ))
+    uf_infra::cache::binary_identity()
 }

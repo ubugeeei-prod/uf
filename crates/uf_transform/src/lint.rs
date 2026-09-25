@@ -42,7 +42,7 @@ use flow_parser::loc::Loc;
 use react_compiler::entrypoint::LoggerEvent;
 use react_compiler_ast::scope::ScopeInfo;
 pub use react_compiler_diagnostics::ErrorCategory;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uf_profiler::profile_span;
 
@@ -121,7 +121,10 @@ fn remember(filename: &str, source: &str, switches: LintSwitches, found: &[LintD
 }
 
 /// One diagnostic the official React Compiler reported about a module.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serializable because `uf_lint` keeps a module's findings under
+/// `.uf/cache/lint` between runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintDiagnostic {
     /// The compiler's category, which decides the rule the finding is filed
     /// under.

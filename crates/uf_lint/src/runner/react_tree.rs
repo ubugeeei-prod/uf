@@ -32,7 +32,14 @@
 //! [`PARSE_STACK_BYTES`](uf_flow::PARSE_STACK_BYTES), for the reason
 //! `uf_flow::upstream` spells out: the port's frames are large, the tree is
 //! freed where it was built, and a lint worker's own stack is not enough.
+//!
+//! And past the parse, a fifth: an earlier run already worked this module out.
+//! `uf lint` and `uf check` keep [`ReactAnswer`] under `.uf/cache/lint`
+//! ([`crate::cache`]), keyed on the path, the text, [`question`] and the `uf`
+//! that wrote it, so a module nobody touched is not lowered, rebuilt or handed
+//! to the compiler again. ubugeeei-prod/uf#1442.
 
+use serde::{Deserialize, Serialize};
 use uf_config::UniflowedConfig;
 use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
@@ -215,6 +222,59 @@ fn skip_quoted_type_literal(bytes: &[u8], quote: usize) -> usize {
     bytes.len()
 }
 
+/// The validations the compiler is asked for beyond the plugin's defaults.
+fn switches(work: &ReactWork) -> uf_transform::LintSwitches {
+    uf_transform::LintSwitches {
+        effect_dependencies: work
+            .compiler
+            .as_ref()
+            .is_some_and(super::react_compiler::CompilerWork::checks_effect_dependencies),
+    }
+}
+
+/// Everything besides the module's path and text that decides what
+/// [`analyse_parsed`] returns, spelled for [`crate::cache::LintCache`]'s key.
+///
+/// Built from the values the analysis itself reads. The switches are
+/// destructured, so that one added later does not compile until it is part of
+/// the question: a switch left out would be two questions sharing one answer.
+pub(super) fn question(config: &UniflowedConfig, work: &ReactWork) -> String {
+    let uf_transform::LintSwitches {
+        effect_dependencies,
+    } = switches(work);
+    // The mode's own serialized name, which covers every mode there is.
+    let mode = serde_json::to_string(&compiler_mode(config)).unwrap_or_default();
+    format!(
+        "memo={}\0compiler={}\0effect-dependencies={effect_dependencies}\0mode={mode}",
+        work.wants_memo,
+        work.compiler.is_some(),
+    )
+}
+
+/// What these rules worked out about one module, before any project decides
+/// which of it to report.
+///
+/// Raw on purpose: this is what [`crate::cache::LintCache`] keeps, and a rule's
+/// level is applied by [`report`] on the way out, so changing one reuses the
+/// answer instead of invalidating it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) struct ReactAnswer {
+    /// What the official React Compiler reported, when it was asked.
+    compiler: Vec<uf_transform::LintDiagnostic>,
+    /// Hand-written memoization the compiler removed, when that was asked.
+    memo: Vec<MemoFound>,
+}
+
+/// One `useMemo` or `useCallback` the compiler memoizes already.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct MemoFound {
+    hook: String,
+    /// 1-based line.
+    line: u32,
+    /// 0-based column, in UTF-16 code units.
+    column: u32,
+}
+
 /// Run whichever of these rules were asked for, over a tree somebody else
 /// parsed.
 ///
@@ -227,7 +287,7 @@ pub(super) fn analyse_parsed(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
     work: &ReactWork,
-) -> Vec<TreeFinding> {
+) -> ReactAnswer {
     profile_span!("run_react_tree_rules");
     let source = &scan.file.source;
     let options = TransformOptions {
@@ -239,12 +299,7 @@ pub(super) fn analyse_parsed(
     // compile, and only those — the plugin's own test, not one of uf's. A
     // module the compiler has already answered with exactly this text is
     // answered from that, without building the tree again.
-    let switches = uf_transform::LintSwitches {
-        effect_dependencies: work
-            .compiler
-            .as_ref()
-            .is_some_and(super::react_compiler::CompilerWork::checks_effect_dependencies),
-    };
+    let switches = switches(work);
     let remembered = work
         .compiler
         .as_ref()
@@ -253,12 +308,12 @@ pub(super) fn analyse_parsed(
         && remembered.is_none()
         && uf_transform::may_contain_react_code(&parsed.program);
 
-    let mut found = Vec::new();
-    if let (Some(compiler), Some(remembered)) = (&work.compiler, remembered) {
-        found.extend(compiler_findings(compiler, remembered));
-    }
+    let mut answer = ReactAnswer {
+        compiler: remembered.unwrap_or_default(),
+        memo: Vec::new(),
+    };
     if !work.wants_memo && !compile {
-        return found;
+        return answer;
     }
 
     // Lowered, not raw: `component` and `match` are Flow's own syntax, and the
@@ -269,14 +324,14 @@ pub(super) fn analyse_parsed(
     // `uf lint` used to hand the text back to `estree::parse` here and have
     // the module parsed a second time. See ubugeeei-prod/uf#668.
     let Ok((program, _)) = uf_transform::lowered_from_parsed(&parsed.program, source) else {
-        return found;
+        return answer;
     };
     // An error from here on is a bug in uf rather than in the module — the
     // tree did not fit the compiler's own schema — and `uf build`, which reads
     // the same tree, fails on it loudly. It says nothing about what the other
     // rules already found, so it costs them nothing.
     let Ok(file) = uf_transform::babel_from_lowered(program, source) else {
-        return found;
+        return answer;
     };
     // One scope analysis for both questions put to the compiler.
     let scope = uf_transform::scope::analyze(&file);
@@ -284,24 +339,22 @@ pub(super) fn analyse_parsed(
         && let Ok(redundant) =
             uf_transform::redundant_memoization_in_scope(&file, &scope, source, &options)
     {
-        found.extend(redundant.into_iter().map(|memo| TreeFinding {
-            kind: FindingKind::RedundantMemo,
-            line: memo.line,
-            column: memo.column,
-            message: format!(
-                "the React Compiler memoizes this already; `{}` here is a second dependency array to keep correct",
-                memo.hook
-            ),
-        }));
+        answer.memo = redundant
+            .into_iter()
+            .map(|memo| MemoFound {
+                hook: memo.hook.to_owned(),
+                line: memo.line,
+                column: memo.column,
+            })
+            .collect();
     }
     if compile
-        && let Some(compiler) = &work.compiler
         && let Ok(diagnostics) =
             uf_transform::lint::lint(&file, scope, source, &scan.file.path, switches)
     {
-        found.extend(compiler_findings(compiler, diagnostics));
+        answer.compiler = diagnostics;
     }
-    found
+    answer
 }
 
 /// Each React Compiler diagnostic, filed under its `react-compiler/*` rule.
@@ -325,15 +378,35 @@ fn compiler_findings(
     })
 }
 
+/// Each finding in `answer` this project reports, filed under its rule.
+fn findings(work: &ReactWork, answer: ReactAnswer) -> Vec<TreeFinding> {
+    let mut found: Vec<TreeFinding> = Vec::new();
+    if work.wants_memo {
+        found.extend(answer.memo.into_iter().map(|memo| TreeFinding {
+            kind: FindingKind::RedundantMemo,
+            line: memo.line,
+            column: memo.column,
+            message: format!(
+                "the React Compiler memoizes this already; `{}` here is a second dependency array to keep correct",
+                memo.hook
+            ),
+        }));
+    }
+    if let Some(compiler) = &work.compiler {
+        found.extend(compiler_findings(compiler, answer.compiler));
+    }
+    found
+}
+
 /// Turn what the analysis found into diagnostics.
 pub(super) fn report(
     scan: &FileScan<'_>,
     work: &ReactWork,
-    found: Vec<TreeFinding>,
+    answer: ReactAnswer,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let source = &scan.file.source;
-    for finding in found {
+    for finding in findings(work, answer) {
         let rule = match finding.kind {
             FindingKind::RedundantMemo => REDUNDANT_MEMO,
             FindingKind::Compiler(rule) => rule,
@@ -382,7 +455,7 @@ enum FindingKind {
 }
 
 /// One finding, positioned the way the tree positions things.
-pub(super) struct TreeFinding {
+struct TreeFinding {
     kind: FindingKind,
     /// 1-based line.
     line: u32,
