@@ -1,6 +1,12 @@
 // @flow
 
-import { props, stylex, type CompiledStyle, type StyleArgument, type StyleProps } from "@uniflowed/stylex";
+import {
+  props,
+  stylex,
+  type CompiledStyle,
+  type StyleArgument,
+  type StyleProps,
+} from "@uniflowed/stylex";
 
 // Values come directly from Commonplace's original CSS. Resets, descendant
 // selectors, responsive layout and media state remain in base.css.
