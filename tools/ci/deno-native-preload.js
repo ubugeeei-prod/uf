@@ -1,6 +1,9 @@
 // @noflow
-// Deno 2.9.x routes native addons through a registered load hook as
-// JavaScript, even when the hook delegates to the runtime. Load the native
-// binding before the Flow hook so the Vite library tests can exercise it.
+// Deno 2.9.x mishandles native addons and CommonJS JSON dependencies after
+// a registered load hook is installed. Load Rolldown's binding and exercise
+// Babel's lazy target resolution before the Flow hook takes effect. Relay's
+// transform then uses Babel's already loaded CommonJS dependencies.
 // This runs only in the CI library lane, not in applications.
 import "rolldown";
+import { transformAsync } from "@babel/core";
+await transformAsync("const x = 1;", { babelrc: false, configFile: false });
