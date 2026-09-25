@@ -652,6 +652,19 @@ fn a_static_uf_config_keeps_its_inline_default_export() {
 }
 
 #[test]
+fn a_router_view_app_entry_keeps_its_runtime_export() {
+    require_checker!();
+
+    let source = "// @flow\nfunction routerView(root: string): mixed { return root; }\nexport default routerView('./app');\n";
+    let app = batch(&[Source::new("project/app.js", source)]);
+    assert!(app.diagnostics.is_empty(), "{:?}", codes(&app));
+
+    // An ordinary module exporting the same call still has a signature error.
+    let module = batch(&[Source::new("project/other.js", source)]);
+    assert!(codes(&module).contains(&"signature-verification-failure"));
+}
+
+#[test]
 fn an_error_about_an_imported_value_can_point_into_the_file_that_declared_it() {
     require_checker!();
 

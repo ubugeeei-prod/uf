@@ -416,12 +416,9 @@ export default defineConfig({
 
 fn app_entry() -> String {
     r#"// @flow
-import * as React from "@uniflowed/react";
-import type { AppProps } from "@uniflowed/router";
 import { routerView } from "@uniflowed/router";
 
-const App: React.ComponentType<AppProps> = routerView("./app");
-export default App;
+export default routerView("./app");
 "#
     .to_string()
 }
