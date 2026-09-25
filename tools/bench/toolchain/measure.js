@@ -313,6 +313,7 @@ export type DevServer = {
   /** The command as typed, for messages: `uf dev`, `vp dev`. */
   readonly label: string,
   readonly port: number,
+  readonly pid: number | void,
   readonly startedAt: number,
   readonly exited: () => number | null,
   readonly log: () => string,
@@ -356,6 +357,7 @@ export function startDevServer(
   return {
     label: options.label ?? "uf dev",
     port: options.port,
+    pid: child.pid,
     startedAt,
     exited: () => exitCode,
     log: () => output,
