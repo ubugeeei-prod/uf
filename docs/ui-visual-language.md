@@ -119,8 +119,16 @@ which was a different failure. The rules below are the middle.
   | Radio | ring colour, then the dot fades in | fast / base |
   | Tabs | underline and label colour change together | base, standard |
   | Progress | the fill's `scaleX` moves to the new value | slow, standard |
-  | Chevrons (accordion, collapsible, select) | a half turn | base, standard |
+  | Chevrons (accordion, collapsible, select, navigation menu) | a half turn | base, standard |
+| Menu item highlight | background follows the pointer | fast, standard |
+| Field | border colour turns; focus ring draws outward | fast, standard |
 
+- **The preset moves the same way.** `@uniflowed/stylex/preset` is the
+  default look for a project that styles `@uniflowed/ui` without the
+  registry, and it follows the table: `backdropStyles()` fades in,
+  `dialogStyles()` fades in from `scale(0.96)` around its centring translate,
+  `menuStyles()` travels 4px from `data-side`, and buttons, fields, menu
+  items, tabs and controls transition their colours and focus rings.
 - **Enter comes from a `@starting-style`.** uf's StyleX has no `@keyframes`.
   An entrance does not need them: a `@starting-style` value is the style an
   element is taken to have had before it was inserted, so the transition runs
@@ -132,7 +140,8 @@ which was a different failure. The rules below are the middle.
   a cut. Exit transitions need the behaviour layer to keep a closing part
   mounted, marked `data-state="closed"`, until its transitions finish. The
   same work gives accordion and collapsible height and a sliding tabs
-  indicator. `easingExit` is declared for that work.
+  indicator. `easingExit` is declared for that work, which ubugeeei-prod/uf#1564
+  tracks.
 - **Named properties only.** A transition lists what it moves, never `all`,
   and a duration never appears without a property list. Nothing animates a
   layout property: the progress bar moves a `transform`, not its `width`. The
@@ -146,7 +155,10 @@ which was a different failure. The rules below are the middle.
 - `crates/uf_stylex/src/tests/defaults.rs` enforces each of these rules on the
   compiled styles and on the tokens. `what_deserves_motion_has_it` is the
   other half: it fails if an overlay loses its entrance or a control stops
-  moving, so the defaults cannot go quiet again unnoticed.
+  moving, so the defaults cannot go quiet again unnoticed. An overlay's
+  entrance there means a `@starting-style` opacity, a `@starting-style` for
+  what travels or grows, and `easingEnter`, in the registry and in the preset
+  alike.
 
 ## Where this does not apply
 
