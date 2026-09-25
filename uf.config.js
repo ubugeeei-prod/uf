@@ -176,7 +176,9 @@ export default defineConfig({
       command: "cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings",
     },
     "rust:test:unit": "cargo test --workspace --lib --all-features --profile ci",
-    "rust:test": "cargo test --workspace --all-features --profile ci",
+    // `--no-fail-fast`: otherwise the first failing test binary hides every
+    // one after it until the next run (#1434).
+    "rust:test": "cargo test --workspace --all-features --profile ci --no-fail-fast",
     "rust:bench": "cargo bench --workspace --no-run --profile ci",
     "rust:metadata": "cargo metadata --format-version 1 --locked",
     "rust:lints": {

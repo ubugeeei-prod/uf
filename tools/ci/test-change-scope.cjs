@@ -4,7 +4,13 @@ const { execFileSync, spawnSync } = require("node:child_process");
 const { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
-const { needsFullSuite, needsRscSuite, touchesDeployment } = require("./change-scope.cjs");
+const {
+  needsFullSuite,
+  needsRscSuite,
+  touchesDeployment,
+  needsDenoLibrary,
+  rustIntegrationScope,
+} = require("./change-scope.cjs");
 
 test("documentation edits retain site checks without the workspace suite", () => {
   assert.equal(
@@ -64,6 +70,46 @@ test("the deploy matrix runs for adapters, the router, the build and itself", ()
     assert.equal(touchesDeployment([path]), false, path);
   assert.equal(touchesDeployment([]), true);
 });
+// #1434: these ran only in the release queue, which was the first to fail.
+test("a crate change runs that crate's integration tests and uf_cli's", () => {
+  const exists = (path) => !path.startsWith("crates/uf_gone/");
+  // #1417 changed only uf_cli and broke `uf explain`'s invariant in its tests.
+  assert.equal(rustIntegrationScope(["crates/uf_cli/src/commands/sqlc.rs"], exists), "uf_cli");
+  assert.equal(
+    rustIntegrationScope(["crates/uf_fmt/src/lib.rs", "crates/uf_check/tests/intl.rs", "README.md"], exists),
+    "uf_check uf_cli uf_fmt",
+  );
+  // A crate the change deleted has no tests left to run.
+  assert.equal(rustIntegrationScope(["crates/uf_gone/src/lib.rs"], exists), "uf_cli");
+  for (const path of ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"])
+    assert.equal(rustIntegrationScope(["crates/uf_fmt/src/lib.rs", path], exists), "workspace", path);
+  assert.equal(rustIntegrationScope([], exists), "workspace");
+});
+test("the lane's own files run uf_cli's integration tests, and nothing else runs any", () => {
+  for (const path of [".github/workflows/ci.yml", "tools/ci/change-scope.cjs", "tools/ci/rust-integration.sh"])
+    assert.equal(rustIntegrationScope([path]), "uf_cli", path);
+  for (const path of ["packages/server/fetch.js", "docs/app/guide/start/$page.mdx", "tools/ci/test-browser.sh"])
+    assert.equal(rustIntegrationScope([path]), "", path);
+});
+test("the Deno library lane runs for the library, its script and the binary it drives", () => {
+  for (const path of [
+    // #1384 added a Vite test file that cannot load under Deno.
+    "packages/vite/build-passes.test.js",
+    "tests/library/payload.test.js",
+    "tools/ci/deno-library.js",
+    "tools/ci/deno-library.test.js",
+    // #1427 changed how the host reports a worker's death.
+    "crates/uf_test/src/host.rs",
+    "crates/uf_runtime/src/lib.rs",
+    "Cargo.lock",
+    "package-lock.json",
+    ".github/workflows/ci.yml",
+  ])
+    assert.equal(needsDenoLibrary(["README.md", path]), true, path);
+  for (const path of ["docs/app/guide/start/$page.mdx", "tools/ci/test-browser.sh", "examples/simple-sns-native/App.js"])
+    assert.equal(needsDenoLibrary([path]), false, path);
+  assert.equal(needsDenoLibrary([]), true);
+});
 test("missing history cannot suppress tests", () => {
   const dir = mkdtempSync(join(tmpdir(), "uf-ci-scope-"));
   try {
@@ -73,7 +119,7 @@ test("missing history cannot suppress tests", () => {
       env: { ...process.env, BASE_SHA: "a".repeat(40), GITHUB_OUTPUT: output },
       stdio: "pipe",
     });
-    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrsc=true\nrelease=false\nversion=\ndeploy=true\n");
+    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrsc=true\nrelease=false\nversion=\ndeploy=true\ndeno=true\nrust_tests=\n");
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -150,6 +196,7 @@ test("only the final release merge group gets full validation", () => {
       if (name === "node:fs") return {
         appendFileSync: (_file, value) => { output = value; },
         readFileSync: () => JSON.stringify({ version: "0.0.0-alpha.46" }),
+        existsSync: () => true,
       };
       if (name === "../release/policy.cjs") return { checkCandidate: () => release };
       throw new Error(`Unexpected dependency: ${name}`);
@@ -160,7 +207,9 @@ test("only the final release merge group gets full validation", () => {
       process: { env: { BASE_SHA: "a".repeat(40), GITHUB_EVENT_NAME: event, GITHUB_OUTPUT: "output" } },
       console: { log() {} },
     });
-    // Cargo.toml reaches nothing the RSC job tests, so only the full run takes it.
-    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\ndeploy=${full}\n`, event);
+    // Cargo.toml reaches nothing the RSC job tests, so only the full run takes
+    // it. It reaches every crate's integration tests and the binary the Deno
+    // lane drives, so the pull request runs both; the full run has its own.
+    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\ndeploy=${full}\ndeno=true\nrust_tests=${full ? "" : "workspace"}\n`, event);
   }
 });

@@ -34,6 +34,8 @@ jobs:
       release: ${{ steps.scope.outputs.release }}
       version: ${{ steps.scope.outputs.version }}
       deploy: ${{ steps.scope.outputs.deploy }}
+      deno: ${{ steps.scope.outputs.deno }}
+      rust_tests: ${{ steps.scope.outputs.rust_tests }}
     steps:
       - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
         with:
@@ -225,6 +227,14 @@ jobs:
       # the crash that can be read is the one that happens. See #1071.
       - run: ./target/release/uf run rust:test:unit
         if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full != 'true'
+      # The integration tests of the crates a pull request touched, and
+      # `uf_cli`'s, which hold the command-wide invariants — rather than
+      # leaving them to the release queue to be the first to run (#1434).
+      - run: tools/ci/test-cores.sh run tools/ci/rust-integration.sh
+        if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full != 'true' && needs.changes.outputs.rust_tests != ''
+        env:
+          RUST_TESTS: ${{ needs.changes.outputs.rust_tests }}
+          RUST_VITE_TESTS: ${{ needs.changes.outputs.deploy }}
       - run: tools/ci/test-cores.sh run ./target/release/uf run rust:test
         if: needs.changes.outputs.full == 'true'
       - if: needs.changes.outputs.code == 'true' && failure()
@@ -456,6 +466,12 @@ jobs:
       - run: ./target/release/uf run test:lib
         if: needs.changes.outputs.full == 'true'
 
+  # Runs on every pull request that reaches the library, the lane or the
+  # binary it drives (`deno` in `tools/ci/change-scope.cjs`), not only in the
+  # release queue: a Vite test that cannot load under Deno and a changed
+  # spelling of a named exception each merged green and ejected a release PR
+  # (#1434). A new failure needs a fix or a named exception that links its
+  # tracking issue in `tools/ci/deno-library.js`.
   library-deno:
     name: Library (Deno 2.9.7)
     needs: [changes, toolchain]
@@ -466,27 +482,27 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.deno == 'true'
         with:
           node-version: 24
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.deno == 'true'
         with:
           deno-version: v2.9.7
       - run: npm ci --prefer-offline --no-audit --no-fund
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.deno == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.deno == 'true'
         with:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.deno == 'true'
       # Reuse the toolchain artifact; the local task builds it as a dependency.
       - run: UF_BINARY=./target/release/uf node tools/ci/deno-library.js
-        if: needs.changes.outputs.full == 'true'
+        if: needs.changes.outputs.deno == 'true'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: needs.changes.outputs.full == 'true' && always()
+        if: needs.changes.outputs.deno == 'true' && always()
         with:
           name: deno-library
           path: .uf/deno-library
