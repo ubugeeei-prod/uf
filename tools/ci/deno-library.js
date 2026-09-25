@@ -9,8 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export function classify(report) {
-  const failures = [],
-    skips = [];
+  const failures = [];
   for (const file of report.fileReports) {
     if (file.status === "completed") continue;
     failures.push({ file: file.file, reason: file.reason });
@@ -18,29 +17,13 @@ export function classify(report) {
   for (const test of report.tests) {
     if (test.status !== "failed") continue;
     const message = test.failures.map((f) => f.message).join("\n");
-    let reason;
-    if (
-      test.failures.length === 1 &&
-      test.file === "packages/vite/relay.test.js" &&
-      message.includes("globalsBuiltinLower is not iterable")
-    )
-      reason =
-        "Deno's CommonJS interop does not expose Babel helper-globals while hooks are installed; Relay compilation is covered on Node.";
-    if (
-      test.failures.length === 1 &&
-      test.file === "packages/react-testing/dom-storage.test.js" &&
-      message.includes("Loading unprepared module:") &&
-      message.includes("/packages/react/react,")
-    )
-      reason =
-        "Deno cannot prepare this concurrent dynamic import of a Flow re-export from an external fixture; document storage probes are covered on Node.";
-    (reason ? skips : failures).push({
+    failures.push({
       file: test.file,
       name: test.name,
-      reason: reason ?? message,
+      reason: message,
     });
   }
-  return { passed: report.passed, skipped: report.skipped, runtimeSkips: skips, failures };
+  return { passed: report.passed, skipped: report.skipped, failures };
 }
 
 async function main() {
@@ -53,7 +36,7 @@ async function main() {
   const version = spawnSync(realDeno, ["--version"], { encoding: "utf8" });
   if (version.status !== 0 || !/^deno 2\.9\.7(?:\s|$)/.test(version.stdout))
     throw new Error(
-      "This lane is pinned to Deno 2.9.7; re-audit named exceptions before changing the runtime",
+      "This lane is pinned to Deno 2.9.7; re-audit its preload and declared skips before changing the runtime",
     );
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "uf-deno-library-"));
   const out = path.resolve(process.env.UF_DENO_REPORT_DIR ?? path.join(root, ".uf/deno-library"));
@@ -172,14 +155,12 @@ exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run -
   fs.writeFileSync(path.join(out, "raw.json"), JSON.stringify(raw, null, 2) + "\n");
   const summary = { runtime: version.stdout.trim(), ...classify(raw) };
   fs.writeFileSync(path.join(out, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
-  for (const skip of summary.runtimeSkips)
-    console.log(`SKIP ${skip.file}${skip.name ? ` > ${skip.name}` : ""}: ${skip.reason}`);
   for (const failure of summary.failures)
     console.error(
       `FAIL ${failure.file}${failure.name ? ` > ${failure.name}` : ""}: ${failure.reason.slice(0, 600)}`,
     );
   console.log(
-    `Deno 2.9.7: ${summary.passed} passed; ${summary.skipped} declared skips; ${summary.runtimeSkips.length} named runtime exceptions; ${summary.failures.length} failures. Reports: ${out}`,
+    `Deno 2.9.7: ${summary.passed} passed; ${summary.skipped} declared skips; ${summary.failures.length} failures. Reports: ${out}`,
   );
   process.exitCode = summary.failures.length ? 1 : 0;
 }

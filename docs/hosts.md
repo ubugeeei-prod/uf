@@ -314,18 +314,12 @@ application permission defaults are unchanged and separately exercised by
 `crates/uf_cli/tests/deno_host.rs`.
 
 The lane uploads discovery, every original result and stderr, and a combined
-summary. It prints each known runtime exception by file and, when loaded, by
-test name. Unexpected errors fail CI. The exceptions are narrow:
-
-- Rolldown native addons cannot load after Deno's module hook is installed.
-- Babel's `helper-globals` CommonJS exports are incomplete under that hook.
-- Concurrent dynamic imports from an external document-storage fixture can
-  fail with Deno's `Loading unprepared module` error.
-- Deferred hydration terminates Deno in the simulated DOM; the remaining
-  hydration cases are skipped and preceding cases remain counted as passed.
-
-These cases remain covered by the Node lanes. The exception list and runtime
-pin live in `tools/ci/deno-library.js` and must be reviewed together on upgrade.
+summary. Any failed file or test fails CI. Its CI-only preload loads Rolldown's
+native binding and Babel's CommonJS target dependencies before installing the
+Flow module hook. Document-storage probes run beneath the project so Deno can
+resolve their packages. Three declared hydration skips remain; those cases
+are covered by the Node lanes. The runtime pin lives in
+`tools/ci/deno-library.js` and must be reviewed on upgrade.
 The edge acceptance path is the existing ahead-of-time build and workerd smoke
 lane; running source tests inside workerd remains the explicitly deferred
 contract recorded in #1029.

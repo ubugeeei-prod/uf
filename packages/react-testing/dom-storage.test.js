@@ -42,7 +42,6 @@
 import { denoWorkerArguments } from "../../tests/library/deno-worker.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -59,9 +58,8 @@ function entry(name: string): string {
 /**
  * What both probes do: render a component, then use the storage that was left.
  *
- * By file URL rather than by name, and `createElement` rather than JSX, because
- * the temporary directory a probe is written to has no `node_modules` to
- * resolve a bare `@uniflowed/…` specifier from.
+ * By file URL rather than by name, and `createElement` rather than JSX, so
+ * the probe exercises the packages' source entry points on every host.
  *
  * The import is dynamic so that a probe with something to set up can set it up
  * first: a static `import` is evaluated before any statement in the module body,
@@ -138,7 +136,11 @@ type Report = {
 };
 
 function runProbe(source: string): Promise<Report> {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-dom-storage-"));
+  // Deno prepares bare imports relative to the entry point. Keep the probe
+  // beneath the project so imports made by the source packages can resolve
+  // their peers from this project's node_modules.
+  fs.mkdirSync(path.join(repository, ".uf"), { recursive: true });
+  const directory = fs.mkdtempSync(path.join(repository, ".uf", "dom-storage-"));
   const file = path.join(directory, "probe.js");
   fs.writeFileSync(file, source);
 

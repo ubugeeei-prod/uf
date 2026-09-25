@@ -13,7 +13,6 @@ it("fails native-addon errors in Vite and unrelated files", () => {
       { file: "packages/ui/ui.test.js", status: "load-failed", reason },
     ],
   });
-  expect(report.runtimeSkips.length).toBe(0);
   expect(report.failures.length).toBe(2);
   expect(report.failures[0].file).toBe("packages/vite/flight.test.js");
   expect(report.failures[1].file).toBe("packages/ui/ui.test.js");
@@ -31,7 +30,6 @@ it("fails a different error in an otherwise exempted file", () => {
       },
     ],
   });
-  expect(report.runtimeSkips.length).toBe(0);
   expect(report.failures.length).toBe(1);
 });
 it("does not accept an unexplained worker exit", () => {
@@ -70,7 +68,6 @@ it("fails when Deno exits during payload hydration", () => {
       },
     ],
   });
-  expect(report.runtimeSkips.length).toBe(0);
   expect(report.failures.length).toBe(1);
 });
 it("does not accept another uncaught exception in the payload tests", () => {
@@ -94,4 +91,29 @@ it("does not accept another uncaught exception in the payload tests", () => {
     ],
   });
   expect(report.failures.length).toBe(1);
+});
+
+it("fails the former Relay and document storage exceptions", () => {
+  const report = classify({
+    passed: 0,
+    skipped: 0,
+    fileReports: [],
+    tests: [
+      {
+        file: "packages/vite/relay.test.js",
+        name: "Relay transform",
+        status: "failed",
+        failures: [{ message: "globalsBuiltinLower is not iterable" }],
+      },
+      {
+        file: "packages/react-testing/dom-storage.test.js",
+        name: "document storage probe",
+        status: "failed",
+        failures: [{ message: "Loading unprepared module: /packages/react/react" }],
+      },
+    ],
+  });
+  expect(report.failures.length).toBe(2);
+  expect(report.failures[0].file).toBe("packages/vite/relay.test.js");
+  expect(report.failures[1].file).toBe("packages/react-testing/dom-storage.test.js");
 });
