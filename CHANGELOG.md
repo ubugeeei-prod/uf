@@ -1,5 +1,86 @@
 # Changelog
 
+## uf@0.6.0
+
+This minor release changes a few behaviours that a project may have relied on; each is
+listed under "Behaviour changes" with how to move. Commands, configuration and package APIs
+may still change between `0.x` releases.
+
+### Behaviour changes
+
+- **Route handlers and middleware run in the Server Components graph** (#1570). With RSC
+  on, `$route.js` and `$middleware.js` now load beside the pages, so a module they share
+  with a page (an in-memory store, a cache, a connection pool) is one instance per process
+  instead of two. They resolve their imports under the `react-server` condition, so
+  `react-dom/server` cannot be imported from a handler any more; render an email or other
+  HTML from a module outside the handler's graph. The decision is recorded in
+  `docs/architecture.md`. A handler importing a package with a native `.node` addon keeps
+  building (#1567); `--compile` and `--adapter` still refuse the addon by name.
+- **`[...slug]` needs at least one segment everywhere** (#1569). The runtime matcher used
+  to let it match zero segments, which the route discovery and the docs did not, so
+  `app/docs/[...slug]` answered `/docs` in place of `app/docs/$page.js`. Use the new
+  optional form `[[...slug]]` for a route that should answer its parent path too.
+- **Route errors have a fourth kind, `badRequest`** (#1572). An `$error.js` whose `match`
+  lists the three earlier kinds with no wildcard fails Flow's exhaustiveness check until it
+  handles `badRequest` or adds `_`.
+- **`@uniflowed/mock`: `api.use(a, b)` asks `a` first** (#1566), as `mock(a, b)` and MSW's
+  `server.use(a, b)` do; a later `use` call still wins over an earlier one.
+  `onUnhandledRequest: "warn"` now warns once per method and URL for each `listen()`.
+- **On Bun and Deno, `after()` callbacks run once the response body has been sent** (#1571),
+  as the deploy guide already said, rather than before the response went out.
+
+### Highlights
+
+- **Optional catch-all segments, `[[...slug]]`** (#1569). Matches zero, one or many
+  segments; the parameter is a list, empty for zero. Supported in route discovery, the
+  build, the router's matcher and links, `uf routes`, `uf lint`, middleware matching,
+  prerendering, OpenAPI paths and native app links. Refused by name beside a page at its
+  parent path.
+- **Typed search params** (#1572). A page that exports `searchParams`, a
+  `@uniflowed/validator` schema, receives the parsed value: repeated keys arrive as lists
+  where the schema says list, and strings are converted to numbers, booleans, dates and
+  literals. A query that fails the schema is a 400 `badRequest` route error before the
+  loader runs. `PageProps` takes the parsed type as its third argument
+  (`SearchParamsOf<typeof searchParams>`). Without the export nothing changes, and the new
+  `parseSearchAll` keeps every value of a repeated key. `@uniflowed/router` now depends on
+  `@uniflowed/validator`.
+- **A server action passed to a Client Component as a prop** (#1573). A Server Component
+  can hand a `"use server"` function, or a `.bind(null, …)` of one, to a Client Component;
+  the browser gets a stub that calls through the existing action wire, bound arguments
+  first. A form bound to such an action posts only after hydration, and bound arguments are
+  not encrypted: the action should check them like any argument.
+- **`notFound()` in a hydrated server action shows the not-found page** (#1568), the one a
+  loader's `notFound()` shows, in module mode and under RSC.
+- **The route-cache fill streams on Bun and Deno** (#1571), as it does on Node. The
+  deploy matrix's `streaming` cells for both hosts are now verified in CI.
+- **A warm `uf lint` skips the React Compiler** (#1574). The per-file React rules' answer
+  is kept under `.uf/cache/lint`, keyed by the `uf` binary, the file and the rules asked
+  for. `uf lint packages/ui` on this repository: about 2.05 CPU-s before, 0.34 CPU-s warm;
+  `uf check packages/ui` warm: about 2.27 to 0.5 CPU-s.
+- **Overlays enter visibly in the `@uniflowed/stylex` preset** (#1565), as they do in the
+  registry's components: the backdrop fades, dialogs fade and grow from 0.96, menus move in
+  from their side. Under reduced motion only fades and colour changes remain. Exit
+  transitions are tracked in #1564.
+- **Browser-mode tests keep their own requests off a mock** (#1566). The runner's
+  transport uses the page's original `fetch`, so a test file that calls `api.listen()`
+  no longer swallows its results.
+- **PR CI runs the suites that used to wait for a release** (#1567): a change under a
+  crate runs its integration tests and `uf_cli`'s, and a change to packages or tests runs
+  the Deno library lane.
+
+### All changes
+
+- perf(lint): keep the React tree rules' answer under .uf/cache/lint (#1574) (a5033a51)
+- ci: run the Rust integration tests and the Deno library lane on the PRs that can break them (#1567) (7e3b8ffb)
+- feat(router): typed search params, a page's schema and its parsed output (#1572) (11af97c0)
+- feat(router, vite): pass a server action to a client component as a prop (#1573) (c4d60a23)
+- fix(server): settle a Bun or Deno request after its body, so the route-cache fill streams (#1571) (74e56105)
+- feat(ui): give the stylex preset's overlays an entrance and hold it with the registry's (#1565) (83675220)
+- fix(mock): ask use() handlers in written order, warn once, keep the browser runner off the mock (#1566) (be958e89)
+- fix(vite, router): run route handlers and middleware in the rsc graph, beside the pages (#1570) (ab459790)
+- feat(router): optional catch-all segments, [[...slug]] (#1569) (e0bb9f4c)
+- fix(router): show the not-found page for notFound() in a hydrated server action (#1568) (10e61718)
+
 ## uf@0.5.0
 
 This minor release has no breaking changes. Commands, configuration and package APIs may
