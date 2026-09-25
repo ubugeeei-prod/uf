@@ -2,6 +2,7 @@
 
 ## uf@0.7.0
 
+- fix(check): type native SNS sample exports (#1585) (13d5d16c)
 - fix(check): annotate release smoke exports (#1584) (b3ccccc4)
 - bench: show production SSR losses before gains (#1582) (a2530cef)
 - bench: compare production SSR throughput with Next.js (#1581) (a8e0ff88)
