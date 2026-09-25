@@ -2,12 +2,13 @@
 
 ## uf@0.7.0
 
-- bench: show production SSR losses before gains (#1582) (a2530cef6)
-- bench: compare production SSR throughput with Next.js (#1581) (a8e0ff880)
-- test(rsc): cover documented build and render decisions (#1580) (4c40e8fbc)
-- fix(check): report unannotated export signature errors (#1577) (07862cf3e)
-- docs: complete manual readiness and package guides (#1578) (a4c6f8d8e)
-- fix(router): return 400 for malformed action text (#1579) (d4a62c18e)
+- fix(check): annotate release smoke exports (#1584) (b3ccccc4)
+- bench: show production SSR losses before gains (#1582) (a2530cef)
+- bench: compare production SSR throughput with Next.js (#1581) (a8e0ff88)
+- test(rsc): cover documented build and render decisions (#1580) (4c40e8fb)
+- fix(check): report unannotated export signature errors (#1577) (07862cf3)
+- docs: complete manual readiness and package guides (#1578) (a4c6f8d8)
+- fix(router): return 400 for malformed action text (#1579) (d4a62c18)
 
 ## uf@0.6.0
 
