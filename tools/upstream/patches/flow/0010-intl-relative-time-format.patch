@@ -10,14 +10,14 @@ type. Code using relative time must otherwise cross an untyped boundary.
 Regression: crates/uf_check/tests/intl.rs
 
 diff --git a/evals/flow-typed/environment/intl.js b/evals/flow-typed/environment/intl.js
-index af471aedf..d3448d252 100644
+index af471aedf..3e0595e35 100644
 --- a/evals/flow-typed/environment/intl.js
 +++ b/evals/flow-typed/environment/intl.js
 @@ -16,2 +16,3 @@ declare var Intl: {
    PluralRules: ?Class<Intl$PluralRules>,
 +  RelativeTimeFormat: Class<Intl$RelativeTimeFormat>,
    Segmenter: Class<Intl$Segmenter>,
-@@ -235 +236,37 @@ declare type Intl$SegmentData = {
+@@ -235 +236,47 @@ declare type Intl$SegmentData = {
  };
 +
 +type Intl$RelativeTimeFormatUnit =
@@ -45,6 +45,13 @@ index af471aedf..d3448d252 100644
 +
 +  format (value: number, unit: Intl$RelativeTimeFormatUnit): string;
 +
++  formatToParts (value: number, unit: Intl$RelativeTimeFormatUnit): Array<{
++    type: string,
++    value: string,
++    unit?: string,
++    ...
++  }>;
++
 +  resolvedOptions (): {
 +    locale: Intl$Locale,
 +    numberingSystem: string,
@@ -53,5 +60,8 @@ index af471aedf..d3448d252 100644
 +    ...
 +  };
 +
-+  static supportedLocalesOf (locales?: Intl$Locales): Intl$Locale[];
++  static supportedLocalesOf (
++    locales?: Intl$Locales,
++    options?: { localeMatcher?: 'lookup' | 'best fit', ... }
++  ): Intl$Locale[];
 +}
