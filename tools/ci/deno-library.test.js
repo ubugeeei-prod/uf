@@ -48,7 +48,7 @@ it("does not accept an unexplained worker exit", () => {
   });
   expect(report.failures.length).toBe(1);
 });
-it("accepts the payload hydration exit under the name the worker now gives it", () => {
+it("fails when Deno exits during payload hydration", () => {
   const report = classify({
     passed: 0,
     skipped: 0,
@@ -69,8 +69,8 @@ it("accepts the payload hydration exit under the name the worker now gives it", 
       },
     ],
   });
-  expect(report.runtimeSkips.length).toBe(1);
-  expect(report.failures.length).toBe(0);
+  expect(report.runtimeSkips.length).toBe(0);
+  expect(report.failures.length).toBe(1);
 });
 it("does not accept another uncaught exception in the payload tests", () => {
   const report = classify({
