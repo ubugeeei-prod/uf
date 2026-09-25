@@ -2,6 +2,7 @@
 
 import { headers } from "@uniflowed/server";
 import { createServerEnvironment } from "@uniflowed/relay/rsc_EXPERIMENTAL";
+import type { ServerEnvironment } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
 import { environment } from "../_shared/relay-environment.js";
 import sessionQuery from "../_shared/__generated__/SnsSessionQuery.graphql.js";
@@ -13,7 +14,7 @@ import { endpoint, sessionCookie } from "./upstream.js";
 // React.cache in Relay scopes this factory to one RSC request. A module-level
 // Environment would share identities and private records between visitors.
 
-export const relay = createServerEnvironment(() =>
+export const relay: ServerEnvironment = createServerEnvironment(() =>
   environment(endpoint(), sessionCookie(headers().get("cookie") ?? "")),
 );
 
