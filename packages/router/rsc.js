@@ -50,7 +50,7 @@ import * as React from "react";
 import { use } from "react";
 // React's Flight server. Only this graph can load it: it refuses to evaluate
 // unless `react` resolved under the `react-server` condition.
-import { renderToReadableStream } from "react-server-dom-parcel/server";
+import { registerServerReference, renderToReadableStream } from "react-server-dom-parcel/server";
 
 import { noteRoute } from "@uniflowed/server/host";
 import { reportRequestError } from "@uniflowed/server/instrumentation";
@@ -86,6 +86,31 @@ export { createActionDispatcher } from "./internal/action-endpoint.js";
 // reading it renders from (ubugeeei-prod/uf#1487).
 export { createDispatcher } from "./handler.js";
 export { createMiddlewareRunner } from "./middleware.js";
+
+/**
+ * Make a server action a value Flight can send to a Client Component.
+ *
+ * `@uniflowed/vite` calls this in the rsc graph on every callable export of a
+ * `"use server"` module, with the action id the build derived for it and its
+ * `module#export` name. React's `registerServerReference` marks the function
+ * as a server reference, so a Server Component may pass it, or a
+ * `.bind(null, …)` of it, to a Client Component as a prop. Flight writes the
+ * reference and any bound arguments instead of refusing a function, and the
+ * browser decodes it into a call over uf's JSON action wire
+ * (`callServerReference` in `./action.js`). See ubugeeei-prod/uf#1359.
+ *
+ * Calling the function is unchanged, and anything that is not a function is
+ * returned untouched. A function that no manifest row registered is still
+ * refused by Flight, which is what keeps an ordinary server function from
+ * being handed to the browser by accident.
+ */
+export function registerServerFunction<T>(fn: T, id: string, name: string): T {
+  if (typeof fn !== "function") {
+    return fn;
+  }
+  registerServerReference(fn, id, name);
+  return fn;
+}
 
 /** What a host may tell the renderer about one render. */
 export type FlightOptions = {|

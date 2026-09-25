@@ -273,64 +273,100 @@ export function registerServerAction<T>(fn: T, id: string): T {
   return fn;
 }
 
+/**
+ * Call the server reference a Flight payload handed a client component.
+ *
+ * A Server Component may pass a `"use server"` function to a Client Component
+ * as a prop. In the rsc graph each callable export is registered with React's
+ * `registerServerReference` under its action id (`registerServerFunction` in
+ * `./rsc.js`), so Flight writes it as a server reference rather than refusing a
+ * function. React's browser client decodes that reference into a function
+ * that calls back here with the reference's id and the arguments, including
+ * any `.bind(null, …)` bound on the server, which React has already placed
+ * first. `hydrateFlight` installs this as that callback.
+ *
+ * `reference` is what `registerServerReference` wrote: the action id, `#`, and
+ * the `module#export` name. The call is the same one an imported reference
+ * makes, over the same JSON wire, with the same grammar, `Origin` check and
+ * deployment header. There is no second wire. An argument outside the grammar,
+ * a bound one included, is an `ActionValueError` before anything is sent. See
+ * ubugeeei-prod/uf#1359.
+ */
+export function callServerReference(
+  reference: string,
+  args: $ReadOnlyArray<mixed>,
+): Promise<ActionValue | void> {
+  const hash = reference.indexOf("#");
+  const id = hash === -1 ? reference : reference.slice(0, hash);
+  const name = hash === -1 ? reference : reference.slice(hash + 1);
+  return sendServerAction(id, name, args);
+}
+
 /** The network call one reference makes. */
 function callServerActionFor(id: string, name: string): ServerActionFunction {
-  return async function callServerAction(
-    ...args: Array<ActionArgument>
-  ): Promise<ActionValue | void> {
-    const body = encodeActionArguments(args);
-    // The page the call is made from, kept for the answer: a relative redirect
-    // means relative to this page, whatever the visitor has done since.
-    const from = currentUrl();
-    // Built rather than written as a literal, because the header's name is a
-    // constant and a computed key in an object literal is a shape Flow
-    // declines to track.
-    const headers: { [string]: string } = { "content-type": ACTION_CONTENT_TYPE };
-    headers[ACTION_HEADER] = id;
-    // Which build this page is, so a server on another build refuses the call
-    // rather than looking this id up in a table it was never in.
-    withDeployment(headers);
-    const response = await fetch(from, {
-      method: "POST",
-      // Stated rather than left to the default, because the default is what a
-      // reader has to look up and because this one is load-bearing: the
-      // endpoint's `Origin` check is only meaningful for a request that
-      // carries the visitor's cookies in the first place.
-      credentials: "same-origin",
-      // Never a cached answer, and never one written to a cache: an action is
-      // a side effect, and `POST` responses are outside HTTP caching by
-      // default only until something decides otherwise.
-      cache: "no-store",
-      headers,
-      body,
-    });
-    // A route a navigation kept may no longer show what this action wrote, and
-    // which routes is the server's to know, so every kept route is asked for
-    // again. Whatever the status: an action that failed part-way may have
-    // written before it failed. See `./internal/navigation-cache.js`.
-    clearNavigationCache();
-    // The server is on another build: nothing ran, and nothing on this page
-    // can be called correctly any more. Load the page again, from the build
-    // that is live, and never settle — a rejection here would reach an error
-    // boundary for the moment before the document is replaced, and a result
-    // would be a lie. See `./internal/deployment.js`.
-    if (refusedAsAnotherDeployment(response)) {
-      loadDocument(currentUrl());
-      return new Promise<ActionValue | void>(() => {});
-    }
-    // The action called `redirect()`, `notFound()`, `unauthorized()` or
-    // `forbidden()`. Checked before the status, because three of the four are
-    // not `ok` and none of them is a failure.
-    const outcome = response.headers.get(ACTION_OUTCOME_HEADER);
-    if (outcome != null) {
-      void response.body?.cancel();
-      return followOutcome(name, outcome, response, from);
-    }
-    if (!response.ok) {
-      throw new ServerActionError(name, response.status);
-    }
-    return decodeActionResult(await response.text());
+  return function callServerAction(...args: Array<ActionArgument>): Promise<ActionValue | void> {
+    return sendServerAction(id, name, args);
   };
+}
+
+/** Call action `id`, named `name` in an error, with `args`. */
+async function sendServerAction(
+  id: string,
+  name: string,
+  args: $ReadOnlyArray<mixed>,
+): Promise<ActionValue | void> {
+  const body = encodeActionArguments(args);
+  // The page the call is made from, kept for the answer: a relative redirect
+  // means relative to this page, whatever the visitor has done since.
+  const from = currentUrl();
+  // Built rather than written as a literal, because the header's name is a
+  // constant and a computed key in an object literal is a shape Flow
+  // declines to track.
+  const headers: { [string]: string } = { "content-type": ACTION_CONTENT_TYPE };
+  headers[ACTION_HEADER] = id;
+  // Which build this page is, so a server on another build refuses the call
+  // rather than looking this id up in a table it was never in.
+  withDeployment(headers);
+  const response = await fetch(from, {
+    method: "POST",
+    // Stated rather than left to the default, because the default is what a
+    // reader has to look up and because this one is load-bearing: the
+    // endpoint's `Origin` check is only meaningful for a request that
+    // carries the visitor's cookies in the first place.
+    credentials: "same-origin",
+    // Never a cached answer, and never one written to a cache: an action is
+    // a side effect, and `POST` responses are outside HTTP caching by
+    // default only until something decides otherwise.
+    cache: "no-store",
+    headers,
+    body,
+  });
+  // A route a navigation kept may no longer show what this action wrote, and
+  // which routes is the server's to know, so every kept route is asked for
+  // again. Whatever the status: an action that failed part-way may have
+  // written before it failed. See `./internal/navigation-cache.js`.
+  clearNavigationCache();
+  // The server is on another build: nothing ran, and nothing on this page
+  // can be called correctly any more. Load the page again, from the build
+  // that is live, and never settle — a rejection here would reach an error
+  // boundary for the moment before the document is replaced, and a result
+  // would be a lie. See `./internal/deployment.js`.
+  if (refusedAsAnotherDeployment(response)) {
+    loadDocument(currentUrl());
+    return new Promise<ActionValue | void>(() => {});
+  }
+  // The action called `redirect()`, `notFound()`, `unauthorized()` or
+  // `forbidden()`. Checked before the status, because three of the four are
+  // not `ok` and none of them is a failure.
+  const outcome = response.headers.get(ACTION_OUTCOME_HEADER);
+  if (outcome != null) {
+    void response.body?.cancel();
+    return followOutcome(name, outcome, response, from);
+  }
+  if (!response.ok) {
+    throw new ServerActionError(name, response.status);
+  }
+  return decodeActionResult(await response.text());
 }
 
 /**

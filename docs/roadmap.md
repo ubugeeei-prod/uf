@@ -155,9 +155,9 @@ in `uf`.
   that payload and navigates by fetching the next one, and no Server Component
   reaches the client bundle — the docs site went from 49 page chunks to none.
   A server-only import a client component reaches fails `uf build`, naming the
-  chain of imports from the client boundary that put it there. Still open:
-  server functions passed as props, and intercepting routes under the payload
-  router. **The split can now be read**:
+  chain of imports from the client boundary that put it there. Server functions
+  passed as props cross as server references (#1359). Still open: intercepting
+  routes under the payload router. **The split can now be read**:
   `uf dev` reports what moved across the client bundle on each save and names
   the shortest chain of imports that put it there, so `"use client"` costs what
   it costs in the terminal rather than in a bundle somebody measures later.

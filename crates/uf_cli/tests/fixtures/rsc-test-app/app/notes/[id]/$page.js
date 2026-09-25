@@ -2,6 +2,8 @@
 import * as React from "@uniflowed/react";
 import { notFound } from "@uniflowed/router";
 
+import { deleteNote } from "../_actions/notes.js";
+import { DeleteNote } from "../_components/DeleteNote.js";
 import { findNote } from "../_data/notes.server.js";
 
 export async function Page({
@@ -22,6 +24,7 @@ export async function Page({
     <article>
       <h1>{note.text}</h1>
       <p>{`by ${note.author}`}</p>
+      <DeleteNote remove={deleteNote.bind(null, note.id)} />
     </article>
   );
 }

@@ -708,7 +708,12 @@ function flowPlugin({
           } catch {
             return null;
           }
-          return serverActionSource(id, exported, declaresDefaultExport(source));
+          return serverActionSource(
+            id,
+            exported,
+            declaresDefaultExport(source),
+            flightState != null && this.environment?.name === RSC_ENVIRONMENT,
+          );
         }
       }
       return null;

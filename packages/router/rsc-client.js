@@ -28,6 +28,7 @@ import { ROOT_ID } from "./internal/document.js";
 import {
   fetchFlight,
   installBrowserModules,
+  installServerCallback,
   readDocumentPayload,
 } from "./internal/flight-browser.js";
 import { domObserver } from "./internal/payload-rows.js";
@@ -83,6 +84,7 @@ export async function hydrateFlight(options: {|
   installStaleTime(options.staleTime ?? 0);
   installFlightFetch(fetchFlight);
   installBrowserModules();
+  installServerCallback();
   const flight = readDocumentPayload(document, domObserver(document));
 
   // The route table has no base path in it, and the address bar does.

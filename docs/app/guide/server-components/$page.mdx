@@ -47,7 +47,7 @@ covers and what it does not yet.
 | The split | a Server Component never reaches the browser: the browser gets the payload it rendered and the `"use client"` modules that payload names | no known gap |
 | HTML streaming | the document streams, and carries the Flight payload its tree was rendered from; a Suspense boundary resolves from the rows that arrive later in the same response | no known gap |
 | Navigation | a navigation fetches the next route's payload at `<route>/__uf.flight`; a prerendered route has that file beside its `index.html`; an intercepted navigation asks for the page underneath with the interception in its slot | no known gap |
-| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)) and a server function passed to a client component as a prop ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359)); a form works before hydration ([Server actions](/guide/server-actions#before-the-page-hydrates)) |
+| Server actions | exported async functions in `"use server"` modules are callable by id, from an import or passed down by a Server Component as a prop, bound or not ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359)) | inline action references ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)); a form works before hydration with an imported action, not with one passed as a prop ([Server actions](/guide/server-actions#what-is-not-here)) |
 | Flight payload | React's own renderer and client (`react-server-dom-parcel`) in a second Vite environment resolved under `react-server` | no known gap |
 
 `app.rsc: false` in `uf.config.js` turns the model off: routes render from their
@@ -319,9 +319,10 @@ example in a service that the handler calls.
 
 **What is not here.**
 
-- **A server function passed to a client component as a prop.** A client
-  component imports the `"use server"` module instead; Flight server references
-  are not wired ([#1359](https://github.com/ubugeeei-prod/uf/issues/1359)).
+- **A form that posts before hydration, with an action passed as a prop.**
+  Passing an action down works once the page has hydrated. A form that has to
+  work before that imports the action instead
+  ([Server actions](/guide/server-actions#what-is-not-here)).
 - **Inline `"use server"` closures**, which have no export name to reference
   ([#1360](https://github.com/ubugeeei-prod/uf/issues/1360)).
 
