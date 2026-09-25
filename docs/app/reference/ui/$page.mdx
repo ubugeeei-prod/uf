@@ -207,22 +207,37 @@ like progress while weakening the guarantees above.
 
 ## React Aria parity
 
-React Aria is the comparison set for this package: not because uf should copy
-its API, but because it names the accessible behaviours product teams actually
-need. This table is the audit line for #948.
+React Aria is the comparison set because it names accessible behaviours product
+teams need. This is a feature audit, not a claim that every exported primitive
+has React Aria's full behaviour. **Implemented** means code and tests cover the
+named behaviour; **Partial** names what remains; **Missing** means no public
+equivalent; **Declined** is an explicit product decision. The detailed findings
+and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-prod/uf/issues/1368).
 
-| React Aria area | uf status | Tracking |
-| --- | --- | --- |
-| Interactions: press, hover, focus-visible, long press, move, keyboard and merged props | Shipped as the shared interaction layer used by the primitives above | Held by `packages/ui/interactions.test.js` |
-| Modal and overlay surfaces | Shipped: `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Popover`, `Tooltip`, `HoverCard`, `Menu`, `ContextMenu`, `Menubar` | Held by `packages/ui/ui.test.js` |
-| Select, combobox and menu collections | Shipped for select-only and editable combobox flows, with option groups, typeahead and menu semantics | Held by the `Select`, `Combobox` and `Menu` blocks in `packages/ui/ui.test.js` |
-| Standalone collection primitives | Shipped: `ListBox`, `GridList`, `Tree` and `TagGroup` with stable item keys, controlled selection, disabled keys, typeahead and optional fixed-height virtualization | [#1309](https://github.com/ubugeeei-prod/uf/issues/1309) |
-| Calendar and single-date picker | Shipped: `Calendar` and `DatePicker` cover the single-date path | Held by the calendar and date-picker blocks in `packages/ui/ui.test.js` |
-| Range and segmented date/time fields | Shipped: `RangeCalendar`, `DateRangePicker`, `DateField` and `TimeField` with segmented editing, bounds, unavailable dates and range announcements | [#1311](https://github.com/ubugeeei-prod/uf/issues/1311) |
-| Number field | Shipped: `NumberField` with locale parsing/formatting, keyboard and button stepping, bounds/step validation and `Field` integration | [#1313](https://github.com/ubugeeei-prod/uf/issues/1313) |
-| Table | Shipped for the package's table contract: sort announcements, mixed selection and row counts | Held by the table block in `packages/ui/ui.test.js` |
-| Drag/drop and color controls | Shipped: `useDragAndDrop`, collection reorder targets and `ColorPicker` with hex fields, native color input and RGBA channels | [#1310](https://github.com/ubugeeei-prod/uf/issues/1310) |
-| Locale and direction infrastructure | Shipped: `I18nProvider`, `useLocale`, `useCollator` and `useFilter`; locale typeahead and mirrored horizontal navigation | [#1312](https://github.com/ubugeeei-prod/uf/issues/1312) |
+| React Aria hook or component | Status in uf 0.7.0 |
+| --- | --- |
+| `usePress`, `useHover`, focus-visible, long press, move, keyboard, `mergeProps`, `useInteractOutside` | **Implemented** in `interactions.js`, with interaction tests |
+| `FocusScope`, `useFocusManager` | **Partial**: dialog focus handling is internal; there is no public scope or manager |
+| `VisuallyHidden`, shared live `announce()` | **Implemented** in `visually-hidden.js`, with screen-reader and lifecycle tests |
+| `useLandmark` | **Missing**: only the Toast region handles F6 |
+| `usePreventScroll`, `ariaHideOutside` | **Partial**: scroll lock lacks iOS touch/viewport handling; a dialog does not hide siblings added after opening |
+| `ListBox`, `GridList`, `Tree`, `TagGroup` | **Partial**: selection behaviour, ranges, actions and paging work; sections, interactive grid cells and localised announcements do not |
+| Virtualizer and collection drag/drop | **Partial**: fixed row heights and single-item reordering only; no variable heights or cross-collection drops |
+| `Table` | **Partial**: sorting and row counts work; range selection, grid navigation and column resizing do not |
+| `Dialog`, `AlertDialog`, `Sheet`, `Drawer` | **Implemented** for focus containment, restore and nested Escape; a public global dismiss stack is **Missing** |
+| `Popover`, `Tooltip`, `HoverCard` | **Partial**: positioning works; no Arrow part, and tooltip warmup is shared only inside one provider |
+| `Menu`, `ContextMenu`, `Menubar` | **Implemented** for keyboard and submenu behaviour; hover-open safe triangles are **Declined** |
+| `Select`, `Combobox`, `Autocomplete` | **Partial**: `Select` is single-value and opens on typeahead; `Combobox` lacks custom values and async loading; standalone `Autocomplete` is **Missing** |
+| `NumberField`, `Slider` | **Partial**: parsing, stepping and multiple slider thumbs work; form names, wheel/hold stepping and `onChangeEnd` do not |
+| `Checkbox`, `Switch`, `RadioGroup` | **Partial**: `RadioGroup` has form names; Checkbox and Switch lack native form participation and reset |
+| `CheckboxGroup`, `SearchField`, `TextField`, `Meter`, `Toolbar`, `DropZone`, `FileTrigger` | **Missing** as public primitives |
+| `ColorPicker` and colour field/area/wheel/slider | **Partial**: hex and RGBA controls exist; HSL/HSB and the other colour primitives are **Missing** |
+| `Calendar`, `RangeCalendar`, `DateField`, `TimeField`, `DatePicker`, `DateRangePicker` | **Partial**: Gregorian dates and segmented fields work; no non-Gregorian calendar or zoned date-time values, and DatePicker uses a text input rather than segmented DateField |
+| `I18nProvider`, `useLocale`, `useCollator`, `useFilter` | **Implemented** for locale and direction; built-in component announcements remain mostly English |
+
+The `packages/ui` tests cover the shipped behaviours, but component-wide
+hydration coverage and strict-mode coverage remain incomplete. A missing row
+above should be treated as unavailable when planning an application.
 
 ## Locale, collections and value fields
 
