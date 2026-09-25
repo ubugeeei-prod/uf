@@ -17,8 +17,8 @@ import { locateStatic, offerBuildFiles, staticRoot } from "./internal/static.js"
 import type { Schedule } from "./schedule.js";
 import { startSchedules } from "./schedule.js";
 import type { Logger } from "./internal/log.js";
-import { elapsedMs, logRequest, processLogger } from "./log.js";
-import { Temporal } from "@uniflowed/core/temporal";
+import { processLogger } from "./log.js";
+import { answerReturned } from "./internal/returned-response.js";
 
 /**
  * What a Deno host can do, plus whatever the deployment supplied.
@@ -140,7 +140,8 @@ export async function serve(options: {|
       // default listener line would be a second, differently-shaped one.
       onListen: () => {},
     },
-    (request: Request): Promise<Response> => answer(request, handle, options.beginRequest, log),
+    (request: Request): Promise<Response> =>
+      answerReturned(request, handle, options.beginRequest, log),
   );
 
   const shown = host === "0.0.0.0" || host === "::" ? "localhost" : host;
@@ -156,39 +157,6 @@ export async function serve(options: {|
       await server.shutdown();
     },
   };
-}
-
-async function answer(
-  request: Request,
-  handle: (request: Request) => Promise<Response>,
-  beginRequest: (request: Request) => RequestLifecycle,
-  log: Logger,
-): Promise<Response> {
-  const started = Temporal.Now.instant();
-  const target = new URL(request.url).pathname;
-  let lifecycle: RequestLifecycle | null = null;
-  let response: Response;
-  try {
-    lifecycle = beginRequest(request);
-    response = await lifecycle.run(() => handle(request));
-  } catch (error) {
-    log.error("request failed", { error, path: target });
-    response = new Response("500 Internal Server Error\n", {
-      status: 500,
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
-  } finally {
-    logRequest(log, {
-      requestId: lifecycle?.context.id ?? "",
-      method: request.method.toUpperCase(),
-      path: target,
-      route: lifecycle?.context.route ?? null,
-      status: response?.status ?? 500,
-      durationMs: elapsedMs(started),
-    });
-    if (lifecycle != null) await lifecycle.settle();
-  }
-  return response;
 }
 
 function argument(name: string): string | null {
