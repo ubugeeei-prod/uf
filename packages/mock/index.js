@@ -84,10 +84,12 @@
 // `.text` and `.error`, all producing a real `Response` subclass. `delay(ms)`
 // and `delay("infinite")` for asserting a loading state. `passthrough()`.
 // Per-test `use()` overrides and a `resetHandlers()` that restores the declared
-// set — including handlers a `once` had spent. A request log with method, URL,
-// headers and body, in request order, with `json()` on it. `"error"`, `"warn"`
-// and `"bypass"` for unhandled requests. `listen()`/`close()`, which restore
-// `globalThis.fetch` and refuse to nest.
+// set — including handlers a `once` had spent. A later `use()` call wins over
+// an earlier one, and the handlers of one call are asked in the order written.
+// A request log with method, URL, headers and body, in request order, with
+// `json()` on it. `"error"`, `"warn"` and `"bypass"` for unhandled requests,
+// `"warn"` warning once per distinct method and URL per `listen()`.
+// `listen()`/`close()`, which restore `globalThis.fetch` and refuse to nest.
 //
 // **Experimental.** Relative URLs. Because this replaces `fetch` outright it
 // can resolve `fetch("/api/users")` itself, against `location.origin` when a
@@ -98,9 +100,10 @@
 // string on every host.
 //
 // **Not implemented.** Any transport other than `globalThis.fetch`:
-// `XMLHttpRequest` (including happy-dom's, which `@uniflowed/react-testing`
-// installs), `node:http`/`node:https` and so axios's Node adapter, `node-fetch`
-// and `got`, plus `WebSocket`, `EventSource` and `navigator.sendBeacon`. MSW
+// `XMLHttpRequest` (which `@uniflowed/react-testing` does not install, so under
+// its DOM on Node there is none to call; in a real browser there is, and it is
+// not intercepted), `node:http`/`node:https` and so axios's Node adapter,
+// `node-fetch` and `got`, plus `WebSocket`, `EventSource` and `navigator.sendBeacon`. MSW
 // reaches those through `@mswjs/interceptors`; uf does not yet, and until it
 // does a request through one of them is invisible here rather than failing
 // loudly, which is the one gap in this package's own rule about silence. A

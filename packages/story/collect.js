@@ -23,13 +23,11 @@
 // build, the way `$page.native.js` is, and [`findStoryFiles`] leaves it
 // alone until there is a renderer that could mount it.
 //
-// **`story` is not yet one of the roles the Rust grammar defines.** Adding it
-// is one arm in `ReservedRole` in `crates/uf_router/src/reserved.rs`, and
-// this package cannot make that change from JavaScript. Until it lands,
-// `uf lint` reports `router/reserved-files` on every `$story.js` — the
-// name is right and the linter has not been told. `index.js` lists it under
-// **Readiness** rather than leaving it to be discovered by whoever writes the
-// first story file.
+// `story` is one of the roles `ReservedRole` in
+// `crates/uf_router/src/reserved.rs` defines, so `uf lint`'s
+// `router/reserved-files` accepts `$story.js` and its variants and still
+// reports a misspelling such as `$stori.js`. The variant list below mirrors
+// `ReservedVariant`, `client` included; a test pins it.
 //
 // # What makes a file a story file is the name, and what makes it valid is
 // the export
@@ -79,10 +77,17 @@ export const STORY_FILE: "$story.js" = "$story.js";
  *
  * The router's vocabulary, exactly. `"default"` has no segment in the name.
  */
-export type StoryVariant = "default" | "native" | "ios" | "android" | "web" | "test";
+export type StoryVariant = "default" | "native" | "ios" | "android" | "web" | "test" | "client";
 
-/** The variants, in the order `uf_router::ReservedVariant` declares them. */
-const VARIANTS: $ReadOnlyArray<StoryVariant> = ["native", "ios", "android", "web", "test"];
+/** The variants, in the order `uf_router::ReservedVariant::all` lists them. */
+const VARIANTS: $ReadOnlyArray<StoryVariant> = [
+  "native",
+  "ios",
+  "android",
+  "web",
+  "test",
+  "client",
+];
 
 /** Directory names the walk never descends into. */
 const IGNORED: $ReadOnlyArray<string> = [

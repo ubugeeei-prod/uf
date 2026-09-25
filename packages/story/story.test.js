@@ -326,6 +326,7 @@ describe("the reserved story file name", () => {
     expect(classifyStoryFile("$story.android.js")).toBe("android");
     expect(classifyStoryFile("$story.web.js")).toBe("web");
     expect(classifyStoryFile("$story.test.js")).toBe("test");
+    expect(classifyStoryFile("$story.client.js")).toBe("client");
   });
 
   it("rejects names uf does not define", () => {
@@ -351,6 +352,7 @@ describe("the reserved story file name", () => {
   it("treats only the default variant as the file a renderer mounts", () => {
     expect(isStoryEntry("$story.js")).toBe(true);
     expect(isStoryEntry("$story.native.js")).toBe(false);
+    expect(isStoryEntry("$story.client.js")).toBe(false);
   });
 });
 

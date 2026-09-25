@@ -639,6 +639,10 @@ function harnessHtml(map: string, browserToken: string): string {
     '<meta charset="utf-8">',
     "<title>uf test</title>",
     `<script>globalThis[Symbol.for("uf.test.browser.token")]=${JSON.stringify(browserToken)}</script>`,
+    // Before any module, so before any test file can replace it: the runner
+    // reports through this `fetch`, never through a mocked global. See
+    // `./runner-fetch.js`.
+    '<script>globalThis[Symbol.for("uf.test.browser.fetch")]=globalThis.fetch.bind(globalThis)</script>',
     `<script type="importmap">${map}</script>`,
     `<script type="module" src="${page}"></script>`,
     "",

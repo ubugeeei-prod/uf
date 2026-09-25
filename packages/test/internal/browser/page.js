@@ -37,6 +37,7 @@
 import * as output from "../output.js";
 import { run } from "../run.js";
 import { installInSourceTests } from "../../in-source.js";
+import { runnerFetch } from "./runner-fetch.js";
 
 /** One file, as the server hands it over. */
 type PageRequest = {
@@ -74,7 +75,9 @@ function flush(): Promise<void> {
   if (already != null) return already;
   if (queue.length === 0) return Promise.resolve();
   const batch = queue.splice(0, queue.length);
-  const sent = fetch("/uf-test/events", {
+  // Not the global: a file that installed a request mock owns that one, and
+  // would answer the runner's report as an unhandled request.
+  const sent = runnerFetch("/uf-test/events", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(batch),
@@ -195,7 +198,7 @@ function page(): $FlowFixMe {
 async function serve(): Promise<void> {
   let request: PageRequest;
   try {
-    request = await (await fetch("/uf-test/next")).json();
+    request = await (await runnerFetch("/uf-test/next")).json();
   } catch {
     // The driver has gone. Nothing to report it to.
     return;

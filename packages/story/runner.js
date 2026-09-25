@@ -7,6 +7,7 @@
 // does not write the same mount-play-unmount block once per story.
 //
 //   import { describe, it } from "@uniflowed/test";
+//   import { findStory } from "@uniflowed/story";
 //   import { describeStories, storyTest } from "@uniflowed/story/runner";
 //   import { stories } from "./$story.js";
 //
@@ -37,11 +38,12 @@
 // # What `uf test` can and cannot see here
 //
 // `uf test` discovers test declarations by scanning source text for `it(` and
-// `describe(` with a **string literal** first argument, and a file with no
-// such declaration is not run at all. [`describeStories`] registers its cases
-// from the set, so their names are not literals — which means a file whose
-// only content is a `describeStories` call is skipped silently, reported as
-// zero files and zero tests, and exits 0.
+// `test(` with a **string literal** first argument, and a file with no such
+// declaration is not run at all. `describe(` is read too, for the names of the
+// cases inside it, but a `describe` alone does not make a file runnable.
+// [`describeStories`] registers its cases from the set, so their names are not
+// literals — which means a file whose only content is a `describeStories` call
+// is skipped silently, reported as zero files and zero tests, and exits 0.
 //
 // So a story test file must contain at least one literal declaration, and the
 // shape above is the recommended one: a literal `describe` is not enough,

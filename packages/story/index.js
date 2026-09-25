@@ -84,7 +84,8 @@
 // props on the set and a partial override per story, with per-story and
 // per-set decorators, mocks and play functions; names defaulting to the
 // declaration key; stable `title--name` ids. Collecting them: the
-// `$story.js` reserved name with the router's variant vocabulary, a
+// `$story.js` reserved name — a role in `crates/uf_router/src/reserved.rs`,
+// so `uf lint` accepts it — with the router's variant vocabulary, a
 // bounded walk that skips `node_modules` and symlinks, loading every story
 // set a file exports, and rejecting two stories that share an id. Rendering
 // one into `@uniflowed/react-testing`'s DOM, with the story's handlers
@@ -94,19 +95,10 @@
 // path and the original error. `renderStoryToHtml` for something that is not
 // a test. One `it` per story through `@uniflowed/story/runner`.
 //
-// **Experimental.** The `$story.js` name itself. It follows uf's reserved
-// grammar — `$<role>[.<variant>].js` — but `story` is not yet one of the
-// roles `crates/uf_router/src/reserved.rs` defines, and that file is the
-// grammar's single source of truth for `uf create`, the router and the
-// linter. Until a `story` role is added there, **`uf lint` reports
-// `router/reserved-files` on every `$story.js`**: the name is right and
-// the linter has not been told. The alternative was to invent a second
-// convention (`*.stories.js`) that no uf tool knows about, which is worse.
-//
-// `describeStories` is experimental for a different reason, and it is a
-// property of `uf test` rather than of this package: discovery scans source
-// text for `it(` with a string-literal name, so a file whose only content is
-// a `describeStories` call is skipped — silently, reporting zero files and
+// **Experimental.** `describeStories`, and for a reason that is a property of
+// `uf test` rather than of this package: discovery scans source text for
+// `it(` or `test(` with a string-literal name, so a file whose only content
+// is a `describeStories` call is skipped — silently, reporting zero files and
 // exiting 0. `runner.js` documents the shape that works today and
 // `storyTest` is the escape hatch.
 //
@@ -114,11 +106,12 @@
 // no browser canvas and no static story site: this package produces the index
 // and the markup those would need, and nothing renders them for a person yet
 // beyond a string. `withBrowser` is deliberately gone rather than carried
-// over — `@uniflowed/browser` is still a declaration whose every function
-// throws, so a story that claimed to drive a real browser would be claiming a
-// capability that does not exist. For the same reason nothing here talks to
-// `@uniflowed/vrt`; `storyId` is exported so that a baseline can be filed
-// under the same name when it does.
+// over. `@uniflowed/browser` now wraps `@uniflowed/test/browser`, which drives
+// a real page under `uf test --browser`, but no story API is built on it yet:
+// a story renders into `@uniflowed/react-testing`'s DOM, and a story test that
+// wants a real browser opens one itself. Nothing here talks to
+// `@uniflowed/vrt` either; `storyId` is exported so that a baseline can be
+// filed under the same name when something does.
 //
 // Also absent, and each for a reason rather than by oversight: no Storybook
 // CSF compatibility, no `argTypes`, controls or knobs (a control panel needs
