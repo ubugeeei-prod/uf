@@ -119,6 +119,65 @@ export default component Post(params: {| readonly slug: string |}) {
 }
 ```
 
+## The query string
+
+A page is also given `searchParams`, the query string. By default it is a map
+of strings, one per key. A repeated key keeps its last value, so `?tag=a&tag=b`
+gives `{ tag: "b" }`. `parseSearchAll(search)` from `@uniflowed/router` keeps
+every value, for a page that needs the repeats and declares nothing else.
+
+A page can declare its query with a
+[`@uniflowed/validator`](/guide/validation) schema instead. The page is then
+given the schema's output, typed:
+
+```js
+// @flow
+// app/search/$page.js
+import type { PageProps, SearchParamsOf } from "@uniflowed/router";
+import { array, number, object, optional, pipe, integer, min, string, withDefault } from "@uniflowed/validator";
+
+export const searchParams = object({
+  q: optional(string()),
+  page: withDefault(pipe(number(), integer(), min(1)), 1),
+  tag: array(string()),
+});
+
+export default component Search(
+  ...props: PageProps<{}, void, SearchParamsOf<typeof searchParams>>
+) {
+  const { q, page, tag } = props.searchParams; // ?string, number, $ReadOnlyArray<string>
+  return <Results query={q} page={page} tags={tag} />;
+}
+```
+
+Before the schema runs, the router shapes the query and coerces its strings:
+
+- **Lists.** A field the schema describes as an array, a set or a tuple gets
+  every value of its key, in order: `?tag=a&tag=b` gives `["a", "b"]`. If the
+  key is missing, a plain array field gets `[]`. An `optional(array(…))` field
+  stays absent. Any other field gets the last value, as the plain map does.
+- **Coercion.** Every value in a query is a string. A field the schema reads as
+  a number, a boolean, a bigint, a date or a literal of one gets the value the
+  string spells, when it spells one: `"2"` becomes `2` and `"true"` becomes
+  `true`. A string that spells nothing is passed on unchanged, and the schema
+  reports it with its own message. An empty value is not zero. A field the
+  schema reads as a string is left alone, so
+  `pipe(string(), transform(parseCursor))` still gets the string.
+- **The schema decides the rest**: optionality, defaults, refinements, and
+  whether an unknown key is dropped (`object`), refused (`strictObject`) or kept
+  (`looseObject`).
+
+The schema runs before the page's loader. If the query does not fit, the loader
+does not run: the route renders the nearest [`$error.js`](#when-a-page-throws)
+with a `400` and a `RouteError` of `{ kind: "badRequest", issues }`. Each issue
+has `path`, `code` and `message`. A page with a schema is always
+[rendered per request](#when-a-route-is-rendered), since a document written
+once would answer every query the same way.
+
+Only the page receives the parsed value. `useRoute()`, a loader and
+`generateMetadata` still get the string map, and so does a page inside a
+[parallel-route slot](#parallel-routes).
+
 ## Layouts nest
 
 Every layout on the path wraps the page, outermost first. This site has two: the
@@ -456,9 +515,10 @@ export default component Error(error: RouteError, reset: () => void) {
     <section>
       <h1>
         {match (error) {
+          {kind: "badRequest", ...} => "That search does not make sense",
           {kind: "unauthorized"} => "Please sign in",
           {kind: "forbidden"} => "You cannot read this page",
-          {kind: "thrown"} => "This page did not load",
+          {kind: "thrown", ...} => "This page did not load",
         }}
       </h1>
       <button type="button" onClick={reset}>Try again</button>
@@ -476,7 +536,8 @@ One file, not three. `unauthorized()` and `forbidden()` are thrown the way
 `notFound()` is, and they arrive here as cases of one `RouteError` rather than
 as `$unauthorized.js` and `$forbidden.js` — so `match` says all three in
 the place a reader looks for the answer, and Flow says which one you forgot.
-The statuses are 401, 403 and 500.
+The statuses are 401, 403 and 500, and 400 for a query that fails the page's
+[`searchParams` schema](#the-query-string).
 
 `reset()` re-renders the subtree the boundary replaced. When the failure was a
 loader's, it re-runs the resolution; when it was the browser rendering, it
@@ -1182,7 +1243,9 @@ export const dynamic = "force-dynamic";
 ```
 
 `generateStaticParams` cannot express that — there are no parameters to
-generate — which is why this exists. Use it for a page whose content depends on
+generate — which is why this exists. A page that exports a
+[`searchParams` schema](#the-query-string) is also rendered per request, without
+this line, because its output depends on the query. Use it for a page whose content depends on
 the request: one that reads `cookies()` or `headers()`, or that has to be fresh
 on every visit. `"auto"` is the default and is the same as not writing the line.
 

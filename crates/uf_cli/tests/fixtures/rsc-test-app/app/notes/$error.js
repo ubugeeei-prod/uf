@@ -8,6 +8,7 @@ export default component NoteError(error: RouteError, reset: () => void) {
     <section id="note-error">
       {
         match (error) {
+          {kind: "badRequest", ...} => "This note cannot be shown for that address.",
           {kind: "unauthorized"} => "Sign in to read this note.",
           {kind: "forbidden"} => "This note is not yours.",
           {kind: "thrown", ...} => "This note did not load.",

@@ -537,6 +537,7 @@ function renderFailure(resolved: ResolvedRoute): mixed {
   }
   return match (resolved.error) {
     {kind: "thrown", error: const error} => error,
+    {kind: "badRequest", ...} => undefined,
     {kind: "unauthorized"} => undefined,
     {kind: "forbidden"} => undefined,
   };

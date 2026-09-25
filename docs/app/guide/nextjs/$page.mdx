@@ -110,7 +110,7 @@ The rows where Flow should put uf ahead rather than level.
 | --- | --- | --- |
 | `typedRoutes`, which checks `<Link href>` | a generated `route()` builder whose paths and parameters `uf check` checks ([Types for routes](/guide/routing#types-for-routes)); `<Link to>` and `router.push` still take any string | Partial |
 | Route parameters | typed per route in the generated `router.js` | Implemented |
-| `searchParams` | `{ [string]: string }`, and a repeated key keeps one value | Planned: a page declares a Validator schema and receives its output type, [#1362](https://github.com/ubugeeei-prod/uf/issues/1362) |
+| `searchParams` | a page exports a Validator schema as `searchParams` and receives its output type, with repeated keys as arrays where the schema says array and a `400` for a query that does not fit ([The query string](/guide/routing#the-query-string)); without one, `{ [string]: string }` plus `parseSearchAll` for the repeats | Implemented |
 | Whether an action's arguments can cross the network | `uf prepare` holds every action's arguments and result against the wire grammar in one `uf check` ([The types the wire needs](/guide/server-actions#the-types-the-wire-needs)) | Implemented; Next.js has no equivalent |
 
 ## Where it runs

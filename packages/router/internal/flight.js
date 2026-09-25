@@ -50,7 +50,7 @@ export type RouteState = {|
   readonly deferred: ?Promise<mixed>,
   readonly metadata: Metadata,
   readonly viewTransition: ?string,
-  readonly status: 200 | 401 | 403 | 404 | 500,
+  readonly status: 200 | 400 | 401 | 403 | 404 | 500,
   readonly error: ?RouteError,
   readonly interception?: ?FlightInterception,
 |};
@@ -132,7 +132,8 @@ export type FetchedFlight =
  * shows and which a production payload drops along with every other `Error`
  * message. The original value is still what the server reported: this is
  * applied only to the copy that crosses. `unauthorized` and `forbidden` carry
- * nothing and pass through as they are.
+ * nothing and pass through as they are, and so does `badRequest`: its issues
+ * describe the query the visitor sent, not anything of the server's.
  */
 export function crossableRouteError(error: ?RouteError): ?RouteError {
   if (error == null || error.kind !== "thrown" || error.error instanceof Error) {

@@ -68,8 +68,13 @@ import type {
   ResolvedSlot,
   RouteTable,
 } from "./internal/resolve.js";
-import { resolveFailure, resolveInterception, resolveMatch } from "./internal/resolve.js";
-import type { RouteParams, SearchParams } from "./internal/routing.js";
+import {
+  pageSearchParams,
+  resolveFailure,
+  resolveInterception,
+  resolveMatch,
+} from "./internal/resolve.js";
+import type { RouteParams } from "./internal/routing.js";
 import { NotFoundError, RedirectError, nearestBoundary } from "./internal/routing.js";
 import { withServerRoute } from "./internal/server-route.js";
 
@@ -166,7 +171,7 @@ export type FlightRender =
   | {| readonly kind: "redirect", readonly status: 307 | 308, readonly location: string |}
   | {|
       readonly kind: "route",
-      readonly status: 200 | 401 | 403 | 404 | 500,
+      readonly status: 200 | 400 | 401 | 403 | 404 | 500,
       /** The payload, as React writes it. Read exactly once. */
       readonly stream: ReadableStream<Uint8Array>,
       /**
@@ -337,7 +342,7 @@ function pageElement(route: ResolvedRoute): React.Node {
       <DeferredPage
         page={route.page}
         params={route.params}
-        searchParams={route.searchParams}
+        searchParams={pageSearchParams(route)}
         loader={deferred}
       />
     );
@@ -346,19 +351,14 @@ function pageElement(route: ResolvedRoute): React.Node {
     <RoutePage
       page={route.page}
       params={route.params}
-      searchParams={route.searchParams}
+      searchParams={pageSearchParams(route)}
       data={route.data}
     />
   );
 }
 
 /** A route's page, with its loader's answer. */
-component RoutePage(
-  page: PageModule,
-  params: RouteParams,
-  searchParams: SearchParams,
-  data: mixed,
-) {
+component RoutePage(page: PageModule, params: RouteParams, searchParams: mixed, data: mixed) {
   const Page = pageComponent(page);
   // The route module's own export, looked up by route: `pageComponent` hands
   // back its `default` or `Page` as it is, so this is the same component on
@@ -378,7 +378,7 @@ component RoutePage(
 component DeferredPage(
   page: PageModule,
   params: RouteParams,
-  searchParams: SearchParams,
+  searchParams: mixed,
   loader: Promise<mixed>,
 ) {
   return <RoutePage page={page} params={params} searchParams={searchParams} data={use(loader)} />;
@@ -453,6 +453,7 @@ function renderFailure(resolved: ResolvedRoute): mixed {
   }
   return match (resolved.error) {
     {kind: "thrown", error: const error} => error,
+    {kind: "badRequest", ...} => undefined,
     {kind: "unauthorized"} => undefined,
     {kind: "forbidden"} => undefined,
   };

@@ -31,6 +31,8 @@
 
 import * as React from "react";
 
+import type { InferOutput } from "@uniflowed/validator";
+
 import type { RouteError } from "./internal/runtime.js";
 
 export type {
@@ -59,6 +61,8 @@ export type {
   Router,
   ResolvedSlot,
   SearchParams,
+  SearchParamsAll,
+  SearchParamsIssue,
   SlotRecord,
   SlotRouteRecord,
   TemplateModule,
@@ -72,6 +76,7 @@ export {
   RedirectError,
   RouteView,
   RouterProvider,
+  SearchParamsError,
   UnauthorizedError,
   basePath,
   buildRoute,
@@ -80,6 +85,7 @@ export {
   matchRoute,
   notFound,
   parseSearch,
+  parseSearchAll,
   permanentRedirect,
   redirect,
   resolveFailure,
@@ -96,15 +102,33 @@ export {
   useSeo,
 } from "./internal/runtime.js";
 
-/** Props a page receives. */
+/**
+ * Props a page receives.
+ *
+ * `TSearchParams` is the query string as the page is given it: the string map
+ * — one value per key, the last of a repeated one — unless the page exports a
+ * `searchParams` schema, when it is that schema's output. Spell it with
+ * [`SearchParamsOf`] so the prop and the export cannot drift apart:
+ *
+ *     export const searchParams = object({ page: number(), tag: array(string()) });
+ *     export component Page(...props: PageProps<{}, void, SearchParamsOf<typeof searchParams>>)
+ */
 export type PageProps<
   TParams extends { readonly [string]: string | $ReadOnlyArray<string> } = {},
   TData = void,
+  TSearchParams = { readonly [string]: string },
 > = {|
   readonly params: TParams,
-  readonly searchParams: { readonly [string]: string },
+  readonly searchParams: TSearchParams,
   readonly data: TData,
 |};
+
+/**
+ * What a page that exports `searchParams = schema` is given as its
+ * `searchParams` prop: the schema's output, the same type
+ * `@uniflowed/validator`'s `InferOutput` reads off it.
+ */
+export type SearchParamsOf<TSchema> = InferOutput<TSchema>;
 
 /** Props an `$error.js` component receives. */
 export type ErrorProps = {|

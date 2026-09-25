@@ -24,10 +24,12 @@
 import * as React from "react";
 
 import { ResolvedErrorPage } from "./error-view.js";
+import { parseSearchParams } from "./search-params.js";
 import {
   ForbiddenError,
   NotFoundError,
   RedirectError,
+  SearchParamsError,
   UnauthorizedError,
   matchIn,
   matchRoute,
@@ -50,6 +52,7 @@ import type {
   SlotRouteRecord as RoutingSlotRouteRecord,
   TemplateRecord as RoutingTemplateRecord,
 } from "./routing.js";
+import type { Schema } from "@uniflowed/validator";
 
 /**
  * A component found in a route module.
@@ -88,7 +91,8 @@ export type RouteComponent = React.ComponentType<empty>;
  */
 export type PageRenderProps = {|
   readonly params: RouteParams,
-  readonly searchParams: SearchParams,
+  /** The string map, or the output of the page's `searchParams` schema. */
+  readonly searchParams: mixed,
   readonly data: mixed,
 |};
 
@@ -116,6 +120,13 @@ export type PageModule = {
   readonly default?: RouteComponent,
   readonly Page?: RouteComponent,
   readonly loader?: (args: LoaderArgs) => mixed | Promise<mixed>,
+  /**
+   * A `@uniflowed/validator` schema for the query string. The page is then
+   * given its output as `searchParams` rather than the string map, and a
+   * query that does not fit it is the error boundary with a `400`. See
+   * `./search-params.js`.
+   */
+  readonly searchParams?: Schema<mixed, mixed>,
   readonly metadata?: Metadata,
   readonly generateMetadata?: (args: MetadataArgs) => Metadata | Promise<Metadata>,
   readonly generateStaticParams?: () =>
@@ -460,6 +471,11 @@ export type ResolvedRoute = {|
   readonly path: string,
   readonly params: RouteParams,
   readonly searchParams: SearchParams,
+  /**
+   * What the page's `searchParams` schema made of the query, when it exports
+   * one; absent otherwise. [`pageSearchParams`] is what the page is given.
+   */
+  readonly parsedSearchParams?: mixed,
   readonly page: PageModule,
   readonly layouts: $ReadOnlyArray<LayoutModule>,
   /** What the loader returned, once it has. `undefined` while `deferred` is set. */
@@ -490,7 +506,7 @@ export type ResolvedRoute = {|
    * carries it and never reads it; see "View transitions".
    */
   readonly viewTransition: ?string,
-  readonly status: 200 | 401 | 403 | 404 | 500,
+  readonly status: 200 | 400 | 401 | 403 | 404 | 500,
   /**
    * Set when this resolution *is* the error page: the loader threw, or the
    * server render did and the renderer resolved again. `null` on the ordinary
@@ -762,6 +778,12 @@ async function resolveRoute(
     loadOnce(load),
     Promise.all(matched.route.layouts.map((layout) => loadOnce(layout))),
   ]);
+  // Before anything else is started, and before the loader above all: a query
+  // the page's schema refuses is a `400`, and nothing the page does should run
+  // on a request it has said it cannot answer. The throw is a
+  // `SearchParamsError`, which `resolveMatch` hands to the error boundary.
+  const schema = page.searchParams;
+  const parsed = schema == null ? null : { value: await parseSearchParams(schema, search) };
   // Started here and awaited at the end: the boundary's module does not depend
   // on the loader, so importing it alongside costs a navigation nothing. It
   // never rejects, so an early throw below leaves no unhandled rejection.
@@ -832,6 +854,7 @@ async function resolveRoute(
     path: matched.route.path,
     params: matched.params,
     searchParams,
+    ...(parsed == null ? {} : { parsedSearchParams: parsed.value }),
     page,
     layouts,
     data,
@@ -1299,7 +1322,18 @@ export function routeErrorFor(error: mixed): RouteError {
   if (error instanceof ForbiddenError) {
     return { kind: "forbidden" };
   }
+  if (error instanceof SearchParamsError) {
+    return { kind: "badRequest", issues: error.issues };
+  }
   return { kind: "thrown", error };
+}
+
+/**
+ * The `searchParams` a resolved route's page is given: its schema's output when
+ * it exports one, and the query's string map when it does not.
+ */
+export function pageSearchParams(resolved: ResolvedRoute): mixed {
+  return resolved.page.searchParams != null ? resolved.parsedSearchParams : resolved.searchParams;
 }
 
 /**
@@ -1591,6 +1625,7 @@ component DefaultNotFound() {
 /** The document title an error page gets when nothing declared one. */
 export function errorTitle(error: RouteError): string {
   return match (error) {
+    {kind: "badRequest", ...} => "Bad request",
     {kind: "unauthorized"} => "Sign in required",
     {kind: "forbidden"} => "Not allowed",
     {kind: "thrown", ...} => "Something went wrong",
