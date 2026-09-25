@@ -8,59 +8,17 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-// Each exception below is tracked in ubugeeei-prod/uf#1433; remove it there
-// when its cause is fixed.
-const NATIVE =
-  "Deno cannot load Rolldown's native addon after registerHooks; the Node library lanes cover these tests.";
-const nativeFiles = new Set([
-  "packages/router/base-path.test.js",
-  "packages/router/error-boundary.test.js",
-  "packages/router/navigation-cache.test.js",
-  "packages/router/strict-mode.test.js",
-  "packages/vite/a11y-audit.test.js",
-  "packages/vite/barrel-imports.test.js",
-  // Added in #1384, after the rest of this list; it imports Vite like them (#1433).
-  "packages/vite/build-passes.test.js",
-  "packages/vite/devtools.test.js",
-  // Added in #1486; it builds the route table through Vite like the rest (#1433).
-  "packages/vite/error-boundaries.test.js",
-  "packages/vite/flight-dev-urls.test.js",
-  "packages/vite/flight.test.js",
-  "packages/vite/rsc-requirements.test.js",
-  // The RSC HMR hook is in the Vite plugin and imports Rolldown (#1433).
-  "packages/vite/rsc-hmr.test.js",
-  "packages/vite/rsc-split.test.js",
-  "tests/library/server-actions.test.js",
-]);
-const nativeCases = new Set([
-  "packages/server/flight.test.js|the payload URL > is the same segment in the Vite plugin, which answers it under uf dev",
-  "packages/vite/dev-head-transform.test.js|the head chunk `uf dev` hands to Vite > keeps the transform working on a document that stops inside the body",
-  "packages/vite/dev-head-transform.test.js|the head chunk `uf dev` hands to Vite > moves an `injectTo: body` tag to the top of the body, and nothing else",
-]);
-
 export function classify(report) {
   const failures = [],
     skips = [];
   for (const file of report.fileReports) {
     if (file.status === "completed") continue;
-    if (
-      nativeFiles.has(file.file) &&
-      file.status === "load-failed" &&
-      file.reason.includes("Cannot find native binding.")
-    ) {
-      skips.push({ file: file.file, reason: NATIVE });
-    } else failures.push({ file: file.file, reason: file.reason });
+    failures.push({ file: file.file, reason: file.reason });
   }
   for (const test of report.tests) {
     if (test.status !== "failed") continue;
     const message = test.failures.map((f) => f.message).join("\n");
     let reason;
-    if (
-      test.failures.length === 1 &&
-      nativeCases.has(`${test.file}|${test.name}`) &&
-      message.includes("Cannot find native binding.")
-    )
-      reason = NATIVE;
     if (
       test.failures.length === 1 &&
       test.file === "packages/vite/relay.test.js" &&
@@ -110,7 +68,7 @@ args=()
 for arg in "$@"; do
   case "$arg" in --allow-read=*|--allow-write=*|--allow-env=*|--allow-run=*) ;; *) args+=("$arg") ;; esac
 done
-exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run --allow-ffi --allow-sys=uid,homedir --allow-net=127.0.0.1,localhost,[::1] "\${args[@]}"
+exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run --allow-ffi --allow-sys=uid,homedir,osRelease --allow-net=127.0.0.1,localhost,[::1],0.0.0.0,[::] --preload ${quote(path.join(root, "tools/ci/deno-native-preload.js"))} "\${args[@]}"
 `,
     { mode: 0o755 },
   );
