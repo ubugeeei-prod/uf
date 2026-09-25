@@ -258,8 +258,6 @@ async function main() {
   ];
   for (const routeName of ["mixed", ...routes.map((route) => route.name)]) {
     const pair = rows.filter((row) => row.route === routeName);
-    // The slower throughput is first, so losses are visible before wins.
-    pair.sort((a, b) => a.requestsPerSecond - b.requestsPerSecond);
     for (const row of pair) {
       lines.push(
         `| ${routeName} | ${row.tool} | ${row.requestsPerSecond.toFixed(1)} | ${row.p50Ms.toFixed(
@@ -269,6 +267,31 @@ async function main() {
         } |`,
       );
     }
+  }
+  const differences = [];
+  for (const routeName of ["mixed", ...routes.map((route) => route.name)]) {
+    const ours = rows.find((row) => row.route === routeName && row.tool === "uf");
+    const next = rows.find((row) => row.route === routeName && row.tool === "next");
+    for (const [label, key, higherIsBetter] of [
+      ["req/s", "requestsPerSecond", true],
+      ["p50 ms", "p50Ms", false],
+      ["p99 ms", "p99Ms", false],
+      ...(routeName === "mixed" ? [["peak RSS MiB", "peakRssBytes", false]] : []),
+    ]) {
+      if (ours[key] == null || next[key] == null) continue;
+      const improvement =
+        (higherIsBetter ? ours[key] - next[key] : next[key] - ours[key]) / next[key];
+      differences.push({ route: routeName, metric: label, improvement });
+    }
+  }
+  // Negative percentages are uf's losses, shown before its wins.
+  differences.sort((a, b) => a.improvement - b.improvement);
+  lines.push("", "| uf vs Next | metric | uf advantage |", "| --- | --- | ---: |");
+  for (const difference of differences) {
+    const percent = difference.improvement * 100;
+    lines.push(
+      `| ${difference.route} | ${difference.metric} | ${percent >= 0 ? "+" : ""}${percent.toFixed(1)}% |`,
+    );
   }
   const table = `${lines.join("\n")}\n`;
   process.stdout.write(table);
