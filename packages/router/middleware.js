@@ -455,6 +455,12 @@ function matchPrefix(routePath: string, pathname: string): RouteParams | null {
 
   for (let index = 0; index < wanted.length; index += 1) {
     const segment = wanted[index];
+    // A prefix, so the rest of the path — none of it included — is either
+    // catch-all's: `[[...slug]]` is `:slug*?`, `[...slug]` is `:slug*`.
+    if (segment.startsWith(":") && segment.endsWith("*?")) {
+      params[segment.slice(1, -2)] = given.slice(index);
+      return params as $FlowFixMe;
+    }
     if (segment.startsWith(":") && segment.endsWith("*")) {
       params[segment.slice(1, -1)] = given.slice(index);
       return params as $FlowFixMe;

@@ -69,6 +69,21 @@ app/docs/[...path]/$page.js    →  /docs/a/b/c
 app/posts/[slug]/$page.js      →  /posts/anything
 ```
 
+`[...path]` needs at least one segment to capture, so `/docs` is not one of
+its URLs — a page at `app/docs/$page.js` answers that, if there is one. In
+double brackets the spread is optional, and captures none as well as many:
+
+```
+app/guide/[[...path]]/$page.js  →  /guide, /guide/a, /guide/a/b/c
+```
+
+`path` is a list either way, empty for `/guide`. Because an optional catch-all
+already answers the path above it, `app/guide/$page.js` beside it would be a
+second page at `/guide`, and `uf build` and `uf dev` refuse the pair by name —
+including when the other page is in a `(group)`, which does not change its URL.
+Where both could match, a static segment beats a parameter, a parameter beats a
+catch-all, and a catch-all beats an optional one.
+
 A directory named `@team` is a [parallel-route slot](#parallel-routes): it is
 not a URL segment at all. There is no escape hatch for a URL segment that
 really begins with `@`; capture it with a `[param]` instead. Inside a slot, a
@@ -86,9 +101,9 @@ without being one is refused by name rather than served as a URL.
 
 A `(group)` is untouched: it ends in `)` and always did.
 
-"The rest" is the whole rest, so a spread is the last routing directory on the
-way to a page. `app/docs/[...path]/edit/$page.js` would be a page no URL can
-reach — `[...path]` has already taken every segment, and there is none left to
+"The rest" is the whole rest, so a spread — optional or not — is the last
+routing directory on the way to a page. `app/docs/[...path]/edit/$page.js`
+would be a page no URL can reach — `[...path]` has already taken every segment, and there is none left to
 be `edit` — so `uf build` and `uf dev` refuse it by name rather than serving a
 route that never answers. A `(group)` below a spread is fine: it is not a
 segment.
@@ -1197,9 +1212,9 @@ import { route } from "../router.js";
 route("/posts/:slug", { slug: post.slug });
 ```
 
-The paths are written the way the router matches them — `:slug` for a segment
-and `:slug*` for a catch-all — which is what `RoutePath` in the generated file
-lists.
+The paths are written the way the router matches them — `:slug` for a
+segment, `:slug*` for a catch-all and `:slug*?` for an optional one — which is
+what `RoutePath` in the generated file lists.
 
 A route that takes no parameters takes no second argument:
 
@@ -1212,7 +1227,11 @@ it matches:
 
 ```js
 route("/docs/:path*", { path: ["guide", "routing"] });
+route("/guide/:path*?", { path: [] }); // `/guide`
 ```
+
+An empty list is for the optional one: `/docs/:path*` does not serve `/docs`,
+so `route` throws rather than build a link to it.
 
 Each of these is a type error rather than a 404 in production:
 

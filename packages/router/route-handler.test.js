@@ -76,7 +76,8 @@ describe("matching", () => {
     expect(await (await dispatch(get("/api/files/%E6%97%A5%E6%9C%AC/a%2Fb/%25")))?.json()).toEqual({
       rest: ["日本", "a/b", "%"],
     });
-    expect(await (await dispatch(get("/api/files")))?.json()).toEqual({ rest: [] });
+    // `[...rest]` needs a segment; `/api/files` is not one of its paths.
+    expect(await dispatch(get("/api/files"))).toBe(null);
     expect(await (await dispatch(get("/api/users/%invalid")))?.json()).toEqual({ id: "%invalid" });
   });
 
@@ -127,13 +128,20 @@ describe("matching", () => {
           record("/files/:path*", {
             GET: (request: Request, context: HandlerContext) => Response.json(context.params.path),
           }),
+          record("/collection/:path*?", {
+            GET: (request: Request, context: HandlerContext) => Response.json(context.params.path),
+          }),
         ],
       }),
     );
 
     expect(await (await dispatch(get("/files/a/b/c")))?.json()).toEqual(["a", "b", "c"]);
-    // Zero segments as well as many: `/files` is the collection.
-    expect(await (await dispatch(get("/files")))?.json()).toEqual([]);
+    // At least one segment for `[...path]`, the way a page's is: `/files` is
+    // not one of its paths. `[[...path]]` is the handler that answers the
+    // collection as well as what is in it.
+    expect(await dispatch(get("/files"))).toBe(null);
+    expect(await (await dispatch(get("/collection")))?.json()).toEqual([]);
+    expect(await (await dispatch(get("/collection/a")))?.json()).toEqual(["a"]);
   });
 
   it("prefers the more specific path", async () => {

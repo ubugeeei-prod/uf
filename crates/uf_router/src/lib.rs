@@ -172,8 +172,22 @@ fn reserved_file_applies_to_target(file: ReservedFile, target: RouteTarget) -> b
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteParamKind {
+    /// `[slug]`, spelled `:slug`: exactly one segment.
     Single,
+    /// `[...slug]`, spelled `:slug*`: the rest of the path, at least one
+    /// segment of it.
     CatchAll,
+    /// `[[...slug]]`, spelled `:slug*?`: the rest of the path, which may be
+    /// none of it — so the directory above it is one of the URLs it serves.
+    OptionalCatchAll,
+}
+
+impl RouteParamKind {
+    /// Whether the parameter takes the rest of the path, as a list.
+    #[must_use]
+    pub const fn is_catch_all(self) -> bool {
+        matches!(self, Self::CatchAll | Self::OptionalCatchAll)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,7 +245,9 @@ impl Route {
     /// how a caller gets from `/posts/hello-world` back to `/posts/:slug` and
     /// the guards above it. A catch-all consumes the rest of the path and
     /// requires at least one segment to consume, which is what
-    /// `[...slug]` means: `/docs` is not `/docs/[...slug]`.
+    /// `[...slug]` means: `/docs` is not `/docs/[...slug]`. An optional
+    /// catch-all, `[[...slug]]`, consumes the rest whatever there is of it,
+    /// none included — `/docs` *is* `/docs/[[...slug]]`.
     #[must_use]
     pub fn matches_url(&self, url: &str) -> bool {
         let mut actual = url
@@ -243,6 +259,10 @@ impl Route {
         let mut expected = self.path.split('/').filter(|segment| !segment.is_empty());
 
         while let Some(segment) = expected.next() {
+            if segment.starts_with(':') && segment.ends_with("*?") {
+                // The same, except that nothing left is a match too.
+                return expected.next().is_none();
+            }
             if segment.starts_with(':') && segment.ends_with('*') {
                 // The last thing in the path, so whatever is left of the URL
                 // is the catch-all's, and there must be some. That it is last
@@ -266,8 +286,9 @@ impl Route {
 
     /// How specific this route is, for ranking two that both serve a URL.
     ///
-    /// A static segment outranks a parameter, which outranks a catch-all, and
-    /// a longer path outranks a shorter one — three, two and one per segment.
+    /// A static segment outranks a parameter, which outranks a catch-all,
+    /// which outranks an optional one, and a longer path outranks a shorter
+    /// one — three, two, one and nothing per segment.
     ///
     /// `packages/router/internal/runtime.js`'s `specificity` is the source of
     /// truth for these numbers, and this is a copy of it. Only one of the two
@@ -294,6 +315,7 @@ impl Route {
             .split('/')
             .filter(|segment| !segment.is_empty())
             .map(|segment| match segment.as_bytes() {
+                [b':', .., b'*', b'?'] => 0,
                 [b':', .., b'*'] => 1,
                 [b':', ..] => 2,
                 _ => 3,
@@ -352,6 +374,33 @@ pub enum RouterError {
         catch_all: String,
         /// The first routing directory below it.
         following: String,
+        /// The catch-all's parameter name, for the suggested spelling.
+        parameter: String,
+    },
+    /// A `[[...param]]` page beside a page at the path above it.
+    ///
+    /// An optional catch-all serves the directory it sits in as well as every
+    /// path below it: `app/docs/[[...slug]]/$page.js` answers `/docs` with an
+    /// empty `slug`. A second page at `/docs` would be a second answer to one
+    /// URL, and nothing in the URL says which was meant — the runtime would
+    /// pick one by ranking and the other would be a page nobody reaches.
+    /// Next.js refuses the same pair, and for the same reason.
+    #[error(
+        "{page}: `{catch_all}` is an optional catch-all, so it serves `{path}` itself as well as \
+         every path below it, and `{other}` serves `{path}` too — one URL with two pages, and \
+         nothing in the URL says which. Remove `{other}` and render `{path}` here, where \
+         `{parameter}` is an empty list, or make it `[...{parameter}]`, which leaves `{path}` \
+         to `{other}`."
+    )]
+    OptionalCatchAllBesidePage {
+        /// The optional catch-all's `$page.js`.
+        page: Utf8PathBuf,
+        /// The optional catch-all directory, as it is written on disk.
+        catch_all: String,
+        /// The route path both serve: the catch-all's own path without it.
+        path: String,
+        /// The page that already serves that path.
+        other: Utf8PathBuf,
         /// The catch-all's parameter name, for the suggested spelling.
         parameter: String,
     },
@@ -648,10 +697,7 @@ pub fn discover_routes_for_target(
         // directory names say which `[...param]` the author wrote.
         if let Some((catch_all, following)) = non_terminal_catch_all(relative) {
             return Err(RouterError::NonTerminalCatchAll {
-                parameter: catch_all
-                    .trim_start_matches("[...")
-                    .trim_end_matches(']')
-                    .to_string(),
+                parameter: catch_all_parameter(&catch_all),
                 page,
                 catch_all,
                 following,
@@ -676,7 +722,72 @@ pub fn discover_routes_for_target(
     }
 
     routes.sort_by(|a, b| a.path.cmp(&b.path));
+    refuse_optional_catch_all_collisions(&routes)?;
     Ok(routes)
+}
+
+/// Refuse a `[[...param]]` page that shares its parent path with a page.
+///
+/// Asked of the table rather than of the directories, because the two pages
+/// need not be neighbours on disk: `app/(site)/docs/$page.js` serves `/docs`
+/// exactly as `app/docs/$page.js` does, and it is the path they share that
+/// makes them collide. So may their parameter names differ:
+/// `app/users/[id]/$page.js` and `app/users/[uid]/[[...tab]]/$page.js` both
+/// answer `/users/1`, which is why the paths are compared by shape. The
+/// catch-all is last in its path — a page where it is not was refused by name
+/// before the table was built — so its parent path is its own path without
+/// the last segment.
+fn refuse_optional_catch_all_collisions(routes: &[Route]) -> Result<(), RouterError> {
+    for route in routes {
+        let Some(param) = route
+            .params
+            .last()
+            .filter(|param| param.kind == RouteParamKind::OptionalCatchAll)
+        else {
+            continue;
+        };
+        let parent = match route.path.rsplit_once('/') {
+            Some(("", _)) | None => "/",
+            Some((parent, _)) => parent,
+        };
+        if let Some(other) = routes
+            .iter()
+            .find(|other| path_shape(&other.path) == path_shape(parent))
+        {
+            return Err(RouterError::OptionalCatchAllBesidePage {
+                page: route.page.clone(),
+                catch_all: format!("[[...{}]]", param.name),
+                path: parent.to_string(),
+                other: other.page.clone(),
+                parameter: param.name.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// A route path with its parameter names left out: `/users/:` for
+/// `/users/:id`. Two paths of one shape serve the same URLs.
+fn path_shape(path: &str) -> String {
+    path.split('/')
+        .map(|segment| match segment.strip_prefix(':') {
+            Some(name) => format!(
+                ":{}",
+                name.trim_start_matches(|c: char| c != '*' && c != '?')
+            ),
+            None => segment.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// The parameter name a catch-all directory captures under: `slug` for
+/// `[...slug]` and for `[[...slug]]`.
+fn catch_all_parameter(directory: &str) -> String {
+    match classify_route_segment(directory) {
+        RouteSegment::CatchAll(name) | RouteSegment::OptionalCatchAll(name) => name.to_string(),
+        _ => directory.to_string(),
+    }
 }
 
 /// What a module in the router root needs a server for.
@@ -881,7 +992,7 @@ fn check_interceptions(app_root: &Utf8Path, target: RouteTarget) -> Result<(), R
             segment
                 .param
                 .as_ref()
-                .is_some_and(|param| param.kind == RouteParamKind::CatchAll)
+                .is_some_and(|param| param.kind.is_catch_all())
         });
         if let Some(position) = catch_all
             && let Some(following) = segments.get(position + 1)
@@ -922,21 +1033,33 @@ fn check_interceptions(app_root: &Utf8Path, target: RouteTarget) -> Result<(), R
 ///
 /// Segment by segment, the way the runtime's matcher reads both: a static
 /// segment serves only itself, a parameter serves any one segment but not a
-/// catch-all's many, and a catch-all serves whatever is left as long as
-/// something is. Not whether the two are spelled alike — `/docs/:path*` serves
-/// `/docs/:slug`, and `/photo/:id` does not serve `/photo/:rest*`.
+/// catch-all's many, a catch-all serves whatever is left as long as
+/// something is, and an optional catch-all whatever is left. Not whether the
+/// two are spelled alike — `/docs/:path*` serves `/docs/:slug`, `/photo/:id`
+/// does not serve `/photo/:rest*`, and `/docs/:path*` does not serve
+/// `/docs/:path*?`, whose `/docs` it has no answer for.
 fn serves_every_url_of(ordinary: &[PathSegment], intercepted: &[PathSegment]) -> bool {
+    let kind_at = |segments: &[PathSegment], position: usize| {
+        segments
+            .get(position)
+            .and_then(|segment| segment.param.as_ref())
+            .map(|param| param.kind)
+    };
     for (position, segment) in ordinary.iter().enumerate() {
         let kind = segment.param.as_ref().map(|param| param.kind);
+        if kind == Some(RouteParamKind::OptionalCatchAll) {
+            return true;
+        }
         if kind == Some(RouteParamKind::CatchAll) {
-            return intercepted.len() > position;
+            return intercepted.len() > position
+                && kind_at(intercepted, position) != Some(RouteParamKind::OptionalCatchAll);
         }
         let Some(other) = intercepted.get(position) else {
             return false;
         };
         let other_kind = other.param.as_ref().map(|param| param.kind);
         let serves = if kind == Some(RouteParamKind::Single) {
-            other_kind != Some(RouteParamKind::CatchAll)
+            !other_kind.is_some_and(RouteParamKind::is_catch_all)
         } else {
             other_kind.is_none() && other.spelling == segment.spelling
         };
@@ -948,9 +1071,13 @@ fn serves_every_url_of(ordinary: &[PathSegment], intercepted: &[PathSegment]) ->
 }
 
 /// The directory name that would produce `segment`: `photo`, `[id]`,
-/// `[...rest]`.
+/// `[...rest]`, `[[...rest]]`.
 fn directory_spelling(segment: &PathSegment) -> String {
     match &segment.param {
+        Some(RouteParam {
+            name,
+            kind: RouteParamKind::OptionalCatchAll,
+        }) => format!("[[...{name}]]"),
         Some(RouteParam {
             name,
             kind: RouteParamKind::CatchAll,
@@ -1464,7 +1591,8 @@ pub fn write_router_manifest_for_target(
     Ok(Some(manifest))
 }
 
-/// The first `[...param]` in `relative` that has a routing directory below it,
+/// The first `[...param]` or `[[...param]]` in `relative` that has a routing
+/// directory below it,
 /// with that directory, if there is one.
 ///
 /// A `(group)` is not a routing directory — it contributes no segment to the
@@ -1485,7 +1613,10 @@ fn non_terminal_catch_all(relative: &Utf8Path) -> Option<(String, String)> {
         if let Some(found) = catch_all {
             return Some((found.to_string(), segment.to_string()));
         }
-        if matches!(classify_route_segment(segment), RouteSegment::CatchAll(_)) {
+        if matches!(
+            classified,
+            RouteSegment::CatchAll(_) | RouteSegment::OptionalCatchAll(_)
+        ) {
             catch_all = Some(segment);
         }
     }
@@ -1494,7 +1625,7 @@ fn non_terminal_catch_all(relative: &Utf8Path) -> Option<(String, String)> {
 
 /// One segment of a route path, with the parameter it captures, if any.
 struct PathSegment {
-    /// As a route path spells it: `posts`, `:slug`, `:rest*`.
+    /// As a route path spells it: `posts`, `:slug`, `:rest*`, `:rest*?`.
     spelling: String,
     param: Option<RouteParam>,
 }
@@ -1545,11 +1676,19 @@ fn path_segments(relative: &Utf8Path) -> Option<Vec<PathSegment>> {
                 // name is.
                 classify_route_segment(route)
             }
-            RouteSegment::Param(_) | RouteSegment::CatchAll(_) | RouteSegment::Literal(_) => {
-                classified
-            }
+            RouteSegment::Param(_)
+            | RouteSegment::CatchAll(_)
+            | RouteSegment::OptionalCatchAll(_)
+            | RouteSegment::Literal(_) => classified,
         };
         match named {
+            RouteSegment::OptionalCatchAll(name) => segments.push(PathSegment {
+                spelling: format!(":{name}*?"),
+                param: Some(RouteParam {
+                    name: name.to_compact_string(),
+                    kind: RouteParamKind::OptionalCatchAll,
+                }),
+            }),
             RouteSegment::CatchAll(name) => segments.push(PathSegment {
                 spelling: format!(":{name}*"),
                 param: Some(RouteParam {
@@ -1626,9 +1765,15 @@ fn route_params_type(params: &[RouteParam]) -> String {
     let fields = params
         .iter()
         .map(|param| {
+            // One list type for both catch-alls. The optional one is what
+            // takes an empty list — `route("/docs/:slug*?", { slug: [] })` is
+            // `/docs` — and the builder refuses an empty one for `:slug*`,
+            // whose route would not match the URL it built.
             let ty = match param.kind {
                 RouteParamKind::Single => "string",
-                RouteParamKind::CatchAll => "$ReadOnlyArray<string>",
+                RouteParamKind::CatchAll | RouteParamKind::OptionalCatchAll => {
+                    "$ReadOnlyArray<string>"
+                }
             };
             format!("{}: {}", param.name, ty)
         })

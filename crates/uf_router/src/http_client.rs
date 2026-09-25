@@ -27,15 +27,16 @@ pub(crate) fn generate_http_client(modules: &[ServerModule]) -> String {
             .split('/')
             .filter_map(|segment| {
                 let name = segment.strip_prefix(':')?;
-                Some(match name.strip_suffix('*') {
-                    Some(name) => RouteParam {
-                        name: name.into(),
-                        kind: RouteParamKind::CatchAll,
-                    },
-                    None => RouteParam {
-                        name: name.into(),
-                        kind: RouteParamKind::Single,
-                    },
+                let (name, kind) = if let Some(name) = name.strip_suffix("*?") {
+                    (name, RouteParamKind::OptionalCatchAll)
+                } else if let Some(name) = name.strip_suffix('*') {
+                    (name, RouteParamKind::CatchAll)
+                } else {
+                    (name, RouteParamKind::Single)
+                };
+                Some(RouteParam {
+                    name: name.into(),
+                    kind,
                 })
             })
             .collect::<Vec<_>>();
@@ -67,6 +68,11 @@ mod tests {
                 kind: ServerModuleKind::RouteHandler,
             },
             ServerModule {
+                path: "/api/docs/:rest*?".into(),
+                file: "app/api/docs/[[...rest]]/$route.js".into(),
+                kind: ServerModuleKind::RouteHandler,
+            },
+            ServerModule {
                 path: "/private".into(),
                 file: "app/private/$middleware.js".into(),
                 kind: ServerModuleKind::Middleware,
@@ -75,6 +81,7 @@ mod tests {
         assert!(source.contains("\"/api/users/:id\""));
         assert!(source.contains("id: string"));
         assert!(source.contains("path: $ReadOnlyArray<string>"));
+        assert!(source.contains("rest: $ReadOnlyArray<string>"), "{source}");
         assert!(!source.contains("/private"));
         assert!(!source.contains("$route.js"));
         let parsed = uf_fmt::format_source(&source, &uf_config::FmtConfig::default());

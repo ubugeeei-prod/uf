@@ -16,8 +16,10 @@ fn route(path: &str, directory: &str, middleware: &[&str]) -> Route {
             .split('/')
             .filter_map(|segment| segment.strip_prefix(':'))
             .map(|name| RouteParam {
-                name: name.trim_end_matches('*').into(),
-                kind: if name.ends_with('*') {
+                name: name.trim_end_matches(['*', '?']).into(),
+                kind: if name.ends_with("*?") {
+                    RouteParamKind::OptionalCatchAll
+                } else if name.ends_with('*') {
                     RouteParamKind::CatchAll
                 } else {
                     RouteParamKind::Single

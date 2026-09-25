@@ -165,7 +165,7 @@ function openApiPath(routePath) {
     .split("/")
     .map((segment) => {
       if (!segment.startsWith(":")) return segment;
-      return `{${segment.endsWith("*") ? segment.slice(1, -1) : segment.slice(1)}}`;
+      return `{${paramName(segment)}}`;
     })
     .join("/");
 }
@@ -191,9 +191,14 @@ function paramsFromPath(routePath) {
     .split("/")
     .filter((segment) => segment.startsWith(":"))
     .map((segment) => ({
-      name: segment.endsWith("*") ? segment.slice(1, -1) : segment.slice(1),
-      catchAll: segment.endsWith("*"),
+      name: paramName(segment),
+      catchAll: segment.endsWith("*") || segment.endsWith("*?"),
     }));
+}
+
+/** `slug` for `:slug`, `:slug*` (`[...slug]`) and `:slug*?` (`[[...slug]]`). */
+function paramName(segment) {
+  return segment.slice(1).replace(/\*\??$/, "");
 }
 
 function operationId(record, method) {
