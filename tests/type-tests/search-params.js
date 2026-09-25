@@ -19,6 +19,7 @@
 import * as React from "@uniflowed/react";
 
 import type { PageProps, SearchParamsOf } from "../../packages/router/index.js";
+import type { Schema } from "../../packages/validator/index.js";
 import {
   array,
   number,
@@ -29,7 +30,12 @@ import {
   transform,
 } from "../../packages/validator/index.js";
 
-export const searchParams = object({
+export const searchParams: Schema<{
+  page: number,
+  tag: Array<string>,
+  q?: string,
+  sort: boolean,
+}> = object({
   page: number(),
   tag: array(string()),
   q: optional(string()),

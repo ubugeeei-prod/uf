@@ -99,6 +99,7 @@ fn monorepo_package_json(name: &str) -> String {
 
 fn monorepo_config() -> String {
     r#"// @flow
+import type { UniflowedConfig } from "@uniflowed/config";
 import { defineConfig } from "@uniflowed/config";
 
 // The repository's configuration. `uf fmt`, `uf lint`, `uf check` and `uf test`
@@ -109,7 +110,7 @@ import { defineConfig } from "@uniflowed/config";
 // `uf build#packages/ui` runs `uf build` in that package, which is how a task
 // here reaches one package. `uf run bundle` verifies the repository, builds
 // the library, then builds the application that consumes it.
-export default defineConfig({
+const config: UniflowedConfig = defineConfig({
   tasks: {
     "serve:web": { command: "uf dev#apps/web" },
     "verify:format": { command: "uf fmt --check" },
@@ -119,6 +120,7 @@ export default defineConfig({
     bundle: { command: "uf build#apps/web", dependsOn: ["bundle:ui"] },
   },
 });
+export default config;
 "#
     .to_string()
 }
@@ -365,9 +367,10 @@ fn lib_package_json(name: &str) -> String {
 
 fn app_config() -> String {
     r#"// @flow
+import type { UniflowedConfig } from "@uniflowed/config";
 import { defineConfig } from "@uniflowed/config";
 
-export default defineConfig({
+const config: UniflowedConfig = defineConfig({
   tasks: {
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
@@ -375,6 +378,7 @@ export default defineConfig({
     bundle: { command: "uf build", dependsOn: ["verify"] },
   },
 });
+export default config;
 "#
     .to_string()
 }
@@ -392,9 +396,10 @@ export default defineConfig({
 /// side: a library has no application to serve.
 fn lib_config() -> String {
     r#"// @flow
+import type { UniflowedConfig } from "@uniflowed/config";
 import { defineConfig } from "@uniflowed/config";
 
-export default defineConfig({
+const config: UniflowedConfig = defineConfig({
   app: {
     // Turning the file-system router off is what makes this a library:
     // `uf build` compiles index.js to dist/ rather than looking for an
@@ -410,15 +415,19 @@ export default defineConfig({
     bundle: { command: "uf build", dependsOn: ["verify"] },
   },
 });
+export default config;
 "#
     .to_string()
 }
 
 fn app_entry() -> String {
     r#"// @flow
+import * as React from "@uniflowed/react";
+import type { AppProps } from "@uniflowed/router";
 import { routerView } from "@uniflowed/router";
 
-export default routerView("./app");
+const App: React.ComponentType<AppProps> = routerView("./app");
+export default App;
 "#
     .to_string()
 }
