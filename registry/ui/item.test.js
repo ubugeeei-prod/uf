@@ -28,7 +28,10 @@ describe("Item", () => {
     render(<Example />);
     expect(screen.queryAllByRole("heading")).toHaveLength(0);
     expect(screen.getByText("Ada Lovelace").tagName).toBe("P");
-    expect(screen.getByRole("link", { name: "Grace Hopper" })).toHaveAttribute("href", "#grace");
+    expect(screen.getByRole("link", { name: "Grace Hopper" })).toHaveAttribute(
+      "href",
+      "?member=grace",
+    );
   });
 
   it("puts the actions after what they act on", () => {

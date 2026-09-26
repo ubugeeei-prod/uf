@@ -26,7 +26,7 @@ export component Example() {
         </Item.Media>
         <Item.Content>
           <Item.Title>
-            <a href="#grace">Grace Hopper</a>
+            <a href="?member=grace">Grace Hopper</a>
           </Item.Title>
           <Item.Description>Member · invited yesterday</Item.Description>
         </Item.Content>
