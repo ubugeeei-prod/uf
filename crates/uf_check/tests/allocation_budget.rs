@@ -72,6 +72,5 @@ fn runtime_js_check_stays_below_the_cold_allocation_budget() {
 }
 
 fn runtime_fixture() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../npm/router/internal/runtime.js")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm/router/internal/runtime.js")
 }

@@ -46,9 +46,11 @@ jobs:
             /^\.github\/workflows\/(release[^/]*|publish|editors)\.yml$/.test(file) || file === ".github/release.json" || file === ".github/workflows/ci.yml" ||
             file.startsWith(".github/actions/rust-cache/") || file === "tools/ci/change-scope.cjs";
           let release = pr.head.ref.startsWith("release/") || files.includes(".github/release.json");
-          if (files.includes("npm/core/package.json")) {
+          if (files.some((file) => /^(packages|npm)\/core\/package\.json$/.test(file))) {
             const version = (sha) => {
-              const data = api(`repos/${repo}/contents/npm/core/package.json?ref=${sha}`);
+              const tree = api(`repos/${repo}/git/trees/${sha}`).tree;
+              const directory = tree.some((entry) => entry.path === "npm" && entry.type === "tree") ? "npm" : "packages";
+              const data = api(`repos/${repo}/contents/${directory}/core/package.json?ref=${sha}`);
               return JSON.parse(Buffer.from(data.content, "base64").toString("utf8")).version;
             };
             release ||= version(pr.base.sha) !== version(pr.head.sha);

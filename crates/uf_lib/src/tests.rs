@@ -746,13 +746,8 @@ fn string_union(source: &str, name: &str) -> BTreeSet<String> {
 /// second place with the same names in it that #710 is about.
 #[test]
 fn the_flow_declaration_names_the_same_statuses_and_categories_as_the_registry() {
-    let source = fs::read_to_string(
-        repository_root()
-            .join("npm")
-            .join("std")
-            .join("index.js"),
-    )
-    .expect("npm/std/index.js");
+    let source = fs::read_to_string(repository_root().join("npm").join("std").join("index.js"))
+        .expect("npm/std/index.js");
 
     let name_of = |value: serde_json::Value| {
         value
@@ -790,10 +785,7 @@ fn the_flow_declaration_names_the_same_statuses_and_categories_as_the_registry()
 /// for the name and the same one `uf_rsc`'s scanner applies.
 #[test]
 fn the_hook_table_names_exactly_the_hooks_the_package_exports() {
-    let entry = repository_root()
-        .join("npm")
-        .join("hooks")
-        .join("index.js");
+    let entry = repository_root().join("npm").join("hooks").join("index.js");
     let source = fs::read_to_string(&entry)
         .unwrap_or_else(|error| panic!("{} cannot be read: {error}", entry.display()));
     let exported = exported_values(&source)

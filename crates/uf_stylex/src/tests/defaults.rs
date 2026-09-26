@@ -309,8 +309,18 @@ const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[
 const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
     ("npm/ui/registry/dialog.js", "overlay", "opacity", true),
     ("npm/ui/registry/dialog.js", "panel", "transform", true),
-    ("npm/ui/registry/alert-dialog.js", "overlay", "opacity", true),
-    ("npm/ui/registry/alert-dialog.js", "panel", "transform", true),
+    (
+        "npm/ui/registry/alert-dialog.js",
+        "overlay",
+        "opacity",
+        true,
+    ),
+    (
+        "npm/ui/registry/alert-dialog.js",
+        "panel",
+        "transform",
+        true,
+    ),
     ("npm/ui/registry/sheet.js", "overlay", "opacity", true),
     ("npm/ui/registry/sheet.js", "panel", "transform", true),
     ("npm/ui/registry/drawer.js", "overlay", "opacity", true),
@@ -319,7 +329,12 @@ const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
     ("npm/ui/registry/menu.js", "content", "transform", true),
     ("npm/ui/registry/select.js", "list", "transform", true),
     ("npm/ui/registry/combobox.js", "list", "transform", true),
-    ("npm/ui/registry/hover-card.js", "content", "transform", true),
+    (
+        "npm/ui/registry/hover-card.js",
+        "content",
+        "transform",
+        true,
+    ),
     ("npm/ui/registry/tooltip.js", "content", "transform", true),
     (
         "npm/ui/registry/navigation-menu.js",
@@ -327,7 +342,12 @@ const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
         "transform",
         true,
     ),
-    ("npm/ui/registry/date-picker.js", "content", "transform", true),
+    (
+        "npm/ui/registry/date-picker.js",
+        "content",
+        "transform",
+        true,
+    ),
     (
         "npm/ui/registry/date-range-picker.js",
         "panel",
@@ -350,8 +370,18 @@ const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
     ("npm/ui/registry/accordion.js", "content", "height", false),
     ("npm/ui/registry/collapsible.js", "content", "height", false),
     ("npm/ui/registry/progress.js", "fill", "transform", false),
-    ("npm/ui/registry/accordion.js", "chevron", "transform", false),
-    ("npm/ui/registry/collapsible.js", "chevron", "transform", false),
+    (
+        "npm/ui/registry/accordion.js",
+        "chevron",
+        "transform",
+        false,
+    ),
+    (
+        "npm/ui/registry/collapsible.js",
+        "chevron",
+        "transform",
+        false,
+    ),
     ("npm/ui/registry/select.js", "chevron", "transform", false),
     (
         "npm/ui/registry/navigation-menu.js",
@@ -364,12 +394,7 @@ const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
     ("npm/stylex/preset.js", "backdrop", "opacity", true),
     ("npm/stylex/preset.js", "dialog", "transform", true),
     ("npm/stylex/preset.js", "menu", "transform", true),
-    (
-        "npm/stylex/preset.js",
-        "item",
-        "background-color",
-        false,
-    ),
+    ("npm/stylex/preset.js", "item", "background-color", false),
     ("npm/stylex/preset.js", "tab", "border-color", false),
     ("npm/stylex/preset.js", "tab", "outline-width", false),
 ];

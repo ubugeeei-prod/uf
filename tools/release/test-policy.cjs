@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const {
+  versionAt,
   assertMaintainer,
   assertRequest,
   assertPullRequest,
@@ -172,5 +173,17 @@ test("the command stops after queue failure and handles a merge during polling",
     const result = module.exports.waitForMerge({ repository, pr: 123 });
     if (merged) assert.equal(await result, commit);
     else await assert.rejects(result, /no longer queued/);
+  }
+});
+
+test("core versions remain readable before and after the workspace rename", () => {
+  for (const directory of ["packages", "npm"]) {
+    const io = { git(command, ...args) {
+      if (command === "ls-tree") return `${directory}/core/package.json`;
+      assert.equal(command, "show");
+      assert.equal(args[0], `HEAD:${directory}/core/package.json`);
+      return '{"version":"0.10.0"}';
+    } };
+    assert.equal(versionAt("HEAD", io), "0.10.0");
   }
 });
