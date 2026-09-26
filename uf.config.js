@@ -981,11 +981,7 @@ export default defineConfig({
       // `crates/**`: this asks the *binary* what commands it has, and the
       // binary's own freshness is `Toolchain`'s question rather than this
       // task's.
-      inputs: [
-        "ci-setup/**",
-        "docs/app/guide/ci/$page.mdx",
-        "tools/ci/recipes-are-runnable.sh",
-      ],
+      inputs: ["ci-setup/**", "docs/app/guide/ci/$page.mdx", "tools/ci/recipes-are-runnable.sh"],
     },
     "ci:recipes:test": {
       command: "UF_BIN=./target/release/uf tools/ci/test-recipes-are-runnable.sh",
