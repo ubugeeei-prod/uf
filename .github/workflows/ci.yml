@@ -320,6 +320,7 @@ jobs:
       - run: ./target/release/uf run check:ui
       - run: ./target/release/uf run check:web
       - run: ./target/release/uf run check:contracts
+      - run: ./target/release/uf run check:tools
 
   docs:
     name: Docs build

@@ -5,10 +5,13 @@
 // A parameter and no `generateStaticParams`, so every target has to render it.
 
 import * as React from "@uniflowed/react";
-import { redirect, type LoaderArgs } from "@uniflowed/router";
+import { notFound, redirect, type LoaderArgs } from "@uniflowed/router";
 
 export async function loader({ params }: LoaderArgs): Promise<empty> {
-  redirect(`/posts/${params.slug}`);
+  const { slug } = params;
+  // `[slug]` is one segment; only a catch-all segment is handed an array.
+  if (typeof slug !== "string") return notFound();
+  return redirect(`/posts/${slug}`);
 }
 
 // Never rendered — the loader throws first — and still required, because a

@@ -313,7 +313,7 @@ export type DevServer = {
   /** The command as typed, for messages: `uf dev`, `vp dev`. */
   readonly label: string,
   readonly port: number,
-  readonly pid: number | void,
+  readonly pid: ?number,
   readonly startedAt: number,
   readonly exited: () => number | null,
   readonly log: () => string,

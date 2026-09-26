@@ -6,7 +6,7 @@
 // `serverless` and `static` refuse part of it by design. `tools/deploy-matrix`
 // builds this whole application for them first and asserts the refusal, then
 // builds a copy with the refused part taken out and this file replaced by
-// `../variants/<target>.uf.config.js`. Those are whole files rather than a
+// `../variants/<target>/uf.config.js`. Those are whole files rather than a
 // switch in this one because `uf` reads a config statically: a value computed
 // before the default export is not evaluated.
 

@@ -108,7 +108,7 @@ function rustIntegrationScope(
   exists /*: (path: string) => boolean */ = require("node:fs").existsSync,
 ) /*: string */ {
   if (paths.length === 0 || paths.some((path) => RUST_WORKSPACE.includes(path))) return "workspace";
-  const crates = new Set();
+  const crates /*: Set<string> */ = new Set();
   let touched = paths.some((path) => RUST_LANE.includes(path));
   for (const path of paths) {
     const crate = CRATE.exec(path)?.[1];
