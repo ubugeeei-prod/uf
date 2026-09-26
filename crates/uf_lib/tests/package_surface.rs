@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Invariants of the JavaScript surface shipped from `packages`.
+//! Invariants of the JavaScript surface shipped from `npm`.
 //!
 //! Shipped JavaScript weight is a product requirement, so these are structural
 //! tests over the files themselves rather than tests of Rust code:
@@ -212,6 +212,9 @@ fn shipped_files() -> Vec<Utf8PathBuf> {
                 .expect("walked under lib root")
                 .to_path_buf()
         })
+        // UI registry sources are copied into applications by `uf ui add`,
+        // not imported from the npm package. Its manifest excludes this tree.
+        .filter(|path| !path.starts_with("ui/registry"))
         .collect::<Vec<_>>();
     files.sort();
     files
@@ -1161,6 +1164,24 @@ fn every_shipped_module_is_reachable_through_exports() {
     }
 }
 
+#[test]
+fn ui_registry_is_owned_by_ui_and_excluded_from_its_npm_payload() {
+    let ui = manifest(Utf8Path::new("ui/package.json"));
+    assert!(
+        ui["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry == "!registry")
+    );
+    assert!(lib_root().join("ui/registry/button.js").is_file());
+    assert!(
+        !shipped_files()
+            .iter()
+            .any(|path| path.starts_with("ui/registry"))
+    );
+}
+
 /// `@uniflowed/ui` has one way in: `import { Dialog } from "@uniflowed/ui"`.
 ///
 /// The package once exported a subpath per component beside its barrel, and
@@ -1193,7 +1214,12 @@ fn ui_is_imported_through_its_barrel_and_nothing_else() {
     assert_eq!(exports["."], "./index.js");
 
     let repository = lib_root().join("..");
-    let copied_from: &[&str] = &["registry", "docs", "examples", "crates/uf_project/src"];
+    let copied_from: &[&str] = &[
+        "npm/ui/registry",
+        "docs",
+        "examples",
+        "crates/uf_project/src",
+    ];
     let imported_by: &[&str] = &["npm", "tests"];
     let mut found = Vec::new();
     for (directories, prose) in [(copied_from, true), (imported_by, false)] {
