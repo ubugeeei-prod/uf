@@ -350,13 +350,13 @@ impl Bases {
         const PACKUMENT: &str = "application/vnd.npm.install-v1+json";
         let packument = |name: &str| {
             (
-                uf_infra::into_string(compact_str::format_compact!("{}/{name}", self.registry)),
+                uf_infra::into_string(uf_infra::cstr!("{}/{name}", self.registry)),
                 PACKUMENT,
             )
         };
         match tool {
             Tool::Node => vec![(
-                uf_infra::into_string(compact_str::format_compact!("{}/index.json", self.nodejs)),
+                uf_infra::into_string(uf_infra::cstr!("{}/index.json", self.nodejs)),
                 JSON,
             )],
             Tool::Bun => vec![packument("bun")],
@@ -443,7 +443,7 @@ pub fn refresh_in(dir: &Utf8Path, tool: Tool, bases: &Bases) -> Result<Index, En
 
 /// `<dir>/<tool>.json`.
 fn cache_path(dir: &Utf8Path, tool: Tool) -> Utf8PathBuf {
-    dir.join(uf_infra::into_string(compact_str::format_compact!(
+    dir.join(uf_infra::into_string(uf_infra::cstr!(
         "{}.json",
         tool.name()
     )))
@@ -459,7 +459,7 @@ fn write_cache(dir: &Utf8Path, index: &Index) -> Result<(), EnvError> {
         source,
     })?;
     let path = cache_path(dir, index.tool);
-    let staging = dir.join(uf_infra::into_string(compact_str::format_compact!(
+    let staging = dir.join(uf_infra::into_string(uf_infra::cstr!(
         ".{}.json.{}",
         index.tool.name(),
         std::process::id()
@@ -496,9 +496,7 @@ fn fetch(url: &str, accept: &str) -> Result<String, EnvError> {
             "=https",
             "-H",
         ])
-        .arg(uf_infra::into_string(compact_str::format_compact!(
-            "Accept: {accept}"
-        )))
+        .arg(uf_infra::into_string(uf_infra::cstr!("Accept: {accept}")))
         .arg("--")
         .arg(url)
         .output()

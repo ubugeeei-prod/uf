@@ -9,7 +9,7 @@
 #[macro_export]
 macro_rules! cstr {
     ($($arg:tt)*) => {
-        $crate::format_compact!($($arg)*)
+        $crate::compact_format(::core::format_args!($($arg)*))
     };
 }
 
@@ -29,4 +29,19 @@ macro_rules! append {
 #[inline(never)]
 pub fn into_string(value: crate::CompactString) -> String {
     value.into_string()
+}
+
+/// Share the formatting writer between call sites while writing into compact
+/// storage directly. This avoids wrapping Arguments in another Display format.
+#[inline(never)]
+pub fn compact_format(arguments: core::fmt::Arguments<'_>) -> crate::CompactString {
+    use core::fmt::Write as _;
+    if let Some(text) = arguments.as_str() {
+        return crate::CompactString::new(text);
+    }
+    let mut output = crate::CompactString::const_new("");
+    output
+        .write_fmt(arguments)
+        .expect("formatting into a string failed");
+    output
 }

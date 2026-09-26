@@ -107,11 +107,8 @@ impl Roots {
         };
         let file = self.file_for(repository);
         let body = serde_json::to_string_pretty(&root).map_err(EnvError::Encode)?;
-        fs::write(
-            &file,
-            uf_infra::into_string(compact_str::format_compact!("{body}\n")),
-        )
-        .map_err(|source| EnvError::Write { path: file, source })
+        fs::write(&file, uf_infra::into_string(uf_infra::cstr!("{body}\n")))
+            .map_err(|source| EnvError::Write { path: file, source })
     }
 
     /// Record that `repository` uses `entries` as well as what it used before.
@@ -219,8 +216,6 @@ impl Roots {
             uf_infra::append!(name, "{byte:02x}");
         }
         self.root
-            .join(uf_infra::into_string(compact_str::format_compact!(
-                "{name}.json"
-            )))
+            .join(uf_infra::into_string(uf_infra::cstr!("{name}.json")))
     }
 }

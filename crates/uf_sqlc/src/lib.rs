@@ -77,10 +77,7 @@ pub fn generate(
         .into_iter()
         .map(|file| {
             let formatted = format(&file.contents).map_err(|error| {
-                uf_infra::into_string(compact_str::format_compact!(
-                    "formatting {}: {error}",
-                    file.name
-                ))
+                uf_infra::into_string(uf_infra::cstr!("formatting {}: {error}", file.name))
             })?;
             Ok(File {
                 name: file.name,

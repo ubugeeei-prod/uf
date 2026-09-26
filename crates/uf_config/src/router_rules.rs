@@ -49,7 +49,7 @@ pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Con
             return Err(refuse(
                 "redirects",
                 index,
-                uf_infra::into_string(compact_str::format_compact!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "redirects {:?} to itself, which is a loop a browser follows until it gives up",
                     rule.source.as_str()
                 )),
@@ -78,7 +78,7 @@ pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Con
                 return Err(refuse(
                     "headers",
                     index,
-                    uf_infra::into_string(compact_str::format_compact!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "names the header {name:?}, which is not a header name"
                     )),
                 ));
@@ -87,7 +87,7 @@ pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Con
                 return Err(refuse(
                     "headers",
                     index,
-                    uf_infra::into_string(compact_str::format_compact!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "gives `{name}` a value with a line break in it, which would end the \
                          header and start another"
                     )),
@@ -117,7 +117,7 @@ fn base_path(base: &str) -> Result<(), String> {
         return Err(String::from("and a base path starts with `/`"));
     }
     if base.ends_with('/') {
-        return Err(uf_infra::into_string(compact_str::format_compact!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "and a base path has no trailing slash: write {:?}",
             base.trim_end_matches('/')
         )));
@@ -137,7 +137,7 @@ fn base_path(base: &str) -> Result<(), String> {
             ));
         }
         if segment.contains([':', '*']) {
-            return Err(uf_infra::into_string(compact_str::format_compact!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "and `{segment}` is a pattern; a base path is literal segments"
             )));
         }
@@ -164,7 +164,7 @@ enum Target {
 /// The parameters a source declares, or why it is not a source.
 fn source_params(source: &str) -> Result<Vec<(String, Takes)>, String> {
     if !source.starts_with('/') {
-        return Err(uf_infra::into_string(compact_str::format_compact!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "has the source {source:?}, and a source is a path that starts with `/`"
         )));
     }
@@ -177,7 +177,7 @@ fn source_params(source: &str) -> Result<Vec<(String, Takes)>, String> {
                 .strip_suffix('+')
                 .or_else(|| parameter.strip_suffix('?'))
         {
-            return Err(uf_infra::into_string(compact_str::format_compact!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "has the source {source:?}, and `{segment}` is a Next.js modifier uf does not \
                  read. `:{name}*` takes the rest of the path, including none of it; a page that \
                  needs at least one segment can call `notFound()` without it."
@@ -185,19 +185,19 @@ fn source_params(source: &str) -> Result<Vec<(String, Takes)>, String> {
         }
     }
     if source.contains(['?', '#']) {
-        return Err(uf_infra::into_string(compact_str::format_compact!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "has the source {source:?}, and a source matches a path: the query and the fragment \
              are not part of one. A rule that depends on the query is a middleware."
         )));
     }
     if source.contains(['(', ')']) {
-        return Err(uf_infra::into_string(compact_str::format_compact!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "has the source {source:?}, and uf does not read a regular expression in a source. \
              Write the segments, with `:name` for one and a trailing `:name*` for the rest."
         )));
     }
     if source.contains(char::is_whitespace) {
-        return Err(uf_infra::into_string(compact_str::format_compact!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "has the source {source:?}, which has whitespace in it; write it percent-encoded, \
              the way a request carries it"
         )));
@@ -207,7 +207,7 @@ fn source_params(source: &str) -> Result<Vec<(String, Takes)>, String> {
     for (position, segment) in segments.iter().enumerate() {
         let Some(parameter) = segment.strip_prefix(':') else {
             if segment.contains([':', '*']) {
-                return Err(uf_infra::into_string(compact_str::format_compact!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "has the source {source:?}, and `{segment}` puts a pattern inside a segment. \
                      A parameter is a whole segment — `:name`, or `:name*` for the rest of the \
                      path — and a page can check the characters around it."
@@ -220,19 +220,19 @@ fn source_params(source: &str) -> Result<Vec<(String, Takes)>, String> {
             None => (parameter, Takes::One),
         };
         if !is_parameter_name(name) {
-            return Err(uf_infra::into_string(compact_str::format_compact!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "has the source {source:?}, and `{segment}` does not name a parameter: a name is \
                  letters, digits and `_`, and does not start with a digit"
             )));
         }
         if takes == Takes::Rest && position + 1 != segments.len() {
-            return Err(uf_infra::into_string(compact_str::format_compact!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "has the source {source:?}, and `:{name}*` takes the rest of the path, so it has \
                  to be the last segment"
             )));
         }
         if declared.iter().any(|(existing, _)| existing == name) {
-            return Err(uf_infra::into_string(compact_str::format_compact!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "has the source {source:?}, which declares `:{name}` twice"
             )));
         }
@@ -253,7 +253,7 @@ fn destination(
     }
     let path = match (target, absolute) {
         (Target::Path, true) => {
-            return Err(uf_infra::into_string(compact_str::format_compact!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "has the destination {destination:?}, which is another origin. A rewrite serves \
                  a route of this application: proxying to another server is a route handler \
                  that fetches it, and sending the visitor there is a redirect."
@@ -261,13 +261,13 @@ fn destination(
         }
         (Target::PathOrUrl, true) => {
             let Some(end) = authority_end(destination) else {
-                return Err(uf_infra::into_string(compact_str::format_compact!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "has the destination {destination:?}, which names no scheme: write \
                      `https://` in front of the host"
                 )));
             };
             if !(destination.starts_with("http://") || destination.starts_with("https://")) {
-                return Err(uf_infra::into_string(compact_str::format_compact!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "has the destination {destination:?}, and a redirect sends a browser to a \
                      path of this application or to an `http` or `https` URL"
                 )));
@@ -276,7 +276,7 @@ fn destination(
         }
         (_, false) => {
             if !destination.starts_with('/') {
-                return Err(uf_infra::into_string(compact_str::format_compact!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "has the destination {destination:?}, and a destination is a path that \
                      starts with `/`{}",
                     if target == Target::PathOrUrl {
@@ -300,19 +300,19 @@ fn destination(
         };
         match declared.iter().find(|(existing, _)| existing == name) {
             None => {
-                return Err(uf_infra::into_string(compact_str::format_compact!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "has the destination {destination:?}, which uses `{segment}` — and the \
                      source declares no `:{name}` to fill it with"
                 )));
             }
             Some((_, Takes::Rest)) if takes == Takes::One => {
-                return Err(uf_infra::into_string(compact_str::format_compact!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "has the destination {destination:?}, and `:{name}` takes the rest of the \
                      path in the source, so write `:{name}*` here"
                 )));
             }
             Some((_, Takes::One)) if takes == Takes::Rest => {
-                return Err(uf_infra::into_string(compact_str::format_compact!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "has the destination {destination:?}, and `:{name}` takes one segment in \
                      the source, so write `:{name}` here"
                 )));

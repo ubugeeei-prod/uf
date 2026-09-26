@@ -166,12 +166,12 @@ pub fn dispatcher(project: &str) -> String {
     let run = if project.is_empty() {
         String::from("exec uf prepare")
     } else {
-        uf_infra::into_string(compact_str::format_compact!(
+        uf_infra::into_string(uf_infra::cstr!(
             "exec uf --cwd {} prepare",
             shell_quote(project)
         ))
     };
-    uf_infra::into_string(compact_str::format_compact!(
+    uf_infra::into_string(uf_infra::cstr!(
         "#!/bin/sh\n\
          {DISPATCHER_MARK}\n\
          #\n\
@@ -196,10 +196,7 @@ fn shell_quote(text: &str) -> String {
     if plain && !text.is_empty() {
         return text.to_owned();
     }
-    uf_infra::into_string(compact_str::format_compact!(
-        "'{}'",
-        text.replace('\'', r"'\''")
-    ))
+    uf_infra::into_string(uf_infra::cstr!("'{}'", text.replace('\'', r"'\''")))
 }
 
 fn repository_root(root: &Utf8Path) -> Option<Utf8PathBuf> {

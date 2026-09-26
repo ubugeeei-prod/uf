@@ -143,8 +143,7 @@ impl Provenance {
         let repository = self.source_repository.as_ref()?;
         Some(match &self.build_entry {
             Some(entry) => {
-                uf_infra::into_string(compact_str::format_compact!("{repository} ({entry})"))
-                    .to_compact_string()
+                uf_infra::into_string(uf_infra::cstr!("{repository} ({entry})")).to_compact_string()
             }
             None => repository.clone(),
         })
@@ -458,7 +457,7 @@ fn published_integrity(registry: &str, name: &str, version: &str) -> Option<Comp
     }
     // The same `%2f` encoding a packument read uses, so a scope cannot become
     // a directory in the URL.
-    let url = uf_infra::into_string(compact_str::format_compact!(
+    let url = uf_infra::into_string(uf_infra::cstr!(
         "{}/{}/{version}",
         registry.trim_end_matches('/'),
         name.replace('/', "%2f")
@@ -865,7 +864,7 @@ fn attestation_url(registry: &str, name: &str, version: &str) -> Option<String> 
     if !crate::registry::is_safe_package_name(name) || !is_safe_version(version) {
         return None;
     }
-    Some(uf_infra::into_string(compact_str::format_compact!(
+    Some(uf_infra::into_string(uf_infra::cstr!(
         "{}/-/npm/v1/attestations/{name}@{version}",
         registry.trim_end_matches('/')
     )))

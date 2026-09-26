@@ -462,8 +462,8 @@ fn file_names(config: &UniflowedConfig, mode: &str) -> Result<Vec<String>, EnvFi
     Ok(vec![
         String::from(".env"),
         String::from(".env.local"),
-        uf_infra::into_string(compact_str::format_compact!(".env.{mode}")),
-        uf_infra::into_string(compact_str::format_compact!(".env.{mode}.local")),
+        uf_infra::into_string(uf_infra::cstr!(".env.{mode}")),
+        uf_infra::into_string(uf_infra::cstr!(".env.{mode}.local")),
     ])
 }
 
@@ -684,7 +684,7 @@ fn parse_into(
         if scanner.peek() != Some('=') {
             return Err(scanner.error(
                 line,
-                uf_infra::into_string(compact_str::format_compact!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`{name}` has no `=`; every line is `NAME=value`, a comment, or blank"
                 )),
             ));
@@ -698,7 +698,7 @@ fn parse_into(
         if name == INJECTED {
             return Err(scanner.error(
                 line,
-                uf_infra::into_string(compact_str::format_compact!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`{INJECTED}` is uf's own; a file cannot set it"
                 )),
             ));
@@ -828,7 +828,7 @@ impl Scanner<'_> {
         };
         Err(self.error(
             line,
-            uf_infra::into_string(compact_str::format_compact!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{shown}` is not a variable name; names start with a letter or `_` and continue \
                  with letters, digits or `_`"
             )),
@@ -872,7 +872,7 @@ impl Scanner<'_> {
             let Some(character) = self.peek() else {
                 return Err(self.error(
                     opened,
-                    uf_infra::into_string(compact_str::format_compact!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "the value for `{name}` opens with {quote} and is never closed"
                     )),
                 ));
@@ -886,7 +886,7 @@ impl Scanner<'_> {
                 let Some(escaped) = self.peek() else {
                     return Err(self.error(
                         opened,
-                        uf_infra::into_string(compact_str::format_compact!(
+                        uf_infra::into_string(uf_infra::cstr!(
                             "the value for `{name}` ends with a backslash"
                         )),
                     ));
@@ -972,7 +972,7 @@ impl Scanner<'_> {
             if self.peek() != Some('}') {
                 return Err(self.error(
                     line,
-                    uf_infra::into_string(compact_str::format_compact!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`${{{wanted}` is never closed; write `${{{wanted}}}`"
                     )),
                 ));
@@ -990,16 +990,16 @@ impl Scanner<'_> {
             }
             None => Err(self.error(
                 line,
-                uf_infra::into_string(compact_str::format_compact!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`{}` is not defined; define it earlier, set it in the environment, or write \
                      `\\${}` for a literal dollar",
                     if braced {
-                        uf_infra::into_string(compact_str::format_compact!("${{{wanted}}}"))
+                        uf_infra::into_string(uf_infra::cstr!("${{{wanted}}}"))
                     } else {
-                        uf_infra::into_string(compact_str::format_compact!("${wanted}"))
+                        uf_infra::into_string(uf_infra::cstr!("${wanted}"))
                     },
                     if braced {
-                        uf_infra::into_string(compact_str::format_compact!("{{{wanted}}}"))
+                        uf_infra::into_string(uf_infra::cstr!("{{{wanted}}}"))
                     } else {
                         wanted.clone()
                     }
@@ -1021,7 +1021,7 @@ impl Scanner<'_> {
                 let line = self.line;
                 Err(self.error(
                     line,
-                    uf_infra::into_string(compact_str::format_compact!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "there is text after the quoted value for `{name}`; end the line, or \
                          start a comment with `#`"
                     )),
@@ -1040,7 +1040,7 @@ fn unescape(character: char) -> String {
         // A backslash before anything else is a backslash, so a value that
         // holds a Windows path or a regular expression survives being quoted.
         '\\' | '"' | '\'' | '$' => character.to_string(),
-        other => uf_infra::into_string(compact_str::format_compact!("\\{other}")),
+        other => uf_infra::into_string(uf_infra::cstr!("\\{other}")),
     }
 }
 

@@ -48,7 +48,7 @@ impl Stamp {
 
     /// The line, with no line ending.
     pub fn line(&self) -> String {
-        uf_infra::into_string(compact_str::format_compact!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{OPENING}{}` from uf {}, sha256 {}.",
             self.component,
             self.version,

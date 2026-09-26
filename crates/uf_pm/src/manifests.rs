@@ -261,7 +261,7 @@ fn restore(undo: Vec<(&Utf8PathBuf, String)>, cause: PackageManagerError) -> Pac
     };
     PackageManagerError::Write {
         path: (*first).clone(),
-        source: std::io::Error::other(uf_infra::into_string(compact_str::format_compact!(
+        source: std::io::Error::other(uf_infra::into_string(uf_infra::cstr!(
             "{cause}; and {} could not be put back, so {} still {} the new range",
             stranded
                 .iter()
@@ -349,7 +349,7 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
         path: manifest.to_path_buf(),
         source: std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            uf_infra::into_string(compact_str::format_compact!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{key}` is already something other than an object"
             )),
         ),
@@ -361,8 +361,8 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
 /// `None` when there is none or more than one — which is the answer, not a
 /// failure: the caller re-serialises instead.
 fn splice(source: &str, name: &str, from: &str, to: &str) -> Option<String> {
-    let key = uf_infra::into_string(compact_str::format_compact!("\"{name}\""));
-    let value = uf_infra::into_string(compact_str::format_compact!("\"{from}\""));
+    let key = uf_infra::into_string(uf_infra::cstr!("\"{name}\""));
+    let value = uf_infra::into_string(uf_infra::cstr!("\"{from}\""));
     let mut found = None;
 
     let mut search = 0;

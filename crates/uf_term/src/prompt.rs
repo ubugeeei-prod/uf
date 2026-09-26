@@ -215,10 +215,7 @@ fn erase<S, W: Write + ?Sized>(state: &S, draw: &mut dyn FnMut(&S, &mut String),
     let lines = buffer.matches('\n').count();
     // The cursor is put back by `RawMode`'s drop, which runs whichever way
     // this returned, so showing it here as well would only be a second copy.
-    let _ = write(
-        out,
-        compact_str::format_compact!("\x1b[{lines}A\x1b[J").as_str(),
-    );
+    let _ = write(out, uf_infra::cstr!("\x1b[{lines}A\x1b[J").as_str());
 }
 
 /// Write and flush, so a frame appears before the next key is read.

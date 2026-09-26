@@ -5,7 +5,8 @@
 Clippy rejects `std::format!` in production code. Tests and benchmark baselines
 may use it. Plain concatenation should use `push_str` and `push`; formatted
 output belongs in an existing buffer through `uf_infra::append!`. Owned short
-strings use `uf_infra::cstr!`, which returns a `CompactString` directly.
+strings use `uf_infra::cstr!`, which returns a `CompactString` directly. Its shared writer avoids duplicating
+construction code and passes formatting arguments directly to the destination.
 
 A borrowed argument should borrow that compact result. `uf_infra::into_string()` is an
 explicit compatibility boundary for an API that still requires `String`; it

@@ -25,7 +25,7 @@ impl Engine {
             "postgresql" => Ok(Self::Postgresql),
             "mysql" => Ok(Self::Mysql),
             "sqlite" => Ok(Self::Sqlite),
-            other => Err(uf_infra::into_string(compact_str::format_compact!(
+            other => Err(uf_infra::into_string(uf_infra::cstr!(
                 "unsupported sqlc engine `{other}`"
             ))),
         }
@@ -94,7 +94,7 @@ impl Mapped {
     #[must_use]
     pub fn flow_type(&self) -> String {
         if self.nullable && !self.unknown {
-            uf_infra::into_string(compact_str::format_compact!("{} | null", self.flow))
+            uf_infra::into_string(uf_infra::cstr!("{} | null", self.flow))
         } else {
             self.flow.clone()
         }
@@ -174,7 +174,7 @@ impl Context<'_> {
         let qualified_type = if schema.is_empty() {
             type_name.clone()
         } else {
-            uf_infra::into_string(compact_str::format_compact!("{schema}.{type_name}"))
+            uf_infra::into_string(uf_infra::cstr!("{schema}.{type_name}"))
         };
         let name = if column.original_name.is_empty() {
             &column.name
@@ -234,8 +234,7 @@ impl Context<'_> {
             let mut flow = flow;
             let mut codec = codec;
             for _ in 0..dims {
-                flow =
-                    uf_infra::into_string(compact_str::format_compact!("$ReadOnlyArray<{flow}>"));
+                flow = uf_infra::into_string(uf_infra::cstr!("$ReadOnlyArray<{flow}>"));
                 codec = Codec::Array(Box::new(codec));
             }
             (flow, codec)
@@ -448,7 +447,7 @@ fn relative(from_dir: &str, target: &str) -> String {
     if joined.starts_with("..") {
         joined
     } else {
-        uf_infra::into_string(compact_str::format_compact!("./{joined}"))
+        uf_infra::into_string(uf_infra::cstr!("./{joined}"))
     }
 }
 

@@ -14,7 +14,7 @@
 pub mod cache;
 pub mod parallel;
 mod string_builder;
-pub use string_builder::into_string;
+pub use string_builder::{compact_format, into_string};
 
 pub use bumpalo::{Bump, collections::Vec as ArenaVec};
 pub use compact_str::{CompactString, format_compact};
@@ -52,6 +52,7 @@ pub struct LineIndex {
 }
 
 impl LineIndex {
+    #[inline]
     pub fn new(source: &str) -> Self {
         // Short modules stay inline. Large inputs get one exact allocation;
         // SIMD newline counting avoids the old scalar pre-scan and repeated
@@ -91,6 +92,7 @@ pub fn is_flow_keyword(value: &str) -> bool {
     FLOW_KEYWORDS.contains(value)
 }
 
+#[inline]
 pub fn normalize_slashes(path: &str) -> CompactString {
     // For heap-sized strings, replace's allocation becomes the CompactString's
     // backing buffer directly. It was faster than rebuilding chunk by chunk.

@@ -144,10 +144,10 @@ fn find_module_for_target(
     for variant in target.variants() {
         for extension in extensions {
             let file = match variant.as_str() {
-                Some(variant) => uf_infra::into_string(compact_str::format_compact!(
-                    "{stem}.{variant}{extension}"
-                )),
-                None => uf_infra::into_string(compact_str::format_compact!("{stem}{extension}")),
+                Some(variant) => {
+                    uf_infra::into_string(uf_infra::cstr!("{stem}.{variant}{extension}"))
+                }
+                None => uf_infra::into_string(uf_infra::cstr!("{stem}{extension}")),
             };
             let candidate = directory.join(file);
             if candidate.is_file() {
@@ -764,10 +764,7 @@ fn refuse_optional_catch_all_collisions(routes: &[Route]) -> Result<(), RouterEr
         {
             return Err(RouterError::OptionalCatchAllBesidePage {
                 page: route.page.clone(),
-                catch_all: uf_infra::into_string(compact_str::format_compact!(
-                    "[[...{}]]",
-                    param.name
-                )),
+                catch_all: uf_infra::into_string(uf_infra::cstr!("[[...{}]]", param.name)),
                 path: parent.to_string(),
                 other: other.page.clone(),
                 parameter: param.name.to_string(),
@@ -782,7 +779,7 @@ fn refuse_optional_catch_all_collisions(routes: &[Route]) -> Result<(), RouterEr
 fn path_shape(path: &str) -> String {
     path.split('/')
         .map(|segment| match segment.strip_prefix(':') {
-            Some(name) => uf_infra::into_string(compact_str::format_compact!(
+            Some(name) => uf_infra::into_string(uf_infra::cstr!(
                 ":{}",
                 name.trim_start_matches(|c: char| c != '*' && c != '?')
             )),
@@ -1088,15 +1085,15 @@ fn directory_spelling(segment: &PathSegment) -> String {
         Some(RouteParam {
             name,
             kind: RouteParamKind::OptionalCatchAll,
-        }) => uf_infra::into_string(compact_str::format_compact!("[[...{name}]]")),
+        }) => uf_infra::into_string(uf_infra::cstr!("[[...{name}]]")),
         Some(RouteParam {
             name,
             kind: RouteParamKind::CatchAll,
-        }) => uf_infra::into_string(compact_str::format_compact!("[...{name}]")),
+        }) => uf_infra::into_string(uf_infra::cstr!("[...{name}]")),
         Some(RouteParam {
             name,
             kind: RouteParamKind::Single,
-        }) => uf_infra::into_string(compact_str::format_compact!("[{name}]")),
+        }) => uf_infra::into_string(uf_infra::cstr!("[{name}]")),
         None => segment.spelling.clone(),
     }
 }
@@ -1106,7 +1103,7 @@ fn path_from(segments: &[PathSegment]) -> String {
     if segments.is_empty() {
         return "/".to_string();
     }
-    uf_infra::into_string(compact_str::format_compact!(
+    uf_infra::into_string(uf_infra::cstr!(
         "/{}",
         segments
             .iter()
@@ -1213,7 +1210,7 @@ fn refuse_unsupported_template_files(app_root: &Utf8Path) -> Result<(), RouterEr
 }
 
 fn unsupported_template_file_reason(file_name: &str) -> String {
-    uf_infra::into_string(compact_str::format_compact!(
+    uf_infra::into_string(uf_infra::cstr!(
         "`{file_name}` looks like a route template, but uf's route template file is \
          `$template.js`. This file would be ignored rather than remounting the route, so it is \
          refused; rename it to `$template.js`. https://github.com/ubugeeei-prod/uf/issues/267"
@@ -1511,9 +1508,7 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
         output.push_str(
             &routes
                 .iter()
-                .map(|route| {
-                    uf_infra::into_string(compact_str::format_compact!("\"{}\"", route.path))
-                })
+                .map(|route| uf_infra::into_string(uf_infra::cstr!("\"{}\"", route.path)))
                 .collect::<Vec<_>>()
                 .join(" | "),
         );
@@ -1698,21 +1693,21 @@ fn path_segments(relative: &Utf8Path) -> Option<Vec<PathSegment>> {
         };
         match named {
             RouteSegment::OptionalCatchAll(name) => segments.push(PathSegment {
-                spelling: uf_infra::into_string(compact_str::format_compact!(":{name}*?")),
+                spelling: uf_infra::into_string(uf_infra::cstr!(":{name}*?")),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::OptionalCatchAll,
                 }),
             }),
             RouteSegment::CatchAll(name) => segments.push(PathSegment {
-                spelling: uf_infra::into_string(compact_str::format_compact!(":{name}*")),
+                spelling: uf_infra::into_string(uf_infra::cstr!(":{name}*")),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::CatchAll,
                 }),
             }),
             RouteSegment::Param(name) => segments.push(PathSegment {
-                spelling: uf_infra::into_string(compact_str::format_compact!(":{name}")),
+                spelling: uf_infra::into_string(uf_infra::cstr!(":{name}")),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::Single,
@@ -1743,7 +1738,7 @@ fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
     let path = if segments.is_empty() {
         "/".to_string()
     } else {
-        uf_infra::into_string(compact_str::format_compact!(
+        uf_infra::into_string(uf_infra::cstr!(
             "/{}",
             segments
                 .iter()
@@ -1765,10 +1760,7 @@ fn route_args_type(params: &[RouteParam]) -> String {
     if params.is_empty() {
         return "[]".to_string();
     }
-    uf_infra::into_string(compact_str::format_compact!(
-        "[{}]",
-        route_params_type(params)
-    ))
+    uf_infra::into_string(uf_infra::cstr!("[{}]", route_params_type(params)))
 }
 
 fn route_params_type(params: &[RouteParam]) -> String {
@@ -1793,13 +1785,13 @@ fn route_params_type(params: &[RouteParam]) -> String {
                     "$ReadOnlyArray<string>"
                 }
             };
-            uf_infra::into_string(compact_str::format_compact!("{}: {}", param.name, ty))
+            uf_infra::into_string(uf_infra::cstr!("{}: {}", param.name, ty))
         })
         .collect::<Vec<_>>()
         .join(", ");
     // Exact for the same reason: a route's parameters are exactly the segments
     // in its path.
-    uf_infra::into_string(compact_str::format_compact!("{{ {fields} }}"))
+    uf_infra::into_string(uf_infra::cstr!("{{ {fields} }}"))
 }
 
 #[cfg(test)]

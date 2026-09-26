@@ -144,7 +144,7 @@ mod tests {
             ("bytes", "x".repeat(MAX_PARSE_BYTES + 1)),
             (
                 "brackets",
-                uf_infra::into_string(compact_str::format_compact!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "x = {}1{};",
                     "(".repeat(MAX_NESTING_DEPTH + 1),
                     ")".repeat(MAX_NESTING_DEPTH + 1)
@@ -152,10 +152,7 @@ mod tests {
             ),
             (
                 "chain",
-                uf_infra::into_string(compact_str::format_compact!(
-                    "x = a{};",
-                    ".f()".repeat(MAX_CHAIN_DEPTH)
-                )),
+                uf_infra::into_string(uf_infra::cstr!("x = a{};", ".f()".repeat(MAX_CHAIN_DEPTH))),
             ),
         ]
     }
@@ -189,10 +186,8 @@ mod tests {
         // formatter that cannot parse a file must not rewrite it and stops; a
         // linter has something to say about the file and thirty thousand more
         // to get through.
-        let source = uf_infra::into_string(compact_str::format_compact!(
-            "x = a{};",
-            ".f()".repeat(MAX_CHAIN_DEPTH)
-        ));
+        let source =
+            uf_infra::into_string(uf_infra::cstr!("x = a{};", ".f()".repeat(MAX_CHAIN_DEPTH)));
         let outcome = validate_source(&source).expect("a refusal is not a backend error");
         assert!(!outcome.is_ok());
         assert!(outcome.diagnostics[0].message.contains("ceiling"));
@@ -211,7 +206,7 @@ mod tests {
         // 134 on a file `uf fmt` refused politely. A named failure would need a
         // child process, which ubugeeei-prod/uf#230 builds for the same hazard
         // one function over.
-        let source = uf_infra::into_string(compact_str::format_compact!(
+        let source = uf_infra::into_string(uf_infra::cstr!(
             "x = {}1{};",
             "(".repeat(MAX_NESTING_DEPTH),
             ")".repeat(MAX_NESTING_DEPTH)

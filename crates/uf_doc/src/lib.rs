@@ -208,11 +208,7 @@ fn document(scan: uf_project::SourceScan) -> Result<DocReport, DocError> {
             .unreadable
             .iter()
             .map(|file| {
-                uf_infra::into_string(compact_str::format_compact!(
-                    "{}: {}",
-                    file.relative_path,
-                    file.reason
-                ))
+                uf_infra::into_string(uf_infra::cstr!("{}: {}", file.relative_path, file.reason))
             })
             .collect(),
         ..DocReport::default()
@@ -955,12 +951,12 @@ mod tests {
         // Two chain levels per link — a member and a call — so `.f()` alone
         // can only land on an even count. The trailing `.g` is the odd level
         // that puts this exactly on the ceiling rather than one under it.
-        let chain = uf_infra::into_string(compact_str::format_compact!(
+        let chain = uf_infra::into_string(uf_infra::cstr!(
             "{}{}",
             ".f()".repeat(uf_flow::MAX_CHAIN_DEPTH / 2 - 1),
             ".g"
         ));
-        let source = uf_infra::into_string(compact_str::format_compact!(
+        let source = uf_infra::into_string(uf_infra::cstr!(
             "// @flow\n\n/** Deep. */\nexport const deep = a{chain};\n"
         ));
         assert_eq!(

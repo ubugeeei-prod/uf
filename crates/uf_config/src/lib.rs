@@ -796,7 +796,7 @@ impl<'de> Deserialize<'de> for NonFlowFormatConfig {
             .find(|argument| forbidden_formatter_argument(argument))
         {
             return Err(serde::de::Error::custom(uf_infra::into_string(
-                compact_str::format_compact!(
+                uf_infra::cstr!(
                     "fmt.nonFlow.arguments may not contain `{argument}`: it decides whether \
                  `uf fmt --check` writes, and that is the command's own contract"
                 ),
@@ -1901,7 +1901,7 @@ fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), Con
     for (index, pattern) in images.remote_patterns.iter().enumerate() {
         uf_assets::check_remote_pattern(pattern).map_err(|reason| {
             refuse(
-                uf_infra::into_string(compact_str::format_compact!("remotePatterns[{index}]")),
+                uf_infra::into_string(uf_infra::cstr!("remotePatterns[{index}]")),
                 reason,
             )
         })?;
@@ -1909,10 +1909,8 @@ fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), Con
     for (index, quality) in images.qualities.iter().enumerate() {
         if !(1..=100).contains(quality) {
             return Err(refuse(
-                uf_infra::into_string(compact_str::format_compact!("qualities[{index}]")),
-                uf_infra::into_string(compact_str::format_compact!(
-                    "is {quality}, and a quality is 1 to 100"
-                )),
+                uf_infra::into_string(uf_infra::cstr!("qualities[{index}]")),
+                uf_infra::into_string(uf_infra::cstr!("is {quality}, and a quality is 1 to 100")),
             ));
         }
     }
