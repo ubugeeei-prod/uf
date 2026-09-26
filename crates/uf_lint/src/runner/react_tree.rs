@@ -244,11 +244,11 @@ pub(super) fn question(config: &UniflowedConfig, work: &ReactWork) -> String {
     } = switches(work);
     // The mode's own serialized name, which covers every mode there is.
     let mode = serde_json::to_string(&compiler_mode(config)).unwrap_or_default();
-    format!(
+    uf_infra::into_string(uf_infra::cstr!(
         "memo={}\0compiler={}\0effect-dependencies={effect_dependencies}\0mode={mode}",
         work.wants_memo,
         work.compiler.is_some(),
-    )
+    ))
 }
 
 /// What these rules worked out about one module, before any project decides
@@ -386,10 +386,10 @@ fn findings(work: &ReactWork, answer: ReactAnswer) -> Vec<TreeFinding> {
             kind: FindingKind::RedundantMemo,
             line: memo.line,
             column: memo.column,
-            message: format!(
+            message: uf_infra::into_string(uf_infra::cstr!(
                 "the React Compiler memoizes this already; `{}` here is a second dependency array to keep correct",
                 memo.hook
-            ),
+            )),
         }));
     }
     if let Some(compiler) = &work.compiler {

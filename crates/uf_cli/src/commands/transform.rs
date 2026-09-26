@@ -280,7 +280,7 @@ pub(crate) fn transform_service(cwd: &Utf8Path) -> Result<()> {
         })
         .context("failed to start the transform service thread")?
         .join()
-        .map_err(|_| anyhow::anyhow!("the transform service panicked"))?
+        .map_err(|_| anyhow::anyhow!(uf_infra::cstr!("the transform service panicked")))?
 }
 
 fn serve(input: impl Read, out: &mut impl Write, project: &ProjectTransform) -> Result<()> {
@@ -293,7 +293,9 @@ fn serve(input: impl Read, out: &mut impl Write, project: &ProjectTransform) -> 
         let reply = match serde_json::from_str::<Request>(&line) {
             Ok(request) => handle(&request, project, &mut cache),
             Err(error) => Reply {
-                error: Some(format!("malformed request: {error}")),
+                error: Some(uf_infra::into_string(uf_infra::cstr!(
+                    "malformed request: {error}"
+                ))),
                 ..Reply::default()
             },
         };
@@ -507,7 +509,7 @@ mod tests {
                       const styles = stylex.create({ root: { color: \"red\" } });\n\
                       export const used: mixed = stylex.props(styles.root);\n";
         let request = serde_json::json!({ "id": "/app/box.js", "code": source });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         let reply = &replies[0];
         assert!(reply["error"].is_null(), "{reply}");
@@ -533,7 +535,7 @@ mod tests {
             "id": "/app/plain.js",
             "code": "// @flow\nexport const v: number = 1;\n",
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         assert!(replies[0]["css"].is_null(), "{}", replies[0]);
     }
@@ -542,19 +544,23 @@ mod tests {
     fn replies_come_back_in_request_order() {
         let mut input = String::new();
         for index in 0..8 {
-            input.push_str(&format!(
+            uf_infra::append!(
+                input,
                 "{{\"id\": \"/app/m{index}.js\", \"code\": \"export const v{index}: number = {index};\"}}\n"
-            ));
+            );
         }
         let replies = replies(&input);
         assert_eq!(replies.len(), 8);
         for (index, reply) in replies.iter().enumerate() {
-            assert_eq!(reply["id"], format!("/app/m{index}.js"));
+            assert_eq!(
+                reply["id"],
+                uf_infra::into_string(uf_infra::cstr!("/app/m{index}.js"))
+            );
             assert!(
                 reply["code"]
                     .as_str()
                     .unwrap()
-                    .contains(&format!("v{index} = {index}"))
+                    .contains(uf_infra::cstr!("v{index} = {index}").as_str())
             );
         }
     }

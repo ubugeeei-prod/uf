@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf install` against a real package manager.
 //!
 //! Every test here runs npm. None of them needs the network: a project with no

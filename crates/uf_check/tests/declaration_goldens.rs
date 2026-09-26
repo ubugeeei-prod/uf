@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Every `uf_dts` golden, checked by Flow itself.
 //!
 //! `uf_dts`'s own golden tests pin what the translation prints. They cannot

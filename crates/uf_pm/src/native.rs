@@ -50,13 +50,13 @@ pub fn compatibility_warnings(root: &Utf8Path) -> Vec<String> {
                 .and_then(Value::as_str),
             dependency.get("version").and_then(Value::as_str),
         ) {
-            let owner = format!(
+            let owner = uf_infra::into_string(uf_infra::cstr!(
                 "Expo {}",
                 expo.as_ref()
                     .and_then(|value| value.get("version"))
                     .and_then(Value::as_str)
                     .unwrap_or("SDK")
-            );
+            ));
             compare(&mut warnings, name, version, range, &owner);
         }
         if let (Some(range), Some(version)) = (
@@ -81,9 +81,9 @@ fn compare(warnings: &mut Vec<String>, package: &str, version: &str, range: &str
         .collect();
     match (parsed, alternatives) {
         (Some(version), Some(alternatives)) if alternatives.iter().any(|range| range.allows(&version)) => {}
-        (Some(_), Some(_)) => warnings.push(format!("{owner} requires {package}@{range}, but {version} is installed; use `uf add {package}@'{range}'`")),
+        (Some(_), Some(_)) => warnings.push(uf_infra::into_string(uf_infra::cstr!("{owner} requires {package}@{range}, but {version} is installed; use `uf add {package}@'{range}'`"))),
         _ if range == "*" => {}
-        _ => warnings.push(format!("native compatibility: {owner} requires {package}@{range}; uf cannot compare this range with {version}. Check the peer range or run `expo install --check` before bundling")),
+        _ => warnings.push(uf_infra::into_string(uf_infra::cstr!("native compatibility: {owner} requires {package}@{range}; uf cannot compare this range with {version}. Check the peer range or run `expo install --check` before bundling"))),
     }
 }
 

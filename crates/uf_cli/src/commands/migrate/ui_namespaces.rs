@@ -398,7 +398,8 @@ pub(super) fn plan_project(root: &Utf8Path, plan: &mut Plan, steps: Steps) -> Re
             Ok(())
         })();
         if let Err(reason) = outcome {
-            plan.unmapped.push(format!("{path}: {reason}"));
+            plan.unmapped
+                .push(uf_infra::into_string(uf_infra::cstr!("{path}: {reason}")));
             continue;
         }
         if text == before {
@@ -519,9 +520,9 @@ pub(super) fn rewrite_with(
         while bound.contains(local.as_str()) || taken.contains(&local) {
             let prefix = origin.alias_prefix();
             local = if attempt == 1 {
-                format!("{prefix}{namespace}")
+                uf_infra::into_string(uf_infra::cstr!("{prefix}{namespace}"))
             } else {
-                format!("{prefix}{namespace}{attempt}")
+                uf_infra::into_string(uf_infra::cstr!("{prefix}{namespace}{attempt}"))
             };
             attempt += 1;
         }
@@ -530,7 +531,7 @@ pub(super) fn rewrite_with(
             added.push(if local == *namespace {
                 local.clone()
             } else {
-                format!("{namespace} as {local}")
+                uf_infra::into_string(uf_infra::cstr!("{namespace} as {local}"))
             });
         }
         locals.insert(key, local);
@@ -568,14 +569,15 @@ pub(super) fn rewrite_with(
                 let indent = import.indent(source);
                 let mut statement = String::new();
                 if !kept.is_empty() {
-                    statement.push_str(&format!(
+                    uf_infra::append!(
+                        statement,
                         "import {} from {};\n{indent}",
                         braces(&kept, indent),
                         import.specifier
-                    ));
+                    );
                 }
                 if starred.insert(import.specifier.to_owned()) {
-                    statement.push_str(&format!("import * as {local} from {};", import.specifier));
+                    uf_infra::append!(statement, "import * as {local} from {};", import.specifier);
                 } else if statement.ends_with(indent) {
                     statement.truncate(statement.len() - indent.len() - 1);
                 }
@@ -606,7 +608,9 @@ pub(super) fn rewrite_with(
                 // The package's namespace is a level below it; a copy's is the
                 // module the star already binds.
                 let replacement = match origin {
-                    Origin::Package => format!("{namespace}.{member}"),
+                    Origin::Package => {
+                        uf_infra::into_string(uf_infra::cstr!("{namespace}.{member}"))
+                    }
                     Origin::Copy(_) => member.to_owned(),
                 };
                 edits.push((token.start..token.end, replacement));
@@ -630,13 +634,16 @@ pub(super) fn rewrite_with(
             // shorthand property, a pattern or a local export otherwise; only
             // the first is a plain reference.
             if !is_jsx_container(source, &tokens, index) {
-                return Err(format!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "`{text}` is written as a shorthand property or a local export; write `{text}: {namespace}.{member}` or rename the export by hand"
-                ));
+                )));
             }
         }
         let local = &locals[&(*origin, namespace.clone())];
-        edits.push((token.start..token.end, format!("{local}.{member}")));
+        edits.push((
+            token.start..token.end,
+            uf_infra::into_string(uf_infra::cstr!("{local}.{member}")),
+        ));
     }
 
     if edits.is_empty() {
@@ -704,7 +711,7 @@ impl Import<'_> {
 /// A specifier list, on one line while it fits in the hundred columns uf's
 /// formatter wraps at and one per line after that.
 fn braces(specifiers: &[String], indent: &str) -> String {
-    let line = format!("{{ {} }}", specifiers.join(", "));
+    let line = uf_infra::into_string(uf_infra::cstr!("{{ {} }}", specifiers.join(", ")));
     if line.len() + indent.len() + 30 <= 100 {
         return line;
     }
@@ -793,10 +800,10 @@ fn package_imports<'a>(
         };
         if keyword == "export" {
             if let Some(found) = named.iter().find(|s| origin.lookup(s.imported).is_some()) {
-                return Err(format!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "re-exports `{}` from {specifier}; a re-export is this file's own surface, so rename it by hand",
                     found.imported
-                ));
+                )));
             }
             continue;
         }

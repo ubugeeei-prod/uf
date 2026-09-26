@@ -103,24 +103,24 @@ pub(crate) fn follow() -> Result<Option<ExitCode>> {
     };
     let store = Store::from_process();
     if variable(FOLLOWED).as_deref() == Some(version.as_str()) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} pins uf@{version}, and {} runs as uf@{OWN_VERSION}\n\n  \
              the store's copy is not the release it is named for; \
              `uf self-update {version}` installs it again, and \
              `UF_TOOLCHAIN=current` runs the uf that was started",
             source.describe(),
             store.version_dir(&version)
-        );
+        ));
     }
 
     if !store.has_complete(&version) {
         announce_install(&version, &source);
         acquire(&store, &version).with_context(|| {
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{} pins uf@{version}, which is not installed and could not be\n\n  \
                  `UF_TOOLCHAIN=current` runs the uf that was started instead",
                 source.describe()
-            )
+            ))
         })?;
     }
     let target = store
@@ -151,10 +151,10 @@ fn decide(
         Some(version) => {
             let version = version.strip_prefix("uf@").unwrap_or(version);
             if !is_version(version) {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "{OVERRIDE} is {version:?}, which is not a uf version: \
                      write a release such as 0.3.0, or `current`"
-                );
+                ));
             }
             (version.to_owned(), Source::Override)
         }
@@ -254,10 +254,10 @@ fn invoked_as() -> &'static str {
 /// Say why a download is about to start, before the installer draws it.
 fn announce_install(version: &str, source: &Source) {
     let mut ui = Ui::new(uf_term::ColorChoice::Auto, crate::ui::OutputMode::Human);
-    let line = format!(
+    let line = uf_infra::into_string(uf_infra::cstr!(
         "{} pins uf@{version}, which is not installed; installing it",
         source.describe()
-    );
+    ));
     ui.render_err(|renderer, out| renderer.status(out, Status::Info, &line));
 }
 
@@ -270,7 +270,7 @@ fn run(target: &Utf8Path, args: &[OsString], version: &str) -> Result<ExitCode> 
         .args(args)
         .env(FOLLOWED, version)
         .exec();
-    Err(error).with_context(|| format!("failed to run {target}"))
+    Err(error).with_context(|| uf_infra::cstr!("failed to run {target}"))
 }
 
 /// Run `target` with `args`, and answer with its exit code.
@@ -280,7 +280,7 @@ fn run(target: &Utf8Path, args: &[OsString], version: &str) -> Result<ExitCode> 
         .args(args)
         .env(FOLLOWED, version)
         .status()
-        .with_context(|| format!("failed to run {target}"))?;
+        .with_context(|| uf_infra::cstr!("failed to run {target}"))?;
     Ok(status
         .code()
         .and_then(|code| u8::try_from(code).ok())

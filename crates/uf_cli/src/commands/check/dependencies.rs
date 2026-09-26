@@ -154,7 +154,7 @@ pub(super) fn load_packages(
 fn subpath(specifier: &str, name: &str) -> String {
     match specifier.strip_prefix(name) {
         None | Some("") => ".".to_owned(),
-        Some(rest) => format!(".{rest}"),
+        Some(rest) => uf_infra::into_string(uf_infra::cstr!(".{rest}")),
     }
 }
 
@@ -174,15 +174,15 @@ fn installed_for(
         .into_iter()
         .map(|base| {
             if base.is_empty() {
-                format!("{INSTALLED}/{name}")
+                uf_infra::into_string(uf_infra::cstr!("{INSTALLED}/{name}"))
             } else {
-                format!("{base}/{INSTALLED}/{name}")
+                uf_infra::into_string(uf_infra::cstr!("{base}/{INSTALLED}/{name}"))
             }
         })
         .collect::<Vec<String>>();
     let above = ancestors
         .iter()
-        .map(|base| format!("{base}/{INSTALLED}/{name}"));
+        .map(|base| uf_infra::into_string(uf_infra::cstr!("{base}/{INSTALLED}/{name}")));
 
     // Inside the project first, then above it, which is the order Node climbs.
     inside
@@ -222,7 +222,7 @@ fn ancestor_bases(root: &Utf8Path) -> Vec<String> {
         base = if base.is_empty() {
             String::from("..")
         } else {
-            format!("../{base}")
+            uf_infra::into_string(uf_infra::cstr!("../{base}"))
         };
         bases.push(base.clone());
         directory = parent;
@@ -342,7 +342,7 @@ fn read_package(root: &Utf8Path, directory: &str) -> Vec<SourceFile> {
             // `./index.js` to a path in the same shape, and one read as
             // `packages/form/package.json` would collide with the copy the
             // scan already holds.
-            path: format!("{directory}/{relative}"),
+            path: uf_infra::into_string(uf_infra::cstr!("{directory}/{relative}")),
             source,
         });
     }

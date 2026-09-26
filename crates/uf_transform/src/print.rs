@@ -279,10 +279,10 @@ impl Printer {
     }
 
     fn unknown(node: &Value, context: &str) -> TransformError {
-        TransformError::Internal(format!(
+        TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
             "printer does not know {} in {context}",
             node_type(node).unwrap_or("a non-node")
-        ))
+        )))
     }
 
     // ------------------------------------------------------------------
@@ -1066,7 +1066,7 @@ impl Printer {
             },
             Some("BigIntLiteral") => {
                 let text = str_field(node, "value").unwrap_or("0");
-                self.word(&format!("{}n", text.trim_end_matches('n')));
+                self.word(uf_infra::cstr!("{}n", text.trim_end_matches('n')).as_str());
             }
             Some("BooleanLiteral") => self.word(if bool_field(node, "value") {
                 "true"
@@ -1629,11 +1629,13 @@ fn contains_call(node: &Value) -> bool {
 /// that reads back to the same value.
 fn format_number(value: f64) -> String {
     if value.is_finite() && value.fract() == 0.0 && value.abs() < 1e16 {
-        return format!("{}", value as i64);
+        return uf_infra::into_string(uf_infra::cstr!("{}", value as i64));
     }
-    let text = format!("{value}");
+    let text = uf_infra::into_string(uf_infra::cstr!("{value}"));
     if value.is_finite() && value.abs() >= 1e21 {
-        return format!("{value:e}").replace("e", "e+").replace("e+-", "e-");
+        return uf_infra::into_string(uf_infra::cstr!("{value:e}"))
+            .replace("e", "e+")
+            .replace("e+-", "e-");
     }
     text
 }

@@ -10,7 +10,11 @@ use crate::ui::Ui;
 pub(crate) fn info(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let version = env!("CARGO_PKG_VERSION");
     let cwd = cwd.as_str();
-    let host = format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS);
+    let host = uf_infra::into_string(uf_infra::cstr!(
+        "{}-{}",
+        std::env::consts::ARCH,
+        std::env::consts::OS
+    ));
 
     ui.render(|renderer, out| {
         brand::render_mark(renderer, out, "uf info");

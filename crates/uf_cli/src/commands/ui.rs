@@ -118,10 +118,10 @@ fn configured_directory(config: &UiConfig) -> Result<&Utf8Path> {
         )
     });
     if leaves {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`ui.directory` in uf.config.js is `{named}`, which leaves the project; name a \
              directory inside it, such as `{DEFAULT_DIRECTORY}`"
-        );
+        ));
     }
     Ok(path)
 }
@@ -163,16 +163,20 @@ fn add(cwd: &Utf8Path, ui: &mut Ui, names: &[String], overwrite: bool) -> Result
             &crate::commands::pm::Scope::Project,
         )
         .with_context(|| {
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`uf ui add` wrote no component, because the packages they import could not \
                      be added: {}",
                 specs.join(" ")
-            )
+            ))
         })?;
     }
 
-    project::apply(&plan)
-        .with_context(|| format!("could not write into {}", place.relative(&place.directory)))?;
+    project::apply(&plan).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not write into {}",
+            place.relative(&place.directory)
+        ))
+    })?;
     let imports = import_hints(&place, &registry, &plan);
     render_added(ui, &place, &plan, &imports);
     Ok(())
@@ -209,7 +213,7 @@ fn import_hints(place: &Place, registry: &Registry, plan: &AddPlan) -> (String, 
         .filter_map(|step| registry.get(step.component))
         .map(|component| {
             let file = below.join(component.file_name());
-            component.import_statement(&format!("./{file}"))
+            component.import_statement(uf_infra::cstr!("./{file}").as_str())
         })
         .collect();
     (top, lines)
@@ -223,31 +227,33 @@ fn refusal(place: &Place, conflicts: &[Conflict]) -> anyhow::Error {
         .collect();
     let names = named.join(" ");
     let mut message = match conflicts {
-        [one] => format!(
+        [one] => uf_infra::into_string(uf_infra::cstr!(
             "{} {}, and `uf ui add` will not replace it",
             place.relative(&one.path),
             what_it_is(one)
-        ),
+        )),
         _ => {
-            let mut message = format!(
+            let mut message = uf_infra::into_string(uf_infra::cstr!(
                 "{} files would be replaced, and `uf ui add` will not replace a file it did not \
                  write:",
                 conflicts.len()
-            );
+            ));
             for conflict in conflicts {
-                message.push_str(&format!(
+                uf_infra::append!(
+                    message,
                     "\n  {} {}",
                     place.relative(&conflict.path),
                     what_it_is(conflict)
-                ));
+                );
             }
             message
         }
     };
-    message.push_str(&format!(
+    uf_infra::append!(
+        message,
         "\n\n  nothing was written\n\n  uf ui diff {names}                shows how it differs from \
          this uf's version\n  uf ui add {names} --overwrite     replaces it with this uf's version"
-    ));
+    );
     anyhow!(message)
 }
 
@@ -263,7 +269,7 @@ fn what_it_is(conflict: &Conflict) -> &'static str {
 fn unknown_component(registry: &Registry, name: &str) -> anyhow::Error {
     let names = registry.components().iter().map(|component| component.name);
     let suggestions = crate::suggest::closest(name, names);
-    let mut message = format!("no component named `{name}`");
+    let mut message = uf_infra::into_string(uf_infra::cstr!("no component named `{name}`"));
     if !suggestions.is_empty() {
         message.push_str("\n\n  did you mean: ");
         message.push_str(&suggestions.join(", "));
@@ -280,7 +286,10 @@ fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan, imports: &(String, V
         .map(|step| {
             let (what, tone) = match &step.action {
                 AddAction::Create => ("added".to_owned(), Tone::Good),
-                AddAction::Update { from } => (format!("updated from uf {from}"), Tone::Good),
+                AddAction::Update { from } => (
+                    uf_infra::into_string(uf_infra::cstr!("updated from uf {from}")),
+                    Tone::Good,
+                ),
                 AddAction::Unchanged => ("already this uf's version".to_owned(), Tone::Muted),
                 AddAction::Replace => ("replaced".to_owned(), Tone::Warn),
                 AddAction::Keep { edited: true } => {
@@ -329,7 +338,7 @@ fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan, imports: &(String, V
             renderer.status(
                 out,
                 Status::Success,
-                &format!("wrote {}", plural(written, "file")),
+                uf_infra::cstr!("wrote {}", plural(written, "file")).as_str(),
             );
         }
         if kept {
@@ -345,10 +354,10 @@ fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan, imports: &(String, V
             renderer.status(
                 out,
                 Status::Info,
-                &format!("import from a module in {top}/:"),
+                uf_infra::cstr!("import from a module in {top}/:").as_str(),
             );
             for line in lines {
-                renderer.line(out, Style::default(), &format!("  {line}"));
+                renderer.line(out, Style::default(), uf_infra::cstr!("  {line}").as_str());
             }
         }
         renderer.blank(out);
@@ -360,8 +369,12 @@ fn render_added(ui: &mut Ui, place: &Place, plan: &AddPlan, imports: &(String, V
 fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> {
     let place = Place::find(cwd)?;
     let registry = registry()?;
-    let copies = project::survey(&place.directory, &registry)
-        .with_context(|| format!("could not read {}", place.relative(&place.directory)))?;
+    let copies = project::survey(&place.directory, &registry).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not read {}",
+            place.relative(&place.directory)
+        ))
+    })?;
 
     if as_json {
         ui.json(&json!({
@@ -420,10 +433,10 @@ fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> {
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "{} in uf {REGISTRY_VERSION}; {added} added to {directory}",
                 plural(rows.len(), "component")
-            ),
+            )),
         );
         renderer.blank(out);
     });
@@ -434,23 +447,32 @@ fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> {
 fn describe_state(state: &CopyState) -> (String, Tone) {
     match state {
         CopyState::Missing => ("—".to_owned(), Tone::Muted),
-        CopyState::Current { stamp } => (format!("added, uf {}", stamp.version), Tone::Good),
+        CopyState::Current { stamp } => (
+            uf_infra::into_string(uf_infra::cstr!("added, uf {}", stamp.version)),
+            Tone::Good,
+        ),
         CopyState::Outdated { stamp } => (
-            format!("added, uf {}; this uf's version differs", stamp.version),
+            uf_infra::into_string(uf_infra::cstr!(
+                "added, uf {}; this uf's version differs",
+                stamp.version
+            )),
             Tone::Warn,
         ),
         CopyState::Edited {
             stamp,
             registry_moved: false,
-        } => (format!("edited since uf {}", stamp.version), Tone::Accent),
+        } => (
+            uf_infra::into_string(uf_infra::cstr!("edited since uf {}", stamp.version)),
+            Tone::Accent,
+        ),
         CopyState::Edited {
             stamp,
             registry_moved: true,
         } => (
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "edited since uf {}; this uf's version differs too",
                 stamp.version
-            ),
+            )),
             Tone::Warn,
         ),
         CopyState::Foreign => ("a file uf ui add did not write".to_owned(), Tone::Warn),
@@ -489,17 +511,21 @@ fn diff(cwd: &Utf8Path, ui: &mut Ui, names: &[String], as_json: bool) -> Result<
 
     let mut compared = Vec::with_capacity(components.len());
     for component in components {
-        let copy = project::inspect(&place.directory, component)
-            .with_context(|| format!("could not read {}", place.relative(&place.directory)))?;
+        let copy = project::inspect(&place.directory, component).with_context(|| {
+            uf_infra::into_string(uf_infra::cstr!(
+                "could not read {}",
+                place.relative(&place.directory)
+            ))
+        })?;
         if copy.state == CopyState::Missing {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{} does not exist, so there is nothing to compare\n\n  uf ui add {}   writes it",
                 place.relative(&copy.path),
                 component.name
-            );
+            ));
         }
         let unified = uf_ui::diff::unified(
-            &format!("{}.js in uf {REGISTRY_VERSION}", component.name),
+            uf_infra::cstr!("{}.js in uf {REGISTRY_VERSION}", component.name).as_str(),
             &place.relative(&copy.path),
             component.source,
             copy.content.as_deref().unwrap_or_default(),
@@ -542,20 +568,20 @@ fn diff(cwd: &Utf8Path, ui: &mut Ui, names: &[String], as_json: bool) -> Result<
             renderer.status(
                 out,
                 Status::Info,
-                &format!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "no component has been added to {directory}; `uf ui list` shows what this uf \
                      carries"
-                ),
+                )),
             );
             renderer.blank(out);
             return;
         }
         for each in &compared {
-            let heading = format!(
+            let heading = uf_infra::into_string(uf_infra::cstr!(
                 "{}  {}",
                 each.component.name,
                 place.relative(&each.copy.path)
-            );
+            ));
             renderer.heading(out, 2, &heading);
             let (status, sentence) = explain_state(&each.copy.state, each.component.name);
             renderer.status(out, status, &sentence);
@@ -578,37 +604,40 @@ fn explain_state(state: &CopyState, name: &str) -> (Status, String) {
     match state {
         CopyState::Current { stamp } => (
             Status::Success,
-            format!("the same as uf {}'s version, untouched", stamp.version),
+            uf_infra::into_string(uf_infra::cstr!(
+                "the same as uf {}'s version, untouched",
+                stamp.version
+            )),
         ),
         CopyState::Outdated { stamp } => (
             Status::Warn,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "untouched since uf {} wrote it, and this uf's version differs: every line below is \
                  the registry's, and `uf ui add {name}` takes them",
                 stamp.version
-            ),
+            )),
         ),
         CopyState::Edited {
             stamp,
             registry_moved: false,
         } => (
             Status::Info,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "edited since uf {} wrote it, and the registry has not moved: every line below is \
                  this project's",
                 stamp.version
-            ),
+            )),
         ),
         CopyState::Edited {
             stamp,
             registry_moved: true,
         } => (
             Status::Warn,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "edited since uf {} wrote it, and this uf's version differs too: the lines below \
                  are the project's edits and the registry's changes together",
                 stamp.version
-            ),
+            )),
         ),
         CopyState::Foreign => (
             Status::Warn,
@@ -685,17 +714,17 @@ fn update(cwd: &Utf8Path, ui: &mut Ui, names: &[String], options: UpdateOptions)
         }
         Err(UpdateError::NotAdded(missing)) => {
             let names = missing.join(" ");
-            bail!(
+            bail!(uf_infra::cstr!(
                 "the project has no copy of {} in {}, so there is nothing to update\n\n  uf ui add \
                  {names}   writes {}",
                 missing
                     .iter()
-                    .map(|name| format!("`{name}`"))
+                    .map(|name| uf_infra::into_string(uf_infra::cstr!("`{name}`")))
                     .collect::<Vec<_>>()
                     .join(", "),
                 place.relative(&place.directory),
-                if missing.len() == 1 { "it" } else { "them" },
-            );
+                if missing.len() == 1 { "it" } else { "them" }
+            ));
         }
         Err(other) => return Err(other.into()),
     };
@@ -715,15 +744,18 @@ fn update(cwd: &Utf8Path, ui: &mut Ui, names: &[String], options: UpdateOptions)
                 &crate::commands::pm::Scope::Project,
             )
             .with_context(|| {
-                format!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`uf ui update` wrote no component, because the packages they import could \
                      not be added: {}",
                     specs.join(" ")
-                )
+                ))
             })?;
         }
         update::apply(&plan).with_context(|| {
-            format!("could not write into {}", place.relative(&place.directory))
+            uf_infra::into_string(uf_infra::cstr!(
+                "could not write into {}",
+                place.relative(&place.directory)
+            ))
         })?;
     }
 
@@ -756,16 +788,16 @@ fn update(cwd: &Utf8Path, ui: &mut Ui, names: &[String], options: UpdateOptions)
     if !conflicted.is_empty() {
         let files: Vec<String> = conflicted
             .iter()
-            .map(|step| format!("  {}", place.relative(&step.path)))
+            .map(|step| uf_infra::into_string(uf_infra::cstr!("  {}", place.relative(&step.path))))
             .collect();
         if options.dry_run {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{} would be written with conflicts to resolve:\n{}",
                 plural(conflicted.len(), "file"),
                 files.join("\n")
-            );
+            ));
         }
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} {} conflicts to resolve, marked `<<<<<<< {}` … `>>>>>>> uf {REGISTRY_VERSION}`:\n{}\n\n  \
              the part between `|||||||` and `=======` is the text the copy began as; `uf check` \
              fails on the file until the markers are gone",
@@ -773,7 +805,7 @@ fn update(cwd: &Utf8Path, ui: &mut Ui, names: &[String], options: UpdateOptions)
             if conflicted.len() == 1 { "has" } else { "have" },
             update::OURS_LABEL,
             files.join("\n")
-        );
+        ));
     }
     Ok(())
 }
@@ -813,7 +845,10 @@ fn committed_base(path: &Utf8Path, stamp: &Stamp) -> Option<String> {
     log.lines()
         .filter(|line| !line.is_empty())
         .find_map(|commit| {
-            let text = git(directory, &["show", &format!("{commit}:{prefix}{file}")])?;
+            let text = git(
+                directory,
+                &["show", uf_infra::cstr!("{commit}:{prefix}{file}").as_str()],
+            )?;
             update::base_of(stamp, &text)
         })
 }
@@ -919,17 +954,27 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
                     "kept: edited, and this uf's version has not moved".to_owned(),
                     Tone::Muted,
                 ),
-                UpdateAction::Update { from } => (format!("updated from uf {from}"), Tone::Good),
+                UpdateAction::Update { from } => (
+                    uf_infra::into_string(uf_infra::cstr!("updated from uf {from}")),
+                    Tone::Good,
+                ),
                 UpdateAction::Merged { from, conflicts: 0 } => (
-                    format!("merged: your edits kept, uf {from} → {REGISTRY_VERSION}"),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "merged: your edits kept, uf {from} → {REGISTRY_VERSION}"
+                    )),
                     Tone::Good,
                 ),
                 UpdateAction::Merged { conflicts, .. } => (
-                    format!("merged with {} to resolve", plural(*conflicts, "conflict")),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "merged with {} to resolve",
+                        plural(*conflicts, "conflict")
+                    )),
                     Tone::Bad,
                 ),
                 UpdateAction::NoBase { from } => (
-                    format!("not merged: the uf {from} text it began as was not found"),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "not merged: the uf {from} text it began as was not found"
+                    )),
                     Tone::Warn,
                 ),
                 UpdateAction::Foreign => (
@@ -968,7 +1013,9 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
             renderer.status(
                 out,
                 Status::Info,
-                &format!("no component has been added to {directory}; `uf ui add` writes one"),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "no component has been added to {directory}; `uf ui add` writes one"
+                )),
             );
             renderer.blank(out);
             return;
@@ -992,13 +1039,16 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
             (count, true) => renderer.status(
                 out,
                 Status::Info,
-                &format!("would write {}; nothing was written", plural(count, "file")),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "would write {}; nothing was written",
+                    plural(count, "file")
+                )),
             ),
             (count, false) => {
                 renderer.status(
                     out,
                     Status::Success,
-                    &format!("wrote {}", plural(count, "file")),
+                    uf_infra::cstr!("wrote {}", plural(count, "file")).as_str(),
                 );
             }
         }
@@ -1007,7 +1057,7 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
             renderer.status(
                 out,
                 Status::Warn,
-                &format!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "a copy is merged from the exact text it began as, found in this project's \
                      git history or in that uf release{}; for the rest, `uf ui diff {names}` \
                      shows both changes together and `uf ui add {names} --overwrite` takes this \
@@ -1017,7 +1067,7 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
                     } else {
                         ""
                     }
-                ),
+                )),
             );
         }
         renderer.blank(out);

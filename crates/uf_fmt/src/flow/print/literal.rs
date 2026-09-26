@@ -118,7 +118,7 @@ pub fn print_number(raw: &str) -> String {
             // Remove unnecessary scientific notation (1x).
             mantissa.to_string()
         } else {
-            format!("{mantissa}e{sign}{digits}")
+            uf_infra::into_string(uf_infra::cstr!("{mantissa}e{sign}{digits}"))
         };
     }
 
@@ -146,12 +146,12 @@ pub fn print_number(raw: &str) -> String {
             if fraction.is_empty() {
                 integer.strip_suffix('.').unwrap_or(integer).to_string()
             } else {
-                format!("{integer}{fraction}")
+                uf_infra::into_string(uf_infra::cstr!("{integer}{fraction}"))
             }
         }
         None => mantissa,
     };
-    format!("{mantissa}{exponent}")
+    uf_infra::into_string(uf_infra::cstr!("{mantissa}{exponent}"))
 }
 
 /// A bigint literal: lowercased.
@@ -164,7 +164,7 @@ pub fn print_regex(pattern: &str, flags: &str) -> String {
     let mut flags: Vec<char> = flags.chars().collect();
     flags.sort_unstable();
     let flags: String = flags.into_iter().collect();
-    format!("/{pattern}/{flags}")
+    uf_infra::into_string(uf_infra::cstr!("/{pattern}/{flags}"))
 }
 
 /// Whether `name` is a plain identifier, so a quoted key can lose its

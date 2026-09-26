@@ -253,8 +253,13 @@ impl Ui {
     pub(crate) fn usage_error(&mut self, headline: &str, suggestions: &[String], hint: &str) {
         let meant = match suggestions {
             [] => None,
-            [one] => Some(format!("did you mean {one}?")),
-            many => Some(format!("did you mean one of {}?", many.join(", "))),
+            [one] => Some(uf_infra::into_string(uf_infra::cstr!(
+                "did you mean {one}?"
+            ))),
+            many => Some(uf_infra::into_string(uf_infra::cstr!(
+                "did you mean one of {}?",
+                many.join(", ")
+            ))),
         };
         let width = crate::help::width_for(self.stderr.capabilities());
         self.render_err(|renderer, out| {

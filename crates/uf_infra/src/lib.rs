@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! Shared high-throughput primitives for uniflowed.
 //!
 //! This crate is intentionally tiny and boring at the API boundary. Internals can
@@ -11,9 +13,12 @@
 
 pub mod cache;
 pub mod parallel;
+mod string_builder;
+pub use string_builder::{compact_format, into_string};
 
 pub use bumpalo::{Bump, collections::Vec as ArenaVec};
-pub use compact_str::CompactString;
+pub use compact_str::{CompactString, format_compact};
+pub use fast_float2::parse as parse_float;
 pub use memchr::{memchr, memchr_iter};
 pub use phf;
 pub use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
@@ -43,13 +48,20 @@ pub struct LineColumn {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineIndex {
-    starts: Vec<usize>,
+    starts: InlineVec<usize, 16>,
 }
 
 impl LineIndex {
+    #[inline]
     pub fn new(source: &str) -> Self {
-        let mut starts =
-            Vec::with_capacity(source.as_bytes().iter().filter(|&&b| b == b'\n').count() + 1);
+        // Short modules stay inline. Large inputs get one exact allocation;
+        // SIMD newline counting avoids the old scalar pre-scan and repeated
+        // SmallVec growth when thousands of lines spill.
+        let mut starts = if source.len() > 1024 {
+            InlineVec::with_capacity(memchr_iter(b'\n', source.as_bytes()).count() + 1)
+        } else {
+            InlineVec::new()
+        };
         starts.push(0);
         starts.extend(memchr_iter(b'\n', source.as_bytes()).map(|offset| offset + 1));
         Self { starts }
@@ -80,8 +92,24 @@ pub fn is_flow_keyword(value: &str) -> bool {
     FLOW_KEYWORDS.contains(value)
 }
 
+#[inline]
 pub fn normalize_slashes(path: &str) -> CompactString {
-    CompactString::from(path.replace('\\', "/"))
+    // For heap-sized strings, replace's allocation becomes the CompactString's
+    // backing buffer directly. It was faster than rebuilding chunk by chunk.
+    if path.len() > std::mem::size_of::<CompactString>() {
+        return CompactString::from(path.replace('\\', "/"));
+    }
+    let mut normalized = CompactString::new(path);
+    // SAFETY: every byte starts as valid UTF-8. Only ASCII backslash becomes
+    // ASCII slash, preserving length and every multibyte sequence. The result
+    // remains valid UTF-8 throughout; the borrow cannot escape this function.
+    let bytes = unsafe { normalized.as_mut_bytes() };
+    for byte in bytes {
+        if *byte == b'\\' {
+            *byte = b'/';
+        }
+    }
+    normalized
 }
 
 #[cfg(test)]

@@ -155,7 +155,9 @@ fn footer(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
     push_line(out, |out| {
         let hidden = menu.hidden_below() + menu.hidden_above();
         if hidden > 0 {
-            theme.muted.paint(level, &format!("{hidden} more · "), out);
+            theme
+                .muted
+                .paint(level, uf_infra::cstr!("{hidden} more · ").as_str(), out);
         }
         let keys = if unicode {
             "↑↓ move · ⏎ run · esc cancel"

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf env`: the per-repository toolchain.
 //!
 //! Nothing here reaches the network. Acquiring a real Node is exercised by

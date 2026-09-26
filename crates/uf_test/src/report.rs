@@ -286,15 +286,19 @@ impl FileStatus {
     pub fn describe(&self) -> String {
         match self {
             Self::Completed => "completed".to_string(),
-            Self::TimedOut { budget_micros } => {
-                format!("exceeded the per-file budget of {budget_micros}us")
+            Self::TimedOut { budget_micros } => uf_infra::into_string(uf_infra::cstr!(
+                "exceeded the per-file budget of {budget_micros}us"
+            )),
+            Self::LoadFailed { message, .. } => {
+                uf_infra::into_string(uf_infra::cstr!("failed to load: {message}"))
             }
-            Self::LoadFailed { message, .. } => format!("failed to load: {message}"),
-            Self::HostFailed { message } => format!("the host failed: {message}"),
-            Self::RegisteredNothing { declared } => format!(
+            Self::HostFailed { message } => {
+                uf_infra::into_string(uf_infra::cstr!("the host failed: {message}"))
+            }
+            Self::RegisteredNothing { declared } => uf_infra::into_string(uf_infra::cstr!(
                 "registered nothing with `@uniflowed/test`, though discovery found {declared} \
                  there; none of it ran"
-            ),
+            )),
             Self::NotRun => "was not scheduled because the run bailed".to_string(),
         }
     }

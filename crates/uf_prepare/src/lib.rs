@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! What `uf prepare` does before a commit, and the record it leaves behind.
 //!
@@ -578,7 +579,10 @@ mod tests {
         assert_eq!(PrepareStep::RunStagedTasks.name(), "run-staged-tasks");
         for step in default_plan().steps {
             let json = serde_json::to_string(&step).expect("a step serializes");
-            assert_eq!(json, format!("\"{}\"", step.name()));
+            assert_eq!(
+                json,
+                uf_infra::into_string(uf_infra::cstr!("\"{}\"", step.name()))
+            );
         }
         assert_eq!(PrepareCacheMode::OptIn.name(), "opt-in");
     }

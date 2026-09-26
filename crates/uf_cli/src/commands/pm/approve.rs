@@ -116,13 +116,13 @@ pub(crate) fn approve_builds(
     // three names and then fails has left the project in a state nobody asked
     // for, on the one surface where that matters most.
     if approvals == Approvals::AllOrNothing {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{manager} cannot approve one package rather than all of them: `--ignore-scripts` is \
              every script or none, and there is no third answer to give it.\n\nuf keeps them off. \
              Turning them all on is `pm.allowLifecycleScripts: true` in uf.config.js, which is a \
              deliberate act with a deliberate spelling — and it approves every dependency you \
              have, including the ones you have not read."
-        );
+        ));
     }
     for name in names {
         if !waiting.iter().any(|package| package.name == name.as_str()) {
@@ -131,16 +131,16 @@ pub(crate) fn approve_builds(
                 .map(|package| package.name.as_str())
                 .collect::<Vec<_>>();
             if known.is_empty() {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "nothing in this project's tree declares an install script, so there is \
                      nothing to approve — `{name}` included. Has it been installed yet?"
-                );
+                ));
             }
-            bail!(
+            bail!(uf_infra::cstr!(
                 "`{name}` is not a package in this project's tree that would run code at \
                  install time. These are: {}",
                 known.join(", ")
-            );
+            ));
         }
     }
 
@@ -182,7 +182,9 @@ pub(crate) fn approve_builds(
             renderer.status(
                 out,
                 Status::Info,
-                &format!("{summary} would be approved; run without --dry-run"),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "{summary} would be approved; run without --dry-run"
+                )),
             );
         }
     });
@@ -215,7 +217,11 @@ pub(crate) fn approve_builds(
     }
 
     ui.render(|renderer, out| {
-        renderer.status(out, Status::Success, &format!("approved {summary}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("approved {summary}").as_str(),
+        );
         // Not run for them: approving is a decision, installing is an action,
         // and a security command that reaches straight for the second the
         // moment you make the first is a command that runs the script you were
@@ -404,10 +410,10 @@ fn render(
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "and {} more; --json prints all of them",
                 waiting.len() - ROWS_SHOWN
-            ),
+            )),
         );
     }
     renderer.blank(out);
@@ -422,12 +428,12 @@ fn render(
     renderer.status(
         out,
         Status::Info,
-        &format!(
+        &uf_infra::into_string(uf_infra::cstr!(
             "{} would run code at install time and {} not approved, so uf does not let {} run",
             plural(pending, "package"),
             if pending == 1 { "is" } else { "are" },
             if pending == 1 { "it" } else { "them" }
-        ),
+        )),
     );
     if approvals == Approvals::AllOrNothing {
         // The honest sentence, rather than an approval that quietly means
@@ -435,10 +441,10 @@ fn render(
         renderer.status(
             out,
             Status::Warn,
-            &format!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "{manager} cannot approve one and not another: `--ignore-scripts` is all of them \
                  or none"
-            ),
+            )),
         );
         renderer.status(
             out,
@@ -469,13 +475,13 @@ fn render_origins(
         .iter()
         .zip(attested)
         .filter_map(|(package, state)| match state {
-            Attested::Yes(origin) if !origin.is_empty() => {
-                Some(format!("{} built by {origin}", package.name))
-            }
-            Attested::Mismatch => Some(format!(
+            Attested::Yes(origin) if !origin.is_empty() => Some(uf_infra::into_string(
+                uf_infra::cstr!("{} built by {origin}", package.name),
+            )),
+            Attested::Mismatch => Some(uf_infra::into_string(uf_infra::cstr!(
                 "{} publishes an attestation that is not about this version",
                 package.name
-            )),
+            ))),
             _ => None,
         })
         .collect();

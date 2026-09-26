@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! The Bun half of the Capability JS Host, started for real.
 //!
 //! `runtime.capabilityJsHost.hosts` lists Bun, the README lists it, and

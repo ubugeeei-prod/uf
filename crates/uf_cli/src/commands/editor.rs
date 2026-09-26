@@ -132,7 +132,7 @@ pub(crate) fn install(ui: &mut Ui, editor: Editor, options: &InstallOptions) -> 
             renderer.status(
                 out,
                 Status::Info,
-                &format!("would write {shown}; run without --dry-run"),
+                uf_infra::cstr!("would write {shown}; run without --dry-run").as_str(),
             );
         });
         return Ok(());
@@ -149,7 +149,11 @@ pub(crate) fn install(ui: &mut Ui, editor: Editor, options: &InstallOptions) -> 
     let guide = editor.guide();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf editor install", Some(editor.name()));
-        renderer.status(out, Status::Success, &format!("{verb} {shown}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("{verb} {shown}").as_str(),
+        );
         for line in &next {
             renderer.hint(out, 2, line);
         }
@@ -168,12 +172,12 @@ fn install_extension(
 ) -> Result<()> {
     let path_var = std::env::var_os("PATH");
     let cli = install::find_on_path(cli_name, path_var.as_deref()).ok_or_else(|| {
-        anyhow!(
+        anyhow!(uf_infra::cstr!(
             "`{cli_name}` is not on PATH, and it is what installs the extension. In {}, run \
              \"Shell Command: Install '{cli_name}' command in PATH\" from the command palette, \
              then run this again",
             editor.name()
-        )
+        ))
     })?;
     let base = std::env::var("UF_EDITOR_RELEASE_BASE").ok();
     let asset = install::vsix_asset(version);
@@ -205,11 +209,11 @@ fn install_extension(
 
     let staging = tempfile::tempdir().context("could not create a temporary directory")?;
     let staging_path = Utf8Path::from_path(staging.path())
-        .ok_or_else(|| anyhow!("the temporary directory is not UTF-8"))?;
+        .ok_or_else(|| anyhow!(uf_infra::cstr!("the temporary directory is not UTF-8")))?;
     let (vsix, checked) = match &options.vsix {
         Some(file) => {
             if !file.is_file() {
-                bail!("{file} is not a file");
+                bail!(uf_infra::cstr!("{file} is not a file"));
             }
             (file.clone(), None)
         }
@@ -223,20 +227,23 @@ fn install_extension(
     install::install_vsix(&cli, &vsix)?;
 
     let source = match &options.vsix {
-        Some(file) => format!("{file} (a local file; not checked against a release)"),
-        None => format!("{asset} from uf@{version}"),
+        Some(file) => uf_infra::into_string(uf_infra::cstr!(
+            "{file} (a local file; not checked against a release)"
+        )),
+        None => uf_infra::into_string(uf_infra::cstr!("{asset} from uf@{version}")),
     };
-    let digest = checked.map(|digest| format!("sha256 {}", &digest[..12]));
+    let digest =
+        checked.map(|digest| uf_infra::into_string(uf_infra::cstr!("sha256 {}", &digest[..12])));
     let cli = cli.to_string();
     let guide = editor.guide();
-    let setup_hint = format!(
+    let setup_hint = uf_infra::into_string(uf_infra::cstr!(
         "`uf editor setup {}` in a project turns the editor's own JavaScript checking off for its Flow files",
         if editor == Editor::Cursor {
             "cursor"
         } else {
             "vscode"
         }
-    );
+    ));
     ui.render(|renderer, out| {
         renderer.banner(out, "uf editor install", Some(editor.name()));
         let mut rows = vec![
@@ -280,13 +287,13 @@ fn project_root(cwd: &Utf8Path) -> Option<Utf8PathBuf> {
 /// `--check`, when anything would be added.
 pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) -> Result<()> {
     let root = project_root(cwd).ok_or_else(|| {
-        anyhow!(
+        anyhow!(uf_infra::cstr!(
             "no uf.config.js in {cwd} or above it; `uf editor setup` writes a uf project's editor \
              settings, so run it in one"
-        )
+        ))
     })?;
     let project = project_label(&root).to_owned();
-    let subtitle = format!("{} · {project}", editor.name());
+    let subtitle = uf_infra::into_string(uf_infra::cstr!("{} · {project}", editor.name()));
     let targets = setup::targets(editor);
 
     if targets.is_empty() {
@@ -297,10 +304,10 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
             renderer.status(
                 out,
                 Status::Info,
-                &format!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{} has no project settings file uf writes; by hand:",
                     editor.name()
-                ),
+                )),
             );
             let items = steps.iter().map(String::as_str).collect::<Vec<_>>();
             renderer.ordered_list(out, 2, &items);
@@ -314,10 +321,10 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
         let path = root.join(target.path);
         let existing = read_optional(&path)?;
         let plan = setup::plan(target, existing.as_deref()).with_context(|| {
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{} is not a file uf can read as settings; nothing was written to it",
                 target.path
-            )
+            ))
         })?;
         planned.push((target, path, existing, plan));
     }
@@ -332,11 +339,11 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
 
     if check {
         if pending {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "the {} settings are not all written; run `uf editor setup {}`",
                 editor.name(),
                 editor_arg(editor)
-            );
+            ));
         }
         ui.render(|renderer, out| {
             renderer.status(out, Status::Success, "every setting is in place");
@@ -352,9 +359,11 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
             continue;
         }
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("could not create {parent}"))?;
+            fs::create_dir_all(parent)
+                .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
         }
-        fs::write(path, text).with_context(|| format!("could not write {}", target.path))?;
+        fs::write(path, text)
+            .with_context(|| uf_infra::cstr!("could not write {}", target.path))?;
     }
 
     let guide = editor.guide();
@@ -441,7 +450,11 @@ fn render_plan(
         FilePlan::Edit(_) | FilePlan::Already => (Status::Skip, "already set up:"),
         FilePlan::Conflict { .. } => (Status::Warn, "left alone:"),
     };
-    renderer.status(out, status, &format!("{verb} {}", target.path));
+    renderer.status(
+        out,
+        status,
+        uf_infra::cstr!("{verb} {}", target.path).as_str(),
+    );
 
     let added = match plan {
         FilePlan::Create { text } | FilePlan::Append { text } => {
@@ -452,7 +465,11 @@ fn render_plan(
     };
     for block in added {
         for line in block.lines() {
-            renderer.line(out, renderer.theme().success, &format!("    + {line}"));
+            renderer.line(
+                out,
+                renderer.theme().success,
+                uf_infra::cstr!("    + {line}").as_str(),
+            );
         }
     }
 
@@ -462,11 +479,11 @@ fn render_plan(
                 renderer.hint(
                     out,
                     4,
-                    &format!(
+                    &uf_infra::into_string(uf_infra::cstr!(
                         "kept {} = {current}, which this project set; uf would write {}",
                         want.path.join(" › "),
                         setup::wanted_value(want)
-                    ),
+                    )),
                 );
             }
         }
@@ -475,7 +492,11 @@ fn render_plan(
         renderer.hint(out, 4, reason);
         if let TargetKind::Whole { contents, .. } = &target.kind {
             for line in contents.trim_matches('\n').lines() {
-                renderer.line(out, renderer.theme().muted, &format!("      {line}"));
+                renderer.line(
+                    out,
+                    renderer.theme().muted,
+                    uf_infra::cstr!("      {line}").as_str(),
+                );
             }
         }
     }
@@ -486,7 +507,7 @@ fn read_optional(path: &Utf8Path) -> Result<Option<String>> {
     match fs::read_to_string(path) {
         Ok(text) => Ok(Some(text)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(anyhow!("could not read {path}: {error}")),
+        Err(error) => Err(anyhow!(uf_infra::cstr!("could not read {path}: {error}"))),
     }
 }
 

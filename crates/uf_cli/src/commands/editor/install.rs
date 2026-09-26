@@ -45,14 +45,18 @@ const REPOSITORY: &str = "ubugeeei-prod/uf";
 
 /// The name of the packaged VS Code extension on a release.
 pub(crate) fn vsix_asset(version: &str) -> String {
-    format!("uf-vscode-{version}.vsix")
+    uf_infra::into_string(uf_infra::cstr!("uf-vscode-{version}.vsix"))
 }
 
 /// Where a release asset is downloaded from.
 pub(crate) fn asset_url(base: Option<&str>, version: &str, asset: &str) -> String {
     match base.map(|base| base.trim_end_matches('/')) {
-        Some(base) if !base.is_empty() => format!("{base}/{version}/{asset}"),
-        _ => format!("https://github.com/{REPOSITORY}/releases/download/uf@{version}/{asset}"),
+        Some(base) if !base.is_empty() => {
+            uf_infra::into_string(uf_infra::cstr!("{base}/{version}/{asset}"))
+        }
+        _ => uf_infra::into_string(uf_infra::cstr!(
+            "https://github.com/{REPOSITORY}/releases/download/uf@{version}/{asset}"
+        )),
     }
 }
 
@@ -78,8 +82,8 @@ pub(crate) fn find_on_path(name: &str, path: Option<&std::ffi::OsStr>) -> Option
     let path = path?;
     let names: Vec<String> = if cfg!(windows) {
         vec![
-            format!("{name}.cmd"),
-            format!("{name}.exe"),
+            uf_infra::into_string(uf_infra::cstr!("{name}.cmd")),
+            uf_infra::into_string(uf_infra::cstr!("{name}.exe")),
             name.to_owned(),
         ]
     } else {
@@ -101,7 +105,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut out = String::with_capacity(64);
     for byte in digest.iter() {
-        out.push_str(&format!("{byte:02x}"));
+        uf_infra::append!(out, "{byte:02x}");
     }
     out
 }
@@ -126,14 +130,18 @@ pub(crate) fn download(url: &str, to: &Utf8Path) -> Result<()> {
         .arg(to.as_str())
         .arg(url)
         .output()
-        .map_err(|error| anyhow!("could not run curl, which downloads the extension: {error}"))?;
+        .map_err(|error| {
+            anyhow!(uf_infra::cstr!(
+                "could not run curl, which downloads the extension: {error}"
+            ))
+        })?;
     if output.status.success() {
         return Ok(());
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "could not download {url}: {}",
         String::from_utf8_lossy(&output.stderr).trim()
-    )
+    ))
 }
 
 /// Download a release asset and its `.sha256`, check one against the other,
@@ -152,26 +160,29 @@ pub(crate) fn fetch_verified(
 ) -> Result<(Utf8PathBuf, String)> {
     let url = asset_url(base, version, asset);
     let file = into.join(asset);
-    let listing_file = into.join(format!("{asset}.sha256"));
-    download(&format!("{url}.sha256"), &listing_file).with_context(|| {
-        format!(
+    let listing_file = into.join(uf_infra::into_string(uf_infra::cstr!("{asset}.sha256")));
+    download(uf_infra::cstr!("{url}.sha256").as_str(), &listing_file).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
             "the uf@{version} release has no {asset}.sha256. Releases before the one that \
              added `uf editor install` did not attach the extension; install it from the \
              Marketplace or Open VSX, or pass --vsix with a file you built"
-        )
+        ))
     })?;
     download(&url, &file)?;
     let listing = std::fs::read_to_string(&listing_file)
-        .with_context(|| format!("could not read {listing_file}"))?;
-    let expected = stated_digest(&listing)
-        .ok_or_else(|| anyhow!("{url}.sha256 does not state a SHA-256 digest"))?;
-    let bytes = std::fs::read(&file).with_context(|| format!("could not read {file}"))?;
+        .with_context(|| uf_infra::cstr!("could not read {listing_file}"))?;
+    let expected = stated_digest(&listing).ok_or_else(|| {
+        anyhow!(uf_infra::cstr!(
+            "{url}.sha256 does not state a SHA-256 digest"
+        ))
+    })?;
+    let bytes = std::fs::read(&file).with_context(|| uf_infra::cstr!("could not read {file}"))?;
     let actual = sha256_hex(&bytes);
     if actual != expected {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{asset} does not match the checksum published beside it, so it was not \
              installed\n  expected {expected}\n  actual   {actual}"
-        );
+        ));
     }
     Ok((file, actual))
 }
@@ -184,13 +195,13 @@ pub(crate) fn install_vsix(cli: &Utf8Path, vsix: &Utf8Path) -> Result<()> {
     let output = Command::new(cli.as_str())
         .args(["--install-extension", vsix.as_str(), "--force"])
         .output()
-        .map_err(|error| anyhow!("could not run {cli}: {error}"))?;
+        .map_err(|error| anyhow!(uf_infra::cstr!("could not run {cli}: {error}")))?;
     if output.status.success() {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    bail!(
+    bail!(uf_infra::cstr!(
         "{cli} --install-extension failed ({}): {}",
         output.status,
         if stderr.trim().is_empty() {
@@ -198,7 +209,7 @@ pub(crate) fn install_vsix(cli: &Utf8Path, vsix: &Utf8Path) -> Result<()> {
         } else {
             stderr.trim()
         }
-    )
+    ))
 }
 
 /// What happened to one file uf writes into an editor's configuration.
@@ -222,21 +233,22 @@ pub(crate) fn place(path: &Utf8Path, contents: &str, force: bool) -> Result<Plac
     let existing = match std::fs::read_to_string(path) {
         Ok(text) => Some(text),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(anyhow!("could not read {path}: {error}")),
+        Err(error) => return Err(anyhow!(uf_infra::cstr!("could not read {path}: {error}"))),
     };
     let placed = match existing {
         None => Placed::Written,
         Some(text) if text == contents => return Ok(Placed::Unchanged),
         Some(text) if force || first_line(&text) == first_line(contents) => Placed::Updated,
-        Some(_) => bail!(
+        Some(_) => bail!(uf_infra::cstr!(
             "{path} exists and was not written by uf, so it was left alone; move it, or \
              pass --force to replace it"
-        ),
+        )),
     };
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("could not create {parent}"))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
     }
-    std::fs::write(path, contents).with_context(|| format!("could not write {path}"))?;
+    std::fs::write(path, contents).with_context(|| uf_infra::cstr!("could not write {path}"))?;
     Ok(placed)
 }
 
@@ -250,15 +262,20 @@ pub(crate) fn write_owned_dir(root: &Utf8Path, files: &[Asset]) -> Result<()> {
     match std::fs::remove_dir_all(root) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(anyhow!("could not replace {root}: {error}")),
+        Err(error) => {
+            return Err(anyhow!(uf_infra::cstr!(
+                "could not replace {root}: {error}"
+            )));
+        }
     }
     for file in files {
         let path = root.join(file.path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("could not create {parent}"))?;
+                .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
         }
-        std::fs::write(&path, file.contents).with_context(|| format!("could not write {path}"))?;
+        std::fs::write(&path, file.contents)
+            .with_context(|| uf_infra::cstr!("could not write {path}"))?;
     }
     Ok(())
 }
@@ -288,7 +305,9 @@ pub(crate) fn home(env: &dyn Fn(&str) -> Option<String>) -> Result<Utf8PathBuf> 
         .filter(|value| !value.is_empty())
         .map(Utf8PathBuf::from)
         .ok_or_else(|| {
-            anyhow!("neither HOME nor USERPROFILE is set, so there is no home directory")
+            anyhow!(uf_infra::cstr!(
+                "neither HOME nor USERPROFILE is set, so there is no home directory"
+            ))
         })
 }
 
@@ -355,10 +374,10 @@ pub(crate) fn install_files(
             )?;
             Ok((
                 FileInstall {
-                    next: vec![format!(
+                    next: vec![uf_infra::into_string(uf_infra::cstr!(
                         "add to your init file: (add-to-list 'load-path \"{dir}\") (require 'uf) \
                          (add-hook 'js-mode-hook #'uf-eglot-ensure)"
-                    )],
+                    ))],
                     path: dir,
                 },
                 Placed::Written,
@@ -398,7 +417,10 @@ pub(crate) fn install_files(
             ))
         }
         Editor::Vscode | Editor::Cursor | Editor::Helix => {
-            bail!("{} is not installed from files", editor.name())
+            bail!(uf_infra::cstr!(
+                "{} is not installed from files",
+                editor.name()
+            ))
         }
     }
 }

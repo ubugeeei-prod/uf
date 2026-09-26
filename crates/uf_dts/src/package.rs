@@ -196,8 +196,8 @@ pub fn types_package(name: &str) -> String {
         .strip_prefix('@')
         .and_then(|scoped| scoped.split_once('/'))
     {
-        Some((scope, bare)) => format!("@types/{scope}__{bare}"),
-        None => format!("@types/{name}"),
+        Some((scope, bare)) => uf_infra::into_string(uf_infra::cstr!("@types/{scope}__{bare}")),
+        None => uf_infra::into_string(uf_infra::cstr!("@types/{name}")),
     }
 }
 

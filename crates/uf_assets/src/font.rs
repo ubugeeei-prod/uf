@@ -214,11 +214,11 @@ impl FontMetrics {
 /// zeroes are trimmed so `100.00%` is `100%`.
 fn percent(ratio: f64) -> String {
     let rounded = (ratio * 10_000.0).round() / 100.0;
-    let mut text = format!("{rounded:.2}");
+    let mut text = uf_infra::into_string(uf_infra::cstr!("{rounded:.2}"));
     if text.contains('.') {
         text = text.trim_end_matches('0').trim_end_matches('.').to_owned();
     }
-    format!("{text}%")
+    uf_infra::into_string(uf_infra::cstr!("{text}%"))
 }
 
 /// A metric-matched `@font-face` over a face the reader already has.
@@ -511,24 +511,24 @@ pub fn self_host(request: &FontRequest<'_>) -> Result<FontAsset, FontError> {
         Some(name) => match local_face(name) {
             None => (
                 None,
-                Some(format!(
+                Some(uf_infra::into_string(uf_infra::cstr!(
                     "uf has no metrics for the local face {name:?}; known faces are {}",
                     LOCAL_FACES
                         .iter()
                         .map(|face| face.name)
                         .collect::<Vec<_>>()
                         .join(", ")
-                )),
+                ))),
             ),
             Some(face) => match metrics.fallback_for(face) {
                 Some(matched) => (Some(matched), None),
                 None => (
                     None,
-                    Some(format!(
+                    Some(uf_infra::into_string(uf_infra::cstr!(
                         "{} has no OS/2 xAvgCharWidth, so there is no width ratio to scale \
                          {name:?} by",
                         request.source
-                    )),
+                    ))),
                 ),
             },
         },
@@ -536,7 +536,7 @@ pub fn self_host(request: &FontRequest<'_>) -> Result<FontAsset, FontError> {
 
     let fallback_family = fallback
         .as_ref()
-        .map(|_| format!("{} Fallback", request.family));
+        .map(|_| uf_infra::into_string(uf_infra::cstr!("{} Fallback", request.family)));
     let css = stylesheet(request, &faces, fallback.as_ref());
     let primary = faces
         .iter()
@@ -590,12 +590,13 @@ fn subset_faces(
             stem,
             bytes,
             &[request.family.as_bytes(), mode_key, cut.bucket.as_bytes()],
-            &format!("-{}", cut.bucket),
+            uf_infra::cstr!("-{}", cut.bucket).as_str(),
             "woff",
         );
         let target = request.out_dir.join(&file);
-        std::fs::write(&target, &cut.bytes)
-            .map_err(|error| format!("failed to write {target}: {error}"))?;
+        std::fs::write(&target, &cut.bytes).map_err(|error| {
+            uf_infra::into_string(uf_infra::cstr!("failed to write {target}: {error}"))
+        })?;
         faces.push(EmittedFace {
             mime: uf_bundle::content_type(Utf8Path::new(&file)).to_owned(),
             file,
@@ -624,17 +625,18 @@ fn stylesheet(
     let family = css_string(request.family);
     let mut css = String::new();
     for face in faces {
-        css.push_str(&format!(
+        uf_infra::append!(
+            css,
             "@font-face{{font-family:{family};font-style:{style};font-weight:{weight};\
              font-display:{display};src:url({url}) format({format});",
-            url = css_string(&format!("{}{}", request.base_url, face.file)),
+            url = css_string(uf_infra::cstr!("{}{}", request.base_url, face.file).as_str()),
             style = request.style,
             weight = request.weight,
             display = request.display,
             format = css_string(face.container.css_format()),
-        ));
+        );
         if let Some(range) = face.unicode_range.as_deref() {
-            css.push_str(&format!("unicode-range:{range};"));
+            uf_infra::append!(css, "unicode-range:{range};");
         }
         css.push('}');
     }
@@ -647,11 +649,12 @@ fn stylesheet(
         // fallback is what the reader sees for *any* character until the right
         // bucket lands, so restricting it to one bucket's range would leave
         // every other character with no metric matching at all.
-        css.push_str(&format!(
+        uf_infra::append!(
+            css,
             "@font-face{{font-family:{fallback_family};font-style:{style};font-weight:{weight};\
              src:local({local});size-adjust:{size_adjust};ascent-override:{ascent};\
              descent-override:{descent};line-gap-override:{line_gap};}}",
-            fallback_family = css_string(&format!("{} Fallback", request.family)),
+            fallback_family = css_string(uf_infra::cstr!("{} Fallback", request.family).as_str()),
             style = request.style,
             weight = request.weight,
             local = css_string(&matched.local),
@@ -659,7 +662,7 @@ fn stylesheet(
             ascent = matched.ascent_override,
             descent = matched.descent_override,
             line_gap = matched.line_gap_override,
-        ));
+        );
     }
     css
 }
@@ -771,14 +774,14 @@ type Tables = Vec<([u8; 4], Vec<u8>)>;
 pub(crate) fn to_sfnt(path: &Utf8Path, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let tag = bytes.get(0..4).ok_or_else(|| String::from("empty file"))?;
     match tag {
-        b"wOF2" => Err(format!(
+        b"wOF2" => Err(uf_infra::into_string(uf_infra::cstr!(
             "{path} is WOFF2, whose glyf table is stored in a transformed form uf does not \
              reverse. Point this at the .ttf or .otf the .woff2 was built from"
-        )),
-        b"ttcf" => Err(format!(
+        ))),
+        b"ttcf" => Err(uf_infra::into_string(uf_infra::cstr!(
             "{path} is a TrueType collection and does not say which of its faces was meant; \
              extract the one you want first"
-        )),
+        ))),
         b"wOFF" => {
             let flavor = be_u32(bytes, 4).ok_or_else(|| String::from("truncated WOFF header"))?;
             let tables = woff_tables(bytes)?;
@@ -909,7 +912,9 @@ pub(crate) fn pack_woff(sfnt: &[u8]) -> Result<Vec<u8>, String> {
         encoder
             .write_all(data)
             .and_then(|()| encoder.finish())
-            .map_err(|error| format!("a WOFF table would not deflate: {error}"))
+            .map_err(|error| {
+                uf_infra::into_string(uf_infra::cstr!("a WOFF table would not deflate: {error}"))
+            })
             .map(|compressed| {
                 // WOFF says a table that did not get smaller is stored raw,
                 // and says so by making the two lengths equal. Storing a
@@ -1022,11 +1027,15 @@ fn sfnt_tables(bytes: &[u8]) -> Result<Tables, String> {
     // 0x00010000 is TrueType outlines, `OTTO` is CFF, `true` is Apple's older
     // spelling of the first.
     if version != 0x0001_0000 && &bytes[0..4] != b"OTTO" && &bytes[0..4] != b"true" {
-        return Err(format!("unrecognised sfnt version {version:#010x}"));
+        return Err(uf_infra::into_string(uf_infra::cstr!(
+            "unrecognised sfnt version {version:#010x}"
+        )));
     }
     let count = be_u16(bytes, 4).ok_or("truncated table directory")? as usize;
     if count > MAX_TABLES {
-        return Err(format!("{count} tables is more than uf will walk"));
+        return Err(uf_infra::into_string(uf_infra::cstr!(
+            "{count} tables is more than uf will walk"
+        )));
     }
     let mut tables = Tables::with_capacity(count);
     for index in 0..count {
@@ -1052,7 +1061,9 @@ fn sfnt_tables(bytes: &[u8]) -> Result<Tables, String> {
 fn woff_tables(bytes: &[u8]) -> Result<Tables, String> {
     let count = be_u16(bytes, 12).ok_or("truncated WOFF header")? as usize;
     if count > MAX_TABLES {
-        return Err(format!("{count} tables is more than uf will walk"));
+        return Err(uf_infra::into_string(uf_infra::cstr!(
+            "{count} tables is more than uf will walk"
+        )));
     }
     let mut tables = Tables::with_capacity(count);
     for index in 0..count {
@@ -1077,7 +1088,11 @@ fn woff_tables(bytes: &[u8]) -> Result<Tables, String> {
             flate2::read::ZlibDecoder::new(raw)
                 .take(MAX_FONT_BYTES)
                 .read_to_end(&mut out)
-                .map_err(|error| format!("a WOFF table would not inflate: {error}"))?;
+                .map_err(|error| {
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "a WOFF table would not inflate: {error}"
+                    ))
+                })?;
             out
         };
         tables.push((tag, data));
@@ -1111,13 +1126,15 @@ const WOFF2_TAGS: [&[u8; 4]; 63] = [
 fn woff2_tables(bytes: &[u8]) -> Result<Tables, String> {
     let count = be_u16(bytes, 12).ok_or("truncated WOFF2 header")? as usize;
     if count > MAX_TABLES {
-        return Err(format!("{count} tables is more than uf will walk"));
+        return Err(uf_infra::into_string(uf_infra::cstr!(
+            "{count} tables is more than uf will walk"
+        )));
     }
     let total = be_u32(bytes, 16).ok_or("truncated WOFF2 header")? as usize;
     if total as u64 > MAX_FONT_BYTES {
-        return Err(format!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "the WOFF2 declares {total} bytes of tables, more than uf will decompress"
-        ));
+        )));
     }
 
     let mut cursor = 48;
@@ -1153,7 +1170,11 @@ fn woff2_tables(bytes: &[u8]) -> Result<Tables, String> {
     brotli::Decompressor::new(compressed, 4096)
         .take(MAX_FONT_BYTES)
         .read_to_end(&mut stream)
-        .map_err(|error| format!("the WOFF2 table stream would not decompress: {error}"))?;
+        .map_err(|error| {
+            uf_infra::into_string(uf_infra::cstr!(
+                "the WOFF2 table stream would not decompress: {error}"
+            ))
+        })?;
 
     let mut tables = Tables::with_capacity(count);
     let mut at = 0usize;

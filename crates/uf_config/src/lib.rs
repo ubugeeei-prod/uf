@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 use std::collections::BTreeMap;
 use std::fs;
 
@@ -793,9 +795,11 @@ impl<'de> Deserialize<'de> for NonFlowFormatConfig {
             .iter()
             .find(|argument| forbidden_formatter_argument(argument))
         {
-            return Err(serde::de::Error::custom(format!(
-                "fmt.nonFlow.arguments may not contain `{argument}`: it decides whether \
+            return Err(serde::de::Error::custom(uf_infra::into_string(
+                uf_infra::cstr!(
+                    "fmt.nonFlow.arguments may not contain `{argument}`: it decides whether \
                  `uf fmt --check` writes, and that is the command's own contract"
+                ),
             )));
         }
         Ok(Self {
@@ -1895,14 +1899,18 @@ fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), Con
         reason,
     };
     for (index, pattern) in images.remote_patterns.iter().enumerate() {
-        uf_assets::check_remote_pattern(pattern)
-            .map_err(|reason| refuse(format!("remotePatterns[{index}]"), reason))?;
+        uf_assets::check_remote_pattern(pattern).map_err(|reason| {
+            refuse(
+                uf_infra::into_string(uf_infra::cstr!("remotePatterns[{index}]")),
+                reason,
+            )
+        })?;
     }
     for (index, quality) in images.qualities.iter().enumerate() {
         if !(1..=100).contains(quality) {
             return Err(refuse(
-                format!("qualities[{index}]"),
-                format!("is {quality}, and a quality is 1 to 100"),
+                uf_infra::into_string(uf_infra::cstr!("qualities[{index}]")),
+                uf_infra::into_string(uf_infra::cstr!("is {quality}, and a quality is 1 to 100")),
             ));
         }
     }

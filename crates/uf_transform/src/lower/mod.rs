@@ -127,8 +127,8 @@ fn transform_post_at(
     depth: usize,
 ) -> Result<Edit, TransformError> {
     if depth > MAX_DEPTH {
-        return Err(TransformError::Internal(format!(
-            "syntax tree deeper than {MAX_DEPTH} levels"
+        return Err(TransformError::Internal(uf_infra::into_string(
+            uf_infra::cstr!("syntax tree deeper than {MAX_DEPTH} levels"),
         )));
     }
     let Some(object) = node.as_object_mut() else {
@@ -171,8 +171,8 @@ fn transform_post_at(
                 Edit::Replace(next) => *child = next,
                 Edit::Remove => *child = Value::Null,
                 Edit::Splice(_) => {
-                    return Err(TransformError::Internal(format!(
-                        "cannot splice several nodes into the single slot `{key}`"
+                    return Err(TransformError::Internal(uf_infra::into_string(
+                        uf_infra::cstr!("cannot splice several nodes into the single slot `{key}`"),
                     )));
                 }
             },

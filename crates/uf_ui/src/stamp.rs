@@ -48,10 +48,12 @@ impl Stamp {
 
     /// The line, with no line ending.
     pub fn line(&self) -> String {
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{OPENING}{}` from uf {}, sha256 {}.",
-            self.component, self.version, self.digest
-        )
+            self.component,
+            self.version,
+            self.digest
+        ))
     }
 
     /// Read a line as a stamp, or say it is not one.

@@ -177,7 +177,9 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
     // Watch mode prints a report per change; `--json` promises one document and
     // nothing else. Rather than quietly picking one, say so.
     if args.watch && args.json {
-        bail!("--watch and --json cannot be combined: watch mode reports once per change");
+        bail!(uf_infra::cstr!(
+            "--watch and --json cannot be combined: watch mode reports once per change"
+        ));
     }
     // A coverage report is a statement about a whole suite, and watch mode does
     // not run one: it runs whatever the last edit invalidated. Reporting "68%"
@@ -185,36 +187,36 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
     // the project's name, and a threshold checked against it would fail a
     // developer's loop for a reason that has nothing to do with their edit.
     if args.watch && args.coverage {
-        bail!(
+        bail!(uf_infra::cstr!(
             "--watch and --coverage cannot be combined: watch mode re-runs only the files an \
              edit affected, so its coverage would not be the project's"
-        );
+        ));
     }
     // `--changed` is one selection, made from git before the run; watch mode
     // makes its own after every edit. Asked for both, neither can keep the
     // promise the other makes.
     if args.watch && args.changed.is_some() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "--watch and --changed cannot be combined: watch mode already re-runs what each edit \
              affects"
-        );
+        ));
     }
     // Watch mode's reason, in the same words: a report over the files a change
     // reached is not the project's coverage, and a threshold held against it
     // would fail a pull request over files it never touched.
     if args.changed.is_some() && args.coverage {
-        bail!(
+        bail!(uf_infra::cstr!(
             "--changed and --coverage cannot be combined: a run over the files a change reaches \
              would report coverage that is not the project's"
-        );
+        ));
     }
     // A shard is one part of a run CI splits across machines, and watch mode is
     // a loop on this one: there is no part of a loop to hand out.
     if args.watch && args.shard.is_some() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "--watch and --shard cannot be combined: watch mode re-runs what each edit affects \
              on this machine, and a shard is one part of a run split across several"
-        );
+        ));
     }
     // A benchmark's numbers are only worth comparing when nothing else is
     // changing them: a watch loop re-times whatever an edit touched, a shard
@@ -228,10 +230,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
             (args.browser, "--browser"),
         ];
         if let Some((_, flag)) = clashing.iter().find(|(present, _)| *present) {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{flag} and --bench cannot be combined: a benchmark is timed one file at a time, \
                  on the project's host, with nothing else changing what it measures"
-            );
+            ));
         }
     }
     // Before anything is scanned or started: a merge runs nothing.
@@ -288,7 +290,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
     // and a test that silently did not run is the worst thing a runner can do.
     if !unreadable.is_empty() {
         crate::commands::lint::render_unreadable(ui, &unreadable);
-        bail!("{} could not be read", plural(unreadable.len(), "file"));
+        bail!(uf_infra::cstr!(
+            "{} could not be read",
+            plural(unreadable.len(), "file")
+        ));
     }
 
     // A path argument that names nothing in the project is a typo, and a typo
@@ -307,7 +312,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
             .iter()
             .any(|file| selects(&args.paths, &file.relative_path))
     {
-        bail!("no file matched {}", quoted_list(&args.paths));
+        bail!(uf_infra::cstr!(
+            "no file matched {}",
+            quoted_list(&args.paths)
+        ));
     }
 
     // Asked before `--list` and before a Bun runner takes the suite, so both
@@ -329,17 +337,19 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
         if !refused.is_empty() {
             let reasons: Vec<String> = refused
                 .iter()
-                .map(|refusal| format!("{} — {}", refusal.flag, refusal.reason))
+                .map(|refusal| {
+                    uf_infra::into_string(uf_infra::cstr!("{} — {}", refusal.flag, refusal.reason))
+                })
                 .collect();
-            bail!(
+            bail!(uf_infra::cstr!(
                 "`test.runner` is `{}`, and `bun test` cannot honour {}:\n  {}",
                 runner.spec,
                 plural(refused.len(), "flag"),
                 reasons.join("\n  ")
-            );
+            ));
         }
         if args.reporter.is_some() && args.reporter_outfile.is_none() {
-            bail!("--reporter needs --reporter-outfile");
+            bail!(uf_infra::cstr!("--reporter needs --reporter-outfile"));
         }
         let env = project_env(&resolved, args.mode.as_deref(), TEST)?;
         // Coverage switched on in `uf.config.js` is asked of Bun the way
@@ -388,9 +398,9 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
             || resolved.config.test.coverage.enabled
             || args.update_snapshots)
     {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf test` native component tests support Node execution and interaction assertions; browser mode, benchmarks, coverage and snapshot updates are not supported in the native module environment"
-        );
+        ));
     }
     // `test` rather than `development`, so `.env.test` is a file that means
     // something — the mode Vitest runs in, for the same reason: a suite that
@@ -426,26 +436,26 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
         && changed.is_none()
         && (args.coverage || resolved.config.test.coverage.enabled);
     if args.browser && coverage_on {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf test --browser --coverage` cannot measure anything: V8 is counting in the \
              renderer exactly as it counts in Node, but `NODE_V8_COVERAGE` is Node's own switch \
              and the only way to ask a page for its profile is the DevTools protocol, which this \
              mode does not speak. Run `uf test --coverage` on Node for the numbers, and \
              `uf test --browser` for what a browser answers."
-        );
+        ));
     }
 
     let resolved_host = runtime.host;
     let host_kind = test_host_kind(resolved_host.kind, args.browser);
     let settings = &resolved.config.test.coverage;
     if coverage_on && !host_kind_can_collect_coverage(host_kind) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf test --coverage` is Node-only today: uf reads V8 counts written through \
              `NODE_V8_COVERAGE` and maps them back through the source-map cache the Node loader \
              writes. {} cannot provide that same Flow-source report, and reporting zeroes would \
              be worse than saying so.",
             host_kind.name()
-        );
+        ));
     }
     let mut host = test_host(&root, &resolved.config, &env, args.browser, resolved_host)?
         .with_snapshot_updates(args.update_snapshots)
@@ -610,7 +620,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
 /// the step — so the file is what it wants anyway.
 fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport) -> Result<()> {
     let Some(outfile) = args.reporter_outfile.as_deref() else {
-        bail!("--reporter needs --reporter-outfile");
+        bail!(uf_infra::cstr!("--reporter needs --reporter-outfile"));
     };
     let path = Utf8Path::new(outfile);
     let path = if path.is_absolute() {
@@ -621,10 +631,11 @@ fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport
     if let Some(parent) = path.parent()
         && !parent.as_str().is_empty()
     {
-        std::fs::create_dir_all(parent).with_context(|| format!("could not create {parent}"))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
     }
     std::fs::write(&path, uf_test::junit(report))
-        .with_context(|| format!("could not write {path}"))?;
+        .with_context(|| uf_infra::cstr!("could not write {path}"))?;
     Ok(())
 }
 
@@ -670,18 +681,18 @@ pub(crate) fn test_host(
         .map(|scope| scope.join(worker_module))
         .filter(|worker| worker.is_file())
         .ok_or_else(|| {
-            anyhow::anyhow!(
+            anyhow::anyhow!(uf_infra::cstr!(
                 "`@uniflowed/test` is not installed for {root}; add it to the project's \
                  dependencies and run the package manager (`uf install`)"
-            )
+            ))
         })?;
 
     let kind = test_host_kind(host.kind, browser);
     let native = test_application_target(config) == TestApplicationTarget::ReactNative;
     if native && kind != HostKind::Node {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf test` native component tests require Node and React Native's official Jest module environment; select test.runtime = 'node'"
-        );
+        ));
     }
     // The driver of a browser run is Node whatever the project's Capability JS
     // Host is, because the runtime under test is the browser and the driver
@@ -691,11 +702,11 @@ pub(crate) fn test_host(
     let host_name = if browser { "the browser" } else { host.name() };
     let program = if browser {
         find_program(HostKind::Browser.program()).ok_or_else(|| {
-            anyhow::anyhow!(
+            anyhow::anyhow!(uf_infra::cstr!(
                 "`uf test --browser` drives a browser from a Node process, and there is no \
                  `node` on PATH. The page is where the tests run; Node is what serves it their \
                  modules and holds the browser's process handle."
-            )
+            ))
         })?
     } else {
         host.program
@@ -745,13 +756,13 @@ pub(crate) fn test_host(
         // statement about Deno's own toolchain rather than about the project,
         // and `--browser` is not on Deno: the driver is Node, so there is no
         // default to inherit and nothing for this to be silent about.
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf test --browser` cannot enforce this project's `permissions`: they describe \
              what a process may reach, and the process the tests run in is a browser uf \
              started rather than a host uf configured. A set uf cannot enforce stops the run \
              rather than being partly applied — run the suite without `--browser`, where \
              Node and Deno enforce it."
-        );
+        ));
     }
     // On Deno the set goes on whether or not the project declared one, and that
     // is the one place `uf test` cannot give a host what it gives the others.
@@ -787,7 +798,7 @@ pub(crate) fn test_host(
         // `UF_BINARY` for the same reason.
         let named = std::env::var(uf_test::browser::BROWSER_VARIABLE).ok();
         let found = uf_test::find_browser(named.as_deref(), &find_program, &Utf8Path::is_file)
-            .map_err(|error| anyhow::anyhow!("{error}"))?;
+            .map_err(|error| anyhow::anyhow!(uf_infra::cstr!("{error}")))?;
         command = command.with_browser(found.program);
     }
     if !command.loads_flow() {
@@ -805,15 +816,17 @@ pub(crate) fn test_host(
         // be separate sentences and the enum's said nothing at all.
         let support = uf_runtime::HostSupport::for_host(runtime_host(kind));
         let tracking = support.tracking_issue.map_or_else(String::new, |issue| {
-            format!(" Tracked by https://github.com/ubugeeei-prod/uf/issues/{issue}.")
+            uf_infra::into_string(uf_infra::cstr!(
+                " Tracked by https://github.com/ubugeeei-prod/uf/issues/{issue}."
+            ))
         });
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf test` cannot run on {host_name} yet: it has no Flow loader, so a test file \
              written in Flow could not be imported. What it needs is {}.{tracking} Node.js and \
              Bun both run the suite today; install one, or name it in \
              `app.runtime.capabilityJsHost.default`.",
-            support.missing.unwrap_or("a Flow loader"),
-        );
+            support.missing.unwrap_or("a Flow loader")
+        ));
     }
     Ok(command)
 }
@@ -857,19 +870,22 @@ fn require_deno_hooks(program: &Utf8Path) -> Result<()> {
         return Ok(());
     };
     match deno_version(&String::from_utf8_lossy(&output.stdout)) {
-        Some(found) if found < DENO_WITH_HOOKS => bail!("{}", deno_too_old(program, found)),
+        Some(found) if found < DENO_WITH_HOOKS => {
+            bail!(uf_infra::cstr!("{}", deno_too_old(program, found)))
+        }
         _ => Ok(()),
     }
 }
 
 /// What a person is told about a Deno older than [`DENO_WITH_HOOKS`].
 fn deno_too_old(program: &Utf8Path, (major, minor): (u64, u64)) -> String {
-    format!(
+    uf_infra::into_string(uf_infra::cstr!(
         "`uf test` cannot run on the Deno at {program}: it is {major}.{minor}, and uf loads Flow \
          on Deno through `node:module`'s `registerHooks`, which Deno implemented in {}.{}. Run \
          `deno upgrade`, or name Node.js or Bun in `app.runtime.capabilityJsHost.default`.",
-        DENO_WITH_HOOKS.0, DENO_WITH_HOOKS.1
-    )
+        DENO_WITH_HOOKS.0,
+        DENO_WITH_HOOKS.1
+    ))
 }
 
 /// The `major.minor` in what `deno --version` prints.
@@ -946,13 +962,13 @@ pub(crate) fn uf_binary() -> Result<Utf8PathBuf> {
         &find_program,
     )
     .ok_or_else(|| {
-        anyhow::anyhow!(
+        anyhow::anyhow!(uf_infra::cstr!(
             "`uf test` cannot tell which `uf` binary is running, so it cannot promise that the \
              workers transform this project through it: the operating system would not say \
              (`current_exe`), and argv[0] named nothing that exists. Running the suite anyway \
              would compile it with whatever `uf` is on PATH and report the result under this \
              one's name. Set `UF_BINARY` to the path of the binary to use."
-        )
+        ))
     })
 }
 
@@ -1138,7 +1154,7 @@ fn worker_permissions(
     // The error is the feature: a set this host cannot enforce stops the run
     // and names the host that can, rather than being partly applied.
     uf_runtime::permissions::host_arguments(runtime_host(kind), permissions, &toolchain)
-        .map_err(|error| anyhow::anyhow!("{error}"))
+        .map_err(|error| anyhow::anyhow!(uf_infra::cstr!("{error}")))
 }
 
 /// Run the suite once, drawing each file as it finishes and a progress line
@@ -1275,14 +1291,16 @@ pub(crate) fn read_timings(root: &Utf8Path) -> (TestTimings, Option<String>) {
         Ok((timings, audit)) if audit.is_clean() => (timings, None),
         Ok((timings, audit)) => (
             timings,
-            Some(format!(
+            Some(uf_infra::into_string(uf_infra::cstr!(
                 "ignored {} in .uf/test-timings.json",
                 plural(audit.rejected(), "unusable entry")
-            )),
+            ))),
         ),
         Err(error) => (
             TestTimings::new(),
-            Some(format!("scheduling cold: {error}")),
+            Some(uf_infra::into_string(uf_infra::cstr!(
+                "scheduling cold: {error}"
+            ))),
         ),
     }
 }
@@ -1333,7 +1351,7 @@ pub(crate) fn record_timings(
 
     save_timings(root, &timings)
         .err()
-        .map(|error| format!("could not record timings: {error}"))
+        .map(|error| uf_infra::into_string(uf_infra::cstr!("could not record timings: {error}")))
 }
 
 /// The path recorded timings live at, for the summary block.
@@ -1374,10 +1392,10 @@ fn finish(report: &TestRunReport, violations: &[uf_test::ThresholdViolation]) ->
         if violations.is_empty() {
             return Ok(());
         }
-        let mut message = format!(
+        let mut message = uf_infra::into_string(uf_infra::cstr!(
             "uf test did not reach {}",
             plural(violations.len(), "coverage threshold")
-        );
+        ));
         for violation in violations {
             message.push_str("\n  ");
             message.push_str(&violation.describe());
@@ -1385,28 +1403,33 @@ fn finish(report: &TestRunReport, violations: &[uf_test::ThresholdViolation]) ->
         bail!(message);
     }
     if summary.failed > 0 {
-        bail!("uf test failed with {}", plural(summary.failed, "failure"));
+        bail!(uf_infra::cstr!(
+            "uf test failed with {}",
+            plural(summary.failed, "failure")
+        ));
     }
     if summary.failed_files > 0 {
-        bail!(
+        bail!(uf_infra::cstr!(
             "uf test could not run {}",
             plural(summary.failed_files, "file")
-        );
+        ));
     }
     if summary.foreign_declarations > 0 {
         // Named rather than counted with the rest: `it.each` is a form uf runs
         // and cannot list, and this is a declaration uf cannot run at all. The
         // second is why the run is red, so it is what the message says.
-        bail!(
+        bail!(uf_infra::cstr!(
             "uf test found {}, which this runner cannot execute: they register \
              with another runner, so none of them ran",
             plural(
                 summary.foreign_declarations,
                 "test declaration from another runner"
             )
-        );
+        ));
     }
-    bail!("uf test stopped early because --bail was reached");
+    bail!(uf_infra::cstr!(
+        "uf test stopped early because --bail was reached"
+    ));
 }
 
 #[cfg(test)]
@@ -1646,7 +1669,10 @@ mod tests {
         let running = std::env::current_exe().expect("this test process has a path");
         let running = Utf8PathBuf::from_path_buf(running).expect("and it is UTF-8");
         let directory = running.parent().expect("with a parent");
-        let relative = format!("./{}", running.file_name().expect("and a file name"));
+        let relative = uf_infra::into_string(uf_infra::cstr!(
+            "./{}",
+            running.file_name().expect("and a file name")
+        ));
         let by_path = resolve_uf_binary(
             None,
             None,

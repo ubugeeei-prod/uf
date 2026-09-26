@@ -184,16 +184,23 @@ pub(crate) fn message(findings: &[NoncedPage], config_file: &str) -> String {
         .iter()
         .take(SHOWN)
         .map(|page| {
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "  {} ({}) — `{}` from `{}` in {}",
-                page.url, page.file, page.header, page.source, config_file
-            )
+                page.url,
+                page.file,
+                page.header,
+                page.source,
+                config_file
+            ))
         })
         .collect();
     if findings.len() > SHOWN {
-        rows.push(format!("  … and {} more", findings.len() - SHOWN));
+        rows.push(uf_infra::into_string(uf_infra::cstr!(
+            "  … and {} more",
+            findings.len() - SHOWN
+        )));
     }
-    format!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{} written without a nonce and served under an `app.router.headers` rule whose value \
          names `{NONCE_TOKEN}`\n{}\n\n\
          A nonce is minted per request and a prerendered document has no request, so the file \
@@ -204,7 +211,7 @@ pub(crate) fn message(findings: &[NoncedPage], config_file: &str) -> String {
          nonce.",
         plural(findings.len(), "prerendered document"),
         rows.join("\n"),
-    )
+    ))
 }
 
 #[cfg(test)]

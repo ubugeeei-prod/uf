@@ -243,7 +243,9 @@ fn serve(input: impl Read, out: &mut impl Write, project: &ProjectAssets) -> Res
         let reply = match serde_json::from_str::<Request>(&line) {
             Ok(request) => handle(&request, project),
             Err(error) => Reply {
-                error: Some(format!("malformed request: {error}")),
+                error: Some(uf_infra::into_string(uf_infra::cstr!(
+                    "malformed request: {error}"
+                ))),
                 ..Reply::default()
             },
         };
@@ -263,7 +265,8 @@ fn serve(input: impl Read, out: &mut impl Write, project: &ProjectAssets) -> Res
 /// it. The transform reads the file again; that second read is a fraction of
 /// one decode.
 fn source_digest(path: &Utf8Path) -> Result<Vec<u8>, String> {
-    std::fs::read(path).map_err(|error| format!("failed to read {path}: {error}"))
+    std::fs::read(path)
+        .map_err(|error| uf_infra::into_string(uf_infra::cstr!("failed to read {path}: {error}")))
 }
 
 fn failed(id: &str, error: impl std::fmt::Display) -> Reply {
@@ -303,7 +306,12 @@ fn variant(request: &Request, source: &Utf8Path) -> Reply {
             );
         }
         Ok(_) => {}
-        Err(error) => return failed(&request.id, format!("failed to read {source}: {error}")),
+        Err(error) => {
+            return failed(
+                &request.id,
+                uf_infra::into_string(uf_infra::cstr!("failed to read {source}: {error}")),
+            );
+        }
     }
     let bytes = match source_digest(source) {
         Ok(bytes) => bytes,
@@ -333,7 +341,10 @@ fn variant(request: &Request, source: &Utf8Path) -> Reply {
     {
         return failed(
             &request.id,
-            format!("failed to write {}: {error}", request.out_dir.join(&file)),
+            uf_infra::into_string(uf_infra::cstr!(
+                "failed to write {}: {error}",
+                request.out_dir.join(&file)
+            )),
         );
     }
     Reply {
@@ -426,10 +437,10 @@ fn font(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply 
                 None => {
                     return failed(
                         &request.id,
-                        format!(
+                        uf_infra::into_string(uf_infra::cstr!(
                             "{declared:?} is not a subset mode; app.builtins.fonts.subset is \
                              \"none\" or \"ranges\""
-                        ),
+                        )),
                     );
                 }
             }
@@ -448,7 +459,7 @@ fn font(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply 
     let mode_key = match &subset {
         SubsetMode::Off => String::from("none"),
         SubsetMode::Ranges => String::from("ranges"),
-        SubsetMode::Text(text) => format!("text:{text}"),
+        SubsetMode::Text(text) => uf_infra::into_string(uf_infra::cstr!("text:{text}")),
     };
     let key = uf_assets::cache_key(
         "font",
@@ -553,7 +564,9 @@ fn og(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply {
         Err(error) => {
             return failed(
                 &request.id,
-                format!("{source} is not a template uf can draw: {error}"),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "{source} is not a template uf can draw: {error}"
+                )),
             );
         }
     };
@@ -704,7 +717,7 @@ mod tests {
         let missing = serde_json::json!({
             "kind": "variant", "id": source, "outDir": out, "avif": true,
         });
-        let replies = replies(&format!("{avif}\n{fallback}\n{missing}\n"));
+        let replies = replies(uf_infra::cstr!("{avif}\n{fallback}\n{missing}\n").as_str());
 
         let first = &replies[0]["variant"];
         assert_eq!(first["format"], "avif", "{}", replies[0]);
@@ -741,7 +754,7 @@ mod tests {
             "outDir": out,
             "widths": [100, 200],
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         let image = &replies[0]["image"];
         assert!(replies[0]["error"].is_null(), "{}", replies[0]);
@@ -768,7 +781,7 @@ mod tests {
         let out = dir.join("out");
 
         let request = serde_json::json!({ "kind": "image", "id": source, "outDir": out });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         let widths: Vec<u64> = replies[0]["image"]["variants"]
             .as_array()
@@ -800,7 +813,7 @@ mod tests {
             "family": "Inter",
             "baseUrl": "/assets/",
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         let font = &replies[0]["font"];
         assert!(replies[0]["error"].is_null(), "{}", replies[0]);
@@ -810,7 +823,10 @@ mod tests {
         let css = font["css"].as_str().unwrap();
         assert!(css.contains("@font-face"), "{css}");
         assert!(css.contains("size-adjust:"), "{css}");
-        assert!(css.contains(&format!(r#"url("/assets/{file}")"#)), "{css}");
+        assert!(
+            css.contains(uf_infra::cstr!(r#"url("/assets/{file}")"#).as_str()),
+            "{css}"
+        );
         assert_eq!(font["fallbackFamily"], "Inter Fallback");
     }
 
@@ -828,7 +844,7 @@ mod tests {
 
         let first = serde_json::json!({ "kind": "image", "id": broken, "outDir": out });
         let second = serde_json::json!({ "kind": "image", "id": good, "outDir": out });
-        let replies = replies(&format!("{first}\n{second}\n"));
+        let replies = replies(uf_infra::cstr!("{first}\n{second}\n").as_str());
 
         assert_eq!(replies.len(), 2);
         // Unreadable bytes with an image extension are passed through with a
@@ -850,7 +866,7 @@ mod tests {
             "id": dir.join("nowhere.png"),
             "outDir": dir.join("out"),
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         let error = replies[0]["error"].as_str().unwrap();
         assert!(error.contains("nowhere.png"), "{error}");
@@ -862,12 +878,12 @@ mod tests {
         let out = dir.join("out");
         let mut input = String::new();
         for index in 0..6 {
-            let source = dir.join(format!("i{index}.png"));
+            let source = dir.join(uf_infra::into_string(uf_infra::cstr!("i{index}.png")));
             graphic(&source, 32 + index * 8, 32);
             let request = serde_json::json!({
                 "kind": "image", "id": source, "outDir": out, "widths": [16],
             });
-            input.push_str(&format!("{request}\n"));
+            uf_infra::append!(input, "{request}\n");
         }
         let replies = replies(&input);
 
@@ -877,7 +893,7 @@ mod tests {
                 reply["id"]
                     .as_str()
                     .unwrap()
-                    .ends_with(&format!("i{index}.png")),
+                    .ends_with(uf_infra::cstr!("i{index}.png").as_str()),
                 "{reply}"
             );
         }
@@ -902,7 +918,7 @@ mod tests {
             "kind": "font", "id": source, "outDir": out,
             "family": "Wide", "baseUrl": "/assets/", "subset": "ranges",
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         let font = &replies[0]["font"];
         assert!(replies[0]["error"].is_null(), "{}", replies[0]);
@@ -933,7 +949,7 @@ mod tests {
             "kind": "font", "id": source, "outDir": out,
             "family": "Wide", "text": "ABC", "subset": "ranges",
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         // `text` wins over `subset`: naming the characters is the stronger
         // statement, and an import that did both meant the characters.
@@ -956,7 +972,7 @@ mod tests {
         let request = serde_json::json!({
             "kind": "font", "id": source, "outDir": out, "subset": "ranges",
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
 
         assert!(replies[0]["error"].is_null(), "{}", replies[0]);
         assert!(replies[0]["font"]["subset"].is_null());
@@ -982,7 +998,7 @@ mod tests {
         let request = serde_json::json!({
             "kind": "font", "id": source, "outDir": dir.join("out"), "subset": "everything",
         });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
         let error = replies[0]["error"].as_str().unwrap();
         assert!(error.contains("not a subset mode"), "{error}");
     }
@@ -1013,9 +1029,9 @@ mod tests {
         let mut input = String::new();
         for name in ["star", "dot"] {
             let request = serde_json::json!({
-                "kind": "icon", "id": dir.join(format!("{name}.svg")), "outDir": out, "name": name,
+                "kind": "icon", "id": dir.join(uf_infra::into_string(uf_infra::cstr!("{name}.svg"))), "outDir": out, "name": name,
             });
-            input.push_str(&format!("{request}\n"));
+            uf_infra::append!(input, "{request}\n");
         }
         let asked = replies(&input);
         // The caller carries the set back, which is what makes every request
@@ -1024,7 +1040,7 @@ mod tests {
             "kind": "sprite", "id": "uf:icon-sprite", "outDir": out,
             "icons": [asked[0]["icon"].clone(), asked[1]["icon"].clone()],
         });
-        input.push_str(&format!("{sprite}\n"));
+        uf_infra::append!(input, "{sprite}\n");
         let replies = replies(&input);
 
         assert_eq!(replies[0]["icon"]["viewBox"], "0 0 24 24");
@@ -1042,7 +1058,7 @@ mod tests {
     fn a_sprite_with_no_icons_is_an_empty_sprite_rather_than_an_error() {
         let (_guard, dir) = temp();
         let request = serde_json::json!({ "kind": "sprite", "id": "uf:icon-sprite", "outDir": dir.join("out") });
-        let replies = replies(&format!("{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n").as_str());
         assert!(replies[0]["error"].is_null(), "{}", replies[0]);
         assert_eq!(replies[0]["sprite"]["symbols"], 0);
     }
@@ -1064,7 +1080,7 @@ mod tests {
         project.root = dir.clone();
         project.og.font = Some(String::from("Brand.ttf"));
         let request = serde_json::json!({ "kind": "og", "id": source, "outDir": out });
-        let replies = replies_for(&format!("{request}\n"), &project);
+        let replies = replies_for(uf_infra::cstr!("{request}\n").as_str(), &project);
 
         assert!(replies[0]["error"].is_null(), "{}", replies[0]);
         let og = &replies[0]["og"];
@@ -1085,7 +1101,7 @@ mod tests {
         project.root = dir.clone();
         project.og.font = Some(String::from("Brand.ttf"));
         let request = serde_json::json!({ "kind": "og", "id": source, "outDir": dir.join("out") });
-        let replies = replies_for(&format!("{request}\n"), &project);
+        let replies = replies_for(uf_infra::cstr!("{request}\n").as_str(), &project);
 
         let error = replies[0]["error"].as_str().unwrap();
         assert!(error.contains("right-to-left"), "{error}");
@@ -1101,7 +1117,7 @@ mod tests {
         let request =
             serde_json::json!({ "kind": "image", "id": source, "outDir": out, "widths": [100] });
 
-        let replies = replies(&format!("{request}\n{request}\n"));
+        let replies = replies(uf_infra::cstr!("{request}\n{request}\n").as_str());
         assert_eq!(replies[0]["cached"], false);
         assert_eq!(replies[1]["cached"], true);
         assert_eq!(replies[0]["image"], replies[1]["image"]);
@@ -1119,7 +1135,7 @@ mod tests {
         let second =
             serde_json::json!({ "kind": "image", "id": source, "outDir": out, "widths": [50] });
 
-        let replies = replies(&format!("{first}\n{second}\n{first}\n"));
+        let replies = replies(uf_infra::cstr!("{first}\n{second}\n{first}\n").as_str());
         assert_eq!(replies[0]["cached"], false);
         assert_eq!(replies[1]["cached"], false, "a new width must not hit");
         assert_eq!(replies[2]["cached"], true);
@@ -1134,10 +1150,19 @@ mod tests {
         let request =
             serde_json::json!({ "kind": "image", "id": source, "outDir": out, "widths": [100] });
 
-        assert_eq!(replies(&format!("{request}\n"))[0]["cached"], false);
-        assert_eq!(replies(&format!("{request}\n"))[0]["cached"], true);
+        assert_eq!(
+            replies(uf_infra::cstr!("{request}\n").as_str())[0]["cached"],
+            false
+        );
+        assert_eq!(
+            replies(uf_infra::cstr!("{request}\n").as_str())[0]["cached"],
+            true
+        );
         graphic(&source, 200, 120);
-        assert_eq!(replies(&format!("{request}\n"))[0]["cached"], false);
+        assert_eq!(
+            replies(uf_infra::cstr!("{request}\n").as_str())[0]["cached"],
+            false
+        );
     }
 
     /// A font whose outlines are declared to be in `CFF `.

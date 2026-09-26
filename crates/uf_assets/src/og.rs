@@ -630,7 +630,7 @@ fn wrap(font: &ab_glyph::FontRef<'_>, text: &str, size: f32, limit: f32) -> Vec<
         let candidate = if current.is_empty() {
             word.to_owned()
         } else {
-            format!("{current} {word}")
+            uf_infra::into_string(uf_infra::cstr!("{current} {word}"))
         };
         if measure(font, size, &candidate) <= limit || current.is_empty() {
             current = candidate;
@@ -913,7 +913,7 @@ fn colour(value: &str) -> [u8; 4] {
     let parse = |at: usize, len: usize| -> u8 {
         let slice = &hex[at..at + len];
         let doubled = if len == 1 {
-            format!("{slice}{slice}")
+            uf_infra::into_string(uf_infra::cstr!("{slice}{slice}"))
         } else {
             slice.to_owned()
         };

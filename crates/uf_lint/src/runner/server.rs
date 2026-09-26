@@ -114,7 +114,7 @@ pub(crate) fn run_server_use_client_directive_position(
         {
             continue;
         }
-        if position == first_code_line {
+        if position == first_code_line.get() {
             continue;
         }
         push_in_code(
@@ -147,7 +147,7 @@ pub(crate) fn run_server_use_server_actions(
     let first_code_line = scan
         .facts
         .first_code_line
-        .map(|position| scan.lines[position].code().trim())
+        .map(|position| scan.lines[position.get()].code().trim())
         .unwrap_or("");
 
     if first_code_line != r#""use server";"# && first_code_line != r#"'use server';"# {

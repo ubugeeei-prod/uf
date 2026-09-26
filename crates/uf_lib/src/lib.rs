@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! The registry of everything `@uniflowed/*` ships, as data the toolchain reads.
 //!
 //! [`builtin_modules`] and [`ui_components`] are the two tables, and

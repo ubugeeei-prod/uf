@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! `uf ui`: styled components a project owns, written into it by one command.
 //!
 //! `@uniflowed/ui` is headless: keyboard maps, ARIA contracts, composition

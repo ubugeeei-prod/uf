@@ -2,9 +2,13 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use index_vec::IndexVec;
+use rustc_hash::FxBuildHasher;
+use string_interner::{StringInterner, backend::StringBackend, symbol::SymbolU32};
+use thin_vec::ThinVec;
 use uf_config::UniflowedConfig;
 use uf_flow::scan::{Token, TokenKind, matching_close, starts_statement, tokenize};
-use uf_infra::{FxHashMap, FxHashSet};
+use uf_infra::{FxHashMap, FxHashSet, InlineVec};
 
 use crate::scan::FileScan;
 use crate::{Diagnostic, LintContext, Severity, SourceFile, push, severity};
@@ -52,7 +56,10 @@ pub(crate) fn run_import_no_duplicates(
                 rule,
                 severity,
                 import.source_at,
-                format!("`{}` is already imported in this file", import.source),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "`{}` is already imported in this file",
+                    import.source
+                )),
             );
         } else {
             seen.push(import);
@@ -80,10 +87,10 @@ pub(crate) fn run_import_no_cycle(
         rule,
         severity,
         cycle.source_at,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "this import creates a cycle through `{}`",
             cycle.target_path
-        ),
+        )),
     );
 }
 
@@ -117,7 +124,9 @@ pub(crate) fn run_import_no_extraneous_dependencies(
             rule,
             severity,
             import.source_at,
-            format!("`{package}` must be declared in the nearest package.json"),
+            uf_infra::into_string(uf_infra::cstr!(
+                "`{package}` must be declared in the nearest package.json"
+            )),
         );
     }
 }
@@ -163,7 +172,9 @@ pub(crate) fn run_import_no_deprecated(
             rule,
             severity,
             import.member_at,
-            format!("`{name}` is deprecated by `{target}`; use a supported export instead"),
+            uf_infra::into_string(uf_infra::cstr!(
+                "`{name}` is deprecated by `{target}`; use a supported export instead"
+            )),
         );
     }
 }
@@ -238,10 +249,10 @@ pub(crate) fn run_import_no_named_as_default(
             rule,
             severity,
             default.name_at,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{}` is a named export of `{target}`; import it by name instead of as the default",
                 default.name
-            ),
+            )),
         );
     }
 }
@@ -288,7 +299,9 @@ pub(crate) fn run_import_no_relative_packages(
                 rule,
                 severity,
                 import.source_at,
-                format!("use the `{target}` package name instead of a relative path into it"),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "use the `{target}` package name instead of a relative path into it"
+                )),
             );
         }
     }
@@ -312,7 +325,10 @@ pub(crate) fn run_import_no_useless_path_segments(
                 rule,
                 severity,
                 import.source_at,
-                format!("`{}` can be written as `{shorter}`", import.source),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "`{}` can be written as `{shorter}`",
+                    import.source
+                )),
             );
         }
     }
@@ -826,23 +842,23 @@ fn is_router_manifest_file(file: &str, manifest: &str) -> bool {
     let (stem, extension) = name.rsplit_once('.').unwrap_or((name, "js"));
     ["native", "ios", "android"].iter().any(|platform| {
         let native = if directory.is_empty() {
-            format!("{stem}.{platform}.{extension}")
+            uf_infra::into_string(uf_infra::cstr!("{stem}.{platform}.{extension}"))
         } else {
-            format!("{directory}/{stem}.{platform}.{extension}")
+            uf_infra::into_string(uf_infra::cstr!("{directory}/{stem}.{platform}.{extension}"))
         };
         file == native
     })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct ExportFacts {
-    named: FxHashSet<String>,
+struct ExportFacts<'a> {
+    named: FxHashSet<&'a str>,
     has_default: bool,
-    deprecated_named: FxHashSet<String>,
+    deprecated_named: FxHashSet<&'a str>,
     deprecated_default: bool,
 }
 
-fn value_export_facts(source: &str) -> ExportFacts {
+fn value_export_facts(source: &str) -> ExportFacts<'_> {
     let tokens = tokenize(source);
     let mut facts = ExportFacts::default();
     let mut at = 0usize;
@@ -889,7 +905,7 @@ fn value_export_facts(source: &str) -> ExportFacts {
             let has_default = collect_export_list_names(source, &tokens, declaration, &mut names);
             facts.has_default |= has_default;
             if declaration_deprecated {
-                facts.deprecated_named.extend(names.iter().cloned());
+                facts.deprecated_named.extend(names.iter().copied());
                 if has_default {
                     facts.deprecated_default = true;
                 }
@@ -907,9 +923,9 @@ fn value_export_facts(source: &str) -> ExportFacts {
             && let Some(alias) = tokens.get(declaration + 2)
             && alias.kind == TokenKind::Ident
         {
-            let name = alias.text(source).to_owned();
+            let name = alias.text(source);
             if declaration_deprecated {
-                facts.deprecated_named.insert(name.clone());
+                facts.deprecated_named.insert(name);
             }
             facts.named.insert(name);
             at += 1;
@@ -933,7 +949,7 @@ fn value_export_facts(source: &str) -> ExportFacts {
             let mut names = FxHashSet::default();
             collect_variable_export_names(source, &tokens, declaration + 1, &mut names);
             if declaration_deprecated {
-                facts.deprecated_named.extend(names.iter().cloned());
+                facts.deprecated_named.extend(names.iter().copied());
             }
             facts.named.extend(names);
         } else if tokens.get(declaration).is_some_and(|token| {
@@ -945,9 +961,9 @@ fn value_export_facts(source: &str) -> ExportFacts {
             .get(declaration + 1)
             .filter(|token| token.kind == TokenKind::Ident)
         {
-            let name = name.text(source).to_owned();
+            let name = name.text(source);
             if declaration_deprecated {
-                facts.deprecated_named.insert(name.clone());
+                facts.deprecated_named.insert(name);
             }
             facts.named.insert(name);
         }
@@ -971,11 +987,11 @@ fn deprecated_gap_before(source: &str, tokens: &[Token], at: usize) -> bool {
         .is_some_and(|gap| gap.contains("@deprecated"))
 }
 
-fn collect_variable_export_names(
-    source: &str,
+fn collect_variable_export_names<'a>(
+    source: &'a str,
     tokens: &[Token],
     start: usize,
-    exports: &mut FxHashSet<String>,
+    exports: &mut FxHashSet<&'a str>,
 ) {
     let mut at = start;
     let mut depth = 0usize;
@@ -985,7 +1001,7 @@ fn collect_variable_export_names(
             return;
         }
         if expect_binding && depth == 0 && token.kind == TokenKind::Ident {
-            exports.insert(token.text(source).to_owned());
+            exports.insert(token.text(source));
             expect_binding = false;
         } else if expect_binding && depth == 0 && token.is_punct(b'{') {
             collect_object_binding_names(source, tokens, at, exports);
@@ -1011,12 +1027,12 @@ fn collect_variable_export_names(
     }
 }
 
-fn collect_binding_name(
-    source: &str,
+fn collect_binding_name<'a>(
+    source: &'a str,
     tokens: &[Token],
     mut at: usize,
     limit: usize,
-    exports: &mut FxHashSet<String>,
+    exports: &mut FxHashSet<&'a str>,
 ) -> usize {
     if is_rest(tokens, at) {
         at += 3;
@@ -1025,7 +1041,7 @@ fn collect_binding_name(
         return at;
     };
     if token.kind == TokenKind::Ident {
-        exports.insert(token.text(source).to_owned());
+        exports.insert(token.text(source));
         at += 1;
     } else if token.is_punct(b'{') {
         collect_object_binding_names(source, tokens, at, exports);
@@ -1046,11 +1062,11 @@ fn collect_binding_name(
     }
 }
 
-fn collect_object_binding_names(
-    source: &str,
+fn collect_object_binding_names<'a>(
+    source: &'a str,
     tokens: &[Token],
     open: usize,
-    exports: &mut FxHashSet<String>,
+    exports: &mut FxHashSet<&'a str>,
 ) {
     let Some(close) = matching_close(tokens, open, b'{', b'}') else {
         return;
@@ -1089,7 +1105,7 @@ fn collect_object_binding_names(
                 continue;
             }
             if token.kind == TokenKind::Ident {
-                exports.insert(token.text(source).to_owned());
+                exports.insert(token.text(source));
             }
             at += 1;
             if tokens
@@ -1108,11 +1124,11 @@ fn collect_object_binding_names(
     }
 }
 
-fn collect_array_binding_names(
-    source: &str,
+fn collect_array_binding_names<'a>(
+    source: &'a str,
     tokens: &[Token],
     open: usize,
-    exports: &mut FxHashSet<String>,
+    exports: &mut FxHashSet<&'a str>,
 ) {
     let Some(close) = matching_close(tokens, open, b'[', b']') else {
         return;
@@ -1161,11 +1177,11 @@ fn is_rest(tokens: &[Token], at: usize) -> bool {
         && tokens.get(at + 2).is_some_and(|token| token.is_punct(b'.'))
 }
 
-fn collect_export_list_names(
-    source: &str,
+fn collect_export_list_names<'a>(
+    source: &'a str,
     tokens: &[Token],
     open: usize,
-    exports: &mut FxHashSet<String>,
+    exports: &mut FxHashSet<&'a str>,
 ) -> bool {
     let mut at = open + 1;
     let mut type_only = false;
@@ -1201,7 +1217,7 @@ fn collect_export_list_names(
             if exported == "default" {
                 has_default = true;
             } else {
-                exports.insert(exported.to_owned());
+                exports.insert(exported);
             }
         }
 
@@ -1226,27 +1242,42 @@ struct UnusedModule {
     default_export: bool,
 }
 
+/// One pooled copy per export spelling across the entire lint batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExportSymbols(StringInterner<StringBackend<SymbolU32>, FxBuildHasher>);
+
+impl Default for ExportSymbols {
+    fn default() -> Self {
+        Self(StringInterner::with_hasher(FxBuildHasher))
+    }
+}
+
+index_vec::define_index_type! {
+    struct ModuleId = u32;
+}
+
 /// Relative import graph over the source batch available to lint rules.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ImportGraph {
-    paths: Vec<String>,
-    edges: Vec<Vec<ImportEdge>>,
-    by_path: FxHashMap<String, usize>,
-    named_exports: Vec<FxHashSet<String>>,
-    default_exports: Vec<bool>,
-    deprecated_named_exports: Vec<FxHashSet<String>>,
-    deprecated_default_exports: Vec<bool>,
-    used_named_exports: Vec<FxHashSet<String>>,
-    used_default_exports: Vec<bool>,
-    used_namespace_exports: Vec<bool>,
-    used_all_named_exports: Vec<bool>,
+    paths: IndexVec<ModuleId, String>,
+    edges: IndexVec<ModuleId, ThinVec<ImportEdge>>,
+    by_path: FxHashMap<String, ModuleId>,
+    symbols: ExportSymbols,
+    named_exports: IndexVec<ModuleId, FxHashSet<SymbolU32>>,
+    default_exports: IndexVec<ModuleId, bool>,
+    deprecated_named_exports: IndexVec<ModuleId, FxHashSet<SymbolU32>>,
+    deprecated_default_exports: IndexVec<ModuleId, bool>,
+    used_named_exports: IndexVec<ModuleId, FxHashSet<SymbolU32>>,
+    used_default_exports: IndexVec<ModuleId, bool>,
+    used_namespace_exports: IndexVec<ModuleId, bool>,
+    used_all_named_exports: IndexVec<ModuleId, bool>,
 }
 
 /// One relative import from a module to another in the batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ImportEdge {
     /// The imported module.
-    to: usize,
+    to: ModuleId,
     /// Byte offset of the specifier in the importer, where a finding points.
     source_at: usize,
     /// Whether the import survives to run time.
@@ -1276,28 +1307,29 @@ impl ImportGraph {
         }
         files.extend(candidates);
 
-        let mut paths = Vec::new();
+        let mut paths = IndexVec::new();
         let mut by_path = FxHashMap::default();
         for file in &files {
             let path = normalize_graph_path(&file.path);
             if by_path.contains_key(&path) {
                 continue;
             }
-            let index = paths.len();
+            let index = ModuleId::new(paths.len());
             by_path.insert(path.clone(), index);
             paths.push(path);
         }
 
         let mut graph = Self {
-            edges: (0..paths.len()).map(|_| Vec::new()).collect(),
+            symbols: ExportSymbols::default(),
+            edges: (0..paths.len()).map(|_| ThinVec::new()).collect(),
             named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
-            default_exports: vec![false; paths.len()],
+            default_exports: IndexVec::from_vec(vec![false; paths.len()]),
             deprecated_named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
-            deprecated_default_exports: vec![false; paths.len()],
+            deprecated_default_exports: IndexVec::from_vec(vec![false; paths.len()]),
             used_named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
-            used_default_exports: vec![false; paths.len()],
-            used_namespace_exports: vec![false; paths.len()],
-            used_all_named_exports: vec![false; paths.len()],
+            used_default_exports: IndexVec::from_vec(vec![false; paths.len()]),
+            used_namespace_exports: IndexVec::from_vec(vec![false; paths.len()]),
+            used_all_named_exports: IndexVec::from_vec(vec![false; paths.len()]),
             paths,
             by_path,
         };
@@ -1327,7 +1359,7 @@ impl ImportGraph {
                     None
                 }
             })
-            .collect::<Vec<_>>();
+            .collect::<InlineVec<ImportEdge, 8>>();
         self.edges[from].extend(imports);
         let reexports = static_value_reexported_bindings(&file.source)
             .into_iter()
@@ -1343,7 +1375,7 @@ impl ImportGraph {
                     None
                 }
             })
-            .collect::<Vec<_>>();
+            .collect::<InlineVec<ImportEdge, 8>>();
         self.edges[from].extend(reexports);
         if collect_usage {
             self.add_import_usage(file, &importer);
@@ -1365,7 +1397,8 @@ impl ImportGraph {
             match import.member {
                 ImportedMember::Default => self.used_default_exports[target] = true,
                 ImportedMember::Named(name) => {
-                    self.used_named_exports[target].insert(name.to_owned());
+                    let symbol = self.symbols.0.get_or_intern(name);
+                    self.used_named_exports[target].insert(symbol);
                 }
                 ImportedMember::Namespace => self.used_namespace_exports[target] = true,
                 ImportedMember::AllNamed => self.used_all_named_exports[target] = true,
@@ -1379,9 +1412,15 @@ impl ImportGraph {
             return;
         };
         let facts = value_export_facts(&file.source);
-        self.named_exports[module].extend(facts.named);
+        for name in facts.named {
+            let symbol = self.symbols.0.get_or_intern(name);
+            self.named_exports[module].insert(symbol);
+        }
         self.default_exports[module] |= facts.has_default;
-        self.deprecated_named_exports[module].extend(facts.deprecated_named);
+        for name in facts.deprecated_named {
+            let symbol = self.symbols.0.get_or_intern(name);
+            self.deprecated_named_exports[module].insert(symbol);
+        }
         self.deprecated_default_exports[module] |= facts.deprecated_default;
     }
 
@@ -1411,21 +1450,21 @@ impl ImportGraph {
             })
     }
 
-    fn reaches(&self, current: usize, target: usize, seen: &mut [bool]) -> bool {
+    fn reaches(&self, current: ModuleId, target: ModuleId, seen: &mut [bool]) -> bool {
         if current == target {
             return true;
         }
-        if seen[current] {
+        if seen[current.index()] {
             return false;
         }
-        seen[current] = true;
+        seen[current.index()] = true;
         self.edges[current]
             .iter()
             .filter(|edge| edge.runtime)
             .any(|edge| self.reaches(edge.to, target, seen))
     }
 
-    fn resolve(&self, specifier: &str, importer: &str) -> Option<usize> {
+    fn resolve(&self, specifier: &str, importer: &str) -> Option<ModuleId> {
         if !is_relative_import(specifier) {
             return None;
         }
@@ -1434,19 +1473,19 @@ impl ImportGraph {
             let extensions = ["js", "mjs", "cjs", "jsx"];
             extensions
                 .iter()
-                .find_map(|extension| self.lookup(&format!("{base}.{extension}")))
+                .find_map(|extension| self.lookup(uf_infra::cstr!("{base}.{extension}").as_str()))
                 .or_else(|| {
-                    extensions
-                        .iter()
-                        .find_map(|extension| self.lookup(&format!("{base}/index.{extension}")))
+                    extensions.iter().find_map(|extension| {
+                        self.lookup(uf_infra::cstr!("{base}/index.{extension}").as_str())
+                    })
                 })
         })
     }
 
-    fn lookup(&self, path: &str) -> Option<usize> {
+    fn lookup(&self, path: &str) -> Option<ModuleId> {
         self.by_path
             .get(path)
-            .or_else(|| self.by_path.get(&format!("{path}.flow")))
+            .or_else(|| self.by_path.get(uf_infra::cstr!("{path}.flow").as_str()))
             .copied()
     }
 
@@ -1459,7 +1498,12 @@ impl ImportGraph {
         let target = self.resolve(specifier, &importer)?;
         self.named_exports
             .get(target)
-            .is_some_and(|exports| exports.contains(name))
+            .is_some_and(|exports| {
+                self.symbols
+                    .0
+                    .get(name)
+                    .is_some_and(|symbol| exports.contains(&symbol))
+            })
             .then(|| self.paths[target].as_str())
     }
 
@@ -1487,7 +1531,12 @@ impl ImportGraph {
         let target = self.resolve(specifier, &importer)?;
         self.deprecated_named_exports
             .get(target)
-            .is_some_and(|exports| exports.contains(name))
+            .is_some_and(|exports| {
+                self.symbols
+                    .0
+                    .get(name)
+                    .is_some_and(|symbol| exports.contains(&symbol))
+            })
             .then(|| self.paths[target].as_str())
     }
 
@@ -1536,7 +1585,13 @@ impl ImportGraph {
             self.named_exports[module]
                 .iter()
                 .filter(|name| !self.used_named_exports[module].contains(*name))
-                .cloned()
+                .map(|&symbol| {
+                    self.symbols
+                        .0
+                        .resolve(symbol)
+                        .expect("interned export")
+                        .to_owned()
+                })
                 .collect::<Vec<_>>()
         };
         named_exports.sort();
@@ -1559,7 +1614,7 @@ impl ImportGraph {
         })
     }
 
-    fn has_importer(&self, module: usize) -> bool {
+    fn has_importer(&self, module: ModuleId) -> bool {
         self.edges
             .iter()
             .flat_map(|edges| edges.iter())
@@ -1581,9 +1636,17 @@ fn unused_export_message(unused: &UnusedModule) -> String {
     if unused.default_export {
         names.push(String::from("`default`"));
     }
-    names.extend(unused.named_exports.iter().map(|name| format!("`{name}`")));
+    names.extend(
+        unused
+            .named_exports
+            .iter()
+            .map(|name| uf_infra::into_string(uf_infra::cstr!("`{name}`"))),
+    );
     let plural = if names.len() == 1 { "" } else { "s" };
-    format!("unused export{plural}: {}", names.join(", "))
+    uf_infra::into_string(uf_infra::cstr!(
+        "unused export{plural}: {}",
+        names.join(", ")
+    ))
 }
 
 fn is_likely_entry_module(path: &str) -> bool {
@@ -1768,7 +1831,7 @@ fn shorter_import_path(source: &str) -> Option<String> {
     }
 
     let normalized = normalize_relative_specifier(path);
-    (normalized != path).then(|| format!("{normalized}{suffix}"))
+    (normalized != path).then(|| uf_infra::into_string(uf_infra::cstr!("{normalized}{suffix}")))
 }
 
 fn split_import_suffix(source: &str) -> (&str, &str) {
@@ -1800,7 +1863,7 @@ fn format_relative_segments(segments: &[&str]) -> String {
     if segments[0] == ".." {
         return segments.join("/");
     }
-    format!("./{}", segments.join("/"))
+    uf_infra::into_string(uf_infra::cstr!("./{}", segments.join("/")))
 }
 
 fn normalize_path(path: &Path) -> PathBuf {

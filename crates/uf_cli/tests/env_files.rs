@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `.env` files, from the command line: which files a command reads, what
 //! wins, what it says when a file is malformed, and that `uf env use` writes
 //! something that is then actually read.

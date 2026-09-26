@@ -161,13 +161,13 @@ fn no_script_url(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Lo
         tree.report(
             &written.loc,
             NO_SCRIPT_URL,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{prop}` on this `<{name}>` is a `javascript:` URL, which is not a place to go \
                  but a program to run, with everything the page can do; browsers and React both \
                  block it in more and more positions, and the moment any part of the string comes \
                  from outside the module it is an injection rather than a quirk — attach an \
                  `onClick` handler and give the element a real destination, or none at all"
-            ),
+            )),
         );
     }
 }
@@ -237,13 +237,13 @@ fn no_target_blank(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, 
     tree.report(
         &target.loc,
         NO_TARGET_BLANK,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{name} target=\"_blank\">` sends the `Referer` header on, so wherever this goes is \
              told the full URL the reader is coming from — which in an application is a path with \
              an order number, a document id or a search in it; add `rel=\"noreferrer\"`, which \
              stops it and covers `noopener` too (`noopener` on its own adds nothing, because \
              `target=\"_blank\"` already gives the opened page a null `window.opener`)"
-        ),
+        )),
     );
 }
 

@@ -129,7 +129,7 @@ pub(super) fn complete(request: Request<'_, '_>, completion: &mut Completion) {
         // A version goes inside the quotes, after the name.
         let quote = char::from(quote_byte(quotes));
         for (name, _) in role.names() {
-            let written = format!("{quote}{name}{quote}");
+            let written = uf_infra::into_string(uf_infra::cstr!("{quote}{name}{quote}"));
             offer(
                 &mut completion.items,
                 described,
@@ -261,14 +261,16 @@ impl Versions<'_> {
             .filter(|(major, _)| major.starts_with(self.typed))
         {
             let detail = match &newest.lts {
-                Some(line) => format!("{} · LTS {line}", newest.version),
+                Some(line) => {
+                    uf_infra::into_string(uf_infra::cstr!("{} · LTS {line}", newest.version))
+                }
                 None => newest.version.clone(),
             };
-            let documentation = format!(
+            let documentation = uf_infra::into_string(uf_infra::cstr!(
                 "The newest release of `{name}` that starts with `{major}`: **{version}** in the \
                  list fetched {fetched}. Resolved once and locked in `uf.lock`.",
                 version = newest.version,
-            );
+            ));
             self.push(items, major, Some(detail), Some(documentation));
         }
 
@@ -281,7 +283,10 @@ impl Versions<'_> {
         for release in matching.by_ref().take(RELEASES_AT_ONCE) {
             let detail = [
                 release.date.clone(),
-                release.lts.as_ref().map(|line| format!("LTS {line}")),
+                release
+                    .lts
+                    .as_ref()
+                    .map(|line| uf_infra::into_string(uf_infra::cstr!("LTS {line}"))),
             ]
             .into_iter()
             .flatten()
@@ -316,7 +321,7 @@ impl Versions<'_> {
             replace: self.replace,
             new_text: written,
             filter_text: None,
-            sort_text: Some(format!("{:05}", items.len())),
+            sort_text: Some(uf_infra::into_string(uf_infra::cstr!("{:05}", items.len()))),
         });
     }
 }
@@ -346,7 +351,7 @@ fn fetched(index: &Index) -> String {
     match index.age().map(|age| age.as_secs() / (24 * 60 * 60)) {
         Some(0) => String::from("today"),
         Some(1) => String::from("yesterday"),
-        Some(days) => format!("{days} days ago"),
+        Some(days) => uf_infra::into_string(uf_infra::cstr!("{days} days ago")),
         None => String::from("by uf"),
     }
 }
@@ -459,12 +464,12 @@ mod tests {
     }
 
     fn accept(source: &str, item: &Item) -> String {
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{}{}{}",
             &source[..item.replace.start],
             item.new_text,
             &source[item.replace.end..]
-        )
+        ))
     }
 
     /// The contract with `@uniflowed/config`: every key it types with a spec
@@ -681,9 +686,9 @@ mod tests {
         let many: Vec<Release> = (0..30u32)
             .rev()
             .flat_map(|major| {
-                (0..10u32)
-                    .rev()
-                    .map(move |minor| release(&format!("{major}.{minor}.0"), None, None))
+                (0..10u32).rev().map(move |minor| {
+                    release(uf_infra::cstr!("{major}.{minor}.0").as_str(), None, None)
+                })
             })
             .collect();
         let mut lists = FxHashMap::default();

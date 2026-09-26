@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Project rules: a rule a project writes in JavaScript, declared in
 //! `uf.config.js`, reporting through `uf lint` — and the ceilings that keep one
 //! from hanging the run.

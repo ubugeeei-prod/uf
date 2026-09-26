@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Every key `uf.config.js` may declare, held to something that reads it.
 //!
 //! # Why

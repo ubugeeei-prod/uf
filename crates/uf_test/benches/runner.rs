@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What a thousand-file suite costs uf: discovery, scheduling, and the import
 //! graph — the work that happens before any JavaScript runs.
 //!

@@ -449,7 +449,7 @@ pub(crate) fn get(url: &str, accept: &str) -> Result<Vec<u8>, HttpFailure> {
             "=https",
             "-H",
         ])
-        .arg(format!("Accept: {accept}"))
+        .arg(uf_infra::into_string(uf_infra::cstr!("Accept: {accept}")))
         .arg("--")
         .arg(url)
         .output();
@@ -482,16 +482,16 @@ fn classify(exit: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Result<Vec<u8>, 
         .ok()
         .and_then(|status| status.trim().parse::<u16>().ok());
     match status {
-        Some(status @ 400..=599) => Err(HttpFailure::Answered(format!(
-            "the registry answered {status}"
+        Some(status @ 400..=599) => Err(HttpFailure::Answered(uf_infra::into_string(
+            uf_infra::cstr!("the registry answered {status}"),
         ))),
         // A success status alone is not a whole answer: curl reports the status
         // of a response it then failed to finish reading — a timeout part way
         // through — and half a packument is not a packument.
         Some(200..=299) if exit == Some(0) => {
             if body.len() > MAX_PACKUMENT_BYTES {
-                return Err(HttpFailure::Answered(format!(
-                    "the answer is larger than {MAX_PACKUMENT_BYTES} bytes"
+                return Err(HttpFailure::Answered(uf_infra::into_string(
+                    uf_infra::cstr!("the answer is larger than {MAX_PACKUMENT_BYTES} bytes"),
                 )));
             }
             Ok(body.to_vec())
@@ -568,11 +568,11 @@ fn url_for(registry: &str, name: &str) -> Result<String, RegistryError> {
     }
     // npm's own encoding for a scoped name: `@scope%2fname` is one path
     // segment, so a scope cannot become a directory in the URL.
-    Ok(format!(
+    Ok(uf_infra::into_string(uf_infra::cstr!(
         "{}/{}",
         registry.trim_end_matches('/'),
         name.replace('/', "%2f")
-    ))
+    )))
 }
 
 /// npm's package-name alphabet, and nothing else.

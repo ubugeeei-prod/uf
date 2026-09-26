@@ -104,7 +104,8 @@ pub(crate) fn stash(root: &Utf8Path, out_dir: &Utf8Path) -> Result<Stashed> {
         }
         let to = stashed.dir.join(&file);
         if let Some(parent) = to.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+            fs::create_dir_all(parent)
+                .with_context(|| uf_infra::cstr!("failed to create {parent}"))?;
         }
         link_or_copy(&from, &to)?;
         stashed.files.push(file);
@@ -125,23 +126,28 @@ pub(crate) fn restore(stashed: Stashed, out_dir: &Utf8Path, meta_dir: &Utf8Path)
             continue;
         }
         if let Some(parent) = to.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+            fs::create_dir_all(parent)
+                .with_context(|| uf_infra::cstr!("failed to create {parent}"))?;
         }
         let from = stashed.dir.join(file);
         if fs::rename(&from, &to).is_err() {
-            fs::copy(&from, &to).with_context(|| format!("failed to copy {from} to {to}"))?;
+            fs::copy(&from, &to)
+                .with_context(|| uf_infra::cstr!("failed to copy {from} to {to}"))?;
         }
         carried.push(file.as_str().replace('\\', "/"));
     }
     remove_dir(&stashed.dir)?;
-    fs::create_dir_all(meta_dir).with_context(|| format!("failed to create {meta_dir}"))?;
+    fs::create_dir_all(meta_dir).with_context(|| uf_infra::cstr!("failed to create {meta_dir}"))?;
     let record = meta_dir.join(CARRIED_FILE);
     let body = json!({
         "window": "one build",
         "files": carried,
     });
-    fs::write(&record, format!("{body:#}\n"))
-        .with_context(|| format!("failed to write {record}"))?;
+    fs::write(
+        &record,
+        uf_infra::into_string(uf_infra::cstr!("{body:#}\n")),
+    )
+    .with_context(|| uf_infra::cstr!("failed to write {record}"))?;
     Ok(carried.len())
 }
 
@@ -197,7 +203,7 @@ fn link_or_copy(from: &Utf8Path, to: &Utf8Path) -> Result<()> {
     if fs::hard_link(from, to).is_ok() {
         return Ok(());
     }
-    fs::copy(from, to).with_context(|| format!("failed to copy {from} to {to}"))?;
+    fs::copy(from, to).with_context(|| uf_infra::cstr!("failed to copy {from} to {to}"))?;
     Ok(())
 }
 
@@ -205,7 +211,7 @@ fn remove_dir(dir: &Utf8Path) -> Result<()> {
     match fs::remove_dir_all(dir) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error).with_context(|| format!("failed to remove {dir}")),
+        Err(error) => Err(error).with_context(|| uf_infra::cstr!("failed to remove {dir}")),
     }
 }
 
@@ -229,7 +235,7 @@ mod tests {
                     vec![file]
                 };
                 (
-                    format!("entry-{index}"),
+                    uf_infra::into_string(uf_infra::cstr!("entry-{index}")),
                     json!({ "file": file, "css": css }),
                 )
             })

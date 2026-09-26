@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf add`, `uf remove`, `uf update`, `uf patch`, `uf why` and `uf install
 //! --frozen-lockfile`, against a real package manager.
 //!

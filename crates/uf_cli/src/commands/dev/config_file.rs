@@ -225,7 +225,11 @@ pub(super) fn hover(
     let mut path = cursor.path;
     path.push(Step::Key(word.text(source)));
     let key = schema.key(&path)?;
-    let mut markdown = format!("**`{}`** · `{}`", dotted(&path), key.type_text());
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!(
+        "**`{}`** · `{}`",
+        dotted(&path),
+        key.type_text()
+    ));
     if let Some(documentation) = key.documentation() {
         markdown.push_str("\n\n");
         markdown.push_str(documentation);
@@ -321,7 +325,11 @@ fn values(
             }
             (Shape::StringLiteral(value), None) => {
                 let quote = quote_byte(quotes);
-                let written = format!("{0}{1}{0}", char::from(quote), escape(value, quote));
+                let written = uf_infra::into_string(uf_infra::cstr!(
+                    "{0}{1}{0}",
+                    char::from(quote),
+                    escape(value, quote)
+                ));
                 offer(
                     &mut items,
                     &described,
@@ -416,7 +424,7 @@ fn offer(
     if items.iter().any(|item| item.new_text == new_text) {
         return;
     }
-    let sort_text = Some(format!("{:04}", items.len()));
+    let sort_text = Some(uf_infra::into_string(uf_infra::cstr!("{:04}", items.len())));
     items.push(Item {
         label,
         kind,
@@ -510,12 +518,12 @@ mod tests {
 
     /// Accept an item the way an editor does.
     fn accept(source: &str, item: &Item) -> String {
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{}{}{}",
             &source[..item.replace.start],
             item.new_text,
             &source[item.replace.end..]
-        )
+        ))
     }
 
     #[test]

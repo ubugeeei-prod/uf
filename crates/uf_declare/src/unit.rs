@@ -141,10 +141,10 @@ fn walk(entries: &[&str], read: &mut dyn FnMut(&str) -> Option<String>) -> Trans
                     gaps: vec![Gap {
                         declaration: CompactString::const_new("(module)"),
                         construct: Construct::ParseError,
-                        reason: format!(
+                        reason: uf_infra::into_string(uf_infra::cstr!(
                             "uf could not parse this module ({failure}), so nothing it exports is \
                              declared"
-                        )
+                        ))
                         .into(),
                         line: 1,
                     }],
@@ -166,10 +166,10 @@ fn walk(entries: &[&str], read: &mut dyn FnMut(&str) -> Option<String>) -> Trans
                 gaps: vec![Gap {
                     declaration: CompactString::const_new("(module)"),
                     construct: Construct::ParseError,
-                    reason: format!(
+                    reason: uf_infra::into_string(uf_infra::cstr!(
                         "this module has a syntax error ({message}), so nothing it exports is \
                          declared"
-                    )
+                    ))
                     .into(),
                     line,
                 }],
@@ -197,10 +197,10 @@ fn walk(entries: &[&str], read: &mut dyn FnMut(&str) -> Option<String>) -> Trans
                 None => gaps.push(Gap {
                     declaration: CompactString::const_new("(module)"),
                     construct: Construct::MissingFile,
-                    reason: format!(
+                    reason: uf_infra::into_string(uf_infra::cstr!(
                         "`{specifier}` names no module in this project, so the declarations import \
                          a file that will not be written"
-                    )
+                    ))
                     .into(),
                     line,
                 }),

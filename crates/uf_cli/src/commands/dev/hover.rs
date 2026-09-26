@@ -100,11 +100,11 @@ fn diagnostic_answer(request: &Request<'_>, text: &str) -> Option<Answer> {
         Severity::Error => "error",
         Severity::Warn => "warning",
     };
-    let mut markdown = format!(
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!(
         "**`{rule}`** · {severity}\n\n{message}",
         rule = found.rule,
         message = found.message,
-    );
+    ));
     if let Some(descriptor) = uf_lint::rule(found.rule) {
         markdown.push_str("\n\n---\n\n");
         markdown.push_str(&catalogue_entry(descriptor, Some(&found.message)));
@@ -142,12 +142,13 @@ fn rule_id_answer(text: &str, column: usize) -> Option<Answer> {
     let canonical = uf_lint::canonical_rule_id(&text[start..end])?;
     let descriptor = uf_lint::rule(canonical)?;
 
-    let mut markdown = format!("**`{canonical}`**\n\n");
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!("**`{canonical}`**\n\n"));
     if canonical != &text[start..end] {
-        markdown.push_str(&format!(
+        uf_infra::append!(
+            markdown,
             "`{}` is a deprecated spelling of this rule.\n\n",
             &text[start..end]
-        ));
+        );
     }
     markdown.push_str(&catalogue_entry(descriptor, None));
 
@@ -191,19 +192,21 @@ fn catalogue_entry(descriptor: &RuleDescriptor, said: Option<&str>) -> String {
             "needs Flow type inference, which `uf lint` does not run yet"
         }
     };
-    let summary = format!("{category} · default `{level}` · {requirement}");
+    let summary = uf_infra::into_string(uf_infra::cstr!(
+        "{category} · default `{level}` · {requirement}"
+    ));
     match said {
         Some(said) if said == descriptor.description => summary,
-        _ => format!(
+        _ => uf_infra::into_string(uf_infra::cstr!(
             "{description}\n\n{summary}",
             description = descriptor.description
-        ),
+        )),
     }
 }
 
 /// What uf knows about one import specifier.
 fn describe_specifier(specifier: &str, request: &Request<'_>) -> String {
-    let mut markdown = format!("**`{specifier}`**\n\n");
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!("**`{specifier}`**\n\n"));
 
     if let Some(module) = request
         .modules
@@ -244,15 +247,17 @@ fn describe_native_module(module: &NativeModule) -> String {
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_else(|| String::from("uncategorized"));
 
-    let mut markdown = format!("A uf `{kind}` module in the `{segment}` segment, {stability}.");
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!(
+        "A uf `{kind}` module in the `{segment}` segment, {stability}."
+    ));
     if !module.flow_exports.is_empty() {
         let exports = module
             .flow_exports
             .iter()
-            .map(|name| format!("`{name}`"))
+            .map(|name| uf_infra::into_string(uf_infra::cstr!("`{name}`")))
             .collect::<Vec<_>>()
             .join(", ");
-        markdown.push_str(&format!("\n\nFlow exports: {exports}"));
+        uf_infra::append!(markdown, "\n\nFlow exports: {exports}");
     }
     markdown
 }
@@ -274,26 +279,34 @@ fn describe_relative(specifier: &str, path: &str) -> String {
 
     for candidate in candidates(&target) {
         if std::fs::metadata(&candidate).is_ok_and(|metadata| metadata.is_file()) {
-            return format!("A relative import. Resolves to `{candidate}`.");
+            return uf_infra::into_string(uf_infra::cstr!(
+                "A relative import. Resolves to `{candidate}`."
+            ));
         }
     }
-    format!(
+    uf_infra::into_string(uf_infra::cstr!(
         "A relative import. Nothing on disk at `{target}`, with or without uf's module \
          extensions ({extensions}).",
         extensions = MODULE_EXTENSIONS
             .iter()
-            .map(|extension| format!("`.{extension}`"))
+            .map(|extension| uf_infra::into_string(uf_infra::cstr!("`.{extension}`")))
             .collect::<Vec<_>>()
             .join(", "),
-    )
+    ))
 }
 
 /// Every path a relative specifier could name, in resolution order.
 fn candidates(target: &Utf8Path) -> Vec<String> {
     let mut paths = Vec::with_capacity(1 + MODULE_EXTENSIONS.len() * 2);
     paths.push(target.to_string());
-    paths.extend(MODULE_EXTENSIONS.map(|extension| format!("{target}.{extension}")));
-    paths.extend(MODULE_EXTENSIONS.map(|extension| format!("{target}/index.{extension}")));
+    paths.extend(
+        MODULE_EXTENSIONS
+            .map(|extension| uf_infra::into_string(uf_infra::cstr!("{target}.{extension}"))),
+    );
+    paths.extend(
+        MODULE_EXTENSIONS
+            .map(|extension| uf_infra::into_string(uf_infra::cstr!("{target}/index.{extension}"))),
+    );
     paths
 }
 
@@ -310,7 +323,7 @@ fn is_relative(specifier: &str) -> bool {
 /// wrong here.
 fn quoted_span(text: &str, specifier: &str, column: usize) -> Option<(usize, usize)> {
     for quote in ['"', '\''] {
-        let needle = format!("{quote}{specifier}{quote}");
+        let needle = uf_infra::into_string(uf_infra::cstr!("{quote}{specifier}{quote}"));
         let mut from = 0usize;
         while let Some(offset) = text.get(from..)?.find(&needle) {
             let start = from + offset;

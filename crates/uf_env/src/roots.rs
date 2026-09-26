@@ -107,7 +107,7 @@ impl Roots {
         };
         let file = self.file_for(repository);
         let body = serde_json::to_string_pretty(&root).map_err(EnvError::Encode)?;
-        fs::write(&file, format!("{body}\n"))
+        fs::write(&file, uf_infra::into_string(uf_infra::cstr!("{body}\n")))
             .map_err(|source| EnvError::Write { path: file, source })
     }
 
@@ -213,8 +213,9 @@ impl Roots {
         // one machine will not collide, short enough to read.
         let mut name = String::with_capacity(16);
         for byte in digest.iter().take(8) {
-            name.push_str(&format!("{byte:02x}"));
+            uf_infra::append!(name, "{byte:02x}");
         }
-        self.root.join(format!("{name}.json"))
+        self.root
+            .join(uf_infra::into_string(uf_infra::cstr!("{name}.json")))
     }
 }

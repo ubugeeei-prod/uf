@@ -73,23 +73,24 @@ impl Plan {
             let metadata = fs::symlink_metadata(&path);
             ensure!(
                 !metadata.as_ref().is_ok_and(|m| m.file_type().is_symlink()),
-                "{} is a symlink; migrate the real project instead",
-                change.path
+                uf_infra::cstr!(
+                    "{} is a symlink; migrate the real project instead",
+                    change.path
+                )
             );
             ensure!(
                 fs::read_to_string(&path).ok() == change.before,
-                "{} changed while planning; rerun --dry-run",
-                change.path
+                uf_infra::cstr!("{} changed while planning; rerun --dry-run", change.path)
             );
         }
         ensure!(
             !fs::symlink_metadata(root.join(".uf")).is_ok_and(|m| m.file_type().is_symlink()),
-            ".uf is a symlink; report must stay in this project"
+            uf_infra::cstr!(".uf is a symlink; report must stay in this project")
         );
         let report = root.join(".uf/migration-report.json");
         ensure!(
             !fs::symlink_metadata(&report).is_ok_and(|m| m.file_type().is_symlink()),
-            "migration report is a symlink"
+            uf_infra::cstr!("migration report is a symlink")
         );
         fs::create_dir_all(report.parent().unwrap())?;
         fs::write(&report, serde_json::to_string_pretty(self)?)?;
@@ -141,13 +142,13 @@ fn finish(root: &Utf8Path, ui: &mut Ui, plan: Plan, dry_run: bool) -> Result<()>
     if ui.is_json() {
         ui.json(&serde_json::json!({ "dryRun": dry_run, "plan": plan }))?;
     } else {
-        ui.plain(&format!(
+        ui.plain(&uf_infra::into_string(uf_infra::cstr!(
             "uf {}{}\n",
             plan.command,
             if dry_run { " --dry-run" } else { "" }
-        ));
+        )));
         for change in &plan.changes {
-            ui.plain(&format!(
+            ui.plain(&uf_infra::into_string(uf_infra::cstr!(
                 "\n{} {}\n",
                 if change.after.is_some() {
                     "write"
@@ -155,13 +156,13 @@ fn finish(root: &Utf8Path, ui: &mut Ui, plan: Plan, dry_run: bool) -> Result<()>
                     "remove"
                 },
                 change.path
-            ));
+            )));
             if let Some(text) = &change.after {
                 ui.plain(text);
             }
         }
         for item in &plan.unmapped {
-            ui.plain(&format!("\nmanual: {item}\n"));
+            ui.plain(uf_infra::cstr!("\nmanual: {item}\n").as_str());
         }
         if !dry_run {
             ui.plain("\nReport and original contents: .uf/migration-report.json\n");

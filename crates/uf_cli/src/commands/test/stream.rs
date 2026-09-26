@@ -346,8 +346,10 @@ impl<W: Write> State<'_, W> {
             self.rows.push(row);
         }
         if self.running.len() > MAX_FILE_ROWS {
-            self.rows
-                .push(format!("  and {} more", self.running.len() - MAX_FILE_ROWS));
+            self.rows.push(uf_infra::into_string(uf_infra::cstr!(
+                "  and {} more",
+                self.running.len() - MAX_FILE_ROWS
+            )));
         }
         let separator = self.separator;
         let mut last = String::from("  ");

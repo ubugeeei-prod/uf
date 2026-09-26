@@ -12,5 +12,6 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+uf_infra = { path = "../uf_infra" }
 flow_parser.workspace = true
 thiserror.workspace = true

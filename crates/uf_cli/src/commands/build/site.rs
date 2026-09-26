@@ -103,19 +103,23 @@ impl SiteUrl {
         let value = raw.trim();
         let rest = match value.split_once("://") {
             Some(("http" | "https", rest)) => rest,
-            _ => bail!(
+            _ => bail!(uf_infra::cstr!(
                 "`site.url` must be an absolute http(s) URL, and {raw:?} is not; \
                  a sitemap's <loc> has to name the host the site is served from"
-            ),
+            )),
         };
         if rest.is_empty() || rest.starts_with('/') {
-            bail!("`site.url` names no host: {raw:?}");
+            bail!(uf_infra::cstr!("`site.url` names no host: {raw:?}"));
         }
         if value.contains(['?', '#']) {
-            bail!("`site.url` must have no query and no fragment: {raw:?}");
+            bail!(uf_infra::cstr!(
+                "`site.url` must have no query and no fragment: {raw:?}"
+            ));
         }
         if value.contains(char::is_whitespace) {
-            bail!("`site.url` must have no whitespace in it: {raw:?}");
+            bail!(uf_infra::cstr!(
+                "`site.url` must have no whitespace in it: {raw:?}"
+            ));
         }
         Ok(Self {
             base: value.trim_end_matches('/').to_owned(),
@@ -149,12 +153,16 @@ impl SiteUrl {
             // authority has a path. Under a base path the root is the base,
             // with the slash only where the policy writes one.
             if self.application.is_empty() || matches!(self.slash, TrailingSlash::Always) {
-                format!("{}{}/", self.base, self.application)
+                uf_infra::into_string(uf_infra::cstr!("{}{}/", self.base, self.application))
             } else {
-                format!("{}{}", self.base, self.application)
+                uf_infra::into_string(uf_infra::cstr!("{}{}", self.base, self.application))
             }
         } else {
-            format!("{}{}{encoded}", self.base, self.application)
+            uf_infra::into_string(uf_infra::cstr!(
+                "{}{}{encoded}",
+                self.base,
+                self.application
+            ))
         }
     }
 }
@@ -181,12 +189,12 @@ pub(crate) fn indexable(pages: &[Prerendered], guarded: &[UnguardedPage]) -> Vec
 /// whatever order the routes were walked in.
 pub(crate) fn sitemap(site: &SiteUrl, urls: &[String]) -> Result<String> {
     if urls.len() > MAX_SITEMAP_URLS {
-        bail!(
+        bail!(uf_infra::cstr!(
             "this build prerendered {} pages and one sitemap may name {MAX_SITEMAP_URLS}; \
              a site this size needs a sitemap index, which uf does not write yet — \
              set `site.sitemap: false` to keep the build",
             urls.len()
-        );
+        ));
     }
 
     let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -217,13 +225,15 @@ pub(crate) fn robots(
     }
     for path in config.allow.iter().chain(config.disallow.iter()) {
         if !path.starts_with('/') {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "`site.robots` paths are matched against a request path and must start with `/`, \
                  and {path:?} does not"
-            );
+            ));
         }
         if path.contains(['\n', '\r']) {
-            bail!("a `site.robots` path may not contain a line break: {path:?}");
+            bail!(uf_infra::cstr!(
+                "a `site.robots` path may not contain a line break: {path:?}"
+            ));
         }
     }
     // The whole of the "is this worth writing" decision, in one condition.
@@ -349,7 +359,7 @@ pub(crate) fn write(
         // empty one is not the same as having one.
         if !urls.is_empty() {
             fs::write(&sitemap_path, sitemap(&site, &urls)?)
-                .with_context(|| format!("failed to write {sitemap_path}"))?;
+                .with_context(|| uf_infra::cstr!("failed to write {sitemap_path}"))?;
             written.files.push(sitemap_path);
             sitemap_exists = true;
         }
@@ -363,7 +373,8 @@ pub(crate) fn write(
             written.kept.push(robots_path);
         }
     } else if let Some(text) = robots(&site, &config.robots, sitemap_exists)? {
-        fs::write(&robots_path, text).with_context(|| format!("failed to write {robots_path}"))?;
+        fs::write(&robots_path, text)
+            .with_context(|| uf_infra::cstr!("failed to write {robots_path}"))?;
         written.files.push(robots_path);
     }
 

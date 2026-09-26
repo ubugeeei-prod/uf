@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! Flow syntax for uniflowed: the parser boundary, a token scanner, and type
 //! erasure.
 //!

@@ -244,10 +244,10 @@ pub(crate) fn read_module(source: &str, path: &str) -> Result<FileMessages, I18n
         found.problems.push(ExtractProblem {
             at: path.to_owned(),
             kind: ProblemKind::Unparsable,
-            detail: format!(
+            detail: uf_infra::into_string(uf_infra::cstr!(
                 "this file imports {SPECIFIER} and does not parse, so any message in it would \
                  be missing from the catalogue without this line: {said}"
-            ),
+            )),
         });
         return Ok(found);
     }
@@ -279,13 +279,13 @@ pub(crate) fn read_module(source: &str, path: &str) -> Result<FileMessages, I18n
                     found.problems.push(ExtractProblem {
                         at: declared.at,
                         kind: ProblemKind::SourceNotALiteral,
-                        detail: format!(
+                        detail: uf_infra::into_string(uf_infra::cstr!(
                             "the message {:?} is written from `{name}`, which is not a \
                              module-level string constant in this file; extraction reads a \
                              string literal, a template literal with no substitutions, or a \
                              module-level `const` holding one",
                             declared.key
-                        ),
+                        )),
                     });
                     continue;
                 }
@@ -326,7 +326,9 @@ fn walk(
         unreadable: scan
             .unreadable
             .iter()
-            .map(|file| format!("{}: {}", file.relative_path, file.reason))
+            .map(|file| {
+                uf_infra::into_string(uf_infra::cstr!("{}: {}", file.relative_path, file.reason))
+            })
             .collect(),
     };
 
@@ -358,11 +360,11 @@ fn walk(
                 report.problems.push(ExtractProblem {
                     at: entry.declared_at,
                     kind: ProblemKind::DuplicateKey,
-                    detail: format!(
+                    detail: uf_infra::into_string(uf_infra::cstr!(
                         "the key {key:?} is already declared at {first}; a catalogue file has \
                          one entry per key, and two messages under one name would send a \
                          translator one of them at random"
-                    ),
+                    )),
                 });
                 continue;
             }
@@ -584,7 +586,7 @@ impl Module {
 
     /// `path:line`, the way every problem and every entry spells a location.
     fn at(&self, loc: &Loc) -> String {
-        format!("{}:{}", self.path, loc.start.line)
+        uf_infra::into_string(uf_infra::cstr!("{}:{}", self.path, loc.start.line))
     }
 }
 
@@ -656,10 +658,10 @@ impl<'a> Messages<'a> {
             self.problems.push(ExtractProblem {
                 at,
                 kind: ProblemKind::SourceNotALiteral,
-                detail: format!(
+                detail: uf_infra::into_string(uf_infra::cstr!(
                     "the message {key:?} is not called as `message(source, parameters)`, so \
                      there is nothing here to put in a catalogue"
-                ),
+                )),
             });
             return;
         };
@@ -674,11 +676,11 @@ impl<'a> Messages<'a> {
                     self.problems.push(ExtractProblem {
                         at,
                         kind: ProblemKind::SourceNotALiteral,
-                        detail: format!(
+                        detail: uf_infra::into_string(uf_infra::cstr!(
                             "the message {key:?} is written from an expression rather than a \
                              literal, so its text is not decided until the program runs and \
                              there is nothing to send a translator"
-                        ),
+                        )),
                     });
                     return;
                 }
@@ -689,10 +691,10 @@ impl<'a> Messages<'a> {
             self.problems.push(ExtractProblem {
                 at,
                 kind: ProblemKind::ParametersNotReadable,
-                detail: format!(
+                detail: uf_infra::into_string(uf_infra::cstr!(
                     "the parameters of {key:?} are spread from another value, so what the \
                      message takes is not decided until the program runs"
-                ),
+                )),
             });
             return;
         };
@@ -719,10 +721,10 @@ impl<'a> Messages<'a> {
             self.problems.push(ExtractProblem {
                 at: at.to_owned(),
                 kind: ProblemKind::ParametersNotReadable,
-                detail: format!(
+                detail: uf_infra::into_string(uf_infra::cstr!(
                     "the parameters of {key:?} are not an object literal, so what the message \
                      takes cannot be read from the source"
-                ),
+                )),
             });
             return None;
         };
@@ -738,11 +740,11 @@ impl<'a> Messages<'a> {
                 self.problems.push(ExtractProblem {
                     at: at.to_owned(),
                     kind: ProblemKind::ParametersNotReadable,
-                    detail: format!(
+                    detail: uf_infra::into_string(uf_infra::cstr!(
                         "the parameters of {key:?} hold something other than `name: kind` — a \
                          spread, a method or an accessor — so what the message takes cannot be \
                          read from the source"
-                    ),
+                    )),
                 });
                 return None;
             };
@@ -758,10 +760,10 @@ impl<'a> Messages<'a> {
                     self.problems.push(ExtractProblem {
                         at: at.to_owned(),
                         kind: ProblemKind::ParametersNotReadable,
-                        detail: format!(
+                        detail: uf_infra::into_string(uf_infra::cstr!(
                             "a parameter of {key:?} is named by an expression rather than \
                              written down, so the message's arguments are not knowable here"
-                        ),
+                        )),
                     });
                     return None;
                 }
@@ -771,10 +773,10 @@ impl<'a> Messages<'a> {
                 self.problems.push(ExtractProblem {
                     at: at.to_owned(),
                     kind: ProblemKind::ParametersNotReadable,
-                    detail: format!(
+                    detail: uf_infra::into_string(uf_infra::cstr!(
                         "the parameter `{name}` of {key:?} is not one of the four kinds \
                          `@uniflowed/i18n` exports (string, number, boolean, date)"
-                    ),
+                    )),
                 });
                 return None;
             };

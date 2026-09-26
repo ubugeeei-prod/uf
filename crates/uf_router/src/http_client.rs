@@ -40,11 +40,12 @@ pub(crate) fn generate_http_client(modules: &[ServerModule]) -> String {
                 })
             })
             .collect::<Vec<_>>();
-        source.push_str(&format!(
+        uf_infra::append!(
+            source,
             "  {}: {},\n",
             serde_json::to_string(&handler.path).unwrap(),
             route_args_type(&params)
-        ));
+        );
     }
     source.push_str("};\n\nexport type RequestClient = {\n  request: <Path extends RequestPath>(path: Path, options: RouteRequest, ...params: RequestArgs[Path]) => Promise<Response>,\n};\n\nexport function createClient(options: RouteClientOptions): RequestClient {\n  const send = createRouteClient(options);\n  return {\n    request<Path extends RequestPath>(path: Path, options: RouteRequest, ...params: RequestArgs[Path]): Promise<Response> {\n      return send(buildRoute(path, ...params), options);\n    },\n  };\n}\n");
     source

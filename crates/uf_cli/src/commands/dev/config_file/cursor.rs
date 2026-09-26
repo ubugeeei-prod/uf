@@ -242,12 +242,15 @@ mod tests {
                 word,
                 colon,
                 present,
-            } => format!(
+            } => uf_infra::into_string(uf_infra::cstr!(
                 "key {:?}{} present {present:?}",
                 word.map(|word| word.text(&source)),
                 if colon { " with colon" } else { "" },
-            ),
-            Site::Value { word } => format!("value {:?}", word.map(|word| word.text(&source))),
+            )),
+            Site::Value { word } => uf_infra::into_string(uf_infra::cstr!(
+                "value {:?}",
+                word.map(|word| word.text(&source))
+            )),
         };
         Some((super::super::dotted(&cursor.path), site))
     }

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf ui`: what it writes into a project, what it refuses to replace, and how
 //! it compares a copy with the registry it came from.
 //!

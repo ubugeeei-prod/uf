@@ -137,7 +137,7 @@ impl GenId {
 
     fn id(&mut self) -> Value {
         loop {
-            let candidate = format!("$$gen$m{}", self.next);
+            let candidate = uf_infra::into_string(uf_infra::cstr!("$$gen$m{}", self.next));
             self.next += 1;
             if !self.used.contains(&candidate) {
                 self.used.insert(candidate.clone());
@@ -237,7 +237,9 @@ fn check_duplicate(
     if !seen.insert(name.to_owned()) {
         return Err(refuse(
             node,
-            format!("Duplicate variable name '{name}' in match case pattern."),
+            uf_infra::into_string(uf_infra::cstr!(
+                "Duplicate variable name '{name}' in match case pattern."
+            )),
         ));
     }
     Ok(())
@@ -291,7 +293,9 @@ fn analyze_properties(
         if !names.insert(name.clone()) {
             return Err(refuse(
                 &prop["pattern"],
-                format!("Duplicate property name '{name}' in match object pattern."),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "Duplicate property name '{name}' in match object pattern."
+                )),
             ));
         }
         object_keys.push(object_key.clone());
@@ -517,7 +521,10 @@ fn analyze_pattern(
         }
         other => Err(refuse(
             pattern,
-            format!("unknown match pattern {:?}", other.unwrap_or("node")),
+            uf_infra::into_string(uf_infra::cstr!(
+                "unknown match pattern {:?}",
+                other.unwrap_or("node")
+            )),
         )),
     }
 }

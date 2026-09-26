@@ -100,11 +100,11 @@ impl BundleMove {
     /// The move as the sentence the terminal prints.
     fn line(&self) -> String {
         match self {
-            Self::Entered { module, reason } => {
-                format!("{module} is now in the client bundle — {reason}")
-            }
+            Self::Entered { module, reason } => uf_infra::into_string(uf_infra::cstr!(
+                "{module} is now in the client bundle — {reason}"
+            )),
             Self::Left { module } => {
-                format!("{module} is out of the client bundle")
+                uf_infra::into_string(uf_infra::cstr!("{module} is out of the client bundle"))
             }
         }
     }
@@ -275,7 +275,9 @@ impl RscReport {
             // A project that cannot be scanned is not a dev server that should
             // stop: the file being edited is very often the unreadable one.
             Err(error) => {
-                let message = format!("the server-component analysis could not run: {error}");
+                let message = uf_infra::into_string(uf_infra::cstr!(
+                    "the server-component analysis could not run: {error}"
+                ));
                 // The scan is forgotten and the screen is not. A failure says
                 // nothing about whether the violations it cannot recompute are
                 // still true, so the next success redraws them in full; but it
@@ -433,10 +435,10 @@ fn path_boundary_reason(paths: &[&str]) -> String {
         // The chain reads as the imports somebody would follow, and the last
         // hop is named for what it is rather than left to be inferred from the
         // arrow before it.
-        Some((boundary, above)) => format!(
+        Some((boundary, above)) => uf_infra::into_string(uf_infra::cstr!(
             "{} imports {boundary}, which declares `\"use client\"`",
             above.join(" imports ")
-        ),
+        )),
         None => "it reaches a client boundary".to_owned(),
     }
 }
@@ -444,11 +446,13 @@ fn path_boundary_reason(paths: &[&str]) -> String {
 fn package_boundary_reason(paths: &[&str], specifier: &str) -> String {
     match paths {
         [] => "it reaches a client boundary".to_owned(),
-        [only] => format!("{only} imports {specifier}, which uf knows is a client module"),
-        _ => format!(
+        [only] => uf_infra::into_string(uf_infra::cstr!(
+            "{only} imports {specifier}, which uf knows is a client module"
+        )),
+        _ => uf_infra::into_string(uf_infra::cstr!(
             "{} imports {specifier}, which uf knows is a client module",
             paths.join(" imports ")
-        ),
+        )),
     }
 }
 
@@ -475,15 +479,15 @@ fn render_bundle(ui: &mut Ui, update: &BundleUpdate) {
     let items = lines.iter().map(String::as_str).collect::<Vec<_>>();
     let elided = update.total.saturating_sub(update.moves.len());
     let summary = if elided == 0 {
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} moved across the client bundle",
             plural(update.total, "module")
-        )
+        ))
     } else {
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} moved across the client bundle, {elided} not listed",
             plural(update.total, "module"),
-        )
+        ))
     };
     ui.render_err(|renderer, out| {
         renderer.blank(out);
@@ -514,12 +518,12 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
                 .iter()
                 .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
                 .count();
-            let summary = format!(
+            let summary = uf_infra::into_string(uf_infra::cstr!(
                 "{} against the server/client contract, {} of them fatal to `uf \
                  build` (ubugeeei-prod/uf#281)",
                 plural(diagnostics.len(), "diagnostic"),
                 errors,
-            );
+            ));
             ui.render_err(|renderer, out| {
                 renderer.blank(out);
                 renderer.heading(out, 2, "server components");
@@ -534,8 +538,11 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
                         // and so the one that has to prepare the message
                         // itself. The rule id is uf's own; the message is the
                         // checkout's. #659.
-                        let line =
-                            format!("{}: {}", frame.rule, uf_term::safe_message(&frame.message));
+                        let line = uf_infra::into_string(uf_infra::cstr!(
+                            "{}: {}",
+                            frame.rule,
+                            uf_term::safe_message(&frame.message)
+                        ));
                         renderer.status(out, frame.status(), &line);
                     } else {
                         renderer.code_frame_at(out, &frame.frame(), 4);

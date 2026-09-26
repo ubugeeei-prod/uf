@@ -108,16 +108,16 @@ pub(super) fn plan_for(
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok());
     let from = from.or_else(|| installed.as_ref()?.get("version")?.as_str())
-        .ok_or_else(|| anyhow::anyhow!("installed @uniflowed/core version unavailable; pass --from with the project's previous uf version"))?;
+        .ok_or_else(|| anyhow::anyhow!(uf_infra::cstr!("installed @uniflowed/core version unavailable; pass --from with the project's previous uf version")))?;
     let from_number = Release::parse(from)?;
     let to_number = Release::parse(to)?;
     ensure!(
         from_number <= to_number,
-        "codemod does not downgrade a project"
+        uf_infra::cstr!("codemod does not downgrade a project")
     );
     ensure!(
         to_number <= Release::parse(binary)?,
-        "target is newer than this uf binary; install the target uf first"
+        uf_infra::cstr!("target is newer than this uf binary; install the target uf first")
     );
     let mut plan = Plan::new("codemod");
     plan.from = Some(from.to_owned());
@@ -136,7 +136,9 @@ pub(super) fn plan_for(
             let mut candidate = after.clone();
             match migration(&mut candidate) {
                 Ok(()) => after = candidate,
-                Err(error) => plan.unmapped.push(format!("{name}: {error}")),
+                Err(error) => plan
+                    .unmapped
+                    .push(uf_infra::into_string(uf_infra::cstr!("{name}: {error}"))),
             }
         }
         plan.migrations.push(TOOL_DECLARATIONS.to_owned());
@@ -196,9 +198,9 @@ impl Release {
 
     pub(super) fn parse(version: &str) -> Result<Self> {
         let unsupported = || {
-            anyhow::anyhow!(
+            anyhow::anyhow!(uf_infra::cstr!(
                 "unsupported migration version {version}; expected a uf release such as 0.1.0 or 0.0.0-alpha.41"
-            )
+            ))
         };
         let number = |text: &str| -> Option<u64> {
             let canonical = !text.is_empty()
@@ -264,7 +266,10 @@ fn unread_keys(source: &mut String, unmapped: &mut Vec<String>) {
                 }
             }
             Ok(false) => {}
-            Err(error) => unmapped.push(format!("{}: {error}", path.join("."))),
+            Err(error) => unmapped.push(uf_infra::into_string(uf_infra::cstr!(
+                "{}: {error}",
+                path.join(".")
+            ))),
         }
     };
     for path in UNREAD_KEYS_REMOVED {
@@ -304,22 +309,26 @@ fn toolchain(source: &mut String) -> Result<()> {
     };
     let tools = value
         .as_object()
-        .ok_or_else(|| anyhow::anyhow!("expected a static tool map"))?;
+        .ok_or_else(|| anyhow::anyhow!(uf_infra::cstr!("expected a static tool map")))?;
     let mut runtime = Vec::new();
     let mut managers = Vec::new();
     for (name, version) in tools {
         let version = version
             .as_str()
-            .ok_or_else(|| anyhow::anyhow!("{name} version is not a string"))?;
+            .ok_or_else(|| anyhow::anyhow!(uf_infra::cstr!("{name} version is not a string")))?;
         match name.as_str() {
-            "node" | "bun" | "deno" => runtime.push(format!("{name}@{version}")),
-            "npm" | "pnpm" | "yarn" => managers.push(format!("{name}@{version}")),
-            _ => anyhow::bail!("unknown tool {name}"),
+            "node" | "bun" | "deno" => {
+                runtime.push(uf_infra::into_string(uf_infra::cstr!("{name}@{version}")))
+            }
+            "npm" | "pnpm" | "yarn" => {
+                managers.push(uf_infra::into_string(uf_infra::cstr!("{name}@{version}")))
+            }
+            _ => anyhow::bail!(uf_infra::cstr!("unknown tool {name}")),
         }
     }
     ensure!(
         runtime.len() <= 1 && managers.len() <= 1,
-        "multiple runtimes or package managers require explicit role selection"
+        uf_infra::cstr!("multiple runtimes or package managers require explicit role selection")
     );
     if let Some(spec) = runtime.first() {
         source::merge(source, &["runtime"], &json!(spec))?;
@@ -349,7 +358,7 @@ fn package_manager(source: &mut String) -> Result<()> {
     };
     let name = value
         .as_str()
-        .ok_or_else(|| anyhow::anyhow!("expected a package manager name"))?;
+        .ok_or_else(|| anyhow::anyhow!(uf_infra::cstr!("expected a package manager name")))?;
     let spec = match name {
         "auto" => {
             source::remove(source, &["pm", "packageManager"])?;
@@ -358,14 +367,14 @@ fn package_manager(source: &mut String) -> Result<()> {
         "yarn-classic" => "yarn@1",
         "yarn-berry" => "yarn",
         "npm" | "pnpm" | "yarn" | "bun" => name,
-        _ => anyhow::bail!("package manager {name} has no safe replacement"),
+        _ => anyhow::bail!(uf_infra::cstr!(
+            "package manager {name} has no safe replacement"
+        )),
     };
     let existing = source::get(source, &["packageManager"])?;
-    if !existing
-        .as_ref()
-        .and_then(Value::as_str)
-        .is_some_and(|v| v == spec || (v.starts_with(&format!("{spec}@")) && !spec.contains('@')))
-    {
+    if !existing.as_ref().and_then(Value::as_str).is_some_and(|v| {
+        v == spec || (v.starts_with(uf_infra::cstr!("{spec}@").as_str()) && !spec.contains('@'))
+    }) {
         source::merge(source, &["packageManager"], &json!(spec))?;
     }
     source::remove(source, &["pm", "packageManager"])
@@ -382,13 +391,13 @@ fn runner(source: &mut String) -> Result<()> {
         }
         ensure!(
             defaults.get(key) == Some(value),
-            "runner.{key} is non-default or unknown and needs manual migration"
+            uf_infra::cstr!("runner.{key} is non-default or unknown and needs manual migration")
         );
     }
     if let Some(target) = settings.get("applicationTarget").filter(|v| *v != "auto") {
         ensure!(
             matches!(target.as_str(), Some("web" | "react-native")),
-            "unknown applicationTarget"
+            uf_infra::cstr!("unknown applicationTarget")
         );
         source::merge(source, &["test", "target"], target)?;
     }

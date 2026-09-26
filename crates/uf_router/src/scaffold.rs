@@ -408,17 +408,19 @@ fn page_source(relative: &Utf8Path, loader: bool) -> String {
                 } else {
                     "string"
                 };
-                format!("+{name}: {ty}")
+                uf_infra::into_string(uf_infra::cstr!("+{name}: {ty}"))
             })
             .collect::<Vec<_>>()
             .join(", ");
-        props.push(format!("params: {{| {fields} |}}"));
+        props.push(uf_infra::into_string(uf_infra::cstr!(
+            "params: {{| {fields} |}}"
+        )));
     }
     if loader {
         props.push("data: { ... }".to_owned());
     }
 
-    source.push_str(&format!("export component Page({}) {{\n", props.join(", ")));
+    uf_infra::append!(source, "export component Page({}) {{\n", props.join(", "));
     if loader {
         source.push_str("  void data;\n");
     }
@@ -426,13 +428,16 @@ fn page_source(relative: &Utf8Path, loader: bool) -> String {
     // placeholder reads the props it was just given rather than declaring them
     // and ignoring them — which is the line the reader was about to write.
     let title = match params.last() {
-        Some((name, true)) => format!("{{params.{name}.join(\"/\")}}"),
-        Some((name, false)) => format!("{{params.{name}}}"),
+        Some((name, true)) => {
+            uf_infra::into_string(uf_infra::cstr!("{{params.{name}.join(\"/\")}}"))
+        }
+        Some((name, false)) => uf_infra::into_string(uf_infra::cstr!("{{params.{name}}}")),
         None => heading(relative),
     };
-    source.push_str(&format!(
+    uf_infra::append!(
+        source,
         "  return (\n    <section>\n      <h1>{title}</h1>\n    </section>\n  );\n}}\n"
-    ));
+    );
     source
 }
 

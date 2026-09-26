@@ -170,7 +170,11 @@ pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Con
             hosts: host_names(),
             tracking: support.tracking_issue.map_or_else(
                 || String::from("docs/hosts.md"),
-                |issue| format!("docs/hosts.md and ubugeeei-prod/uf#{issue}"),
+                |issue| {
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "docs/hosts.md and ubugeeei-prod/uf#{issue}"
+                    ))
+                },
             ),
         });
     }
@@ -182,7 +186,7 @@ fn host_names() -> String {
     RuntimeEngine::ALL
         .iter()
         .filter(|engine| engine.is_a_host())
-        .map(|engine| format!("`{}`", engine.as_str()))
+        .map(|engine| uf_infra::into_string(uf_infra::cstr!("`{}`", engine.as_str())))
         .collect::<Vec<_>>()
         .join(", ")
 }

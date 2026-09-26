@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! TypeScript declaration files, read as Flow.
 //!
 //! A uf project is written in Flow, and most of npm ships TypeScript

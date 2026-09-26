@@ -78,8 +78,12 @@ impl Unanswerable {
     /// The line a refusal prints for this finding.
     fn line(&self) -> String {
         match &self.route {
-            Some(route) => format!("  {route} ({}) — {}", self.file, self.because),
-            None => format!("  {} — {}", self.file, self.because),
+            Some(route) => uf_infra::into_string(uf_infra::cstr!(
+                "  {route} ({}) — {}",
+                self.file,
+                self.because
+            )),
+            None => uf_infra::into_string(uf_infra::cstr!("  {} — {}", self.file, self.because)),
         }
     }
 }
@@ -103,9 +107,10 @@ pub(crate) fn unanswerable(
                 // A middleware guards a subtree rather than a URL that is
                 // necessarily served, and is reported the way
                 // `deploy::static_host` reports one: by the subtree.
-                ServerModuleKind::Middleware => {
-                    format!("{}/*", if module.path == "/" { "" } else { &module.path })
-                }
+                ServerModuleKind::Middleware => uf_infra::into_string(uf_infra::cstr!(
+                    "{}/*",
+                    if module.path == "/" { "" } else { &module.path }
+                )),
                 ServerModuleKind::RouteHandler => module.path.to_string(),
             }),
             file: relative_to(root, &module.file),
@@ -235,28 +240,29 @@ pub(crate) fn refuse(
     if findings.is_empty() {
         return Ok(());
     }
-    let mut message = format!(
+    let mut message = uf_infra::into_string(uf_infra::cstr!(
         "{} {} this project {} a server, and {because}",
         findings.len(),
         plural(findings.len(), "thing"),
         if findings.len() == 1 { "needs" } else { "need" },
-    );
+    ));
     for finding in findings.iter().take(SHOWN) {
         message.push('\n');
         message.push_str(&finding.line());
     }
     if findings.len() > SHOWN {
-        message.push_str(&format!(
+        uf_infra::append!(
+            message,
             "\n  … and {} more",
             findings.len().saturating_sub(SHOWN)
-        ));
+        );
     }
     message.push_str(
         "\n\nA single-page build renders every route in the browser, and a browser has no \
          request to read and no handler to run. Take these out, or allow `\"ssg\"` or \
          `\"ssr\"` in `app.rendering.modes` and deploy a build that has a server in it.",
     );
-    bail!("{message}")
+    bail!(uf_infra::cstr!("{message}"))
 }
 
 /// Modules only a server can evaluate, by id, with the reason each one is.
@@ -281,7 +287,9 @@ fn server_only_modules(graph: &RscGraph) -> BTreeMap<ModuleId, String> {
         if module.path.as_str().ends_with(SERVER_ONLY_SUFFIX) {
             found.insert(
                 id,
-                format!("its name ends in `{SERVER_ONLY_SUFFIX}`, which says it runs on a server"),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "its name ends in `{SERVER_ONLY_SUFFIX}`, which says it runs on a server"
+                )),
             );
             continue;
         }
@@ -292,10 +300,10 @@ fn server_only_modules(graph: &RscGraph) -> BTreeMap<ModuleId, String> {
         {
             found.insert(
                 id,
-                format!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "it imports `{specifier}`, which only runs on a server — `cookies()`, \
                      `headers()` and `draftMode()` all read a request, and there is none"
-                ),
+                )),
             );
         }
     }

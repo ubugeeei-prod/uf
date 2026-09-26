@@ -76,7 +76,7 @@ pub(crate) fn discover_schedules(
             continue;
         }
         let source = std::fs::read_to_string(module.file.as_std_path())
-            .with_context(|| format!("reading {}", module.file))?;
+            .with_context(|| uf_infra::cstr!("reading {}", module.file))?;
         // The cheap gate first: a module that does not contain the word cannot
         // declare one, and most modules do not. Textual on purpose, and only
         // ever a *skip* — the parse below is what decides.
@@ -109,8 +109,11 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
     // reading of the file: `uf lint` and `uf build` already disagree with
     // nobody about what this module is, and a lexer here would be the third
     // opinion.
-    let (program, _) = uf_transform::lowered_ast(source)
-        .with_context(|| format!("parsing {file} to read its `{EXPORT}` export"))?;
+    let (program, _) = uf_transform::lowered_ast(source).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "parsing {file} to read its `{EXPORT}` export"
+        ))
+    })?;
     let empty = Vec::new();
     let body = program
         .get("body")
@@ -149,17 +152,17 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
                 .get("source")
                 .is_some_and(|source| !source.is_null())
             {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "{file} re-exports `{EXPORT}` from another module, and this build reads \
                      only the file that declares it.\n  Write the expression in this file — \
                      `export const {EXPORT} = \"*/15 * * * *\"`."
-                );
+                ));
             }
             let Some(local) = name_of(specifier.get("local")) else {
                 continue;
             };
             let Some(cron) = literals.get(local) else {
-                bail!("{}", unreadable(file));
+                bail!(uf_infra::cstr!("{}", unreadable(file)));
             };
             found = Some(five_fields(cron, file)?);
         }
@@ -169,11 +172,11 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
     // and only of a module that declared something: every other route handler
     // in the project is free to export whatever it answers.
     if found.is_some() && !exports_get(body) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{file} declares a `{EXPORT}` and exports no `{HANDLER}`.\n  \
              A scheduled invocation is a `{HANDLER}` to the route's own path — a cron has \
              no body to send — so this trigger would fire into a 405 nobody reads."
-        );
+        ));
     }
     Ok(found)
 }
@@ -236,7 +239,7 @@ fn declared_here(declaration: &Value, file: &Utf8Path) -> Result<Option<String>>
             continue;
         }
         let Some(cron) = literal_string(declarator.get("init")) else {
-            bail!("{}", unreadable(file));
+            bail!(uf_infra::cstr!("{}", unreadable(file)));
         };
         return Ok(Some(five_fields(cron, file)?));
     }
@@ -295,23 +298,23 @@ fn literal_string(node: Option<&Value>) -> Option<&str> {
 /// The expression, or a refusal naming the field count.
 fn five_fields(cron: &str, file: &Utf8Path) -> Result<String> {
     if cron.split_whitespace().count() != 5 {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{file} exports `{EXPORT} = {cron:?}`, which is not five fields.\n  \
              A cron expression is `minute hour day-of-month month day-of-week`."
-        );
+        ));
     }
     Ok(cron.to_owned())
 }
 
 /// What to say about a `schedule` this build cannot read.
 fn unreadable(file: &Utf8Path) -> String {
-    format!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{file} exports `{EXPORT}` as something this build cannot read.\n  \
          It has to be a string written in the file — `export const {EXPORT} = \
          \"*/15 * * * *\"` — because uf writes a platform's cron configuration without \
          running the project, and an expression it would have to evaluate is one it cannot \
          write down."
-    )
+    ))
 }
 
 /// Whether `adapter` would actually run what a project declared.
@@ -362,12 +365,15 @@ pub(crate) fn refuse_unrunnable(
     }
     let mut named = String::new();
     for schedule in schedules {
-        named.push_str(&format!(
+        uf_infra::append!(
+            named,
             "\n    {} — `{}`, in {}",
-            schedule.path, schedule.cron, schedule.file
-        ));
+            schedule.path,
+            schedule.cron,
+            schedule.file
+        );
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "the `{}` adapter would not run the {} schedule(s) this project declares, so this \
          build would produce a deployment whose scheduled work never happens:{named}\n  \
          `node`, `bun`, `deno`, `container` and `edge` all run one: the first four tick it in \
@@ -376,7 +382,7 @@ pub(crate) fn refuse_unrunnable(
          when to call it (ubugeeei-prod/uf#531).",
         adapter.as_str(),
         schedules.len()
-    );
+    ));
 }
 
 /// Check the finished artefact against the list it was built from.
@@ -462,13 +468,13 @@ pub(crate) fn assert_wired(
             if schedules.is_empty() {
                 Ok(())
             } else {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "the `{}` adapter runs no schedule and this build carried {} — \
                      `refuse_unrunnable` should have refused it before anything was linked \
                      (ubugeeei-prod/uf#531)",
                     adapter.as_str(),
                     schedules.len()
-                )
+                ))
             }
         }
     }
@@ -480,8 +486,8 @@ fn assert_process_entry(
     entry: &Utf8Path,
     schedules: &[DeclaredSchedule],
 ) -> Result<()> {
-    let source =
-        std::fs::read_to_string(entry.as_std_path()).with_context(|| format!("reading {entry}"))?;
+    let source = std::fs::read_to_string(entry.as_std_path())
+        .with_context(|| uf_infra::cstr!("reading {entry}"))?;
 
     // Deliberately no "and carries nothing else". `serve` reaches
     // `@uniflowed/server/schedule` whether or not a project declared anything,
@@ -493,7 +499,7 @@ fn assert_process_entry(
     for schedule in schedules {
         for (what, value) in [("path", schedule.path.as_str()), ("cron", &schedule.cron)] {
             if !carries_property(&source, what, value) {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "{entry} runs no schedule with `{what}: {}` and this project declares one \
                      on {} at `{}` — {}{}",
                     json_string(value),
@@ -501,7 +507,7 @@ fn assert_process_entry(
                     schedule.cron,
                     pairing_note(adapter),
                     shown(entry, &source)
-                );
+                ));
             }
         }
     }
@@ -513,12 +519,12 @@ fn assert_worker(directory: &Utf8Path, schedules: &[DeclaredSchedule]) -> Result
     let worker_file = directory.join("worker.js");
     let config_file = directory.join("wrangler.json");
     let worker = std::fs::read_to_string(worker_file.as_std_path())
-        .with_context(|| format!("reading {worker_file}"))?;
+        .with_context(|| uf_infra::cstr!("reading {worker_file}"))?;
     let config: Value = serde_json::from_str(
         &std::fs::read_to_string(config_file.as_std_path())
-            .with_context(|| format!("reading {config_file}"))?,
+            .with_context(|| uf_infra::cstr!("reading {config_file}"))?,
     )
-    .with_context(|| format!("parsing {config_file}"))?;
+    .with_context(|| uf_infra::cstr!("parsing {config_file}"))?;
 
     // `wrangler.json` is uf's own file rather than a bundler's, so this half is
     // an exact comparison and not a search.
@@ -532,18 +538,18 @@ fn assert_worker(directory: &Utf8Path, schedules: &[DeclaredSchedule]) -> Result
         .map(|crons| crons.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
     if triggers != declared {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{config_file} tells Cloudflare to fire {triggers:?} and this project declares \
              {declared:?} — {}",
             pairing_note(DeployAdapter::Edge)
-        );
+        ));
     }
 
     // The half #712 shipped without. A property name an object is read by
     // survives linking, because dropping it would break the program.
     let answers = property_value(&worker, "scheduled").is_some();
     if answers != !schedules.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{config_file} carries {} cron trigger(s) and {worker_file} {} — {}{}",
             declared.len(),
             if answers {
@@ -553,7 +559,7 @@ fn assert_worker(directory: &Utf8Path, schedules: &[DeclaredSchedule]) -> Result
             },
             pairing_note(DeployAdapter::Edge),
             shown(&worker_file, &worker)
-        );
+        ));
     }
 
     // And each expression reaches its route. Cloudflare fires the string, so
@@ -564,14 +570,14 @@ fn assert_worker(directory: &Utf8Path, schedules: &[DeclaredSchedule]) -> Result
             &json_string(&schedule.cron),
             &json_string(&schedule.path),
         ) {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{config_file} tells Cloudflare to fire `{}` and {worker_file} does not route \
                  it to {} — {}{}",
                 schedule.cron,
                 schedule.path,
                 pairing_note(DeployAdapter::Edge),
                 shown(&worker_file, &worker)
-            );
+            ));
         }
     }
     Ok(())
@@ -655,7 +661,7 @@ fn shown(file: &Utf8Path, source: &str) -> String {
         Some((at, _)) => (&source[..at], "\n… (truncated)"),
         None => (source, ""),
     };
-    format!("\n\n{file}:\n{text}{elided}")
+    uf_infra::into_string(uf_infra::cstr!("\n\n{file}:\n{text}{elided}"))
 }
 
 /// The sentence every one of these failures ends with.
@@ -664,18 +670,19 @@ fn shown(file: &Utf8Path, source: &str) -> String {
 /// two things each time: what has gone wrong in general, and where to read
 /// about why it is refused rather than warned about.
 fn pairing_note(adapter: DeployAdapter) -> String {
-    format!(
+    uf_infra::into_string(uf_infra::cstr!(
         "a schedule and the code that runs it must arrive together, and the `{}` artefact \
          `uf build` just wrote has one without the other. This is a fault in uf rather than \
          in the project: report it with the file(s) named above \
          (ubugeeei-prod/uf#712, ubugeeei-prod/uf#531).",
         adapter.as_str()
-    )
+    ))
 }
 
 /// One string, quoted the way JavaScript quotes it.
 fn json_string(value: &str) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| format!("\"{value}\""))
+    serde_json::to_string(value)
+        .unwrap_or_else(|_| uf_infra::into_string(uf_infra::cstr!("\"{value}\"")))
 }
 
 #[cfg(test)]

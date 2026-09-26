@@ -261,7 +261,7 @@ fn restore(undo: Vec<(&Utf8PathBuf, String)>, cause: PackageManagerError) -> Pac
     };
     PackageManagerError::Write {
         path: (*first).clone(),
-        source: std::io::Error::other(format!(
+        source: std::io::Error::other(uf_infra::into_string(uf_infra::cstr!(
             "{cause}; and {} could not be put back, so {} still {} the new range",
             stranded
                 .iter()
@@ -270,7 +270,7 @@ fn restore(undo: Vec<(&Utf8PathBuf, String)>, cause: PackageManagerError) -> Pac
                 .join(", "),
             if stranded.len() == 1 { "it" } else { "they" },
             if stranded.len() == 1 { "holds" } else { "hold" },
-        )),
+        ))),
     }
 }
 
@@ -349,7 +349,9 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
         path: manifest.to_path_buf(),
         source: std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("`{key}` is already something other than an object"),
+            uf_infra::into_string(uf_infra::cstr!(
+                "`{key}` is already something other than an object"
+            )),
         ),
     }
 }
@@ -359,8 +361,8 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
 /// `None` when there is none or more than one — which is the answer, not a
 /// failure: the caller re-serialises instead.
 fn splice(source: &str, name: &str, from: &str, to: &str) -> Option<String> {
-    let key = format!("\"{name}\"");
-    let value = format!("\"{from}\"");
+    let key = uf_infra::into_string(uf_infra::cstr!("\"{name}\""));
+    let value = uf_infra::into_string(uf_infra::cstr!("\"{from}\""));
     let mut found = None;
 
     let mut search = 0;

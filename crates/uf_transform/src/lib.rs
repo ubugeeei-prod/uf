@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! Flow → JavaScript, with nothing but upstream code deciding what the language means.
 //!

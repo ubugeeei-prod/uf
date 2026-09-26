@@ -139,8 +139,9 @@ pub fn parse(bytes: &[u8]) -> Result<Options, String> {
     if bytes.iter().all(u8::is_ascii_whitespace) {
         return Ok(Options::default());
     }
-    let options: Options = serde_json::from_slice(bytes)
-        .map_err(|error| format!("invalid plugin options: {error}"))?;
+    let options: Options = serde_json::from_slice(bytes).map_err(|error| {
+        uf_infra::into_string(uf_infra::cstr!("invalid plugin options: {error}"))
+    })?;
     for entry in &options.overrides {
         match (&entry.column, &entry.db_type) {
             (Some(_), Some(_)) | (None, None) => {

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Shared machinery for the formatter's guarantees: a location-free view
 //! of a parse tree, and the comment multiset of a source.
 //!

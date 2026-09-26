@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf use`, `uf self-update` and `uf self-uninstall`, against a release store
 //! on disk.
 //!

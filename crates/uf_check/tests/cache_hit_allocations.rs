@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What a full check-cache hit is allowed to cost.
 //!
 //! A warm run has to describe the batch, read the records and replay their

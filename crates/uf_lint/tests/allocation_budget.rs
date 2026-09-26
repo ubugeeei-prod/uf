@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Allocation guards for `uf lint` over `packages/router/internal/runtime.js`.
 //!
 //! ubugeeei-prod/uf#668 was filed from this module, which used to make

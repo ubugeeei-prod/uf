@@ -79,12 +79,18 @@ fn chain_suffix(chain: &[Utf8PathBuf]) -> String {
     if chain.len() < 2 {
         return String::new();
     }
-    format!(", reached from a client boundary through {}", arrows(chain))
+    uf_infra::into_string(uf_infra::cstr!(
+        ", reached from a client boundary through {}",
+        arrows(chain)
+    ))
 }
 
 /// A chain of modules as the report prints it: each in backticks, `→` between.
 fn arrows(chain: &[Utf8PathBuf]) -> String {
-    let steps: Vec<String> = chain.iter().map(|module| format!("`{module}`")).collect();
+    let steps: Vec<String> = chain
+        .iter()
+        .map(|module| uf_infra::into_string(uf_infra::cstr!("`{module}`")))
+        .collect();
     steps.join(" → ")
 }
 
@@ -101,40 +107,48 @@ fn request_state_message(
     line: u32,
     chain: &[Utf8PathBuf],
 ) -> String {
-    let named: Vec<String> = routes.iter().map(|route| format!("`{route}`")).collect();
+    let named: Vec<String> = routes
+        .iter()
+        .map(|route| uf_infra::into_string(uf_infra::cstr!("`{route}`")))
+        .collect();
     let (subject, their) = match named.as_slice() {
-        [one] => (format!("route {one}"), "its"),
-        _ => (format!("routes {}", named.join(", ")), "their"),
+        [one] => (uf_infra::into_string(uf_infra::cstr!("route {one}")), "its"),
+        _ => (
+            uf_infra::into_string(uf_infra::cstr!("routes {}", named.join(", "))),
+            "their",
+        ),
     };
     let plural = routes.len() != 1;
     let reached = if chain.len() < 2 {
-        format!(", which `{module}` imports from `@uniflowed/server` at line {line}")
+        uf_infra::into_string(uf_infra::cstr!(
+            ", which `{module}` imports from `@uniflowed/server` at line {line}"
+        ))
     } else {
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             " through {}, where `{module}` imports it from `@uniflowed/server` at line {line}",
             arrows(chain)
-        )
+        ))
     };
     match reason {
-        StaticRouteReason::Prerendered => format!(
+        StaticRouteReason::Prerendered => uf_infra::into_string(uf_infra::cstr!(
             "{subject} {} prerendered, and {their} render reads `{api}()`{reached}. A prerendered \
              document is written once, at build time, for no request. Export `const dynamic = \
              \"force-dynamic\"` from {} to render it for each request, or move the read out of \
              the render",
             if plural { "are" } else { "is" },
             if plural { "each page" } else { "the page" },
-        ),
+        )),
         StaticRouteReason::Cached {
             module: stated,
             line: stated_line,
-        } => format!(
+        } => uf_infra::into_string(uf_infra::cstr!(
             "{subject} {} a cache lifetime through `cacheLife`, which `{stated}` imports at line \
              {stated_line}, and {their} render reads `{api}()`{reached}. A render that reads the \
              request is never stored, so that lifetime is never kept. Move the read out of the \
              render, or state no lifetime for {}",
             if plural { "state" } else { "states" },
             if plural { "these routes" } else { "this route" },
-        ),
+        )),
     }
 }
 

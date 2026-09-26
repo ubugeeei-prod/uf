@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Shared helpers for the CLI integration tests.
 //!
 //! Every command is launched with a scrubbed terminal environment. Colour

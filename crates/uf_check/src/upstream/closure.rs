@@ -413,7 +413,13 @@ mod tests {
         )
         .unresolved
         .into_iter()
-        .map(|left_over| format!("{} in {}", left_over.specifier, left_over.importer))
+        .map(|left_over| {
+            uf_infra::into_string(uf_infra::cstr!(
+                "{} in {}",
+                left_over.specifier,
+                left_over.importer
+            ))
+        })
         .collect()
     }
 

@@ -1,3 +1,7 @@
+disallowed-macros = [
+  { path = "std::format", reason = "Append directly with uf_infra::append! or push_str; use uf_infra::cstr! for an owned CompactString" },
+]
+
 disallowed-types = [
   { path = "std::collections::HashMap", reason = "Use uf_infra::FxHashMap" },
   { path = "std::collections::HashSet", reason = "Use uf_infra::FxHashSet" },

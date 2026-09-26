@@ -462,8 +462,8 @@ fn file_names(config: &UniflowedConfig, mode: &str) -> Result<Vec<String>, EnvFi
     Ok(vec![
         String::from(".env"),
         String::from(".env.local"),
-        format!(".env.{mode}"),
-        format!(".env.{mode}.local"),
+        uf_infra::into_string(uf_infra::cstr!(".env.{mode}")),
+        uf_infra::into_string(uf_infra::cstr!(".env.{mode}.local")),
     ])
 }
 
@@ -684,7 +684,9 @@ fn parse_into(
         if scanner.peek() != Some('=') {
             return Err(scanner.error(
                 line,
-                format!("`{name}` has no `=`; every line is `NAME=value`, a comment, or blank"),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "`{name}` has no `=`; every line is `NAME=value`, a comment, or blank"
+                )),
             ));
         }
         scanner.advance();
@@ -696,7 +698,9 @@ fn parse_into(
         if name == INJECTED {
             return Err(scanner.error(
                 line,
-                format!("`{INJECTED}` is uf's own; a file cannot set it"),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "`{INJECTED}` is uf's own; a file cannot set it"
+                )),
             ));
         }
         let value = scanner.value(&name, &|wanted| {
@@ -824,10 +828,10 @@ impl Scanner<'_> {
         };
         Err(self.error(
             line,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{shown}` is not a variable name; names start with a letter or `_` and continue \
                  with letters, digits or `_`"
-            ),
+            )),
         ))
     }
 
@@ -868,7 +872,9 @@ impl Scanner<'_> {
             let Some(character) = self.peek() else {
                 return Err(self.error(
                     opened,
-                    format!("the value for `{name}` opens with {quote} and is never closed"),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "the value for `{name}` opens with {quote} and is never closed"
+                    )),
                 ));
             };
             if character == quote {
@@ -880,7 +886,9 @@ impl Scanner<'_> {
                 let Some(escaped) = self.peek() else {
                     return Err(self.error(
                         opened,
-                        format!("the value for `{name}` ends with a backslash"),
+                        uf_infra::into_string(uf_infra::cstr!(
+                            "the value for `{name}` ends with a backslash"
+                        )),
                     ));
                 };
                 self.advance();
@@ -964,7 +972,9 @@ impl Scanner<'_> {
             if self.peek() != Some('}') {
                 return Err(self.error(
                     line,
-                    format!("`${{{wanted}` is never closed; write `${{{wanted}}}`"),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "`${{{wanted}` is never closed; write `${{{wanted}}}`"
+                    )),
                 ));
             }
             self.advance();
@@ -980,20 +990,20 @@ impl Scanner<'_> {
             }
             None => Err(self.error(
                 line,
-                format!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`{}` is not defined; define it earlier, set it in the environment, or write \
                      `\\${}` for a literal dollar",
                     if braced {
-                        format!("${{{wanted}}}")
+                        uf_infra::into_string(uf_infra::cstr!("${{{wanted}}}"))
                     } else {
-                        format!("${wanted}")
+                        uf_infra::into_string(uf_infra::cstr!("${wanted}"))
                     },
                     if braced {
-                        format!("{{{wanted}}}")
+                        uf_infra::into_string(uf_infra::cstr!("{{{wanted}}}"))
                     } else {
                         wanted.clone()
                     }
-                ),
+                )),
             )),
         }
     }
@@ -1011,10 +1021,10 @@ impl Scanner<'_> {
                 let line = self.line;
                 Err(self.error(
                     line,
-                    format!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "there is text after the quoted value for `{name}`; end the line, or \
                          start a comment with `#`"
-                    ),
+                    )),
                 ))
             }
         }
@@ -1030,7 +1040,7 @@ fn unescape(character: char) -> String {
         // A backslash before anything else is a backslash, so a value that
         // holds a Windows path or a regular expression survives being quoted.
         '\\' | '"' | '\'' | '$' => character.to_string(),
-        other => format!("\\{other}"),
+        other => uf_infra::into_string(uf_infra::cstr!("\\{other}")),
     }
 }
 

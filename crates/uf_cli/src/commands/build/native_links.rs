@@ -24,7 +24,9 @@ pub(crate) fn write(
         };
         for claim in &links.routes {
             if !routes.iter().any(|route| route.path == *claim) {
-                bail!("app.router.nativeLinks.routes claims {claim}, which has no {target:?} page");
+                bail!(uf_infra::cstr!(
+                    "app.router.nativeLinks.routes claims {claim}, which has no {target:?} page"
+                ));
             }
         }
     }
@@ -65,7 +67,8 @@ pub(crate) fn write(
         } }
     }]);
     let directory = out.join(".well-known");
-    std::fs::create_dir_all(&directory).with_context(|| format!("failed to create {directory}"))?;
+    std::fs::create_dir_all(&directory)
+        .with_context(|| uf_infra::cstr!("failed to create {directory}"))?;
     let mut files = Vec::new();
     for (name, value) in [
         ("apple-app-site-association", apple),
@@ -73,13 +76,16 @@ pub(crate) fn write(
     ] {
         let file = directory.join(name);
         if file.exists() {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{file} already exists: remove the public copy or app.router.nativeLinks so there is one owner of the association files"
-            );
+            ));
         }
         std::fs::write(
             &file,
-            format!("{}\n", serde_json::to_string_pretty(&value)?),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{}\n",
+                serde_json::to_string_pretty(&value)?
+            )),
         )?;
         files.push(file);
     }

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf prepare`: what it narrows to, what it writes, and what it refuses.
 //!
 //! The subject here is the pre-commit run. `every_command.rs` asks `uf prepare`

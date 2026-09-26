@@ -115,7 +115,7 @@ pub(super) fn doctor(cwd: &Utf8Path, ui: &mut Ui, json: bool, verbose: bool) -> 
                 status: Health::Error,
                 found: "could not be read".to_owned(),
                 reason: None,
-                fix: Some(format!("{error:#}")),
+                fix: Some(uf_infra::into_string(uf_infra::cstr!("{error:#}"))),
                 declared_by: Vec::new(),
                 location: None,
             }],
@@ -217,10 +217,10 @@ fn declared_finding(
         (_, None) => {
             finding.status = Health::Error;
             finding.found = "no build for this machine".to_owned();
-            finding.fix = Some(format!(
+            finding.fix = Some(uf_infra::into_string(uf_infra::cstr!(
                 "uf installs tools for macOS and Linux on arm64 and x64; install {name} yourself \
                  and write `{name}` without a version to use the one on PATH"
-            ));
+            )));
         }
         (resolution, Some(platform)) => {
             let version = resolution.version().unwrap_or_default().to_owned();
@@ -236,7 +236,8 @@ fn declared_finding(
                 }
                 None => {
                     finding.status = Health::Warn;
-                    finding.found = format!("{version} not installed");
+                    finding.found =
+                        uf_infra::into_string(uf_infra::cstr!("{version} not installed"));
                     finding.fix = Some(INSTALL_FIX.to_owned());
                 }
             }
@@ -256,10 +257,10 @@ fn on_path(finding: &mut Finding, program: &str) {
         None => {
             finding.status = Health::Error;
             finding.found = "not on PATH".to_owned();
-            finding.fix = Some(format!(
+            finding.fix = Some(uf_infra::into_string(uf_infra::cstr!(
                 "install {program}, or write a version — `{program}@<major>` — and uf installs \
                  that release the first time a command needs it"
-            ));
+            )));
         }
     }
 }
@@ -287,9 +288,9 @@ fn default_runtime(resolved: &ResolvedConfig) -> Finding {
             finding.name = "node".to_owned();
             finding.status = Health::Error;
             finding.found = "not on PATH".to_owned();
-            finding.fix = Some(format!(
+            finding.fix = Some(uf_infra::into_string(uf_infra::cstr!(
                 "{error}; or write `runtime: \"node@<major>\"` in uf.config.js and uf installs it"
-            ));
+            )));
         }
     }
     finding
@@ -330,10 +331,10 @@ fn detected_manager(resolved: &ResolvedConfig) -> Finding {
                      \"npm@<version>\"` in uf.config.js and uf installs it"
                         .to_owned()
                 }
-                _ => format!(
+                _ => uf_infra::into_string(uf_infra::cstr!(
                     "install {program}, or write `packageManager: \"{program}@<version>\"` in \
                      uf.config.js and uf installs it"
-                ),
+                )),
             });
         }
     }
@@ -344,9 +345,9 @@ fn detected_manager(resolved: &ResolvedConfig) -> Finding {
 /// it, what was missing — "chosen by no lockfile" reads as a typo.
 fn manager_reason(chosen_by: &str) -> String {
     if chosen_by.starts_with("no ") {
-        format!("uf's default: {chosen_by}")
+        uf_infra::into_string(uf_infra::cstr!("uf's default: {chosen_by}"))
     } else {
-        format!("chosen by {chosen_by}")
+        uf_infra::into_string(uf_infra::cstr!("chosen by {chosen_by}"))
     }
 }
 
@@ -399,7 +400,7 @@ fn render(ui: &mut Ui, root: &Utf8Path, findings: &[Finding], places: &Places, v
     let details: Vec<String> = findings
         .iter()
         .map(|finding| match &finding.reason {
-            Some(reason) => format!("{} · {reason}", finding.role),
+            Some(reason) => uf_infra::into_string(uf_infra::cstr!("{} · {reason}", finding.role)),
             None => finding.role.clone(),
         })
         .collect();
@@ -410,11 +411,14 @@ fn render(ui: &mut Ui, root: &Utf8Path, findings: &[Finding], places: &Places, v
         ),
         (0, warnings) => (
             Status::Warn,
-            format!("{} not installed yet", plural(warnings, "tool")),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{} not installed yet",
+                plural(warnings, "tool")
+            )),
         ),
         (errors, _) => (
             Status::Error,
-            format!("{} to fix", plural(errors, "problem")),
+            uf_infra::into_string(uf_infra::cstr!("{} to fix", plural(errors, "problem"))),
         ),
     };
     // Not over a config that could not be read: that row is not a tool, and
@@ -422,7 +426,10 @@ fn render(ui: &mut Ui, root: &Utf8Path, findings: &[Finding], places: &Places, v
     let checked = if findings.iter().any(|finding| finding.role == CONFIG_ROLE) {
         String::new()
     } else {
-        format!("{} checked", plural(findings.len(), "tool"))
+        uf_infra::into_string(uf_infra::cstr!(
+            "{} checked",
+            plural(findings.len(), "tool")
+        ))
     };
     let verbose_rows = verbose.then(|| verbose_lines(findings, places));
     // A fix that several rows share is said once, after them, rather than

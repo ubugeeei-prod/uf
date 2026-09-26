@@ -123,7 +123,7 @@ pub(crate) fn edit(existing: Option<&str>, wants: &[Want]) -> Result<Edit> {
     };
     let root = Parser::new(text).document()?;
     let NodeKind::Object(_) = &root.kind else {
-        bail!("the top level is not an object");
+        bail!(uf_infra::cstr!("the top level is not an object"));
     };
 
     let mut outcomes = Vec::with_capacity(wants.len());
@@ -158,7 +158,7 @@ fn new_file(wants: &[Want]) -> Edit {
     for want in wants {
         merge_at(&mut root, &want.path, want.fresh());
     }
-    let text = format!("{}\n", pretty(&root, ""));
+    let text = uf_infra::into_string(uf_infra::cstr!("{}\n", pretty(&root, "")));
     Edit {
         inserted: vec![text.trim_end().to_owned()],
         text,
@@ -320,7 +320,7 @@ struct Rendered {
 impl Splice {
     fn render(&self, source: &str) -> Rendered {
         let outer = line_indent(source, self.at - 1);
-        let inner = format!("{outer}  ");
+        let inner = uf_infra::into_string(uf_infra::cstr!("{outer}  "));
         let empty = match self.container {
             Container::Object { empty } | Container::Array { empty } => empty,
         };
@@ -330,7 +330,10 @@ impl Splice {
             .map(|(key, value)| {
                 let value = pretty(value, &inner);
                 match key {
-                    Some(key) => format!("{}: {value}", Value::String(key.clone())),
+                    Some(key) => uf_infra::into_string(uf_infra::cstr!(
+                        "{}: {value}",
+                        Value::String(key.clone())
+                    )),
                     None => value,
                 }
             })
@@ -342,7 +345,7 @@ impl Splice {
             let text = if empty {
                 joined.clone()
             } else {
-                format!("{joined}, ")
+                uf_infra::into_string(uf_infra::cstr!("{joined}, "))
             };
             return Rendered {
                 text,
@@ -419,8 +422,12 @@ struct Member {
 impl Node {
     /// The value's JSON, read from its text (comments inside it allowed).
     fn value(&self, text: &str) -> Result<Value> {
-        json5::from_str(&text[self.start..self.end])
-            .map_err(|error| anyhow!("cannot read `{}`: {error}", &text[self.start..self.end]))
+        json5::from_str(&text[self.start..self.end]).map_err(|error| {
+            anyhow!(uf_infra::cstr!(
+                "cannot read `{}`: {error}",
+                &text[self.start..self.end]
+            ))
+        })
     }
 }
 
@@ -444,10 +451,10 @@ impl<'a> Parser<'a> {
         let node = self.value()?;
         self.skip_trivia()?;
         if self.at != self.bytes.len() {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "unexpected text after the top-level value at byte {}",
                 self.at
-            );
+            ));
         }
         Ok(node)
     }
@@ -467,7 +474,7 @@ impl<'a> Parser<'a> {
                 }
                 Some(b'/') if self.bytes.get(self.at + 1) == Some(&b'*') => {
                     let Some(close) = self.text[self.at + 2..].find("*/") else {
-                        bail!("a /* comment is not closed");
+                        bail!(uf_infra::cstr!("a /* comment is not closed"));
                     };
                     self.at += 2 + close + 2;
                 }
@@ -501,7 +508,7 @@ impl<'a> Parser<'a> {
                     self.at += 1;
                 }
                 if self.at == start {
-                    bail!("expected a value at byte {start}");
+                    bail!(uf_infra::cstr!("expected a value at byte {start}"));
                 }
                 Ok(Node {
                     kind: NodeKind::Scalar,
@@ -509,7 +516,7 @@ impl<'a> Parser<'a> {
                     end: self.at,
                 })
             }
-            None => bail!("the file ends where a value was expected"),
+            None => bail!(uf_infra::cstr!("the file ends where a value was expected")),
         }
     }
 
@@ -525,11 +532,16 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 Some(_) => self.at += 1,
-                None => bail!("a string starting at byte {start} is not closed"),
+                None => bail!(uf_infra::cstr!(
+                    "a string starting at byte {start} is not closed"
+                )),
             }
         }
-        serde_json::from_str(&self.text[start..self.at])
-            .map_err(|error| anyhow!("cannot read the string at byte {start}: {error}"))
+        serde_json::from_str(&self.text[start..self.at]).map_err(|error| {
+            anyhow!(uf_infra::cstr!(
+                "cannot read the string at byte {start}: {error}"
+            ))
+        })
     }
 
     fn object(&mut self, start: usize) -> Result<Node> {
@@ -546,7 +558,10 @@ impl<'a> Parser<'a> {
                     let key = self.string()?;
                     self.skip_trivia()?;
                     if self.bytes.get(self.at) != Some(&b':') {
-                        bail!("expected `:` after the key {key:?} at byte {}", self.at);
+                        bail!(uf_infra::cstr!(
+                            "expected `:` after the key {key:?} at byte {}",
+                            self.at
+                        ));
                     }
                     self.at += 1;
                     let value = self.value()?;
@@ -555,10 +570,13 @@ impl<'a> Parser<'a> {
                     match self.bytes.get(self.at) {
                         Some(b',') => self.at += 1,
                         Some(b'}') => {}
-                        _ => bail!("expected `,` or `}}` at byte {}", self.at),
+                        _ => bail!(uf_infra::cstr!("expected `,` or `}}` at byte {}", self.at)),
                     }
                 }
-                _ => bail!("expected a key or `}}` at byte {}", self.at),
+                _ => bail!(uf_infra::cstr!(
+                    "expected a key or `}}` at byte {}",
+                    self.at
+                )),
             }
         }
         Ok(Node {
@@ -582,7 +600,7 @@ impl<'a> Parser<'a> {
             match self.bytes.get(self.at) {
                 Some(b',') => self.at += 1,
                 Some(b']') => {}
-                _ => bail!("expected `,` or `]` at byte {}", self.at),
+                _ => bail!(uf_infra::cstr!("expected `,` or `]` at byte {}", self.at)),
             }
         }
         Ok(Node {

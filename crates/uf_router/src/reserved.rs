@@ -336,8 +336,10 @@ impl ReservedFile {
     #[must_use]
     pub fn file_name(self) -> String {
         match self.variant.as_str() {
-            Some(variant) => format!("${}.{variant}.js", self.role.as_str()),
-            None => format!("${}.js", self.role.as_str()),
+            Some(variant) => {
+                uf_infra::into_string(uf_infra::cstr!("${}.{variant}.js", self.role.as_str()))
+            }
+            None => uf_infra::into_string(uf_infra::cstr!("${}.js", self.role.as_str())),
         }
     }
 }
@@ -621,19 +623,19 @@ impl<'a> RouteSegment<'a> {
         let climbs = if levels == 1 {
             "one level".to_owned()
         } else {
-            format!("{levels} levels")
+            uf_infra::into_string(uf_infra::cstr!("{levels} levels"))
         };
         let sits = match depth {
             0 => "at the router root".to_owned(),
             1 => "one level below it".to_owned(),
-            _ => format!("{depth} levels below it"),
+            _ => uf_infra::into_string(uf_infra::cstr!("{depth} levels below it")),
         };
-        Some(format!(
+        Some(uf_infra::into_string(uf_infra::cstr!(
             "`{segment}` climbs {climbs} from the directory it is in, which is {sits}, so the URL \
              it intercepts would be above the router root, and there is no such URL. It is \
              refused rather than read as a climb to the root. Remove a `(..)`, or write `(...)` \
              to intercept from the router root. https://github.com/ubugeeei-prod/uf/issues/267"
-        ))
+        )))
     }
 
     /// The slot this segment names, if it names one.
@@ -677,7 +679,7 @@ impl<'a> RouteSegment<'a> {
             return None;
         };
         if interception_climb(marker).is_none() {
-            return Some(format!(
+            return Some(uf_infra::into_string(uf_infra::cstr!(
                 "`{segment}` is spelled like an intercepting route and `{marker}` is not a marker \
                  uf reads. The markers are `(.)` for the level the directory is at, `(..)` for one \
                  above it — repeated for each further level — and `(...)` for the router root. \
@@ -685,17 +687,17 @@ impl<'a> RouteSegment<'a> {
                  it used to become. Spell the marker as one of those and put the directory inside \
                  a `@slot`, or rename it to the literal segment `{route}`. \
                  https://github.com/ubugeeei-prod/uf/issues/267"
-            ));
+            )));
         }
         if !names_a_url_segment(route) {
-            return Some(format!(
+            return Some(uf_infra::into_string(uf_infra::cstr!(
                 "`{segment}` is spelled like an intercepting route, and `{route}` after the marker \
                  is not a URL segment, so there is no path for it to intercept: an interception \
                  names the segment it stands in for, the way `{marker}photo` and `{marker}[id]` \
                  do. It is refused rather than served as the URL segment `/{segment}`, which is \
                  what it used to become. Put a segment name after the marker, or rename the \
                  directory. https://github.com/ubugeeei-prod/uf/issues/267"
-            ));
+            )));
         }
         None
     }
@@ -714,7 +716,7 @@ impl<'a> RouteSegment<'a> {
             return None;
         };
         self.interception_climb()?;
-        Some(format!(
+        Some(uf_infra::into_string(uf_infra::cstr!(
             "`{segment}` is an intercepting route, and an intercepting route renders into a \
              `@slot`: it is what a client navigation shows in a named place instead of the page \
              its URL names, and outside a slot there is no named place for it to show in. It is \
@@ -722,7 +724,7 @@ impl<'a> RouteSegment<'a> {
              become. Move it inside a slot directory beside the layout that renders the slot, or \
              rename the directory to the literal segment `{route}`. \
              https://github.com/ubugeeei-prod/uf/issues/267"
-        ))
+        )))
     }
 }
 

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf transform`, the service `@uniflowed/vite` and the host loaders pipe
 //! modules through.
 //!

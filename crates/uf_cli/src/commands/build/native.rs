@@ -25,9 +25,8 @@ pub(super) fn build(
 ) -> Result<()> {
     let root = &resolved.root;
     let server = NativeServer::detect(root).ok_or_else(|| anyhow!(
-        "`uf build --target {}` needs the project's Expo or React Native CLI; install expo or @react-native-community/cli and compose withUniflowedMetro() in metro.config.js",
-        target.as_str()
-    ))?;
+        uf_infra::cstr!("`uf build --target {}` needs the project's Expo or React Native CLI; install expo or @react-native-community/cli and compose withUniflowedMetro() in metro.config.js",
+        target.as_str())))?;
     check_metro(&server, root)?;
     let tables = discover_native_route_tables(root, &resolved.config)?;
     let written = write_native_route_tables(root, &resolved.config, &tables)?;
@@ -92,7 +91,9 @@ pub(super) fn build(
             adopt_exit_status(ui, status, command_name);
         }
         if !bundle.is_file() {
-            bail!("{command_name} exited successfully but wrote no Metro bundle for {platform}");
+            bail!(uf_infra::cstr!(
+                "{command_name} exited successfully but wrote no Metro bundle for {platform}"
+            ));
         }
         if platform_out.exists() {
             fs::remove_dir_all(&platform_out)?;

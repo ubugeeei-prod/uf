@@ -69,8 +69,11 @@ impl Ask for Terminal {
 /// for.
 fn title(task: &str, argument: &TaskArgument) -> String {
     match &argument.description {
-        Some(description) => format!("{task} · {} — {description}", argument.name),
-        None => format!("{task} · {}", argument.name),
+        Some(description) => uf_infra::into_string(uf_infra::cstr!(
+            "{task} · {} — {description}",
+            argument.name
+        )),
+        None => uf_infra::into_string(uf_infra::cstr!("{task} · {}", argument.name)),
     }
 }
 
@@ -94,7 +97,9 @@ pub(crate) fn resolve(
     answers: &mut BTreeMap<String, String>,
 ) -> Result<(Resolved, bool)> {
     if let Err(error) = check(declared) {
-        bail!("task {task:?} declares an argument `uf run` cannot fill: {error}");
+        bail!(uf_infra::cstr!(
+            "task {task:?} declares an argument `uf run` cannot fill: {error}"
+        ));
     }
     let mut given =
         Given::parse(declared, words).map_err(|error| explain(task, declared, &error))?;
@@ -107,10 +112,10 @@ pub(crate) fn resolve(
             Some(value) => value.clone(),
             None => match ask.ask(task, argument) {
                 Asked::Value(value) => value,
-                Asked::Cancelled => bail!(
+                Asked::Cancelled => bail!(uf_infra::cstr!(
                     "task {task:?} was not run: <{}> was not given",
                     argument.name
-                ),
+                )),
                 // Nobody to ask about this one means nobody to ask about the
                 // rest, and `resolve` names all of them at once.
                 Asked::NotInteractive => break,
@@ -138,7 +143,9 @@ pub(crate) fn undeclared(
     words: &[String],
 ) -> Result<Resolved> {
     if let Err(error) = check(declared) {
-        bail!("task {task:?} declares an argument `uf run` cannot fill: {error}");
+        bail!(uf_infra::cstr!(
+            "task {task:?} declares an argument `uf run` cannot fill: {error}"
+        ));
     }
     let mut resolved = Given::parse(declared, &[])
         .and_then(Given::resolve)
@@ -149,16 +156,17 @@ pub(crate) fn undeclared(
 
 /// An argument error as `uf run` reports it: whose, and how to pass one.
 fn explain(task: &str, declared: &[TaskArgument], error: &ArgumentError) -> anyhow::Error {
-    let mut message = format!("task {task:?}: {error}");
+    let mut message = uf_infra::into_string(uf_infra::cstr!("task {task:?}: {error}"));
     if let ArgumentError::Missing(missing) = error
         && let Some(first) = missing.first()
     {
-        message.push_str(&format!(
+        uf_infra::append!(
+            message,
             "\n\n  pass them after the task's name, in this order — `uf run {task} {}` — \
              or by name, as in `uf run {task} --{} <value>`. At a terminal, uf asks for them.",
             signature(declared),
             first.name,
-        ));
+        );
     }
     anyhow::anyhow!(message)
 }
@@ -188,9 +196,11 @@ pub(crate) fn signature(declared: &[TaskArgument]) -> String {
         .iter()
         .map(
             |argument| match (&argument.default, argument.is_required()) {
-                (Some(default), _) => format!("[{}={default}]", argument.name),
-                (None, true) => format!("<{}>", argument.name),
-                (None, false) => format!("[{}]", argument.name),
+                (Some(default), _) => {
+                    uf_infra::into_string(uf_infra::cstr!("[{}={default}]", argument.name))
+                }
+                (None, true) => uf_infra::into_string(uf_infra::cstr!("<{}>", argument.name)),
+                (None, false) => uf_infra::into_string(uf_infra::cstr!("[{}]", argument.name)),
             },
         )
         .collect::<Vec<_>>()
@@ -203,7 +213,7 @@ pub(crate) fn signature(declared: &[TaskArgument]) -> String {
 /// Past a `--` when anything in it would otherwise be read as one of `uf run`'s
 /// own options: a declared `--mode` is the task's only after one.
 pub(crate) fn replay(task: &str, resolved: &Resolved) -> String {
-    let mut line = format!("uf run {task}");
+    let mut line = uf_infra::into_string(uf_infra::cstr!("uf run {task}"));
     let shadowed = resolved
         .values
         .iter()
@@ -213,7 +223,7 @@ pub(crate) fn replay(task: &str, resolved: &Resolved) -> String {
         line.push_str(" --");
     }
     for (name, value) in &resolved.values {
-        line.push_str(&format!(" --{name} {}", uf_task::arguments::quote(value)));
+        uf_infra::append!(line, " --{name} {}", uf_task::arguments::quote(value));
     }
     for word in &resolved.extra {
         line.push(' ');

@@ -689,6 +689,25 @@ jobs:
         if: needs.changes.outputs.code == 'true'
       - run: ./target/release/uf run rust:bench
         if: needs.changes.outputs.code == 'true'
+      - name: Measure allocation primitives
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          set -o pipefail
+          cargo bench -p uf_infra --bench primitives --profile ci-opt -- --noplot | tee "$RUNNER_TEMP/primitives.txt"
+      - name: Compare import allocations and binary size
+        if: needs.changes.outputs.code == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          PRIMITIVES_REPORT_DIR: ${{ runner.temp }}/primitives-performance
+        run: tools/ci/primitives-performance.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: needs.changes.outputs.code == 'true'
+        with:
+          name: primitives-performance
+          path: |
+            ${{ runner.temp }}/primitives.txt
+            ${{ runner.temp }}/primitives-performance/*.txt
+          retention-days: 7
 
   metadata:
     name: Metadata

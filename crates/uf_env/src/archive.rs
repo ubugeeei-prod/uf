@@ -217,7 +217,7 @@ fn digest_of(path: &Utf8Path, like: &Digest) -> Result<Digest, EnvError> {
 fn hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        out.push_str(&format!("{byte:02x}"));
+        uf_infra::append!(out, "{byte:02x}");
     }
     out
 }
@@ -337,7 +337,9 @@ fn lift_wrapper(into: &Utf8Path) -> Result<(), EnvError> {
 fn require(program: &'static str) -> Result<(), EnvError> {
     let found = Command::new("sh")
         .arg("-c")
-        .arg(format!("command -v {program}"))
+        .arg(uf_infra::into_string(uf_infra::cstr!(
+            "command -v {program}"
+        )))
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false);

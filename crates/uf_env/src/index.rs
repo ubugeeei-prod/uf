@@ -348,9 +348,17 @@ impl Bases {
     fn lists(&self, tool: Tool) -> Vec<(String, &'static str)> {
         const JSON: &str = "application/json";
         const PACKUMENT: &str = "application/vnd.npm.install-v1+json";
-        let packument = |name: &str| (format!("{}/{name}", self.registry), PACKUMENT);
+        let packument = |name: &str| {
+            (
+                uf_infra::into_string(uf_infra::cstr!("{}/{name}", self.registry)),
+                PACKUMENT,
+            )
+        };
         match tool {
-            Tool::Node => vec![(format!("{}/index.json", self.nodejs), JSON)],
+            Tool::Node => vec![(
+                uf_infra::into_string(uf_infra::cstr!("{}/index.json", self.nodejs)),
+                JSON,
+            )],
             Tool::Bun => vec![packument("bun")],
             Tool::Deno => vec![packument("deno")],
             Tool::Npm => vec![packument("npm")],
@@ -435,7 +443,10 @@ pub fn refresh_in(dir: &Utf8Path, tool: Tool, bases: &Bases) -> Result<Index, En
 
 /// `<dir>/<tool>.json`.
 fn cache_path(dir: &Utf8Path, tool: Tool) -> Utf8PathBuf {
-    dir.join(format!("{}.json", tool.name()))
+    dir.join(uf_infra::into_string(uf_infra::cstr!(
+        "{}.json",
+        tool.name()
+    )))
 }
 
 /// Write the cache under a temporary name and rename it into place.
@@ -448,11 +459,11 @@ fn write_cache(dir: &Utf8Path, index: &Index) -> Result<(), EnvError> {
         source,
     })?;
     let path = cache_path(dir, index.tool);
-    let staging = dir.join(format!(
+    let staging = dir.join(uf_infra::into_string(uf_infra::cstr!(
         ".{}.json.{}",
         index.tool.name(),
         std::process::id()
-    ));
+    )));
     let body = serde_json::to_vec(index).map_err(EnvError::Encode)?;
     fs::write(&staging, body).map_err(|source| EnvError::Write {
         path: staging.clone(),
@@ -485,7 +496,7 @@ fn fetch(url: &str, accept: &str) -> Result<String, EnvError> {
             "=https",
             "-H",
         ])
-        .arg(format!("Accept: {accept}"))
+        .arg(uf_infra::into_string(uf_infra::cstr!("Accept: {accept}")))
         .arg("--")
         .arg(url)
         .output()

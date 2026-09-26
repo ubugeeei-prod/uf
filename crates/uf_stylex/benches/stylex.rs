@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Throughput of the StyleX pass over a synthetic 500-module project.
 //!
 //! `Throughput::Elements` is set to the module count, so criterion reports the

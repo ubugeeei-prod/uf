@@ -1627,6 +1627,11 @@ with nothing else changed. Both numbers are in the source beside
 it opens a child fiber per entrant so a failure can interrupt its siblings, and
 Effect-TS's unbounded `all` does less bookkeeping per element.
 
+## Rust allocation policy
+
+See [Rust performance](./rust-performance.md) for string construction, container
+ownership, allocation guards, and reproducible before/after measurements.
+
 ## Testing Strategy
 
 Every crate should keep focused unit tests close to the behavior it owns. CLI

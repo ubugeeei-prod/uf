@@ -157,7 +157,7 @@ struct ViteBuild {
 fn split_summary(split: Option<(u64, u64)>) -> Option<String> {
     split
         .filter(|(pages, routes)| pages < routes)
-        .map(|(pages, routes)| format!("{pages} of {routes}"))
+        .map(|(pages, routes)| uf_infra::into_string(uf_infra::cstr!("{pages} of {routes}")))
 }
 
 /// What `uf build` writes about the bundles, beyond the bundles themselves.
@@ -210,10 +210,10 @@ pub(crate) fn build(
             requested_target,
         )?;
         if analyze {
-            anyhow::bail!(
+            anyhow::bail!(uf_infra::cstr!(
                 "`uf build --analyze` attributes modules to routes, and this project builds a \
                  library, which has none; `--size-report` measures what it emits"
-            );
+            ));
         }
         return library::build(ui, timer, &resolved, &plan, requested_mode, size_report);
     }
@@ -230,9 +230,9 @@ pub(crate) fn build(
                 .is_some()
             || analyze
         {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "native Metro builds do not support --compile, --adapter or --analyze; native compilation and signing belong to Expo/EAS, Xcode or Gradle"
-            );
+            ));
         }
         return native::build(ui, &resolved, app_target, requested_mode);
     }
@@ -269,7 +269,7 @@ pub(crate) fn build(
     })?;
 
     let out_dir = resolved.root.join(resolved.config.build.out_dir.as_str());
-    fs::create_dir_all(&out_dir).with_context(|| format!("failed to create {out_dir}"))?;
+    fs::create_dir_all(&out_dir).with_context(|| uf_infra::cstr!("failed to create {out_dir}"))?;
 
     progress.tick("analysing server components");
     let rsc = timer.measure("rsc analysis", || {
@@ -314,10 +314,10 @@ pub(crate) fn build(
             .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
             .count();
         if errors > 0 {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{}",
                 plural(errors, "React Server Components contract violation")
-            );
+            ));
         }
     }
 
@@ -389,12 +389,12 @@ pub(crate) fn build(
         && let Some(target) = runtime.target
         && runtime.fetches_a_runtime()
     {
-        let notice = format!(
+        let notice = uf_infra::into_string(uf_infra::cstr!(
             "the {} runtime for {} is not cached yet; producing this binary downloads it (about \
              90 MB) into .uf/cache/bun",
             runtime.backend.name(),
             target.triple
-        );
+        ));
         ui.render(|renderer, out| renderer.status(out, Status::Info, &notice));
     }
     // The same rule for the same reason: an adapter nobody has written is a
@@ -467,7 +467,7 @@ pub(crate) fn build(
         if let Err(error) = fs::remove_file(&path)
             && error.kind() != std::io::ErrorKind::NotFound
         {
-            return Err(error).with_context(|| format!("failed to remove {path}"));
+            return Err(error).with_context(|| uf_infra::cstr!("failed to remove {path}"));
         }
     }
 
@@ -498,7 +498,7 @@ pub(crate) fn build(
         let mut report = ViteBuild::default();
         while let Some(event) = driver.next_event()? {
             match event {
-                Event::Phase { name } => progress.tick(&format!("vite: {name}")),
+                Event::Phase { name } => progress.tick(uf_infra::cstr!("vite: {name}").as_str()),
                 Event::Page {
                     url,
                     file,
@@ -520,7 +520,7 @@ pub(crate) fn build(
                     render_log(
                         ui,
                         crate::commands::vite::LogLevel::Error,
-                        &format!("{url} failed to render"),
+                        uf_infra::cstr!("{url} failed to render").as_str(),
                     );
                     let _ = render_error(ui, &root, &error);
                 }
@@ -563,7 +563,8 @@ pub(crate) fn build(
     // so the manifest describes the build that actually happened.
     progress.tick("writing manifests");
     let meta_dir = resolved.root.join(BUILD_META_DIR);
-    fs::create_dir_all(&meta_dir).with_context(|| format!("failed to create {meta_dir}"))?;
+    fs::create_dir_all(&meta_dir)
+        .with_context(|| uf_infra::cstr!("failed to create {meta_dir}"))?;
     let build_manifest = meta_dir.join("uf-build-manifest.json");
     let openapi_document = meta_dir.join("openapi.json");
     let association_files =
@@ -693,12 +694,14 @@ pub(crate) fn build(
             // watching, because it is the one step of a build whose duration
             // has nothing to do with the size of their application.
             progress.tick(&match (runtime.target, runtime.fetches_a_runtime()) {
-                (Some(target), true) => {
-                    format!("fetching the {} runtime, then compiling", target.triple)
-                }
-                (Some(target), false) => {
-                    format!("compiling a standalone binary for {}", target.triple)
-                }
+                (Some(target), true) => uf_infra::into_string(uf_infra::cstr!(
+                    "fetching the {} runtime, then compiling",
+                    target.triple
+                )),
+                (Some(target), false) => uf_infra::into_string(uf_infra::cstr!(
+                    "compiling a standalone binary for {}",
+                    target.triple
+                )),
                 (None, _) => String::from("compiling a standalone binary"),
             });
             Some(timer.measure("compile", || compile::compile(ui, &runtimes, link))?)
@@ -731,10 +734,9 @@ pub(crate) fn build(
             Some(timer.measure("adapter", || deploy::deploy_static(&root, &out_dir, site))?)
         }
         Some(adapter) => {
-            progress.tick(&format!(
-                "writing the {} adapter's output",
-                adapter.as_str()
-            ));
+            progress.tick(
+                uf_infra::cstr!("writing the {} adapter's output", adapter.as_str()).as_str(),
+            );
             Some(timer.measure("adapter", || {
                 deploy::deploy(ui, adapter, link, &declared_schedules)
             })?)
@@ -769,7 +771,12 @@ pub(crate) fn build(
     // any of this existed — every page went to the browser.
     let split_count = split_summary(vite.split);
     let action_count = rsc.callable_action_count().to_string();
-    let kept = (carried > 0).then(|| format!("{} (for one build)", plural(carried, "file")));
+    let kept = (carried > 0).then(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "{} (for one build)",
+            plural(carried, "file")
+        ))
+    });
     // What the build decided, in the words a reader can act on. Named in the
     // summary rather than left to be inferred from a page count, because "the
     // build wrote no document for /posts/:slug" and "the build is broken" look
@@ -830,7 +837,10 @@ pub(crate) fn build(
     let output_paths = outputs.iter().map(String::as_str).collect::<Vec<_>>();
     let project = project_label(&resolved.root).to_string();
     let phases = timer.phases().to_vec();
-    let summary = format!("build succeeded in {}", format_duration(total));
+    let summary = uf_infra::into_string(uf_infra::cstr!(
+        "build succeeded in {}",
+        format_duration(total)
+    ));
 
     let asset_count = size.assets.len().to_string();
     let raw = size.total.raw.to_string();
@@ -860,10 +870,10 @@ pub(crate) fn build(
     // one it wrote, and the silent version of that is a person reading
     // `site.robots` in `uf.config.js` and wondering why none of it applies.
     for kept in &metadata_files.kept {
-        warnings.push(format!(
+        warnings.push(uf_infra::into_string(uf_infra::cstr!(
             "{} was already in the output directory, so `site` did not write it",
             relative_to(&resolved.root, kept)
-        ));
+        )));
     }
     // Prerendered documents under a rule whose value names `{uf.nonce}`. A
     // nonce is minted per request and the file was written without one, so the
@@ -881,7 +891,7 @@ pub(crate) fn build(
     if !nonced.is_empty() {
         let said = nonce::message(&nonced, &config_file);
         if nonce::REFUSES_THE_BUILD {
-            bail!("{said}");
+            bail!(uf_infra::cstr!("{said}"));
         }
         warnings.push(said);
     }
@@ -895,7 +905,7 @@ pub(crate) fn build(
             )
         })
         .collect();
-    let guarded_summary = format!(
+    let guarded_summary = uf_infra::into_string(uf_infra::cstr!(
         "{} prerendered to {} a host serves without running the middleware that guards {}",
         plural(guarded_rows.len(), "route"),
         if guarded_rows.len() == 1 {
@@ -908,7 +918,7 @@ pub(crate) fn build(
         } else {
             "them"
         },
-    );
+    ));
     let host_name = host.name();
     let adapter_summary = deployed.as_ref().map(|deployed| {
         let directory = relative_to(&resolved.root, &deployed.directory);
@@ -1169,7 +1179,9 @@ fn refuse_unanswerable_actions(
     let mut listed = rsc
         .registry
         .callable_actions()
-        .map(|action| format!("  {} — {}", action.module, action.export))
+        .map(|action| {
+            uf_infra::into_string(uf_infra::cstr!("  {} — {}", action.module, action.export))
+        })
         .collect::<Vec<_>>();
     if listed.is_empty() {
         return Ok(());
@@ -1178,7 +1190,7 @@ fn refuse_unanswerable_actions(
     // message that reorders itself between two builds of the same tree is a
     // message nobody can diff.
     listed.sort();
-    bail!(
+    bail!(uf_infra::cstr!(
         "{} in this project {} callable from the browser, and {}\n{}\n\n\
          A `\"use server\"` export the browser can reach is an endpoint, and a deployment of \
          documents has nothing to answer it with. Keep the module out of the client's reach, \
@@ -1187,8 +1199,8 @@ fn refuse_unanswerable_actions(
         plural(listed.len(), "server action"),
         if listed.len() == 1 { "is" } else { "are" },
         plan.because(),
-        listed.join("\n"),
-    )
+        listed.join("\n")
+    ))
 }
 
 /// Refuse application-only build flags on a project that is a library.
@@ -1220,11 +1232,11 @@ fn refuse_an_application_artefact(
         (false, None, Some(_)) => "`uf build --target` chooses which application routes to build",
         (false, None, None) => return Ok(()),
     };
-    bail!(
+    bail!(uf_infra::cstr!(
         "{asked}, and {}. A library is imported rather than served: `uf build` writes its \
          modules to the output directory, and what sends them anywhere is `uf publish`.",
-        plan.because(),
-    )
+        plan.because()
+    ))
 }
 
 /// Which application target an ordinary build, or `uf dev`, resolves.
@@ -1262,12 +1274,12 @@ pub(crate) fn application_target(
     } else {
         declared
     };
-    bail!(
+    bail!(uf_infra::cstr!(
         "`{command} --target {}` needs `app.targets` to include `{}`; this project declares {}",
         target.as_str(),
         runtime_target_name(&needed),
-        declared,
-    )
+        declared
+    ))
 }
 
 /// The target `uf build` and `uf dev` resolve when `--target` names none:
@@ -1287,16 +1299,16 @@ fn parse_application_target(requested: &str) -> Result<RouteTarget> {
         .iter()
         .any(|target| target.triple == requested)
     {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`--target {requested}` is a platform target for `uf build --compile`; add \
              `--compile`, or choose an application target: web, native, ios or android"
-        );
+        ));
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`--target {requested}` is not an application target uf builds.\n  \
          accepted application targets: web, native, ios, android\n  \
          platform targets are accepted with `uf build --compile --target <triple>`"
-    )
+    ))
 }
 
 fn runtime_target_for_route_target(target: RouteTarget) -> RuntimeTarget {
@@ -1645,11 +1657,11 @@ fn analyze_bundles(
 ) -> Result<(Utf8PathBuf, Utf8PathBuf)> {
     let graph_path = meta_dir.join(uf_bundle::MODULE_GRAPH_FILE);
     if !graph_path.is_file() {
-        anyhow::bail!(
+        anyhow::bail!(uf_infra::cstr!(
             "`uf build --analyze` reads the module graph a builder writes to {}, and this \
              build's builder wrote none; `@uniflowed/vite` writes it",
             relative_to(root, &graph_path)
-        );
+        ));
     }
     let graph = uf_bundle::read_module_graph(&graph_path)?;
     let files = routes
@@ -1680,10 +1692,10 @@ fn enforce_budgets(ui: &mut Ui, report: &BundleReport, budgets: &BundleBudgets) 
             renderer.status(out, Status::Error, violation);
         }
     });
-    bail!(
+    bail!(uf_infra::cstr!(
         "bundle size exceeded {}",
         plural(outcome.violations.len(), "budget")
-    );
+    ));
 }
 
 #[cfg(test)]

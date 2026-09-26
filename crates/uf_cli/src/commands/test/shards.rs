@@ -77,11 +77,11 @@ pub(crate) fn cut(
         .filter(|file| chosen.contains(file.relative_path.as_str()))
         .cloned()
         .collect();
-    let summary = format!(
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "{shard} · {} of {}",
         files.len(),
         plural(schedule.len(), "test file")
-    );
+    ));
     ui.render(|renderer, out| {
         renderer.key_values(out, 2, &[KeyValue::new("shard", &summary)]);
     });
@@ -110,10 +110,11 @@ pub(crate) fn write_record(
         coverage: measured.cloned(),
     };
     let directory = root.join(RECORDS_DIRECTORY);
-    std::fs::create_dir_all(&directory).with_context(|| format!("could not create {directory}"))?;
+    std::fs::create_dir_all(&directory)
+        .with_context(|| uf_infra::cstr!("could not create {directory}"))?;
     let path = directory.join(record_name(cut.shard));
     let body = serde_json::to_vec(&record).context("could not serialise the shard record")?;
-    std::fs::write(&path, body).with_context(|| format!("could not write {path}"))?;
+    std::fs::write(&path, body).with_context(|| uf_infra::cstr!("could not write {path}"))?;
     Ok(path
         .strip_prefix(root)
         .map_or_else(|_| path.to_string(), ToString::to_string))
@@ -128,7 +129,11 @@ pub(crate) fn announce(ui: &mut Ui, shown: &str) {
 
 /// The file a shard's record is written to: `2-of-3.json`.
 fn record_name(shard: Shard) -> String {
-    format!("{}-of-{}.json", shard.index(), shard.count())
+    uf_infra::into_string(uf_infra::cstr!(
+        "{}-of-{}.json",
+        shard.index(),
+        shard.count()
+    ))
 }
 
 /// Whether `name` is a name [`record_name`] writes.
@@ -149,18 +154,18 @@ fn is_record_name(name: &str) -> bool {
 pub(crate) fn merge(cwd: &Utf8Path, ui: &mut Ui, directory: &str, args: &TestArgs) -> Result<()> {
     let refused = merge_refused_flags(args);
     if !refused.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf test --merge-shards` runs nothing, so it cannot take {}: {}",
             plural(refused.len(), "flag"),
             refused.join(", ")
-        );
+        ));
     }
     let resolved = load_config(cwd)?;
     let root = &resolved.root;
     let mut timer = PhaseTimer::start();
     let merged = timer.measure("merge", || {
         let records = read_records(root, directory)?;
-        uf_test::merge_shards(records).map_err(|error| anyhow!("{error}"))
+        uf_test::merge_shards(records).map_err(|error| anyhow!(uf_infra::cstr!("{error}")))
     })?;
 
     // Every file the project has, for the code frames under a failure and for
@@ -194,12 +199,12 @@ pub(crate) fn merge(cwd: &Utf8Path, ui: &mut Ui, directory: &str, args: &TestArg
         });
         ui.json(&document)?;
     } else {
-        let summary = format!(
+        let summary = uf_infra::into_string(uf_infra::cstr!(
             "{} from {} · fingerprint {}",
             plural(merged.report.summary.files, "test file"),
             plural(usize::try_from(merged.count).unwrap_or(usize::MAX), "shard"),
             merged.fingerprint
-        );
+        ));
         ui.render(|renderer, out| {
             renderer.key_values(out, 2, &[KeyValue::new("merged", &summary)]);
         });
@@ -266,21 +271,24 @@ fn read_records(root: &Utf8Path, directory: &str) -> Result<Vec<ShardRecord>> {
         root.join(directory)
     };
     let mut paths = Vec::new();
-    record_paths(&directory, 0, &mut paths)
-        .with_context(|| format!("could not read the shard records in {directory}"))?;
+    record_paths(&directory, 0, &mut paths).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not read the shard records in {directory}"
+        ))
+    })?;
     if paths.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "there are no shard records in {directory}: each `uf test --shard <index>/<count>` \
              writes one into {RECORDS_DIRECTORY}; put every shard's record in one directory and \
              name it"
-        );
+        ));
     }
     if paths.len() > usize::try_from(uf_test::MAX_SHARDS).unwrap_or(usize::MAX) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{directory} holds {} shard records, more than the {} shards a suite can be split into",
             paths.len(),
             uf_test::MAX_SHARDS
-        );
+        ));
     }
     paths.sort();
     paths.iter().map(|path| read_record(path)).collect()
@@ -307,15 +315,19 @@ fn record_paths(
 
 /// One record, read no further than [`MAX_RECORD_BYTES`].
 fn read_record(path: &Utf8Path) -> Result<ShardRecord> {
-    let file = std::fs::File::open(path).with_context(|| format!("could not open {path}"))?;
+    let file =
+        std::fs::File::open(path).with_context(|| uf_infra::cstr!("could not open {path}"))?;
     let mut bytes = Vec::new();
     file.take(MAX_RECORD_BYTES.saturating_add(1))
         .read_to_end(&mut bytes)
-        .with_context(|| format!("could not read {path}"))?;
+        .with_context(|| uf_infra::cstr!("could not read {path}"))?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_RECORD_BYTES {
-        bail!("{path} is larger than the {MAX_RECORD_BYTES} bytes a shard record can be");
+        bail!(uf_infra::cstr!(
+            "{path} is larger than the {MAX_RECORD_BYTES} bytes a shard record can be"
+        ));
     }
-    serde_json::from_slice(&bytes).with_context(|| format!("{path} is not a shard record uf reads"))
+    serde_json::from_slice(&bytes)
+        .with_context(|| uf_infra::cstr!("{path} is not a shard record uf reads"))
 }
 
 #[cfg(test)]

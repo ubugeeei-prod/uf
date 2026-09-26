@@ -432,14 +432,14 @@ pub fn remove_link(root: &Utf8Path, name: &str) -> io::Result<()> {
     if !is_package_name(name) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("{name:?} is not a package name"),
+            uf_infra::into_string(uf_infra::cstr!("{name:?} is not a package name")),
         ));
     }
     let entry = root.join("node_modules").join(name);
     if !fs::symlink_metadata(&entry)?.file_type().is_symlink() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("{entry} is not a link"),
+            uf_infra::into_string(uf_infra::cstr!("{entry} is not a link")),
         ));
     }
     // A link to a directory is a file to unlink on Unix and a directory to

@@ -388,7 +388,9 @@ mod tests {
     #[test]
     fn repeated_extensionless_misses_reuse_one_candidate_buffer_per_resolution() {
         let index = ModuleIndex::new(["app.js"]);
-        let bases: Vec<String> = (0..128).map(|index| format!("missing{index}")).collect();
+        let bases: Vec<String> = (0..128)
+            .map(|index| uf_infra::into_string(uf_infra::cstr!("missing{index}")))
+            .collect();
         let one_per_resolution = u64::try_from(bases.len()).expect("the count fits in u64");
 
         let window = ThreadWindow::open();

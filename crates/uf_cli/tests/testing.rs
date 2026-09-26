@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf test` end to end: real files, a real host, real assertions.
 //!
 //! Every test here runs `uf test` over a project written into this

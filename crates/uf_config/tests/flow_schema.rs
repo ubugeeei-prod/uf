@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `@uniflowed/config`'s Flow type and this crate, held to each other.
 //!
 //! # Why a test and not a person

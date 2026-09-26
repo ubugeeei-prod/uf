@@ -12,6 +12,11 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+index_vec.workspace = true
+nonmax.workspace = true
+thin-vec.workspace = true
+string-interner.workspace = true
+rustc-hash.workspace = true
 uf_config = { path = "../uf_config" }
 uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }

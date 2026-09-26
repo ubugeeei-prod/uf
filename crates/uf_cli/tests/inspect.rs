@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf inspect`, in both its machine and its human shape.
 
 mod support;

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! The permission set, enforced by a host that is actually running.
 //!
 //! `uf.config.js` declares what a project's code may reach and

@@ -155,10 +155,10 @@ pub(crate) fn resolve(
         return Ok(None);
     };
     if !config.enabled {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`{}` was asked for, and `app.runtime.deploy.enabled` is false in this project",
             adapter.as_str()
-        );
+        ));
     }
     if let Some(issue) = adapter.tracking_issue() {
         let implemented = DeployAdapter::ALL
@@ -173,7 +173,7 @@ pub(crate) fn resolve(
         let because = adapter.unimplemented_because().unwrap_or(
             "its entry file and its answer for where the static assets live are unwritten",
         );
-        bail!(
+        bail!(uf_infra::cstr!(
             "there is no `{}` deploy adapter, so `uf build --adapter {}` would write \
              nothing.\n  Implemented: {implemented}.\n  The application half every adapter \
              shares is `@uniflowed/server/fetch`; `{}` is not written because {because}.\n  \
@@ -181,7 +181,7 @@ pub(crate) fn resolve(
             adapter.as_str(),
             adapter.as_str(),
             adapter.as_str()
-        );
+        ));
     }
     // And the project's own list, which is what makes `adapters` a setting
     // rather than a decoration. It defaulted to all seven and nothing read it,
@@ -194,7 +194,7 @@ pub(crate) fn resolve(
             .iter()
             .map(|candidate| candidate.as_str())
             .collect::<Vec<_>>();
-        bail!(
+        bail!(uf_infra::cstr!(
             "`{}` is not in this project's `app.runtime.deploy.adapters`, which lists {}",
             adapter.as_str(),
             if listed.is_empty() {
@@ -202,7 +202,7 @@ pub(crate) fn resolve(
             } else {
                 listed.join(", ")
             }
-        );
+        ));
     }
     // And the Bun on this machine against the floor the adapter declares —
     // here, before the bundle is built, for the reason the refusal above is
@@ -247,7 +247,7 @@ fn refuse_old_bun() -> Result<()> {
     if found >= floor {
         return Ok(());
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "bun: {} is older than {}, and a `--adapter bun` deployment needs {}.\n  React's \
          server build uses a labelled statement Bun rejects before {}, so the `handler.js` \
          this would write cannot be parsed by the `bun` on this machine — it would fail at \
@@ -258,7 +258,7 @@ fn refuse_old_bun() -> Result<()> {
         uf_runtime::BUN_MINIMUM,
         uf_runtime::BUN_MINIMUM,
         uf_runtime::BUN_MINIMUM
-    );
+    ));
 }
 
 /// A Bun version as three numbers, or `None` for anything that is not three
@@ -318,7 +318,7 @@ pub(crate) fn deploy(
     // referenced.
     fs::remove_dir_all(deployment.as_std_path()).or_else(ignore_missing)?;
     fs::create_dir_all(directory.as_std_path())
-        .with_context(|| format!("failed to create {directory}"))?;
+        .with_context(|| uf_infra::cstr!("failed to create {directory}"))?;
 
     // What the project declared, for the entry that has to answer it. A JSON
     // argument rather than a file: the driver is spawned with these three
@@ -379,7 +379,10 @@ pub(crate) fn deploy(
     for expected in entry_files(adapter) {
         let file = directory.join(expected);
         if !file.is_file() {
-            bail!("the `{}` adapter wrote no {file}", adapter.as_str());
+            bail!(uf_infra::cstr!(
+                "the `{}` adapter wrote no {file}",
+                adapter.as_str()
+            ));
         }
     }
 
@@ -396,7 +399,7 @@ pub(crate) fn deploy(
     let compiled = binary_names(root);
     let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
     copy_tree(out_dir, &directory.join("static"), &compiled, &mut copied)
-        .with_context(|| format!("copying {out_dir} into {directory}"))?;
+        .with_context(|| uf_infra::cstr!("copying {out_dir} into {directory}"))?;
 
     // A `package.json` with nothing in it but `type`, and it is not optional:
     // Node reads `.js` as CommonJS unless something says otherwise, and the
@@ -418,7 +421,7 @@ pub(crate) fn deploy(
     ));
     for (file, contents) in &files {
         fs::write(file.as_std_path(), contents)
-            .with_context(|| format!("failed to write {file}"))?;
+            .with_context(|| uf_infra::cstr!("failed to write {file}"))?;
         copied.count(fs::metadata(file.as_std_path())?.len());
     }
     for entry in entry_files(adapter) {
@@ -499,29 +502,29 @@ pub(crate) fn deploy_static(
     );
     findings.extend(static_host::unservable_rules(site.router, site.config_file));
     if !findings.is_empty() {
-        bail!("{}", static_host::refusal(&findings));
+        bail!(uf_infra::cstr!("{}", static_host::refusal(&findings)));
     }
 
     let directory = root.join(OUTPUT_DIR).join(DeployAdapter::Static.as_str());
     fs::remove_dir_all(directory.as_std_path()).or_else(ignore_missing)?;
     fs::create_dir_all(directory.as_std_path())
-        .with_context(|| format!("failed to create {directory}"))?;
+        .with_context(|| uf_infra::cstr!("failed to create {directory}"))?;
 
     let mut copied = Copied::default();
     let compiled = binary_names(root);
     let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
     copy_tree(out_dir, &directory, &compiled, &mut copied)
-        .with_context(|| format!("copying {out_dir} into {directory}"))?;
+        .with_context(|| uf_infra::cstr!("copying {out_dir} into {directory}"))?;
     // The one shape check this target has. The other five are checked by
     // `entry_files`, which asks whether the link step wrote the entry it
     // promised; nothing links here, so what is left to be wrong is an empty
     // `dist/` — a build that produced no documents at all, reported as a
     // directory somebody would otherwise upload and wonder about.
     if copied.files == 0 {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`{out_dir}` is empty, so the `static` adapter has nothing to write. \
              A static deployment is the build's own output, and this build produced none."
-        );
+        ));
     }
 
     Ok(Deployed {
@@ -687,10 +690,10 @@ fn wrangler_config(
                 .collect::<Vec<_>>(),
         });
     }
-    format!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{}\n",
         serde_json::to_string_pretty(&config).unwrap_or_default()
-    )
+    ))
 }
 
 /// The binding `@uniflowed/server/cache/kv` reads its namespace from.
@@ -831,32 +834,46 @@ const VERCEL_ROUTES: &str = r#"{
 /// two targets that are uploaded rather than started, it is the upload.
 pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &str) -> String {
     match adapter {
-        DeployAdapter::Node => format!("cd {directory} && node server.js"),
-        DeployAdapter::Bun => format!("cd {directory} && bun server.js"),
+        DeployAdapter::Node => {
+            uf_infra::into_string(uf_infra::cstr!("cd {directory} && node server.js"))
+        }
+        DeployAdapter::Bun => {
+            uf_infra::into_string(uf_infra::cstr!("cd {directory} && bun server.js"))
+        }
         DeployAdapter::Container => {
             let name = worker_name(root);
-            format!("docker build -t {name} {directory} && docker run -p 3000:3000 {name}")
+            uf_infra::into_string(uf_infra::cstr!(
+                "docker build -t {name} {directory} && docker run -p 3000:3000 {name}"
+            ))
         }
-        DeployAdapter::Edge => format!("cd {directory} && npx wrangler deploy"),
-        DeployAdapter::Serverless => format!("cd {directory} && zip -r ../function.zip ."),
+        DeployAdapter::Edge => {
+            uf_infra::into_string(uf_infra::cstr!("cd {directory} && npx wrangler deploy"))
+        }
+        DeployAdapter::Serverless => uf_infra::into_string(uf_infra::cstr!(
+            "cd {directory} && zip -r ../function.zip ."
+        )),
         // `--prebuilt` uploads `.vercel/output` as it is, without building
         // again; the directory has to be linked to a project first
         // (`vercel link`), which is the reader's account and not uf's.
-        DeployAdapter::Vercel => format!("cd {directory} && vercel deploy --prebuilt"),
+        DeployAdapter::Vercel => uf_infra::into_string(uf_infra::cstr!(
+            "cd {directory} && vercel deploy --prebuilt"
+        )),
         // No command, because there is nothing to start: the directory is the
         // site, and what happens next is an upload to a host uf knows nothing
         // about. Naming one — `npx wrangler pages deploy`, say — would be uf
         // choosing a hosting company on the reader's behalf, which is the one
         // thing `ubugeeei-redundancy.md` says a deployment must never require.
-        DeployAdapter::Static => format!("upload the contents of {directory} to a static host"),
+        DeployAdapter::Static => uf_infra::into_string(uf_infra::cstr!(
+            "upload the contents of {directory} to a static host"
+        )),
         // `--allow-write` scoped to `.uf`, the directory uf keeps its own state
         // in: the route cache's filesystem store is `.uf/cache` in the working
         // directory, and a build with `isr` creates it at start-up. Without it
         // Deno refuses the `mkdir` and the server exits before answering (#1497).
-        DeployAdapter::Deno => format!(
+        DeployAdapter::Deno => uf_infra::into_string(uf_infra::cstr!(
             "cd {directory} && deno run --allow-net --allow-read --allow-env \
              --allow-write=.uf server.js"
-        ),
+        )),
     }
 }
 
@@ -885,9 +902,10 @@ impl Copied {
 /// outside it resolves to nothing. `fs::copy` follows, which is what makes a
 /// linked asset in `public/` arrive as its bytes.
 fn copy_tree(from: &Utf8Path, to: &Utf8Path, skip: &[&str], copied: &mut Copied) -> Result<()> {
-    fs::create_dir_all(to.as_std_path()).with_context(|| format!("failed to create {to}"))?;
+    fs::create_dir_all(to.as_std_path())
+        .with_context(|| uf_infra::cstr!("failed to create {to}"))?;
     for entry in fs::read_dir(from.as_std_path())
-        .with_context(|| format!("failed to read {from}"))?
+        .with_context(|| uf_infra::cstr!("failed to read {from}"))?
         .collect::<Result<Vec<_>, _>>()?
     {
         let name = entry.file_name();
@@ -905,8 +923,9 @@ fn copy_tree(from: &Utf8Path, to: &Utf8Path, skip: &[&str], copied: &mut Copied)
             copy_tree(&source, &target, &[], copied)?;
             continue;
         }
-        let bytes = fs::copy(source.as_std_path(), target.as_std_path())
-            .with_context(|| format!("failed to copy {source} to {target}"))?;
+        let bytes = fs::copy(source.as_std_path(), target.as_std_path()).with_context(|| {
+            uf_infra::into_string(uf_infra::cstr!("failed to copy {source} to {target}"))
+        })?;
         copied.count(bytes);
     }
     Ok(())
@@ -1195,7 +1214,9 @@ mod tests {
 
         fs::write(
             work.join("handler.js"),
-            format!("import {{ createCacheProvider }} from \"{KV_PROVIDER}\";\n"),
+            uf_infra::into_string(uf_infra::cstr!(
+                "import {{ createCacheProvider }} from \"{KV_PROVIDER}\";\n"
+            )),
         )
         .unwrap();
         assert!(links_kv_cache(work));
@@ -1288,7 +1309,9 @@ mod tests {
     #[test]
     fn the_pinned_compatibility_date_is_the_one_the_builtins_table_was_measured_at() {
         let table = include_str!("../../../../packages/vite/internal/worker-builtins.js");
-        let declared = format!("WORKERS_COMPATIBILITY_DATE = \"{WORKERS_COMPATIBILITY_DATE}\"");
+        let declared = uf_infra::into_string(uf_infra::cstr!(
+            "WORKERS_COMPATIBILITY_DATE = \"{WORKERS_COMPATIBILITY_DATE}\""
+        ));
         assert!(
             table.contains(&declared),
             "worker-builtins.js does not declare {WORKERS_COMPATIBILITY_DATE}"

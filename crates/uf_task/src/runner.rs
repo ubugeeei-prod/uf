@@ -448,11 +448,11 @@ impl Executor<'_> {
         let presentation = if alone {
             Presentation::Plain
         } else {
-            Presentation::Prefixed(format!(
+            Presentation::Prefixed(uf_infra::into_string(uf_infra::cstr!(
                 "{:width$} | ",
                 task.label,
                 width = self.label_width
-            ))
+            )))
         };
 
         let (reason, keyed) = match self.decide(task) {
@@ -688,10 +688,10 @@ impl Executor<'_> {
             Ok(command) => command,
             Err(error) => {
                 return Executed {
-                    status: Status::Failed(format!(
+                    status: Status::Failed(uf_infra::into_string(uf_infra::cstr!(
                         "task {:?} could not be started: {error}",
                         task.label
-                    )),
+                    ))),
                     captured: Captured::None,
                 };
             }
@@ -716,11 +716,11 @@ impl Executor<'_> {
                 // itself now: a shell that could not find `cargo` said so,
                 // and "No such file or directory" on its own does not.
                 return Executed {
-                    status: Status::Failed(format!(
+                    status: Status::Failed(uf_infra::into_string(uf_infra::cstr!(
                         "task {:?} could not start `{}`: {error}",
                         task.label,
                         command.get_program().to_string_lossy()
-                    )),
+                    ))),
                     captured: Captured::None,
                 };
             }
@@ -752,11 +752,14 @@ impl Executor<'_> {
 
         let status = match child.wait() {
             Ok(status) if status.success() => Status::Succeeded,
-            Ok(status) => Status::Failed(format!("task {:?} exited with {status}", task.label)),
-            Err(error) => Status::Failed(format!(
+            Ok(status) => Status::Failed(uf_infra::into_string(uf_infra::cstr!(
+                "task {:?} exited with {status}",
+                task.label
+            ))),
+            Err(error) => Status::Failed(uf_infra::into_string(uf_infra::cstr!(
                 "task {:?} could not be waited on: {error}",
                 task.label
-            )),
+            ))),
         };
         Executed {
             status,

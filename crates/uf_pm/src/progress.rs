@@ -197,8 +197,10 @@ fn tarball_label(name: &str, archive: &str) -> String {
     let name = decode_slashes(name);
     let last = name.rsplit('/').next().unwrap_or(&name).to_owned();
     let file = archive.strip_suffix(".tgz").unwrap_or(archive);
-    match file.strip_prefix(&format!("{last}-")) {
-        Some(version) if !version.is_empty() => format!("{name}@{version}"),
+    match file.strip_prefix(uf_infra::cstr!("{last}-").as_str()) {
+        Some(version) if !version.is_empty() => {
+            uf_infra::into_string(uf_infra::cstr!("{name}@{version}"))
+        }
         _ => name,
     }
 }

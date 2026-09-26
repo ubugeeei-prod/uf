@@ -12,5 +12,6 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+uf_infra = { path = "../uf_infra" }
 serde.workspace = true
 smallvec.workspace = true

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf test --coverage` end to end: a real transform, a real host, real counts.
 //!
 //! The fixture is chosen so that a report built on the *output* cannot pass.

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf editor install` and `uf editor setup`, end to end.
 //!
 //! Nothing here touches a real editor or the network. The editors' launchers

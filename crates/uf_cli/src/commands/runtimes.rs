@@ -159,11 +159,11 @@ pub(crate) fn resolve_with(
 
     if spec.version == ToolVersion::OnPath {
         let program = find_program(name).ok_or_else(|| {
-            anyhow!(
+            anyhow!(uf_infra::cstr!(
                 "{key} is `{spec}`, which is whatever `{name}` is on PATH, and there is no \
                  `{name}` on PATH. Install it, or write a version — `{name}@<major>` — and uf \
                  installs that release the first time a command needs it"
-            )
+            ))
         })?;
         return Ok(Runtime {
             host: Host { kind, program },
@@ -301,36 +301,34 @@ fn store_tool(
     let name = tool.name();
     let lockfile = config.pm.lockfile.as_str();
     let platform = uf_env::Platform::current().ok_or_else(|| {
-        anyhow!(
+        anyhow!(uf_infra::cstr!(
             "{key} is `{spec}`, and uf does not install tools for {} on {}; write `{name}` to \
              use the one on PATH",
             std::env::consts::OS,
             std::env::consts::ARCH
-        )
+        ))
     })?;
     if frozen && let ToolVersion::Prefix(prefix) = version {
         let lock = uf_env::lock::read(&resolved.root.join(lockfile))?;
         if lock.get(tool, prefix).is_none() {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{key} is `{spec}`, which is not locked in {lockfile} yet, and a frozen install \
                  changes no lockfile. Run `uf env install` — or `uf install` without \
                  `--frozen-lockfile` — and commit {lockfile}"
-            );
+            ));
         }
     }
 
     let resolution = uf_env::toolchain::release(&resolved.root, config, tool, version, releases)
-        .with_context(|| format!("{key} is `{spec}`"))?;
+        .with_context(|| uf_infra::cstr!("{key} is `{spec}`"))?;
     let Some(release) = resolution.version() else {
         // `release` answers a versioned spec with a release or an error.
-        return Err(anyhow!(
+        return Err(anyhow!(uf_infra::cstr!(
             "{key} is `{spec}`, and no release could be settled for it"
-        ));
+        )));
     };
     if let Resolution::Resolved { version, .. } = &resolution {
-        notify(&format!(
-            "{key} is `{spec}`: locked at {version} in {lockfile}"
-        ));
+        notify(uf_infra::cstr!("{key} is `{spec}`: locked at {version} in {lockfile}").as_str());
     }
     let pin = uf_env::Pin {
         tool,
@@ -340,16 +338,22 @@ fn store_tool(
 
     let store = uf_env::Store::discover()?;
     if !store.has(&pin) {
-        notify(&format!(
+        notify(&uf_infra::into_string(uf_infra::cstr!(
             "installing {pin} for {key} — once, into the store every project on this machine \
              shares"
-        ));
-        uf_env::archive::ensure(&store, &pin)
-            .with_context(|| format!("{key} is `{spec}`, and {pin} could not be installed"))?;
+        )));
+        uf_env::archive::ensure(&store, &pin).with_context(|| {
+            uf_infra::into_string(uf_infra::cstr!(
+                "{key} is `{spec}`, and {pin} could not be installed"
+            ))
+        })?;
     }
     let envs = uf_env::project::Envs::discover()?;
-    let bin = uf_env::project::link_pin(&envs, &store, &pin)
-        .with_context(|| format!("{key} is `{spec}`, and {pin} could not be linked"))?;
+    let bin = uf_env::project::link_pin(&envs, &store, &pin).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "{key} is `{spec}`, and {pin} could not be linked"
+        ))
+    })?;
     // Held for this project, so `uf env gc` does not collect a tool a command
     // is using just because `uf env install` was never run here.
     uf_env::Roots::discover()?.add(&resolved.root, &[pin.slug()])?;
@@ -427,16 +431,16 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
     let (release, named) = match version {
         ToolVersion::OnPath => {
             return Described {
-                provider: format!("{name} (on PATH)"),
-                detail: format!(
+                provider: uf_infra::into_string(uf_infra::cstr!("{name} (on PATH)")),
+                detail: uf_infra::into_string(uf_infra::cstr!(
                     "{purpose}; `{key}` names no version, so whichever `{name}` is on PATH runs, \
                      and a machine without one is told so rather than handed another"
-                ),
+                )),
             };
         }
         ToolVersion::Exact(version) => (
             Some(version.to_string()),
-            format!("`{key}` names exactly {version}"),
+            uf_infra::into_string(uf_infra::cstr!("`{key}` names exactly {version}")),
         ),
         ToolVersion::Prefix(prefix) => {
             let locked = uf_env::lock::read(&resolved.root.join(lockfile))
@@ -445,14 +449,16 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
             match locked {
                 Some(version) => (
                     Some(version.clone()),
-                    format!("`{key}` names {spec}, locked at {version} in {lockfile}"),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "`{key}` names {spec}, locked at {version} in {lockfile}"
+                    )),
                 ),
                 None => (
                     None,
-                    format!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`{key}` names {spec}, not locked yet — the newest release is resolved \
                          and locked in {lockfile} the first time a command needs it"
-                    ),
+                    )),
                 ),
             }
         }
@@ -476,12 +482,12 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
     };
     Described {
         provider: match &release {
-            Some(version) => format!("{name} {version}"),
+            Some(version) => uf_infra::into_string(uf_infra::cstr!("{name} {version}")),
             None => spec.to_owned(),
         },
-        detail: format!(
+        detail: uf_infra::into_string(uf_infra::cstr!(
             "{purpose}; {named}; {store}, and first on PATH for every process it starts"
-        ),
+        )),
     }
 }
 

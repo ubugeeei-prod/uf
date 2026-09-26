@@ -170,7 +170,7 @@ fn cache_report(sources: &[Source<'_>]) {
     // written a moment ago is filed under a key this call does not ask for.
     // One appended character is the smallest edit there is; a larger one cannot
     // cost less.
-    let edited_source = format!("{}\n", sources[0].source);
+    let edited_source = uf_infra::into_string(uf_infra::cstr!("{}\n", sources[0].source));
     let edited: Vec<Source<'_>> = sources
         .iter()
         .map(|source| Source::new(source.path, &edited_source))
@@ -337,8 +337,8 @@ fn copy_path(path: &str, index: usize) -> String {
         .and_then(|stem| stem.to_str())
         .unwrap_or("module");
     let name = match extension {
-        Some(extension) => format!("{stem}.copy{index}.{extension}"),
-        None => format!("{stem}.copy{index}"),
+        Some(extension) => uf_infra::into_string(uf_infra::cstr!("{stem}.copy{index}.{extension}")),
+        None => uf_infra::into_string(uf_infra::cstr!("{stem}.copy{index}")),
     };
     path.with_file_name(name).to_string_lossy().into_owned()
 }

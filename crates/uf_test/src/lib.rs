@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! Test discovery, scheduling and execution for `uf test`.
 //!

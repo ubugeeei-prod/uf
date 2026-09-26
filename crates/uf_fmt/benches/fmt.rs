@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};

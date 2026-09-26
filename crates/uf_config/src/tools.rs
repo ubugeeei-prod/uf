@@ -603,7 +603,11 @@ impl<'de> Deserialize<'de> for TestRunnerConfig {
             serde_json::Value::String(text) => Ok(Self::Spec(Written::new(text))),
             object @ serde_json::Value::Object(_) => serde_json::from_value(object)
                 .map(Self::Object)
-                .map_err(|error| serde::de::Error::custom(format!("test.runner: {error}"))),
+                .map_err(|error| {
+                    serde::de::Error::custom(uf_infra::into_string(uf_infra::cstr!(
+                        "test.runner: {error}"
+                    )))
+                }),
             other => Ok(Self::Spec(Written::not_a_string(
                 other.to_string(),
                 TestRunnerSpec::EXAMPLE,
@@ -763,10 +767,12 @@ impl std::error::Error for SpecError {}
 fn name_list<N: ToolName>() -> String {
     let names: Vec<String> = N::ALL
         .iter()
-        .map(|tool| format!("`{}`", tool.name()))
+        .map(|tool| uf_infra::into_string(uf_infra::cstr!("`{}`", tool.name())))
         .collect();
     match names.split_last() {
-        Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+        Some((last, rest)) if !rest.is_empty() => {
+            uf_infra::into_string(uf_infra::cstr!("{} or {last}", rest.join(", ")))
+        }
         Some((last, _)) => last.clone(),
         None => String::new(),
     }
@@ -1061,15 +1067,17 @@ impl ToolDeclaration {
     pub fn summary(&self) -> String {
         match (&self.spec, self.key) {
             (Some(spec), Some(key)) => match self.via {
-                "implied" => format!("{spec} (implied by {key})"),
-                "deprecated" => format!("{spec} ({key}, deprecated)"),
-                _ => format!("{spec} ({key})"),
+                "implied" => uf_infra::into_string(uf_infra::cstr!("{spec} (implied by {key})")),
+                "deprecated" => {
+                    uf_infra::into_string(uf_infra::cstr!("{spec} ({key}, deprecated)"))
+                }
+                _ => uf_infra::into_string(uf_infra::cstr!("{spec} ({key})")),
             },
-            (Some(spec), None) => format!("{spec} (uf's default)"),
-            (None, _) => format!(
+            (Some(spec), None) => uf_infra::into_string(uf_infra::cstr!("{spec} (uf's default)")),
+            (None, _) => uf_infra::into_string(uf_infra::cstr!(
                 "not declared — {}",
                 self.undeclared.unwrap_or("uf's default")
-            ),
+            )),
         }
     }
 }
@@ -1227,7 +1235,7 @@ impl UniflowedConfig {
         let spec = |name: &str| -> Option<String> {
             toolchain
                 .get(name)
-                .map(|version| format!("{name}@{}", version.trim()))
+                .map(|version| uf_infra::into_string(uf_infra::cstr!("{name}@{}", version.trim())))
         };
         let runtimes: Vec<String> = ["node", "bun", "deno"]
             .into_iter()
@@ -1240,14 +1248,18 @@ impl UniflowedConfig {
         let mut instead = Vec::new();
         match runtimes.as_slice() {
             [] => {}
-            [one] => instead.push(format!("`runtime: \"{one}\"`")),
+            [one] => instead.push(uf_infra::into_string(uf_infra::cstr!(
+                "`runtime: \"{one}\"`"
+            ))),
             _ => instead.push(
                 "`runtime`, `build.runtime` and `test.runtime`, each as `name@version`".to_owned(),
             ),
         }
         match managers.as_slice() {
             [] => {}
-            [one] => instead.push(format!("`packageManager: \"{one}\"`")),
+            [one] => instead.push(uf_infra::into_string(uf_infra::cstr!(
+                "`packageManager: \"{one}\"`"
+            ))),
             _ => instead.push("`packageManager`, as `name@version`".to_owned()),
         }
         let instead = if instead.is_empty() {
@@ -1255,10 +1267,10 @@ impl UniflowedConfig {
         } else {
             instead.join(" and ")
         };
-        Some(format!(
+        Some(uf_infra::into_string(uf_infra::cstr!(
             "env.toolchain says which tools this project has and not what each is for; declare \
              each where it is used instead — {instead}"
-        ))
+        )))
     }
 
     /// The sentence for a project still writing `builder.module`.
@@ -1270,10 +1282,10 @@ impl UniflowedConfig {
         } else {
             module
         };
-        Some(format!(
+        Some(uf_infra::into_string(uf_infra::cstr!(
             "builder.module is `build.builder` now, beside the build it describes — write \
              `build: {{ builder: \"{spec}\" }}`"
-        ))
+        )))
     }
 
     /// The sentence for a project still naming its manager in
@@ -1293,10 +1305,10 @@ impl UniflowedConfig {
             PackageManagerPreference::Pnpm => "pnpm",
             PackageManagerPreference::Bun => "bun",
         };
-        Some(format!(
+        Some(uf_infra::into_string(uf_infra::cstr!(
             "pm.packageManager is the top-level `packageManager` now, which can pin a release as \
              well — write `packageManager: \"{spec}\"`"
-        ))
+        )))
     }
 
     /// The sentence for a project still writing `test.runner` as an object.
@@ -1325,13 +1337,13 @@ impl UniflowedConfig {
                     .to_owned(),
             );
         }
-        Some(format!(
+        Some(uf_infra::into_string(uf_infra::cstr!(
             "test.runner as an object is deprecated in favour of `runner: \"uf\"`, and this one \
              sets `applicationTarget: \"{}\"` — write `test.target: \"{}\"` beside `runner: \"uf\"` \
              to keep that override",
             target_name(target),
             target_name(target)
-        ))
+        )))
     }
 
     /// Every tool deprecation this project would be told about, for
@@ -1527,14 +1539,14 @@ fn check_toolchain(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Conf
             continue;
         }
         let written = match version.as_str() {
-            Some(version) => format!("{name}@{version}"),
+            Some(version) => uf_infra::into_string(uf_infra::cstr!("{name}@{version}")),
             None => name.to_owned(),
         };
         return Err(ConfigError::ToolKeysDisagree {
             path: path.to_path_buf(),
             key,
             written,
-            legacy_key: format!("env.toolchain.{name}"),
+            legacy_key: uf_infra::into_string(uf_infra::cstr!("env.toolchain.{name}")),
             legacy_written: pinned.to_owned(),
         });
     }
@@ -1558,10 +1570,10 @@ pub(crate) fn disagreement_fix(key: &str, legacy_key: &str, legacy_written: &str
             .to_owned(),
         pin => {
             let name = pin.strip_prefix("env.toolchain.").unwrap_or(pin);
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "delete `{pin}`, and write `{key}: \"{name}@{legacy_written}\"` if \
                  {legacy_written} is the release you mean"
-            )
+            ))
         }
     }
 }

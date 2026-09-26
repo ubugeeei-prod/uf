@@ -312,7 +312,7 @@ impl Types {
                     })?;
                 Some(json!({
                     "location": self.span_location(documents, &related.span)?,
-                    "message": format!("[{}] {label}", related.id),
+                    "message": uf_infra::into_string(uf_infra::cstr!("[{}] {label}", related.id)),
                 }))
             })
             .collect();
@@ -405,7 +405,7 @@ impl Types {
         Some(json!({
             "contents": {
                 "kind": "markdown",
-                "value": format!("```flow\n{}\n```", found.printed),
+                "value": uf_infra::into_string(uf_infra::cstr!("```flow\n{}\n```", found.printed)),
             },
             "range": range_in(text, &found.span),
         }))
@@ -591,7 +591,9 @@ impl Types {
         new_name: &str,
     ) -> Result<Value, String> {
         if !is_identifier(new_name) {
-            return Err(format!("`{new_name}` is not an identifier"));
+            return Err(uf_infra::into_string(uf_infra::cstr!(
+                "`{new_name}` is not an identifier"
+            )));
         }
         let Some((path, position, _)) = self.locate(documents, uri, line, requested) else {
             return Ok(Value::Null);
@@ -603,17 +605,20 @@ impl Types {
             Ok(Rename::Edits(edits)) => edits,
             Ok(Rename::Nothing) => return Ok(Value::Null),
             Ok(Rename::Outside(span)) => {
-                return Err(format!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "the name is written in {}, which a rename does not edit",
                     span.path,
-                ));
+                )));
             }
             Err(error) => return Err(error.to_string()),
         };
         let mut changes = serde_json::Map::new();
         for edit in &edits {
             let Some((uri, text)) = self.file_text(documents, edit.span.path.as_str()) else {
-                return Err(format!("{} could not be read", edit.span.path));
+                return Err(uf_infra::into_string(uf_infra::cstr!(
+                    "{} could not be read",
+                    edit.span.path
+                )));
             };
             let entry = changes
                 .entry(uri)

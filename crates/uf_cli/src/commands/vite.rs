@@ -89,10 +89,10 @@ pub(crate) fn resolve_host(config: &UniflowedConfig) -> Result<Host> {
         .map(|kind| host_program(*kind))
         .collect::<Vec<_>>()
         .join(", ");
-    bail!(
+    bail!(uf_infra::cstr!(
         "no JavaScript host found on PATH (looked for {names}); install Node.js, Bun or Deno, \
          or name an installed one in `app.runtime.capabilityJsHost.default`"
-    )
+    ))
 }
 
 fn host_program(kind: CapabilityJsHost) -> &'static str {
@@ -113,7 +113,9 @@ pub(crate) fn find_program(program: &str) -> Option<Utf8PathBuf> {
         }
         if cfg!(windows) {
             for extension in ["exe", "cmd", "bat"] {
-                let candidate = directory.join(format!("{program}.{extension}"));
+                let candidate = directory.join(uf_infra::into_string(uf_infra::cstr!(
+                    "{program}.{extension}"
+                )));
                 if candidate.is_file() {
                     return Utf8PathBuf::from_path_buf(candidate).ok();
                 }
@@ -432,10 +434,10 @@ pub(crate) fn load_project_config(
         Ok(resolved) => Ok(resolved),
         Err(error @ (ConfigError::UnsupportedExpression { .. } | ConfigError::Parse { .. })) => {
             load_evaluated_config(cwd, requested_mode, default_mode).with_context(|| {
-                format!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "failed to evaluate uf.config.js after the static loader could not read it: \
                      {error}"
-                )
+                ))
             })
         }
         Err(error) => Err(error.into()),
@@ -468,12 +470,12 @@ fn load_evaluated_config(
             Event::Config { config } => projection = Some(config),
             Event::Error(error) => {
                 driver.stop();
-                bail!("{}", error.message);
+                bail!(uf_infra::cstr!("{}", error.message));
             }
             Event::Log {
                 level: LogLevel::Error,
                 message,
-            } => bail!("{message}"),
+            } => bail!(uf_infra::cstr!("{message}")),
             Event::ConfigLoaded { .. }
             | Event::Phase { .. }
             | Event::Log { .. }
@@ -490,7 +492,8 @@ fn load_evaluated_config(
     }
     driver.finish("uf config")?;
 
-    let projection = projection.ok_or_else(|| anyhow!("the builder did not report config"))?;
+    let projection =
+        projection.ok_or_else(|| anyhow!(uf_infra::cstr!("the builder did not report config")))?;
     resolved.config = parse_config_projection(&path, projection)?;
     Ok(resolved)
 }
@@ -599,17 +602,20 @@ impl Driver {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
-        let mut child = process
-            .spawn()
-            .with_context(|| format!("failed to start {} for `uf {command}`", host.name()))?;
+        let mut child = process.spawn().with_context(|| {
+            uf_infra::into_string(uf_infra::cstr!(
+                "failed to start {} for `uf {command}`",
+                host.name()
+            ))
+        })?;
         let stdin = child
             .stdin
             .take()
-            .ok_or_else(|| anyhow!("driver stdin was not piped"))?;
+            .ok_or_else(|| anyhow!(uf_infra::cstr!("driver stdin was not piped")))?;
         let stdout = child
             .stdout
             .take()
-            .ok_or_else(|| anyhow!("driver stdout was not piped"))?;
+            .ok_or_else(|| anyhow!(uf_infra::cstr!("driver stdout was not piped")))?;
         Ok(Self {
             child,
             _stdin: Some(stdin),
@@ -673,7 +679,7 @@ impl Driver {
         if status.success() {
             Ok(())
         } else {
-            bail!("{what} exited with {status}")
+            bail!(uf_infra::cstr!("{what} exited with {status}"))
         }
     }
 }
@@ -732,7 +738,7 @@ pub(crate) fn render_error(ui: &mut Ui, root: &Utf8Path, error: &DriverError) ->
             out.push('\n');
         }
     });
-    anyhow!("{headline}")
+    anyhow!(uf_infra::cstr!("{headline}"))
 }
 
 /// Render a diagnostic the browser sent, the way uf renders its own.

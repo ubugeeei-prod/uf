@@ -50,9 +50,8 @@ pub fn emit(
     let source_type = SourceType::mjs().with_jsx(true);
     let parsed = Parser::new(&allocator, &printed.code, source_type).parse();
     if let Some(error) = parsed.diagnostics.iter().next() {
-        return Err(TransformError::Internal(format!(
-            "printed module does not parse: {error}\n{}",
-            printed.code
+        return Err(TransformError::Internal(uf_infra::into_string(
+            uf_infra::cstr!("printed module does not parse: {error}\n{}", printed.code),
         )));
     }
     let mut program = parsed.program;
@@ -75,7 +74,9 @@ pub fn emit(
         // No down-levelling: the host runs modern JavaScript, and Vite applies
         // its own targets to the bundle.
         env: EnvOptions::from_target("esnext").map_err(|error| {
-            TransformError::Internal(format!("oxc rejected the esnext target: {error}"))
+            TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+                "oxc rejected the esnext target: {error}"
+            )))
         })?,
         jsx,
         ..TransformOptions::default()

@@ -132,7 +132,7 @@ impl TrailingSlash {
             return path.to_owned();
         }
         match self {
-            Self::Always => format!("{trimmed}/"),
+            Self::Always => uf_infra::into_string(uf_infra::cstr!("{trimmed}/")),
             Self::Never | Self::Ignore => trimmed.to_owned(),
         }
     }

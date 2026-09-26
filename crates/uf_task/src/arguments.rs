@@ -186,7 +186,7 @@ impl fmt::Display for ArgumentError {
             Self::Missing(missing) => {
                 let names = missing
                     .iter()
-                    .map(|argument| format!("<{}>", argument.name))
+                    .map(|argument| uf_infra::into_string(uf_infra::cstr!("<{}>", argument.name)))
                     .collect::<Vec<_>>()
                     .join(", ");
                 write!(out, "missing {names}")?;
@@ -392,7 +392,10 @@ pub fn quote(word: &str) -> Cow<'_, str> {
     if plain {
         return Cow::Borrowed(word);
     }
-    Cow::Owned(format!("'{}'", word.replace('\'', r"'\''")))
+    Cow::Owned(uf_infra::into_string(uf_infra::cstr!(
+        "'{}'",
+        word.replace('\'', r"'\''")
+    )))
 }
 
 #[cfg(test)]

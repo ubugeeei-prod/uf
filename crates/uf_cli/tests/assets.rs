@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What `uf build` emits for an imported image and an imported font.
 //!
 //! The unit tests in `crates/uf_assets` prove the pipeline resizes and

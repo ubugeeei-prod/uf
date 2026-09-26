@@ -149,7 +149,10 @@ pub(crate) fn update(
         match published.get(&declaration.name) {
             None | Some(Err(_)) => {
                 if let Some(Err(error)) = published.get(&declaration.name) {
-                    unreachable.push(format!("{}: {error}", declaration.name));
+                    unreachable.push(uf_infra::into_string(uf_infra::cstr!(
+                        "{}: {error}",
+                        declaration.name
+                    )));
                 }
                 continue;
             }
@@ -228,15 +231,23 @@ pub(crate) fn update(
     // All of them or none: a failure part way through a workspace would leave a
     // dependency graph half moved to versions nobody chose, and the install
     // below would then install it. See `uf_pm::manifests::apply_all`.
-    let written = uf_pm::manifests::apply_all(&changes)
-        .with_context(|| format!("could not rewrite {}", project_label(&root)))?;
-    let summary = format!(
+    let written = uf_pm::manifests::apply_all(&changes).with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not rewrite {}",
+            project_label(&root)
+        ))
+    })?;
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "{} in {}",
         plural(written, "range"),
         plural(changes.len(), "manifest")
-    );
+    ));
     ui.render(|renderer, out| {
-        renderer.status(out, Status::Success, &format!("rewrote {summary}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("rewrote {summary}").as_str(),
+        );
         renderer.blank(out);
     });
 
@@ -300,7 +311,9 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
                 "no dependency declares a range uf can compare against a registry".to_owned()
             }
             None => "every dependency's newest version is inside its declared range".to_owned(),
-            Some(level) => format!("no range would move at the {level} level"),
+            Some(level) => {
+                uf_infra::into_string(uf_infra::cstr!("no range would move at the {level} level"))
+            }
         };
         renderer.status(out, Status::Success, &line);
         render_notes(renderer, out, report);
@@ -369,10 +382,10 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "and {} more; --json prints all of them",
                 report.rows.len() - ROWS_SHOWN
-            ),
+            )),
         );
     }
     renderer.blank(out);
@@ -387,7 +400,7 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
             renderer.status(
                 out,
                 Status::Info,
-                &format!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{} {} newer than {} range allows",
                     plural(report.rows.len(), "dependency"),
                     if report.rows.len() == 1 { "is" } else { "are" },
@@ -396,7 +409,7 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
                     } else {
                         "their"
                     }
-                ),
+                )),
             );
             renderer.status(
                 out,
@@ -408,10 +421,10 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
             renderer.status(
                 out,
                 Status::Info,
-                &format!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{} would be rewritten; run without --dry-run",
                     plural(report.rows.len(), "range")
-                ),
+                )),
             );
         }
         Some(_) => {
@@ -419,10 +432,10 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
                 renderer.status(
                     out,
                     Status::Warn,
-                    &format!(
+                    &uf_infra::into_string(uf_infra::cstr!(
                         "{} of these is a major; read what changed before you ship it",
                         majors
-                    ),
+                    )),
                 );
             }
         }
@@ -442,10 +455,10 @@ fn render_notes(renderer: &uf_term::Renderer, out: &mut String, report: &Report)
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            uf_infra::cstr!(
                 "{} left alone: workspace:, catalog:, npm:, a URL, or a range with more than one comparator",
                 plural(report.undecidable, "range")
-            ),
+            ).as_str(),
         );
     }
     if report.unreachable.is_empty() {
@@ -457,10 +470,10 @@ fn render_notes(renderer: &uf_term::Renderer, out: &mut String, report: &Report)
     renderer.status(
         out,
         Status::Warn,
-        &format!(
+        &uf_infra::into_string(uf_infra::cstr!(
             "{} could not be read from the registry",
             plural(report.unreachable.len(), "package")
-        ),
+        )),
     );
     for line in report.unreachable.iter().take(3) {
         renderer.status(out, Status::Info, line);

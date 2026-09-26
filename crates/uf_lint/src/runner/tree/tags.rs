@@ -219,11 +219,11 @@ fn aria_unsupported_elements(tree: &mut Tree<'_>, host: &str, opening: &jsx::Ope
         tree.report(
             &written.loc,
             ARIA_UNSUPPORTED,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`<{host}>` is one of the elements ARIA reserves: it is never rendered, so it is \
                  not in the accessibility tree and `{named}` on it is read by nothing (WCAG \
                  4.1.2); put it on the element a reader actually reaches"
-            ),
+            )),
         );
     }
 }
@@ -256,12 +256,12 @@ fn no_redundant_roles(tree: &mut Tree<'_>, host: &str, opening: &jsx::Opening<Lo
     tree.report(
         &written.loc,
         NO_REDUNDANT_ROLES,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "a `<{host}>` is already a `{role}`, so `role=\"{role}\"` tells the browser what it \
              told the browser: ARIA's first rule is to use the element and not to repeat it, and \
              the copy is one more thing to keep true when the markup changes; drop the attribute",
             role = role.name,
-        ),
+        )),
     );
 }
 
@@ -314,13 +314,13 @@ fn prefer_tag_over_role(tree: &mut Tree<'_>, host: &str, opening: &jsx::Opening<
     tree.report(
         &written.loc,
         PREFER_TAG_OVER_ROLE,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`role=\"{role}\"` names what {suggestion} already is: the element carries the role \
              without being told, keeps it when somebody moves or copies the markup, and brings \
              the rest of its behaviour with it; write {suggestion} instead of a `<{host}>` with a \
              role",
             role = role.name,
-        ),
+        )),
     );
 }
 
@@ -374,12 +374,12 @@ fn interactive_to_noninteractive(
     tree.report(
         &written.loc,
         INTERACTIVE_TO_NONINTERACTIVE,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{host}>` is a control a keyboard reaches and `role=\"{role}\"` is not, so it keeps \
              the behaviour and loses the announcement: focus lands on something a screen reader \
              calls {role}; drop the role, or use an element that is one",
             role = role.name,
-        ),
+        )),
     );
 }
 
@@ -423,14 +423,14 @@ fn noninteractive_to_interactive(
     tree.report(
         &written.loc,
         NONINTERACTIVE_TO_INTERACTIVE,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{host}>` already has the role `{implicit}` and `role=\"{role}\"` says it is a \
              control, so a screen reader is told one thing and the markup does another; build the \
              control out of an element that has no semantics of its own, or use the element whose \
              own role is `{role}`",
             implicit = implicit.name,
             role = role.name,
-        ),
+        )),
     );
 }
 
@@ -486,12 +486,12 @@ fn noninteractive_element_interactions(
     tree.report(
         &opening.loc,
         NONINTERACTIVE_INTERACTIONS,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{host}>` has the role `{role}` and is not a control, so handlers on it are \
              reachable but never announced as anything to act on; move them to a `<button>`, or \
              give the element a role that says what it does",
             role = role.name,
-        ),
+        )),
     );
 }
 
@@ -499,13 +499,13 @@ fn noninteractive_element_interactions(
 fn spelled_list(spellings: &[String]) -> String {
     match spellings {
         [] => String::new(),
-        [only] => format!("`{only}`"),
-        [rest @ .., last] => format!(
+        [only] => uf_infra::into_string(uf_infra::cstr!("`{only}`")),
+        [rest @ .., last] => uf_infra::into_string(uf_infra::cstr!(
             "{} or `{last}`",
             rest.iter()
-                .map(|spelled| format!("`{spelled}`"))
+                .map(|spelled| uf_infra::into_string(uf_infra::cstr!("`{spelled}`")))
                 .collect::<Vec<_>>()
                 .join(", ")
-        ),
+        )),
     }
 }

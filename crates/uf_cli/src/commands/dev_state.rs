@@ -15,22 +15,25 @@ pub(crate) fn read(cwd: &Utf8Path, ui: &mut Ui, tool: &str, id: Option<&str>) ->
         metadata.is_file()
             && !metadata.file_type().is_symlink()
             && metadata.len() <= 4 * 1024 * 1024,
-        "invalid dev diagnostic snapshot"
+        uf_infra::cstr!("invalid dev diagnostic snapshot")
     );
     let canonical = fs::canonicalize(&file)?;
     ensure!(
         canonical.starts_with(fs::canonicalize(&root)?),
-        "dev diagnostic channel leaves this project"
+        uf_infra::cstr!("dev diagnostic channel leaves this project")
     );
     let state: Value = serde_json::from_str(&fs::read_to_string(&file)?)?;
-    ensure!(state["schema"] == 1, "unsupported dev diagnostic schema");
+    ensure!(
+        state["schema"] == 1,
+        uf_infra::cstr!("unsupported dev diagnostic schema")
+    );
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
     let updated = state["updatedAt"]
         .as_u64()
         .context("missing dev snapshot timestamp")?;
     ensure!(
         u128::from(updated) <= now + 5_000 && now.saturating_sub(u128::from(updated)) < 30_000,
-        "dev diagnostic snapshot is stale; restart uf dev"
+        uf_infra::cstr!("dev diagnostic snapshot is stale; restart uf dev")
     );
     let result = match tool {
         "uf_dev_errors" => {
@@ -46,7 +49,7 @@ pub(crate) fn read(cwd: &Utf8Path, ui: &mut Ui, tool: &str, id: Option<&str>) ->
             let id = id.context("action id is required")?;
             ensure!(
                 id.len() == 64 && id.bytes().all(|b| b.is_ascii_hexdigit()),
-                "action id must be 64 hexadecimal characters"
+                uf_infra::cstr!("action id must be 64 hexadecimal characters")
             );
             let action = state["actions"]
                 .as_array()
@@ -58,7 +61,7 @@ pub(crate) fn read(cwd: &Utf8Path, ui: &mut Ui, tool: &str, id: Option<&str>) ->
                 )?;
             json!({ "action": action, "generation":state["generation"] })
         }
-        _ => anyhow::bail!("unknown dev tool {tool}"),
+        _ => anyhow::bail!(uf_infra::cstr!("unknown dev tool {tool}")),
     };
     ui.json(&result)?;
     Ok(())

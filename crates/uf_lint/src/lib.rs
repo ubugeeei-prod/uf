@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! Native lint runner for Flow source files.
 //!
@@ -418,9 +419,9 @@ fn lint_file(
                     severity,
                     named.line,
                     named.column,
-                    format!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`{rule}` reports nothing here, so this suppression silences nothing; remove it"
-                    ),
+                    )),
                 );
             }
         }

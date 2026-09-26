@@ -177,7 +177,11 @@ pub fn bind_order(found: &[Found], params: &[Parameter]) -> Result<Vec<usize>, S
             Mark::Numbered(number) | Mark::Dollar(number) => params
                 .iter()
                 .position(|param| param.number == *number)
-                .ok_or_else(|| format!("the placeholder ?{number} names no parameter"))?,
+                .ok_or_else(|| {
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "the placeholder ?{number} names no parameter"
+                    ))
+                })?,
             Mark::Slice(name) => params
                 .iter()
                 .position(|param| {
@@ -186,7 +190,9 @@ pub fn bind_order(found: &[Found], params: &[Parameter]) -> Result<Vec<usize>, S
                         .as_ref()
                         .is_some_and(|column| column.is_sqlc_slice && column.name == *name)
                 })
-                .ok_or_else(|| format!("sqlc.slice('{name}') has no parameter"))?,
+                .ok_or_else(|| {
+                    uf_infra::into_string(uf_infra::cstr!("sqlc.slice('{name}') has no parameter"))
+                })?,
             Mark::Bare => used
                 .iter()
                 .enumerate()
@@ -207,10 +213,10 @@ pub fn bind_order(found: &[Found], params: &[Parameter]) -> Result<Vec<usize>, S
             .column
             .as_ref()
             .map_or("", |column| column.name.as_str());
-        return Err(format!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "parameter {} ({name}) appears in no placeholder",
             params[unused].number
-        ));
+        )));
     }
     Ok(order)
 }
@@ -264,7 +270,11 @@ pub fn copy_split(text: &str, dialect: Dialect, params: &[Parameter]) -> Result<
                 Mark::Dollar(number) => params
                     .iter()
                     .position(|param| param.number == number)
-                    .ok_or_else(|| format!("the placeholder ${number} names no parameter")),
+                    .ok_or_else(|| {
+                        uf_infra::into_string(uf_infra::cstr!(
+                            "the placeholder ${number} names no parameter"
+                        ))
+                    }),
                 _ => Err("an unexpected placeholder".to_owned()),
             })
             .collect::<Result<Vec<_>, _>>()?

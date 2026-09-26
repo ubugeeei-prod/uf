@@ -299,7 +299,7 @@ mod tests {
 
         let limits = CheckLimits::default().without_timeout();
         let paths: Vec<String> = (0..MODULES)
-            .map(|index| format!("module{index}.js"))
+            .map(|index| uf_infra::into_string(uf_infra::cstr!("module{index}.js")))
             .collect();
         let texts: Vec<String> = (0..MODULES).map(|_| "// @flow\n".to_owned()).collect();
         let sources: Vec<Source<'_>> = paths
@@ -313,7 +313,11 @@ mod tests {
                     Vec::new()
                 } else {
                     vec![CachedRequire {
-                        specifier: format!("./module{}.js", index + 1).to_compact_string(),
+                        specifier: uf_infra::into_string(uf_infra::cstr!(
+                            "./module{}.js",
+                            index + 1
+                        ))
+                        .to_compact_string(),
                         declared: false,
                     }]
                 };

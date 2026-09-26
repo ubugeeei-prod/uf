@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Golden tests over `tests/sqlc/cases`: sqlc's own examples (authors,
 //! booktest, jets, ondeck, batch) for every engine sqlc ships them for, and
 //! uf's cases for types, commands and options.

@@ -668,10 +668,10 @@ pub fn check_operands(operands: &[String]) -> Result<(), ManagerRunError> {
         if operand.starts_with('-') {
             return Err(ManagerRunError::Operand {
                 operand: operand.clone(),
-                reason: format!(
+                reason: uf_infra::into_string(uf_infra::cstr!(
                     "it starts with `-`, which the package manager would read as a flag; \
                      write the package name, or `./{operand}` for a path"
-                ),
+                )),
             });
         }
     }
@@ -892,7 +892,9 @@ fn windows_program_in_path(program: &str, path: &OsStr, pathext: &OsStr) -> Opti
             {
                 continue;
             }
-            let candidate = directory.join(format!("{program}{extension}"));
+            let candidate = directory.join(uf_infra::into_string(uf_infra::cstr!(
+                "{program}{extension}"
+            )));
             if candidate.is_file() {
                 return Some(candidate.into_os_string());
             }
@@ -921,9 +923,9 @@ pub fn installable(detection: &Detection) -> (PackageManager, bool) {
 fn missing_hint(manager: PackageManager) -> String {
     match manager {
         PackageManager::Npm => "npm comes with Node.js; install Node.js and try again".to_owned(),
-        other => format!(
+        other => uf_infra::into_string(uf_infra::cstr!(
             "this project is pinned to {other}; install it, or change the lockfile and `packageManager` field to a manager you have"
-        ),
+        )),
     }
 }
 

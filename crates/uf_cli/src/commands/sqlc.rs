@@ -86,19 +86,24 @@ pub(crate) fn sqlc(cwd: &Utf8Path, ui: &mut Ui, command: SqlcCommand) -> Result<
     }
     let status = run.status().map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            anyhow::anyhow!(
+            anyhow::anyhow!(uf_infra::cstr!(
                 "sqlc is not installed, or not on PATH. Install it \
                  (https://docs.sqlc.dev/en/latest/overview/install.html) or point `SQLC` at it"
-            )
+            ))
         } else {
-            anyhow::Error::new(error).context(format!("could not run {}", sqlc.to_string_lossy()))
+            anyhow::Error::new(error).context(uf_infra::into_string(uf_infra::cstr!(
+                "could not run {}",
+                sqlc.to_string_lossy()
+            )))
         }
     })?;
     if !status.success() {
         if verb == "diff" {
-            bail!("the generated files are out of date; run `uf sqlc generate`");
+            bail!(uf_infra::cstr!(
+                "the generated files are out of date; run `uf sqlc generate`"
+            ));
         }
-        bail!("sqlc {verb} failed");
+        bail!(uf_infra::cstr!("sqlc {verb} failed"));
     }
     let message = if verb == "generate" {
         "sqlc generated the Flow modules"

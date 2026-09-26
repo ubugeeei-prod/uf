@@ -993,11 +993,11 @@ const y = (x: any) as const;
                     ("`${", "}`"),
                     ("f(", ")"),
                 ] {
-                    let source = format!(
+                    let source = uf_infra::into_string(uf_infra::cstr!(
                         "x = {}1{};\n",
                         open.repeat(MAX_NESTING_DEPTH),
                         close.repeat(MAX_NESTING_DEPTH)
-                    );
+                    ));
                     let parsed = parse(&source).expect("at the ceiling");
                     assert!(parsed.is_ok(), "{open}: {:?}", parsed.diagnostics);
                 }
@@ -1070,7 +1070,8 @@ const y = (x: any) as const;
         // Five hundred siblings are not a chain of five hundred: `,` and `;`
         // end a run, which is what keeps a wide array from measuring deep.
         // Three is the `=`, the `[` and the `+` that any one element needs.
-        let wide = format!("x = [{}];", vec!["a + b"; 500].join(", "));
+        let wide =
+            uf_infra::into_string(uf_infra::cstr!("x = [{}];", vec!["a + b"; 500].join(", ")));
         assert_eq!(chain_depth(&wide), 3);
         let statements = "x = a + b;\n".repeat(500);
         assert_eq!(chain_depth(&statements), 2);
@@ -1085,14 +1086,14 @@ const y = (x: any) as const;
     fn a_chain_past_the_ceiling_is_refused_rather_than_overflowing() {
         let deep = MAX_CHAIN_DEPTH + 2;
         for source in [
-            format!("x = {};", vec!["1"; deep].join(" + ")),
-            format!("x = a{};", ".f()".repeat(deep)),
+            uf_infra::into_string(uf_infra::cstr!("x = {};", vec!["1"; deep].join(" + "))),
+            uf_infra::into_string(uf_infra::cstr!("x = a{};", ".f()".repeat(deep))),
             // Each of these keeps the bracket depth at one, or opens no
             // bracket at all, and each was reaching the parser.
-            format!("x = f{};", "()".repeat(deep)),
-            format!("x = a{};", "[0]".repeat(deep)),
-            format!("x = {}y;", "typeof ".repeat(deep)),
-            format!("x = {}Foo;", "new ".repeat(deep)),
+            uf_infra::into_string(uf_infra::cstr!("x = f{};", "()".repeat(deep))),
+            uf_infra::into_string(uf_infra::cstr!("x = a{};", "[0]".repeat(deep))),
+            uf_infra::into_string(uf_infra::cstr!("x = {}y;", "typeof ".repeat(deep))),
+            uf_infra::into_string(uf_infra::cstr!("x = {}Foo;", "new ".repeat(deep))),
         ] {
             // Refused before the tree exists, so nothing deep is built and
             // nothing deep is freed: this one needs no stack of its own.
@@ -1115,7 +1116,10 @@ const y = (x: any) as const;
         std::thread::Builder::new()
             .stack_size(PARSE_STACK_BYTES)
             .spawn(|| {
-                let source = format!("x = {};", vec!["1"; MAX_CHAIN_DEPTH].join(" + "));
+                let source = uf_infra::into_string(uf_infra::cstr!(
+                    "x = {};",
+                    vec!["1"; MAX_CHAIN_DEPTH].join(" + ")
+                ));
                 let parsed = parse(&source).expect("parses");
                 assert!(parsed.is_ok(), "{:?}", parsed.diagnostics);
             })
@@ -1174,14 +1178,17 @@ const y = (x: any) as const;
     fn frees_a_tree_at_the_ceilings_here_and_now() {
         for source in [
             // At `MAX_CHAIN_DEPTH`: one `=` and 9,999 `+`.
-            format!("x = {};", vec!["1"; MAX_CHAIN_DEPTH].join(" + ")),
+            uf_infra::into_string(uf_infra::cstr!(
+                "x = {};",
+                vec!["1"; MAX_CHAIN_DEPTH].join(" + ")
+            )),
             // At `MAX_NESTING_DEPTH`, in the shape that costs the parser the
             // most per level.
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "x = {}1{};\n",
                 "{a:".repeat(MAX_NESTING_DEPTH),
                 "}".repeat(MAX_NESTING_DEPTH)
-            ),
+            )),
         ] {
             // Built where the parser has the room it asks for...
             let parsed = std::thread::Builder::new()
@@ -1222,10 +1229,10 @@ const y = (x: any) as const;
 
         // And that the threshold is a threshold: one level past it goes to a
         // thread, so the comparison cannot quietly stop deciding anything.
-        let deep = format!(
+        let deep = uf_infra::into_string(uf_infra::cstr!(
             "x = {};",
             vec!["1"; MAX_DEPTH_FREED_IN_PLACE + 1].join(" + ")
-        );
+        ));
         assert!(parse(&deep).expect("parses").freed_off_thread());
     }
 }

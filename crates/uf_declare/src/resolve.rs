@@ -43,10 +43,10 @@ pub fn declaration_path(path: &str) -> String {
         (".js", ".d.ts"),
     ] {
         if let Some(stem) = path.strip_suffix(extension) {
-            return format!("{stem}{declaration}");
+            return uf_infra::into_string(uf_infra::cstr!("{stem}{declaration}"));
         }
     }
-    format!("{path}.d.ts")
+    uf_infra::into_string(uf_infra::cstr!("{path}.d.ts"))
 }
 
 /// The modules a relative `specifier` written in `importer` may mean, in the
@@ -64,9 +64,9 @@ pub(crate) fn candidates(importer: &str, specifier: &str) -> Vec<String> {
     }
     let mut found = Vec::with_capacity(4);
     for extension in [".js", ".jsx", ".mjs", ".cjs"] {
-        found.push(format!("{base}{extension}"));
+        found.push(uf_infra::into_string(uf_infra::cstr!("{base}{extension}")));
     }
-    found.push(format!("{base}/index.js"));
+    found.push(uf_infra::into_string(uf_infra::cstr!("{base}/index.js")));
     found
 }
 
@@ -100,7 +100,7 @@ fn join(importer: &str, specifier: &str) -> Option<String> {
     if directory.is_empty() {
         normalize(specifier)
     } else {
-        normalize(&format!("{directory}/{specifier}"))
+        normalize(uf_infra::cstr!("{directory}/{specifier}").as_str())
     }
 }
 

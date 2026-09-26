@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Every template `uf new` writes, through the chain a project runs on it:
 //! formatted, linted, type checked, tested and built.
 //!

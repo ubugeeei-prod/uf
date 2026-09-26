@@ -146,12 +146,12 @@ fn no_namespace(tree: &mut Tree<'_>, name: &jsx::Name<Loc, Loc>) {
     tree.report(
         &namespaced.loc,
         NO_NAMESPACE,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{namespace}:{local}>` is a namespaced element name, which React does not support: \
              JSX reads a lowercase name as an HTML tag and a capitalised one as a value in scope, \
              and `{namespace}:{local}` is neither, so there is nothing for React to render. Inside \
              an `<svg>` the children are already in the SVG namespace — write `<{local}>`"
-        ),
+        )),
     );
 }
 
@@ -179,12 +179,12 @@ fn no_unknown_property(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<L
         tree.report(
             &written.loc,
             NO_UNKNOWN_PROPERTY,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{spelled}` is the HTML spelling of this attribute and React spells the prop \
                  `{react}`, so the name written on this `<{name}>` is not the one React binds and \
                  whatever it was meant to do does not happen — React reports it as an unknown DOM \
                  property in development. Write `{react}`"
-            ),
+            )),
         );
     }
 }
@@ -288,12 +288,12 @@ fn style_prop_object(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc
     tree.report(
         &written.loc,
         STYLE_PROP_OBJECT,
-        format!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`style` on this `<{name}>` is {wrote}, and React's `style` prop takes an object \
              mapping property names to values — it throws on anything else rather than rendering \
              it, so this is a crash rather than a matter of taste. Write \
              `style={{{{ color: \"red\" }}}}`, with the property names camelCased"
-        ),
+        )),
     );
 }
 
@@ -330,11 +330,11 @@ fn no_invalid_rel(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, L
             tree.report(
                 &written.loc,
                 NO_INVALID_REL,
-                format!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`rel=\"{token}\"` is not a link type the HTML standard defines — it names \
                      `{correct}` as the conforming spelling — so a browser reading this finds no \
                      relationship at all and the link is left with none. Write `{correct}`"
-                ),
+                )),
             );
             return;
         }
@@ -350,11 +350,11 @@ fn no_invalid_rel(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, L
         tree.report(
             &written.loc,
             NO_INVALID_REL,
-            format!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{token}` is a link type, but not one a `<{name}>` takes, so the browser ignores \
                  it and this element carries the relationship it was meant to declare nowhere. \
                  Drop it, or put it on the element the keyword belongs to"
-            ),
+            )),
         );
         return;
     }

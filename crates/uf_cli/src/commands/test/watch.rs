@@ -509,11 +509,11 @@ fn run_and_report(
     pool: Option<&WorkerPool>,
 ) {
     if let Some(moved) = moved {
-        let message = format!(
+        let message = uf_infra::into_string(uf_infra::cstr!(
             "{} changed, re-running {}",
             plural(moved.len(), "file"),
             plural(subset.len(), "test file")
-        );
+        ));
         ui.render(|renderer, out| {
             renderer.blank(out);
             renderer.status(out, Status::Info, &message);
@@ -575,17 +575,18 @@ fn announce(
     unavailable: Option<&str>,
 ) {
     let mut message = match interval {
-        Some(interval) if unavailable.is_none() => format!(
+        Some(interval) if unavailable.is_none() => uf_infra::into_string(uf_infra::cstr!(
             "watching {} every {}",
             plural(files, "file"),
             uf_term::format_duration(interval)
-        ),
-        _ => format!("watching {}", plural(files, "file")),
+        )),
+        _ => uf_infra::into_string(uf_infra::cstr!("watching {}", plural(files, "file"))),
     };
     if let Some(reason) = unavailable {
-        message.push_str(&format!(
+        uf_infra::append!(
+            message,
             " by polling; file events are unavailable: {reason}"
-        ));
+        );
     }
     ui.render(|renderer, out| {
         renderer.blank(out);
@@ -594,7 +595,10 @@ fn announce(
 }
 
 fn report_no_op(ui: &mut Ui, moved: &[String]) {
-    let message = format!("{} changed, nothing to re-run", plural(moved.len(), "file"));
+    let message = uf_infra::into_string(uf_infra::cstr!(
+        "{} changed, nothing to re-run",
+        plural(moved.len(), "file")
+    ));
     ui.render(|renderer, out| {
         renderer.blank(out);
         renderer.status(out, Status::Skip, &message);

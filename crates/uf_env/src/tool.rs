@@ -158,7 +158,11 @@ impl Platform {
     /// `darwin-arm64`, the way it appears in a store path.
     #[must_use]
     pub fn slug(self) -> String {
-        format!("{}-{}", self.os.as_str(), self.arch.as_str())
+        uf_infra::into_string(uf_infra::cstr!(
+            "{}-{}",
+            self.os.as_str(),
+            self.arch.as_str()
+        ))
     }
 }
 
@@ -211,7 +215,12 @@ impl Pin {
     /// tool to decode it.
     #[must_use]
     pub fn slug(&self) -> String {
-        format!("{}-{}-{}", self.tool.name(), self.version, self.platform)
+        uf_infra::into_string(uf_infra::cstr!(
+            "{}-{}-{}",
+            self.tool.name(),
+            self.version,
+            self.platform
+        ))
     }
 }
 

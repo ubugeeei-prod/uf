@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! One set of parse options, and the three things that keep it one.
 //!
 //! uf hands source to Meta's Flow parser from four places — [`uf_flow::parse`]

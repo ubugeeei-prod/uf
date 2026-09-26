@@ -19,7 +19,8 @@ use crate::ui::Ui;
 pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let resolved = load_config(cwd)?;
     let state_dir = resolved.root.join(".uf");
-    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    fs::create_dir_all(&state_dir)
+        .with_context(|| uf_infra::cstr!("failed to create {state_dir}"))?;
     let manifest = state_dir.join("publish.json");
     write_json_file(
         &manifest,
@@ -56,13 +57,18 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
     let resolved = load_config(cwd)?;
     let current_version = env!("CARGO_PKG_VERSION");
     let next_version = bump_semver(current_version, bump)?;
-    let tag = format!("{}{}", resolved.config.release.tag_prefix, next_version);
+    let tag = uf_infra::into_string(uf_infra::cstr!(
+        "{}{}",
+        resolved.config.release.tag_prefix,
+        next_version
+    ));
     let published = Published::of(&resolved.root, &tag);
     if let Some(refusal) = published.refusal(&tag, current_version, force) {
         bail!(refusal);
     }
     let state_dir = resolved.root.join(".uf");
-    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    fs::create_dir_all(&state_dir)
+        .with_context(|| uf_infra::cstr!("failed to create {state_dir}"))?;
     let changelog = write_changelog(&resolved.root, &tag, &resolved.config.release.tag_prefix)?;
     let manifest = state_dir.join("release.json");
     let unnumbered: Vec<String> = changelog
@@ -73,7 +79,7 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
         &manifest,
         &json!({
             "version": 1,
-            "bump": format!("{bump:?}"),
+            "bump": uf_infra::into_string(uf_infra::cstr!("{bump:?}")),
             "currentVersion": current_version,
             "nextVersion": next_version,
             "tag": tag,
@@ -83,28 +89,28 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
         }),
     )?;
 
-    let bump_label = format!("{bump:?}");
+    let bump_label = uf_infra::into_string(uf_infra::cstr!("{bump:?}"));
     let manifest_path = manifest.to_string();
     let changelog_path = changelog.as_ref().map(Changelog::path);
     let changelog_row = changelog_path
         .as_deref()
         .map(|path| KeyValue::toned("changelog", path, Tone::Path));
     let summary = match &changelog {
-        Some(written) => format!(
+        Some(written) => uf_infra::into_string(uf_infra::cstr!(
             "release {tag} planned, {} change{} written to the changelog",
             written.changes,
             if written.changes == 1 { "" } else { "s" }
-        ),
-        None => format!("release {tag} planned"),
+        )),
+        None => uf_infra::into_string(uf_infra::cstr!("release {tag} planned")),
     };
     let unnumbered_rows: Vec<&str> = unnumbered.iter().map(String::as_str).collect();
-    let unnumbered_summary = format!(
+    let unnumbered_summary = uf_infra::into_string(uf_infra::cstr!(
         "{} commit{} in the range carr{} no pull request number; nothing downstream can find {} by one",
         unnumbered.len(),
         if unnumbered.len() == 1 { "" } else { "s" },
         if unnumbered.len() == 1 { "ies" } else { "y" },
         if unnumbered.len() == 1 { "it" } else { "them" },
-    );
+    ));
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf release", Some(&tag));
@@ -167,11 +173,11 @@ impl Published {
                 "rev-parse",
                 "--verify",
                 "--quiet",
-                &format!("refs/tags/{tag}"),
+                uf_infra::cstr!("refs/tags/{tag}").as_str(),
             ],
         )
         .is_some_and(|line| !line.trim().is_empty());
-        let heading = format!("## {tag}");
+        let heading = uf_infra::into_string(uf_infra::cstr!("## {tag}"));
         let sectioned = fs::read_to_string(root.join("CHANGELOG.md")).is_ok_and(|changelog| {
             changelog
                 .lines()
@@ -201,7 +207,7 @@ impl Published {
             } else {
                 ""
             };
-            return Some(format!(
+            return Some(uf_infra::into_string(uf_infra::cstr!(
                 "{tag} is already released\n  \
                  this repository has a {tag} tag{also}.\n  \
                  `uf release` plans the version after the one compiled into the binary running\n  \
@@ -210,17 +216,17 @@ impl Published {
                  release's commits.\n  \
                  Build uf from this tree and run it again. `--force` does not cover a version\n  \
                  that has been tagged: a section a release was cut from is finished."
-            ));
+            )));
         }
         if self.sectioned && !force {
-            return Some(format!(
+            return Some(uf_infra::into_string(uf_infra::cstr!(
                 "CHANGELOG.md already has a section for {tag}\n  \
                  This run would replace it. If that is the release you are preparing and the\n  \
                  section should be rewritten from the commits that exist now, pass `--force`.\n  \
                  If it is not, the binary is older than the tree: `uf release` plans the\n  \
                  version after the {current_version} compiled into it, so an out-of-date binary\n  \
                  plans a version the tree has already written. Build uf from this tree."
-            ));
+            )));
         }
         None
     }
@@ -260,7 +266,7 @@ fn write_changelog(root: &Utf8Path, tag: &str, tag_prefix: &str) -> Result<Optio
     let file = root.join("CHANGELOG.md");
     let existing = fs::read_to_string(&file).ok();
     let contents = crate::changelog::prepend(existing.as_deref(), &section);
-    fs::write(&file, contents).with_context(|| format!("failed to write {file}"))?;
+    fs::write(&file, contents).with_context(|| uf_infra::cstr!("failed to write {file}"))?;
     Ok(Some(Changelog {
         file,
         changes: subjects.len(),
@@ -358,7 +364,7 @@ fn commit_subjects(root: &Utf8Path, tag_prefix: &str) -> Result<Option<Vec<Strin
     let range = match previous_tag(root, tag_prefix) {
         // `A..HEAD` is "reachable from HEAD and not from A", which is the
         // right set whether or not A is an ancestor.
-        Some(previous) => format!("{previous}..HEAD"),
+        Some(previous) => uf_infra::into_string(uf_infra::cstr!("{previous}..HEAD")),
         // No release yet: everything that has ever been committed.
         None => String::from("HEAD"),
     };
@@ -387,7 +393,7 @@ fn commit_subjects(root: &Utf8Path, tag_prefix: &str) -> Result<Option<Vec<Strin
 /// prerelease after the release it precedes unless `versionsort.suffix` has
 /// been configured, and a repository is not required to have configured it.
 fn previous_tag(root: &Utf8Path, tag_prefix: &str) -> Option<String> {
-    let pattern = format!("refs/tags/{tag_prefix}*");
+    let pattern = uf_infra::into_string(uf_infra::cstr!("refs/tags/{tag_prefix}*"));
     let tags = git(
         root,
         &[
@@ -435,35 +441,51 @@ fn bump_semver(version: &str, bump: ReleaseBump) -> Result<String> {
     let minor = parse_semver_part(parts.next(), "minor")?;
     let patch = parse_semver_part(parts.next(), "patch")?;
     if parts.next().is_some() {
-        bail!("version {version:?} is not a three-part semver");
+        bail!(uf_infra::cstr!(
+            "version {version:?} is not a three-part semver"
+        ));
     }
 
     match bump {
         ReleaseBump::Alpha => next_alpha(core, prerelease),
-        ReleaseBump::Patch => Ok(format!("{major}.{minor}.{}", patch + 1)),
-        ReleaseBump::Minor => Ok(format!("{major}.{}.0", minor + 1)),
-        ReleaseBump::Major => Ok(format!("{}.0.0", major + 1)),
+        ReleaseBump::Patch => Ok(uf_infra::into_string(uf_infra::cstr!(
+            "{major}.{minor}.{}",
+            patch + 1
+        ))),
+        ReleaseBump::Minor => Ok(uf_infra::into_string(uf_infra::cstr!(
+            "{major}.{}.0",
+            minor + 1
+        ))),
+        ReleaseBump::Major => Ok(uf_infra::into_string(uf_infra::cstr!("{}.0.0", major + 1))),
     }
 }
 
 fn next_alpha(core: &str, prerelease: Option<&str>) -> Result<String> {
     let Some(prerelease) = prerelease else {
-        return Ok(format!("{core}-alpha.0"));
+        return Ok(uf_infra::into_string(uf_infra::cstr!("{core}-alpha.0")));
     };
 
     let Some(alpha) = prerelease.strip_prefix("alpha.") else {
-        return Ok(format!("{core}-alpha.0"));
+        return Ok(uf_infra::into_string(uf_infra::cstr!("{core}-alpha.0")));
     };
-    let current = alpha
-        .parse::<u64>()
-        .with_context(|| format!("alpha version part {alpha:?} is not numeric"))?;
-    Ok(format!("{core}-alpha.{}", current + 1))
+    let current = alpha.parse::<u64>().with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "alpha version part {alpha:?} is not numeric"
+        ))
+    })?;
+    Ok(uf_infra::into_string(uf_infra::cstr!(
+        "{core}-alpha.{}",
+        current + 1
+    )))
 }
 
 fn parse_semver_part(part: Option<&str>, name: &str) -> Result<u64> {
-    let part = part.ok_or_else(|| anyhow!("version is missing {name}"))?;
-    part.parse()
-        .with_context(|| format!("version {name} part {part:?} is not numeric"))
+    let part = part.ok_or_else(|| anyhow!(uf_infra::cstr!("version is missing {name}")))?;
+    part.parse().with_context(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "version {name} part {part:?} is not numeric"
+        ))
+    })
 }
 
 #[cfg(test)]

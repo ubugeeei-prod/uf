@@ -181,24 +181,26 @@ pub fn icon(request: &IconRequest<'_>) -> Result<IconAsset, IconError> {
     })?;
     let (width, height) = dimensions(&view_box).ok_or_else(|| IconError::Malformed {
         path: request.source.to_owned(),
-        reason: format!("its viewBox {view_box:?} is not four numbers"),
+        reason: uf_infra::into_string(uf_infra::cstr!(
+            "its viewBox {view_box:?} is not four numbers"
+        )),
     })?;
 
     // The digest covers the file's bytes and the name it was imported under,
     // so an edited icon gets a new symbol id and a sprite cached under the old
     // one cannot answer for it.
     let digest = hashed_name("i", raw.as_bytes(), &[request.name.as_bytes()], "x");
-    let id = format!(
+    let id = uf_infra::into_string(uf_infra::cstr!(
         "{SYMBOL_PREFIX}{}-{}",
         sanitise(request.name),
         digest.trim_start_matches("i.").trim_end_matches(".x")
-    );
+    ));
     let body = namespace_ids(&inner, &id);
-    let symbol = format!(
+    let symbol = uf_infra::into_string(uf_infra::cstr!(
         "<symbol id=\"{id}\" viewBox=\"{view_box}\"{carried}>{body}</symbol>",
         view_box = escape(&view_box),
         carried = carried(&attributes),
-    );
+    ));
 
     Ok(IconAsset {
         name: request.name.to_owned(),
@@ -334,7 +336,7 @@ fn refuse_dangerous(path: &Utf8Path, raw: &str) -> Result<(), IconError> {
             && name.iter().all(u8::is_ascii_alphabetic)
         {
             return Err(refuse(
-                &format!("the attribute on{}", String::from_utf8_lossy(name)),
+                uf_infra::cstr!("the attribute on{}", String::from_utf8_lossy(name)).as_str(),
                 "an on… attribute is a script in an attribute",
             ));
         }
@@ -350,7 +352,7 @@ fn refuse_dangerous(path: &Utf8Path, raw: &str) -> Result<(), IconError> {
             if !value.starts_with('#') {
                 let end = value.find(['"', '\'', ' ', '>']).unwrap_or(0);
                 return Err(refuse(
-                    &format!("a reference to {:?}", &value[..end]),
+                    uf_infra::cstr!("a reference to {:?}", &value[..end]).as_str(),
                     "an icon is inlined into a self-hosted document and must not fetch anything",
                 ));
             }
@@ -398,7 +400,11 @@ fn view_box(attributes: &str) -> Option<String> {
     let width = attribute(attributes, "width")?;
     let height = attribute(attributes, "height")?;
     let number = |value: &str| value.trim_end_matches("px").trim().to_owned();
-    Some(format!("0 0 {} {}", number(&width), number(&height)))
+    Some(uf_infra::into_string(uf_infra::cstr!(
+        "0 0 {} {}",
+        number(&width),
+        number(&height)
+    )))
 }
 
 /// One attribute's value out of a tag's attribute text.
@@ -423,15 +429,15 @@ fn attribute(attributes: &str, name: &str) -> Option<String> {
 
 /// The width and height a `viewBox` declares.
 fn dimensions(view_box: &str) -> Option<(f32, f32)> {
-    let numbers: Vec<f32> = view_box
+    let mut numbers = view_box
         .split([' ', ','])
         .filter(|part| !part.is_empty())
-        .filter_map(|part| part.parse::<f32>().ok())
-        .collect();
-    match numbers.as_slice() {
-        [_, _, width, height] => Some((*width, *height)),
-        _ => None,
-    }
+        .filter_map(|part| uf_infra::parse_float::<f32, _>(part).ok());
+    numbers.next()?;
+    numbers.next()?;
+    let width = numbers.next()?;
+    let height = numbers.next()?;
+    numbers.next().is_none().then_some((width, height))
 }
 
 /// Prefix every `id` in the icon, and every reference to one, with `symbol`.
@@ -466,7 +472,7 @@ fn rewrite(text: &str, needle: &str, closer: &str, symbol: &str) -> String {
         let Some(end) = rest.find(closer) else {
             break;
         };
-        out.push_str(&format!("{symbol}-{}", &rest[..end]));
+        uf_infra::append!(out, "{symbol}-{}", &rest[..end]);
         rest = &rest[end..];
     }
     out.push_str(rest);
@@ -525,7 +531,7 @@ fn carried(attributes: &str) -> String {
     let mut out = String::new();
     for name in CARRIED {
         if let Some(value) = attribute(attributes, name) {
-            out.push_str(&format!(" {name}=\"{}\"", escape(&value)));
+            uf_infra::append!(out, " {name}=\"{}\"", escape(&value));
         }
     }
     out

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Per-module dispatch cost through a realistically sized pipeline.
 //!
 //! Dispatch runs once per module per hook, so its cost is multiplied by the

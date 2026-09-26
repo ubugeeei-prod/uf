@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Golden-file tests for the Flow printer.
 //!
 //! Every `<name>.js` under `tests/fixtures/` is formatted and compared to
