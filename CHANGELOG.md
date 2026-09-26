@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.11.1
+
+- fix(editors): color Flow signatures and isolate inferred hover types (#1644) (50b82e84)
+
 ## uf@0.11.0
 
 - feat(markdown): use ox-content native parsing (#1640) (8544e5d5)

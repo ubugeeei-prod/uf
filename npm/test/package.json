@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/test",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "The test API and worker for `uf test`: describe/it, a full matcher set, and the process uf fans test files out to.",
   "type": "module",
   "license": "MIT",
@@ -38,7 +38,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/host": "0.11.0",
+    "@uniflowed/host": "0.11.1",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0"
   },
