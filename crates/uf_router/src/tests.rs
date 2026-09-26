@@ -748,8 +748,7 @@ fn an_optional_catch_all_is_a_list_in_the_generated_types() {
 #[test]
 fn the_two_routers_accept_the_same_extensions() {
     let source = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../npm/vite/internal/routes.js"),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm/vite/internal/routes.js"),
     )
     .expect("the router the build runs");
 

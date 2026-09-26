@@ -62,7 +62,7 @@ const UNSUPPORTED_SLOT_BOUNDARY_FILES: [(&str, &str); 6] = [
 /// together by a test that reads the JavaScript and compares — see
 /// `tests::the_two_routers_accept_the_same_extensions`. A shared spelling that
 /// nothing checks is not shared.
-pub const PAGE_EXTENSIONS: [&str; 3] = [".js", ".jsx", ".mdx"];
+pub const PAGE_EXTENSIONS: [&str; 4] = [".js", ".jsx", ".mdx", ".md"];
 
 /// What a layout, middleware or route handler may be written in.
 ///
