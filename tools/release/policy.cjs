@@ -110,20 +110,36 @@ function requireEnv(env /*: Env */, name /*: string */) /*: string */ {
   return value;
 }
 function gh(...args /*: Array<string> */) /*: string */ {
-  return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).trim();
+  return execFileSync("gh", args, {
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  }).trim();
 }
 function api(path /*: string */) /*: any */ {
   return JSON.parse(gh("api", path));
 }
 function git(...args /*: Array<string> */) /*: string */ {
-  return execFileSync("git", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).trim();
+  return execFileSync("git", args, {
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  }).trim();
 }
 // Everything below that reads GitHub or the checkout does it through `io`, so
 // the tests can answer for both. The defaults are the real `gh api` and `git`.
 const IO /*: IO */ = { api, git };
+/** Read the core version from either side of the workspace directory migration. */
+function versionAt(ref /*: string */, io /*: IO */ = IO) /*: string */ {
+  const files = io
+    .git("ls-tree", "--name-only", ref, "npm/core/package.json", "packages/core/package.json")
+    .split("\n");
+  const manifest = files.includes("npm/core/package.json")
+    ? "npm/core/package.json"
+    : "packages/core/package.json";
+  return JSON.parse(io.git("show", `${ref}:${manifest}`)).version;
+}
 function requestAt(ref /*: string */, io /*: IO */ = IO) /*: ReleaseRequest */ {
   const request /*: ReleaseRequest */ = JSON.parse(io.git("show", `${ref}:.github/release.json`));
-  const version = JSON.parse(io.git("show", `${ref}:packages/core/package.json`)).version;
+  const version = versionAt(ref, io);
   assertRequest(request, version);
   return request;
 }
@@ -145,8 +161,8 @@ function releasePR(
   return pr;
 }
 function checkCandidate(base /*: string */, paths /*: Array<string> */) /*: boolean */ {
-  const previous = JSON.parse(git("show", `${base}:packages/core/package.json`)).version;
-  const current = JSON.parse(fs.readFileSync("packages/core/package.json", "utf8")).version;
+  const previous = versionAt(base);
+  const current = versionAt("HEAD");
   const requested = paths.includes(".github/release.json");
   if (previous === current && !requested) return false;
   if (!requested || previous === current)
@@ -294,6 +310,7 @@ function authorizePublication(
   return { pr: pr.number, via };
 }
 module.exports = {
+  versionAt,
   VERSION,
   SHA,
   assertMaintainer,
