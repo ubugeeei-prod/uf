@@ -120,16 +120,29 @@ const styles = stylex.create({
     borderColor: ufTokens.border,
     borderRadius: ufTokens.radiusMd,
     // Enter: it fades in while dropping 4px out of the bar, the way every
-    // other anchored surface leaves its trigger. Under reduced motion it only
-    // fades.
-    opacity: { default: 1, "@starting-style": 0 },
-    transform: { default: "none", "@starting-style": "translateY(-4px)" },
+    // other anchored surface leaves its trigger. Exit: back up into the bar,
+    // in `durationFast` on the accelerating curve, while `@uniflowed/ui` keeps
+    // the closing group on the page and `inert`. Under reduced motion both
+    // only fade (`--uf-exit-travel` is 0 there).
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    transform: {
+      default: "none",
+      "@starting-style": "translateY(-4px)",
+      ":is([data-state=closed])": "translateY(calc(-4px * var(--uf-exit-travel)))",
+    },
     transitionProperty: {
       default: "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationBase,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationBase,
+      ":is([data-state=closed])": ufTokens.durationFast,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   link: {
     display: "block",

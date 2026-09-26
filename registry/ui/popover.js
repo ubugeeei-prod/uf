@@ -95,17 +95,31 @@ const styles = stylex.create({
       ":is([data-side=top])": "4px",
       ":is([data-side=bottom])": "-4px",
     },
-    opacity: { default: 1, "@starting-style": 0 },
+    // Exit: back towards the trigger it came from, on the accelerating curve
+    // and in `durationFast` against the entrance's `durationBase`, so it gets
+    // out of the way rather than lingering. `@uniflowed/ui` keeps it on the
+    // page, closed and `inert`, until this has finished. Under reduced motion
+    // it only fades: `--uf-exit-travel` is 0 there, so nothing jumps either.
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
       default: "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+      ":is([data-state=closed])":
+        "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
       default: "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationBase,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationBase,
+      ":is([data-state=closed])": ufTokens.durationFast,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
 });
 

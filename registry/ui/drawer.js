@@ -77,10 +77,17 @@ const styles = stylex.create({
     // Enter: the page dims as the panel arrives, over the panel's duration,
     // rather than going dark first and then showing a dialog. Opacity only, so
     // it is the same under reduced motion.
-    opacity: { default: 1, "@starting-style": 0 },
+    // Exit: it clears with the panel, in the panel's shorter exit time.
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   panel: {
     position: "fixed",
@@ -138,8 +145,18 @@ const styles = stylex.create({
       ":is([data-side=top])": "-100%",
       ":is([data-side=bottom])": "100%",
     },
+    //
+    // Exit: back off the same edge from wherever the finger left it, in
+    // `durationBase` on the accelerating curve, while `@uniflowed/ui` keeps
+    // the closing panel on the page and `inert`. Under reduced motion it fades
+    // out instead (`--uf-exit-travel` is 0, so it does not travel).
     "--uf-enter-opacity": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": "var(--uf-enter-opacity)" },
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: {
+      default: 1,
+      "@starting-style": "var(--uf-enter-opacity)",
+      ":is([data-state=closed])": "var(--uf-enter-opacity)",
+    },
     // And the drag is how far the finger has pulled it towards its edge.
     transform: {
       default: "none",
@@ -148,6 +165,10 @@ const styles = stylex.create({
       ":is([data-side=right])": "translateX(var(--uf-drawer-drag, 0px))",
       ":is([data-side=left])": "translateX(calc(-1 * var(--uf-drawer-drag, 0px)))",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+      // Two attributes, so it sorts after the one-attribute `data-side` keys
+      // above and wins over them while closing.
+      ":is([data-state=closed]):is([data-side])":
+        "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     borderTopLeftRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
     borderTopRightRadius: { default: 0, ":is([data-side=bottom])": ufTokens.radiusLg },
@@ -166,8 +187,12 @@ const styles = stylex.create({
     transitionDuration: {
       default: ufTokens.durationSlow,
       ":has([data-dragging=true])": "0s",
+      ":is([data-state=closed])": ufTokens.durationBase,
     },
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   handle: {
     // Read by the grip inside, which is drawn along the axis the drag runs on.

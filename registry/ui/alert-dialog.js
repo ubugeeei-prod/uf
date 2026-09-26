@@ -70,10 +70,17 @@ const styles = stylex.create({
     // Enter: the page dims as the panel arrives, over the panel's duration,
     // rather than going dark first and then showing a dialog. Opacity only, so
     // it is the same under reduced motion.
-    opacity: { default: 1, "@starting-style": 0 },
+    // Exit: it clears with the panel, in the panel's shorter exit time.
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   panel: {
     position: "fixed",
@@ -108,14 +115,31 @@ const styles = stylex.create({
     // past 1. `durationSlow`, because a surface this large moving as fast as
     // a menu looks thrown. The scale is gone when it settles (`none`), so the
     // text is not left on a half pixel. Under reduced motion it only fades.
-    opacity: { default: 1, "@starting-style": 0 },
-    transform: { default: "none", "@starting-style": "scale(0.96)" },
+    //
+    // Exit: it sinks back to 96% as it fades, in `durationBase` on the
+    // accelerating curve, so it is out of the way sooner than it arrived.
+    // `@uniflowed/ui` keeps it on the page, closed and `inert`, until then,
+    // and focus is already back on the trigger. Under reduced motion it only
+    // fades: `--uf-exit-travel` is 0 there, so the scale does not jump.
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    transform: {
+      default: "none",
+      "@starting-style": "scale(0.96)",
+      ":is([data-state=closed])": "scale(calc(1 - 0.04 * var(--uf-exit-travel)))",
+    },
     transitionProperty: {
       default: "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   header: {
     display: "grid",

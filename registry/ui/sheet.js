@@ -36,11 +36,13 @@
 // * **Colour comes from tokens, in measured pairs.** `ink` and `muted` on
 //   `surface`, which `crates/uf_stylex/src/tests/preset.rs` holds to 4.5:1 in
 //   the light default and the dark theme.
-// * **It slides in from its edge, and does not yet slide out.** The panel
-//   travels its own size from `data-side` over `durationSlow` on the
-//   decelerating curve, from a `@starting-style`, and the scrim fades in with
-//   it; under reduced motion the panel fades instead. Closing is a cut until
-//   `@uniflowed/ui` keeps a closing panel mounted for its exit transition.
+// * **It slides in from its edge, and back out to it.** The panel travels its
+//   own size from `data-side` over `durationSlow` on the decelerating curve,
+//   from a `@starting-style`, and the scrim fades in with it. Closing is the
+//   same way back, shorter (`durationBase`) and on the accelerating curve:
+//   `@uniflowed/ui` keeps the closing panel on the page, `data-state="closed"`
+//   and `inert`, until it has left, while focus and the page's scroll are
+//   already back. Under reduced motion the panel fades in and out instead.
 
 import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
@@ -70,10 +72,17 @@ const styles = stylex.create({
     // Enter: the page dims as the panel arrives, over the panel's duration,
     // rather than going dark first and then showing a dialog. Opacity only, so
     // it is the same under reduced motion.
-    opacity: { default: 1, "@starting-style": 0 },
+    // Exit: it clears with the panel, in the panel's shorter exit time.
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   panel: {
     position: "fixed",
@@ -139,18 +148,36 @@ const styles = stylex.create({
       ":is([data-side=top])": "-100%",
       ":is([data-side=bottom])": "100%",
     },
+    //
+    // Exit: back off the same edge, in `durationBase` on the accelerating
+    // curve, while `@uniflowed/ui` keeps the closing panel on the page and
+    // `inert`. Under reduced motion it fades out instead: it does not travel
+    // (`--uf-exit-travel` is 0) and its opacity goes to `--uf-enter-opacity`.
     "--uf-enter-opacity": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
-    opacity: { default: 1, "@starting-style": "var(--uf-enter-opacity)" },
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: {
+      default: 1,
+      "@starting-style": "var(--uf-enter-opacity)",
+      ":is([data-state=closed])": "var(--uf-enter-opacity)",
+    },
     transform: {
       default: "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+      ":is([data-state=closed])":
+        "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
       default: "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   header: {
     display: "grid",

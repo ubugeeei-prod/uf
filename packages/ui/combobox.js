@@ -136,6 +136,7 @@ import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-
 import { itemsOf, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { FormValue } from "./internal/form-value.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -458,6 +459,9 @@ component ComboboxList(
     combobox.setOpen(false);
     combobox.setActiveId(null);
   });
+  // On the page while its exit runs. The field's `aria-controls` and
+  // `aria-activedescendant`, and the outside press, stay keyed on `open`.
+  const presence = usePresence(combobox.open, listRef);
 
   // Anchored to the *field*, not to a wrapper the caller may not have written.
   // `align="start"` because a list of options belongs under the edge the text
@@ -469,7 +473,7 @@ component ComboboxList(
     anchorRef: inputRef,
     avoidCollisions,
     collisionPadding,
-    open: combobox.open,
+    open: presence.present,
     overlayRef: listRef,
     side,
     sideOffset,
@@ -521,7 +525,7 @@ component ComboboxList(
     refs: [listRef, inputRef],
   });
 
-  if (!combobox.open) {
+  if (!presence.present) {
     return null;
   }
 
@@ -530,6 +534,7 @@ component ComboboxList(
   return (
     <div
       {...passed}
+      {...presenceProps(presence)}
       aria-labelledby={combobox.labelled ? `${combobox.base}-label` : undefined}
       data-align={anchored.align}
       data-side={anchored.side}

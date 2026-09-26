@@ -77,15 +77,29 @@ const styles = stylex.create({
     // Enter: it rises 16px into its place in the stack as it fades in, over
     // `durationSlow`, so a notification arriving in a corner is noticed
     // without being startling. Vertical, so it reads the same in a
-    // right-to-left page. Under reduced motion it only fades.
-    opacity: { default: 1, "@starting-style": 0 },
-    transform: { default: "none", "@starting-style": "translateY(16px)" },
+    // right-to-left page. Exit: it sinks back the way it came as it fades,
+    // over `durationBase` on the accelerating curve; `@uniflowed/ui` keeps a
+    // dismissed notification in its place, `inert`, until that has finished.
+    // Under reduced motion both only fade (`--uf-exit-travel` is 0 there).
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
+    transform: {
+      default: "none",
+      "@starting-style": "translateY(16px)",
+      ":is([data-state=closed])": "translateY(calc(16px * var(--uf-exit-travel)))",
+    },
     transitionProperty: {
       default: "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   title: {
     gridColumn: "1",

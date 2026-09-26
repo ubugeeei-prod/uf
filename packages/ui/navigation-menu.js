@@ -43,6 +43,10 @@
 // navigation on the way to a word in the article would be a surprise with
 // nothing to show for it.
 //
+// A group that has just closed does stay for as long as its exit transition
+// runs, marked `data-state="closed"` and `inert`, so it cannot be tabbed into
+// or read while it fades. `internal/presence.js` has the rule.
+//
 // # Name the landmark
 //
 // `<nav>` is a landmark, and a page with two unnamed ones gives a reader a
@@ -51,11 +55,12 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useId, useMemo, useState } from "@uniflowed/react";
+import { createContext, useContext, useId, useMemo, useRef, useState } from "@uniflowed/react";
 
 import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
-import { usePresence } from "./internal/disclosure.js";
+import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import { useRegistered } from "./internal/disclosure.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 type NavigationMenuState = {|
@@ -210,14 +215,25 @@ component NavigationMenuBody(children: renders* NavigationMenuLink, ...rest: Res
   // closed group is removed rather than hidden. The register has to be handed
   // over conditionally rather than the hook called conditionally, because a
   // hook that runs on some renders and not others is a different bug.
-  usePresence(item.expanded ? item.registerBody : undefined);
+  useRegistered(item.expanded ? item.registerBody : undefined);
+  const bodyRef = useRef<HTMLElement | null>(null);
+  const presence = usePresence(item.expanded, bodyRef);
 
-  if (!item.expanded) {
+  if (!presence.present) {
     return null;
   }
 
   return (
-    <ul {...rest} aria-labelledby={item.triggerId} id={item.bodyId}>
+    <ul
+      {...withoutComposed(rest, ["ref"])}
+      {...presenceProps(presence)}
+      aria-labelledby={item.triggerId}
+      id={item.bodyId}
+      // React calls callback refs during commit; the presence hook reads it later.
+      ref={composeRefs(rest.ref, (element: HTMLElement | null) => {
+        bodyRef.current = element;
+      })}
+    >
       {children}
     </ul>
   );

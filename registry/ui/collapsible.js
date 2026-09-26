@@ -15,7 +15,8 @@
 // `aria-controls` on the trigger, and a closed region that is
 // `hidden="until-found"` rather than removed, so the browser's find-in-page
 // still reaches its text and opens it. The chevron turns from `aria-expanded`
-// through `:is([aria-expanded=true])`.
+// through `:is([aria-expanded=true])`, and the region's height slides open and
+// shut to the height the part measures for it, `--uf-collapsible-height`.
 //
 // # What to keep true when you change it
 //
@@ -84,6 +85,34 @@ const styles = stylex.create({
     transitionTimingFunction: ufTokens.easing,
   },
   content: {
+    // Its height moves, open and closed, to the number `@uniflowed/ui`
+    // measures (`--uf-collapsible-height`, from `measure` on the root): up
+    // from 0 on a `@starting-style` in `durationBase` on the decelerating
+    // curve, and back down to 0 in `durationFast` on the accelerating one.
+    // The part keeps a closing panel shown, `inert`, until that has finished,
+    // and only then makes it `hidden`. Before the number is measured — on the
+    // server — the property is unset and the panel is its natural height.
+    // Under reduced motion it opens and closes at once.
+    //
+    // Clipped rather than hidden, so it is not a scroll container, and with
+    // room at the edge for the focus ring of a link inside it.
+    boxSizing: "border-box",
+    overflow: "clip",
+    overflowClipMargin: "4px",
+    height: {
+      default: "var(--uf-collapsible-height)",
+      "@starting-style": "0",
+      ":is([data-state=closed])": "0",
+    },
+    transitionProperty: { default: "height", "@media (prefers-reduced-motion: reduce)": "none" },
+    transitionDuration: {
+      default: ufTokens.durationBase,
+      ":is([data-state=closed])": ufTokens.durationFast,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
     fontSize: ufTokens.textSm,
     lineHeight: ufTokens.leadingBase,
   },
@@ -101,7 +130,7 @@ component CollapsibleRoot(
 ) {
   return (
     <div {...rest} className={classNames(props(styles.root, xstyle).className, className)}>
-      <Collapsible.Root defaultOpen={defaultOpen} onOpenChange={onOpenChange} open={open}>
+      <Collapsible.Root defaultOpen={defaultOpen} measure onOpenChange={onOpenChange} open={open}>
         {children}
       </Collapsible.Root>
     </div>
