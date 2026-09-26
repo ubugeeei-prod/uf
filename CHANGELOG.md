@@ -1,5 +1,15 @@
 # Changelog
 
+## uf@0.11.0
+
+- feat(markdown): use ox-content native parsing (#1640) (8544e5d5)
+- feat(create): choose package managers and multiple IDE integrations (#1642) (ae6eaaba)
+- feat(doc): generate uf-styled sites with ox-content (#1639) (b4c72d4d)
+- feat(examples): add a Flow SPA task board (#1641) (99225b62)
+- refactor: consolidate JavaScript packages under npm (#1635) (44e0176d)
+- fix(editors): comply with string allocation lint in Zed (#1638) (8bcec71b)
+- fix(ci): validate releases across npm workspace migration (#1636) (ae3e36e1)
+
 ## uf@0.10.0
 
 - fix(ci): clarify Windows setup limits (#1633) (df017325)
