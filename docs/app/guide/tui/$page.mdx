@@ -109,7 +109,15 @@ allowed, which is how a badge sits on its parent's border:
 ```
 
 On a box left in the line — `position="relative"`, the default — the same four
-offsets nudge where it is drawn without moving anything around it. And
+offsets nudge where it is drawn without moving anything around it.
+`position="static"` is in the line too, ignores the offsets, and is not what an
+absolute box under it is placed against: that is the nearest ancestor that is
+not static — so a tooltip inside a row can sit against the panel the row is
+in — or the screen when there is none. Percentages are of that ancestor as
+well. With no offset on an axis, though, the box still goes where its own
+parent's alignment would put it, and it is still drawn with its parent:
+inside its parent's `overflow="hidden"` and in its parent's `zIndex` order,
+which is also where the mouse finds it. And
 `zIndex` decides which of two overlapping siblings is on top, for the mouse as
 well as for the eye; siblings that do not say stack in tree order.
 

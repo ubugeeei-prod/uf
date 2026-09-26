@@ -261,11 +261,12 @@
       explicitly when there is no terminal transport. `Select`, `TabSelect`
       and `Textarea` are in with OpenTUI's keys and events, drawn after layout
       because what they show depends on their size, and layout now wraps
-      (`flexWrap`, `alignContent`) and positions (`position: "absolute"`,
-      offsets, `zIndex`) as well as taking `auto` margins. The repeated-press
-      gestures that widen a selection to a word or a line, `Slider`,
-      `ScrollBar`, the rich-content and media components, `aspectRatio`, and
-      notifications, audio and `Timeline` remain ubugeeei-prod/uf#314.
+      (`flexWrap`, `alignContent`) and positions (`position: "absolute"`
+      against the nearest ancestor that is not `"static"`, offsets, `zIndex`)
+      as well as taking `auto` margins. The repeated-press gestures that
+      widen a selection to a word or a line, `Slider`, `ScrollBar`, the
+      rich-content and media components, `aspectRatio`, wrapping and
+      positioning inside a `ScrollBox`, and notifications, audio and `Timeline` remain ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
