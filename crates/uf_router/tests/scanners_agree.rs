@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! The native route table and the web build's router choose the same files.
 //!
 //! There are two scanners over one router root, and there have to be: the web

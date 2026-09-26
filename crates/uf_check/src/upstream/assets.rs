@@ -49,7 +49,7 @@ pub(super) fn declared_module_for(specifier: &str) -> Option<&'static str> {
     // in front of the extension, which is the whole convention.
     if STYLE_EXTENSIONS
         .iter()
-        .any(|extension| lowercase.ends_with(&format!(".module{extension}")))
+        .any(|extension| lowercase.ends_with(uf_infra::cstr!(".module{extension}").as_str()))
     {
         return Some("uf$asset$css_module");
     }

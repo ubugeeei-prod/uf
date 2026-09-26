@@ -12,6 +12,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+uf_infra = { path = "../uf_infra" }
 camino.workspace = true
 compact_str.workspace = true
 serde.workspace = true

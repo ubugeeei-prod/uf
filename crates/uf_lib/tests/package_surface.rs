@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Invariants of the JavaScript surface shipped from `packages`.
 //!
 //! Shipped JavaScript weight is a product requirement, so these are structural

@@ -70,9 +70,9 @@ pub fn hashed_name_with_suffix(
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(NAME_DIGITS);
     for byte in &digest[..NAME_DIGITS / 2] {
-        hex.push_str(&format!("{byte:02x}"));
+        uf_infra::append!(hex, "{byte:02x}");
     }
-    format!("{}.{hex}{suffix}.{extension}", sanitise(stem))
+    uf_infra::cstr!("{}.{hex}{suffix}.{extension}", sanitise(stem)).into_string()
 }
 
 /// The name for one emitted file, with nothing between the digest and the

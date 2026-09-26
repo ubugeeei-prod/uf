@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Deno, started for real, so the row that grades it is a measurement.
 //!
 //! `uf_runtime::HOSTS` grades Deno [`SupportLevel::Implemented`] and names its

@@ -431,11 +431,12 @@ fn control_has_associated_label(tree: &mut Tree<'_>, name: &str, element: &jsx::
     tree.report(
         &opening.loc,
         CONTROL_HAS_LABEL,
-        format!(
+        uf_infra::cstr!(
             "this `<{name}>` has no name and no `id` for a `<label>` to point at, so a screen \
              reader announces only what kind of control it is; give it an `aria-label`, put the \
              words inside it, or give it an `id` and point a `<label htmlFor>` at that"
-        ),
+        )
+        .into_string(),
     );
 }
 
@@ -452,11 +453,12 @@ fn heading_has_content(tree: &mut Tree<'_>, name: &str, element: &jsx::Element<L
     tree.report(
         &element.opening_element.loc,
         HEADING_HAS_CONTENT,
-        format!(
+        uf_infra::cstr!(
             "this `<{name}>` has nothing a screen reader can announce, so a reader moving \
              through the page by its headings lands on it and hears nothing; put the heading's \
              words in it, or remove it"
-        ),
+        )
+        .into_string(),
     );
 }
 
@@ -502,11 +504,12 @@ fn anchor_ambiguous_text(tree: &mut Tree<'_>, element: &jsx::Element<Loc, Loc>) 
     tree.report(
         &opening.loc,
         ANCHOR_AMBIGUOUS_TEXT,
-        format!(
+        uf_infra::cstr!(
             "link text \"{phrase}\" does not say where the link goes, and a screen reader's list \
              of links reads it with nothing around it (WCAG 2.4.4); name the destination \
              instead, such as `<a>read the pricing guide</a>`"
-        ),
+        )
+        .into_string(),
     );
 }
 
@@ -713,16 +716,18 @@ fn dead_href_message(dead: DeadHref, clicked: bool) -> String {
         }
     };
     if clicked {
-        format!(
+        uf_infra::cstr!(
             "{what}, so with an `onClick` this `<a>` is a button that a screen reader calls a \
              link, and Space, the key that presses a button, scrolls the page instead; make it a \
              `<button type=\"button\">`, or give it a real destination"
         )
+        .into_string()
     } else {
-        format!(
+        uf_infra::cstr!(
             "{what} rather than going anywhere; give the `<a>` the URL it stands for, or use a \
              `<button>` if it performs an action"
         )
+        .into_string()
     }
 }
 
@@ -847,11 +852,12 @@ fn img_redundant_alt(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
     tree.report(
         &alt.loc,
         IMG_REDUNDANT_ALT,
-        format!(
+        uf_infra::cstr!(
             "this `alt` says \"{word}\", but a screen reader already announces an `<img>` as an \
              image, so a reader hears it twice; describe what the image shows, such as \
              `alt=\"Ada at the summit\"` rather than `alt=\"Photo of Ada at the summit\"`"
-        ),
+        )
+        .into_string(),
     );
 }
 
@@ -922,11 +928,12 @@ fn media_has_caption(tree: &mut Tree<'_>, name: &str, element: &jsx::Element<Loc
     tree.report(
         &opening.loc,
         MEDIA_HAS_CAPTION,
-        format!(
+        uf_infra::cstr!(
             "this `<{name}>` has no `<track kind=\"captions\">`, so whoever cannot hear it misses \
              what is said (WCAG 1.2.2); add a captions track, or `muted` if it has no sound to \
              caption"
-        ),
+        )
+        .into_string(),
     );
 }
 

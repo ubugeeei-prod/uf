@@ -210,7 +210,7 @@ pub enum AddError {
 
 fn conflicts_sentence(conflicts: &[Conflict]) -> String {
     match conflicts {
-        [one] => format!("`uf ui add {}`", one.component),
+        [one] => compact_str::format_compact!("`uf ui add {}`", one.component).into_string(),
         _ => "`uf ui add`".to_owned(),
     }
 }
@@ -316,7 +316,7 @@ pub fn apply(plan: &AddPlan) -> io::Result<()> {
 /// version, anything else by name for the package manager to resolve.
 pub fn package_spec(name: &str) -> String {
     if name.starts_with("@uniflowed/") {
-        format!("{name}@{REGISTRY_VERSION}")
+        compact_str::format_compact!("{name}@{REGISTRY_VERSION}").into_string()
     } else {
         name.to_owned()
     }

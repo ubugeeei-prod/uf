@@ -315,7 +315,7 @@ impl<'a> Printer<'a> {
                             if index == 0 {
                                 self.text(line.trim_end())
                             } else {
-                                self.text(&format!(" {}", line.trim_start()))
+                                self.text(uf_infra::cstr!(" {}", line.trim_start()).as_str())
                             }
                         })
                         .collect();
@@ -760,7 +760,7 @@ impl<'a> Printer<'a> {
 /// Whether every line of a block comment starts with `*`, so it can be
 /// re-indented line by line.
 fn is_indentable_block_comment(text: &str) -> bool {
-    let wrapped = format!("*{text}*");
+    let wrapped = uf_infra::cstr!("*{text}*").into_string();
     let lines: Vec<&str> = wrapped.split('\n').collect();
     lines.len() > 1 && lines.iter().all(|line| line.trim_start().starts_with('*'))
 }

@@ -152,7 +152,9 @@ impl Store {
     ///
     /// When it cannot be created.
     pub fn staging(&self, pin: &Pin) -> Result<Utf8PathBuf, EnvError> {
-        let staging = self.root.join(format!(".staging-{}", pin.slug()));
+        let staging = self
+            .root
+            .join(compact_str::format_compact!(".staging-{}", pin.slug()).into_string());
         let _ = fs::remove_dir_all(&staging);
         fs::create_dir_all(&staging).map_err(|source| EnvError::Write {
             path: staging.clone(),

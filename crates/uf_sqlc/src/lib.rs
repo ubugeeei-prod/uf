@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! sqlc's Flow target.
 //!
 //! [sqlc](https://sqlc.dev) parses SQL against a schema and hands a plugin a
@@ -74,8 +76,9 @@ pub fn generate(
     emit::generate(request)?
         .into_iter()
         .map(|file| {
-            let formatted = format(&file.contents)
-                .map_err(|error| format!("formatting {}: {error}", file.name))?;
+            let formatted = format(&file.contents).map_err(|error| {
+                compact_str::format_compact!("formatting {}: {error}", file.name).into_string()
+            })?;
             Ok(File {
                 name: file.name,
                 contents: signed::sign(&formatted),

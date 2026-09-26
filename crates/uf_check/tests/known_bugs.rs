@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Minimal reproductions of checker bugs that are filed and not yet fixed.
 //!
 //! The ignored tests here assert the *correct* behaviour, so they fail today.

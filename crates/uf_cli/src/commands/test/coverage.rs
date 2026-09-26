@@ -60,9 +60,10 @@ impl RawCoverage {
             .join(".uf")
             .join("cache")
             .join("coverage")
-            .join(format!("{}-{stamp}", std::process::id()));
-        std::fs::create_dir_all(&directory)
-            .with_context(|| format!("could not create the coverage directory {directory}"))?;
+            .join(uf_infra::cstr!("{}-{stamp}", std::process::id()).into_string());
+        std::fs::create_dir_all(&directory).with_context(|| {
+            uf_infra::cstr!("could not create the coverage directory {directory}").into_string()
+        })?;
         Ok(Self { directory })
     }
 
@@ -204,7 +205,7 @@ pub(super) fn report(
         .any(|reporter| !matches!(reporter, CoverageReporterConfig::Text))
     {
         std::fs::create_dir_all(directory)
-            .with_context(|| format!("could not create {directory}"))?;
+            .with_context(|| uf_infra::cstr!("could not create {directory}").into_string())?;
     }
     for reporter in &chosen {
         let (name, body) = match reporter {
@@ -213,7 +214,8 @@ pub(super) fn report(
             CoverageReporterConfig::Cobertura => (COBERTURA_FILE, cobertura(coverage)),
         };
         let path = directory.join(name);
-        std::fs::write(&path, body).with_context(|| format!("could not write {path}"))?;
+        std::fs::write(&path, body)
+            .with_context(|| uf_infra::cstr!("could not write {path}").into_string())?;
         written.push(path);
     }
 
@@ -287,6 +289,6 @@ fn ratio_payload(ratio: uf_test::Ratio) -> serde_json::Value {
         // Two decimals, so the document is a function of the suite alone: a
         // full-precision float would put the last bits of a division in a
         // file two runs are supposed to be able to compare byte for byte.
-        "percent": format!("{:.2}", ratio.percent()),
+        "percent": uf_infra::cstr!("{:.2}", ratio.percent()).into_string(),
     })
 }

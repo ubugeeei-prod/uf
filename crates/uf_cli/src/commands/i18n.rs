@@ -44,7 +44,7 @@ use crate::ui::Ui;
 /// `i18n/ja-JP.json` back, `i18n/ja-JP.js` merged — and that is what the
 /// `() => import("./ja-JP.js")` in `defineLocales` already points at.
 fn default_catalogue_path(locale: &str) -> Utf8PathBuf {
-    Utf8PathBuf::from("i18n").join(format!("{locale}.json"))
+    Utf8PathBuf::from("i18n").join(uf_infra::cstr!("{locale}.json").into_string())
 }
 
 pub(crate) fn i18n(cwd: &Utf8Path, ui: &mut Ui, command: I18nCommand) -> Result<()> {
@@ -107,17 +107,17 @@ fn extract_command(
 /// the exit code changed with it.
 fn refuse_extraction(report: &ExtractReport) -> Result<()> {
     if !report.unreadable.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} could not be read",
             plural(report.unreadable.len(), "file")
-        );
+        ));
     }
     if !report.problems.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} could not be extracted; nothing was written, because a catalogue \
              missing a message is worse than no catalogue",
             plural(report.problems.len(), "message")
-        );
+        ));
     }
     Ok(())
 }
@@ -181,11 +181,11 @@ fn merge_command(
 fn refuse_merge(report: &MergeReport) -> Result<()> {
     refuse_extraction(&report.extraction)?;
     if !report.stale.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} changed since this file was extracted; nothing was written. \
              Extract again and send the changed messages back out.",
             plural(report.stale.len(), "message")
-        );
+        ));
     }
     Ok(())
 }
@@ -212,7 +212,11 @@ fn render_extracted(ui: &mut Ui, root: &Utf8Path, path: &Utf8Path, report: &Extr
             ],
         );
         renderer.blank(out);
-        renderer.status(out, Status::Success, &format!("wrote {output}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("wrote {output}").as_str(),
+        );
     });
 }
 
@@ -226,12 +230,13 @@ fn render_extract_problems(ui: &mut Ui, report: &ExtractReport) {
         .problems
         .iter()
         .map(|problem| {
-            format!(
+            uf_infra::cstr!(
                 "{}: {} — {}",
                 problem.at,
                 problem.kind.label(),
                 problem.detail
             )
+            .into_string()
         })
         .collect::<Vec<_>>();
 
@@ -241,7 +246,8 @@ fn render_extract_problems(ui: &mut Ui, report: &ExtractReport) {
             renderer.status(
                 out,
                 Status::Warn,
-                &format!("{} could not be read", plural(unreadable.len(), "file")),
+                &uf_infra::cstr!("{} could not be read", plural(unreadable.len(), "file"))
+                    .into_string(),
             );
             renderer.bullet_list(out, 2, &unreadable);
             renderer.blank(out);
@@ -277,7 +283,11 @@ fn render_merged(ui: &mut Ui, root: &Utf8Path, path: &Utf8Path, report: &MergeRe
             ],
         );
         renderer.blank(out);
-        renderer.status(out, Status::Success, &format!("wrote {output}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("wrote {output}").as_str(),
+        );
     });
 }
 
@@ -286,10 +296,13 @@ fn render_merge_problems(ui: &mut Ui, report: &MergeReport) {
         .stale
         .iter()
         .map(|message| {
-            format!(
+            uf_infra::cstr!(
                 "{}: {} ({})",
-                message.key, message.what, message.declared_at
+                message.key,
+                message.what,
+                message.declared_at
             )
+            .into_string()
         })
         .collect::<Vec<_>>();
 
@@ -304,10 +317,11 @@ fn render_merge_problems(ui: &mut Ui, report: &MergeReport) {
         renderer.status(
             out,
             Status::Error,
-            &format!(
+            &uf_infra::cstr!(
                 "{} changed since this file was extracted",
                 plural(stale.len(), "message")
-            ),
+            )
+            .into_string(),
         );
         for message in &stale {
             renderer.status(out, Status::Error, message);

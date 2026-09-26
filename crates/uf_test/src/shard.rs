@@ -228,7 +228,7 @@ pub fn partition_fingerprint(schedule: &[ScheduleEntry], count: u32) -> String {
         hash.write(&[0]);
         hash.write(&entry.weight_micros.to_le_bytes());
     }
-    format!("{:016x}", hash.0)
+    uf_infra::cstr!("{:016x}", hash.0).into_string()
 }
 
 /// FNV-1a over 64 bits.

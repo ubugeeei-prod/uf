@@ -87,12 +87,12 @@ impl RemoteTemplate {
                     .split('/')
                     .all(|part| !part.is_empty() && part.chars().all(repository_character));
             if !valid {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "`{template}` is not a GitHub repository; write `github:owner/repo#<commit>`"
-                );
+                ));
             }
             Some((
-                format!("https://github.com/{repository}.git"),
+                uf_infra::cstr!("https://github.com/{repository}.git").into_string(),
                 reference,
                 template,
             ))
@@ -104,10 +104,10 @@ impl RemoteTemplate {
         };
         if let Some((url, reference, written)) = git {
             if integrity.is_some() {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "`--integrity` pins a tarball, and `{written}` is a git repository: its commit \
                      id is the pin"
-                );
+                ));
             }
             check_scheme(&url, written)?;
             let commit = pinned_commit(reference, written)?;
@@ -118,16 +118,16 @@ impl RemoteTemplate {
             check_scheme(template, template)?;
             let path = template.split(['?', '#']).next().unwrap_or(template);
             if !(path.ends_with(".tar.gz") || path.ends_with(".tgz")) {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "`{template}` is neither a git repository nor a `.tar.gz` tarball; write \
                      `git+{template}#<commit>` for a repository"
-                );
+                ));
             }
             let Some(integrity) = integrity else {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "`{template}` is not pinned. A tarball is fetched only with the digest it must \
                      have: add `--integrity sha512-<base64>` or `--integrity sha256:<hex>`"
-                );
+                ));
             };
             return Ok(Some(Self::Tarball {
                 url: template.to_owned(),
@@ -136,7 +136,9 @@ impl RemoteTemplate {
         }
 
         if integrity.is_some() {
-            bail!("`--integrity` pins a tarball, and `{template}` names no tarball");
+            bail!(uf_infra::cstr!(
+                "`--integrity` pins a tarball, and `{template}` names no tarball"
+            ));
         }
         Ok(None)
     }
@@ -144,8 +146,10 @@ impl RemoteTemplate {
     /// The source, as the summary names it.
     pub(crate) fn label(&self) -> String {
         match self {
-            Self::Git { url, commit } => format!("{url} at {commit}"),
-            Self::Tarball { url, integrity } => format!("{url} ({integrity})"),
+            Self::Git { url, commit } => uf_infra::cstr!("{url} at {commit}").into_string(),
+            Self::Tarball { url, integrity } => {
+                uf_infra::cstr!("{url} ({integrity})").into_string()
+            }
         }
     }
 }
@@ -166,16 +170,18 @@ fn check_scheme(url: &str, written: &str) -> Result<()> {
     if url.starts_with("https://") || url.starts_with("file://") {
         return Ok(());
     }
-    bail!("`{written}` is fetched over a scheme uf does not use for templates; use `https://`")
+    bail!(uf_infra::cstr!(
+        "`{written}` is fetched over a scheme uf does not use for templates; use `https://`"
+    ))
 }
 
 /// A full commit id: 40 hex digits for SHA-1, 64 for SHA-256 repositories.
 fn pinned_commit(reference: &str, written: &str) -> Result<String> {
     if reference.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`{written}` is not pinned. A template is fetched at one commit, written in full: \
              `{written}#<commit>`"
-        );
+        ));
     }
     let hex = reference
         .chars()
@@ -184,15 +190,15 @@ fn pinned_commit(reference: &str, written: &str) -> Result<String> {
         return Ok(reference.to_ascii_lowercase());
     }
     if hex {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`{reference}` is a short commit id, which another commit can come to share; write the \
              commit out in full"
-        );
+        ));
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`{reference}` is a branch or a tag, which can be moved to other code after you read it; \
          pin the template to a commit id instead"
-    )
+    ))
 }
 
 /// `sha512-<base64>` or `sha256:<hex>`.
@@ -211,10 +217,10 @@ fn parse_integrity(integrity: &str) -> Result<Digest> {
     {
         return Ok(Digest::Sha256Hex(value.to_ascii_lowercase()));
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`{integrity}` is not an integrity uf checks; write `sha512-<base64>`, as npm's \
          `integrity` does, or `sha256:<64 hex digits>`"
-    )
+    ))
 }
 
 /// A directory that is removed when it goes out of scope.
@@ -229,9 +235,15 @@ impl Staging {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_nanos());
         let path = Utf8PathBuf::from_path_buf(std::env::temp_dir())
-            .map_err(|path| anyhow!("the temporary directory is not UTF-8: {}", path.display()))?
-            .join(format!("uf-template-{}-{nanos}", std::process::id()));
-        fs::create_dir_all(&path).with_context(|| format!("failed to create {path}"))?;
+            .map_err(|path| {
+                anyhow!(uf_infra::cstr!(
+                    "the temporary directory is not UTF-8: {}",
+                    path.display()
+                ))
+            })?
+            .join(uf_infra::cstr!("uf-template-{}-{nanos}", std::process::id()).into_string());
+        fs::create_dir_all(&path)
+            .with_context(|| uf_infra::cstr!("failed to create {path}").into_string())?;
         Ok(Self { path })
     }
 
@@ -269,10 +281,10 @@ pub(crate) fn fetch(template: &RemoteTemplate, into: &Utf8Path) -> Result<Utf8Pa
                 actual,
             }) = installed
             {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "{url} does not match the integrity it was pinned to, so nothing was \
                      unpacked\n  expected {expected}\n  actual   {actual}"
-                );
+                ));
             }
             installed?;
             Ok(single_directory(into)?.unwrap_or_else(|| into.to_path_buf()))
@@ -286,10 +298,10 @@ pub(crate) fn fetch(template: &RemoteTemplate, into: &Utf8Path) -> Result<Utf8Pa
             git(into, &["checkout", "--quiet", "--detach", "FETCH_HEAD"])?;
             let head = git(into, &["rev-parse", "HEAD"])?;
             if head.trim() != commit {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "{url} gave commit {} when {commit} was asked for",
                     head.trim()
-                );
+                ));
             }
             Ok(into.to_path_buf())
         }
@@ -327,13 +339,17 @@ fn git(dir: &Utf8Path, args: &[&str]) -> Result<String> {
         ])
         .args(args)
         .output()
-        .map_err(|error| anyhow!("failed to run git, which a git template needs: {error}"))?;
+        .map_err(|error| {
+            anyhow!(uf_infra::cstr!(
+                "failed to run git, which a git template needs: {error}"
+            ))
+        })?;
     if !output.status.success() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`git {}` failed: {}",
             args.join(" "),
             String::from_utf8_lossy(&output.stderr).trim()
-        );
+        ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
@@ -341,11 +357,12 @@ fn git(dir: &Utf8Path, args: &[&str]) -> Result<String> {
 /// The one directory `dir` holds when it holds nothing else: the wrapper a
 /// tarball of a repository puts everything in.
 fn single_directory(dir: &Utf8Path) -> Result<Option<Utf8PathBuf>> {
-    let mut entries = fs::read_dir(dir).with_context(|| format!("failed to read {dir}"))?;
+    let mut entries =
+        fs::read_dir(dir).with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?;
     let (Some(first), None) = (entries.next(), entries.next()) else {
         return Ok(None);
     };
-    let first = first.with_context(|| format!("failed to read {dir}"))?;
+    let first = first.with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?;
     if !first.file_type().is_ok_and(|kind| kind.is_dir()) {
         return Ok(None);
     }
@@ -362,20 +379,26 @@ pub(crate) fn copy_into(from: &Utf8Path, to: &Utf8Path, force: bool) -> Result<V
     let mut files = Vec::new();
     let mut stack = vec![from.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {dir}"))? {
-            let entry = entry.with_context(|| format!("failed to read {dir}"))?;
+        for entry in fs::read_dir(&dir)
+            .with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?
+        {
+            let entry =
+                entry.with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?;
             let path = Utf8PathBuf::from_path_buf(entry.path()).map_err(|path| {
-                anyhow!("the template holds a non-UTF-8 path: {}", path.display())
+                anyhow!(uf_infra::cstr!(
+                    "the template holds a non-UTF-8 path: {}",
+                    path.display()
+                ))
             })?;
             let kind = entry
                 .file_type()
-                .with_context(|| format!("failed to read {path}"))?;
+                .with_context(|| uf_infra::cstr!("failed to read {path}").into_string())?;
             let relative = path.strip_prefix(from).unwrap_or(&path).to_path_buf();
             if kind.is_symlink() {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "the template holds a symbolic link, {relative}, and uf copies no link out of a \
                      template: where it points is decided on the machine that unpacks it"
-                );
+                ));
             }
             if kind.is_dir() {
                 if dir == from && relative == ".git" {
@@ -389,22 +412,23 @@ pub(crate) fn copy_into(from: &Utf8Path, to: &Utf8Path, force: bool) -> Result<V
     }
     files.sort();
     if files.is_empty() {
-        bail!("the template holds no files");
+        bail!(uf_infra::cstr!("the template holds no files"));
     }
     if !force && let Some(existing) = files.iter().find(|relative| to.join(relative).exists()) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "refusing to overwrite {}; pass --force to replace generated files",
             to.join(existing)
-        );
+        ));
     }
     let mut written = Vec::with_capacity(files.len());
     for relative in files {
         let target = to.join(&relative);
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+            fs::create_dir_all(parent)
+                .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
         }
         fs::copy(from.join(&relative), &target)
-            .with_context(|| format!("failed to write {target}"))?;
+            .with_context(|| uf_infra::cstr!("failed to write {target}").into_string())?;
         written.push(target);
     }
     Ok(written)

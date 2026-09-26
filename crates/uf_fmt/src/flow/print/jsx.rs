@@ -854,7 +854,7 @@ impl<'a> Printer<'a> {
         match name {
             jsx::Name::Identifier(id) => self.docs.borrowed(&id.name),
             jsx::Name::NamespacedName(ns) => {
-                self.text(&format!("{}:{}", ns.namespace.name, ns.name.name))
+                self.text(uf_infra::cstr!("{}:{}", ns.namespace.name, ns.name.name).as_str())
             }
             jsx::Name::MemberExpression(member) => self.print_jsx_member_name(member),
         }
@@ -877,9 +877,10 @@ impl<'a> Printer<'a> {
                 self.print_node(NodeRef::JsxAttribute(attribute), |p| {
                     let name = match &attribute.name {
                         jsx::attribute::Name::Identifier(id) => p.docs.borrowed(&id.name),
-                        jsx::attribute::Name::NamespacedName(ns) => {
-                            p.text(&format!("{}:{}", ns.namespace.name, ns.name.name))
-                        }
+                        jsx::attribute::Name::NamespacedName(ns) => p.text(
+                            &uf_infra::cstr!("{}:{}", ns.namespace.name, ns.name.name)
+                                .into_string(),
+                        ),
                     };
                     let Some(value) = &attribute.value else {
                         return name;
@@ -934,7 +935,7 @@ impl<'a> Printer<'a> {
         } else {
             content.replace('\'', "&apos;")
         };
-        let text = format!("{quote}{escaped}{quote}");
+        let text = uf_infra::cstr!("{quote}{escaped}{quote}").into_string();
         let doc = self.text(&text);
         if text.contains('\n')
             && let DocKind::Text(owned) = doc.kind

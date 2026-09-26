@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What "the same output" means.
 //!
 //! uf's printer is not Babel's generator, and the snapshots were also run

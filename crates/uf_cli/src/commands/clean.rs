@@ -119,11 +119,12 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
         })
         .collect::<Vec<_>>();
 
-    let summary = format!(
+    let summary = uf_infra::cstr!(
         "{} in {}",
         ByteSize::from_bytes(total_bytes),
         plural(total_files as usize, "file")
-    );
+    )
+    .into_string();
     let dry = dry_run;
     ui.render(|renderer, out| {
         renderer.banner(out, "uf clean", Some(&project));
@@ -142,7 +143,7 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
             renderer.status(
                 out,
                 Status::Info,
-                &format!("{summary} would be removed; run without --dry-run"),
+                uf_infra::cstr!("{summary} would be removed; run without --dry-run").as_str(),
             );
         }
     });
@@ -153,11 +154,15 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
 
     for target in &removed {
         std::fs::remove_dir_all(&target.path)
-            .with_context(|| format!("could not remove {}", target.label))?;
+            .with_context(|| uf_infra::cstr!("could not remove {}", target.label).into_string())?;
     }
 
     ui.render(|renderer, out| {
-        renderer.status(out, Status::Success, &format!("removed {summary}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("removed {summary}").as_str(),
+        );
     });
     Ok(())
 }

@@ -105,7 +105,7 @@ fn in_declaration(declaration: &Declaration<'_>, bounds: (u32, u32), path: &mut 
             in_statements(&global.body.body, bounds, path);
         }
         Declaration::TSExternalModuleDeclaration(module) => {
-            path.push(format!("module \"{}\"", module.id.value));
+            path.push(uf_infra::cstr!("module \"{}\"", module.id.value).into_string());
         }
         other => {
             if let Some(name) = declaration_name(other) {

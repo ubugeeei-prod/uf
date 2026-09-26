@@ -215,17 +215,19 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let target = application_target(&resolved.config, args.target.as_deref(), false, "uf dev")?;
     if target != RouteTarget::Web {
         if ui.is_json() {
-            bail!("uf dev --json supports the web dev server; remove --json for a native target");
+            bail!(uf_infra::cstr!(
+                "uf dev --json supports the web dev server; remove --json for a native target"
+            ));
         }
         return native::dev(ui, &resolved, &args, target);
     }
     if !args.passthrough.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "arguments after `--` are handed to a native target's own dev server, and the web \
              target has none to hand them to: its server is the builder, configured in \
              uf.config.js. Remove `-- {}`, or add `--target native`.",
             args.passthrough.join(" ")
-        );
+        ));
     }
 
     // Exposing the server needs an allowlist; see docs/security.md. Vite
@@ -238,10 +240,10 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
         .is_some_and(|host| host != "127.0.0.1" && host != "localhost")
         && resolved.config.dev.allowed_hosts.is_empty()
     {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf dev --host` exposes the dev server to the network, which needs a non-empty \
              `dev.allowedHosts` in uf.config.js"
-        );
+        ));
     }
 
     // `build.runtime`, then `runtime`, then the host uf has always found — and
@@ -332,7 +334,8 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             renderer.status(
                 out,
                 Status::Info,
-                &format!("{named} changed; restarting with the new environment"),
+                &uf_infra::cstr!("{named} changed; restarting with the new environment")
+                    .into_string(),
             );
         });
         // Read again, and on the same runtime: a reload that dropped it from
@@ -354,7 +357,7 @@ fn serve(
 ) -> Result<Option<String>> {
     while let Some(event) = driver.next_event()? {
         if ui.is_json() {
-            ui.plain(&format!("{}\n", serde_json::to_string(&event)?));
+            ui.plain(uf_infra::cstr!("{}\n", serde_json::to_string(&event)?).as_str());
         }
         match event {
             Event::Listening {
@@ -748,7 +751,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                         &mut stdout,
                         id,
                         METHOD_NOT_FOUND,
-                        &format!("uf lsp does not serve `{method}`"),
+                        uf_infra::cstr!("uf lsp does not serve `{method}`").as_str(),
                     )?;
                 }
             }
@@ -1096,7 +1099,7 @@ fn code_actions(
                     && fix.column == diagnostic.column
             }) {
                 actions.push(json!({
-                    "title": format!("Fix `{}` the way the rule suggests", fix.rule),
+                    "title": uf_infra::cstr!("Fix `{}` the way the rule suggests", fix.rule).into_string(),
                     "kind": QUICK_FIX,
                     "diagnostics": [encode_diagnostic(&lines, diagnostic)],
                     "isPreferred": fix.safety == Safety::Safe,
@@ -1413,7 +1416,7 @@ fn completion_item(index: &LineIndex<'_>, item: &config_file::Item) -> Value {
 fn position_params(message: &Value, method: &str) -> Result<(String, usize, usize), String> {
     let params = message
         .get("params")
-        .ok_or_else(|| format!("`{method}` needs `params`"))?;
+        .ok_or_else(|| uf_infra::cstr!("`{method}` needs `params`").into_string())?;
     let uri = document_uri(message)
         .ok_or_else(|| String::from("`params.textDocument.uri` is required"))?;
     let (line, character) = params
@@ -1639,10 +1642,14 @@ fn read_message(reader: &mut impl BufRead) -> Result<Option<Frame>> {
     }
 
     let Some(length) = length else {
-        bail!("an LSP message arrived without a Content-Length header");
+        bail!(uf_infra::cstr!(
+            "an LSP message arrived without a Content-Length header"
+        ));
     };
     if length > MAX_MESSAGE_BYTES {
-        bail!("an LSP message claimed {length} bytes, over the {MAX_MESSAGE_BYTES} byte limit");
+        bail!(uf_infra::cstr!(
+            "an LSP message claimed {length} bytes, over the {MAX_MESSAGE_BYTES} byte limit"
+        ));
     }
     let mut body = vec![0u8; length];
     reader
@@ -1888,10 +1895,11 @@ mod tests {
     #[test]
     fn messages_are_read_one_frame_at_a_time() {
         let body = r#"{"jsonrpc":"2.0","id":7,"method":"x"}"#;
-        let stream = format!(
+        let stream = uf_infra::cstr!(
             "Content-Length: {n}\r\n\r\n{body}Content-Length: {n}\r\n\r\n{body}",
             n = body.len()
-        );
+        )
+        .into_string();
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         // Two messages on one stream, and then end of input rather than a
@@ -1906,10 +1914,10 @@ mod tests {
     #[test]
     fn other_headers_are_skipped() {
         let body = r#"{"id":1}"#;
-        let stream = format!(
+        let stream = uf_infra::cstr!(
             "Content-Type: application/vscode-jsonrpc; charset=utf-8\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
-        );
+        ).into_string();
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         assert_eq!(body_of(read_message(&mut reader).unwrap())["id"], json!(1));
@@ -1921,11 +1929,12 @@ mod tests {
     fn a_body_that_is_not_json_leaves_the_stream_in_sync() {
         let broken = "{not json";
         let good = r#"{"id":2}"#;
-        let stream = format!(
+        let stream = uf_infra::cstr!(
             "Content-Length: {}\r\n\r\n{broken}Content-Length: {}\r\n\r\n{good}",
             broken.len(),
             good.len()
-        );
+        )
+        .into_string();
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         assert!(matches!(
@@ -1939,7 +1948,8 @@ mod tests {
     /// document is refused before it is allocated.
     #[test]
     fn an_absurd_content_length_is_refused_rather_than_allocated() {
-        let stream = format!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1);
+        let stream =
+            uf_infra::cstr!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1).into_string();
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         let error = read_message(&mut reader).expect_err("a refusal");

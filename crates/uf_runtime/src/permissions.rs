@@ -232,7 +232,7 @@ impl fmt::Display for PermissionError {
             Self::Unenforceable { host, permissions } => {
                 let names = permissions
                     .iter()
-                    .map(|permission| format!("`{permission}`"))
+                    .map(|permission| compact_str::format_compact!("`{permission}`").into_string())
                     .collect::<Vec<_>>()
                     .join(", ");
                 match host {
@@ -336,10 +336,10 @@ fn node_arguments(
     // right spelling. Deno has no such choice, which is what
     // `PermissionError::Unexpressible` is about.
     for path in toolchain.read.iter().chain(&permissions.read) {
-        arguments.push(format!("--allow-fs-read={path}"));
+        arguments.push(compact_str::format_compact!("--allow-fs-read={path}").into_string());
     }
     for path in toolchain.write.iter().chain(&permissions.write) {
-        arguments.push(format!("--allow-fs-write={path}"));
+        arguments.push(compact_str::format_compact!("--allow-fs-write={path}").into_string());
     }
     // Both of these Node itself warns about at startup —
     // "must be used with extreme caution. It could invalidate the permission
@@ -400,7 +400,7 @@ fn deno_arguments(
             .map(|entry| entry.as_str())
             .collect::<Vec<_>>()
             .join(",");
-        arguments.push(format!("--allow-{permission}={joined}"));
+        arguments.push(compact_str::format_compact!("--allow-{permission}={joined}").into_string());
     }
     Ok(arguments)
 }
@@ -443,18 +443,27 @@ pub fn explain(
                  list it could only widen"
                     .to_string()
             }
-            (false, _, _) => format!("not enforced: {} has no such flag", host.display_name()),
+            (false, _, _) => compact_str::format_compact!(
+                "not enforced: {} has no such flag",
+                host.display_name()
+            )
+            .into_string(),
             (true, RuntimeHost::Node, Permission::Read) => {
                 "`node --permission --allow-fs-read`".to_string()
             }
             (true, RuntimeHost::Node, Permission::Write) => {
                 "`node --permission --allow-fs-write`".to_string()
             }
-            (true, _, _) => format!("`deno run --allow-{permission}`"),
+            (true, _, _) => {
+                compact_str::format_compact!("`deno run --allow-{permission}`").into_string()
+            }
         };
-        lines.push(format!(
-            "{permission}: {declared} declared, {added} added by uf, {how}"
-        ));
+        lines.push(
+            compact_str::format_compact!(
+                "{permission}: {declared} declared, {added} added by uf, {how}"
+            )
+            .into_string(),
+        );
     }
     lines
 }

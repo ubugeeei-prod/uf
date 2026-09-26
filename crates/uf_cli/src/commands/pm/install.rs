@@ -277,7 +277,7 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool, prod: bool) -> 
     };
     let outcome = outcome.map_err(|error| match uf_pm::run::failure_hint(manager, operation) {
         Some(hint) if matches!(error, uf_pm::ManagerRunError::Failed { .. }) => {
-            anyhow::anyhow!("{error}\n\n  {hint}")
+            anyhow::anyhow!(uf_infra::cstr!("{error}\n\n  {hint}"))
         }
         _ => frozen_hint(error, frozen),
     })?;
@@ -338,17 +338,18 @@ fn unrun_scripts_line(
     let declared = unrun
         .iter()
         .map(|(manifest, names)| {
-            format!(
+            uf_infra::cstr!(
                 "{} declares {}",
                 crate::support::relative_to(root, manifest),
                 names.join(", ")
             )
+            .into_string()
         })
         .collect::<Vec<_>>()
         .join("; ");
-    Some(format!(
+    Some(uf_infra::cstr!(
         "{declared}; uf does not run package.json scripts, so project tasks belong in uf.config.js"
-    ))
+    ).into_string())
 }
 
 /// Record what the workspace resolved to, in `.uf/install.json`.
@@ -379,7 +380,8 @@ fn write_plan(
 ) -> Result<Utf8PathBuf> {
     let runtime = uf_rm::RuntimeManagerPlan::infer_from_config(&resolved.config)?;
     let state_dir = resolved.root.join(".uf");
-    std::fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    std::fs::create_dir_all(&state_dir)
+        .with_context(|| uf_infra::cstr!("failed to create {state_dir}").into_string())?;
     let path = state_dir.join("install.json");
     let lockfile = workspace
         .map(|workspace| workspace.lockfile.clone())
@@ -465,17 +467,18 @@ impl UfLockGuard {
             return Ok(());
         }
         match before {
-            Some(bytes) => std::fs::write(&self.path, bytes)
-                .with_context(|| format!("failed to restore {}", self.path))?,
+            Some(bytes) => std::fs::write(&self.path, bytes).with_context(|| {
+                uf_infra::cstr!("failed to restore {}", self.path).into_string()
+            })?,
             None => std::fs::remove_file(&self.path)
-                .with_context(|| format!("failed to remove {}", self.path))?,
+                .with_context(|| uf_infra::cstr!("failed to remove {}", self.path).into_string())?,
         }
         let name = self.path.file_name().unwrap_or("uf.lock");
-        Err(anyhow!(
+        Err(anyhow!(uf_infra::cstr!(
             "{name} does not match this workspace's package manifests\n\n  \
              --frozen-lockfile installs what the lockfiles pin and changes nothing\n  \
              run `uf install` and commit the {name} it writes"
-        ))
+        )))
     }
 }
 
@@ -488,11 +491,11 @@ fn frozen_hint(error: uf_pm::ManagerRunError, frozen: bool) -> anyhow::Error {
     if !frozen || !matches!(error, uf_pm::ManagerRunError::Failed { .. }) {
         return anyhow!(error);
     }
-    anyhow!(
+    anyhow!(uf_infra::cstr!(
         "{error}\n\n  \
          a frozen install refuses a lockfile the manifests have moved away from\n  \
          the manager named the packages above; run `uf install` and commit the lockfile it writes"
-    )
+    ))
 }
 
 /// How many attestations one install will read.
@@ -527,20 +530,22 @@ fn refuse_confusion(
     // nothing after it, and "2 packages resolves" is the kind of sentence a
     // reader stops trusting the rest of.
     let headline = if found.len() == 1 {
-        format!(
+        uf_infra::cstr!(
             "{} resolves from a registry its scope is not bound to",
             plural(1, "package")
         )
+        .into_string()
     } else {
-        format!(
+        uf_infra::cstr!(
             "{} resolve from registries their scopes are not bound to",
             plural(found.len(), "package")
         )
+        .into_string()
     };
-    Err(anyhow!(
+    Err(anyhow!(uf_infra::cstr!(
         "{headline}\n\n  {listed}\n\n  {}",
         uf_pm::confusion::REMEDY
-    ))
+    )))
 }
 
 /// What the provenance reads found.
@@ -710,7 +715,7 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
         renderer.summary(
             out,
             Status::Success,
-            &format!("already up to date in {elapsed}"),
+            uf_infra::cstr!("already up to date in {elapsed}").as_str(),
             &[],
         );
         return;
@@ -744,7 +749,7 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
     renderer.summary(
         out,
         Status::Success,
-        &format!("dependencies installed in {elapsed}"),
+        uf_infra::cstr!("dependencies installed in {elapsed}").as_str(),
         &[],
     );
 }
@@ -788,10 +793,10 @@ fn render_provenance(renderer: &Renderer, out: &mut String, summary: &Provenance
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            uf_infra::cstr!(
                 "{} were not read: uf reads at most {MAX_PROVENANCE_READS} attestations in one install",
                 plural(summary.past_the_cap, "package")
-            ),
+            ).as_str(),
         );
     }
 
@@ -810,10 +815,11 @@ fn render_provenance(renderer: &Renderer, out: &mut String, summary: &Provenance
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            &uf_infra::cstr!(
                 "and {} more with no attestation",
                 summary.unattested.len() - listed.len()
-            ),
+            )
+            .into_string(),
         );
     }
     // Not a failure. Most of npm publishes no provenance, and a tool that
@@ -863,7 +869,9 @@ pub(super) fn render_change_table(renderer: &Renderer, out: &mut String, delta: 
         .map(|change| match change.kind {
             ChangeKind::Added => change.after.to_string(),
             ChangeKind::Removed => change.before.to_string(),
-            ChangeKind::Updated => format!("{}{arrow}{}", change.before, change.after),
+            ChangeKind::Updated => {
+                uf_infra::cstr!("{}{arrow}{}", change.before, change.after).into_string()
+            }
             ChangeKind::Moved => change.after.to_string(),
         })
         .collect();
@@ -886,7 +894,11 @@ pub(super) fn render_change_table(renderer: &Renderer, out: &mut String, delta: 
     let hidden = delta.changes.len().saturating_sub(versions.len());
     if hidden > 0 {
         push_spaces(out, 4);
-        renderer.line(out, renderer.theme().muted, &format!("and {hidden} more"));
+        renderer.line(
+            out,
+            renderer.theme().muted,
+            uf_infra::cstr!("and {hidden} more").as_str(),
+        );
     }
 }
 
@@ -948,7 +960,8 @@ pub(crate) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
             DetectionSource::Lockfile { lockfile, .. } => lockfile.file_name(),
             DetectionSource::WorkspaceRoot { .. } => "the workspace root",
         };
-        return format!("{evidence} names uf, whose resolver cannot fetch yet");
+        return uf_infra::cstr!("{evidence} names uf, whose resolver cannot fetch yet")
+            .into_string();
     }
     match source {
         // `packageManager`, or its deprecated spelling, which cannot disagree
@@ -956,10 +969,12 @@ pub(crate) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
         // move.
         DetectionSource::ConfigOverride => "packageManager in uf.config.js".to_owned(),
         DetectionSource::PackageManagerField { spec, .. } => {
-            format!("packageManager field: {}@{}", spec.manager, spec.version)
+            uf_infra::cstr!("packageManager field: {}@{}", spec.manager, spec.version).into_string()
         }
         DetectionSource::Lockfile { lockfile, .. } => lockfile.file_name().to_owned(),
-        DetectionSource::WorkspaceRoot { root, .. } => format!("workspace root {root}"),
+        DetectionSource::WorkspaceRoot { root, .. } => {
+            uf_infra::cstr!("workspace root {root}").into_string()
+        }
         DetectionSource::Default => "uf's default".to_owned(),
     }
 }
@@ -971,7 +986,7 @@ pub(crate) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
 /// several of those take.
 fn runtime_label(config: &uf_config::UniflowedConfig) -> Option<String> {
     let host = resolve_host(config).ok()?;
-    Some(format!("{} · {}", host.name(), host.program))
+    Some(uf_infra::cstr!("{} · {}", host.name(), host.program).into_string())
 }
 
 /// The lockfile, its size, and how many packages it pins.
@@ -982,12 +997,14 @@ pub(super) fn lockfile_label(root: &Utf8Path, snapshot: &LockfileSnapshot) -> St
         .unwrap_or(&snapshot.path)
         .to_string();
     if !snapshot.present {
-        return format!("{name} · not written");
+        return uf_infra::cstr!("{name} · not written").into_string();
     }
     let size = ByteSize::from_bytes(snapshot.bytes);
     match snapshot.package_count() {
-        Some(count) => format!("{name} · {} · {size}", plural(count, "package")),
-        None => format!("{name} · {size}"),
+        Some(count) => {
+            uf_infra::cstr!("{name} · {} · {size}", plural(count, "package")).into_string()
+        }
+        None => uf_infra::cstr!("{name} · {size}").into_string(),
     }
 }
 
@@ -1020,7 +1037,7 @@ impl<'a> Screen<'a> {
             live,
             renderer,
             started: Instant::now(),
-            header: format!("uf install · {project}"),
+            header: uf_infra::cstr!("uf install · {project}").into_string(),
             manager: manager.to_owned(),
             rows: Vec::new(),
             echoed: false,
@@ -1098,7 +1115,8 @@ fn frame(
 /// because a title and a manager name run together read as one string. The
 /// title itself is cut last, and only when it alone is wider than the window.
 fn header_line(row: &mut String, renderer: &Renderer, header: &FrameHeader<'_>, width: usize) {
-    let right = format!("{} · {}", header.manager, format_duration(header.elapsed));
+    let right =
+        uf_infra::cstr!("{} · {}", header.manager, format_duration(header.elapsed)).into_string();
     let indent = INDENT.min(width);
     let title = truncate_to_width(header.title, width - indent);
     let title_width = display_width(title);
@@ -1119,7 +1137,7 @@ impl InstallObserver for Screen<'_> {
         // be redrawn is a line the redraw erases.
         self.live.clear();
         self.echoed = true;
-        let text = format!("{text}\n");
+        let text = uf_infra::cstr!("{text}\n").into_string();
         match stream {
             ManagerStream::Stdout => self.ui.plain(&text),
             ManagerStream::Stderr => self.ui.plain_err(&text),

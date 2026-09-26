@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What it costs to render a large report.
 //!
 //! The lint runner can produce thousands of diagnostics in one pass, and the

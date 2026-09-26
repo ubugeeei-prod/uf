@@ -135,10 +135,11 @@ fn component_parameters(node: &mut Value) -> Result<Vec<Value>, TransformError> 
                     other => {
                         return Err(refuse(
                             &param,
-                            format!(
+                            uf_infra::cstr!(
                                 "unhandled {} encountered in component rest parameter",
                                 other.unwrap_or("node")
-                            ),
+                            )
+                            .into_string(),
                         ));
                     }
                 }
@@ -156,10 +157,11 @@ fn component_parameters(node: &mut Value) -> Result<Vec<Value>, TransformError> 
             other => {
                 return Err(refuse(
                     &param,
-                    format!(
+                    uf_infra::cstr!(
                         "unknown component parameter type {:?}",
                         other.unwrap_or("node")
-                    ),
+                    )
+                    .into_string(),
                 ));
             }
         }

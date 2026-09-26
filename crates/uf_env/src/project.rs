@@ -104,10 +104,11 @@ impl Envs {
         let hash: String = digest
             .iter()
             .take(8)
-            .map(|byte| format!("{byte:02x}"))
+            .map(|byte| uf_infra::cstr!("{byte:02x}").into_string())
             .collect();
         let name = absolute.file_name().unwrap_or("project");
-        self.root.join(format!("{name}-{hash}"))
+        self.root
+            .join(uf_infra::cstr!("{name}-{hash}").into_string())
     }
 
     /// Where the project's links are.
@@ -420,7 +421,8 @@ pub fn link_pin(envs: &Envs, store: &Store, pin: &Pin) -> Result<Utf8PathBuf, En
 
     let pins = envs.root.join("pins");
     let directory = pins.join(pin.slug());
-    let staging = pins.join(format!(".{}-{}", pin.slug(), std::process::id()));
+    let staging =
+        pins.join(uf_infra::cstr!(".{}-{}", pin.slug(), std::process::id()).into_string());
     let _ = fs::remove_dir_all(&staging);
     let staged_bin = staging.join("bin");
     fs::create_dir_all(&staged_bin).map_err(|source| EnvError::Write {

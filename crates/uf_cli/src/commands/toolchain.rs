@@ -217,7 +217,8 @@ impl Store {
 
     /// Where `uf@<version>` is unpacked, whoever unpacked it.
     fn version_dir(&self, version: &str) -> Utf8PathBuf {
-        self.runtimes.join(format!("uf@{version}"))
+        self.runtimes
+            .join(uf_infra::cstr!("uf@{version}").into_string())
     }
 
     /// The `uf` binary of an installed version.
@@ -277,18 +278,20 @@ fn is_version(text: &str) -> bool {
 /// with the rest of `rm` (ubugeeei-prod/uf#1387).
 pub(crate) fn use_runtime(ui: &mut Ui, runtime: &str) -> Result<()> {
     let requested = RuntimeReference::parse(runtime)
-        .ok_or_else(|| anyhow!("runtime must look like uf@0.1.0"))?;
+        .ok_or_else(|| anyhow!(uf_infra::cstr!("runtime must look like uf@0.1.0")))?;
     if requested.name != RUNTIME_NAME {
-        bail!(
+        bail!(uf_infra::cstr!(
             "uf use switches the uf toolchain, and {:?} is not uf\n\n  \
              the JavaScript host a project runs on is `host.runtime` in uf.config.js, \
              installed with `uf env install`",
             requested.name.as_str()
-        );
+        ));
     }
     let version = requested.version.to_string();
     if !is_version(&version) {
-        bail!("{version:?} is not a uf version: a release is named like uf@0.1.0");
+        bail!(uf_infra::cstr!(
+            "{version:?} is not a uf version: a release is named like uf@0.1.0"
+        ));
     }
     let store = Store::from_process();
 
@@ -320,7 +323,7 @@ pub(crate) fn use_runtime(ui: &mut Ui, runtime: &str) -> Result<()> {
     });
     let report = activate(&store, &version, origin)?;
 
-    let runtime_label = format!("uf@{version}");
+    let runtime_label = uf_infra::cstr!("uf@{version}").into_string();
     let shim = report.shim.to_string();
     let state = report.active_runtime.to_string();
     let manifest = report.runtime_manifest.to_string();
@@ -330,10 +333,10 @@ pub(crate) fn use_runtime(ui: &mut Ui, runtime: &str) -> Result<()> {
     let steps = plan
         .steps
         .iter()
-        .map(|step| format!("{step:?}"))
+        .map(|step| uf_infra::cstr!("{step:?}").into_string())
         .collect::<Vec<_>>();
     let step_labels = steps.iter().map(String::as_str).collect::<Vec<_>>();
-    let summary = format!("now using {runtime_label}");
+    let summary = uf_infra::cstr!("now using {runtime_label}").into_string();
 
     let mut rows = vec![
         KeyValue::new("source", source),
@@ -399,12 +402,12 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
         requested.to_owned()
     };
     if !is_version(&version) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{version:?} is not a uf version: a release is named like 0.0.0-alpha.35, \
              or uf@0.0.0-alpha.35"
-        );
+        ));
     }
-    let runtime_label = format!("uf@{version}");
+    let runtime_label = uf_infra::cstr!("uf@{version}").into_string();
     let active = active_version(store);
 
     if active.as_deref() == Some(version.as_str())
@@ -427,7 +430,8 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
             renderer.status(
                 out,
                 Status::Success,
-                &format!("{runtime_label} is already active; nothing changed"),
+                &uf_infra::cstr!("{runtime_label} is already active; nothing changed")
+                    .into_string(),
             );
         });
         return Ok(());
@@ -443,8 +447,11 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
     let report = activate(store, &version, origin)?;
 
     let from = match &active {
-        Some(active) => format!("uf@{active}"),
-        None => format!("uf@{OWN_VERSION}, this binary; no runtime in the store was active"),
+        Some(active) => uf_infra::cstr!("uf@{active}").into_string(),
+        None => {
+            uf_infra::cstr!("uf@{OWN_VERSION}, this binary; no runtime in the store was active")
+                .into_string()
+        }
     };
     let shim = report.shim.to_string();
     let binary = report.runtime_binary.to_string();
@@ -466,7 +473,11 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
         renderer.banner(out, "uf self-update", Some(&runtime_label));
         renderer.key_values(out, 2, &rows);
         renderer.blank(out);
-        renderer.status(out, Status::Success, &format!("now using {runtime_label}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("now using {runtime_label}").as_str(),
+        );
     });
     Ok(())
 }
@@ -479,38 +490,42 @@ fn check(ui: &mut Ui, store: &Store) -> Result<()> {
     let newest = resolve(store, "latest")?;
     let (current, active) = match active_version(store) {
         Some(version) => {
-            let detail = format!("uf@{version}, linked at {}", store.bin_dir.join("uf"));
+            let detail = uf_infra::cstr!("uf@{version}, linked at {}", store.bin_dir.join("uf"))
+                .into_string();
             (version, detail)
         }
         None => (
             OWN_VERSION.to_owned(),
-            format!("uf@{OWN_VERSION}, this binary; no runtime in the store is active"),
+            uf_infra::cstr!("uf@{OWN_VERSION}, this binary; no runtime in the store is active")
+                .into_string(),
         ),
     };
-    let newest_label = format!("uf@{newest}");
+    let newest_label = uf_infra::cstr!("uf@{newest}").into_string();
 
     let (status, summary) = match order(&newest, &current) {
         Some(Ordering::Greater) => (
             Status::Info,
-            format!("{newest_label} is newer; `uf self-update` installs it"),
+            uf_infra::cstr!("{newest_label} is newer; `uf self-update` installs it").into_string(),
         ),
         Some(Ordering::Less) => (
             Status::Info,
-            format!("uf@{current} is newer than the newest release, {newest_label}"),
+            uf_infra::cstr!("uf@{current} is newer than the newest release, {newest_label}")
+                .into_string(),
         ),
         Some(Ordering::Equal) => (
             Status::Success,
-            format!("uf@{current} is the newest release"),
+            uf_infra::cstr!("uf@{current} is the newest release").into_string(),
         ),
         None if newest == current => (
             Status::Success,
-            format!("uf@{current} is the newest release"),
+            uf_infra::cstr!("uf@{current} is the newest release").into_string(),
         ),
         None => (
             Status::Info,
-            format!(
+            uf_infra::cstr!(
                 "the newest release is {newest_label}, and uf cannot order it against uf@{current}"
-            ),
+            )
+            .into_string(),
         ),
     };
 
@@ -542,32 +557,32 @@ fn order(left: &str, right: &str) -> Option<Ordering> {
 fn roll_back(ui: &mut Ui, store: &Store) -> Result<()> {
     let record = store.previous_record();
     let Some(previous) = recorded_previous(store) else {
-        bail!(
+        bail!(uf_infra::cstr!(
             "there is no version to roll back to: {record} names none\n\n  \
              it is written when `uf self-update`, `uf use` or the installer switches uf \
              from one runtime in the store to another"
-        );
+        ));
     };
     let active = active_version(store);
     if active.as_deref() == Some(previous.as_str()) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "uf@{previous} is the version recorded to roll back to, and it is already active\n\n  \
              `uf self-update <version>` switches to any other release"
-        );
+        ));
     }
     if !store.has_complete(&previous) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "uf@{previous} is the version to roll back to, and {} no longer holds all of it\n\n  \
              `uf self-update {previous}` downloads it again",
             store.version_dir(&previous)
-        );
+        ));
     }
 
     let report = activate(store, &previous, Origin::AlreadyInstalled)?;
-    let runtime_label = format!("uf@{previous}");
+    let runtime_label = uf_infra::cstr!("uf@{previous}").into_string();
     let from = active.map_or_else(
         || "no runtime in the store".to_owned(),
-        |active| format!("uf@{active}"),
+        |active| uf_infra::cstr!("uf@{active}").into_string(),
     );
     let shim = report.shim.to_string();
     let binary = report.runtime_binary.to_string();
@@ -588,7 +603,7 @@ fn roll_back(ui: &mut Ui, store: &Store) -> Result<()> {
         renderer.status(
             out,
             Status::Success,
-            &format!("rolled back to {runtime_label}"),
+            uf_infra::cstr!("rolled back to {runtime_label}").as_str(),
         );
     });
     Ok(())
@@ -596,10 +611,9 @@ fn roll_back(ui: &mut Ui, store: &Store) -> Result<()> {
 
 /// The line saying which version a switch kept for `--rollback`, if any.
 fn kept(report: &Switched) -> Option<String> {
-    report
-        .replaced
-        .as_ref()
-        .map(|replaced| format!("uf@{replaced}, which `uf self-update --rollback` returns to"))
+    report.replaced.as_ref().map(|replaced| {
+        uf_infra::cstr!("uf@{replaced}, which `uf self-update --rollback` returns to").into_string()
+    })
 }
 
 /// Point the machine's `uf` at `version`, and record what it is and what it
@@ -631,7 +645,9 @@ fn resolve(store: &Store, requested: &str) -> Result<String> {
     let printed = run_installer(store, requested, StopAfter::Resolve)?;
     let version = printed.trim();
     if !is_version(version) {
-        bail!("the uf installer resolved uf@{requested} to {version:?}, which is not a version");
+        bail!(uf_infra::cstr!(
+            "the uf installer resolved uf@{requested} to {version:?}, which is not a version"
+        ));
     }
     Ok(version.to_owned())
 }
@@ -640,10 +656,10 @@ fn resolve(store: &Store, requested: &str) -> Result<String> {
 fn acquire(store: &Store, version: &str) -> Result<()> {
     run_installer(store, version, StopAfter::Unpack)?;
     if !store.has_complete(version) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "the uf installer reported success, and {} does not hold uf, ufr and ufx",
             store.version_dir(version)
-        );
+        ));
     }
     Ok(())
 }
@@ -677,7 +693,7 @@ fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<
     let mut stdin = child
         .stdin
         .take()
-        .ok_or_else(|| anyhow!("sh accepted no script on stdin"))?;
+        .ok_or_else(|| anyhow!(uf_infra::cstr!("sh accepted no script on stdin")))?;
     // A script that stops early — at a resolution, or at a failure it has
     // already explained — may close its end before reading the rest. What
     // happened is in its exit status, not in the pipe.
@@ -698,10 +714,15 @@ fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<
             StopAfter::Resolve => "resolve",
             StopAfter::Unpack => "install",
         };
-        bail!("the uf installer could not {verb} uf@{version}");
+        bail!(uf_infra::cstr!(
+            "the uf installer could not {verb} uf@{version}"
+        ));
     }
-    String::from_utf8(output.stdout)
-        .map_err(|_| anyhow!("the uf installer printed a version that is not UTF-8"))
+    String::from_utf8(output.stdout).map_err(|_| {
+        anyhow!(uf_infra::cstr!(
+            "the uf installer printed a version that is not UTF-8"
+        ))
+    })
 }
 
 #[cfg(windows)]
@@ -729,7 +750,7 @@ fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<
     let mut stdin = child
         .stdin
         .take()
-        .ok_or_else(|| anyhow!("pwsh accepted no script on stdin"))?;
+        .ok_or_else(|| anyhow!(uf_infra::cstr!("pwsh accepted no script on stdin")))?;
     match stdin.write_all(INSTALLER_POWERSHELL.as_bytes()) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
@@ -745,19 +766,24 @@ fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<
             StopAfter::Resolve => "resolve",
             StopAfter::Unpack => "install",
         };
-        bail!("the uf installer could not {verb} uf@{version}");
+        bail!(uf_infra::cstr!(
+            "the uf installer could not {verb} uf@{version}"
+        ));
     }
-    String::from_utf8(output.stdout)
-        .map_err(|_| anyhow!("the uf installer printed a version that is not UTF-8"))
+    String::from_utf8(output.stdout).map_err(|_| {
+        anyhow!(uf_infra::cstr!(
+            "the uf installer printed a version that is not UTF-8"
+        ))
+    })
 }
 
 #[cfg(not(any(unix, windows)))]
 fn run_installer(_store: &Store, version: &str, _stop_after: StopAfter) -> Result<String> {
-    bail!(
+    bail!(uf_infra::cstr!(
         "uf publishes no build for this platform yet, so uf@{version} cannot be acquired here\n\n  \
          build from source instead:\n    \
          cargo install --git https://github.com/ubugeeei-prod/uf uf_cli"
-    )
+    ))
 }
 
 /// The `source` a manifest already records, when it is one uf writes.

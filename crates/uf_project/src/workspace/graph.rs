@@ -13,9 +13,13 @@ use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
+use fixedbitset::FixedBitSet;
 use globset::GlobBuilder;
+use hashbrown::HashMap;
+use rustc_hash::FxBuildHasher;
 use serde_json::Value;
 use uf_config::{CONFIG_FILES, UniflowedConfig};
+use uf_infra::InlineVec;
 
 use super::{MAX_DEPTH, Workspace, discover_workspaces, package_name, package_workspace_patterns};
 
@@ -46,33 +50,55 @@ pub fn workspace_dependencies(root: &Utf8Path, workspaces: &[Workspace]) -> Vec<
         })
         .collect();
 
+    // Borrow names once. Each manifest key is resolved by hash lookup instead
+    // of cloning it into a tree and scanning all workspace names afterward.
+    let mut by_name: HashMap<&str, InlineVec<usize, 2>, FxBuildHasher> =
+        HashMap::with_capacity_and_hasher(names.len(), FxBuildHasher);
+    for (at, name) in names.iter().enumerate() {
+        by_name.entry(name.as_str()).or_default().push(at);
+    }
     workspaces
         .iter()
         .enumerate()
         .map(|(at, workspace)| {
-            let wanted = dependency_names(&root.join(&workspace.path).join("package.json"));
-            names
-                .iter()
-                .enumerate()
-                .filter(|(other, name)| *other != at && wanted.contains(name.as_str()))
-                .map(|(other, _)| other)
-                .collect()
+            dependency_indices(
+                &root.join(&workspace.path).join("package.json"),
+                &by_name,
+                names.len(),
+                at,
+            )
         })
         .collect()
 }
 
-fn dependency_names(manifest: &Utf8Path) -> BTreeSet<String> {
-    let Ok(source) = fs::read_to_string(manifest) else {
-        return BTreeSet::new();
+fn dependency_indices(
+    path: &Utf8Path,
+    by_name: &HashMap<&str, InlineVec<usize, 2>, FxBuildHasher>,
+    count: usize,
+    own: usize,
+) -> Vec<usize> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return Vec::new();
     };
     let Ok(manifest) = serde_json::from_str::<Value>(&source) else {
-        return BTreeSet::new();
+        return Vec::new();
     };
-    DEPENDENCY_FIELDS
+    let mut wanted = FixedBitSet::with_capacity(count);
+    for name in DEPENDENCY_FIELDS
         .iter()
         .filter_map(|field| manifest.get(field).and_then(Value::as_object))
-        .flat_map(|dependencies| dependencies.keys().cloned())
-        .collect()
+        .flat_map(|dependencies| dependencies.keys())
+    {
+        if let Some(indices) = by_name.get(name.as_str()) {
+            for &other in indices {
+                if other != own {
+                    wanted.insert(other);
+                }
+            }
+        }
+    }
+    // Bit iteration retains workspace order and deduplicates all four fields.
+    wanted.ones().collect()
 }
 
 /// The workspace the project at `root` belongs to: its root, and its members.

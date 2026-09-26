@@ -397,7 +397,9 @@ impl<'a> Printer<'a> {
                     uf_config::QuoteStyle::Double => "\"",
                 };
                 let node = NodeRef::Expression(expression);
-                self.print_node(node, |p| p.text(&format!("{quote}{content}{quote}")))
+                self.print_node(node, |p| {
+                    p.text(uf_infra::cstr!("{quote}{content}{quote}").as_str())
+                })
             }
             _ => self.print_expression(expression),
         }

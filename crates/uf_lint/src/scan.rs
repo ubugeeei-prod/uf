@@ -13,6 +13,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
+use nonmax::NonMaxUsize;
 use uf_infra::LineIndex;
 use uf_profiler::profile_span;
 
@@ -103,7 +104,7 @@ pub(crate) struct FileFacts {
     /// The file mentions React Native at all.
     pub mentions_react_native: bool,
     /// Index into [`FileScan::lines`] of the first line with any code on it.
-    pub first_code_line: Option<usize>,
+    pub first_code_line: Option<NonMaxUsize>,
     /// The file has at least one ESM `import` statement.
     pub has_esm_import: bool,
 }
@@ -153,7 +154,7 @@ impl<'a> FileScan<'a> {
             depth = depth.saturating_add_signed(scanned.brace_delta);
 
             if facts.first_code_line.is_none() && !line.code().trim().is_empty() {
-                facts.first_code_line = Some(lines.len());
+                facts.first_code_line = NonMaxUsize::new(lines.len());
             }
 
             lines.push(line);

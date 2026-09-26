@@ -933,6 +933,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast-float2"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6e8948ce679d00a02a94739ea185595dca7118ed04feb991127e443bd3d761f"
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -952,6 +958,12 @@ name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
+
+[[package]]
+name = "fixedbitset"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
 name = "flate2"
@@ -4057,6 +4069,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
 
 [[package]]
+name = "string-interner"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad3df9b59e2eded8d825c7c4363ad339a20fb6bc0b9a4778560f518f59910b15"
+dependencies = [
+ "hashbrown 0.16.1",
+ "serde",
+]
+
+[[package]]
 name = "strong_hash"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4212,6 +4234,12 @@ dependencies = [
  "unicode-linebreak",
  "unicode-width",
 ]
+
+[[package]]
+name = "thin-vec"
+version = "0.2.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4568d7e143ec86d2021c338bae2afa88699e84b8e0af523626654fe6f03a1748"
 
 [[package]]
 name = "thiserror"
@@ -4529,6 +4557,7 @@ name = "uf_doc"
 version = "0.9.0"
 dependencies = [
  "camino",
+ "compact_str",
  "serde",
  "similar-asserts",
  "tempfile",
@@ -4568,12 +4597,14 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_config",
+ "uf_infra",
 ]
 
 [[package]]
 name = "uf_flow"
 version = "0.9.0"
 dependencies = [
+ "compact_str",
  "flow_parser",
  "thiserror",
 ]
@@ -4601,6 +4632,7 @@ name = "uf_i18n"
 version = "0.9.0"
 dependencies = [
  "camino",
+ "compact_str",
  "serde",
  "serde_json",
  "sha2",
@@ -4616,12 +4648,15 @@ version = "0.9.0"
 dependencies = [
  "bumpalo",
  "compact_str",
+ "criterion",
+ "fast-float2",
  "memchr",
  "phf",
  "rustc-hash",
  "simdutf8",
  "smallvec",
  "tempfile",
+ "uf_profiler",
 ]
 
 [[package]]
@@ -4644,11 +4679,15 @@ name = "uf_lint"
 version = "0.9.0"
 dependencies = [
  "criterion",
+ "nonmax",
  "phf",
+ "rustc-hash",
  "serde",
  "serde_json",
  "sha2",
+ "string-interner",
  "tempfile",
+ "thin-vec",
  "thiserror",
  "uf_config",
  "uf_flow",
@@ -4718,12 +4757,16 @@ version = "0.9.0"
 dependencies = [
  "camino",
  "compact_str",
+ "fixedbitset",
  "globset",
+ "hashbrown 0.17.1",
  "ignore",
+ "rustc-hash",
  "serde_json",
  "tempfile",
  "thiserror",
  "uf_config",
+ "uf_infra",
  "walkdir",
 ]
 
@@ -4751,6 +4794,7 @@ dependencies = [
  "thiserror",
  "uf_config",
  "uf_fmt",
+ "uf_infra",
  "walkdir",
 ]
 
@@ -4777,6 +4821,7 @@ dependencies = [
 name = "uf_runtime"
 version = "0.9.0"
 dependencies = [
+ "compact_str",
  "serde",
  "smallvec",
 ]
@@ -4786,11 +4831,13 @@ name = "uf_sqlc"
 version = "0.9.0"
 dependencies = [
  "base64",
+ "compact_str",
  "serde",
  "serde_json",
  "similar-asserts",
  "uf_config",
  "uf_fmt",
+ "uf_infra",
 ]
 
 [[package]]
@@ -4845,7 +4892,9 @@ dependencies = [
 name = "uf_term"
 version = "0.9.0"
 dependencies = [
+ "compact_str",
  "criterion",
+ "uf_infra",
 ]
 
 [[package]]

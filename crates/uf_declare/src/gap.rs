@@ -208,7 +208,10 @@ mod tests {
     fn a_construct_serializes_under_the_name_it_reports() {
         for construct in Construct::ALL {
             let json = serde_json::to_string(&construct).expect("serializes");
-            assert_eq!(json, format!("\"{}\"", construct.as_str()));
+            assert_eq!(
+                json,
+                uf_infra::cstr!("\"{}\"", construct.as_str()).into_string()
+            );
         }
     }
 

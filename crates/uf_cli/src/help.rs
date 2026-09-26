@@ -210,10 +210,11 @@ pub(crate) fn render(
         if command.find_subcommand(name).is_none() {
             break;
         }
-        let bin = format!(
+        let bin = uf_infra::cstr!(
             "{} {name}",
             command.get_bin_name().unwrap_or(command.get_name())
-        );
+        )
+        .into_string();
         command = command
             .find_subcommand_mut(name)
             .expect("the subcommand was found above");
@@ -313,9 +314,17 @@ fn root_page(
         out,
         0,
         width,
-        &format!("`{bin} <command> --help` for a command's options, or `{bin}` alone for a menu"),
+        &uf_infra::cstr!(
+            "`{bin} <command> --help` for a command's options, or `{bin}` alone for a menu"
+        )
+        .into_string(),
     );
-    renderer.hint_within(out, 0, width, &format!("documentation at {DOCS}"));
+    renderer.hint_within(
+        out,
+        0,
+        width,
+        uf_infra::cstr!("documentation at {DOCS}").as_str(),
+    );
 }
 
 /// `uf <command> --help`.
@@ -620,16 +629,18 @@ fn option_row(renderer: &Renderer, arg: &Arg, long: bool, align: bool, width: us
             .get_num_args()
             .is_some_and(|range| range.max_values() > 1);
         let text = match (arg.is_required_set(), multiple) {
-            (true, false) => format!("<{name}>"),
-            (true, true) => format!("<{name}>..."),
-            (false, false) => format!("[{name}]"),
-            (false, true) => format!("[{name}]..."),
+            (true, false) => uf_infra::cstr!("<{name}>").into_string(),
+            (true, true) => uf_infra::cstr!("<{name}>...").into_string(),
+            (false, false) => uf_infra::cstr!("[{name}]").into_string(),
+            (false, true) => uf_infra::cstr!("[{name}]...").into_string(),
         };
         theme.accent.paint(level, &text, &mut term);
     } else {
         match arg.get_short() {
             Some(short) => {
-                theme.accent.paint(level, &format!("-{short}"), &mut term);
+                theme
+                    .accent
+                    .paint(level, uf_infra::cstr!("-{short}").as_str(), &mut term);
                 if arg.get_long().is_some() {
                     term.push_str(", ");
                 }
@@ -638,13 +649,17 @@ fn option_row(renderer: &Renderer, arg: &Arg, long: bool, align: bool, width: us
             None => {}
         }
         if let Some(name) = arg.get_long() {
-            theme.accent.paint(level, &format!("--{name}"), &mut term);
+            theme
+                .accent
+                .paint(level, uf_infra::cstr!("--{name}").as_str(), &mut term);
         }
         if arg.get_action().takes_values() {
             term.push(' ');
-            theme
-                .muted
-                .paint(level, &format!("<{}>", placeholder(arg)), &mut term);
+            theme.muted.paint(
+                level,
+                uf_infra::cstr!("<{}>", placeholder(arg)).as_str(),
+                &mut term,
+            );
         }
     }
 

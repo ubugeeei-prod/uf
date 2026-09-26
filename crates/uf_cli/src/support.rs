@@ -92,8 +92,9 @@ pub(crate) fn project_env(
         requested_mode,
         default_mode,
     )?;
-    env_files::load(&resolved.root, &resolved.config, &mode)
-        .with_context(|| format!("failed to load the environment files for mode {mode}"))
+    env_files::load(&resolved.root, &resolved.config, &mode).with_context(|| {
+        uf_infra::cstr!("failed to load the environment files for mode {mode}").into_string()
+    })
 }
 
 /// The environment files a run read, or `None` when it read none.
@@ -127,7 +128,7 @@ pub(crate) fn relative_to(root: &Utf8Path, path: &Utf8Path) -> String {
 pub(crate) fn unreadable_lines(unreadable: &[uf_project::UnreadableFile]) -> Vec<String> {
     unreadable
         .iter()
-        .map(|file| format!("{}: {}", file.relative_path, file.reason))
+        .map(|file| uf_infra::cstr!("{}: {}", file.relative_path, file.reason).into_string())
         .collect()
 }
 
@@ -148,19 +149,19 @@ pub(crate) fn selects(patterns: &[String], path: &str) -> bool {
 pub(crate) fn quoted_list(patterns: &[String]) -> String {
     let quoted: Vec<String> = patterns
         .iter()
-        .map(|pattern| format!("`{pattern}`"))
+        .map(|pattern| uf_infra::cstr!("`{pattern}`").into_string())
         .collect();
     match quoted.split_last() {
         None => String::new(),
         Some((last, [])) => last.clone(),
-        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        Some((last, rest)) => uf_infra::cstr!("{} and {last}", rest.join(", ")).into_string(),
     }
 }
 
 /// Render a count with the right plural, e.g. `1 file` / `3 files`.
 pub(crate) fn plural(count: usize, singular: &str) -> String {
     if count == 1 {
-        return format!("{count} {singular}");
+        return uf_infra::cstr!("{count} {singular}").into_string();
     }
     // `dependency` → `dependencies`. English has plenty of plurals this does
     // not cover, and every word uf puts through here is one of the few hundred
@@ -168,9 +169,9 @@ pub(crate) fn plural(count: usize, singular: &str) -> String {
     // library for a table header.
     match singular.strip_suffix('y') {
         Some(stem) if !stem.ends_with(['a', 'e', 'i', 'o', 'u']) => {
-            format!("{count} {stem}ies")
+            uf_infra::cstr!("{count} {stem}ies").into_string()
         }
-        _ => format!("{count} {singular}s"),
+        _ => uf_infra::cstr!("{count} {singular}s").into_string(),
     }
 }
 
@@ -180,11 +181,12 @@ pub(crate) fn problem_summary(errors: usize, warnings: usize) -> String {
         (0, 0) => "no problems".to_string(),
         (0, warnings) => plural(warnings, "warning"),
         (errors, 0) => plural(errors, "error"),
-        (errors, warnings) => format!(
+        (errors, warnings) => uf_infra::cstr!(
             "{}, {}",
             plural(errors, "error"),
             plural(warnings, "warning")
-        ),
+        )
+        .into_string(),
     }
 }
 
@@ -202,14 +204,15 @@ pub(crate) fn yes_no(value: bool) -> &'static str {
 pub(crate) fn write_json_file(path: &Utf8Path, value: &serde_json::Value) -> Result<()> {
     let mut contents = serde_json::to_string_pretty(value)?;
     contents.push('\n');
-    std::fs::write(path, contents).with_context(|| format!("failed to write {path}"))
+    std::fs::write(path, contents)
+        .with_context(|| uf_infra::cstr!("failed to write {path}").into_string())
 }
 
 /// The first line a tool prints for `--version`, or an error when it is absent.
 pub(crate) fn command_output(bin: &str, arg: &str) -> Result<String> {
     let output = ProcessCommand::new(bin).arg(arg).output()?;
     if !output.status.success() {
-        bail!("{bin} exited with {}", output.status);
+        bail!(uf_infra::cstr!("{bin} exited with {}", output.status));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);

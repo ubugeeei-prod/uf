@@ -99,17 +99,19 @@ impl Selection {
     /// test files run.
     pub(crate) fn describe(&self, running: usize, tests: usize) -> String {
         let base = self.base.get(..12).unwrap_or(&self.base);
-        let since = format!("since {} (merge base {base})", self.reference);
+        let since = uf_infra::cstr!("since {} (merge base {base})", self.reference).into_string();
         match &self.whole_suite {
-            Some(file) => format!(
+            Some(file) => uf_infra::cstr!(
                 "{file} {since}, and every test depends on it · running all {}",
                 plural(tests, "test file")
-            ),
-            None => format!(
+            )
+            .into_string(),
+            None => uf_infra::cstr!(
                 "{} {since} · {running} of {} reach them",
                 plural(self.changed, "file"),
                 plural(tests, "test file")
-            ),
+            )
+            .into_string(),
         }
     }
 }
@@ -222,15 +224,18 @@ fn changed_since(root: &Utf8Path, reference: &str) -> Result<(String, Vec<String
     // git reads an argument that starts with `-` as an option, and
     // `--output=<file>` is an option that writes a file.
     if reference.starts_with('-') {
-        bail!("`uf test --changed {reference}`: a ref cannot start with `-`");
+        bail!(uf_infra::cstr!(
+            "`uf test --changed {reference}`: a ref cannot start with `-`"
+        ));
     }
     let base = git(root, &["merge-base", reference, "HEAD"]).with_context(|| {
-        format!(
+        uf_infra::cstr!(
             "`uf test --changed {reference}` measures a change from the commit where HEAD's \
              history left `{reference}`, and git could not name one. Check that \
              `{reference}` exists; a shallow CI clone also needs the history where the two meet \
              (`fetch-depth: 0` for `actions/checkout`)"
         )
+        .into_string()
     })?;
     let base = base.trim().to_owned();
     let mut changed = paths(&git(
@@ -263,9 +268,11 @@ fn git(root: &Utf8Path, args: &[&str]) -> Result<String> {
         .output()
         .map_err(|error| match error.kind() {
             std::io::ErrorKind::NotFound => {
-                anyhow!("`uf test --changed` asks git what changed, and there is no `git` on PATH")
+                anyhow!(uf_infra::cstr!(
+                    "`uf test --changed` asks git what changed, and there is no `git` on PATH"
+                ))
             }
-            _ => anyhow!("could not run git: {error}"),
+            _ => anyhow!(uf_infra::cstr!("could not run git: {error}")),
         })?;
     if !output.status.success() {
         // git's own first line: "Not a valid object name", "not a git
@@ -276,7 +283,10 @@ fn git(root: &Utf8Path, args: &[&str]) -> Result<String> {
             .map(str::trim)
             .find(|line| !line.is_empty())
             .unwrap_or("it exited without naming a commit");
-        bail!("git {}: {first}", args.first().copied().unwrap_or_default());
+        bail!(uf_infra::cstr!(
+            "git {}: {first}",
+            args.first().copied().unwrap_or_default()
+        ));
     }
     String::from_utf8(output.stdout).context("git named a path that is not UTF-8")
 }

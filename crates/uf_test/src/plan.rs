@@ -139,7 +139,9 @@ impl UnsupportedDeclaration {
     /// The call, and where its name came from, for a report.
     pub fn describe(&self) -> String {
         match &self.imported_from {
-            Some(module) => format!("{} (imported from `{module}`)", self.call),
+            Some(module) => {
+                uf_infra::cstr!("{} (imported from `{module}`)", self.call).into_string()
+            }
             None => self.call.to_string(),
         }
     }

@@ -36,8 +36,9 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
         .unwrap_or_else(|| "zero-config defaults".to_string());
     let root = resolved.root.as_str().to_string();
     let router_root = resolved.config.app.router.root.to_string();
-    let style = format!("{:?}", resolved.config.app.builtins.style);
-    let compiler = format!("{:?}", resolved.config.app.builtins.react_compiler.mode);
+    let style = uf_infra::cstr!("{:?}", resolved.config.app.builtins.style).into_string();
+    let compiler =
+        uf_infra::cstr!("{:?}", resolved.config.app.builtins.react_compiler.mode).into_string();
     let pm_lockfile = resolved.config.pm.lockfile.to_string();
     let detected = detection.package_manager.to_string();
     let detected_source = detection.source.kind().to_string();
@@ -59,12 +60,13 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             .count()
     };
     let std_modules = std_by(StdStatus::Ships).to_string();
-    let std_roadmap = format!(
+    let std_roadmap = uf_infra::cstr!(
         "{} planned, {} declined, {} declaration only",
         std_by(StdStatus::Planned),
         std_by(StdStatus::Declined),
         std_by(StdStatus::Declared)
-    );
+    )
+    .into_string();
     // Two lines rather than one number, because the table behind them is two
     // things at once. `ui_components().len()` was reported here as a project
     // fact and it was the size of a roadmap: at ubugeeei-prod/uf#249, fifty-one
@@ -82,11 +84,12 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             .count()
     };
     let ui_component_count = ui_by(UiReadiness::Implemented).to_string();
-    let ui_roadmap = format!(
+    let ui_roadmap = uf_infra::cstr!(
         "{} planned, {} declined",
         ui_by(UiReadiness::Planned),
         ui_by(UiReadiness::Declined)
-    );
+    )
+    .into_string();
     let tui_component_count = tui_contract().components.len().to_string();
     let hooks = hook_descriptors().len().to_string();
     let lint_rules = uf_lint::rules().len().to_string();
@@ -173,7 +176,9 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             .iter()
             .map(
                 |tool| match crate::commands::runtimes::locked(&resolved, tool.role) {
-                    Some(version) => format!("{} · locked at {version}", tool.summary()),
+                    Some(version) => {
+                        uf_infra::cstr!("{} · locked at {version}", tool.summary()).into_string()
+                    }
                     None => tool.summary(),
                 },
             )
@@ -289,7 +294,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
                 "params": route.params.into_iter().map(|param| {
                     json!({
                         "name": param.name,
-                        "kind": format!("{:?}", param.kind),
+                        "kind": uf_infra::cstr!("{:?}", param.kind).into_string(),
                     })
                 }).collect::<Vec<_>>(),
                 "hasLayout": route.has_layout,

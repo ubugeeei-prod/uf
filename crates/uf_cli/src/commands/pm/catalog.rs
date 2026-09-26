@@ -98,7 +98,9 @@ pub(crate) fn set(
     // before either is written.
     uf_pm::check_operands(std::slice::from_ref(&name.to_owned()))?;
     if range.trim().is_empty() || range.chars().any(char::is_control) {
-        bail!("`{range}` is not a range that can go in a manifest");
+        bail!(uf_infra::cstr!(
+            "`{range}` is not a range that can go in a manifest"
+        ));
     }
 
     let resolved = load_config(cwd)?;
@@ -109,7 +111,9 @@ pub(crate) fn set(
         .filter(|declaration| declaration.name == name)
         .collect();
     if affected.is_empty() {
-        bail!("no manifest in this workspace declares `{name}`");
+        bail!(uf_infra::cstr!(
+            "no manifest in this workspace declares `{name}`"
+        ));
     }
 
     let mut moving: Vec<(String, CompactString)> = Vec::new();
@@ -144,18 +148,20 @@ pub(crate) fn set(
         .collect();
     let nothing = moving.is_empty();
     let name_owned = name.to_owned();
-    let summary = format!(
+    let summary = uf_infra::cstr!(
         "{} in {}",
         plural(moving.len(), "declaration"),
         plural(changes.len(), "manifest")
-    );
+    )
+    .into_string();
     ui.render(|renderer, out| {
         renderer.banner(out, "uf catalog set", Some(&project));
         if nothing {
             renderer.status(
                 out,
                 Status::Success,
-                &format!("every manifest already declares {name_owned} at {range}"),
+                &uf_infra::cstr!("every manifest already declares {name_owned} at {range}")
+                    .into_string(),
             );
             return;
         }
@@ -173,7 +179,7 @@ pub(crate) fn set(
             renderer.status(
                 out,
                 Status::Info,
-                &format!("{summary} would change; run without --dry-run"),
+                uf_infra::cstr!("{summary} would change; run without --dry-run").as_str(),
             );
         }
     });
@@ -185,10 +191,15 @@ pub(crate) fn set(
     // All of them or none. A failure part way through would leave the very thing
     // this command exists to prevent — some manifests on the new range and some
     // on the old — and then install it. See `uf_pm::manifests::apply_all`.
-    uf_pm::manifests::apply_all(&changes)
-        .with_context(|| format!("could not rewrite {}", project_label(&resolved.root)))?;
+    uf_pm::manifests::apply_all(&changes).with_context(|| {
+        uf_infra::cstr!("could not rewrite {}", project_label(&resolved.root)).into_string()
+    })?;
     ui.render(|renderer, out| {
-        renderer.status(out, Status::Success, &format!("wrote {summary}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("wrote {summary}").as_str(),
+        );
         renderer.blank(out);
     });
 
@@ -294,10 +305,11 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, catalogue: &Catalogue)
         renderer.status(
             out,
             Status::Success,
-            &format!(
+            &uf_infra::cstr!(
                 "no package is declared by more than one of this workspace's {}",
                 plural(catalogue.manifests, "manifest")
-            ),
+            )
+            .into_string(),
         );
         render_pnpm(renderer, out, catalogue);
         return;
@@ -340,10 +352,11 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, catalogue: &Catalogue)
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            &uf_infra::cstr!(
                 "and {} more; --json prints all of them",
                 catalogue.entries.len() - ROWS_SHOWN
-            ),
+            )
+            .into_string(),
         );
     }
     renderer.blank(out);
@@ -370,27 +383,30 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, catalogue: &Catalogue)
         renderer.status(
             out,
             Status::Warn,
-            &format!(
+            &uf_infra::cstr!(
                 "{} declared at more than one range",
                 plural(disagreeing.len(), "package")
-            ),
+            )
+            .into_string(),
         );
         renderer.status(
             out,
             Status::Info,
-            &format!(
+            &uf_infra::cstr!(
                 "uf catalog set {} <range> makes every manifest agree",
                 disagreeing[0].name
-            ),
+            )
+            .into_string(),
         );
     } else {
         renderer.status(
             out,
             Status::Success,
-            &format!(
+            &uf_infra::cstr!(
                 "{} shared, and every manifest agrees on all of them",
                 plural(catalogue.entries.len(), "package")
-            ),
+            )
+            .into_string(),
         );
     }
     render_pnpm(renderer, out, catalogue);
@@ -404,10 +420,11 @@ fn render_pnpm(renderer: &uf_term::Renderer, out: &mut String, catalogue: &Catal
     renderer.status(
         out,
         Status::Info,
-        &format!(
+        &uf_infra::cstr!(
             "{} written as pnpm's `catalog:`, which pnpm resolves itself",
             plural(catalogue.pnpm_catalog, "declaration")
-        ),
+        )
+        .into_string(),
     );
 }
 

@@ -224,13 +224,13 @@ fn resolve_target(target: &str, modules: &FxHashSet<&str>) -> Option<CompactStri
         return Some(CompactString::from(target));
     }
     for extension in MODULE_EXTENSIONS {
-        let candidate = format!("{target}.{extension}");
+        let candidate = uf_infra::cstr!("{target}.{extension}").into_string();
         if modules.contains(candidate.as_str()) {
             return Some(CompactString::from(candidate));
         }
     }
     for extension in MODULE_EXTENSIONS {
-        let candidate = format!("{target}/index.{extension}");
+        let candidate = uf_infra::cstr!("{target}/index.{extension}").into_string();
         if modules.contains(candidate.as_str()) {
             return Some(CompactString::from(candidate));
         }

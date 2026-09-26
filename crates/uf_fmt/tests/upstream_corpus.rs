@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! The formatter's guarantees, over Flow that nobody here wrote.
 //!
 //! `guarantees.rs` checks the same three invariants against this

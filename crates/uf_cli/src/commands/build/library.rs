@@ -122,7 +122,8 @@ pub(crate) fn build(
     let mut progress = ui.progress();
     let root = resolved.root.clone();
     let out_dir = root.join(resolved.config.build.out_dir.as_str());
-    fs::create_dir_all(&out_dir).with_context(|| format!("failed to create {out_dir}"))?;
+    fs::create_dir_all(&out_dir)
+        .with_context(|| uf_infra::cstr!("failed to create {out_dir}").into_string())?;
 
     progress.tick("resolving the JavaScript host");
     // A library builds on `build.runtime` exactly as an application does.
@@ -155,7 +156,7 @@ pub(crate) fn build(
         )?;
         while let Some(event) = driver.next_event()? {
             match event {
-                Event::Phase { name } => progress.tick(&format!("vite: {name}")),
+                Event::Phase { name } => progress.tick(uf_infra::cstr!("vite: {name}").as_str()),
                 Event::Log { level, message } => match level {
                     crate::commands::vite::LogLevel::Error => render_log(ui, level, &message),
                     // Held until the summary rather than printed now, which is
@@ -193,7 +194,8 @@ pub(crate) fn build(
 
     progress.tick("measuring the published modules");
     let meta_dir = root.join(BUILD_META_DIR);
-    fs::create_dir_all(&meta_dir).with_context(|| format!("failed to create {meta_dir}"))?;
+    fs::create_dir_all(&meta_dir)
+        .with_context(|| uf_infra::cstr!("failed to create {meta_dir}").into_string())?;
     let (size, size_report_path) = timer.measure("bundle size", || -> Result<_> {
         let assets = collect_assets(&out_dir, &ReportOptions::default())?;
         // No routes: a library has none, and the per-route half of the report
@@ -271,7 +273,7 @@ pub(crate) fn build(
     let total = timer.total();
     let phases = timer.phases().to_vec();
     let project = project_label(&root).to_string();
-    let summary = format!("build succeeded in {}", format_duration(total));
+    let summary = uf_infra::cstr!("build succeeded in {}", format_duration(total)).into_string();
     let host_name = host.name();
     let because = plan.because();
     let entries = plan
@@ -302,7 +304,9 @@ pub(crate) fn build(
         relative_to(&root, &size_report_path),
     ];
     for asset in &size.assets {
-        outputs.push(format!("{}/{}", resolved.config.build.out_dir, asset.path));
+        outputs.push(
+            uf_infra::cstr!("{}/{}", resolved.config.build.out_dir, asset.path).into_string(),
+        );
     }
     for written in &declarations.files {
         outputs.push(relative_to(&root, written));
@@ -510,11 +514,14 @@ fn unresolved_exports(root: &Utf8Path, out_dir: &Utf8Path) -> Vec<String> {
     if missing.is_empty() {
         return Vec::new();
     }
-    vec![format!(
-        "package.json exports {} this build did not write: {}",
-        plural(missing.len(), "file"),
-        missing.join(", "),
-    )]
+    vec![
+        uf_infra::cstr!(
+            "package.json exports {} this build did not write: {}",
+            plural(missing.len(), "file"),
+            missing.join(", "),
+        )
+        .into_string(),
+    ]
 }
 
 /// Subpaths whose `exports` target is not included by `package.json#files`.
@@ -562,11 +569,14 @@ fn unpublished_exports(root: &Utf8Path) -> Vec<String> {
     if missing.is_empty() {
         return Vec::new();
     }
-    vec![format!(
-        "package.json exports {} not covered by files: {}",
-        plural(missing.len(), "file"),
-        missing.join(", "),
-    )]
+    vec![
+        uf_infra::cstr!(
+            "package.json exports {} not covered by files: {}",
+            plural(missing.len(), "file"),
+            missing.join(", "),
+        )
+        .into_string(),
+    ]
 }
 
 /// A relative target out of `exports`, or nothing for package specifiers.
@@ -808,9 +818,11 @@ fn write_declarations(
         };
         let path = out_dir.join(module.declaration.as_str());
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+            fs::create_dir_all(parent)
+                .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
         }
-        fs::write(&path, text).with_context(|| format!("failed to write {path}"))?;
+        fs::write(&path, text)
+            .with_context(|| uf_infra::cstr!("failed to write {path}").into_string())?;
         declarations.files.push(path);
     }
     Ok(declarations)
@@ -824,7 +836,7 @@ fn gap_rows(declarations: &Declarations) -> Vec<(String, String, String)> {
         .take(GAPS_SHOWN)
         .map(|(module, gap)| {
             (
-                format!("{module}:{}", gap.line),
+                uf_infra::cstr!("{module}:{}", gap.line).into_string(),
                 gap.declaration.to_string(),
                 gap.construct.as_str().to_string(),
             )
@@ -848,12 +860,13 @@ fn gap_summary(declarations: &Declarations) -> Vec<String> {
         .iter()
         .filter(|(_, gap)| !gap.construct.keeps_the_type())
         .count();
-    let mut message = format!(
+    let mut message = uf_infra::cstr!(
         "{} could not be translated to TypeScript exactly",
         plural(declarations.gaps.len(), "declaration"),
-    );
+    )
+    .into_string();
     if refusals > 0 {
-        message.push_str(&format!(", {refusals} of them published as `unknown`",));
+        uf_infra::append!(message, ", {refusals} of them published as `unknown`",);
     }
     if declarations.gaps.len() > GAPS_SHOWN {
         message.push_str("; the full list with reasons is in uf-build-manifest.json");

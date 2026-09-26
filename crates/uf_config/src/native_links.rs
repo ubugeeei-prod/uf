@@ -9,7 +9,7 @@ pub(crate) fn check(path: &Utf8Path, router: &RouterConfig) -> Result<(), Config
     };
     let refuse = |reason: &str| ConfigError::Parse {
         path: path.to_path_buf(),
-        message: format!("app.router.nativeLinks: {reason}"),
+        message: compact_str::format_compact!("app.router.nativeLinks: {reason}").into_string(),
     };
     if !router.base_path.is_empty() {
         return Err(refuse(

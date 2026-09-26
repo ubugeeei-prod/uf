@@ -59,7 +59,7 @@ pub(super) fn render_list(
             continue;
         }
         rows.push((
-            format!("{}:{}:{}", case.file, case.line, case.column),
+            uf_infra::cstr!("{}:{}:{}", case.file, case.line, case.column).into_string(),
             name,
             selection_label(resolution.selection(index)),
         ));
@@ -70,7 +70,7 @@ pub(super) fn render_list(
         .iter()
         .map(|entry| {
             (
-                format!("{}:{}:{}", entry.file, entry.line, entry.column),
+                uf_infra::cstr!("{}:{}:{}", entry.file, entry.line, entry.column).into_string(),
                 entry.describe(),
             )
         })
@@ -95,8 +95,8 @@ pub(super) fn render_list(
         }))?;
         return Ok(());
     }
-    let runtime = format!("{:?}", runner.runtime);
-    let target = format!("{:?}", runner.performance_target);
+    let runtime = uf_infra::cstr!("{:?}", runner.runtime).into_string();
+    let target = uf_infra::cstr!("{:?}", runner.performance_target).into_string();
     let label = project_label(root).to_string();
 
     ui.render(|renderer, out| {
@@ -119,7 +119,11 @@ pub(super) fn render_list(
             renderer.heading(out, 2, "unsupported declarations");
             for (location, call) in &unsupported {
                 push_spaces(out, 2);
-                renderer.status(out, Status::Warn, &format!("{location}  {call}"));
+                renderer.status(
+                    out,
+                    Status::Warn,
+                    uf_infra::cstr!("{location}  {call}").as_str(),
+                );
             }
         }
         renderer.blank(out);
@@ -133,7 +137,11 @@ pub(super) fn render_list(
             ],
         );
         renderer.blank(out);
-        renderer.status(out, Status::Info, &format!("discovered {discovered}"));
+        renderer.status(
+            out,
+            Status::Info,
+            uf_infra::cstr!("discovered {discovered}").as_str(),
+        );
     });
     Ok(())
 }
@@ -179,7 +187,9 @@ pub(super) fn render_report(
     // reproduce from the report.
     let runtime = match host {
         Some(host) => match host.browser.as_ref() {
-            Some(browser) => format!("{browser} (driven from {})", host.kind.program()),
+            Some(browser) => {
+                uf_infra::cstr!("{browser} (driven from {})", host.kind.program()).into_string()
+            }
             None => host.kind.program().to_string(),
         },
         // `uf test --merge-shards` started no host: each shard ran on its own.
@@ -203,10 +213,11 @@ pub(super) fn render_report(
     let failed_tests = failed_tests(report);
     let (output_groups, output_hidden) = other_output(report);
     let output_note = (output_hidden > 0).then(|| {
-        format!(
+        uf_infra::cstr!(
             "{} not shown; `uf test --json` has every one",
             plural(output_hidden, "more line")
         )
+        .into_string()
     });
     let slowest = slowest_rows(report);
     let coverage_rows = coverage.map(coverage_block);
@@ -216,13 +227,14 @@ pub(super) fn render_report(
         .unsupported
         .iter()
         .map(|entry| {
-            format!(
+            uf_infra::cstr!(
                 "{}:{}:{} {}",
                 entry.file,
                 entry.line,
                 entry.column,
                 entry.describe()
             )
+            .into_string()
         })
         .collect();
 
@@ -503,7 +515,8 @@ pub(super) fn render_file(
                 renderer.status(
                     out,
                     Status::Warn,
-                    &format!("{}  passed on attempt {}", record.name, record.attempts),
+                    &uf_infra::cstr!("{}  passed on attempt {}", record.name, record.attempts)
+                        .into_string(),
                 );
             }
             _ => {}
@@ -549,7 +562,7 @@ fn push_counts(renderer: &uf_term::Renderer, out: &mut String, file: &FileReport
             theme.muted.paint(color, separator, out);
         }
         first = false;
-        style.paint(color, &format!("{count} {word}"), out);
+        style.paint(color, uf_infra::cstr!("{count} {word}").as_str(), out);
     }
     if first {
         theme.muted.paint(color, "no tests", out);
@@ -560,7 +573,9 @@ fn push_counts(renderer: &uf_term::Renderer, out: &mut String, file: &FileReport
 fn failed_tests(report: &TestRunReport) -> Vec<String> {
     report
         .failures()
-        .map(|record| format!("{}:{}  {}", record.file, record.line, record.name))
+        .map(|record| {
+            uf_infra::cstr!("{}:{}  {}", record.file, record.line, record.name).into_string()
+        })
         .collect()
 }
 
@@ -688,7 +703,10 @@ fn other_output(report: &TestRunReport) -> (Vec<OutputGroup>, usize) {
             if record.status.is_failed() {
                 continue;
             }
-            take(format!("{}  {}", record.file, record.name), &record.output);
+            take(
+                uf_infra::cstr!("{}  {}", record.file, record.name).into_string(),
+                &record.output,
+            );
         }
     }
     (groups, hidden)
@@ -773,21 +791,24 @@ fn counts(report: &TestRunReport) -> Counts {
         skipped: summary.skipped.to_string(),
         todo: summary.todo.to_string(),
         files: summary.files.to_string(),
-        schedule: format!(
+        schedule: uf_infra::cstr!(
             "{} recorded, {} by size",
-            summary.scheduled_warm, summary.scheduled_cold
-        ),
+            summary.scheduled_warm,
+            summary.scheduled_cold
+        )
+        .into_string(),
     }
 }
 
 fn summary_line(report: &TestRunReport, duration: Duration) -> String {
     let summary = &report.summary;
-    let mut line = format!("{} passed, {} failed", summary.passed, summary.failed);
+    let mut line =
+        uf_infra::cstr!("{} passed, {} failed", summary.passed, summary.failed).into_string();
     if summary.skipped > 0 {
-        line.push_str(&format!(", {} skipped", summary.skipped));
+        uf_infra::append!(line, ", {} skipped", summary.skipped);
     }
     if summary.todo > 0 {
-        line.push_str(&format!(", {} todo", summary.todo));
+        uf_infra::append!(line, ", {} todo", summary.todo);
     }
     // Two words for the two kinds, because they mean different things to the
     // reader: an unexpandable form ran and was reported, and one from another
@@ -796,13 +817,10 @@ fn summary_line(report: &TestRunReport, duration: Duration) -> String {
         .unsupported_declarations
         .saturating_sub(summary.foreign_declarations);
     if unexpandable > 0 {
-        line.push_str(&format!(", {unexpandable} unexpandable"));
+        uf_infra::append!(line, ", {unexpandable} unexpandable");
     }
     if summary.foreign_declarations > 0 {
-        line.push_str(&format!(
-            ", {} another runner's",
-            summary.foreign_declarations
-        ));
+        uf_infra::append!(line, ", {} another runner's", summary.foreign_declarations);
     }
     if summary.bailed {
         line.push_str(" (bailed)");
@@ -826,7 +844,7 @@ fn file_problems(report: &TestRunReport) -> Vec<String> {
         .files
         .iter()
         .filter(|file| file.status != FileStatus::Completed)
-        .map(|file| format!("{} {}", file.file, file.status.describe()))
+        .map(|file| uf_infra::cstr!("{} {}", file.file, file.status.describe()).into_string())
         .collect()
 }
 
@@ -895,16 +913,19 @@ fn coverage_block(section: &CoverageSection) -> CoverageBlock {
         // Named as a count and not folded into the percentage: a file no test
         // imports has no measured line to divide by, so counting it either way
         // would be an invention. The count is the honest form of it.
-        notes.push(format!(
-            "{} no test loaded, so nothing above is about {}: {}",
-            plural(section.never_loaded.len(), "project file"),
-            if section.never_loaded.len() == 1 {
-                "it"
-            } else {
-                "them"
-            },
-            preview(&section.never_loaded),
-        ));
+        notes.push(
+            uf_infra::cstr!(
+                "{} no test loaded, so nothing above is about {}: {}",
+                plural(section.never_loaded.len(), "project file"),
+                if section.never_loaded.len() == 1 {
+                    "it"
+                } else {
+                    "them"
+                },
+                preview(&section.never_loaded),
+            )
+            .into_string(),
+        );
     }
     if !section.unmapped.is_empty() {
         // Named, because this is the report admitting what it could not see.
@@ -912,19 +933,22 @@ fn coverage_block(section: &CoverageSection) -> CoverageBlock {
         // position for a count to belong to, and silently leaving it out is how
         // a coverage number starts describing a smaller program than the one
         // that ran.
-        notes.push(format!(
-            "{} ran with no source map back to Flow and {} left out: {}",
-            plural(section.unmapped.len(), "module"),
-            if section.unmapped.len() == 1 {
-                "was"
-            } else {
-                "were"
-            },
-            preview(&section.unmapped),
-        ));
+        notes.push(
+            uf_infra::cstr!(
+                "{} ran with no source map back to Flow and {} left out: {}",
+                plural(section.unmapped.len(), "module"),
+                if section.unmapped.len() == 1 {
+                    "was"
+                } else {
+                    "were"
+                },
+                preview(&section.unmapped),
+            )
+            .into_string(),
+        );
     }
     for path in &section.written {
-        notes.push(format!("wrote {path}"));
+        notes.push(uf_infra::cstr!("wrote {path}").into_string());
     }
 
     CoverageBlock {
@@ -953,17 +977,18 @@ fn preview(paths: &[String]) -> String {
         .join(", ");
     match paths.len().saturating_sub(SHOWN) {
         0 => head,
-        more => format!("{head}, and {more} more"),
+        more => uf_infra::cstr!("{head}, and {more} more").into_string(),
     }
 }
 
 fn ratio_text(ratio: uf_test::Ratio) -> String {
-    format!(
+    uf_infra::cstr!(
         "{:.2}% ({}/{})",
         ratio.percent(),
         ratio.covered,
         ratio.total
     )
+    .into_string()
 }
 
 /// Red only for a per-file threshold the project set and this file missed.

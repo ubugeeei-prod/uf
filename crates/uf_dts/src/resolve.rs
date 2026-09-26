@@ -133,7 +133,7 @@ fn join(importer: &str, specifier: &str) -> Option<String> {
     if directory.is_empty() {
         normalize(specifier)
     } else {
-        normalize(&format!("{directory}/{specifier}"))
+        normalize(uf_infra::cstr!("{directory}/{specifier}").as_str())
     }
 }
 
@@ -197,13 +197,13 @@ fn declarations_with(base: &str, flavor: Flavor) -> SmallVec<[String; 4]> {
             _ => None,
         };
         if let Some(substituted) = substituted {
-            found.push(format!("{stem}{substituted}"));
+            found.push(uf_infra::cstr!("{stem}{substituted}").into_string());
             return found;
         }
     }
     for extension in flavor.extensions() {
-        found.push(format!("{base}{extension}"));
-        found.push(format!("{base}/index{extension}"));
+        found.push(uf_infra::cstr!("{base}{extension}").into_string());
+        found.push(uf_infra::cstr!("{base}/index{extension}").into_string());
     }
     found
 }

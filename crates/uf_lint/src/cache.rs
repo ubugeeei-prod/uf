@@ -152,7 +152,8 @@ impl LintCache {
         // within one filesystem: the rename is atomic, and a reader sees the
         // old document, the new one, or none.
         let entry = self.entry(path, source, question);
-        let staging = entry.with_extension(format!("{}.tmp", std::process::id()));
+        let staging =
+            entry.with_extension(uf_infra::cstr!("{}.tmp", std::process::id()).into_string());
         if fs::write(&staging, &document).is_err() || fs::rename(&staging, &entry).is_err() {
             let _ = fs::remove_file(&staging);
         }

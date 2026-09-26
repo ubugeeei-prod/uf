@@ -133,7 +133,7 @@ impl ReleaseLists {
 
         let (dir, bases, sender) = (dir.clone(), bases.clone(), self.sender.clone());
         let started = std::thread::Builder::new()
-            .name(format!("uf-lsp-index-{tool}"))
+            .name(uf_infra::cstr!("uf-lsp-index-{tool}").into_string())
             .spawn(move || {
                 let fetched = refresh_in(&dir, tool, &bases).ok();
                 // The session may have ended; a list nobody will read is fine.
@@ -212,7 +212,7 @@ mod tests {
         if serves {
             std::fs::write(root.join("index.json"), NODE_INDEX).unwrap();
         }
-        (guard, Bases::at(&format!("file://{root}")))
+        (guard, Bases::at(uf_infra::cstr!("file://{root}").as_str()))
     }
 
     fn versions(lookup: &Lookup<'_>) -> Option<Vec<String>> {

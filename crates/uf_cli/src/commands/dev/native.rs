@@ -145,7 +145,7 @@ impl NativeServer {
         let versions = match self {
             Self::Expo { version, .. } => version
                 .as_deref()
-                .map(|version| format!("expo {version}"))
+                .map(|version| uf_infra::cstr!("expo {version}").into_string())
                 .into_iter()
                 .collect::<Vec<_>>(),
             Self::ReactNativeCli {
@@ -153,12 +153,12 @@ impl NativeServer {
                 react_native_version,
                 ..
             } => [
-                cli_version
-                    .as_deref()
-                    .map(|version| format!("@react-native-community/cli {version}")),
+                cli_version.as_deref().map(|version| {
+                    uf_infra::cstr!("@react-native-community/cli {version}").into_string()
+                }),
                 react_native_version
                     .as_deref()
-                    .map(|version| format!("react-native {version}")),
+                    .map(|version| uf_infra::cstr!("react-native {version}").into_string()),
             ]
             .into_iter()
             .flatten()
@@ -167,7 +167,7 @@ impl NativeServer {
         if versions.is_empty() {
             self.command().to_string()
         } else {
-            format!("{} ({})", self.command(), versions.join(", "))
+            uf_infra::cstr!("{} ({})", self.command(), versions.join(", ")).into_string()
         }
     }
 
@@ -204,26 +204,27 @@ impl NativeServer {
         let host = address.map_or_else(|| "127.0.0.1".to_string(), |address| address.to_string());
         match (self, address) {
             (Self::Expo { .. }, Some(_)) => (
-                format!("exp://{host}:{port}"),
+                uf_infra::cstr!("exp://{host}:{port}").into_string(),
                 "Expo Go, or a development build, on the same network opens this; Expo prints its \
                  QR code below"
                     .to_string(),
             ),
             (Self::Expo { .. }, None) => (
-                format!("exp://{host}:{port}"),
+                uf_infra::cstr!("exp://{host}:{port}").into_string(),
                 "no network address was found, so only a simulator or emulator on this machine \
                  can open this"
                     .to_string(),
             ),
             (Self::ReactNativeCli { .. }, Some(_)) => (
-                format!("{host}:{port}"),
-                format!(
+                uf_infra::cstr!("{host}:{port}").into_string(),
+                uf_infra::cstr!(
                     "a phone on the same network connects here from the Dev Menu (Configure \
                      Bundler); a simulator or emulator uses localhost:{port}"
-                ),
+                )
+                .into_string(),
             ),
             (Self::ReactNativeCli { .. }, None) => (
-                format!("localhost:{port}"),
+                uf_infra::cstr!("localhost:{port}").into_string(),
                 "no network address was found, so only a simulator or emulator on this machine \
                  can connect"
                     .to_string(),
@@ -250,30 +251,30 @@ pub(crate) fn dev(
 ) -> Result<()> {
     let root = &resolved.root;
     if let Some(host) = &args.host {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf dev --target {target}` does not bind an address itself: the native dev server \
              does, and each server spells it its own way. Instead of `--host {host}`, pass the \
              server's own flag after `--` — `uf dev --target {target} -- --lan` or `-- --tunnel` \
              for Expo CLI, `uf dev --target {target} -- --host {host}` for React Native CLI.",
-            target = target.as_str(),
-        );
+            target = target.as_str()
+        ));
     }
 
     let server = NativeServer::detect(root).ok_or_else(|| {
-        anyhow!(
+        anyhow!(uf_infra::cstr!(
             "`uf dev --target {}` runs the project's own React Native dev server, and {root} has \
              none installed: neither `expo` (Expo CLI) nor `@react-native-community/cli` (React \
              Native CLI) is in node_modules. Install the project's dependencies, or add the CLI \
              the app is built with.",
             target.as_str()
-        )
+        ))
     })?;
     let metro = check_metro(&server, root)?;
 
     let tables = discover_native_route_tables(root, &resolved.config)?;
     let modules = write_native_route_tables(root, &resolved.config, &tables)?;
     let routes = (!modules.files.is_empty()).then(|| {
-        format!(
+        uf_infra::cstr!(
             "{} → {}",
             plural(modules.routes, "route"),
             modules
@@ -283,6 +284,7 @@ pub(crate) fn dev(
                 .collect::<Vec<_>>()
                 .join(", ")
         )
+        .into_string()
     });
 
     let env = project_env(resolved, args.mode.as_deref(), DEVELOPMENT)?;
@@ -290,14 +292,15 @@ pub(crate) fn dev(
     let env_files = env_file_list(root, &env);
     let port = args.port.or(metro.port).unwrap_or(METRO_DEFAULT_PORT);
     let (device, hint) = server.device(lan_address(), port);
-    let engine = format!("metro, run by {}", server.label());
+    let engine = uf_infra::cstr!("metro, run by {}", server.label()).into_string();
     let transform = metro.upstream.as_deref().map_or_else(
         || "uf transform, then the project's Babel transformer".to_string(),
         |upstream| {
-            format!(
+            uf_infra::cstr!(
                 "uf transform, then {}",
                 relative_to(root, Utf8Path::new(upstream))
             )
+            .into_string()
         },
     );
     let metro_config = metro
@@ -342,11 +345,12 @@ pub(crate) fn dev(
         .current_dir(root.as_std_path())
         .env("UF_BINARY", &uf);
     let status = command.status().with_context(|| {
-        format!(
+        uf_infra::cstr!(
             "failed to start `{}` ({})",
             server.command(),
             server.binary()
         )
+        .into_string()
     })?;
     if status.success() || interrupted(status) {
         return Ok(());
@@ -494,22 +498,22 @@ pub(crate) struct ComposedMetro {
 
 pub(crate) fn check_metro(server: &NativeServer, root: &Utf8Path) -> Result<ComposedMetro> {
     match probe_metro(root)? {
-        MetroProbe::NoMetro { message } => bail!(
+        MetroProbe::NoMetro { message } => bail!(uf_infra::cstr!(
             "`{}` needs Metro, and Metro's config loader does not resolve from {root} \
              ({message}). Metro comes with React Native: install the project's dependencies \
              first.",
             server.command()
-        ),
+        )),
         MetroProbe::LoadFailed {
             config_file,
             message,
-        } => bail!(
+        } => bail!(uf_infra::cstr!(
             "{} failed to load, so Metro could not start either:\n{message}",
             config_file.as_deref().map_or_else(
                 || "The Metro config".to_string(),
                 |file| relative_to(root, Utf8Path::new(file))
             )
-        ),
+        )),
         MetroProbe::Loaded(loaded) => composed(server, root, loaded),
     }
 }
@@ -522,11 +526,11 @@ fn composed(
     loaded: LoadedMetroConfig,
 ) -> Result<ComposedMetro> {
     if loaded.uniflowed_transformer.is_none() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`@uniflowed/react-native` is not installed in {root}, so Metro has no uf transformer \
              to run. Add it with `uf add @uniflowed/react-native`, and compose the Metro config:\n\n{}",
             server.metro_config_example()
-        );
+        ));
     }
     if !loaded.composed {
         let found = loaded.config_file.as_deref().map_or_else(
@@ -536,23 +540,24 @@ fn composed(
                     .to_string()
             },
             |file| {
-                format!(
+                uf_infra::cstr!(
                     "{} does not route modules through uf's transformer",
                     relative_to(root, Utf8Path::new(file))
                 )
+                .into_string()
             },
         );
-        bail!(
+        bail!(uf_infra::cstr!(
             "{found}: `transformer.babelTransformerPath` is {}. Modules would skip uf's \
              transform — the React Compiler, uf's Flow lowering and its StyleX policy — with \
              nothing on the device to say so. Compose the config with `withUniflowedMetro()`, \
              which keeps the transformer it names running after uf's:\n\n{}",
-            loaded
-                .babel_transformer_path
-                .as_deref()
-                .map_or_else(|| "unset".to_string(), |path| format!("`{path}`")),
+            loaded.babel_transformer_path.as_deref().map_or_else(
+                || "unset".to_string(),
+                |path| uf_infra::cstr!("`{path}`").into_string()
+            ),
             server.metro_config_example()
-        );
+        ));
     }
     Ok(ComposedMetro {
         config_file: loaded.config_file,
@@ -563,11 +568,11 @@ fn composed(
 
 fn probe_metro(root: &Utf8Path) -> Result<MetroProbe> {
     let node = find_program("node").ok_or_else(|| {
-        anyhow!(
+        anyhow!(uf_infra::cstr!(
             "`uf dev --target native` loads the project's Metro config to check it before starting \
              a server, and there is no `node` on PATH to load it with. Expo CLI and React Native \
              CLI both run on Node; install it first."
-        )
+        ))
     })?;
     let output = Command::new(node.as_std_path())
         .arg("-e")
@@ -577,13 +582,15 @@ fn probe_metro(root: &Utf8Path) -> Result<MetroProbe> {
         // What the config composes, and not whatever was exported before uf ran.
         .env_remove("UF_METRO_CONFIGURED_UPSTREAM")
         .output()
-        .with_context(|| format!("failed to run {node} to load the Metro config"))?;
+        .with_context(|| {
+            uf_infra::cstr!("failed to run {node} to load the Metro config").into_string()
+        })?;
     read_probe_reply(&String::from_utf8_lossy(&output.stdout)).with_context(|| {
-        format!(
+        uf_infra::cstr!(
             "loading the Metro config in {root} gave no answer uf can read (node exited with {}):\n{}",
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
-        )
+        ).into_string()
     })
 }
 
@@ -595,9 +602,10 @@ fn read_probe_reply(stdout: &str) -> Result<MetroProbe> {
         .lines()
         .rev()
         .find_map(|line| line.strip_prefix(METRO_PROBE_MARKER))
-        .ok_or_else(|| anyhow!("the Metro config check printed no reply"))?;
-    let value: Value = serde_json::from_str(reply)
-        .with_context(|| format!("the Metro config check replied with invalid JSON: {reply}"))?;
+        .ok_or_else(|| anyhow!(uf_infra::cstr!("the Metro config check printed no reply")))?;
+    let value: Value = serde_json::from_str(reply).with_context(|| {
+        uf_infra::cstr!("the Metro config check replied with invalid JSON: {reply}").into_string()
+    })?;
     let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
     match value.get("status").and_then(Value::as_str) {
         Some("ok") => Ok(MetroProbe::Loaded(LoadedMetroConfig {
@@ -621,7 +629,9 @@ fn read_probe_reply(stdout: &str) -> Result<MetroProbe> {
             config_file: text("config_file"),
             message: text("message").unwrap_or_default(),
         }),
-        other => bail!("the Metro config check replied with a status uf does not know: {other:?}"),
+        other => bail!(uf_infra::cstr!(
+            "the Metro config check replied with a status uf does not know: {other:?}"
+        )),
     }
 }
 

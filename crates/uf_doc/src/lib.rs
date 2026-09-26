@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! Flow API documentation extraction for `uf doc`.
 //!
@@ -206,7 +207,10 @@ fn document(scan: uf_project::SourceScan) -> Result<DocReport, DocError> {
         unreadable: scan
             .unreadable
             .iter()
-            .map(|file| format!("{}: {}", file.relative_path, file.reason))
+            .map(|file| {
+                compact_str::format_compact!("{}: {}", file.relative_path, file.reason)
+                    .into_string()
+            })
             .collect(),
         ..DocReport::default()
     };
@@ -948,12 +952,16 @@ mod tests {
         // Two chain levels per link — a member and a call — so `.f()` alone
         // can only land on an even count. The trailing `.g` is the odd level
         // that puts this exactly on the ceiling rather than one under it.
-        let chain = format!(
+        let chain = compact_str::format_compact!(
             "{}{}",
             ".f()".repeat(uf_flow::MAX_CHAIN_DEPTH / 2 - 1),
             ".g"
-        );
-        let source = format!("// @flow\n\n/** Deep. */\nexport const deep = a{chain};\n");
+        )
+        .into_string();
+        let source = compact_str::format_compact!(
+            "// @flow\n\n/** Deep. */\nexport const deep = a{chain};\n"
+        )
+        .into_string();
         assert_eq!(
             uf_flow::depths(&source).chain,
             uf_flow::MAX_CHAIN_DEPTH,

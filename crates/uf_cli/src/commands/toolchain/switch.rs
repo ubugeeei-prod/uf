@@ -102,7 +102,9 @@ pub(super) fn switch_to(
 ) -> Result<Switched> {
     let runtime_dir = store.version_dir(version);
     if !store.has_complete(version) {
-        bail!("uf@{version} is not installed: {runtime_dir} does not hold all of uf, ufr and ufx");
+        bail!(uf_infra::cstr!(
+            "uf@{version} is not installed: {runtime_dir} does not hold all of uf, ufr and ufx"
+        ));
     }
     let replaced = active_version(store).filter(|active| active != version);
     let runtime_binary = store.binary(version);
@@ -128,12 +130,15 @@ pub(super) fn switch_to(
     checkpoint(Step::Manifest)?;
 
     if let Some(replaced) = &replaced {
-        write_atomically(&store.previous_record(), format!("{replaced}\n").as_bytes())?;
+        write_atomically(
+            &store.previous_record(),
+            uf_infra::cstr!("{replaced}\n").into_string().as_bytes(),
+        )?;
     }
     checkpoint(Step::Previous)?;
 
     fs::create_dir_all(&store.bin_dir)
-        .with_context(|| format!("failed to create {}", store.bin_dir))?;
+        .with_context(|| uf_infra::cstr!("failed to create {}", store.bin_dir).into_string())?;
     for name in SWITCH_ORDER {
         link_atomically(
             &runtime_dir.join("bin").join(name),
@@ -221,18 +226,24 @@ pub(super) fn recorded_previous(store: &Store) -> Option<String> {
 /// when the process died between them.
 pub(super) fn place(staged: &Utf8Path, runtime_dir: &Utf8Path) -> Result<()> {
     if !runtime_dir.is_dir() {
-        return fs::rename(staged, runtime_dir)
-            .with_context(|| format!("failed to move {staged} to {runtime_dir}"));
+        return fs::rename(staged, runtime_dir).with_context(|| {
+            uf_infra::cstr!("failed to move {staged} to {runtime_dir}").into_string()
+        });
     }
 
     let mut files = Vec::new();
     for entry in walkdir::WalkDir::new(staged).min_depth(1) {
-        let entry = entry.with_context(|| format!("failed to read {staged}"))?;
+        let entry =
+            entry.with_context(|| uf_infra::cstr!("failed to read {staged}").into_string())?;
         if entry.file_type().is_dir() {
             continue;
         }
-        let path = Utf8Path::from_path(entry.path())
-            .ok_or_else(|| anyhow!("{} is not a UTF-8 path", entry.path().display()))?;
+        let path = Utf8Path::from_path(entry.path()).ok_or_else(|| {
+            anyhow!(uf_infra::cstr!(
+                "{} is not a UTF-8 path",
+                entry.path().display()
+            ))
+        })?;
         files.push(path.strip_prefix(staged)?.to_owned());
     }
     // `false` sorts first, and the sort is stable.
@@ -241,12 +252,14 @@ pub(super) fn place(staged: &Utf8Path, runtime_dir: &Utf8Path) -> Result<()> {
     for file in &files {
         let destination = runtime_dir.join(file);
         if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+            fs::create_dir_all(parent)
+                .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
         }
         fs::rename(staged.join(file), &destination)
-            .with_context(|| format!("failed to replace {destination}"))?;
+            .with_context(|| uf_infra::cstr!("failed to replace {destination}").into_string())?;
     }
-    fs::remove_dir_all(staged).with_context(|| format!("failed to remove {staged}"))
+    fs::remove_dir_all(staged)
+        .with_context(|| uf_infra::cstr!("failed to remove {staged}").into_string())
 }
 
 /// Install the running binary as its own version.
@@ -259,23 +272,28 @@ pub(super) fn place(staged: &Utf8Path, runtime_dir: &Utf8Path) -> Result<()> {
 pub(super) fn install_running_binary(store: &Store, version: &str) -> Result<()> {
     let staged = store
         .runtimes
-        .join(format!(".uf@{version}.incoming.{}", std::process::id()));
+        .join(uf_infra::cstr!(".uf@{version}.incoming.{}", std::process::id()).into_string());
     match fs::remove_dir_all(&staged) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error).with_context(|| format!("failed to remove {staged}")),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| uf_infra::cstr!("failed to remove {staged}").into_string());
+        }
     }
     let bin = staged.join("bin");
-    fs::create_dir_all(&bin).with_context(|| format!("failed to create {bin}"))?;
+    fs::create_dir_all(&bin)
+        .with_context(|| uf_infra::cstr!("failed to create {bin}").into_string())?;
 
     let current_exe = std::env::current_exe().with_context(|| "failed to locate current uf")?;
     for name in BINARIES {
         let destination = bin.join(binary_file(name));
         fs::copy(&current_exe, &destination).with_context(|| {
-            format!(
+            uf_infra::cstr!(
                 "failed to install {destination} from {}",
                 current_exe.display()
             )
+            .into_string()
         })?;
         mark_executable(&destination)?;
     }
@@ -285,7 +303,7 @@ pub(super) fn install_running_binary(store: &Store, version: &str) -> Result<()>
 /// A binary's file name on this platform.
 pub(super) fn binary_file(name: &str) -> String {
     if cfg!(windows) {
-        format!("{name}.exe")
+        uf_infra::cstr!("{name}.exe").into_string()
     } else {
         name.to_owned()
     }
@@ -309,7 +327,8 @@ pub(super) fn is_executable_file(path: &Utf8Path) -> bool {
 /// one, never part of either.
 pub(super) fn write_atomically(path: &Utf8Path, contents: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+        fs::create_dir_all(parent)
+            .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
     }
     let incoming = incoming(path);
     let written = fs::File::create(&incoming)
@@ -320,7 +339,7 @@ pub(super) fn write_atomically(path: &Utf8Path, contents: &[u8]) -> Result<()> {
         .and_then(|()| fs::rename(&incoming, path));
     if let Err(error) = written {
         let _ = fs::remove_file(&incoming);
-        return Err(error).with_context(|| format!("failed to write {path}"));
+        return Err(error).with_context(|| uf_infra::cstr!("failed to write {path}").into_string());
     }
     Ok(())
 }
@@ -340,7 +359,7 @@ fn write_json(path: &Utf8Path, value: &serde_json::Value) -> Result<()> {
 #[cfg(unix)]
 pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> {
     if !is_executable_file(target) {
-        bail!("the runtime is missing {target}");
+        bail!(uf_infra::cstr!("the runtime is missing {target}"));
     }
     let incoming = incoming(path);
     // A leftover under this name was made by a process with this id that is
@@ -348,13 +367,17 @@ pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> 
     match fs::remove_file(&incoming) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error).with_context(|| format!("failed to remove {incoming}")),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| uf_infra::cstr!("failed to remove {incoming}").into_string());
+        }
     }
     std::os::unix::fs::symlink(target, &incoming)
-        .with_context(|| format!("failed to link {incoming} to {target}"))?;
+        .with_context(|| uf_infra::cstr!("failed to link {incoming} to {target}").into_string())?;
     if let Err(error) = fs::rename(&incoming, path) {
         let _ = fs::remove_file(&incoming);
-        return Err(error).with_context(|| format!("failed to point {path} at {target}"));
+        return Err(error)
+            .with_context(|| uf_infra::cstr!("failed to point {path} at {target}").into_string());
     }
     Ok(())
 }
@@ -365,11 +388,13 @@ pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> 
 pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> {
     let target = target.with_extension("exe");
     if !target.exists() {
-        bail!("the runtime is missing {target}");
+        bail!(uf_infra::cstr!("the runtime is missing {target}"));
     }
     write_atomically(
         &path.with_extension("cmd"),
-        format!("@echo off\r\n\"{target}\" %*\r\n").as_bytes(),
+        uf_infra::cstr!("@echo off\r\n\"{target}\" %*\r\n")
+            .into_string()
+            .as_bytes(),
     )
 }
 
@@ -380,7 +405,7 @@ pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> 
 /// each recognises what the other left behind.
 fn incoming(path: &Utf8Path) -> Utf8PathBuf {
     let name = path.file_name().unwrap_or("uf");
-    path.with_file_name(format!(".{name}.incoming.{}", std::process::id()))
+    path.with_file_name(uf_infra::cstr!(".{name}.incoming.{}", std::process::id()).into_string())
 }
 
 #[cfg(unix)]
@@ -388,11 +413,11 @@ fn mark_executable(path: &Utf8Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let mut permissions = fs::metadata(path)
-        .with_context(|| format!("failed to read permissions for {path}"))?
+        .with_context(|| uf_infra::cstr!("failed to read permissions for {path}").into_string())?
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(path, permissions)
-        .with_context(|| format!("failed to update permissions for {path}"))
+        .with_context(|| uf_infra::cstr!("failed to update permissions for {path}").into_string())
 }
 
 #[cfg(not(unix))]

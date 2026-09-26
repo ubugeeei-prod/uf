@@ -57,16 +57,17 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let label = project_label(&resolved.root).to_owned();
 
     ui.render(|renderer, out| {
-        renderer.heading(out, 1, &format!("routes · {label}"));
+        renderer.heading(out, 1, uf_infra::cstr!("routes · {label}").as_str());
         renderer.blank(out);
         if found.is_empty() {
             renderer.status(
                 out,
                 Status::Info,
-                &format!(
+                &uf_infra::cstr!(
                     "no routes under {}; `uf routes add /` writes the first one",
                     relative_to(&resolved.root, &router_root)
-                ),
+                )
+                .into_string(),
             );
             renderer.blank(out);
             return;
@@ -114,9 +115,11 @@ fn parameters(route: &Route) -> String {
         .params
         .iter()
         .map(|param| match param.kind {
-            RouteParamKind::Single => format!("[{}]", param.name),
-            RouteParamKind::CatchAll => format!("[...{}]", param.name),
-            RouteParamKind::OptionalCatchAll => format!("[[...{}]]", param.name),
+            RouteParamKind::Single => uf_infra::cstr!("[{}]", param.name).into_string(),
+            RouteParamKind::CatchAll => uf_infra::cstr!("[...{}]", param.name).into_string(),
+            RouteParamKind::OptionalCatchAll => {
+                uf_infra::cstr!("[[...{}]]", param.name).into_string()
+            }
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -139,10 +142,10 @@ fn guards(route: &Route) -> String {
 fn add(cwd: &Utf8Path, ui: &mut Ui, path: &str, parts: RouteParts) -> Result<()> {
     let resolved = load_config(cwd)?;
     if !resolved.config.app.router.enabled {
-        bail!(
+        bail!(uf_infra::cstr!(
             "the file-system router is off in this project (`app.router.enabled` is false), so \
              there is no route table for a route to join"
-        );
+        ));
     }
     let router_root = resolved.root.join(resolved.config.app.router.root.as_str());
     // The one error that carries a path is rewritten against the project root
@@ -151,10 +154,10 @@ fn add(cwd: &Utf8Path, ui: &mut Ui, path: &str, parts: RouteParts) -> Result<()>
     // error is a path a reader has to read the middle of to find the part that
     // is about them.
     let files = scaffold_route(&router_root, path, parts).map_err(|error| match error {
-        ScaffoldError::Exists { path } => anyhow!(
+        ScaffoldError::Exists { path } => anyhow!(uf_infra::cstr!(
             "{} already exists; `uf routes add` never overwrites a file",
             relative_to(&resolved.root, &path)
-        ),
+        )),
         other => anyhow!(other),
     })?;
 
@@ -192,7 +195,7 @@ fn add(cwd: &Utf8Path, ui: &mut Ui, path: &str, parts: RouteParts) -> Result<()>
         renderer.status(
             out,
             Status::Success,
-            &format!("wrote {}", plural(count, "file")),
+            uf_infra::cstr!("wrote {}", plural(count, "file")).as_str(),
         );
         // Not run automatically: `uf prepare` type checks, and a scaffold that
         // silently ran the checker would make writing a file feel like a build.

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! uf's compile path, stage by stage, with the fixture's options.
 //!
 //! This is `uf_transform::transform` up to and including the printer — the

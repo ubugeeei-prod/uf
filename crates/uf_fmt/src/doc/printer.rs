@@ -14,6 +14,7 @@
 //! over them would turn deep input into a stack overflow rather than an
 //! error.
 
+use uf_infra::{SmallVec, smallvec};
 use unicode_width::UnicodeWidthStr;
 
 use super::{AlignKind, Doc, DocKind, GroupId, HARDLINE_ONLY, LineMode};
@@ -84,7 +85,7 @@ pub fn print(doc: Doc<'_>, options: PrintOptions, group_count: usize) -> String 
         out: String::new(),
         position: 0,
         group_modes: vec![None; group_count],
-        line_suffixes: Vec::new(),
+        line_suffixes: SmallVec::new(),
         should_remeasure: false,
     };
     printer.run(doc);
@@ -99,7 +100,7 @@ struct Printer<'a> {
     position: usize,
     /// The mode each identified group was printed in, once known.
     group_modes: Vec<Option<Mode>>,
-    line_suffixes: Vec<Command<'a>>,
+    line_suffixes: SmallVec<[Command<'a>; 4]>,
     /// A hard line was met in flat mode, so the next group must be measured
     /// rather than inheriting flatness.
     should_remeasure: bool,
@@ -500,7 +501,7 @@ impl<'a> Printer<'a> {
         must_be_flat: bool,
     ) -> bool {
         let mut rest_index = rest.len();
-        let mut commands: Vec<(Mode, Doc<'a>)> = vec![(next.mode, next.doc)];
+        let mut commands: SmallVec<[(Mode, Doc<'a>); 32]> = smallvec![(next.mode, next.doc)];
         let mut out_width_trimmable = 0usize;
 
         while width >= 0 {

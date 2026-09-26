@@ -259,7 +259,9 @@ pub fn lint(
         // Serialized so the location is read by the code `uf build` reads it
         // with, rather than by a second copy of the same rule.
         let event = serde_json::to_value(event).map_err(|error| {
-            TransformError::Internal(format!("compiler event could not be serialized: {error}"))
+            TransformError::Internal(
+                uf_infra::cstr!("compiler event could not be serialized: {error}").into_string(),
+            )
         })?;
         let Some(detail) = event.get("detail") else {
             continue;
@@ -635,9 +637,9 @@ mod tests {
     #[test]
     fn a_ref_from_the_react_facade_is_a_ref() {
         let source = |from: &str| {
-            format!(
+            uf_infra::cstr!(
                 "import {{useRef}} from '{from}';\nexport component Count() {{\n  const box = useRef(0);\n  return <p>{{box.current}}</p>;\n}}\n"
-            )
+            ).into_string()
         };
         let refs = |from: &str| {
             found(&source(from))
@@ -652,9 +654,9 @@ mod tests {
     #[test]
     fn a_flow_suppression_on_the_line_above_drops_the_finding() {
         let with = |comment: &str| {
-            found(&format!(
+            found(uf_infra::cstr!(
                 "import {{useState}} from 'react';\nexport component Toggle(flag: boolean) {{\n  if (flag) {{\n    {comment}\n    const [on] = useState(false);\n  }}\n  return null;\n}}\n"
-            ))
+            ).as_str())
         };
         assert_eq!(with("// $FlowFixMe[react-rule-hook]"), []);
         assert_eq!(with("/* $FlowFixMe[react-rule-unsafe-ref] */"), []);
@@ -686,7 +688,7 @@ mod tests {
             Some(first.as_slice())
         );
         // A different text, path or switch is a different question.
-        assert!(cached(path, &format!("{source}\n"), plain).is_none());
+        assert!(cached(path, uf_infra::cstr!("{source}\n").as_str(), plain).is_none());
         assert!(cached("app/never-linted-by-this-test.js", source, plain).is_none());
         let switched = LintSwitches {
             effect_dependencies: true,

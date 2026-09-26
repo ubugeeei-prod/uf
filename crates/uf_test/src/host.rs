@@ -539,16 +539,23 @@ impl Event {
     /// itself be a way to write a screen's worth of it.
     fn describe(&self) -> String {
         match self {
-            Self::Test(event) => format!("the case \"{}\"", excerpt(&event.name)),
+            Self::Test(event) => {
+                uf_infra::cstr!("the case \"{}\"", excerpt(&event.name)).into_string()
+            }
             Self::File(event) => match &event.message {
-                Some(message) => format!(
+                Some(message) => uf_infra::cstr!(
                     "the file result \"{}\": {}",
                     excerpt(&event.status),
                     excerpt(message)
-                ),
-                None => format!("the file result \"{}\"", excerpt(&event.status)),
+                )
+                .into_string(),
+                None => {
+                    uf_infra::cstr!("the file result \"{}\"", excerpt(&event.status)).into_string()
+                }
             },
-            Self::Output(event) => format!("output \"{}\"", excerpt(&event.text)),
+            Self::Output(event) => {
+                uf_infra::cstr!("output \"{}\"", excerpt(&event.text)).into_string()
+            }
             Self::Invalidated(_) => String::from("an answer about changed files"),
         }
     }
@@ -747,25 +754,29 @@ impl StaleEvents {
                 .and_then(|at| usize::try_from(at).ok())
                 .and_then(|at| served.get(at))
                 .map_or_else(
-                    || format!("a request this worker never served ({generation})"),
-                    |file| format!("`{file}`"),
+                    || {
+                        uf_infra::cstr!("a request this worker never served ({generation})")
+                            .into_string()
+                    },
+                    |file| uf_infra::cstr!("`{file}`").into_string(),
                 );
             // "That run of it" rather than "that file": a retry re-runs the
             // same path, so the file a straggler came from can be the file
             // being reported, one attempt earlier.
-            let text = if tally.count == 1 {
-                format!(
+            let text =
+                if tally.count == 1 {
+                    uf_infra::cstr!(
                     "[uf] one event arrived from {origin} after that run of it had finished, and \
                      was dropped rather than reported here: {}\n",
                     tally.first
-                )
-            } else {
-                format!(
+                ).into_string()
+                } else {
+                    uf_infra::cstr!(
                     "[uf] {} events arrived from {origin} after that run of it had finished, and \
                      were dropped rather than reported here; the first was {}\n",
                     tally.count, tally.first
-                )
-            };
+                ).into_string()
+                };
             notes.push(OutputChunk {
                 stream: OutputStream::Stderr,
                 text,
@@ -774,10 +785,11 @@ impl StaleEvents {
         if self.beyond > 0 {
             notes.push(OutputChunk {
                 stream: OutputStream::Stderr,
-                text: format!(
+                text: uf_infra::cstr!(
                     "[uf] and {} more from further runs this worker had already finished\n",
                     self.beyond
-                ),
+                )
+                .into_string(),
             });
         }
         notes
@@ -1044,7 +1056,8 @@ impl Worker {
         }
 
         let mut child = process.spawn().map_err(|error| SpawnError {
-            message: format!("could not start `{}`: {error}", command.program),
+            message: uf_infra::cstr!("could not start `{}`: {error}", command.program)
+                .into_string(),
         })?;
         let stdin = child.stdin.take().ok_or_else(|| SpawnError {
             message: String::from("the worker has no stdin"),
@@ -1067,7 +1080,8 @@ impl Worker {
                 }
             })
             .map_err(|error| SpawnError {
-                message: format!("could not start the worker reader: {error}"),
+                message: uf_infra::cstr!("could not start the worker reader: {error}")
+                    .into_string(),
             })?;
 
         Ok(Self {
@@ -1174,7 +1188,10 @@ impl Worker {
         let mut line = match serde_json::to_string(&request) {
             Ok(line) => line,
             Err(error) => {
-                return Self::host_failed(relative, format!("unencodable request: {error}"));
+                return Self::host_failed(
+                    relative,
+                    uf_infra::cstr!("unencodable request: {error}").into_string(),
+                );
             }
         };
         line.push('\n');
@@ -1188,7 +1205,10 @@ impl Worker {
             .write_all(line.as_bytes())
             .and_then(|()| stdin.flush())
         {
-            return Self::host_failed(relative, format!("could not reach the worker: {error}"));
+            return Self::host_failed(
+                relative,
+                uf_infra::cstr!("could not reach the worker: {error}").into_string(),
+            );
         }
 
         let started = Instant::now();
@@ -1237,7 +1257,10 @@ impl Worker {
                         self.kill();
                         return FileOutcome {
                             status: FileStatus::HostFailed {
-                                message: format!("unreadable worker output: {error}: {line}"),
+                                message: uf_infra::cstr!(
+                                    "unreadable worker output: {error}: {line}"
+                                )
+                                .into_string(),
                             },
                             records,
                             output: file_output(&mut pending, &stale, &self.served),
@@ -1258,7 +1281,9 @@ impl Worker {
                 // crashed without finishing the file.
                 Err(RecvTimeoutError::Disconnected) => {
                     let how = match self.child.try_wait() {
-                        Ok(Some(status)) => format!("the worker exited ({status})"),
+                        Ok(Some(status)) => {
+                            uf_infra::cstr!("the worker exited ({status})").into_string()
+                        }
                         _ => String::from("the worker stopped writing"),
                     };
                     return FileOutcome {
@@ -1519,7 +1544,7 @@ fn file_status(event: FileEvent) -> FileStatus {
         other => FileStatus::HostFailed {
             message: event
                 .message
-                .unwrap_or_else(|| format!("the worker reported {other}")),
+                .unwrap_or_else(|| uf_infra::cstr!("the worker reported {other}").into_string()),
         },
     }
 }
@@ -1834,7 +1859,7 @@ mod tests {
             "event": "output",
             "stream": "stdout",
             "test": test,
-            "text": format!("{text}\n"),
+            "text": uf_infra::cstr!("{text}\n").into_string(),
         })
         .to_string()
     }
@@ -1903,12 +1928,12 @@ mod tests {
         let Ok(Event::Output(event)) = serde_json::from_str::<Event>(&line) else {
             panic!("a printed protocol line must stay an output event");
         };
-        assert_eq!(event.text, format!("{printed}\n"));
+        assert_eq!(event.text, uf_infra::cstr!("{printed}\n").into_string());
 
         let mut pending = PendingOutput::default();
         pending.push(event);
         let taken = pending.take("a > b");
-        assert_eq!(taken[0].text, format!("{printed}\n"));
+        assert_eq!(taken[0].text, uf_infra::cstr!("{printed}\n").into_string());
     }
 
     #[test]

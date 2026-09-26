@@ -75,7 +75,7 @@ pub(crate) fn choose(cwd: &Utf8Path) -> Chosen {
     let tasks = task_names(cwd);
     let mut labels: Vec<String> = Vec::with_capacity(tasks.len());
     for (name, _) in &tasks {
-        labels.push(format!("run {name}"));
+        labels.push(uf_infra::cstr!("run {name}").into_string());
     }
 
     let mut choices: Vec<Choice<'_>> = Vec::with_capacity(RUNNABLE.len() + tasks.len() + 1);

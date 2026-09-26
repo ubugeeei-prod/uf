@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! Allocation guards for the batch dependency graph.
 //!
 //! A fully warm check still has to rebuild the graph that says which cached

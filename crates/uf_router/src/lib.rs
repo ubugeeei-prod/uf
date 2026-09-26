@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 mod http_client;
 pub mod native;
 pub mod reserved;
@@ -142,8 +144,10 @@ fn find_module_for_target(
     for variant in target.variants() {
         for extension in extensions {
             let file = match variant.as_str() {
-                Some(variant) => format!("{stem}.{variant}{extension}"),
-                None => format!("{stem}{extension}"),
+                Some(variant) => {
+                    compact_str::format_compact!("{stem}.{variant}{extension}").into_string()
+                }
+                None => compact_str::format_compact!("{stem}{extension}").into_string(),
             };
             let candidate = directory.join(file);
             if candidate.is_file() {
@@ -156,13 +160,17 @@ fn find_module_for_target(
 
 /// Whether `name` is the page this target might resolve.
 fn is_reserved_page_for_target(name: &str, target: RouteTarget) -> bool {
+    let Some(suffix) = name.strip_prefix(RESERVED_PAGE_STEM) else {
+        return false;
+    };
     target.variants().iter().any(|variant| {
-        PAGE_EXTENSIONS
-            .iter()
-            .any(|extension| match variant.as_str() {
-                Some(variant) => name == format!("{RESERVED_PAGE_STEM}.{variant}{extension}"),
-                None => name == format!("{RESERVED_PAGE_STEM}{extension}"),
-            })
+        let extension = match variant.as_str() {
+            Some(variant) => suffix
+                .strip_prefix('.')
+                .and_then(|suffix| suffix.strip_prefix(variant)),
+            None => Some(suffix),
+        };
+        extension.is_some_and(|extension| PAGE_EXTENSIONS.contains(&extension))
     })
 }
 
@@ -756,7 +764,7 @@ fn refuse_optional_catch_all_collisions(routes: &[Route]) -> Result<(), RouterEr
         {
             return Err(RouterError::OptionalCatchAllBesidePage {
                 page: route.page.clone(),
-                catch_all: format!("[[...{}]]", param.name),
+                catch_all: compact_str::format_compact!("[[...{}]]", param.name).into_string(),
                 path: parent.to_string(),
                 other: other.page.clone(),
                 parameter: param.name.to_string(),
@@ -771,10 +779,11 @@ fn refuse_optional_catch_all_collisions(routes: &[Route]) -> Result<(), RouterEr
 fn path_shape(path: &str) -> String {
     path.split('/')
         .map(|segment| match segment.strip_prefix(':') {
-            Some(name) => format!(
+            Some(name) => compact_str::format_compact!(
                 ":{}",
                 name.trim_start_matches(|c: char| c != '*' && c != '?')
-            ),
+            )
+            .into_string(),
             None => segment.to_string(),
         })
         .collect::<Vec<_>>()
@@ -1077,15 +1086,15 @@ fn directory_spelling(segment: &PathSegment) -> String {
         Some(RouteParam {
             name,
             kind: RouteParamKind::OptionalCatchAll,
-        }) => format!("[[...{name}]]"),
+        }) => compact_str::format_compact!("[[...{name}]]").into_string(),
         Some(RouteParam {
             name,
             kind: RouteParamKind::CatchAll,
-        }) => format!("[...{name}]"),
+        }) => compact_str::format_compact!("[...{name}]").into_string(),
         Some(RouteParam {
             name,
             kind: RouteParamKind::Single,
-        }) => format!("[{name}]"),
+        }) => compact_str::format_compact!("[{name}]").into_string(),
         None => segment.spelling.clone(),
     }
 }
@@ -1095,7 +1104,7 @@ fn path_from(segments: &[PathSegment]) -> String {
     if segments.is_empty() {
         return "/".to_string();
     }
-    format!(
+    compact_str::format_compact!(
         "/{}",
         segments
             .iter()
@@ -1103,6 +1112,7 @@ fn path_from(segments: &[PathSegment]) -> String {
             .collect::<Vec<_>>()
             .join("/")
     )
+    .into_string()
 }
 
 /// Refuse the directory spellings uf reserves without serving.
@@ -1202,11 +1212,12 @@ fn refuse_unsupported_template_files(app_root: &Utf8Path) -> Result<(), RouterEr
 }
 
 fn unsupported_template_file_reason(file_name: &str) -> String {
-    format!(
+    compact_str::format_compact!(
         "`{file_name}` looks like a route template, but uf's route template file is \
          `$template.js`. This file would be ignored rather than remounting the route, so it is \
          refused; rename it to `$template.js`. https://github.com/ubugeeei-prod/uf/issues/267"
     )
+    .into_string()
 }
 
 fn unsupported_slot_boundary_role(file_name: &str) -> Option<&'static str> {
@@ -1500,7 +1511,7 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
         output.push_str(
             &routes
                 .iter()
-                .map(|route| format!("\"{}\"", route.path))
+                .map(|route| compact_str::format_compact!("\"{}\"", route.path).into_string())
                 .collect::<Vec<_>>()
                 .join(" | "),
         );
@@ -1518,21 +1529,23 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
     } else {
         output.push_str("export type RouteParams = {\n");
         for route in routes {
-            output.push_str(&format!(
+            uf_infra::append!(
+                output,
                 "  \"{}\": {},\n",
                 route.path,
                 route_params_type(&route.params)
-            ));
+            );
         }
         output.push_str("};\n\n");
 
         output.push_str("export type RouteArgs = {\n");
         for route in routes {
-            output.push_str(&format!(
+            uf_infra::append!(
+                output,
                 "  \"{}\": {},\n",
                 route.path,
                 route_args_type(&route.params)
-            ));
+            );
         }
         output.push_str("};\n\n");
     }
@@ -1683,21 +1696,21 @@ fn path_segments(relative: &Utf8Path) -> Option<Vec<PathSegment>> {
         };
         match named {
             RouteSegment::OptionalCatchAll(name) => segments.push(PathSegment {
-                spelling: format!(":{name}*?"),
+                spelling: compact_str::format_compact!(":{name}*?").into_string(),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::OptionalCatchAll,
                 }),
             }),
             RouteSegment::CatchAll(name) => segments.push(PathSegment {
-                spelling: format!(":{name}*"),
+                spelling: compact_str::format_compact!(":{name}*").into_string(),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::CatchAll,
                 }),
             }),
             RouteSegment::Param(name) => segments.push(PathSegment {
-                spelling: format!(":{name}"),
+                spelling: compact_str::format_compact!(":{name}").into_string(),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::Single,
@@ -1728,7 +1741,7 @@ fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
     let path = if segments.is_empty() {
         "/".to_string()
     } else {
-        format!(
+        compact_str::format_compact!(
             "/{}",
             segments
                 .iter()
@@ -1736,6 +1749,7 @@ fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
                 .collect::<Vec<_>>()
                 .join("/")
         )
+        .into_string()
     };
     (path, params)
 }
@@ -1750,7 +1764,7 @@ fn route_args_type(params: &[RouteParam]) -> String {
     if params.is_empty() {
         return "[]".to_string();
     }
-    format!("[{}]", route_params_type(params))
+    compact_str::format_compact!("[{}]", route_params_type(params)).into_string()
 }
 
 fn route_params_type(params: &[RouteParam]) -> String {
@@ -1775,13 +1789,13 @@ fn route_params_type(params: &[RouteParam]) -> String {
                     "$ReadOnlyArray<string>"
                 }
             };
-            format!("{}: {}", param.name, ty)
+            compact_str::format_compact!("{}: {}", param.name, ty).into_string()
         })
         .collect::<Vec<_>>()
         .join(", ");
     // Exact for the same reason: a route's parameters are exactly the segments
     // in its path.
-    format!("{{ {fields} }}")
+    compact_str::format_compact!("{{ {fields} }}").into_string()
 }
 
 #[cfg(test)]

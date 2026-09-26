@@ -146,7 +146,7 @@ pub(super) fn targets(resolved: &ResolvedConfig, scope: &Scope) -> Result<Target
 
     let Some((root, members)) = uf_project::enclosing_workspace(&resolved.root, &resolved.config)
     else {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} chooses projects in a workspace, and {} is not in one\n\n  \
              a workspace is a package.json that lists `workspaces`, a pnpm-workspace.yaml, \
              or a directory whose members have a uf.config.js of their own",
@@ -156,7 +156,7 @@ pub(super) fn targets(resolved: &ResolvedConfig, scope: &Scope) -> Result<Target
                 "--workspace-root"
             },
             project_label(&resolved.root)
-        );
+        ));
     };
     let Some(selectors) = selectors else {
         return Ok(Targets {
@@ -175,7 +175,10 @@ pub(super) fn targets(resolved: &ResolvedConfig, scope: &Scope) -> Result<Target
                 .iter()
                 .map(|member| member.name.as_str())
                 .collect::<Vec<_>>();
-            anyhow!("{error}\n\n  members: {}", names.join(", "))
+            anyhow!(uf_infra::cstr!(
+                "{error}\n\n  members: {}",
+                names.join(", ")
+            ))
         })?;
     let each = selected
         .into_iter()
@@ -342,24 +345,27 @@ fn dedupe_check(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let (status, headline) = match &found {
         WouldCollapse::Nothing => (
             Status::Success,
-            format!("nothing to collapse: checked in {elapsed}"),
+            uf_infra::cstr!("nothing to collapse: checked in {elapsed}").into_string(),
         ),
         WouldCollapse::These(named) => (
             Status::Warn,
-            format!(
+            uf_infra::cstr!(
                 "{} package{} would collapse; `uf dedupe` collapses {}",
                 named.len(),
                 if named.len() == 1 { "" } else { "s" },
                 if named.len() == 1 { "it" } else { "them" }
-            ),
+            )
+            .into_string(),
         ),
         WouldCollapse::Something => (
             Status::Warn,
-            format!("{manager_label} would collapse something; `uf dedupe` collapses it"),
+            uf_infra::cstr!("{manager_label} would collapse something; `uf dedupe` collapses it")
+                .into_string(),
         ),
         WouldCollapse::Failed => (
             Status::Error,
-            format!("{manager_label} did not answer whether anything would collapse"),
+            uf_infra::cstr!("{manager_label} did not answer whether anything would collapse")
+                .into_string(),
         ),
     };
 
@@ -392,10 +398,12 @@ fn dedupe_check(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 
     match found {
         WouldCollapse::Nothing => Ok(()),
-        WouldCollapse::Failed => bail!("`{command}` failed rather than answering"),
+        WouldCollapse::Failed => bail!(uf_infra::cstr!("`{command}` failed rather than answering")),
         // The exit code is the point of the flag: CI asked a question whose
         // answer is yes, and nothing was changed on the way to answering it.
-        _ => bail!("the lockfile has duplicates `uf dedupe` would collapse"),
+        _ => bail!(uf_infra::cstr!(
+            "the lockfile has duplicates `uf dedupe` would collapse"
+        )),
     }
 }
 
@@ -411,7 +419,7 @@ fn would_collapse(manager: uf_pm::PackageManager, run: &uf_pm::run::CapturedRun)
     if run.succeeded {
         return WouldCollapse::Nothing;
     }
-    let said = format!("{}\n{}", run.stdout, run.stderr);
+    let said = uf_infra::cstr!("{}\n{}", run.stdout, run.stderr).into_string();
     if manager == uf_pm::PackageManager::Pnpm {
         // pnpm exits non-zero when it fails, too, and names this answer.
         if !said.contains("ERR_PNPM_DEDUPE_CHECK_ISSUES") {
@@ -480,13 +488,13 @@ fn npm_entry(entry: &Value) -> Option<String> {
     if let (Some(from), Some(to)) = (entry.get("from"), entry.get("to")) {
         let name = named(from).or_else(|| named(to))?;
         return Some(match (version(from), version(to)) {
-            (Some(was), Some(becomes)) => format!("{name} {was} → {becomes}"),
+            (Some(was), Some(becomes)) => uf_infra::cstr!("{name} {was} → {becomes}").into_string(),
             _ => name,
         });
     }
     let name = named(entry)?;
     Some(match version(entry) {
-        Some(version) => format!("{name} {version}"),
+        Some(version) => uf_infra::cstr!("{name} {version}").into_string(),
         None => name,
     })
 }
@@ -551,7 +559,7 @@ pub(crate) fn link(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Result<
             heading: "uf link",
             operation,
             operands: &operands,
-            retry: format!("uf link {target}"),
+            retry: uf_infra::cstr!("uf link {target}").into_string(),
             announced: false,
             scope: &Scope::Project,
         },
@@ -608,7 +616,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
     let failed = |error: ManagerRunError| {
         failed_hint(
             error,
-            &format!(
+            &uf_infra::cstr!(
                 "the manager printed why above; fix that and run `{}` again",
                 retry_line(
                     "uf unlink",
@@ -617,7 +625,8 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
                         .into_iter()
                         .collect::<Vec<_>>()
                 )
-            ),
+            )
+            .into_string(),
         )
     };
 
@@ -632,7 +641,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
             uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry) => true,
         };
         if !known {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "uf cannot find where {manager} keeps linked packages: {}",
                 if matches!(
                     manager,
@@ -642,7 +651,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
                 } else {
                     "neither the manager's own variable nor HOME is set"
                 }
-            );
+            ));
         }
         let entries = uf_pm::links::registry_entries(manager, &request.name, &dirs);
         let entry = match unregister_plan(
@@ -671,17 +680,18 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
             uf_pm::links::registration(&entries, &root),
             Registration::Linked(_)
         ) {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "`{}` succeeded, but {entry} still links to this package",
                 run.invocation
-            );
+            ));
         }
         report.removed = Some(("unregistered", request.name.clone(), entry.to_string()));
-        report.headline = format!(
+        report.headline = uf_infra::cstr!(
             "unregistered {} in {}; other projects can no longer link it by name",
             request.name,
             format_duration(started.elapsed())
-        );
+        )
+        .into_string();
         ui.render(|renderer, out| render_unlink(renderer, out, &report));
         return Ok(());
     }
@@ -718,11 +728,13 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
             report.commands.push(run.invocation.to_string());
         }
         None => {
-            uf_pm::links::remove_link(&root, name)
-                .with_context(|| format!("could not remove the link at node_modules/{name}"))?;
-            report
-                .rows
-                .push(("removed", format!("node_modules/{name}, a link")));
+            uf_pm::links::remove_link(&root, name).with_context(|| {
+                uf_infra::cstr!("could not remove the link at node_modules/{name}").into_string()
+            })?;
+            report.rows.push((
+                "removed",
+                uf_infra::cstr!("node_modules/{name}, a link").into_string(),
+            ));
         }
     }
     // npm, Yarn 1 and bun leave a declared package uninstalled once its link
@@ -749,7 +761,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
     {
         report.rows.push((
             "override",
-            format!("{name}: {value}, taken out of pnpm-workspace.yaml"),
+            uf_infra::cstr!("{name}: {value}, taken out of pnpm-workspace.yaml").into_string(),
         ));
         reinstall = true;
     }
@@ -781,41 +793,45 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
             report
                 .commands
                 .iter()
-                .map(|command| format!("`{command}`"))
+                .map(|command| uf_infra::cstr!("`{command}`").into_string())
                 .collect::<Vec<_>>()
                 .join(" and ")
         };
-        anyhow!("{ran} succeeded, but {why}")
+        anyhow!(uf_infra::cstr!("{ran} succeeded, but {why}"))
     })?;
     let elapsed = format_duration(started.elapsed());
     report.removed = Some(("unlinked", name.to_owned(), undone.shown.clone()));
     (report.status, report.headline) = match outcome {
         Unlinked::Reinstalled(version) => (
             Status::Success,
-            format!(
+            uf_infra::cstr!(
                 "unlinked {name} in {elapsed}; node_modules has {name} {version} again, as \
                  package.json declares"
-            ),
+            )
+            .into_string(),
         ),
         Unlinked::Transitive(version) => (
             Status::Success,
-            format!(
+            uf_infra::cstr!(
                 "unlinked {name} in {elapsed}; node_modules has {name} {version}, which another \
                  dependency brings in"
-            ),
+            )
+            .into_string(),
         ),
         Unlinked::Gone => (
             Status::Success,
-            format!(
+            uf_infra::cstr!(
                 "unlinked {name} in {elapsed}; nothing here declares it, so node_modules has none"
-            ),
+            )
+            .into_string(),
         ),
         Unlinked::StillDeclared(range) => (
             Status::Warn,
-            format!(
+            uf_infra::cstr!(
                 "{name} is still linked after {elapsed}: package.json declares it as {range}, \
                  which links it on every install; `uf remove {name}` takes that out"
-            ),
+            )
+            .into_string(),
         ),
     };
     ui.render(|renderer, out| render_unlink(renderer, out, &report));
@@ -862,12 +878,12 @@ fn unlink_request(
     match LinkTarget::of(target) {
         LinkTarget::Register => {
             let name = uf_pm::links::package_name(root).ok_or_else(|| {
-                anyhow!(
+                anyhow!(uf_infra::cstr!(
                     "`uf unlink` with nothing named unregisters the package in {}, and no \
                      package.json there names one\n\n  to take a link out of this project, name \
                      it: `uf unlink <name>` or `uf unlink <path>`",
                     project_label(root)
-                )
+                ))
             })?;
             // npm and pnpm remove a global package by its name; Yarn 1 and bun
             // unregister the directory they are run in.
@@ -891,10 +907,10 @@ fn unlink_request(
         LinkTarget::Package => {
             let name = target.unwrap_or_default().to_owned();
             if !uf_pm::links::is_package_name(&name) {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "{name:?} is not a package name: `uf unlink` takes the name a package was \
                      linked by, or the path to it"
-                );
+                ));
             }
             Ok(UnlinkRequest {
                 target: LinkTarget::Package,
@@ -907,10 +923,10 @@ fn unlink_request(
             let written = target.unwrap_or_default();
             let directory = root.join(written);
             let name = uf_pm::links::package_name(&directory).ok_or_else(|| {
-                anyhow!(
+                anyhow!(uf_infra::cstr!(
                     "{written} holds no package.json that names a package: `uf unlink <dir>` \
                      unlinks the package that directory is"
-                )
+                ))
             })?;
             let directory = directory.canonicalize_utf8().ok();
             // Yarn 2+ unlinks by the path it linked by. Every other manager's
@@ -944,13 +960,17 @@ fn unregister_plan(
 ) -> Result<Utf8PathBuf, String> {
     match registration {
         Registration::Linked(entry) => Ok(entry.clone()),
-        Registration::Elsewhere { entry, to } => Err(format!(
+        Registration::Elsewhere { entry, to } => Err(uf_infra::cstr!(
             "{manager}'s {name} at {entry} links to {to}, not to this package"
-        )),
-        Registration::Installed(entry) => Err(format!(
+        )
+        .into_string()),
+        Registration::Installed(entry) => Err(uf_infra::cstr!(
             "{entry} is {name} installed from a registry, not a link to this package"
-        )),
-        Registration::Absent => Err(format!("{name} is not registered with {manager}")),
+        )
+        .into_string()),
+        Registration::Absent => {
+            Err(uf_infra::cstr!("{name} is not registered with {manager}").into_string())
+        }
     }
 }
 
@@ -986,18 +1006,21 @@ fn unlink_plan(
                 shown: resolution.to_owned(),
                 target: resolution_target(root, resolution),
             })
-            .ok_or_else(|| format!("package.json has no resolution linking {name}"));
+            .ok_or_else(|| {
+                uf_infra::cstr!("package.json has no resolution linking {name}").into_string()
+            });
     }
     match before {
         Some(LinkState::Linked(to)) => {
             if let Some(directory) = &request.directory
                 && directory != to
             {
-                return Err(format!(
+                return Err(uf_infra::cstr!(
                     "node_modules/{name} links to {}, not to {}",
                     shown_path(root, to),
                     shown_path(root, directory)
-                ));
+                )
+                .into_string());
             }
             // A path dependency the manifest declares is installed as a link
             // too, and taking it out is `uf remove`'s job.
@@ -1005,10 +1028,11 @@ fn unlink_plan(
                 && declares_link_to(root, range, to)
                 && !(manager == uf_pm::PackageManager::Pnpm && pnpm_override)
             {
-                return Err(format!(
+                return Err(uf_infra::cstr!(
                     "package.json declares {name} as {range}, and {manager} installs that as a \
                      link; `uf remove {name}` takes it out"
-                ));
+                )
+                .into_string());
             }
             Ok(Undone {
                 shown: shown_path(root, to),
@@ -1019,10 +1043,13 @@ fn unlink_plan(
             shown: to.to_string(),
             target: None,
         }),
-        Some(LinkState::Installed) => Err(format!(
+        Some(LinkState::Installed) => Err(uf_infra::cstr!(
             "node_modules/{name} is an installed package, not a link"
-        )),
-        Some(LinkState::Absent) | None => Err(format!("there is no node_modules/{name}")),
+        )
+        .into_string()),
+        Some(LinkState::Absent) | None => {
+            Err(uf_infra::cstr!("there is no node_modules/{name}").into_string())
+        }
     }
 }
 
@@ -1078,9 +1105,9 @@ fn unlink_outcome(
     declared: Option<&str>,
 ) -> Result<Unlinked, String> {
     if let Some(resolution) = &afterwards.resolution {
-        return Err(format!(
-            "package.json still resolves {name} to {resolution}"
-        ));
+        return Err(
+            uf_infra::cstr!("package.json still resolves {name} to {resolution}").into_string(),
+        );
     }
     let version = || {
         afterwards
@@ -1102,7 +1129,7 @@ fn unlink_outcome(
             Some(range) if declares_link_to(root, range, to) => {
                 Ok(Unlinked::Reinstalled(version()))
             }
-            _ => Err(format!(
+            _ => Err(uf_infra::cstr!(
                 "node_modules/{name} still links to {}{}",
                 shown_path(root, to),
                 if manager == uf_pm::PackageManager::Pnpm {
@@ -1112,21 +1139,24 @@ fn unlink_outcome(
                 } else {
                     ""
                 }
-            )),
+            )
+            .into_string()),
         },
-        Some(LinkState::Broken(to)) => Err(format!(
+        Some(LinkState::Broken(to)) => Err(uf_infra::cstr!(
             "node_modules/{name} is still a link, to {to}, which does not exist"
-        )),
+        )
+        .into_string()),
         Some(LinkState::Installed) => Ok(if declared.is_some() {
             Unlinked::Reinstalled(version())
         } else {
             Unlinked::Transitive(version())
         }),
         Some(LinkState::Absent) | None => match declared {
-            Some(range) => Err(format!(
+            Some(range) => Err(uf_infra::cstr!(
                 "package.json declares {name} as {range}, and node_modules has none: run `uf \
                  install`"
-            )),
+            )
+            .into_string()),
             None => Ok(Unlinked::Gone),
         },
     }
@@ -1240,7 +1270,7 @@ fn render_unlink(renderer: &Renderer, out: &mut String, report: &UnlinkReport) {
 /// Say there is nothing to unlink, and why, and succeed.
 fn nothing_to_unlink(ui: &mut Ui, mut report: UnlinkReport, why: &str) -> Result<()> {
     report.status = Status::Success;
-    report.headline = format!("nothing to unlink: {why}");
+    report.headline = uf_infra::cstr!("nothing to unlink: {why}").into_string();
     ui.render(|renderer, out| render_unlink(renderer, out, &report));
     Ok(())
 }
@@ -1337,7 +1367,9 @@ pub(crate) fn query(
         &path,
     )
     .map_err(|error| {
-        let mut what_to_do = format!("{manager_label} reported a problem; its output is above");
+        let mut what_to_do =
+            uf_infra::cstr!("{manager_label} reported a problem; its output is above")
+                .into_string();
         // What the refusal means, where uf knows: pnpm 12 answers `pnpm link`
         // with nothing named with a usage error, and does not say what to run.
         if let Some(hint) = uf_pm::run::failure_hint(manager, operation) {
@@ -1381,7 +1413,7 @@ pub(crate) fn patch(cwd: &Utf8Path, ui: &mut Ui, target: &str, commit: bool) -> 
                 heading: "uf patch --commit",
                 operation: Operation::PatchCommit,
                 operands: &operands,
-                retry: format!("uf patch --commit {target}"),
+                retry: uf_infra::cstr!("uf patch --commit {target}").into_string(),
                 announced: false,
                 scope: &Scope::Project,
             },
@@ -1439,10 +1471,11 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     .map_err(|error| {
         failed_hint(
             error,
-            &format!(
+            &uf_infra::cstr!(
                 "{manager_label} could not explain {package:?}; it is not in this project's tree, \
                  or the name is spelled differently in the manifest"
-            ),
+            )
+            .into_string(),
         )
     })?;
     Ok(())
@@ -1557,46 +1590,55 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
             let place = target
                 .label
                 .as_ref()
-                .map(|label| format!(" in {label}"))
+                .map(|label| uf_infra::cstr!(" in {label}").into_string())
                 .unwrap_or_default();
             // A hint says what to run instead, so the command that failed is
             // not offered again beside it: on pnpm 12, `uf link <name>` is
             // the refused form itself.
-            let what_to_do =
-                if let Some(hint) = uf_pm::run::failure_hint(manager, request.operation) {
-                    format!("the manager printed why above{place}\n\n  {hint}")
-                } else {
-                    format!(
-                        "the manager printed why above{place}; fix that and run `{}` again",
-                        request.retry
-                    )
-                };
+            let what_to_do = if let Some(hint) =
+                uf_pm::run::failure_hint(manager, request.operation)
+            {
+                uf_infra::cstr!("the manager printed why above{place}\n\n  {hint}").into_string()
+            } else {
+                uf_infra::cstr!(
+                    "the manager printed why above{place}; fix that and run `{}` again",
+                    request.retry
+                )
+                .into_string()
+            };
             failed_hint(error, &what_to_do)
         })?;
         commands.push(match &target.label {
-            Some(label) => format!("{}  ({label})", run.invocation),
+            Some(label) => uf_infra::cstr!("{}  ({label})", run.invocation).into_string(),
             None => run.invocation.to_string(),
         });
         outcome = Some(run);
     }
-    let outcome = outcome.ok_or_else(|| anyhow!("no project was chosen to run the manager in"))?;
+    let outcome = outcome.ok_or_else(|| {
+        anyhow!(uf_infra::cstr!(
+            "no project was chosen to run the manager in"
+        ))
+    })?;
 
     // The manifests the manager just rewrote are checked again. A native uf
     // project also rewrites the lock and store it owns; a delegated project
     // leaves that to npm, pnpm, Yarn or Bun.
     if tracks_uf_lock {
         install_workspace(base, &resolved.config).with_context(|| {
-            format!(
+            uf_infra::cstr!(
                 "`{}` succeeded, but uf could not rewrite {} from the manifests it changed",
-                outcome.invocation, resolved.config.pm.lockfile
+                outcome.invocation,
+                resolved.config.pm.lockfile
             )
+            .into_string()
         })?;
     } else {
         check_workspace_manifests(base, &resolved.config).with_context(|| {
-            format!(
+            uf_infra::cstr!(
                 "`{}` succeeded, but uf could not re-check the manifests it changed",
                 outcome.invocation
             )
+            .into_string()
         })?;
     }
 
@@ -1624,7 +1666,12 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
                 uf_pm::links::link_state(base, &name),
                 uf_pm::links::linked_resolution(base, &name),
             )
-            .map_err(|why| anyhow!("`{}` succeeded, but {why}", outcome.invocation))
+            .map_err(|why| {
+                anyhow!(uf_infra::cstr!(
+                    "`{}` succeeded, but {why}",
+                    outcome.invocation
+                ))
+            })
         })
         .transpose()?;
 
@@ -1716,7 +1763,7 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
         renderer.status(
             out,
             Status::Success,
-            &format!("already up to date in {elapsed}"),
+            uf_infra::cstr!("already up to date in {elapsed}").as_str(),
         );
         return;
     }
@@ -1746,21 +1793,22 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
         Some(link) if link.recorded => renderer.status(
             out,
             Status::Warn,
-            &format!(
+            &uf_infra::cstr!(
                 "{} recorded in resolutions in {elapsed}; nothing here depends on it yet, so \
                  node_modules has no link to it",
                 link.name
-            ),
+            )
+            .into_string(),
         ),
         Some(link) => renderer.status(
             out,
             Status::Success,
-            &format!("linked {} in {elapsed}", link.name),
+            uf_infra::cstr!("linked {} in {elapsed}", link.name).as_str(),
         ),
         None => renderer.status(
             out,
             Status::Success,
-            &format!("{} in {elapsed}", headline(report)),
+            uf_infra::cstr!("{} in {elapsed}", headline(report)).as_str(),
         ),
     }
 }
@@ -1819,13 +1867,15 @@ fn link_report(
         });
     }
     Err(match state {
-        Some(LinkState::Broken(to)) => format!(
+        Some(LinkState::Broken(to)) => uf_infra::cstr!(
             "node_modules/{name} is a link to {to}, which does not exist: nothing was linked"
-        ),
-        Some(LinkState::Installed) => {
-            format!("node_modules/{name} is an installed package, not a link: nothing was linked")
-        }
-        _ => format!("there is no node_modules/{name}: nothing was linked"),
+        )
+        .into_string(),
+        Some(LinkState::Installed) => uf_infra::cstr!(
+            "node_modules/{name} is an installed package, not a link: nothing was linked"
+        )
+        .into_string(),
+        _ => uf_infra::cstr!("there is no node_modules/{name}: nothing was linked").into_string(),
     })
 }
 
@@ -1841,7 +1891,7 @@ fn shown_path(base: &Utf8Path, path: &Utf8Path) -> String {
     if let Some(parent) = base.parent()
         && let Ok(beside) = path.strip_prefix(parent)
     {
-        return format!("../{beside}");
+        return uf_infra::cstr!("../{beside}").into_string();
     }
     path.to_string()
 }
@@ -1866,15 +1916,17 @@ fn headline(report: &DepsReport) -> String {
         // change. Saying "the manifest already said so" there would read as a
         // denial of the line the reader just saw.
         if report.continued || !manifest_was_the_point {
-            return format!(
+            return uf_infra::cstr!(
                 "{} in the tree",
                 plural(report.tree.changes.len(), "change")
-            );
+            )
+            .into_string();
         }
-        return format!(
+        return uf_infra::cstr!(
             "the manifest already said so; {} in the tree",
             plural(report.tree.changes.len(), "change")
-        );
+        )
+        .into_string();
     }
     let verb = match report.heading {
         "uf remove" => "taken out of",
@@ -1889,11 +1941,12 @@ fn headline(report: &DepsReport) -> String {
         .into_iter()
         .collect();
     fields.sort_unstable();
-    format!(
+    uf_infra::cstr!(
         "{} {verb} {}",
         plural(report.manifest.len(), "package"),
         fields.join(", ")
     )
+    .into_string()
 }
 
 /// The manifest entries that moved, capped, with the field they moved in —
@@ -1928,7 +1981,11 @@ fn render_manifest_changes(renderer: &Renderer, out: &mut String, changes: &[Man
     let hidden = changes.len().saturating_sub(MANIFEST_CHANGES_SHOWN);
     if hidden > 0 {
         uf_term::push_spaces(out, 4);
-        renderer.line(out, renderer.theme().muted, &format!("and {hidden} more"));
+        renderer.line(
+            out,
+            renderer.theme().muted,
+            uf_infra::cstr!("and {hidden} more").as_str(),
+        );
     }
 }
 
@@ -2049,7 +2106,7 @@ fn retry_line(command: &str, operands: &[String]) -> String {
     if operands.is_empty() {
         return command.to_owned();
     }
-    format!("{command} {}", operands.join(" "))
+    uf_infra::cstr!("{command} {}", operands.join(" ")).into_string()
 }
 
 /// A manager that ran and failed, with the sentence it did not print.
@@ -2063,7 +2120,7 @@ fn failed_hint(error: ManagerRunError, what_to_do: &str) -> anyhow::Error {
     if !matches!(error, ManagerRunError::Failed { .. }) {
         return anyhow!(error);
     }
-    anyhow!("{error}\n\n  {what_to_do}")
+    anyhow!(uf_infra::cstr!("{error}\n\n  {what_to_do}"))
 }
 
 #[cfg(test)]

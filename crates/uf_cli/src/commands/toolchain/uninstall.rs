@@ -108,11 +108,12 @@ pub(crate) fn self_uninstall(ui: &mut Ui, dry_run: bool, yes: bool) -> Result<()
         .iter()
         .map(|removal| removal.bytes)
         .sum::<u64>();
-    let summary = format!(
+    let summary = uf_infra::cstr!(
         "{}, {}",
         plural(plan.removals.len(), "item"),
         ByteSize::from_bytes(total)
-    );
+    )
+    .into_string();
     render_plan(ui, &plan);
 
     if dry_run {
@@ -120,7 +121,10 @@ pub(crate) fn self_uninstall(ui: &mut Ui, dry_run: bool, yes: bool) -> Result<()
             renderer.status(
                 out,
                 Status::Info,
-                &format!("{summary} would be removed; run without --dry-run to remove them"),
+                &uf_infra::cstr!(
+                    "{summary} would be removed; run without --dry-run to remove them"
+                )
+                .into_string(),
             );
         });
         return Ok(());
@@ -134,26 +138,31 @@ pub(crate) fn self_uninstall(ui: &mut Ui, dry_run: bool, yes: bool) -> Result<()
                 });
                 return Ok(());
             }
-            None => bail!(
+            None => bail!(uf_infra::cstr!(
                 "uf self-uninstall removes everything listed above, and there is no terminal to \
                  ask on\n\n  pass --yes to remove it, or --dry-run to only list it"
-            ),
+            )),
         }
     }
 
     remove(&store, &plan.removals)?;
 
     let notes = [
-        format!(
+        uf_infra::cstr!(
             "{} stays, and so does any line that puts it on PATH",
             store.bin_dir
-        ),
+        )
+        .into_string(),
         "every project keeps its .uf directory and uf.lock".to_owned(),
         "curl -fsSL https://setup.uniflowed.dev | sh installs uf again".to_owned(),
     ];
     let notes = notes.iter().map(String::as_str).collect::<Vec<_>>();
     ui.render(|renderer, out| {
-        renderer.status(out, Status::Success, &format!("removed {summary}"));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("removed {summary}").as_str(),
+        );
         renderer.blank(out);
         renderer.bullet_list(out, 2, &notes);
     });
@@ -177,13 +186,16 @@ fn plan(store: &Store) -> Result<Plan> {
                 kind: Kind::Link,
                 bytes: 0,
             }),
-            Ok(target) => plan.left_alone.push(format!(
-                "{path}, a link to {}, which is not in uf's runtime store",
-                target.display()
-            )),
+            Ok(target) => plan.left_alone.push(
+                uf_infra::cstr!(
+                    "{path}, a link to {}, which is not in uf's runtime store",
+                    target.display()
+                )
+                .into_string(),
+            ),
             Err(_) => plan
                 .left_alone
-                .push(format!("{path}, which is not a link uf made")),
+                .push(uf_infra::cstr!("{path}, which is not a link uf made").into_string()),
         }
     }
     // What a killed switch left beside them.
@@ -270,20 +282,20 @@ fn refuse_what_holds_home(removals: &[Removal]) -> Result<()> {
     let home = std::env::var("HOME").ok().filter(|home| !home.is_empty());
     for removal in removals {
         if removal.path.is_relative() || removal.path.parent().is_none() {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "uf self-uninstall will not remove {}: it is not a path inside a directory",
                 removal.path
-            );
+            ));
         }
         if let Some(home) = &home
             && Utf8Path::new(home).starts_with(&removal.path)
         {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "uf self-uninstall will not remove {}, which holds your home directory\n\n  \
                  check UF_INSTALL_ROOT, UF_BIN_DIR, UF_STORE, UF_ENVS, UF_ROOTS and \
                  UF_INDEX_CACHE",
                 removal.path
-            );
+            ));
         }
     }
     Ok(())
@@ -385,7 +397,9 @@ fn remove(store: &Store, removals: &[Removal]) -> Result<()> {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => {
-                return Err(error).with_context(|| format!("failed to remove {}", removal.path));
+                return Err(error).with_context(|| {
+                    uf_infra::cstr!("failed to remove {}", removal.path).into_string()
+                });
             }
         }
     }

@@ -120,10 +120,10 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             .is_some_and(|host| host != "127.0.0.1" && host != "localhost")
         && resolved.config.dev.allowed_hosts.is_empty()
     {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf preview --host` exposes the preview server to the network, which needs a \
              non-empty `dev.allowedHosts` in uf.config.js"
-        );
+        ));
     }
 
     // What the project said this build produces. A build that emits no server
@@ -146,12 +146,12 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
     //   work.
     let plan = RenderingPlan::resolve(&resolved.config);
     if which == Server::Start && !plan.emits_a_server() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`uf start` runs the server a build emits, and {}. \
              Deploy the output directory to any static host, or run `uf preview` to check it \
              the way one would serve it.",
             plan.because()
-        );
+        ));
     }
 
     // Two commands, two roles. `uf preview` is a look at the build, so it runs
@@ -190,7 +190,7 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
 
     let host_name = host.name();
     let project = project_label(&root).to_string();
-    let banner = format!("uf {}", which.command());
+    let banner = uf_infra::cstr!("uf {}", which.command()).into_string();
     let serves = match (which, plan.emits_a_server()) {
         // Said in the banner rather than left to be noticed from a route count
         // of zero: this preview answers with files and nothing else, which is
@@ -261,7 +261,11 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             // to stop answering every other request, which is `uf build`'s
             // decision to make and not a running server's.
             Event::PageFailed { url, error } => {
-                render_log(ui, LogLevel::Error, &format!("{url} failed to render"));
+                render_log(
+                    ui,
+                    LogLevel::Error,
+                    uf_infra::cstr!("{url} failed to render").as_str(),
+                );
                 let _ = render_error(ui, &root, &error);
             }
             Event::Error(error) => {

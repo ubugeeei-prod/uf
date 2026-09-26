@@ -88,7 +88,7 @@ fn validate(declaration: &Declaration) -> Result<(), NativeStyleError> {
     } = declaration;
     if *condition != StyleCondition::Base {
         return Err(unsupported(
-            format!("selector {} for {key}", condition.as_str()),
+            uf_infra::cstr!("selector {} for {key}", condition.as_str()).into_string(),
             *at,
         ));
     }
@@ -134,7 +134,12 @@ fn validate(declaration: &Declaration) -> Result<(), NativeStyleError> {
         "color" | "backgroundColor" | "borderColor" | "borderTopColor" | "borderRightColor"
         | "borderBottomColor" | "borderLeftColor" | "fontFamily" => &[],
         _ if numeric(key) || dimension(key) => &[],
-        _ => return Err(unsupported(format!("property {key}"), *at)),
+        _ => {
+            return Err(unsupported(
+                uf_infra::cstr!("property {key}").into_string(),
+                *at,
+            ));
+        }
     };
     let valid = match value {
         StyleValue::Number(_) => numeric(key) || dimension(key),
@@ -162,7 +167,7 @@ fn validate(declaration: &Declaration) -> Result<(), NativeStyleError> {
     };
     if !valid {
         return Err(unsupported(
-            format!("value {} for {key}", value.to_css_raw()),
+            uf_infra::cstr!("value {} for {key}", value.to_css_raw()).into_string(),
             *at,
         ));
     }
@@ -251,7 +256,9 @@ mod tests {
             "import {stylex as s} from '@uniflowed/stylex/native';",
             "import * as s from '@uniflowed/stylex/native';",
         ] {
-            let source = format!("{import} const styles = s.create({{root: {{padding: 12}}}});");
+            let source =
+                uf_infra::cstr!("{import} const styles = s.create({{root: {{padding: 12}}}});")
+                    .into_string();
             let native = compile_native_module(&source).unwrap();
             assert!(native.contains("\"$$native\":true,\"padding\":12"));
             assert_eq!(compile_native_module(&native).unwrap(), native);
@@ -268,9 +275,12 @@ mod tests {
             ("width: '3rem'", "3rem"),
             ("color: 'var(--brand)'", "var(--brand)"),
         ] {
-            let error = compile_native_module(&format!(
-                "import {{create}} from '@uniflowed/stylex'; create({{root: {{{property}}}}});"
-            ))
+            let error = compile_native_module(
+                &uf_infra::cstr!(
+                    "import {{create}} from '@uniflowed/stylex'; create({{root: {{{property}}}}});"
+                )
+                .into_string(),
+            )
             .unwrap_err()
             .to_string();
             assert!(error.contains(name), "{error}");

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! The formatter's guarantees, on sources that are not fixtures: the
 //! `@uniflowed/*` packages, the project templates `uf create` writes, and
 //! a corpus of mutated and adversarial inputs.

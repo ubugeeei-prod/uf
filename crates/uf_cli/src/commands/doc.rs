@@ -29,16 +29,16 @@ pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -
             "report": report,
         }))?;
         if !report.unreadable.is_empty() {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "{} could not be read",
                 plural(report.unreadable.len(), "file")
-            );
+            ));
         }
         if report.has_diagnostics() {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "uf doc failed with {}",
                 plural(report.diagnostics.len(), "parse error")
-            );
+            ));
         }
         return Ok(());
     }
@@ -54,16 +54,16 @@ pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -
     }
     render_ignore_deprecation(ui, ignore_deprecation(&resolved.config));
     if !report.unreadable.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} could not be read",
             plural(report.unreadable.len(), "file")
-        );
+        ));
     }
     if report.has_diagnostics() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "uf doc failed with {}",
             plural(report.diagnostics.len(), "parse error")
-        );
+        ));
     }
 
     let output_dir = resolved.root.join(out_dir);
@@ -84,7 +84,7 @@ fn render_unreadable(ui: &mut Ui, report: &DocReport) {
         renderer.status(
             out,
             Status::Warn,
-            &format!("{} could not be read", plural(lines.len(), "file")),
+            uf_infra::cstr!("{} could not be read", plural(lines.len(), "file")).as_str(),
         );
         renderer.bullet_list(out, 2, &lines);
         renderer.blank(out);
@@ -118,7 +118,11 @@ fn render_success(
             ],
         );
         renderer.blank(out);
-        renderer.status(out, Status::Success, &format!("wrote {}", output_label));
+        renderer.status(
+            out,
+            Status::Success,
+            uf_infra::cstr!("wrote {}", output_label).as_str(),
+        );
     });
 }
 
@@ -140,9 +144,11 @@ fn render_diagnostics(ui: &mut Ui, report: &DocReport) {
 
 fn diagnostic_label(diagnostic: &DocDiagnostic) -> String {
     let location = match (diagnostic.line, diagnostic.column) {
-        (Some(line), Some(column)) => format!("{}:{line}:{column}", diagnostic.path),
-        (Some(line), None) => format!("{}:{line}", diagnostic.path),
+        (Some(line), Some(column)) => {
+            uf_infra::cstr!("{}:{line}:{column}", diagnostic.path).into_string()
+        }
+        (Some(line), None) => uf_infra::cstr!("{}:{line}", diagnostic.path).into_string(),
         _ => diagnostic.path.clone(),
     };
-    format!("{location}: {}", diagnostic.message)
+    uf_infra::cstr!("{location}: {}", diagnostic.message).into_string()
 }

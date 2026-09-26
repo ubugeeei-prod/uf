@@ -767,7 +767,7 @@ fn package_boundary_targets(import: &ImportSpecifier) -> Vec<CompactString> {
             _ => None,
         })
         .flat_map(|name| uf_lib::client_modules_exporting(name))
-        .map(|module| CompactString::from(format!("{}/{module}", uf_lib::CLIENT_MODULE_PACKAGE)))
+        .map(|module| uf_infra::cstr!("{}/{module}", uf_lib::CLIENT_MODULE_PACKAGE))
         .collect();
     targets.sort_unstable();
     targets.dedup();

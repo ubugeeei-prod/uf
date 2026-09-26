@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! A fixture's first line, as the options its snapshot was compiled with.
 //!
 //! Three upstream functions decide those options, and this module is those

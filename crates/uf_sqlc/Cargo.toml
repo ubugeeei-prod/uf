@@ -20,6 +20,8 @@ name = "sqlc-gen-flow"
 path = "src/bin/sqlc-gen-flow.rs"
 
 [dependencies]
+uf_infra = { path = "../uf_infra" }
+compact_str.workspace = true
 base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true

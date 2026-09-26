@@ -91,9 +91,9 @@ impl Browser {
     #[must_use]
     pub fn describe(&self) -> String {
         match self.found {
-            Found::Named => format!("{} (named)", self.program),
-            Found::OnPath => format!("{} (on PATH)", self.program),
-            Found::Bundle => format!("{} (installed)", self.program),
+            Found::Named => uf_infra::cstr!("{} (named)", self.program).into_string(),
+            Found::OnPath => uf_infra::cstr!("{} (on PATH)", self.program).into_string(),
+            Found::Bundle => uf_infra::cstr!("{} (installed)", self.program).into_string(),
         }
     }
 }
@@ -190,11 +190,14 @@ impl std::error::Error for NoBrowser {}
 
 /// `a`, `b` and `c`, quoted, for a message.
 fn quoted(names: &[&str]) -> String {
-    let quoted: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+    let quoted: Vec<String> = names
+        .iter()
+        .map(|name| uf_infra::cstr!("`{name}`").into_string())
+        .collect();
     match quoted.split_last() {
         None => String::new(),
         Some((last, [])) => last.clone(),
-        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+        Some((last, rest)) => uf_infra::cstr!("{} or {last}", rest.join(", ")).into_string(),
     }
 }
 

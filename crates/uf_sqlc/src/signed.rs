@@ -14,8 +14,11 @@ pub const TOKEN: &str = "<<SignedSource::*O*zOeWoEQle#+L!plEphiEmie@IsG>>";
 #[must_use]
 pub fn sign(contents: &str) -> String {
     let digest = md5(contents.as_bytes());
-    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    contents.replacen(TOKEN, &format!("SignedSource<<{hex}>>"), 1)
+    let hex: String = digest
+        .iter()
+        .map(|byte| uf_infra::cstr!("{byte:02x}").into_string())
+        .collect();
+    contents.replacen(TOKEN, uf_infra::cstr!("SignedSource<<{hex}>>").as_str(), 1)
 }
 
 const SHIFTS: [u32; 64] = [
@@ -84,7 +87,10 @@ mod tests {
     use super::*;
 
     fn hex(bytes: [u8; 16]) -> String {
-        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+        bytes
+            .iter()
+            .map(|byte| uf_infra::cstr!("{byte:02x}").into_string())
+            .collect()
     }
 
     #[test]
@@ -101,7 +107,7 @@ mod tests {
 
     #[test]
     fn signs_in_place() {
-        let signed = sign(&format!("/** @generated {TOKEN} */\n"));
+        let signed = sign(uf_infra::cstr!("/** @generated {TOKEN} */\n").as_str());
         assert!(signed.starts_with("/** @generated SignedSource<<"));
         assert!(!signed.contains(TOKEN));
     }

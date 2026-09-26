@@ -183,7 +183,7 @@ impl<'a> Printer<'a> {
     /// A `#private` name, with its comments.
     pub fn print_private_name(&mut self, name: &'a uf_flow::ast::PrivateName<Loc>) -> Doc<'a> {
         self.print_node(NodeRef::PrivateName(name), |p| {
-            p.text(&format!("#{}", name.name))
+            p.text(uf_infra::cstr!("#{}", name.name).as_str())
         })
     }
 

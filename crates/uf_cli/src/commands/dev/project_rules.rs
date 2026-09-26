@@ -50,7 +50,7 @@ impl EditorRules {
             self.tried = true;
             match Session::start(&self.root, config) {
                 Ok(session) => self.session = session,
-                Err(error) => self.refused = Some(format!("{error:#}")),
+                Err(error) => self.refused = Some(uf_infra::cstr!("{error:#}").into_string()),
             }
         }
         self.session
@@ -83,7 +83,7 @@ fn log(out: &mut impl Write, message: &str) -> Result<()> {
     notify(
         out,
         "window/logMessage",
-        json!({ "type": 1, "message": format!("uf project rules: {message}") }),
+        json!({ "type": 1, "message": uf_infra::cstr!("uf project rules: {message}").into_string() }),
     )
 }
 

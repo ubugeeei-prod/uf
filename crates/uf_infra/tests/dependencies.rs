@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What uf's own crates are allowed to depend on.
 //!
 //! uf schedules its own work. `uf_infra::parallel` is the one data-parallel

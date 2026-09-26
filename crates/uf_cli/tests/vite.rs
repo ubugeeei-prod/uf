@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf build`, `uf build --compile`, `uf dev`, `uf preview` and `uf start` end
 //! to end, through Vite on the real driver.
 //!

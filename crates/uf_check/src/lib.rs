@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! Flow type inference for `uf`.
 //!
 //! `uf lint` answers "is this file well-formed and idiomatic". This crate

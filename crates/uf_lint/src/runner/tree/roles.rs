@@ -166,33 +166,35 @@ fn aria_role(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
         tree.report(
             &written.loc,
             ARIA_ROLE,
-            format!(
+            uf_infra::cstr!(
                 "`{name}` is an abstract role: it exists to hold ARIA's role hierarchy together \
                  and WAI-ARIA says it must not be put on an element, so nothing reads it and the \
                  element is left with no role at all (WCAG 4.1.2); name the concrete role the \
                  element plays, such as `role=\"slider\"` for a `range`"
-            ),
+            )
+            .into_string(),
         );
         return;
     }
 
     let written_text = text.trim();
     let suggestion = aria::nearest_role(written_text)
-        .map(|near| format!("; did you mean `{near}`?"))
+        .map(|near| uf_infra::cstr!("; did you mean `{near}`?").into_string())
         .unwrap_or_default();
     let subject = if written_text.is_empty() {
         String::from("an empty `role`")
     } else {
-        format!("`{written_text}`")
+        uf_infra::cstr!("`{written_text}`").into_string()
     };
     tree.report(
         &written.loc,
         ARIA_ROLE,
-        format!(
+        uf_infra::cstr!(
             "{subject} is not an ARIA role, so nothing reads it: the browser keeps the attribute, \
              no assistive technology looks at it, and the element is announced as whatever HTML \
              made it (WCAG 4.1.2){suggestion}"
-        ),
+        )
+        .into_string(),
     );
 }
 
@@ -223,19 +225,22 @@ fn aria_proptypes(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
         }
         let written = match value {
             Value::Text(text) if text.trim().is_empty() => String::from("an empty value"),
-            Value::Text(text) => format!("`{text}`"),
-            Value::Bool(_) => format!("`{name}` on its own, which renders the word `true`"),
-            Value::Number(number) => format!("`{number}`"),
+            Value::Text(text) => uf_infra::cstr!("`{text}`").into_string(),
+            Value::Bool(_) => {
+                uf_infra::cstr!("`{name}` on its own, which renders the word `true`").into_string()
+            }
+            Value::Number(number) => uf_infra::cstr!("`{number}`").into_string(),
             Value::Nullish | Value::Unknown => continue,
         };
         tree.report(
             &attribute.loc,
             ARIA_PROPTYPES,
-            format!(
+            uf_infra::cstr!(
                 "`{name}` takes {wanted}, and {written} is not one, so the attribute is dropped \
                  and the state it was written for is never announced (WCAG 4.1.2)",
                 wanted = aria::wanted(spec),
-            ),
+            )
+            .into_string(),
         );
     }
 }
@@ -271,20 +276,21 @@ fn role_has_required_aria_props(tree: &mut Tree<'_>, host: &str, opening: &jsx::
 
     let names = missing
         .iter()
-        .map(|name| format!("`{name}`"))
+        .map(|name| uf_infra::cstr!("`{name}`").into_string())
         .collect::<Vec<_>>()
         .join(" and ");
     let is = if missing.len() == 1 { "is" } else { "are" };
     tree.report(
         &written.loc,
         ROLE_REQUIRED_PROPS,
-        format!(
+        uf_infra::cstr!(
             "`role=\"{role}\"` tells a screen reader this is a {role}, and {names} {is} the state \
              a {role} is announced by: without it the control is read out with nothing to say \
              whether it is on, off or anywhere in between (WCAG 4.1.2); add it, or drop the role \
              and use the HTML element that carries the state itself",
             role = role.name,
-        ),
+        )
+        .into_string(),
     );
 }
 
@@ -399,19 +405,20 @@ fn role_supports_aria_props(tree: &mut Tree<'_>, host: &str, opening: &jsx::Open
             continue;
         }
         let of = if implicit {
-            format!("a `<{host}>` is a `{role}`", role = role.name)
+            uf_infra::cstr!("a `<{host}>` is a `{role}`", role = role.name).into_string()
         } else {
-            format!("`role=\"{role}\"`", role = role.name)
+            uf_infra::cstr!("`role=\"{role}\"`", role = role.name).into_string()
         };
         tree.report(
             &attribute.loc,
             ROLE_SUPPORTS_PROPS,
-            format!(
+            uf_infra::cstr!(
                 "{of}, and ARIA gives `{role}` no `{name}`, so the attribute sits in the DOM with \
                  nothing to read it and the state it describes is never announced (WCAG 4.1.2); \
                  remove it, or give the element the role this state belongs to",
                 role = role.name,
-            ),
+            )
+            .into_string(),
         );
     }
 }
@@ -419,22 +426,24 @@ fn role_supports_aria_props(tree: &mut Tree<'_>, host: &str, opening: &jsx::Open
 /// The message for an attribute ARIA forbids on the element's role.
 fn prohibited_message(host: &str, role: &str, name: &str, implicit: bool) -> String {
     if role == "generic" {
-        return format!(
+        return uf_infra::cstr!(
             "a `<{host}>` has no role of its own, and WAI-ARIA forbids naming one: `{name}` on it \
              is discarded, so this element has no accessible name at all (WAI-ARIA 1.2, \
              \"prohibited attributes\"); put the name where it can be read — `<section \
              {name}=…>`, which is a landmark, a `role` that takes a name, or text inside the \
              element"
-        );
+        )
+        .into_string();
     }
     let of = if implicit {
-        format!("a `<{host}>` is a `{role}`")
+        uf_infra::cstr!("a `<{host}>` is a `{role}`").into_string()
     } else {
-        format!("`role=\"{role}\"`")
+        uf_infra::cstr!("`role=\"{role}\"`").into_string()
     };
-    format!(
+    uf_infra::cstr!(
         "{of}, and WAI-ARIA forbids `{name}` on a `{role}`: it is discarded rather than announced \
          (WAI-ARIA 1.2, \"prohibited attributes\"); name a role that takes a name, or put the \
          words in the element"
     )
+    .into_string()
 }

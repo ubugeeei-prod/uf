@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! uf's compile path, measured against the React Compiler's own fixtures.
 //!
 //! uf runs the official compiler — the `react_compiler` crate, published from

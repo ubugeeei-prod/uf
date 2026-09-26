@@ -134,7 +134,7 @@ fn files_were(count: usize) -> String {
     if count == 1 {
         "1 non-Flow file was".to_string()
     } else {
-        format!("{count} non-Flow files were")
+        uf_infra::cstr!("{count} non-Flow files were").into_string()
     }
 }
 
@@ -144,11 +144,12 @@ fn files_were(count: usize) -> String {
 /// or say that this project does not want one.
 #[must_use]
 pub fn skipped_message(formatter: &str, count: usize) -> String {
-    format!(
+    uf_infra::cstr!(
         "{formatter} is not installed, so {} skipped. Install it, or set \
          `fmt.nonFlow.formatter` to \"none\" in uf.config.js.",
         files_were(count)
     )
+    .into_string()
 }
 
 /// How many bytes of a formatter's complaint are worth repeating.
@@ -202,8 +203,16 @@ pub fn invocation(
             // uf indents with spaces — `uniflowed/no-tabs` is on by default —
             // so the style is not a setting, only the width is.
             arguments.push("--indent-style=space".into());
-            arguments.push(format!("--indent-width={}", config.indent_width).into());
-            arguments.push(format!("--line-width={}", config.line_width).into());
+            arguments.push(
+                uf_infra::cstr!("--indent-width={}", config.indent_width)
+                    .into_string()
+                    .into(),
+            );
+            arguments.push(
+                uf_infra::cstr!("--line-width={}", config.line_width)
+                    .into_string()
+                    .into(),
+            );
             "biome"
         }
         NonFlowFormatter::Prettier => {
@@ -215,8 +224,16 @@ pub fn invocation(
             // Prettier's default log level narrates every file it looked at.
             arguments.push("--log-level".into());
             arguments.push("warn".into());
-            arguments.push(format!("--tab-width={}", config.indent_width).into());
-            arguments.push(format!("--print-width={}", config.line_width).into());
+            arguments.push(
+                uf_infra::cstr!("--tab-width={}", config.indent_width)
+                    .into_string()
+                    .into(),
+            );
+            arguments.push(
+                uf_infra::cstr!("--print-width={}", config.line_width)
+                    .into_string()
+                    .into(),
+            );
             if config.quotes == QuoteStyle::Single {
                 arguments.push("--single-quote".into());
             }
@@ -407,5 +424,5 @@ fn detail_of(stderr: &[u8], stdout: &[u8]) -> CompactString {
         .take_while(|at| *at <= MAX_DETAIL_BYTES)
         .last()
         .unwrap_or(0);
-    format!("{}…", &trimmed[..cut]).into()
+    uf_infra::cstr!("{}…", &trimmed[..cut]).into_string().into()
 }

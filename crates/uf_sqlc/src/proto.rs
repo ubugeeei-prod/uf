@@ -313,9 +313,12 @@ impl<'a> Reader<'a> {
                 Value::Fixed
             }
             wire => {
-                return Err(DecodeError(format!(
-                    "field {number} has wire type {wire}, which proto3 does not use"
-                )));
+                return Err(DecodeError(
+                    compact_str::format_compact!(
+                        "field {number} has wire type {wire}, which proto3 does not use"
+                    )
+                    .into_string(),
+                ));
             }
         };
         Ok(Some((number, value)))

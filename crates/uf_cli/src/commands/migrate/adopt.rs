@@ -8,11 +8,14 @@ use std::fs;
 pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
     let manifest_text = fs::read_to_string(root.join("package.json"))?;
     let mut manifest: Value = serde_json::from_str(&manifest_text)?;
-    ensure!(manifest.is_object(), "package.json must contain an object");
+    ensure!(
+        manifest.is_object(),
+        uf_infra::cstr!("package.json must contain an object")
+    );
     for field in ["scripts", "dependencies", "devDependencies"] {
         ensure!(
             manifest.get(field).is_none_or(Value::is_object),
-            "package.json#{field} must contain an object"
+            uf_infra::cstr!("package.json#{field} must contain an object")
         );
     }
     let before_config = fs::read_to_string(root.join("uf.config.js")).ok();
@@ -28,15 +31,16 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
         .unwrap_or_default();
     for (name, value) in scripts.clone() {
         if uf_config::INSTALL_LIFECYCLE_SCRIPTS.contains(&name.as_str()) {
-            plan.unmapped.push(format!(
+            plan.unmapped.push(uf_infra::cstr!(
                 "package.json#scripts.{name}: install lifecycle hook retained; review it explicitly"
-            ));
+            ).into_string());
             continue;
         }
         let Some(command) = value.as_str() else {
-            plan.unmapped.push(format!(
-                "package.json#scripts.{name}: expected a command string"
-            ));
+            plan.unmapped.push(
+                uf_infra::cstr!("package.json#scripts.{name}: expected a command string")
+                    .into_string(),
+            );
             continue;
         };
         let mapped = script(command);
@@ -48,7 +52,7 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
             }
             Err(error) => plan
                 .unmapped
-                .push(format!("package.json#scripts.{name}: {error}")),
+                .push(uf_infra::cstr!("package.json#scripts.{name}: {error}").into_string()),
         }
     }
     if scripts.is_empty() {
@@ -96,8 +100,10 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
                 let mut values = serde_json::Map::new();
                 for entry in object.entries {
                     let Some(key) = entry.key else {
-                        plan.unmapped
-                            .push(format!("{name}: computed key, spread or method retained"));
+                        plan.unmapped.push(
+                            uf_infra::cstr!("{name}: computed key, spread or method retained")
+                                .into_string(),
+                        );
                         continue;
                     };
                     let key = key.text(&text);
@@ -108,9 +114,10 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
                         Some(value) => {
                             values.insert(key.to_owned(), value);
                         }
-                        None => plan
-                            .unmapped
-                            .push(format!("{name}#{key}: dynamic expression retained")),
+                        None => plan.unmapped.push(
+                            uf_infra::cstr!("{name}#{key}: dynamic expression retained")
+                                .into_string(),
+                        ),
                     }
                 }
                 Value::Object(values)
@@ -127,21 +134,22 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
                     || name.ends_with(".mjs")
                     || name.ends_with(".ts");
                 if javascript {
-                    plan.unmapped.push(format!("{name}: mapped static settings; keep this module until its imports and side effects have been reviewed"));
+                    plan.unmapped.push(uf_infra::cstr!("{name}: mapped static settings; keep this module until its imports and side effects have been reviewed").into_string());
                 } else if count == plan.unmapped.len() {
                     plan.remove(name, text);
                 }
             }
-            Err(error) => plan.unmapped.push(format!(
-                "{name}: dynamic or unsupported configuration retained ({error})"
-            )),
+            Err(error) => plan.unmapped.push(
+                uf_infra::cstr!("{name}: dynamic or unsupported configuration retained ({error})")
+                    .into_string(),
+            ),
         }
     }
     for key in ["babel", "prettier", "eslintConfig", "jest"] {
         if let Some(value) = manifest.get(key).cloned() {
             let count = plan.unmapped.len();
             settings(
-                &format!("package.json#{key}"),
+                uf_infra::cstr!("package.json#{key}").as_str(),
                 &value,
                 &mut config,
                 &mut plan,
@@ -168,7 +176,8 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
             if section == "[options]" && line == "all=true" {
                 continue;
             }
-            plan.unmapped.push(format!(".flowconfig{section}: {line}"));
+            plan.unmapped
+                .push(uf_infra::cstr!(".flowconfig{section}: {line}").into_string());
         }
         if count == plan.unmapped.len() {
             plan.remove(".flowconfig", text);
@@ -198,7 +207,8 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
             manifest["devDependencies"][package] = json!(env!("CARGO_PKG_VERSION"));
         }
     }
-    let after_manifest = format!("{}\n", serde_json::to_string_pretty(&manifest)?);
+    let after_manifest =
+        uf_infra::cstr!("{}\n", serde_json::to_string_pretty(&manifest)?).into_string();
     plan.write("package.json", manifest_text, after_manifest);
     match before_config {
         Some(before) => plan.write("uf.config.js", before, config),
@@ -231,7 +241,7 @@ fn script(command: &str) -> String {
 fn settings(name: &str, value: &Value, config: &mut String, plan: &mut Plan) -> Result<()> {
     let Some(settings) = value.as_object() else {
         plan.unmapped
-            .push(format!("{name}: expected an object; retained"));
+            .push(uf_infra::cstr!("{name}: expected an object; retained").into_string());
         return Ok(());
     };
     for (key, value) in settings {
@@ -260,7 +270,9 @@ fn settings(name: &str, value: &Value, config: &mut String, plan: &mut Plan) -> 
             let mut candidate = config.clone();
             match source::merge(&mut candidate, &path, &value) {
                 Ok(()) => *config = candidate,
-                Err(error) => plan.unmapped.push(format!("{name}#{key}: {error}")),
+                Err(error) => plan
+                    .unmapped
+                    .push(uf_infra::cstr!("{name}#{key}: {error}").into_string()),
             }
             continue;
         }
@@ -291,10 +303,10 @@ fn settings(name: &str, value: &Value, config: &mut String, plan: &mut Plan) -> 
 fn report_keys(name: &str, key: &str, value: &Value, out: &mut Vec<String>) {
     if let Some(object) = value.as_object().filter(|v| !v.is_empty()) {
         for (child, value) in object {
-            report_keys(name, &format!("{key}.{child}"), value, out);
+            report_keys(name, uf_infra::cstr!("{key}.{child}").as_str(), value, out);
         }
     } else {
-        out.push(format!("{name}#{key}: retained; no equivalent migration"));
+        out.push(uf_infra::cstr!("{name}#{key}: retained; no equivalent migration").into_string());
     }
 }
 
@@ -339,16 +351,19 @@ fn tests(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
         let parsed = uf_flow::validate_source(&before)?;
         if !parsed.is_ok() {
             plan.unmapped
-                .push(format!("{path}: syntax needs manual migration"));
+                .push(uf_infra::cstr!("{path}: syntax needs manual migration").into_string());
             continue;
         }
         let tokens = uf_flow::scan::tokenize(&before);
         let mut used = Vec::new();
         for token in &tokens {
             if token.is_ident(&before, "jest") {
-                plan.unmapped.push(format!(
-                    "{path}: jest mocks/timers require review against uf's uft API"
-                ));
+                plan.unmapped.push(
+                    uf_infra::cstr!(
+                        "{path}: jest mocks/timers require review against uf's uft API"
+                    )
+                    .into_string(),
+                );
             }
             for name in &api {
                 if token.is_ident(&before, name) && !used.contains(name) {
@@ -426,17 +441,19 @@ fn tests(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
             let at = tokens.first().map_or(0, |t| t.start);
             after.insert_str(
                 at,
-                &format!(
+                &uf_infra::cstr!(
                     "import {{ {} }} from \"@uniflowed/test\";\n",
                     used.join(", ")
-                ),
+                )
+                .into_string(),
             );
         }
         if uf_flow::validate_source(&after)?.is_ok() {
             plan.write(&path, before, after);
         } else {
-            plan.unmapped
-                .push(format!("{path}: API bindings require manual migration"));
+            plan.unmapped.push(
+                uf_infra::cstr!("{path}: API bindings require manual migration").into_string(),
+            );
         }
     }
     Ok(())

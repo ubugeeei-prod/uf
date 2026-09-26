@@ -130,6 +130,12 @@ libc = "0.2.189"
 # The protocol types `flow_lsp_server`'s document-symbol provider answers in,
 # already in the graph under the Flow port's `flow_lsp`.
 lsp-types = "0.97"
+string-interner = { version = "0.20.0", default-features = false, features = ["std", "backends"] }
+nonmax = "0.5.5"
+fast-float2 = "0.2.4"
+thin-vec = "0.2.20"
+fixedbitset = "0.5.7"
+hashbrown = { version = "0.17.1", default-features = false }
 memchr = "2.7.6"
 mimalloc = "0.1.52"
 # Kernel file-change events for `uf test --watch` (FSEvents on macOS, inotify

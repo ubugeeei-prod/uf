@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! Where uf's time and memory go.
 //!
 //! uf has thirteen criterion benchmarks and they answer one question: is this

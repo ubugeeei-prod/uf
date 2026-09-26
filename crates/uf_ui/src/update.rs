@@ -88,9 +88,9 @@ pub struct Merge {
 pub fn merge(base: &str, ours: &str, theirs: &str, from: &str) -> Merge {
     let mut merged = TextMerge::from_lines(base, ours, theirs);
     merged.conflict_style(ConflictStyle::Diff3).labels(
-        &format!("uf {from}"),
+        compact_str::format_compact!("uf {from}").as_str(),
         OURS_LABEL,
-        &format!("uf {REGISTRY_VERSION}"),
+        compact_str::format_compact!("uf {REGISTRY_VERSION}").as_str(),
     );
     Merge {
         text: merged.to_string(),

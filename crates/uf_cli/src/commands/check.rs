@@ -109,8 +109,8 @@ impl Profile {
                 "  {:<28}{:>8}{:>12}{:>12}",
                 span.name,
                 span.hits,
-                format!("{:.2?}", span.self_time),
-                format!("{:.2?}", span.inclusive),
+                uf_infra::cstr!("{:.2?}", span.self_time).into_string(),
+                uf_infra::cstr!("{:.2?}", span.inclusive).into_string(),
             );
         }
     }
@@ -308,15 +308,18 @@ pub(crate) fn check(
     // Before the counts: a file nobody could read has no diagnostics, and
     // "0 errors" over it would be a lie.
     if !unreadable.is_empty() {
-        bail!("{} could not be read", plural(unreadable.len(), "file"));
+        bail!(uf_infra::cstr!(
+            "{} could not be read",
+            plural(unreadable.len(), "file")
+        ));
     }
     // `uf check` is `uf lint` plus inference, so a project rule that could not
     // answer fails it for the reason it fails `uf lint`.
     if !project_rules.problems.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} kept project rules from answering",
             plural(project_rules.problems.len(), "problem")
-        );
+        ));
     }
     // After the report and before the verdict: a run that ends in `bail!` is
     // exactly the run somebody profiling wants the table from, and a `?` on
@@ -324,11 +327,11 @@ pub(crate) fn check(
     profile.render();
     let errors = severity_count(&lint, Severity::Error) + types.count(TypeSeverity::Error);
     if errors > 0 {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} failed with {}",
             LintCommand::Check.title(),
             plural(errors, "error")
-        );
+        ));
     }
     #[cfg(feature = "upstream-typecheck")]
     if let TypeCheck::Failed(error) = types {
@@ -785,7 +788,7 @@ fn render_type_group(ui: &mut Ui, sources: &[SourceFile], group: &[TypeDiagnosti
             diagnostic
                 .related
                 .iter()
-                .map(|related| format!("[{}] is here", related.id))
+                .map(|related| uf_infra::cstr!("[{}] is here", related.id).into_string())
                 .collect()
         })
         .collect();
@@ -876,19 +879,21 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             // Only shown when a selection pulled more in. A whole-project run
             // imports nothing it was not also asked about, and a reader should
             // not have to work that out from a zero.
-            let requested = format!(
+            let requested = uf_infra::cstr!(
                 "{} of {}",
                 batch.requested,
                 batch.requested + batch.imported
-            );
-            let inference = format!("{:.1?}", report.elapsed);
+            )
+            .into_string();
+            let inference = uf_infra::cstr!("{:.1?}", report.elapsed).into_string();
             let builtins_timing = batch.builtins.unwrap_or(report.builtins);
             let builtins = if builtins_timing.needed {
-                format!(
+                uf_infra::cstr!(
                     "{:.1?} ({})",
                     builtins_timing.cold_elapsed,
                     if builtins_timing.cold { "cold" } else { "warm" }
                 )
+                .into_string()
             } else {
                 String::from("not needed")
             };
@@ -899,7 +904,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             let libdefs = batch.libdefs.to_string();
             // Only shown when the cache answered something: a project being
             // checked for the first time should not have to read a zero.
-            let cached = format!("{} of {files}", report.files_from_cache);
+            let cached = uf_infra::cstr!("{} of {files}", report.files_from_cache).into_string();
             let mut rows = vec![
                 KeyValue::toned("types checked", &files, Tone::Number),
                 KeyValue::toned("inference", &inference, Tone::Muted),
@@ -979,37 +984,49 @@ fn explanation_lines(explained: &declarations::Explanation) -> (String, Vec<Stri
     let package = &explained.package;
     if !explained.translated {
         return (
-            format!(
+            uf_infra::cstr!(
                 "uf check typed no package named {package} from TypeScript declarations in this \
                  run: nothing imported it, it ships Flow, or it has no declarations"
-            ),
+            )
+            .into_string(),
             Vec::new(),
         );
     }
-    let heading = format!(
+    let heading = uf_infra::cstr!(
         "{package}: {} typed as any, {} inside its translation",
         plural(explained.holes.len(), "hole"),
         plural(explained.findings.len(), "Flow error"),
-    );
+    )
+    .into_string();
     let mut lines = Vec::with_capacity(explained.holes.len() + explained.findings.len());
     for hole in &explained.holes {
-        lines.push(format!(
-            "{}:{} {} [{}] {}",
-            hole.path, hole.line, hole.declaration, hole.construct, hole.reason
-        ));
+        lines.push(
+            uf_infra::cstr!(
+                "{}:{} {} [{}] {}",
+                hole.path,
+                hole.line,
+                hole.declaration,
+                hole.construct,
+                hole.reason
+            )
+            .into_string(),
+        );
     }
     for finding in &explained.findings {
-        lines.push(format!(
-            "{}:{} {} [{}] {}",
-            finding.path,
-            finding.line,
-            finding
-                .declaration
-                .as_deref()
-                .unwrap_or("(outside a declaration)"),
-            finding.code.as_deref().unwrap_or("error"),
-            finding.message
-        ));
+        lines.push(
+            uf_infra::cstr!(
+                "{}:{} {} [{}] {}",
+                finding.path,
+                finding.line,
+                finding
+                    .declaration
+                    .as_deref()
+                    .unwrap_or("(outside a declaration)"),
+                finding.code.as_deref().unwrap_or("error"),
+                finding.message
+            )
+            .into_string(),
+        );
     }
     (heading, lines)
 }
@@ -1022,22 +1039,30 @@ fn translated_package_list(packages: &[declarations::TranslatedPackage]) -> Vec<
         .iter()
         .map(|package| {
             let name = match (&package.types_package, &package.version) {
-                (Some(types), Some(version)) => format!("{}, from {types}@{version}", package.name),
-                (Some(types), None) => format!("{}, from {types}", package.name),
-                (None, Some(version)) => format!("{}@{version}", package.name),
+                (Some(types), Some(version)) => {
+                    uf_infra::cstr!("{}, from {types}@{version}", package.name).into_string()
+                }
+                (Some(types), None) => {
+                    uf_infra::cstr!("{}, from {types}", package.name).into_string()
+                }
+                (None, Some(version)) => {
+                    uf_infra::cstr!("{}@{version}", package.name).into_string()
+                }
                 (None, None) => package.name.clone(),
             };
             let holes = match package.holes {
                 0 => "no holes".to_owned(),
                 1 => "1 hole typed as any".to_owned(),
-                holes => format!("{holes} holes typed as any"),
+                holes => uf_infra::cstr!("{holes} holes typed as any").into_string(),
             };
             match package.findings {
-                0 => format!("{name}: {holes}"),
-                1 => format!("{name}: {holes}, 1 Flow error inside its translation"),
-                findings => {
-                    format!("{name}: {holes}, {findings} Flow errors inside its translation")
-                }
+                0 => uf_infra::cstr!("{name}: {holes}").into_string(),
+                1 => uf_infra::cstr!("{name}: {holes}, 1 Flow error inside its translation")
+                    .into_string(),
+                findings => uf_infra::cstr!(
+                    "{name}: {holes}, {findings} Flow errors inside its translation"
+                )
+                .into_string(),
             }
         })
         .collect()
@@ -1066,7 +1091,7 @@ fn limited_module_list<T: std::fmt::Display>(modules: &[T]) -> Vec<String> {
         .collect();
     let overflow = modules.len().saturating_sub(UNTYPED_MODULES_SHOWN);
     if overflow > 0 {
-        named.push(format!("and {overflow} more"));
+        named.push(uf_infra::cstr!("and {overflow} more").into_string());
     }
     named
 }

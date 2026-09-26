@@ -261,16 +261,19 @@ fn restore(undo: Vec<(&Utf8PathBuf, String)>, cause: PackageManagerError) -> Pac
     };
     PackageManagerError::Write {
         path: (*first).clone(),
-        source: std::io::Error::other(format!(
-            "{cause}; and {} could not be put back, so {} still {} the new range",
-            stranded
-                .iter()
-                .map(|path| path.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
-            if stranded.len() == 1 { "it" } else { "they" },
-            if stranded.len() == 1 { "holds" } else { "hold" },
-        )),
+        source: std::io::Error::other(
+            compact_str::format_compact!(
+                "{cause}; and {} could not be put back, so {} still {} the new range",
+                stranded
+                    .iter()
+                    .map(|path| path.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                if stranded.len() == 1 { "it" } else { "they" },
+                if stranded.len() == 1 { "holds" } else { "hold" },
+            )
+            .into_string(),
+        ),
     }
 }
 
@@ -349,7 +352,8 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
         path: manifest.to_path_buf(),
         source: std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("`{key}` is already something other than an object"),
+            compact_str::format_compact!("`{key}` is already something other than an object")
+                .into_string(),
         ),
     }
 }
@@ -359,8 +363,8 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
 /// `None` when there is none or more than one — which is the answer, not a
 /// failure: the caller re-serialises instead.
 fn splice(source: &str, name: &str, from: &str, to: &str) -> Option<String> {
-    let key = format!("\"{name}\"");
-    let value = format!("\"{from}\"");
+    let key = compact_str::format_compact!("\"{name}\"").into_string();
+    let value = compact_str::format_compact!("\"{from}\"").into_string();
     let mut found = None;
 
     let mut search = 0;

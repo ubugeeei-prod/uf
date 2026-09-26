@@ -39,11 +39,11 @@ fn app_arguments(
         },
         (Some(first), Some(path)) => match AppTemplate::parse(&first) {
             Some(template) => Ok((template, Some(path))),
-            None => bail!(
+            None => bail!(uf_infra::cstr!(
                 "`{first}` is not a template, and with two arguments the first one is the \
                  template.\n  templates: {templates}\n  for a project in `{first}`, write \
                  `uf create app {first}` with nothing after it"
-            ),
+            )),
         },
     }
 }
@@ -97,16 +97,16 @@ pub(crate) fn scaffold(cwd: &Utf8Path, ui: &mut Ui, request: Scaffold) -> Result
     };
     if let Some(remote) = remote {
         if lib {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "`--lib` takes no template: a library is one shape, and `uf new --lib` writes it"
-            );
+            ));
         }
         if name.is_some() {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "`--name` names the package a built-in template writes. A remote template is \
                  copied as its author wrote it, manifest included; rename the package there \
                  after it is written"
-            );
+            ));
         }
         let target = resolve_target(cwd, path)?;
         return render_remote(cwd, ui, spelling, &remote, target, force);
@@ -119,19 +119,19 @@ pub(crate) fn scaffold(cwd: &Utf8Path, ui: &mut Ui, request: Scaffold) -> Result
     // is reported as one.
     let kind = match (lib, template.as_deref()) {
         (true, None) => CreateKind::Lib,
-        (true, Some(named)) => bail!(
+        (true, Some(named)) => bail!(uf_infra::cstr!(
             "`--lib` takes no template: a library is one shape.\n  for an \
              application from the `{named}` template, drop `--lib`"
-        ),
+        )),
         (false, None) => CreateKind::AppReact,
         (false, Some(named)) => match AppTemplate::parse(named) {
             Some(AppTemplate::React) => CreateKind::AppReact,
             Some(AppTemplate::Monorepo) => CreateKind::Monorepo,
-            None => bail!(
+            None => bail!(uf_infra::cstr!(
                 "`{named}` is not a template.\n  templates: {templates}, or a remote \
                  template pinned to a commit or a digest\n  to scaffold into a directory \
                  called `{named}`, write `uf new {named}`"
-            ),
+            )),
         },
     };
 
@@ -239,16 +239,20 @@ fn render_remote(
     }
 
     let source = template.label();
-    let mut notes = vec![(Status::Info, format!("copied from {source}"))];
+    let mut notes = vec![(
+        Status::Info,
+        uf_infra::cstr!("copied from {source}").into_string(),
+    )];
     let scripts = remote::declared_install_scripts(&target);
     if !scripts.is_empty() {
         notes.push((
             Status::Warn,
-            format!(
+            uf_infra::cstr!(
                 "package.json declares {}, and `uf install` refuses to run it until \
                  `pm.allowLifecycleScripts` in uf.config.js allows it — read it before you do",
                 scripts.join(", ")
-            ),
+            )
+            .into_string(),
         ));
     }
     render(
@@ -291,14 +295,15 @@ fn render(cwd: &Utf8Path, ui: &mut Ui, created: &Created<'_>) -> Result<()> {
         .collect::<Vec<_>>();
     let paths = files.iter().map(String::as_str).collect::<Vec<_>>();
     let root = project_label(&created.root).to_string();
-    let summary = format!(
+    let summary = uf_infra::cstr!(
         "created {} in {}",
         plural(files.len(), "file"),
         created.root
-    );
+    )
+    .into_string();
 
-    let change_directory =
-        (created.root != cwd).then(|| format!("cd {}", project_label(&created.root)));
+    let change_directory = (created.root != cwd)
+        .then(|| uf_infra::cstr!("cd {}", project_label(&created.root)).into_string());
     let mut steps = Vec::new();
     if let Some(step) = &change_directory {
         steps.push(step.as_str());

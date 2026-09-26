@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What a build says, and what it ships, when a module has styles or the
 //! React Compiler has an opinion about it.
 //!

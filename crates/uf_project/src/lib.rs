@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};

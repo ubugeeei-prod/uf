@@ -227,10 +227,11 @@ impl<'b> Unit<'b> {
                 holes: vec![Hole {
                     declaration: CompactString::const_new("(module)"),
                     construct: Construct::ParseError,
-                    reason: format!(
+                    reason: uf_infra::cstr!(
                         "oxc could not parse this file as TypeScript ({message}), so nothing it \
                          declares is typed"
                     )
+                    .into_string()
                     .into(),
                     line: *line,
                 }],

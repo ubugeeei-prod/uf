@@ -268,7 +268,7 @@ fn collect_paths(shape: &Shape, prefix: &str, out: &mut BTreeSet<String>) {
             let path = if prefix.is_empty() {
                 key.name.to_string()
             } else {
-                format!("{prefix}.{}", key.name)
+                compact_str::format_compact!("{prefix}.{}", key.name).into_string()
             };
             collect_paths(&key.shape, &path, out);
             out.insert(path);
@@ -621,11 +621,14 @@ impl<'a> Reader<'a> {
                     // A map whose keys are the project's is worth spelling
                     // out: `{ [string]: TaskDefinition }` says what goes in it,
                     // and there are no declared keys to complete instead.
-                    (Some(types::object::Property::Indexer(indexer)), None) => format!(
-                        "{{ [{}]: {} }}",
-                        self.render(&indexer.key),
-                        self.render(&indexer.value)
-                    ),
+                    (Some(types::object::Property::Indexer(indexer)), None) => {
+                        compact_str::format_compact!(
+                            "{{ [{}]: {} }}",
+                            self.render(&indexer.key),
+                            self.render(&indexer.value)
+                        )
+                        .into_string()
+                    }
                     _ => String::from("{ … }"),
                 }
             }
@@ -639,10 +642,10 @@ impl<'a> Reader<'a> {
                     .join(" | ")
             }
             types::TypeInner::Nullable { inner, .. } => {
-                format!("?{}", self.grouped(&inner.argument))
+                compact_str::format_compact!("?{}", self.grouped(&inner.argument)).into_string()
             }
             types::TypeInner::Array { inner, .. } => {
-                format!("{}[]", self.grouped(&inner.argument))
+                compact_str::format_compact!("{}[]", self.grouped(&inner.argument)).into_string()
             }
             types::TypeInner::Generic { inner, .. } => {
                 let name = match &inner.id {
@@ -650,7 +653,7 @@ impl<'a> Reader<'a> {
                     _ => self.slice(ty.loc()),
                 };
                 match &inner.targs {
-                    Some(targs) if !targs.arguments.is_empty() => format!(
+                    Some(targs) if !targs.arguments.is_empty() => compact_str::format_compact!(
                         "{name}<{}>",
                         targs
                             .arguments
@@ -658,7 +661,8 @@ impl<'a> Reader<'a> {
                             .map(|argument| self.render(argument))
                             .collect::<Vec<_>>()
                             .join(", ")
-                    ),
+                    )
+                    .into_string(),
                     _ => name,
                 }
             }
@@ -682,7 +686,7 @@ impl<'a> Reader<'a> {
         let text = self.render(ty);
         match &**ty {
             types::TypeInner::Union { .. } | types::TypeInner::Intersection { .. } => {
-                format!("({text})")
+                compact_str::format_compact!("({text})").into_string()
             }
             _ => text,
         }
@@ -843,7 +847,9 @@ fn is_directive(text: &str) -> bool {
 fn join(first: Option<String>, second: Option<String>) -> Option<String> {
     match (first, second) {
         (Some(first), Some(second)) if first.contains(&second) => Some(first),
-        (Some(first), Some(second)) => Some(format!("{first}\n\n{second}")),
+        (Some(first), Some(second)) => {
+            Some(compact_str::format_compact!("{first}\n\n{second}").into_string())
+        }
         (first, second) => first.or(second),
     }
 }

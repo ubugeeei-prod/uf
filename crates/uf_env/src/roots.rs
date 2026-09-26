@@ -107,8 +107,11 @@ impl Roots {
         };
         let file = self.file_for(repository);
         let body = serde_json::to_string_pretty(&root).map_err(EnvError::Encode)?;
-        fs::write(&file, format!("{body}\n"))
-            .map_err(|source| EnvError::Write { path: file, source })
+        fs::write(
+            &file,
+            compact_str::format_compact!("{body}\n").into_string(),
+        )
+        .map_err(|source| EnvError::Write { path: file, source })
     }
 
     /// Record that `repository` uses `entries` as well as what it used before.
@@ -213,8 +216,9 @@ impl Roots {
         // one machine will not collide, short enough to read.
         let mut name = String::with_capacity(16);
         for byte in digest.iter().take(8) {
-            name.push_str(&format!("{byte:02x}"));
+            uf_infra::append!(name, "{byte:02x}");
         }
-        self.root.join(format!("{name}.json"))
+        self.root
+            .join(compact_str::format_compact!("{name}.json").into_string())
     }
 }

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! Native terminal rendering for the Unified Toolchain for Flow (React).
 //!

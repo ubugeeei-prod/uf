@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! Native package manager for `uf install`, `uf add`, `uf remove`, `uf update`,
 //! `uf why`, and `@uniflowed/pm`.
@@ -574,7 +575,7 @@ fn lock_manifest(
         .unwrap_or(package_dir.as_str());
     let path = if relative.is_empty() { "." } else { relative };
     let integrity = stable_manifest_integrity(source.as_bytes());
-    let store_path = format!("packages/{integrity}.json");
+    let store_path = compact_str::format_compact!("packages/{integrity}.json").into_string();
 
     Ok(LockedPackage {
         name: name.to_compact_string(),
@@ -597,7 +598,7 @@ fn stable_manifest_integrity(bytes: &[u8]) -> String {
         hash = hash.wrapping_mul(PRIME);
     }
 
-    format!("uf-fnv1a64-{hash:016x}")
+    compact_str::format_compact!("uf-fnv1a64-{hash:016x}").into_string()
 }
 
 fn read_dependency_map(value: &Value, field: &str) -> BTreeMap<CompactString, CompactString> {

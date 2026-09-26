@@ -136,7 +136,9 @@ pub fn memoise<T, E>(
 where
     T: Serialize + DeserializeOwned,
 {
-    let entry = out_dir.join(MANIFESTS).join(format!("{key}.json"));
+    let entry = out_dir
+        .join(MANIFESTS)
+        .join(uf_infra::cstr!("{key}.json").into_string());
     if let Ok(raw) = std::fs::read(&entry)
         && let Ok(value) = serde_json::from_slice::<T>(&raw)
         && files(&value).iter().all(|file| out_dir.join(file).exists())

@@ -209,11 +209,12 @@ fn changed(
     match (source_moved, parameters_moved) {
         (true, true) => "its text and its parameters both changed".to_owned(),
         (true, false) => "its text changed".to_owned(),
-        (false, true) => format!(
+        (false, true) => compact_str::format_compact!(
             "its parameters changed, from ({}) to ({})",
             list(was_parameters),
             list(&now.parameters)
-        ),
+        )
+        .into_string(),
         // The digest differed and neither did: only a file whose digest was
         // edited by hand reaches this, and saying so is better than an empty
         // sentence.
@@ -227,7 +228,7 @@ fn list(parameters: &BTreeMap<String, ParamKind>) -> String {
     }
     parameters
         .iter()
-        .map(|(name, kind)| format!("{name}: {kind}"))
+        .map(|(name, kind)| compact_str::format_compact!("{name}: {kind}").into_string())
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -283,7 +284,7 @@ fn encode(text: &str) -> String {
         // `to_string` of a `&str` fails only if the writer does, and the
         // writer is a `String`. A quoted, obviously wrong value beats a panic
         // in a command that is writing a file.
-        format!("{text:?}")
+        compact_str::format_compact!("{text:?}").into_string()
     })
 }
 
@@ -318,5 +319,5 @@ pub fn write_module(path: &Utf8Path, module: &str) -> Result<(), I18nError> {
 #[must_use]
 pub fn default_module_path(file: &Utf8Path, locale: &str) -> Utf8PathBuf {
     let directory = file.parent().unwrap_or(Utf8Path::new("."));
-    directory.join(format!("{locale}.js"))
+    directory.join(compact_str::format_compact!("{locale}.js").into_string())
 }

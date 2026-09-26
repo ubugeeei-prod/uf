@@ -54,7 +54,7 @@ fn grammar() -> String {
         .filter_map(|variant| variant.as_str())
         .collect::<Vec<_>>()
         .join("|");
-    format!("reserved file names are $<{roles}>[.<{variants}>].js")
+    uf_infra::cstr!("reserved file names are $<{roles}>[.<{variants}>].js").into_string()
 }
 
 /// `router/unsupported-segment`: directories spelled like an intercepting route

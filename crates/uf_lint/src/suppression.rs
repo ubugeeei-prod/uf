@@ -167,7 +167,8 @@ pub(crate) fn collect(scan: &FileScan<'_>) -> (Suppressions, Vec<BadSuppression>
                 bad.push(BadSuppression {
                     line: number,
                     column,
-                    message: format!("unknown lint rule `{name}` in suppression comment"),
+                    message: uf_infra::cstr!("unknown lint rule `{name}` in suppression comment")
+                        .into_string(),
                 });
                 continue;
             };

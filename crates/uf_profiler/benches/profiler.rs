@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What the profiler costs, which decides where it is allowed to live.
 //!
 //! `profile_span!` is meant to stay in hot paths permanently — a profiler you

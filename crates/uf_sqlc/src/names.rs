@@ -146,7 +146,7 @@ fn identifier(name: String) -> String {
         return "_".to_owned();
     }
     if name.starts_with(|ch: char| ch.is_ascii_digit()) {
-        return format!("_{name}");
+        return uf_infra::cstr!("_{name}").into_string();
     }
     name
 }
@@ -253,17 +253,17 @@ pub fn singular(word: &str) -> String {
     }
     for (plural, single) in IRREGULAR {
         if lower.ends_with(plural) {
-            return format!("{}{single}", &word[..word.len() - plural.len()]);
+            return uf_infra::cstr!("{}{single}", &word[..word.len() - plural.len()]).into_string();
         }
     }
     if let Some(stem) = lower.strip_suffix("ies")
         && stem.chars().last().is_some_and(|ch| !"aeiou".contains(ch))
     {
-        return format!("{}y", &word[..word.len() - 3]);
+        return uf_infra::cstr!("{}y", &word[..word.len() - 3]).into_string();
     }
     for (plural, single) in SUFFIXES {
         if lower.ends_with(plural) {
-            return format!("{}{single}", &word[..word.len() - plural.len()]);
+            return uf_infra::cstr!("{}{single}", &word[..word.len() - plural.len()]).into_string();
         }
     }
     if lower.ends_with('s')

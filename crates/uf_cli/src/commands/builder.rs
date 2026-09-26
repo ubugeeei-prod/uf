@@ -89,7 +89,7 @@ impl Builder {
     /// The name and version, as `uf explain build` prints them.
     pub(crate) fn label(&self) -> String {
         match &self.version {
-            Some(version) => format!("{} {version}", self.module),
+            Some(version) => uf_infra::cstr!("{} {version}", self.module).into_string(),
             None => self.module.clone(),
         }
     }
@@ -117,7 +117,9 @@ pub(crate) fn resolve(root: &Utf8Path, config: &UniflowedConfig) -> Result<Build
     let module = tool.spec.module();
     let key = tool.source.key().unwrap_or("build.builder");
     if module.is_empty() {
-        bail!("`{key}` is empty in uf.config.js; name a builder or remove the key");
+        bail!(uf_infra::cstr!(
+            "`{key}` is empty in uf.config.js; name a builder or remove the key"
+        ));
     }
     let directory = if module.starts_with('.') || module.starts_with('/') {
         project_directory(root, key, module)?
@@ -140,11 +142,11 @@ fn describe(module: &str, directory: Utf8PathBuf) -> Result<Builder> {
         .unwrap_or(DEFAULT_DRIVER);
     let driver = directory.join(driver.trim_start_matches("./"));
     if !driver.is_file() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`{module}` is not a builder: uf looked for its driver at {driver} and found no \
              file. A builder declares one as `uf.builder.driver` in its package.json; see \
              docs/architecture.md for the contract."
-        );
+        ));
     }
 
     // What to preload on Bun, and there are three answers rather than two.
@@ -170,10 +172,10 @@ fn describe(module: &str, directory: Utf8PathBuf) -> Result<Builder> {
         Some(declared) if declared.starts_with('.') => {
             let path = directory.join(declared.trim_start_matches("./"));
             if !path.is_file() {
-                bail!(
+                bail!(uf_infra::cstr!(
                     "`{module}` declares `uf.builder.preload.bun` at {path}, and there is no \
                      file there"
-                );
+                ));
             }
             Some(path.into_string())
         }
@@ -207,13 +209,15 @@ fn project_directory(root: &Utf8Path, key: &str, module: &str) -> Result<Utf8Pat
     let candidate = root.join(module);
     let normalised = normalise(&candidate);
     if !normalised.starts_with(root) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`{key}` is {module}, which resolves outside {root}. A builder given as a path has \
              to be inside the project; publish it and name it as a package otherwise."
-        );
+        ));
     }
     if !normalised.is_dir() {
-        bail!("`{key}` is {module}, and there is no directory at {normalised}");
+        bail!(uf_infra::cstr!(
+            "`{key}` is {module}, and there is no directory at {normalised}"
+        ));
     }
     Ok(normalised)
 }
@@ -248,10 +252,10 @@ fn installed_package(root: &Utf8Path, name: &str) -> Result<Utf8PathBuf> {
         }
         directory = current.parent();
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`{name}` is not installed for {root}; add it to the project's dependencies and run the \
          package manager (`uf install`)"
-    )
+    ))
 }
 
 fn read_manifest(directory: &Utf8Path) -> Option<serde_json::Value> {
@@ -273,10 +277,10 @@ pub(crate) fn uniflowed_package(root: &Utf8Path, name: &str, marker: &str) -> Re
         }
         directory = current.parent();
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`@uniflowed/{name}` is not installed for {root}; add it to the project's dependencies \
          and run the package manager (`uf install`)"
-    )
+    ))
 }
 
 #[cfg(test)]

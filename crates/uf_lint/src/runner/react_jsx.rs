@@ -951,11 +951,11 @@ impl<'ast> Walk<'ast> {
                     self.report(
                         loc,
                         JSX_KEY,
-                        format!(
+                        uf_infra::cstr!(
                             "`key=\"{key}\"` is used twice in this array, and React tells elements \
                              apart by key, so it may drop one of them or give it the other's state; \
                              give each element a key of its own"
-                        ),
+                        ).into_string(),
                     );
                 } else if !slot.contains(&key) {
                     slot.push(key);
@@ -993,11 +993,11 @@ impl<'ast> Walk<'ast> {
                     self.report(
                         loc,
                         JSX_KEY,
-                        format!(
+                        uf_infra::cstr!(
                             "this `key` reaches `<{name}>` inside a spread object, which React warns \
                              about because a key has to be written on the element; write `key={{…}}` \
                              on `<{name}>` itself"
-                        ),
+                        ).into_string(),
                     );
                     return;
                 }
@@ -1006,30 +1006,33 @@ impl<'ast> Walk<'ast> {
                     return;
                 }
                 let message = match list {
-                    List::Array => format!(
+                    List::Array => uf_infra::cstr!(
                         "`<{name}>` sits in an array with no `key`, so React matches it to the next \
                          render by position; give it a `key` that says which item it is"
-                    ),
-                    List::Callback(method) => format!(
+                    ).into_string(),
+                    List::Callback(method) => uf_infra::cstr!(
                         "`<{name}>` is returned from `{method}` with no `key`, so React matches the \
                          items by position and hands one item's state to another when the list is \
                          reordered or filtered; give it `key={{…}}` with the item's id"
-                    ),
+                    ).into_string(),
                 };
                 self.report(&opening.loc, JSX_KEY, message);
             }
             ExpressionInner::JSXFragment { loc, .. } => {
                 let place = match list {
                     List::Array => String::from("in an array"),
-                    List::Callback(method) => format!("returned from `{method}`"),
+                    List::Callback(method) => {
+                        uf_infra::cstr!("returned from `{method}`").into_string()
+                    }
                 };
                 self.report(
                     loc,
                     JSX_KEY,
-                    format!(
+                    uf_infra::cstr!(
                         "a `<>` fragment {place} cannot take a `key`, so React matches it by \
                          position; write `<React.Fragment key={{…}}>` instead"
-                    ),
+                    )
+                    .into_string(),
                 );
             }
             _ => {}
@@ -1157,10 +1160,10 @@ impl<'ast> Walk<'ast> {
                 self.report(
                     &attribute.loc,
                     DUPLICATE_PROPS,
-                    format!(
+                    uf_infra::cstr!(
                         "`{name}` is given twice on `<{element}>`, and only the last one reaches it; \
                          remove the one that was not meant"
-                    ),
+                    ).into_string(),
                 );
             } else {
                 seen.push(name);
@@ -1177,18 +1180,19 @@ impl<'ast> Walk<'ast> {
             return;
         };
         let name = element_name(&opening.name);
-        let message = if element.children.1.iter().any(renders_something) {
-            format!(
+        let message =
+            if element.children.1.iter().any(renders_something) {
+                uf_infra::cstr!(
                 "`children` is passed to `<{name}>` as a prop and also written between its tags, \
                  and the ones between the tags replace the prop, so it never renders; remove the \
                  prop"
-            )
-        } else {
-            format!(
+            ).into_string()
+            } else {
+                uf_infra::cstr!(
                 "pass `children` to `<{name}>` between its tags rather than as a prop, which is \
                  where a reader of JSX looks for them"
-            )
-        };
+            ).into_string()
+            };
         self.report(&prop.loc, CHILDREN_PROP, message);
     }
 
@@ -1293,11 +1297,12 @@ impl<'ast> Walk<'ast> {
                 rule: COMMENT_TEXT,
                 line,
                 column,
-                message: format!(
+                message: uf_infra::cstr!(
                     "`{opener}` between JSX tags is text, not a comment, so it shows on the page; \
                      write `{{/* … */}}` to comment it out, or `{{\"{opener} …\"}}` if the slashes \
                      are meant to be seen"
-                ),
+                )
+                .into_string(),
             });
         }
     }
@@ -1344,11 +1349,12 @@ impl<'ast> Walk<'ast> {
                     rule: UNESCAPED_ENTITIES,
                     line,
                     column,
-                    message: format!(
+                    message: uf_infra::cstr!(
                         "`{found}` in JSX text renders as itself, and is usually what a mistyped \
                          tag or a dropped brace left behind; write `{escape}` if it is meant to \
                          be read"
-                    ),
+                    )
+                    .into_string(),
                 });
             }
         }
@@ -1757,10 +1763,10 @@ fn renders_something(child: &jsx::Child<Loc, Loc>) -> bool {
 fn attribute_name(name: &jsx::attribute::Name<Loc, Loc>) -> Cow<'_, str> {
     match name {
         jsx::attribute::Name::Identifier(identifier) => Cow::Borrowed(&identifier.name),
-        jsx::attribute::Name::NamespacedName(namespaced) => Cow::Owned(format!(
-            "{}:{}",
-            &*namespaced.namespace.name, &*namespaced.name.name
-        )),
+        jsx::attribute::Name::NamespacedName(namespaced) => Cow::Owned(
+            uf_infra::cstr!("{}:{}", &*namespaced.namespace.name, &*namespaced.name.name)
+                .into_string(),
+        ),
     }
 }
 
@@ -1769,7 +1775,8 @@ fn element_name(name: &jsx::Name<Loc, Loc>) -> String {
     match name {
         jsx::Name::Identifier(identifier) => String::from(&*identifier.name),
         jsx::Name::NamespacedName(namespaced) => {
-            format!("{}:{}", &*namespaced.namespace.name, &*namespaced.name.name)
+            uf_infra::cstr!("{}:{}", &*namespaced.namespace.name, &*namespaced.name.name)
+                .into_string()
         }
         jsx::Name::MemberExpression(member) => member_name(member),
     }
@@ -1780,7 +1787,7 @@ fn member_name(member: &jsx::MemberExpression<Loc, Loc>) -> String {
         jsx::member_expression::Object::Identifier(identifier) => String::from(&*identifier.name),
         jsx::member_expression::Object::MemberExpression(inner) => member_name(inner),
     };
-    format!("{object}.{}", &*member.property.name)
+    uf_infra::cstr!("{object}.{}", &*member.property.name).into_string()
 }
 
 /// The props a `component` declares, each with the binding its body reads it
@@ -1820,39 +1827,42 @@ fn declared_props<'ast>(
 }
 
 fn this_message(kind: &str) -> String {
-    format!(
+    uf_infra::cstr!(
         "`this` names nothing inside a `{kind}`: Flow calls one as a plain function, so `this` is \
          `undefined` here and reading anything off it throws; take the value from a parameter, or \
          from the scope around the declaration"
     )
+    .into_string()
 }
 
 fn unused_message(component: &str, prop: &PropParam<'_>) -> String {
     let read_as = if prop.written == prop.local {
         String::new()
     } else {
-        format!(", bound as `{}`,", prop.local)
+        uf_infra::cstr!(", bound as `{}`,", prop.local).into_string()
     };
-    format!(
+    uf_infra::cstr!(
         "`<{component}>` declares the prop `{}`{read_as} and never reads it, so every caller is \
          asked for a value that goes nowhere; read it, or drop it from the parameter list",
         prop.written
     )
+    .into_string()
 }
 
 fn index_message(index: &str) -> String {
-    format!(
+    uf_infra::cstr!(
         "`key` is built from the list index `{index}`, so React ties each item's state to its \
          position and hands it to a different item when the list is reordered, filtered or added \
          to at the front; key it by something the item carries, such as its id"
     )
+    .into_string()
 }
 
 fn void_message(name: &str, held: &str) -> String {
-    format!(
+    uf_infra::cstr!(
         "`<{name}>` is a void element and cannot hold {held}: React throws when it renders one that \
          does; put the content next to it instead"
-    )
+    ).into_string()
 }
 
 /// Byte offset of the first line of `text` that starts, after whitespace, with

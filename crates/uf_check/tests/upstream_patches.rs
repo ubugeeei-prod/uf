@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What `tools/upstream/patches/flow` buys, and what a dropped patch costs.
 //!
 //! Every patch in that directory has a test here. It is the other half of the

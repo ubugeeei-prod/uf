@@ -134,23 +134,26 @@ pub(crate) fn lint_command(
     // Before the diagnostics count: a file nobody could read has no
     // diagnostics, and reporting "0 errors" over it would be a lie.
     if !unreadable.is_empty() {
-        bail!("{} could not be read", plural(unreadable.len(), "file"));
+        bail!(uf_infra::cstr!(
+            "{} could not be read",
+            plural(unreadable.len(), "file")
+        ));
     }
     // Before it for the same reason: an enabled rule that could not answer has
     // no findings, and "0 errors" would be the run speaking for it.
     if !project_rules.problems.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} kept project rules from answering",
             plural(project_rules.problems.len(), "problem")
-        );
+        ));
     }
     let errors = severity_count(&report, Severity::Error);
     if errors > 0 {
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} failed with {}",
             command.title(),
             plural(errors, "error")
-        );
+        ));
     }
     Ok(())
 }
@@ -274,9 +277,11 @@ pub(crate) fn collect_and_lint(cwd: &Utf8Path, paths: &[String], lint: bool) -> 
         // "no file matched" is true and unhelpful when the file is right
         // there and uf declined to lint it, so say which it was instead.
         if let Some(libdef) = declared.iter().find(|path| selects(paths, path)) {
-            bail!("{libdef} is a library definition, not a source file uf lints");
+            bail!(uf_infra::cstr!(
+                "{libdef} is a library definition, not a source file uf lints"
+            ));
         }
-        bail!("no file matched {}", quoted_list(paths));
+        bail!(uf_infra::cstr!("no file matched {}", quoted_list(paths)));
     }
     if !lint {
         return Ok(LintRun {
@@ -460,7 +465,7 @@ pub(crate) fn render_unreadable(ui: &mut Ui, unreadable: &[String]) {
         renderer.status(
             out,
             Status::Warn,
-            &format!("{} could not be read", plural(lines.len(), "file")),
+            uf_infra::cstr!("{} could not be read", plural(lines.len(), "file")).as_str(),
         );
         renderer.bullet_list(out, 2, &lines);
         renderer.blank(out);
@@ -517,7 +522,7 @@ fn fix_count(count: usize) -> String {
     if count == 1 {
         String::from("1 fix")
     } else {
-        format!("{count} fixes")
+        uf_infra::cstr!("{count} fixes").into_string()
     }
 }
 
@@ -530,26 +535,33 @@ pub(crate) fn render_fix_summary(ui: &mut Ui, fixed: &FixSummary) {
     let headline = if fixed.applied == 0 {
         String::from("no finding here had a fix to apply")
     } else {
-        format!(
+        uf_infra::cstr!(
             "applied {} in {}",
             fix_count(fixed.applied),
             plural(fixed.changed.len(), "file")
         )
+        .into_string()
     };
     let changed: Vec<&str> = fixed.changed.iter().map(String::as_str).collect();
     let refused: Vec<&str> = fixed.refused.iter().map(String::as_str).collect();
     let mut notes = Vec::new();
     if fixed.needs_unsafe > 0 {
-        notes.push(format!(
-            "{} would be fixed by `--fix-unsafe`, which can change what the program does",
-            plural(fixed.needs_unsafe, "finding")
-        ));
+        notes.push(
+            uf_infra::cstr!(
+                "{} would be fixed by `--fix-unsafe`, which can change what the program does",
+                plural(fixed.needs_unsafe, "finding")
+            )
+            .into_string(),
+        );
     }
     if fixed.needs_fmt > 0 {
-        notes.push(format!(
-            "{} would be cleared by `uf fmt`",
-            plural(fixed.needs_fmt, "finding")
-        ));
+        notes.push(
+            uf_infra::cstr!(
+                "{} would be cleared by `uf fmt`",
+                plural(fixed.needs_fmt, "finding")
+            )
+            .into_string(),
+        );
     }
 
     ui.render(|renderer, out| {
@@ -568,7 +580,7 @@ pub(crate) fn render_fix_summary(ui: &mut Ui, fixed: &FixSummary) {
             renderer.status(
                 out,
                 Status::Warn,
-                &format!("{} left unfixed", plural(refused.len(), "file")),
+                uf_infra::cstr!("{} left unfixed", plural(refused.len(), "file")).as_str(),
             );
             renderer.bullet_list(out, 2, &refused);
         }
@@ -662,7 +674,7 @@ pub(crate) fn render_verdict(
         fixed,
     } = verdict;
     let headline = problem_summary(errors, warnings);
-    let files = format!("{} checked", plural(report.files_checked, "file"));
+    let files = uf_infra::cstr!("{} checked", plural(report.files_checked, "file")).into_string();
     let took = format_duration(elapsed);
     let fixable = if fixed {
         None
@@ -671,11 +683,12 @@ pub(crate) fn render_verdict(
     };
     let skipped = report.unavailable.len();
     let skipped = (skipped > 0).then(|| {
-        format!(
+        uf_infra::cstr!(
             "{} skipped: they need Flow type inference, which uf does not have yet; \
              `uf lint --rules` marks them",
             plural(skipped, "enabled rule")
         )
+        .into_string()
     });
 
     ui.render(|renderer, out| {
@@ -718,12 +731,14 @@ fn fixable_hint(command: LintCommand, diagnostics: &[Diagnostic]) -> Option<Stri
     let parts: Vec<String> = counts
         .iter()
         .filter(|(_, count)| *count > 0)
-        .map(|(tier, count)| format!("{count} with `{}`", command.fix_command(*tier)))
+        .map(|(tier, count)| {
+            uf_infra::cstr!("{count} with `{}`", command.fix_command(*tier)).into_string()
+        })
         .collect();
     if parts.is_empty() {
         return None;
     }
-    Some(format!("fixable: {}", parts.join("; ")))
+    Some(uf_infra::cstr!("fixable: {}", parts.join("; ")).into_string())
 }
 
 mod rules;

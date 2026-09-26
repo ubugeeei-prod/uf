@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! End-to-end coverage for the commands that scaffold, build, and serve.
 
 mod support;

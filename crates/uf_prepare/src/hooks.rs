@@ -166,9 +166,9 @@ pub fn dispatcher(project: &str) -> String {
     let run = if project.is_empty() {
         String::from("exec uf prepare")
     } else {
-        format!("exec uf --cwd {} prepare", shell_quote(project))
+        compact_str::format_compact!("exec uf --cwd {} prepare", shell_quote(project)).into_string()
     };
-    format!(
+    compact_str::format_compact!(
         "#!/bin/sh\n\
          {DISPATCHER_MARK}\n\
          #\n\
@@ -183,6 +183,7 @@ pub fn dispatcher(project: &str) -> String {
          fi\n\
          {run}\n"
     )
+    .into_string()
 }
 
 /// `text` as one word to a POSIX shell.
@@ -193,7 +194,7 @@ fn shell_quote(text: &str) -> String {
     if plain && !text.is_empty() {
         return text.to_owned();
     }
-    format!("'{}'", text.replace('\'', r"'\''"))
+    compact_str::format_compact!("'{}'", text.replace('\'', r"'\''")).into_string()
 }
 
 fn repository_root(root: &Utf8Path) -> Option<Utf8PathBuf> {

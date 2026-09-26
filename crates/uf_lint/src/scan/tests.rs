@@ -93,7 +93,7 @@ fn first_code_line_skips_comments_and_blanks() {
     let file = file("\n// @flow\n\n'use client';\n");
     let masked = super::mask_inline_comments(&file.source);
     let scan = FileScan::new(&file, &masked);
-    assert_eq!(scan.facts.first_code_line, Some(3));
+    assert_eq!(scan.facts.first_code_line.map(|index| index.get()), Some(3));
 }
 
 #[test]

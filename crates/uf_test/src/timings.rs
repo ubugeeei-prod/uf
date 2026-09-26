@@ -346,7 +346,7 @@ fn push_json_string(out: &mut String, value: &str) {
         match ch {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
-            ch if (ch as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", ch as u32)),
+            ch if (ch as u32) < 0x20 => uf_infra::append!(out, "\\u{:04x}", ch as u32),
             ch => out.push(ch),
         }
     }
@@ -423,7 +423,7 @@ pub fn save_timings(root: &Utf8Path, timings: &TestTimings) -> Result<(), Timing
         source,
     })?;
 
-    let temporary = directory.join(format!("{TIMINGS_FILE_NAME}.tmp"));
+    let temporary = directory.join(uf_infra::cstr!("{TIMINGS_FILE_NAME}.tmp").into_string());
     fs::write(&temporary, timings.to_json()).map_err(|source| TimingsError::Write {
         path: temporary.clone(),
         source,

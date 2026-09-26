@@ -150,7 +150,7 @@ pub fn server_action_types(registry: &ServerActionRegistry) -> Vec<ServerActionT
         .callable_actions()
         .filter(|action| action.kind == ServerActionKind::ModuleExport)
         .map(|action| ServerActionType {
-            name: CompactString::from(format!("{}#{}", action.module, action.export)),
+            name: uf_infra::cstr!("{}#{}", action.module, action.export),
             module: action.module.clone(),
             export: action.export.clone(),
         })
@@ -184,14 +184,16 @@ pub fn generate_server_action_types(registry: &ServerActionRegistry) -> String {
         // The bare specifier first, then the project's own modules: the order
         // `uf fmt` leaves an import block in, and the order every hand-written
         // module in `packages/` is already written in.
-        output.push_str(&format!(
+        uf_infra::append!(
+            output,
             "import type {{ ActionArguments, ActionResult }} from \"{ACTION_TYPES_MODULE}\";\n"
-        ));
+        );
         for (index, module) in modules.iter().enumerate() {
-            output.push_str(&format!(
+            uf_infra::append!(
+                output,
                 "import typeof * as Module{index} from \"./{}\";\n",
                 escape_flow_string(module.as_str())
-            ));
+            );
         }
     }
 
@@ -209,11 +211,12 @@ pub fn generate_server_action_types(registry: &ServerActionRegistry) -> String {
                 .iter()
                 .position(|module| *module == row.module.as_path())
                 .unwrap_or(0);
-            output.push_str(&format!(
+            uf_infra::append!(
+                output,
                 "  \"{}\": Module{index}[\"{}\"],\n",
                 escape_flow_string(&row.name),
                 escape_flow_string(&row.export)
-            ));
+            );
         }
         output.push_str("};\n");
     }

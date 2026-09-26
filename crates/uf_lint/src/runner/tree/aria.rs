@@ -230,11 +230,11 @@ impl Tag {
     /// How the element is written, for a diagnostic: `<nav>`, `<input
     /// type="checkbox">`.
     pub(super) fn spelled(&self) -> String {
-        let mut spelled = format!("<{}", self.name);
+        let mut spelled = uf_infra::cstr!("<{}", self.name).into_string();
         for attribute in self.attributes {
             match attribute.value {
-                Some(value) => spelled.push_str(&format!(" {}=\"{value}\"", attribute.name)),
-                None => spelled.push_str(&format!(" {}", attribute.name)),
+                Some(value) => uf_infra::append!(spelled, " {}=\"{value}\"", attribute.name),
+                None => uf_infra::append!(spelled, " {}", attribute.name),
             }
         }
         spelled.push('>');
@@ -523,7 +523,10 @@ pub(super) fn permitted(spec: &Spec) -> String {
         Kind::Token(tokens) | Kind::TokenList(tokens) => tokens,
         _ => return String::new(),
     };
-    let mut words: Vec<String> = tokens.iter().map(|token| format!("`{token}`")).collect();
+    let mut words: Vec<String> = tokens
+        .iter()
+        .map(|token| uf_infra::cstr!("`{token}`").into_string())
+        .collect();
     if spec.boolean_spelling {
         words.push(String::from("`true`"));
         words.push(String::from("`false`"));
@@ -541,8 +544,10 @@ pub(super) fn wanted(spec: &Spec) -> String {
         Kind::Text => String::from("text"),
         Kind::Id => String::from("the id of an element in the page"),
         Kind::IdList => String::from("the ids of elements in the page, separated by spaces"),
-        Kind::Token(_) => format!("one of {}", permitted(spec)),
-        Kind::TokenList(_) => format!("one or more of {}, separated by spaces", permitted(spec)),
+        Kind::Token(_) => uf_infra::cstr!("one of {}", permitted(spec)).into_string(),
+        Kind::TokenList(_) => {
+            uf_infra::cstr!("one or more of {}, separated by spaces", permitted(spec)).into_string()
+        }
     }
 }
 

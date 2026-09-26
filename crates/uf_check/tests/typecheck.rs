@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! End-to-end checks that `uf` really runs Flow's own inference.
 //!
 //! Assertions are on error **codes** and **locations**, never on message text:

@@ -314,16 +314,18 @@ impl Session {
             Err(stopped) => {
                 self.worker = None;
                 self.outcome.problems.push(match stopped {
-                    Stopped::TimedOut => format!(
+                    Stopped::TimedOut => uf_infra::cstr!(
                         "project rules did not finish `{}` within {} s, so the rule host was \
                          stopped",
                         file.path,
                         FILE_BUDGET.as_secs()
-                    ),
-                    Stopped::Exited => format!(
+                    )
+                    .into_string(),
+                    Stopped::Exited => uf_infra::cstr!(
                         "the rule host exited while linting `{}`; what it printed is above",
                         file.path
-                    ),
+                    )
+                    .into_string(),
                 });
             }
         }
@@ -334,10 +336,10 @@ impl Session {
     fn restart(&mut self) -> bool {
         if self.starts == MAX_HOST_STARTS {
             self.gave_up = true;
-            self.outcome.problems.push(format!(
+            self.outcome.problems.push(uf_infra::cstr!(
                 "project rules stopped after the rule host was started {MAX_HOST_STARTS} times, \
                  so the files after that went unlinted by them"
-            ));
+            ).into_string());
             return false;
         }
         self.starts += 1;
@@ -345,7 +347,9 @@ impl Session {
             Ok(worker) => worker,
             Err(error) => {
                 self.gave_up = true;
-                self.outcome.problems.push(format!("{error:#}"));
+                self.outcome
+                    .problems
+                    .push(uf_infra::cstr!("{error:#}").into_string());
                 return false;
             }
         };
@@ -362,10 +366,11 @@ impl Session {
             Err(stopped) => {
                 self.gave_up = true;
                 self.outcome.problems.push(match stopped {
-                    Stopped::TimedOut => format!(
+                    Stopped::TimedOut => uf_infra::cstr!(
                         "the rule host did not load the project's plugins within {} s",
                         LOAD_BUDGET.as_secs()
-                    ),
+                    )
+                    .into_string(),
                     Stopped::Exited => String::from(
                         "the rule host exited while loading the project's plugins; what it \
                          printed is above",
@@ -469,15 +474,16 @@ pub(crate) fn render(ui: &mut Ui, outcome: &ProjectRules) {
         .timings
         .iter()
         .take(3)
-        .map(|(rule, micros)| format!("{rule} {:.1} ms", micros / 1000.0))
+        .map(|(rule, micros)| uf_infra::cstr!("{rule} {:.1} ms", micros / 1000.0).into_string())
         .collect::<Vec<_>>()
         .join(", ");
     let total = Duration::from_micros(outcome.micros).as_secs_f64() * 1000.0;
-    let mut headline = format!(
+    let mut headline = uf_infra::cstr!(
         "project rules: {} over {} in {total:.0} ms",
         plural(outcome.timings.len(), "rule"),
         plural(outcome.files, "file")
-    );
+    )
+    .into_string();
     if !slowest.is_empty() {
         headline.push_str(" — ");
         headline.push_str(&slowest);
@@ -490,10 +496,11 @@ pub(crate) fn render(ui: &mut Ui, outcome: &ProjectRules) {
             renderer.status(
                 out,
                 Status::Error,
-                &format!(
+                &uf_infra::cstr!(
                     "{} kept project rules from answering",
                     plural(problems.len(), "problem")
-                ),
+                )
+                .into_string(),
             );
             renderer.bullet_list(out, 2, &problems);
         }
@@ -510,10 +517,10 @@ fn plugin_modules(config: &UniflowedConfig, root: &Utf8Path) -> Result<Vec<Strin
             Ok(PluginSource::Builtin) => None,
             Ok(PluginSource::Package { specifier }) => Some(Ok(specifier.to_string())),
             Ok(PluginSource::ProjectFile { path }) => Some(Ok(root.join(path).to_string())),
-            Err(error) => Some(Err(anyhow!(
+            Err(error) => Some(Err(anyhow!(uf_infra::cstr!(
                 "the `plugins` entry `{}` cannot be loaded for its rules: {error}",
                 entry.name()
-            ))),
+            )))),
         })
         .collect()
 }
@@ -531,20 +538,20 @@ fn host_command(root: &Utf8Path, config: &UniflowedConfig) -> Result<HostCommand
         // `permissions` — and a lint run that granted itself one nobody wrote
         // down is the thing that set exists to prevent. Refused by name until
         // that set is argued for this worker too.
-        CapabilityJsHost::Deno => bail!(
+        CapabilityJsHost::Deno => bail!(uf_infra::cstr!(
             "project rules run on Node.js or Bun, and this project's Capability JS Host is \
              Deno, where the rule worker would need a permission set uf does not grant a lint \
              run yet. Install Node.js or Bun and name it in \
              `app.runtime.capabilityJsHost.default`, or turn the project rules in `lint.rules` \
              off."
-        ),
+        )),
     };
     let package = uniflowed_package(root, "host", WORKER).map_err(|_| {
-        anyhow!(
+        anyhow!(uf_infra::cstr!(
             "project rules run in `@uniflowed/host`, and no version of it with `{WORKER}` is \
              installed for {root}: add `@uniflowed/host` to the project's dependencies and run \
              `uf install`"
-        )
+        ))
     })?;
     Ok(
         HostCommand::new(kind, host.program, package.join(WORKER), root.to_path_buf())
@@ -590,16 +597,16 @@ impl Worker {
             process.env("UF_BINARY", binary.as_str());
         }
         let mut child = process.spawn().map_err(|error| {
-            anyhow!(
+            anyhow!(uf_infra::cstr!(
                 "could not start `{}` to run the project's rules: {error}",
                 command.program
-            )
+            ))
         })?;
         let stdin = child.stdin.take();
         let stdout = child
             .stdout
             .take()
-            .ok_or_else(|| anyhow!("the rule host has no stdout"))?;
+            .ok_or_else(|| anyhow!(uf_infra::cstr!("the rule host has no stdout")))?;
         let (sender, replies) = channel();
         std::thread::Builder::new()
             .name(String::from("uf-lint-host"))

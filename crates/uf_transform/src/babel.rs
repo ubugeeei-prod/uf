@@ -269,10 +269,13 @@ fn property(node: &mut Value) -> Result<Value, TransformError> {
 
     if is_method || kind != "init" {
         if node_type(&value) != Some("FunctionExpression") {
-            return Err(TransformError::Internal(format!(
-                "a method property must hold a FunctionExpression, found {}",
-                node_type(&value).unwrap_or("nothing")
-            )));
+            return Err(TransformError::Internal(
+                uf_infra::cstr!(
+                    "a method property must hold a FunctionExpression, found {}",
+                    node_type(&value).unwrap_or("nothing")
+                )
+                .into_string(),
+            ));
         }
         let mut out = base(node, "ObjectMethod");
         out.insert(
@@ -536,7 +539,7 @@ fn lift_directives(node: &mut Value) {
                 .and_then(|extra| extra.get("raw"))
                 .cloned()
                 .or_else(|| statement["expression"].get("raw").cloned())
-                .unwrap_or_else(|| Value::String(format!("\"{text}\"")));
+                .unwrap_or_else(|| Value::String(uf_infra::cstr!("\"{text}\"").into_string()));
             let mut literal = base(&statement["expression"], "DirectiveLiteral");
             literal.insert("value".to_owned(), Value::String(text.to_owned()));
             literal.insert("extra".to_owned(), node! { "rawValue": text, "raw": raw });

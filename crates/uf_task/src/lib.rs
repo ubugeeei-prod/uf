@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! Dependency-aware, cached task execution.
 //!
 //! `docs/roadmap.md` promised "cached, dependency-aware task execution" and

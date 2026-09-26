@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf add`, `uf remove`, `uf dedupe` and `uf link`, against every package
 //! manager uf drives rather than only npm.
 //!

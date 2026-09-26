@@ -35,11 +35,11 @@ fn toolchain(
 ) -> Result<(uf_config::ResolvedConfig, uf_env::Platform, Toolchain)> {
     let resolved = load_config(cwd)?;
     let platform = uf_env::Platform::current().ok_or_else(|| {
-        anyhow::anyhow!(
+        anyhow::anyhow!(uf_infra::cstr!(
             "uf does not install tools for {} on {}",
             std::env::consts::OS,
             std::env::consts::ARCH
-        )
+        ))
     })?;
     let toolchain =
         uf_env::toolchain::resolve(&resolved.root, &resolved.config, lookup, &Publishers)?;
@@ -55,15 +55,16 @@ fn toolchain(
 fn tool_row(declared: &Declared, state: &str) -> String {
     let release = match &declared.resolution {
         Resolution::Locked { version, .. } | Resolution::Resolved { version, .. } => {
-            format!(" ({version})")
+            uf_infra::cstr!(" ({version})").into_string()
         }
         Resolution::OnPath | Resolution::Exact(_) | Resolution::Unlocked { .. } => String::new(),
     };
-    format!(
+    uf_infra::cstr!(
         "{}{release}  {}  {state}",
         declared.spec(),
         declared.roles()
     )
+    .into_string()
 }
 
 /// Install every tool this project declares a version of, lock what had to be
@@ -91,7 +92,7 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let mut fetched = Vec::new();
     for pin in &pins {
         if uf_env::archive::ensure(&store, pin)
-            .with_context(|| format!("failed to install {pin}"))?
+            .with_context(|| uf_infra::cstr!("failed to install {pin}").into_string())?
         {
             fetched.push(pin.clone());
         }
@@ -126,20 +127,22 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         .iter()
         .filter_map(|declared| match &declared.resolution {
             Resolution::Resolved { version, .. } => {
-                Some(format!("{} at {version}", declared.spec()))
+                Some(uf_infra::cstr!("{} at {version}", declared.spec()).into_string())
             }
             _ => None,
         })
         .collect();
     let lock_note = (!locked.is_empty()).then(|| {
-        format!(
+        uf_infra::cstr!(
             "locked {} in {}",
             locked.join(", "),
             relative_to(&resolved.root, &toolchain.lock_path)
         )
+        .into_string()
     });
     let bin = envs.bin_dir(&resolved.root).to_string();
-    let summary = format!("{} linked into {bin}", plural(linked.len(), "executable"));
+    let summary =
+        uf_infra::cstr!("{} linked into {bin}", plural(linked.len(), "executable")).into_string();
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf env install", Some(project_label(&resolved.root)));
@@ -242,14 +245,13 @@ fn update(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
                 version,
                 was: Some(was),
                 ..
-            } => Some(format!("{}  {was} → {version}", declared.spec())),
+            } => Some(uf_infra::cstr!("{}  {was} → {version}", declared.spec()).into_string()),
             Resolution::Resolved {
                 version, was: None, ..
-            } => Some(format!("{}  locked at {version}", declared.spec())),
-            Resolution::Locked { version, .. } => Some(format!(
-                "{}  {version}, already the newest",
-                declared.spec()
-            )),
+            } => Some(uf_infra::cstr!("{}  locked at {version}", declared.spec()).into_string()),
+            Resolution::Locked { version, .. } => Some(
+                uf_infra::cstr!("{}  {version}, already the newest", declared.spec()).into_string(),
+            ),
             Resolution::OnPath | Resolution::Exact(_) | Resolution::Unlocked { .. } => None,
         })
         .collect();
@@ -260,9 +262,9 @@ fn update(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
          move"
             .to_owned()
     } else if toolchain.lock_changed {
-        format!("{lock} updated; `uf env install` installs what moved")
+        uf_infra::cstr!("{lock} updated; `uf env install` installs what moved").into_string()
     } else {
-        format!("{lock} already locks the newest release of every prefix")
+        uf_infra::cstr!("{lock} already locks the newest release of every prefix").into_string()
     };
 
     ui.render(|renderer, out| {
@@ -284,7 +286,9 @@ fn exec(cwd: &Utf8Path, command: &[String]) -> Result<()> {
     let resolved = load_config(cwd)?;
     let bin = uf_env::project::Envs::discover()?.bin_dir(&resolved.root);
     if !bin.is_dir() {
-        bail!("this project has no environment yet; run `uf env install`");
+        bail!(uf_infra::cstr!(
+            "this project has no environment yet; run `uf env install`"
+        ));
     }
     let (program, arguments) = command
         .split_first()
@@ -303,7 +307,7 @@ fn exec(cwd: &Utf8Path, command: &[String]) -> Result<()> {
         .env("PATH", path)
         .current_dir(&resolved.root)
         .status()
-        .with_context(|| format!("failed to run {program}"))?;
+        .with_context(|| uf_infra::cstr!("failed to run {program}").into_string())?;
     if status.success() {
         return Ok(());
     }
@@ -317,7 +321,7 @@ fn entries_word(count: usize) -> String {
     if count == 1 {
         "1 entry".to_owned()
     } else {
-        format!("{count} entries")
+        uf_infra::cstr!("{count} entries").into_string()
     }
 }
 
@@ -331,25 +335,27 @@ fn gc(ui: &mut Ui, dry_run: bool) -> Result<()> {
     let dead: Vec<String> = plan
         .dead_roots
         .iter()
-        .map(|(_, repository)| format!("{repository} (gone)"))
+        .map(|(_, repository)| uf_infra::cstr!("{repository} (gone)").into_string())
         .collect();
     let dead: Vec<&str> = dead.iter().map(String::as_str).collect();
     let kept = entries_word(plan.kept);
 
     let summary = if plan.is_empty() {
-        format!("nothing to collect; {kept} in use")
+        uf_infra::cstr!("nothing to collect; {kept} in use").into_string()
     } else if dry_run {
-        format!(
+        uf_infra::cstr!(
             "{} would be removed; {kept} in use",
             entries_word(plan.unreachable.len())
         )
+        .into_string()
     } else {
         let (entries, roots_removed) = uf_env::gc::collect(&store, &roots, &plan)?;
-        format!(
+        uf_infra::cstr!(
             "removed {}, forgot {}; {kept} in use",
             entries_word(entries),
             plural(roots_removed, "root")
         )
+        .into_string()
     };
 
     ui.render(|renderer, out| {
@@ -389,16 +395,19 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
 
     let path = root.join(PROFILE_FILE);
     let dir = path.parent().unwrap_or(&root).to_path_buf();
-    fs::create_dir_all(&dir).with_context(|| format!("failed to create {dir}"))?;
-    fs::write(&path, format!("{name}\n")).with_context(|| format!("failed to write {path}"))?;
+    fs::create_dir_all(&dir)
+        .with_context(|| uf_infra::cstr!("failed to create {dir}").into_string())?;
+    fs::write(&path, uf_infra::cstr!("{name}\n").into_string())
+        .with_context(|| uf_infra::cstr!("failed to write {path}").into_string())?;
 
     // What it selects, not only what was recorded: "active environment:
     // staging" was true of a file nothing read, and the reader's next question
     // is which files this now means.
-    let message = format!(
+    let message = uf_infra::cstr!(
         "mode {name}: `.env`, `.env.local`, `.env.{name}` and `.env.{name}.local`, in {}",
         env_files::PROFILE_FILE
-    );
+    )
+    .into_string();
     ui.render(|renderer, out| renderer.status(out, Status::Success, &message));
     Ok(())
 }

@@ -192,15 +192,18 @@ fn build(libs: &[Source<'_>]) -> Result<Builtins, CheckError> {
         let file_key = FileKey::new(FileKeyInner::LibFile(name.to_string()));
         let parsed = parse_file(file_key, content, &options, true);
         if let Some((loc, error)) = parsed.parse_errors.first() {
-            let detail =
-                format!("{}:{}: {error}", loc.start.line, loc.start.column + 1).to_compact_string();
+            let detail = uf_infra::cstr!("{}:{}: {error}", loc.start.line, loc.start.column + 1)
+                .into_string()
+                .to_compact_string();
             return Err(match origin {
                 Origin::Project => CheckError::LibDef {
                     path: name.to_compact_string(),
                     detail,
                 },
                 Origin::Vendored => CheckError::Builtins {
-                    detail: format!("{name}:{detail}").to_compact_string(),
+                    detail: uf_infra::cstr!("{name}:{detail}")
+                        .into_string()
+                        .to_compact_string(),
                 },
             });
         }

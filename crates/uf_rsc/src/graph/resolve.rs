@@ -111,7 +111,7 @@ pub(crate) fn resolve_candidates(
     if let Some(id) = index.get(candidate) {
         return Some(*id);
     }
-    let with_extension = Utf8PathBuf::from(format!("{candidate}.js"));
+    let with_extension = Utf8PathBuf::from(uf_infra::cstr!("{candidate}.js").into_string());
     if let Some(id) = index.get(&with_extension) {
         return Some(*id);
     }

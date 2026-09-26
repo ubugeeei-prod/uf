@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf run`: the graph, the concurrency, and the cache.
 //!
 //! Every assertion here is about a side effect a task wrote, never about how

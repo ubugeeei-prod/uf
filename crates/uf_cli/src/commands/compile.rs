@@ -308,17 +308,17 @@ pub(crate) fn parse_target(requested: &str) -> Result<Target> {
     // real platform, and answering that with a list to search would make them
     // find the line they already knew. Name the triple instead.
     if let Some(target) = TARGETS.iter().find(|target| target.bun == requested) {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`--target {requested}` is Bun's name for that machine; uf names it \
              `{}`, the way it names its own release binaries.\n  \
              uf builds for:\n  {supported}",
             target.triple
-        );
+        ));
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`--target {requested}` is not a platform uf builds for.\n  \
          uf builds for:\n  {supported}"
-    )
+    ))
 }
 
 /// The runtime `uf build --compile` wraps around the application, resolved.
@@ -358,7 +358,7 @@ pub(crate) struct Runtime {
 impl Runtime {
     /// The runtime and its version, as the build summary prints them.
     pub(crate) fn label(&self) -> String {
-        format!("{} {}", self.backend.name(), self.release_label())
+        uf_infra::cstr!("{} {}", self.backend.name(), self.release_label()).into_string()
     }
 
     /// The release a summary should print.
@@ -502,11 +502,17 @@ pub(crate) fn runtimes(
         )
         .map_err(|refusal| declared_runtime_refusal(source.as_ref(), &refusal))?;
         if let Some(refusal) = refuse_target(backend, target) {
-            bail!("{}", declared_runtime_refusal(source.as_ref(), &refusal));
+            bail!(uf_infra::cstr!(
+                "{}",
+                declared_runtime_refusal(source.as_ref(), &refusal)
+            ));
         }
         let runtime =
             finish(root, config, backend, program, version, target, source).map_err(|error| {
-                declared_runtime_refusal(declared_runtime.source.as_ref(), &format!("{error:?}"))
+                declared_runtime_refusal(
+                    declared_runtime.source.as_ref(),
+                    uf_infra::cstr!("{error:?}").as_str(),
+                )
             })?;
         return Ok(vec![runtime]);
     }
@@ -537,7 +543,8 @@ pub(crate) fn runtimes(
                     // reasons rather than ending the walk. A project that
                     // pinned one host still gets that sentence as its refusal,
                     // because there is nothing else in the list.
-                    Err(refusal) => refusals.push(format!("{}: {refusal}", backend.name())),
+                    Err(refusal) => refusals
+                        .push(uf_infra::cstr!("{}: {refusal}", backend.name()).into_string()),
                 },
             },
             Err(refusal) => refusals.push(refusal),
@@ -552,7 +559,7 @@ pub(crate) fn runtimes(
     // over, which is the difference between "uf will not do this" and "uf
     // cannot do this here".
     let what = match target {
-        Some(target) => format!("a binary for {}", target.triple),
+        Some(target) => uf_infra::cstr!("a binary for {}", target.triple).into_string(),
         None => String::from("a binary"),
     };
     let advice = match target {
@@ -567,14 +574,14 @@ pub(crate) fn runtimes(
                  the output directory with a JavaScript host."
         }
     };
-    bail!(
+    bail!(uf_infra::cstr!(
         "`uf build --compile` found no runtime it can build {what} with.\n{}\n  {advice}",
         refusals
             .iter()
-            .map(|refusal| format!("  {refusal}"))
+            .map(|refusal| uf_infra::cstr!("  {refusal}").into_string())
             .collect::<Vec<_>>()
             .join("\n")
-    )
+    ))
 }
 
 fn declared_runtime_refusal(
@@ -583,12 +590,12 @@ fn declared_runtime_refusal(
 ) -> anyhow::Error {
     let declared = source.map_or_else(
         || "`runtime` resolved no declaration".to_owned(),
-        |source| format!("{} is `{}`", source.key, source.spec),
+        |source| uf_infra::cstr!("{} is `{}`", source.key, source.spec).into_string(),
     );
-    anyhow::anyhow!(
+    anyhow::anyhow!(uf_infra::cstr!(
         "`uf build --compile` embeds the application runtime; {declared}, and that runtime \
          cannot build this binary here.\n  {refusal}"
-    )
+    ))
 }
 
 /// The backend for one accepted host, or the sentence saying why not.
@@ -627,18 +634,24 @@ fn backend_for_program(
         }
         CapabilityJsHost::Node => {
             let Some(version) = program_version(&program, "--version") else {
-                return Err(format!("node: {program} did not answer `--version`"));
+                return Err(
+                    uf_infra::cstr!("node: {program} did not answer `--version`").into_string(),
+                );
             };
             match Version::parse(&version) {
                 Some(parsed) if parsed >= NODE_SEA_FLOOR => {
                     Ok((Backend::NodeSea, program, version))
                 }
-                Some(parsed) => Err(format!(
+                Some(parsed) => Err(uf_infra::cstr!(
                     "node: {parsed} is older than {NODE_SEA_FLOOR}, the first with `--build-sea`; \
                      before it, building a single-executable application needs the `postject` \
                      package installed into your project, which uf will not do"
-                )),
-                None => Err(format!("node: could not read a version out of `{version}`")),
+                )
+                .into_string()),
+                None => Err(
+                    uf_infra::cstr!("node: could not read a version out of `{version}`")
+                        .into_string(),
+                ),
             }
         }
         CapabilityJsHost::Deno => {
@@ -659,12 +672,15 @@ fn refuse_target(backend: Backend, target: Option<Target>) -> Option<String> {
     let target = target?;
     match backend {
         Backend::Bun => None,
-        Backend::NodeSea => Some(format!(
-            "node: a single-executable application is a copy of the running `node` with the \
+        Backend::NodeSea => Some(
+            uf_infra::cstr!(
+                "node: a single-executable application is a copy of the running `node` with the \
              bundle appended, so it cannot be built for {} — Node has no cross-compilation, with \
              a flag or without one. Bun's backend does",
-            target.triple
-        )),
+                target.triple
+            )
+            .into_string(),
+        ),
     }
 }
 
@@ -748,8 +764,8 @@ fn artefact_permissions(
             permissions,
             &ToolchainAccess::default(),
         )
-        .map_err(|error| anyhow::anyhow!("{error}")),
-        Backend::Bun => bail!(
+        .map_err(|error| anyhow::anyhow!(uf_infra::cstr!("{error}"))),
+        Backend::Bun => bail!(uf_infra::cstr!(
             "`uf.config.js` declares permissions ({}) and `uf build --compile` on Bun cannot put \
              them in force: Bun has no permission model, and a compiled binary has no command \
              line to hand one to.\n  \
@@ -758,10 +774,10 @@ fn artefact_permissions(
              a binary that looks sandboxed and is not.",
             permissions
                 .granted()
-                .map(|permission| format!("`{permission}`"))
+                .map(|permission| uf_infra::cstr!("`{permission}`").into_string())
                 .collect::<Vec<_>>()
                 .join(", ")
-        ),
+        )),
     }
 }
 
@@ -773,7 +789,7 @@ fn artefact_permissions(
 /// whether this build has to reach the network, and a cache holding some other
 /// Bun's copy means it does.
 fn cached_runtime(cache: &Utf8Path, target: Target) -> Option<(Utf8PathBuf, u64)> {
-    let prefix = format!("{}-v", target.runtime);
+    let prefix = uf_infra::cstr!("{}-v", target.runtime).into_string();
     for entry in fs::read_dir(cache.as_std_path()).ok()?.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -799,7 +815,7 @@ pub(crate) fn binary_name(root: &Utf8Path, target: Option<Target>) -> String {
     let name = project_label(root);
     let windows = target.map_or(cfg!(windows), |target| target.windows);
     if windows {
-        format!("{name}.exe")
+        uf_infra::cstr!("{name}.exe").into_string()
     } else {
         name.to_owned()
     }
@@ -816,7 +832,7 @@ pub(crate) fn binary_name(root: &Utf8Path, target: Option<Target>) -> String {
 /// case a single spelling gets wrong.
 pub(crate) fn binary_names(root: &Utf8Path) -> Vec<String> {
     let name = project_label(root);
-    vec![name.to_owned(), format!("{name}.exe")]
+    vec![name.to_owned(), uf_infra::cstr!("{name}.exe").into_string()]
 }
 
 /// Link the application and wrap the runtime around it.
@@ -911,17 +927,20 @@ pub(crate) fn compile(
 
     let bundle = work.join("server.js");
     if !bundle.is_file() {
-        bail!("the standalone link wrote no bundle at {bundle}");
+        bail!(uf_infra::cstr!(
+            "the standalone link wrote no bundle at {bundle}"
+        ));
     }
 
     let runtime = wrap(ui, runtimes, root, &work, &bundle, &binary)?;
 
     let bytes = std::fs::metadata(binary.as_std_path())
         .with_context(|| {
-            format!(
+            uf_infra::cstr!(
                 "`{}` reported success but wrote no {binary}",
                 runtime.backend.name()
             )
+            .into_string()
         })?
         .len();
     let fetched = match (&runtime.cache, runtime.target) {
@@ -986,17 +1005,18 @@ fn wrap<'a>(
                     // thing that went wrong.
                     return Err(match failures.is_empty() {
                         true => failure,
-                        false => anyhow::anyhow!(
+                        false => anyhow::anyhow!(uf_infra::cstr!(
                             "{failure:?}\n\nuf had already tried:\n{}",
                             failures.join("\n\n")
-                        ),
+                        )),
                     });
                 };
-                let said = format!(
+                let said = uf_infra::cstr!(
                     "{} could not write the binary, so uf is trying {} instead:\n{failure:?}",
                     runtime.label(),
                     next.label()
-                );
+                )
+                .into_string();
                 ui.render(|renderer, out| renderer.status(out, Status::Warn, &said));
                 failures.push(said);
             }
@@ -1020,18 +1040,20 @@ fn wrap_with_bun(
         .arg(binary.as_str())
         .current_dir(root.as_std_path());
     if let Some(target) = runtime.target {
-        command.arg(format!("--target={}", target.bun));
+        command.arg(uf_infra::cstr!("--target={}", target.bun).into_string());
     }
     if let Some(cache) = &runtime.cache {
-        fs::create_dir_all(cache.as_std_path())
-            .with_context(|| format!("failed to create the runtime cache at {cache}"))?;
+        fs::create_dir_all(cache.as_std_path()).with_context(|| {
+            uf_infra::cstr!("failed to create the runtime cache at {cache}").into_string()
+        })?;
         command.env(BUN_CACHE_ENV, cache.as_str());
     }
     let output = command.output().with_context(|| {
-        format!(
+        uf_infra::cstr!(
             "failed to start {} for `uf build --compile`",
             runtime.program
         )
+        .into_string()
     })?;
     if output.status.success() {
         return Ok(());
@@ -1039,11 +1061,12 @@ fn wrap_with_bun(
     // Bun writes the useful half of a compile failure to stderr and says
     // nothing on stdout; both are forwarded because a message split across
     // the two is worse than a message repeated.
-    let said = format!(
+    let said = uf_infra::cstr!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
-    );
+    )
+    .into_string();
     // The one failure uf can say more about than Bun does. Which targets a Bun
     // has runtimes for changes between releases and there is no command that
     // asks, so uf names the triple it accepted, the Bun that declined it, and
@@ -1052,7 +1075,7 @@ fn wrap_with_bun(
     if let Some(target) = runtime.target
         && said.contains("Unsupported compile target")
     {
-        bail!(
+        bail!(uf_infra::cstr!(
             "bun {} has no runtime for {} (it calls it `{}`), so it cannot build that binary.\n  \
              uf accepts the triple because a newer Bun does have it: upgrade Bun, or build this \
              target on a machine that is one.\n{}",
@@ -1060,13 +1083,13 @@ fn wrap_with_bun(
             target.triple,
             target.bun,
             said.trim_end()
-        );
+        ));
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`bun build --compile` exited with {}\n{}",
         output.status,
         said.trim_end()
-    )
+    ))
 }
 
 /// `node --build-sea`, then a signature where the platform needs one.
@@ -1123,18 +1146,20 @@ fn wrap_with_node(
         .current_dir(root.as_std_path())
         .output()
         .with_context(|| {
-            format!(
+            uf_infra::cstr!(
                 "failed to start {} for `uf build --compile`",
                 runtime.program
             )
+            .into_string()
         })?;
     if !output.status.success() {
-        let said = format!(
+        let said = uf_infra::cstr!(
             "{}{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
-        );
-        bail!(
+        )
+        .into_string();
+        bail!(uf_infra::cstr!(
             "`node --build-sea` exited with {}\n{}\n\n\
              Single-executable support is compiled into a `node` binary as well as being a \
              version of it, and some distributions ship it turned off — `sentinel \
@@ -1143,7 +1168,7 @@ fn wrap_with_node(
              with Bun instead.",
             output.status,
             said.trim_end()
-        );
+        ));
     }
 
     sign_for_macos(binary)
@@ -1164,14 +1189,14 @@ fn sign_for_macos(binary: &Utf8Path) -> Result<()> {
     if output.status.success() {
         return Ok(());
     }
-    bail!(
+    bail!(uf_infra::cstr!(
         "`codesign --sign -` on {binary} exited with {}\n{}\n\n\
          macOS refuses to execute a Mach-O whose signature no longer matches its contents, and \
          appending the application to a copy of `node` is exactly that change. The binary was \
          written and will not run until it is signed.",
         output.status,
         String::from_utf8_lossy(&output.stderr).trim_end()
-    )
+    ))
 }
 
 #[cfg(not(target_os = "macos"))]

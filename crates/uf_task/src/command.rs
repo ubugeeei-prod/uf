@@ -505,7 +505,7 @@ mod tests {
     fn double_quotes_hold_quotes_parentheses_and_globs() {
         let script = "for (const f of require('node:fs').globSync('packages/*/package.json')) f";
         assert_eq!(
-            words(&format!("node -e \"{script}\"")),
+            words(uf_infra::cstr!("node -e \"{script}\"").as_str()),
             ["node", "-e", script]
         );
     }
@@ -768,7 +768,7 @@ mod tests {
         for (name, task) in &resolved.config.tasks {
             match parse(task.command()) {
                 Command::Direct(_) => {}
-                other => shells.push(format!("{name}: {other:?}")),
+                other => shells.push(uf_infra::cstr!("{name}: {other:?}").into_string()),
             }
         }
         assert!(shells.is_empty(), "tasks that need a shell: {shells:#?}");

@@ -92,7 +92,9 @@ fn stty(args: &[&str]) -> io::Result<String> {
         .stderr(Stdio::null())
         .output()?;
     if !output.status.success() {
-        return Err(io::Error::other(format!("stty {} failed", args.join(" "))));
+        return Err(io::Error::other(
+            uf_infra::cstr!("stty {} failed", args.join(" ")).into_string(),
+        ));
     }
     String::from_utf8(output.stdout).map_err(io::Error::other)
 }

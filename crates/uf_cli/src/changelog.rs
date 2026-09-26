@@ -103,7 +103,7 @@ pub(crate) fn parse(subject: &str) -> Entry<'_> {
 pub(crate) fn section(tag: &str, date: &str, subjects: &[String]) -> String {
     let entries: Vec<Entry<'_>> = subjects.iter().map(|subject| parse(subject)).collect();
 
-    let mut out = format!("## {tag}\n\n_{date}_\n");
+    let mut out = uf_infra::cstr!("## {tag}\n\n_{date}_\n").into_string();
 
     let breaking: Vec<&Entry<'_>> = entries.iter().filter(|entry| entry.breaking).collect();
     if !breaking.is_empty() {
@@ -122,7 +122,7 @@ pub(crate) fn section(tag: &str, date: &str, subjects: &[String]) -> String {
         if group.is_empty() {
             continue;
         }
-        out.push_str(&format!("\n### {heading}\n\n"));
+        uf_infra::append!(out, "\n### {heading}\n\n");
         for entry in group {
             out.push_str(&line(entry));
         }
@@ -146,8 +146,8 @@ pub(crate) fn section(tag: &str, date: &str, subjects: &[String]) -> String {
 /// One bullet: the scope in bold when there is one, then the summary.
 fn line(entry: &Entry<'_>) -> String {
     match entry.scope {
-        Some(scope) => format!("- **{scope}**: {}\n", entry.summary),
-        None => format!("- {}\n", entry.summary),
+        Some(scope) => uf_infra::cstr!("- **{scope}**: {}\n", entry.summary).into_string(),
+        None => uf_infra::cstr!("- {}\n", entry.summary).into_string(),
     }
 }
 
@@ -165,7 +165,7 @@ pub(crate) fn prepend(existing: Option<&str>, section: &str) -> String {
     const TITLE: &str = "# Changelog\n";
     let heading = section.lines().next().unwrap_or_default();
     let Some(existing) = existing else {
-        return format!("{TITLE}\n{section}");
+        return uf_infra::cstr!("{TITLE}\n{section}").into_string();
     };
     // A file that does not start with the title is somebody else's, and the
     // section goes on top of it whole rather than into the middle of it.
@@ -173,9 +173,9 @@ pub(crate) fn prepend(existing: Option<&str>, section: &str) -> String {
     let rest = without_section(rest, heading);
     let rest = rest.trim_start_matches('\n');
     if rest.is_empty() {
-        return format!("{TITLE}\n{section}");
+        return uf_infra::cstr!("{TITLE}\n{section}").into_string();
     }
-    format!("{TITLE}\n{section}\n{rest}")
+    uf_infra::cstr!("{TITLE}\n{section}\n{rest}").into_string()
 }
 
 /// `body` with the `## …` section headed by `heading` removed.

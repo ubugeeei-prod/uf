@@ -108,7 +108,7 @@ pub fn token_signature(source: &str) -> Option<String> {
                 } else {
                     &value.value
                 };
-                signature.push_str(&format!("{text:?}"));
+                uf_infra::append!(signature, "{text:?}");
             }
             // Trailing whitespace inside a comment is not content; the
             // comments-only path trims it.

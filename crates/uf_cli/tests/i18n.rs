@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf i18n extract` and `uf i18n merge`, over a project on disk.
 //!
 //! The unit tests in `uf_i18n` read one module's text and compare two values in

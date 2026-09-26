@@ -502,16 +502,18 @@ fn passthrough(
              rasterising it at a set of widths",
         )
     } else if measured.is_some() {
-        format!(
+        uf_infra::cstr!(
             "uf read .{extension} but did not re-encode it: the only WebP this build can \
              write is lossless, which for an already-compressed source is larger than the \
              file you have. It was served unchanged and its intrinsic size was measured"
         )
+        .into_string()
     } else {
-        format!(
+        uf_infra::cstr!(
             "uf has no decoder for .{extension} and served the file unchanged: it was not \
              resized, no alternative format was made, and its intrinsic size is unknown"
         )
+        .into_string()
     };
 
     let (width, height) = measured.unzip();
@@ -678,7 +680,7 @@ fn write_variant(
             &[request.quality],
             format.extension().as_bytes(),
         ],
-        &format!("-{width}w"),
+        uf_infra::cstr!("-{width}w").as_str(),
         format.extension(),
     );
     let target = request.out_dir.join(&file);
@@ -722,7 +724,9 @@ fn blur_placeholder(
 
     use base64::Engine as _;
     let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(Some(format!("data:{mime};base64,{encoded}")))
+    Ok(Some(
+        uf_infra::cstr!("data:{mime};base64,{encoded}").into_string(),
+    ))
 }
 
 /// The format uf will decode these bytes as, if it has a decoder for them.

@@ -26,7 +26,9 @@ pub(crate) fn watch(
 ) -> Result<()> {
     let resolved = load_project_config(cwd, mode, PRODUCTION)?;
     let Some(plan) = LibraryPlan::resolve(&resolved.config) else {
-        bail!("`uf build --watch` builds libraries; use `uf dev` for an application");
+        bail!(uf_infra::cstr!(
+            "`uf build --watch` builds libraries; use `uf dev` for an application"
+        ));
     };
     super::refuse_an_application_artefact(
         &plan,
@@ -35,7 +37,9 @@ pub(crate) fn watch(
         target,
     )?;
     if reports.analyze {
-        bail!("`uf build --analyze` needs application routes; use `--size-report` for a library");
+        bail!(uf_infra::cstr!(
+            "`uf build --analyze` needs application routes; use `--size-report` for a library"
+        ));
     }
     let root = resolved.root;
     let output = root.join(resolved.config.build.out_dir.as_str());
@@ -74,9 +78,14 @@ fn snapshot(root: &Utf8Path, output: &Utf8Path) -> Result<BTreeMap<Utf8PathBuf, 
         if !entry.file_type().is_file() {
             continue;
         }
-        let path = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
-            .map_err(|path| anyhow::anyhow!("non-UTF-8 library path: {}", path.display()))?;
-        let bytes = std::fs::read(&path).with_context(|| format!("failed to read {path}"))?;
+        let path = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()).map_err(|path| {
+            anyhow::anyhow!(uf_infra::cstr!(
+                "non-UTF-8 library path: {}",
+                path.display()
+            ))
+        })?;
+        let bytes = std::fs::read(&path)
+            .with_context(|| uf_infra::cstr!("failed to read {path}").into_string())?;
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);
         files.insert(path, hasher.finish());

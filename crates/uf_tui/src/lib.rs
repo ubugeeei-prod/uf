@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! What `@uniflowed/tui` is, as the toolchain describes it.
 //!

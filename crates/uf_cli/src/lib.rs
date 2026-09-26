@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
+
 //! The `uf` command line: the root argument parser and the dispatch table.
 //!
 //! Everything a command actually does, including how it renders, lives in
@@ -330,12 +332,12 @@ fn report_with_uf_help(error: &clap::Error, root: &mut clap::Command) -> Option<
             let suggestions = crate::suggest::closest(typed, names.iter().copied());
             let mut ui = Ui::new(request.color, OutputMode::Human);
             ui.usage_error(
-                &format!("`{typed}` is not a `{command}` command"),
+                uf_infra::cstr!("`{typed}` is not a `{command}` command").as_str(),
                 &suggestions
                     .iter()
-                    .map(|name| format!("`{command} {name}`"))
+                    .map(|name| uf_infra::cstr!("`{command} {name}`").into_string())
                     .collect::<Vec<_>>(),
-                &format!("`{command} --help` lists them"),
+                uf_infra::cstr!("`{command} --help` lists them").as_str(),
             );
             Some(ExitCode::from(COULD_NOT_RUN))
         }
@@ -606,10 +608,12 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 // Listing is one project's tasks, and a selector over members
                 // that would then be ignored is a flag that silently does
                 // nothing.
-                None if options.recursive || !options.filter.is_empty() => Err(anyhow!(
-                    "`-r` and `--filter` choose where a task runs, and no task was named\n\n  \
+                None if options.recursive || !options.filter.is_empty() => {
+                    Err(anyhow!(uf_infra::cstr!(
+                        "`-r` and `--filter` choose where a task runs, and no task was named\n\n  \
                      name one — `uf run build -r` — or run `uf run` to see what this project defines"
-                )),
+                    )))
+                }
                 None if list => commands::task::list_tasks(&cwd, ui),
                 None => commands::task::pick_task(&cwd, ui, mode.as_deref(), options),
             }
@@ -918,14 +922,14 @@ fn enter_workspace(cwd: &Utf8PathBuf, target: &str) -> Result<Utf8PathBuf> {
 
     match uf_project::resolve_workspace(&workspaces, target) {
         Ok(workspace) => Ok(resolved.root.join(&workspace.path)),
-        Err(available) if available.is_empty() => Err(anyhow!(
+        Err(available) if available.is_empty() => Err(anyhow!(uf_infra::cstr!(
             "no workspace named {target:?}\n\n  this project has no members; a member is a \
              directory with its own uf.config.js or a package named by package.json#workspaces"
-        )),
+        ))),
         Err(available) => {
             let names = available.iter().map(compact_str::CompactString::as_str);
             let suggestions = crate::suggest::closest(target, names.clone());
-            let mut message = format!("no workspace named {target:?}");
+            let mut message = uf_infra::cstr!("no workspace named {target:?}").into_string();
             if !suggestions.is_empty() {
                 message.push_str("\n\n  did you mean: ");
                 message.push_str(&suggestions.join(", "));
@@ -946,8 +950,12 @@ fn resolve_cwd(cwd: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
 }
 
 fn current_dir() -> Result<Utf8PathBuf> {
-    Utf8PathBuf::from_path_buf(std::env::current_dir()?)
-        .map_err(|path| anyhow!("current directory is not UTF-8: {}", path.display()))
+    Utf8PathBuf::from_path_buf(std::env::current_dir()?).map_err(|path| {
+        anyhow!(uf_infra::cstr!(
+            "current directory is not UTF-8: {}",
+            path.display()
+        ))
+    })
 }
 
 /// Whether `uf <name>` parses as a command at all.
@@ -1087,7 +1095,7 @@ mod tests {
                 // argument, and this test has nothing to say about it.
                 None if current.get_subcommands().next().is_some() => {
                     path.push(name);
-                    return Some(format!("`uf {}`", path.join(" ")));
+                    return Some(uf_infra::cstr!("`uf {}`", path.join(" ")).into_string());
                 }
                 None => break,
             }

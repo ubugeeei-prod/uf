@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! The `curl … | sh` installer, checked against the binary it installs.
 //!
 //! `infra/cloudflare/setup-assets/install.sh` draws the same banner `uf` draws,

@@ -221,7 +221,7 @@ fn task_argument(current: &str, after: &[String], declared: &[TaskArgument]) -> 
             .iter()
             .zip(&filled)
             .filter(|(_, filled)| !**filled)
-            .map(|(argument, _)| format!("--{}", argument.name))
+            .map(|(argument, _)| uf_infra::cstr!("--{}", argument.name).into_string())
             .collect();
         return matching(current, flags.iter().map(String::as_str));
     }

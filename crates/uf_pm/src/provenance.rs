@@ -142,7 +142,9 @@ impl Provenance {
     pub fn origin(&self) -> Option<CompactString> {
         let repository = self.source_repository.as_ref()?;
         Some(match &self.build_entry {
-            Some(entry) => format!("{repository} ({entry})").to_compact_string(),
+            Some(entry) => compact_str::format_compact!("{repository} ({entry})")
+                .into_string()
+                .to_compact_string(),
             None => repository.clone(),
         })
     }
@@ -455,11 +457,12 @@ fn published_integrity(registry: &str, name: &str, version: &str) -> Option<Comp
     }
     // The same `%2f` encoding a packument read uses, so a scope cannot become
     // a directory in the URL.
-    let url = format!(
+    let url = compact_str::format_compact!(
         "{}/{}/{version}",
         registry.trim_end_matches('/'),
         name.replace('/', "%2f")
-    );
+    )
+    .into_string();
     let body = crate::registry::get(&url, "application/json").ok()?;
     let manifest: Value = serde_json::from_slice(&body).ok()?;
     let integrity = manifest.get("dist")?.get("integrity")?.as_str()?;
@@ -862,10 +865,13 @@ fn attestation_url(registry: &str, name: &str, version: &str) -> Option<String> 
     if !crate::registry::is_safe_package_name(name) || !is_safe_version(version) {
         return None;
     }
-    Some(format!(
-        "{}/-/npm/v1/attestations/{name}@{version}",
-        registry.trim_end_matches('/')
-    ))
+    Some(
+        compact_str::format_compact!(
+            "{}/-/npm/v1/attestations/{name}@{version}",
+            registry.trim_end_matches('/')
+        )
+        .into_string(),
+    )
 }
 
 /// A semantic version's alphabet, and nothing else.

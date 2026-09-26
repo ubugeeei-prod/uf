@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! What patch 0003 buys, counted rather than described.
 //!
 //! `tools/upstream/patches/flow/0003-ssa-normal-forms-cost-one-set.patch` is a

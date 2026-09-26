@@ -184,11 +184,11 @@ fn requests_across<'s>(
 ) -> Result<Vec<(usize, &'s str)>> {
     let members = &packages[first_member.min(packages.len())..];
     if members.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`-r` and `--filter` run a task across a workspace, and this project has no members\n\n  \
              a member is a directory with its own uf.config.js, or a package \
              package.json#workspaces lists"
-        );
+        ));
     }
 
     let selected: Vec<usize> = if filter.is_empty() {
@@ -212,7 +212,12 @@ fn requests_across<'s>(
             })
             .collect();
         uf_project::select_workspaces(&workspaces, &dependencies, filter)
-            .map_err(|error| anyhow!("{error}\n\n  members: {}", member_names(members)))?
+            .map_err(|error| {
+                anyhow!(uf_infra::cstr!(
+                    "{error}\n\n  members: {}",
+                    member_names(members)
+                ))
+            })?
             .into_iter()
             .map(|at| at + first_member)
             .collect()
@@ -229,10 +234,10 @@ fn requests_across<'s>(
         } else {
             "member --filter selects"
         };
-        bail!(
+        bail!(uf_infra::cstr!(
             "no {which} defines a task {script:?}\n\n  members: {}",
             member_names(members)
-        );
+        ));
     }
     Ok(requests)
 }
@@ -308,9 +313,10 @@ fn unknown_package(packages: &[Package], reference: &str, through: &[CompactStri
         .filter(|name| !name.is_empty())
         .collect();
 
-    let mut message = format!(
+    let mut message = uf_infra::cstr!(
         "{asker:?} depends on {reference:?}, and there is no workspace member named {owner:?}"
-    );
+    )
+    .into_string();
     if names.is_empty() {
         message.push_str(
             "\n\n  this project is not part of a workspace: a member is a directory with its own \
@@ -365,14 +371,14 @@ fn execute(
         };
         let details = definition.details();
         if details.is_some_and(|task| task.cache == Some(true) && task.inputs.is_empty()) {
-            bail!(
+            bail!(uf_infra::cstr!(
                 "task {:?} sets `cache: true` and declares no `inputs`\n\n  \
                  uf keys a cached result on the files a task says it reads, so a task \
                  that names none\n  cannot be cached — and a request to cache it that \
                  uf quietly ignored would be worse\n  than this message. Add `inputs`, \
                  or drop the `cache` field.",
                 node.label
-            );
+            ));
         }
         // Only a requested task takes the caller's arguments, and it takes
         // them in the command text so that two runs with different arguments
@@ -477,13 +483,14 @@ fn execute(
             .iter()
             .filter(|outcome| matches!(outcome.decision, uf_task::Decision::NotRun))
             .count();
-        let mut line = format!(
+        let mut line = uf_infra::cstr!(
             "  {}, {replayed} replayed, {} run",
             plural(plan.len(), "task"),
             plan.len() - replayed - unreached,
-        );
+        )
+        .into_string();
         if unreached > 0 {
-            line.push_str(&format!(", {unreached} not reached"));
+            uf_infra::append!(line, ", {unreached} not reached");
         }
         let _ = writeln!(
             std::io::stderr(),
@@ -500,7 +507,7 @@ fn execute(
     // whose output the reader has just watched go past.
     let mut message = match &failures[0].status {
         uf_task::Status::Failed(said) => said.clone(),
-        _ => format!("task {script:?} failed"),
+        _ => uf_infra::cstr!("task {script:?} failed").into_string(),
     };
     if failures.len() > 1 {
         message.push('\n');
@@ -577,9 +584,17 @@ fn task_arguments(
             }
             let replay = pick::replay(&node.label, resolved);
             ui.render_err(|renderer, out| {
-                renderer.status(out, Status::Info, &format!("{}: {command}", node.label));
+                renderer.status(
+                    out,
+                    Status::Info,
+                    uf_infra::cstr!("{}: {command}", node.label).as_str(),
+                );
                 let muted = renderer.theme().muted;
-                renderer.line(out, muted, &format!("  next time: {replay}"));
+                renderer.line(
+                    out,
+                    muted,
+                    uf_infra::cstr!("  next time: {replay}").as_str(),
+                );
             });
         }
     }
@@ -608,14 +623,15 @@ fn print_workspace_plan(plan: &Plan) {
         .map(|node| node.label.chars().count())
         .max()
         .unwrap_or(0);
-    let mut out = format!(
+    let mut out = uf_infra::cstr!(
         "  {} across {}\n",
         plural(plan.len(), "task"),
         plural(packages, "package")
-    );
+    )
+    .into_string();
     for node in plan.nodes() {
         if node.dependencies.is_empty() {
-            out.push_str(&format!("  {}\n", node.label));
+            uf_infra::append!(out, "  {}\n", node.label);
             continue;
         }
         let after = node
@@ -624,7 +640,7 @@ fn print_workspace_plan(plan: &Plan) {
             .map(|&at| plan.nodes()[at].label.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        out.push_str(&format!("  {:width$}  after {after}\n", node.label));
+        uf_infra::append!(out, "  {:width$}  after {after}\n", node.label);
     }
     let _ = write!(std::io::stderr(), "{out}");
 }
@@ -643,7 +659,8 @@ pub(crate) fn workspace_summary(resolved: &ResolvedConfig) -> Option<String> {
         .map(|(member, depends_on)| {
             let defined =
                 load_config(root.join(&member.path)).map_or(0, |member| member.config.tasks.len());
-            let mut part = format!("{} ({})", member.name, plural(defined, "task"));
+            let mut part =
+                uf_infra::cstr!("{} ({})", member.name, plural(defined, "task")).into_string();
             if !depends_on.is_empty() {
                 let after = depends_on
                     .iter()
@@ -656,12 +673,15 @@ pub(crate) fn workspace_summary(resolved: &ResolvedConfig) -> Option<String> {
             part
         })
         .collect::<Vec<_>>();
-    Some(format!(
-        "{} — {}; `uf run <task> -r` runs a task in each member that defines it, in that \
+    Some(
+        uf_infra::cstr!(
+            "{} — {}; `uf run <task> -r` runs a task in each member that defines it, in that \
          order, `--filter` selects members, and `pkg#task` in `dependsOn` names one",
-        plural(members.len(), "member"),
-        parts.join("; ")
-    ))
+            plural(members.len(), "member"),
+            parts.join("; ")
+        )
+        .into_string(),
+    )
 }
 
 /// The environment every task of one package starts with: its mode and its
@@ -685,10 +705,11 @@ fn dependency_cycle(cycle: &[compact_str::CompactString]) -> String {
         .map(compact_str::CompactString::as_str)
         .collect::<Vec<_>>()
         .join(" → ");
-    format!(
+    uf_infra::cstr!(
         "`dependsOn` in uf.config.js closes a loop: {path}\n\n  \
          each of these waits for the next, so none of them can start"
     )
+    .into_string()
 }
 
 /// Turns a task into the process that runs it.
@@ -719,13 +740,15 @@ struct TaskSpawner<'a> {
 impl uf_task::Spawn for TaskSpawner<'_> {
     fn command(&self, scheduled: &ScheduledTask) -> std::io::Result<ProcessCommand> {
         let package = self.packages.get(scheduled.package).ok_or_else(|| {
-            std::io::Error::other(format!("task {:?} belongs to no package", scheduled.label))
+            std::io::Error::other(
+                uf_infra::cstr!("task {:?} belongs to no package", scheduled.label).into_string(),
+            )
         })?;
         let env = self.envs.get(&scheduled.package).ok_or_else(|| {
-            std::io::Error::other(format!(
-                "task {:?} was given no environment",
-                scheduled.label
-            ))
+            std::io::Error::other(
+                uf_infra::cstr!("task {:?} was given no environment", scheduled.label)
+                    .into_string(),
+            )
         })?;
         let task = package
             .resolved
@@ -733,7 +756,9 @@ impl uf_task::Spawn for TaskSpawner<'_> {
             .tasks
             .get(scheduled.name.as_str())
             .ok_or_else(|| {
-                std::io::Error::other(format!("task {:?} is not defined", scheduled.label))
+                std::io::Error::other(
+                    uf_infra::cstr!("task {:?} is not defined", scheduled.label).into_string(),
+                )
             })?;
 
         // A task that names a command is run by uf, because `uf.config.js` is
@@ -784,9 +809,10 @@ impl uf_task::Spawn for TaskSpawner<'_> {
                 ));
             }
             uf_task::Command::Malformed(why) => {
-                return Err(std::io::Error::other(format!(
-                    "its command cannot be read — {why}\n\n    {command}"
-                )));
+                return Err(std::io::Error::other(
+                    uf_infra::cstr!("its command cannot be read — {why}\n\n    {command}")
+                        .into_string(),
+                ));
             }
         };
 
@@ -920,8 +946,9 @@ impl TaskSpawner<'_> {
         found: Option<&Utf8Path>,
     ) -> std::io::Result<ProcessCommand> {
         let Some(shell) = found else {
-            return Err(std::io::Error::other(format!(
-                "it needs a shell, and this machine has none\n\n  \
+            return Err(std::io::Error::other(
+                uf_infra::cstr!(
+                    "it needs a shell, and this machine has none\n\n  \
                  its command uses {syntax}, which uf does not run itself:\n\n    \
                  {command}\n\n  \
                  uf starts a task's command directly when it is a program and its \
@@ -929,7 +956,9 @@ impl TaskSpawner<'_> {
                  and there is no `sh`\n  on PATH here — Git for Windows ships one. The \
                  other way out is to write the\n  task as something uf can start: a \
                  script, or two tasks joined by `dependsOn`."
-            )));
+                )
+                .into_string(),
+            ));
         };
         let mut process = ProcessCommand::new(shell.as_std_path());
         process.arg("-c").arg(command);
@@ -985,23 +1014,24 @@ impl uf_task::Observe for Reporter {
         };
         let took = match &outcome.decision {
             uf_task::Decision::Replayed { saved_micros } => {
-                format!("saved {}", seconds(*saved_micros))
+                uf_infra::cstr!("saved {}", seconds(*saved_micros)).into_string()
             }
             _ => seconds(outcome.duration_micros),
         };
-        let mut line = format!(
+        let mut line = uf_infra::cstr!(
             "{mark} {:width$}  {:8}  {took}",
             outcome.name,
             outcome.decision.verb(),
             width = self.width,
-        );
+        )
+        .into_string();
         if self.why {
             match &outcome.decision {
                 uf_task::Decision::Replayed { .. } => {
                     line.push_str("  — every declared input is unchanged");
                 }
                 uf_task::Decision::Ran(reason) => {
-                    line.push_str(&format!("  — {reason}"));
+                    uf_infra::append!(line, "  — {reason}");
                 }
                 uf_task::Decision::NotRun => {
                     line.push_str("  — an earlier task failed");
@@ -1016,9 +1046,9 @@ impl uf_task::Observe for Reporter {
 fn seconds(micros: u64) -> String {
     let seconds = micros as f64 / 1_000_000.0;
     if seconds < 10.0 {
-        format!("{seconds:.2}s")
+        uf_infra::cstr!("{seconds:.2}s").into_string()
     } else {
-        format!("{seconds:.1}s")
+        uf_infra::cstr!("{seconds:.1}s").into_string()
     }
 }
 
@@ -1168,7 +1198,8 @@ pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         renderer.status(
             out,
             Status::Info,
-            &format!("{}; run one with `uf run <task>`", plural(count, "task")),
+            &uf_infra::cstr!("{}; run one with `uf run <task>`", plural(count, "task"))
+                .into_string(),
         );
     });
 
@@ -1203,10 +1234,11 @@ fn unknown_task(
     let mut message = match through.last() {
         // A name nobody typed is a name somebody's `dependsOn` asked for, and
         // the reader's first question is which task that was.
-        Some(asker) => {
-            format!("task {label:?} is not defined in uf.config.js, and {asker:?} depends on it")
-        }
-        None => format!("task {label:?} is not defined in uf.config.js"),
+        Some(asker) => uf_infra::cstr!(
+            "task {label:?} is not defined in uf.config.js, and {asker:?} depends on it"
+        )
+        .into_string(),
+        None => uf_infra::cstr!("task {label:?} is not defined in uf.config.js").into_string(),
     };
     if names.is_empty() {
         message.push_str("\n\n  this project defines no tasks");
@@ -1227,10 +1259,11 @@ fn unknown_task(
         message.push_str("\n\n  tasks: ");
         message.push_str(&names.join(", "));
     } else {
-        message.push_str(&format!(
+        uf_infra::append!(
+            message,
             "\n\n  {} tasks are defined; `uf run` lists them",
             names.len()
-        ));
+        );
     }
     message
 }
@@ -1357,13 +1390,13 @@ pub(crate) fn exec_package(
         // Naming the exact command it would otherwise run, so the decision is
         // made by reading rather than by trusting. `uf add` is not a command
         // uf has, so the hint says what a person can actually type.
-        bail!(
+        bail!(uf_infra::cstr!(
             "{package} is not installed in this project, and fetching it would run code \
              {lockfile} does not pin.\n\
              Declare it in package.json and run `uf install`, or say so explicitly:\n\
              `uf exec --yes {package}`, which runs `{invocation}`.",
-            lockfile = resolved.config.pm.lockfile,
-        );
+            lockfile = resolved.config.pm.lockfile
+        ));
     }
 
     // The release `packageManager` pins, from the store, with the one `runtime`
@@ -1386,7 +1419,8 @@ pub(crate) fn exec_package(
     // On stderr, so the fetched binary still owns stdout. Printed rather than
     // silent because "uf downloaded and ran something" is not a thing a person
     // should have to infer from a network light.
-    let announcement = format!("fetching and running {package} with `{invocation}`");
+    let announcement =
+        uf_infra::cstr!("fetching and running {package} with `{invocation}`").into_string();
     ui.render_err(|renderer, out| {
         renderer.status(out, Status::Info, &announcement);
     });
@@ -1397,7 +1431,7 @@ pub(crate) fn exec_package(
         .args(invocation.args.iter().map(AsRef::as_ref))
         .current_dir(resolved.root.as_std_path())
         .status()
-        .with_context(|| format!("failed to run `{invocation}`"))?;
+        .with_context(|| uf_infra::cstr!("failed to run `{invocation}`").into_string())?;
     if !status.success() {
         adopt_exit_status(ui, status, package);
     }
@@ -1465,7 +1499,7 @@ fn bin_candidates(name: &str, platform: BinPlatform) -> Vec<String> {
         BinPlatform::Unix => vec![name.to_owned()],
         BinPlatform::Windows => WINDOWS_BIN_EXTENSIONS
             .iter()
-            .map(|extension| format!("{name}{extension}"))
+            .map(|extension| uf_infra::cstr!("{name}{extension}").into_string())
             .collect(),
     }
 }
@@ -1539,7 +1573,7 @@ fn spawn_executable(
         .args(args)
         .current_dir(root.as_std_path())
         .status()
-        .with_context(|| format!("failed to execute {executable}"))?;
+        .with_context(|| uf_infra::cstr!("failed to execute {executable}").into_string())?;
     if !status.success() {
         adopt_exit_status(ui, status, package);
     }
@@ -1571,7 +1605,9 @@ pub(crate) fn adopt_exit_status(ui: &mut Ui, status: std::process::ExitStatus, p
     // Said before leaving, because the number alone does not say whose it is:
     // a reader looking at `42` should not have to guess whether uf failed or
     // the thing uf ran did.
-    ui.error(&anyhow::anyhow!("{package} exited with {status}"));
+    ui.error(&anyhow::anyhow!(uf_infra::cstr!(
+        "{package} exited with {status}"
+    )));
     std::process::exit(status.code().unwrap_or(1));
 }
 
@@ -1620,7 +1656,7 @@ fn exec_uniflowed_virtual_package(
     match package {
         "@uniflowed/create" | "uf/create" => {
             let Some(kind) = args.first().map(String::as_str) else {
-                bail!("ufx {package} requires app or lib");
+                bail!(uf_infra::cstr!("ufx {package} requires app or lib"));
             };
             match kind {
                 "app" => {
@@ -1652,7 +1688,9 @@ fn exec_uniflowed_virtual_package(
                         },
                     )?;
                 }
-                other => bail!("unknown @uniflowed/create target {other:?}"),
+                other => bail!(uf_infra::cstr!(
+                    "unknown @uniflowed/create target {other:?}"
+                )),
             }
             Ok(true)
         }

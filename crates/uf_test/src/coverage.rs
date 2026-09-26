@@ -416,7 +416,7 @@ impl ThresholdViolation {
             Some(file) => file.clone(),
             None => String::from("the project"),
         };
-        format!(
+        uf_infra::cstr!(
             "{scope}: {} coverage is {:.2}% ({}/{}), below the required {}%",
             self.metric.as_str(),
             self.actual.percent(),
@@ -424,6 +424,7 @@ impl ThresholdViolation {
             self.actual.total,
             self.required
         )
+        .into_string()
     }
 }
 
@@ -544,9 +545,12 @@ impl<'de> Deserialize<'de> for Coverage {
 
         let record = CoverageRecord::deserialize(deserializer)?;
         let outside = |path: &str| {
-            D::Error::custom(format!(
-                "the coverage names {path:?}, which is not a path inside the project"
-            ))
+            D::Error::custom(
+                uf_infra::cstr!(
+                    "the coverage names {path:?}, which is not a path inside the project"
+                )
+                .into_string(),
+            )
         };
         let mut coverage = Self::new();
         for file in record.files {
@@ -560,11 +564,11 @@ impl<'de> Deserialize<'de> for Coverage {
             }
             for function in file.functions {
                 if function.name.len() > MAX_FUNCTION_NAME_BYTES {
-                    return Err(D::Error::custom(format!(
+                    return Err(D::Error::custom(uf_infra::cstr!(
                         "the coverage of {} names a function longer than {MAX_FUNCTION_NAME_BYTES} \
                          bytes",
                         file.path
-                    )));
+                    ).into_string()));
                 }
                 let mut one = FileCoverage::default();
                 one.functions
@@ -1263,7 +1267,7 @@ fn project_path(source_root: &str, source: &str, root: &Utf8Path) -> Option<Stri
     let joined = if source_root.is_empty() || source.starts_with('/') || source.contains("://") {
         source.to_owned()
     } else {
-        format!("{}{source}", with_slash(source_root))
+        uf_infra::cstr!("{}{source}", with_slash(source_root)).into_string()
     };
     let path = decode_file_url(&joined)?;
     let relative = path.strip_prefix(root).ok()?;
@@ -1278,7 +1282,7 @@ fn with_slash(source_root: &str) -> String {
     if source_root.ends_with('/') {
         source_root.to_owned()
     } else {
-        format!("{source_root}/")
+        uf_infra::cstr!("{source_root}/").into_string()
     }
 }
 

@@ -36,7 +36,7 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
         .filter(|file| selects(paths, &file.relative_path))
         .collect::<Vec<_>>();
     if discovered.is_empty() && !paths.is_empty() && unreadable.is_empty() {
-        bail!("no file matched {}", quoted_list(paths));
+        bail!(uf_infra::cstr!("no file matched {}", quoted_list(paths)));
     }
     // Two piles, because they go to two different formatters. uf prints Flow
     // from the official parser's syntax tree; JSON, CSS and TypeScript go to a
@@ -62,14 +62,15 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
         let result = match format_source(&file.source, &resolved.config.fmt) {
             Ok(result) => result,
             Err(error) => {
-                skipped.push(format!("{}: {error}", file.relative_path));
+                skipped.push(uf_infra::cstr!("{}: {error}", file.relative_path).into_string());
                 continue;
             }
         };
         if result.changed {
             if !check {
-                fs::write(&file.absolute_path, result.output)
-                    .with_context(|| format!("failed to write {}", file.absolute_path))?;
+                fs::write(&file.absolute_path, result.output).with_context(|| {
+                    uf_infra::cstr!("failed to write {}", file.absolute_path).into_string()
+                })?;
             }
             changed.push(file.relative_path);
         }
@@ -119,14 +120,15 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
         || !unreadable.is_empty()
         || non_flow_failure.is_some();
     let summary = if check {
-        format!(
+        uf_infra::cstr!(
             "{} of {} {} formatting",
             plural(changed.len(), "file"),
             scanned,
             if changed.len() == 1 { "needs" } else { "need" }
         )
+        .into_string()
     } else {
-        format!("formatted {} of {}", plural(changed.len(), "file"), scanned)
+        uf_infra::cstr!("formatted {} of {}", plural(changed.len(), "file"), scanned).into_string()
     };
 
     let took = format_duration(started.elapsed());
@@ -135,10 +137,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
     // parsed or read is not something `uf fmt` would fix.
     let rerun =
         (check && !changed.is_empty() && skipped.is_empty() && unreadable.is_empty()).then(|| {
-            format!(
+            uf_infra::cstr!(
                 "`uf fmt` formats {}",
                 if changed.len() == 1 { "it" } else { "them" }
             )
+            .into_string()
         });
     let project = project_label(&resolved.root).to_owned();
 
@@ -166,10 +169,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                 renderer.status(
                     out,
                     Status::Warn,
-                    &format!(
+                    &uf_infra::cstr!(
                         "{} could not be parsed",
                         plural(skipped_paths.len(), "file")
-                    ),
+                    )
+                    .into_string(),
                 );
                 renderer.bullet_list(out, 2, &skipped_paths);
                 renderer.blank(out);
@@ -178,7 +182,8 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                 renderer.status(
                     out,
                     Status::Warn,
-                    &format!("{} could not be read", plural(unreadable.len(), "file")),
+                    &uf_infra::cstr!("{} could not be read", plural(unreadable.len(), "file"))
+                        .into_string(),
                 );
                 renderer.bullet_list(
                     out,
@@ -203,10 +208,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                 renderer.status(
                     out,
                     Status::Warn,
-                    &format!(
+                    &uf_infra::cstr!(
                         "{formatter_name} reports that some non-Flow files need formatting; \
                          run `uf fmt` to fix them"
-                    ),
+                    )
+                    .into_string(),
                 );
                 renderer.blank(out);
             }
@@ -232,23 +238,29 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
     render_ignore_deprecation(ui, deprecation);
 
     if !unreadable.is_empty() {
-        bail!("{} could not be read", plural(unreadable.len(), "file"));
+        bail!(uf_infra::cstr!(
+            "{} could not be read",
+            plural(unreadable.len(), "file")
+        ));
     }
     if !skipped.is_empty() {
-        bail!("{} could not be parsed", plural(skipped.len(), "file"));
+        bail!(uf_infra::cstr!(
+            "{} could not be parsed",
+            plural(skipped.len(), "file")
+        ));
     }
     if let Some(failure) = non_flow_failure {
-        bail!("{failure}");
+        bail!(uf_infra::cstr!("{failure}"));
     }
     if failing {
         // The verb agrees with the count, the way the line above it does:
         // "1 file need formatting" sits directly under "1 file of 26 needs
         // formatting" and reads as a typo in the tool.
-        bail!(
+        bail!(uf_infra::cstr!(
             "{} {} formatting",
             plural(changed.len(), "file"),
             if changed.len() == 1 { "needs" } else { "need" }
-        );
+        ));
     }
     Ok(())
 }

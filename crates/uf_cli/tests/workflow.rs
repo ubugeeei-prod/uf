@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! The commands that run tests, install packages, and write release plans.
 //!
 //! `uf prepare` was here when it wrote a plan and nothing else. It runs five

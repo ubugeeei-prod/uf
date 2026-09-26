@@ -119,11 +119,7 @@ pub fn binary_identity() -> Option<String> {
         .duration_since(UNIX_EPOCH)
         .ok()?
         .as_nanos();
-    Some(format!(
-        "{}\0{}\0{modified}",
-        path.display(),
-        metadata.len()
-    ))
+    Some(crate::cstr!("{}\0{}\0{modified}", path.display(), metadata.len()).into_string())
 }
 
 /// How much one cache directory may hold before a sweep, in bytes.

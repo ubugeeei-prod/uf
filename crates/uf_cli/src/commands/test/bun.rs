@@ -157,7 +157,7 @@ pub(crate) fn arguments(
     files: &[&str],
 ) -> Vec<String> {
     let mut out = vec![
-        format!("--conditions={CONDITION}"),
+        uf_infra::cstr!("--conditions={CONDITION}").into_string(),
         String::from("test"),
         String::from("--preload"),
         preload.to_string(),
@@ -166,7 +166,7 @@ pub(crate) fn arguments(
         // uf's `-t` is a substring of the full name; Bun's is a regular
         // expression. Escaping makes every character literal, so the pattern
         // means what it meant to uf.
-        out.push(format!("--test-name-pattern={}", escape_pattern(pattern)));
+        out.push(uf_infra::cstr!("--test-name-pattern={}", escape_pattern(pattern)).into_string());
     }
     if args.watch {
         out.push(String::from("--watch"));
@@ -182,22 +182,26 @@ pub(crate) fn arguments(
         }
     }
     if let Some(directory) = args.coverage_dir.as_deref() {
-        out.push(format!("--coverage-dir={directory}"));
+        out.push(uf_infra::cstr!("--coverage-dir={directory}").into_string());
     }
     if let Some(failures) = args.bail {
-        out.push(format!("--bail={failures}"));
+        out.push(uf_infra::cstr!("--bail={failures}").into_string());
     }
     if args.retry > 0 {
-        out.push(format!("--retry={}", args.retry));
+        out.push(uf_infra::cstr!("--retry={}", args.retry).into_string());
     }
     if let Some(threads) = args.threads {
-        out.push(format!("--parallel={threads}"));
+        out.push(uf_infra::cstr!("--parallel={threads}").into_string());
     }
     out.push(String::from("--reporter=junit"));
-    out.push(format!("--reporter-outfile={report}"));
+    out.push(uf_infra::cstr!("--reporter-outfile={report}").into_string());
     // As paths rather than filters: `./` is what makes Bun run a file by name
     // whatever its filename patterns say.
-    out.extend(files.iter().map(|file| format!("./{file}")));
+    out.extend(
+        files
+            .iter()
+            .map(|file| uf_infra::cstr!("./{file}").into_string()),
+    );
     out
 }
 
@@ -272,33 +276,33 @@ pub(crate) fn run(
     // keep through Bun. Running anyway would be a green run over a check that
     // did not happen.
     if config.permissions.is_some() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`test.runner` is `bun`, and this project declares `permissions`. Bun has no \
              permission model, so the set would not be enforced; a set that is written down and \
              silently ignored is worse than none. Run the suite with `runner: \"uf\"` on Node or \
              Deno, which enforce it."
-        );
+        ));
     }
     let coverage = &config.test.coverage;
     if declares_thresholds(&coverage.thresholds)
         || declares_thresholds(&coverage.per_file_thresholds)
     {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`test.runner` is `bun`, and `test.coverage` declares thresholds. uf checks those \
              against the coverage its own runner maps back to your Flow source; `bun test` \
              measures in its own terms and nothing would check the numbers. Remove the \
              thresholds, or run with `runner: \"uf\"`."
-        );
+        ));
     }
     let in_source = in_source_files(files);
     if !in_source.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`test.runner` is `bun`, and {} in-source tests (`import.meta.uf.test`), which only \
              uf's own runner runs: {}. Move them into a `.test.js` file, or run with \
              `runner: \"uf\"`.",
             plural(in_source.len(), "file holds"),
             in_source.join(", ")
-        );
+        ));
     }
 
     let declared: Vec<&str> = files
@@ -321,7 +325,8 @@ pub(crate) fn run(
     let preload = uniflowed_package(root, "host", "bun-preload.js")?.join("bun-preload.js");
     let report = report_path(root, args);
     if let Some(parent) = report.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("could not create {parent}"))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| uf_infra::cstr!("could not create {parent}").into_string())?;
     }
     // A report an earlier run left must not be read back as this run's.
     let _ = std::fs::remove_file(&report);
@@ -335,7 +340,7 @@ pub(crate) fn run(
         // different `uf` on PATH — the same promise uf's own runner makes.
         .env("UF_BINARY", super::uf_binary()?.as_str())
         .status()
-        .with_context(|| format!("could not start `{program}`"))?;
+        .with_context(|| uf_infra::cstr!("could not start `{program}`").into_string())?;
 
     if args.watch {
         // `bun test --watch` reports as it goes and ends when the person ends
@@ -343,46 +348,57 @@ pub(crate) fn run(
         return if status.success() {
             Ok(())
         } else {
-            bail!("`bun test --watch` exited ({status})")
+            bail!(uf_infra::cstr!("`bun test --watch` exited ({status})"))
         };
     }
 
     let file = std::fs::File::open(&report).with_context(|| {
-        format!(
+        uf_infra::cstr!(
             "`bun test` exited ({status}) and wrote no report to {report}, so uf cannot say which \
              cases ran"
         )
+        .into_string()
     })?;
-    let document = read_report(file, junit::MAX_JUNIT_BYTES)
-        .with_context(|| format!("could not read the report `bun test` wrote to {report}"))?;
-    let cases = junit::read_cases(&document).map_err(|error| anyhow!("{error}"))?;
+    let document = read_report(file, junit::MAX_JUNIT_BYTES).with_context(|| {
+        uf_infra::cstr!("could not read the report `bun test` wrote to {report}").into_string()
+    })?;
+    let cases =
+        junit::read_cases(&document).map_err(|error| anyhow!(uf_infra::cstr!("{error}")))?;
     let count = |outcome| cases.iter().filter(|case| case.outcome == outcome).count();
     let (passed, failed, skipped) = (
         count(junit::BunOutcome::Passed),
         count(junit::BunOutcome::Failed),
         count(junit::BunOutcome::Skipped),
     );
-    ui.plain(&format!(
-        "\nrunner  bun test ({program}) · {passed} passed, {failed} failed, {skipped} skipped\n"
-    ));
+    ui.plain(
+        &uf_infra::cstr!(
+            "\nrunner  bun test ({program}) · {passed} passed, {failed} failed, {skipped} skipped\n"
+        )
+        .into_string(),
+    );
 
     // Before the exit status: Bun exits 0 when a file's registrations went
     // somewhere it could not see, and that is the run most in need of failing.
     let silent = silent_files(&declared, &cases);
     if !silent.is_empty() {
-        bail!(
+        bail!(uf_infra::cstr!(
             "`bun test` ran no case from {}, though uf's discovery found tests there: {}. Their \
              registrations went somewhere `bun test` could not see — usually a test API imported \
              from somewhere other than `@uniflowed/test` or `bun:test`.",
             plural(silent.len(), "file"),
             silent.join(", ")
-        );
+        ));
     }
     if failed > 0 {
-        bail!("bun test failed with {}", plural(failed, "failure"));
+        bail!(uf_infra::cstr!(
+            "bun test failed with {}",
+            plural(failed, "failure")
+        ));
     }
     if !status.success() {
-        bail!("`bun test` exited ({status}) with no failing case in its report");
+        bail!(uf_infra::cstr!(
+            "`bun test` exited ({status}) with no failing case in its report"
+        ));
     }
     Ok(())
 }
@@ -408,7 +424,7 @@ fn read_report(file: std::fs::File, limit: usize) -> Result<String> {
         .read_to_end(&mut bytes)?;
     if bytes.len() > limit {
         let error = junit::JunitError::TooLarge(usize::try_from(size).unwrap_or(usize::MAX));
-        bail!("{error}");
+        bail!(uf_infra::cstr!("{error}"));
     }
     Ok(String::from_utf8(bytes)?)
 }
@@ -464,7 +480,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains(&format!("is {} bytes, past the", bytes.len())),
+                .contains(uf_infra::cstr!("is {} bytes, past the", bytes.len()).as_str()),
             "{error:#}"
         );
     }

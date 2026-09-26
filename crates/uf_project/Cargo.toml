@@ -12,6 +12,10 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+fixedbitset.workspace = true
+hashbrown.workspace = true
+rustc-hash.workspace = true
+uf_infra = { path = "../uf_infra" }
 compact_str.workspace = true
 camino.workspace = true
 globset.workspace = true

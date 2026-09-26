@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::disallowed_macros))]
 #![deny(missing_docs)]
 //! Native formatter for Flow-typed JavaScript, and the rest of a project's
 //! files beside it.

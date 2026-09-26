@@ -448,11 +448,9 @@ impl Executor<'_> {
         let presentation = if alone {
             Presentation::Plain
         } else {
-            Presentation::Prefixed(format!(
-                "{:width$} | ",
-                task.label,
-                width = self.label_width
-            ))
+            Presentation::Prefixed(
+                uf_infra::cstr!("{:width$} | ", task.label, width = self.label_width).into_string(),
+            )
         };
 
         let (reason, keyed) = match self.decide(task) {
@@ -688,10 +686,10 @@ impl Executor<'_> {
             Ok(command) => command,
             Err(error) => {
                 return Executed {
-                    status: Status::Failed(format!(
-                        "task {:?} could not be started: {error}",
-                        task.label
-                    )),
+                    status: Status::Failed(
+                        uf_infra::cstr!("task {:?} could not be started: {error}", task.label)
+                            .into_string(),
+                    ),
                     captured: Captured::None,
                 };
             }
@@ -716,11 +714,14 @@ impl Executor<'_> {
                 // itself now: a shell that could not find `cargo` said so,
                 // and "No such file or directory" on its own does not.
                 return Executed {
-                    status: Status::Failed(format!(
-                        "task {:?} could not start `{}`: {error}",
-                        task.label,
-                        command.get_program().to_string_lossy()
-                    )),
+                    status: Status::Failed(
+                        uf_infra::cstr!(
+                            "task {:?} could not start `{}`: {error}",
+                            task.label,
+                            command.get_program().to_string_lossy()
+                        )
+                        .into_string(),
+                    ),
                     captured: Captured::None,
                 };
             }
@@ -752,11 +753,13 @@ impl Executor<'_> {
 
         let status = match child.wait() {
             Ok(status) if status.success() => Status::Succeeded,
-            Ok(status) => Status::Failed(format!("task {:?} exited with {status}", task.label)),
-            Err(error) => Status::Failed(format!(
-                "task {:?} could not be waited on: {error}",
-                task.label
-            )),
+            Ok(status) => Status::Failed(
+                uf_infra::cstr!("task {:?} exited with {status}", task.label).into_string(),
+            ),
+            Err(error) => Status::Failed(
+                uf_infra::cstr!("task {:?} could not be waited on: {error}", task.label)
+                    .into_string(),
+            ),
         };
         Executed {
             status,

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `uf` as sqlc's process plugin, and `uf sqlc`.
 //!
 //! The plugin half is exercised the way sqlc calls it: the argument

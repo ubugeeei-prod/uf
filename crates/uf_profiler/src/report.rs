@@ -337,19 +337,29 @@ fn merge_span(spans: &mut Vec<SpanAggregate>, record: &ScopeRecord) {
     });
 }
 
+// Reports retain their String API; never pull the profiled dependency graph
+// into this dependency-free crate. Write directly to one output allocation.
+macro_rules! report_string {
+    ($($arg:tt)*) => {{
+        let mut output = String::with_capacity(24);
+        write!(&mut output, $($arg)*).expect("formatting a report failed");
+        output
+    }};
+}
+
 /// A duration at a scale a reader can hold, three significant figures.
 fn duration(value: Duration) -> String {
     let nanos = value.as_nanos();
     if nanos < 1_000 {
-        return format!("{nanos} ns");
+        return report_string!("{nanos} ns");
     }
     if nanos < 1_000_000 {
-        return format!("{:.2} µs", nanos as f64 / 1_000.0);
+        return report_string!("{:.2} µs", nanos as f64 / 1_000.0);
     }
     if nanos < 1_000_000_000 {
-        return format!("{:.2} ms", nanos as f64 / 1_000_000.0);
+        return report_string!("{:.2} ms", nanos as f64 / 1_000_000.0);
     }
-    format!("{:.2} s", nanos as f64 / 1_000_000_000.0)
+    report_string!("{:.2} s", nanos as f64 / 1_000_000_000.0)
 }
 
 /// Bytes in the unit a reader would say them in.
@@ -358,15 +368,15 @@ fn bytes(value: u64) -> String {
     const MIB: u64 = KIB * 1024;
     const GIB: u64 = MIB * 1024;
     if value < KIB {
-        return format!("{value} B");
+        return report_string!("{value} B");
     }
     if value < MIB {
-        return format!("{:.1} KiB", value as f64 / KIB as f64);
+        return report_string!("{:.1} KiB", value as f64 / KIB as f64);
     }
     if value < GIB {
-        return format!("{:.1} MiB", value as f64 / MIB as f64);
+        return report_string!("{:.1} MiB", value as f64 / MIB as f64);
     }
-    format!("{:.2} GiB", value as f64 / GIB as f64)
+    report_string!("{:.2} GiB", value as f64 / GIB as f64)
 }
 
 /// The JSON escapes a span name or a label could contain.
