@@ -257,7 +257,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
     }
     // Named paths override `.gitignore`, as they do for `uf lint` and
     // `uf fmt`: a suite that writes its fixture into an ignored directory —
-    // `packages/test/module-mock.test.js` does, so a killed run leaves nothing
+    // `npm/test/module-mock.test.js` does, so a killed run leaves nothing
     // behind — still has to be runnable by name.
     //
     // A one-shot, non-coverage run over an existing path can stay inside that
@@ -911,7 +911,7 @@ fn deno_version(text: &str) -> Option<(u64, u64)> {
 ///
 /// A worker imports each test file through the host's Flow loader, and that
 /// loader shells out to `uf transform`. Which `uf` it reaches decides what the
-/// modules under test *are*. `packages/host/transform.js` falls back to a bare
+/// modules under test *are*. `npm/host/transform.js` falls back to a bare
 /// `uf` on `PATH` when nothing says otherwise, so a run that cannot name its
 /// own binary silently answers a different question — "what does the installed
 /// uf make of this project" rather than "what does this one" — while the
@@ -1027,7 +1027,7 @@ fn resolve_uf_binary(
 ///   workspace sits above the project and would otherwise be outside every
 ///   grant.
 /// * **the `uf` binary, readable and runnable.** Every Flow module is
-///   transformed by a `uf transform` child, and `packages/host/transform.js`
+///   transformed by a `uf transform` child, and `npm/host/transform.js`
 ///   stats the binary before spawning it to key its cache. Both are denied by
 ///   default under a permission model, and the failure would surface inside
 ///   uf's own loader rather than in anything the project wrote.
@@ -1066,7 +1066,7 @@ pub(crate) fn toolchain_access(
             toolchain.read.push(modules.to_string());
         }
         // And where the packages *really* are. A workspace links
-        // `node_modules/@uniflowed/host` at its own `packages/host`, and Node
+        // `node_modules/@uniflowed/host` at its own `npm/host`, and Node
         // resolves a symlink before it checks the path against the grant — so
         // a run in a workspace was denied the loader it had just been given
         // permission to read. Granting the resolved scope directory covers
@@ -1107,7 +1107,7 @@ pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
 /// A grant list rather than documentation: on Deno, a variable uf set and did
 /// not name is a variable the worker cannot read, which is a `PermissionDenied`
 /// from inside `@uniflowed/host` rather than from anything a project wrote.
-/// `PATH` is here because `packages/host/transform.js` searches it to identify
+/// `PATH` is here because `npm/host/transform.js` searches it to identify
 /// the `uf` it will run.
 ///
 /// `NODE_V8_COVERAGE` is the one name uf only *sometimes* sets — on a Node
@@ -1311,7 +1311,7 @@ pub(crate) fn read_timings(root: &Utf8Path) -> (TestTimings, Option<String>) {
 /// recorded paths it looked for: an entry in scope that is not among `files`
 /// was deleted or no longer declares a test, and is dropped. An entry out of
 /// scope is kept while its file exists. Before that distinction, the durations
-/// kept were only the ones this run measured, so `uf test packages/ui` threw
+/// kept were only the ones this run measured, so `uf test npm/ui` threw
 /// away what the last full run had learned about the other two hundred files,
 /// and the next full run was scheduled blind — its slowest files started last.
 ///

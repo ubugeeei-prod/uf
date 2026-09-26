@@ -230,7 +230,7 @@ pub fn scan_source_files(
 /// a generated file is exactly the thing somebody points at when they want to
 /// know why it will not compile.
 ///
-/// This is not hypothetical. `packages/test/module-mock.test.js` writes a
+/// This is not hypothetical. `npm/test/module-mock.test.js` writes a
 /// fixture into a gitignored directory — deliberately, so a run killed half way
 /// through does not leave it in the workspace — and then asks
 /// `uf check tests/library/<fixture>` about it by name. Applying the ignore to
@@ -411,7 +411,7 @@ pub fn scan_selected_source_files_matching(
 
 /// Scan only the existing paths a caller named, when every selector is a path.
 ///
-/// `uf test packages/foo.test.js` does not need a project-wide walk before it
+/// `uf test npm/foo.test.js` does not need a project-wide walk before it
 /// can import that one file: the JavaScript host resolves that file's imports
 /// at runtime. This helper exists for that shape. It deliberately returns
 /// [`None`] when a selector is not an existing root-relative path, because the
@@ -583,7 +583,7 @@ const ALWAYS_IGNORED: &[&str] = &[".uf", ".git"];
 /// still a build directory two levels down: this project's own documentation
 /// builds into `docs/dist`, and a root-anchored `dist` did not cover it, so
 /// `uf fmt` walked into generated bundles and offered to reformat them. A
-/// path — `src/generated`, `packages/legacy/vendor` — names one place and is
+/// path — `src/generated`, `npm/legacy/vendor` — names one place and is
 /// matched as a prefix, which is what someone writing a path means.
 ///
 /// The entries come from [`UniflowedConfig::project_ignore`], which is the

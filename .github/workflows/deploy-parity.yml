@@ -67,8 +67,8 @@ on:
     paths:
       - .github/workflows/deploy-parity.yml
       - tools/ci/deployed-parity.mjs
-      - packages/server/internal/deployment.js
-      - packages/router/internal/deployment.js
+      - npm/server/internal/deployment.js
+      - npm/router/internal/deployment.js
       - crates/uf_cli/src/commands/build/previous_assets.rs
 
 permissions:

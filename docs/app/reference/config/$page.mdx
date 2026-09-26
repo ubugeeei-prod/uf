@@ -1130,11 +1130,11 @@ export default defineConfig({
     // The long form takes seven more fields, all optional.
     check: {
       command: "uf check",
-      cwd: "packages/core",
+      cwd: "npm/core",
       dependsOn: ["lint"],
       env: { NODE_OPTIONS: "--max-old-space-size=4096" },
-      inputs: ["packages/core/**/*.js", "uf.config.js"],
-      outputs: ["packages/core/dist/**"],
+      inputs: ["npm/core/**/*.js", "uf.config.js"],
+      outputs: ["npm/core/dist/**"],
     },
     ci: { command: "echo ok", dependsOn: ["check", "test"] },
     deploy: {

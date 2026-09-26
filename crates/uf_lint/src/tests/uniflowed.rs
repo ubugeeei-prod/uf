@@ -29,7 +29,7 @@ fn a_managers_name_that_does_not_head_a_command_is_not_an_invocation() {
         "// @flow\nexport const note = \"we do not use yarn here\";\n",
         // A string that is only the name, anywhere but a call's first
         // argument, names a tool rather than running one: a union of the
-        // managers a project may pin (`packages/config/internal/schema.js`), a
+        // managers a project may pin (`npm/config/internal/schema.js`), a
         // row in a table and a list of tools to time (`tools/bench`).
         "// @flow\nexport type Manager =\n  | \"npm\"\n  | \"pnpm\"\n  | \"yarn\";\n",
         "// @flow\nexport const rival = { name: \"pnpm\", bin: \"pnpm\" };\n",

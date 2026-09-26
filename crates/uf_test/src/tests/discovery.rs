@@ -183,8 +183,8 @@ fn a_name_that_is_not_a_literal_is_recorded_rather_than_dropped() {
 
 #[test]
 fn a_helper_that_shares_a_registrations_name_declares_nothing() {
-    // `packages/validator` has `export function describe(schema)` and calls it
-    // everywhere; `packages/hmr` has a local `function describe(update)`. Both
+    // `npm/validator` has `export function describe(schema)` and calls it
+    // everywhere; `npm/hmr` has a local `function describe(update)`. Both
     // were read as unreadable `describe` declarations, so every such module
     // was run as a test file and listed in every report.
     let source = "export function describe(schema) {\n  return schema;\n}\n\
@@ -198,7 +198,7 @@ fn a_helper_that_shares_a_registrations_name_declares_nothing() {
 
 #[test]
 fn a_call_to_a_function_the_file_declares_under_that_name_declares_nothing() {
-    // `packages/router/internal/hydration.js` and `packages/fetch/internal/
+    // `npm/router/internal/hydration.js` and `npm/fetch/internal/
     // client.js`: two arguments, neither a name, and the function is the
     // file's own.
     let source = "const step = describe(node, index);\n\

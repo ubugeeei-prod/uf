@@ -26,7 +26,7 @@
 // `uf check` builds its module map out of the files it is asked to check, and a
 // relative import that leaves that set resolves to an any-typed value — after
 // which `TValues` is `any`, every line below passes, and the test would prove
-// nothing. So the test runs `uf check tests/type-tests packages/form`, with
+// nothing. So the test runs `uf check tests/type-tests npm/form`, with
 // both in one set. `anchoring.js` beside this says the rest of why the fixtures
 // live here rather than inside the package they are about.
 //
@@ -48,7 +48,7 @@
 
 import * as React from "@uniflowed/react";
 
-import { useForm, useWatch } from "../../packages/form/index.js";
+import { useForm, useWatch } from "../../npm/form/index.js";
 
 export component Checked() {
   // Nothing here is annotated. `TValues` is inferred from this object, and

@@ -69,7 +69,7 @@ All portraits, videos, and posters are local assets. Attribution and the origina
 ```sh
 ./target/debug/uf check examples/simple-sns
 ./target/debug/uf test tests/library/examples.test.js tests/library/simple-sns-components.test.js tests/library/simple-sns-types.test.js
-./target/debug/uf test packages/react-testing/react-testing.test.js packages/vite/rsc-split.test.js
+./target/debug/uf test npm/react-testing/react-testing.test.js npm/vite/rsc-split.test.js
 ```
 
 The tests exercise authorization, session isolation and expiry, persistence after reopening the database, conflicting writes, idempotent retries, Effect dependency injection, optimistic rollback, preserved drafts, independent Suspense reveal/retry, and invalid Flow composition. They use isolated temporary databases.

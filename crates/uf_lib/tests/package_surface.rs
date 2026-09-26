@@ -18,7 +18,7 @@
 //!
 //! Every one of those is about a *shipped* module, and since the JavaScript
 //! suite moved beside the code it tests that is narrower than "a `.js` under
-//! `packages/`": a `.test.js` sits in the tree and is never published. Which
+//! `npm/`": a `.test.js` sits in the tree and is never published. Which
 //! files those are is not a second list kept here — it is the `"!*.test.js"`
 //! the manifests end with, read by [`is_test_file`]. A file npm would publish
 //! is held to everything below; a file it would not is not a shipped module.
@@ -142,11 +142,11 @@ const ENTRY_POINT_MODULES: &[&str] = &[
     "test/internal/browser/page.js",
 ];
 
-/// Whether `module` (relative to `packages/`) is plain JavaScript by necessity.
+/// Whether `module` (relative to `npm/`) is plain JavaScript by necessity.
 ///
 /// Kept apart from [`runs_at_import`] because the two exemptions answer
 /// different questions. Reaching for one predicate for both is how
-/// `packages/test/worker.js` — Flow, and a process entry point — ended up
+/// `npm/test/worker.js` — Flow, and a process entry point — ended up
 /// exempt from the `// @flow` pragma it in fact carries.
 fn is_plain_javascript(module: &Utf8Path) -> bool {
     PLAIN_JAVASCRIPT_MODULES.contains(&module.as_str())
@@ -220,7 +220,7 @@ fn shipped_files() -> Vec<Utf8PathBuf> {
 /// Every module `packages` *ships*: the `.js` files under it that npm would
 /// publish, which is every `.js` file except the test files beside them.
 ///
-/// A test file sits under `packages/` and is not a shipped module, and every
+/// A test file sits under `npm/` and is not a shipped module, and every
 /// invariant below is written about shipped modules. Holding a co-located test
 /// to them would be wrong three times over: its top-level `describe(...)` is
 /// exactly the import-time side effect [`shipped_modules_have_no_import_time_side_effects`]
@@ -604,9 +604,9 @@ fn module_specifiers(source: &str) -> Vec<String> {
 }
 
 /// Resolve `specifier` against the directory holding `module`, both relative to
-/// `packages/`, collapsing `.` and `..` without touching the filesystem.
+/// `npm/`, collapsing `.` and `..` without touching the filesystem.
 ///
-/// Returns `None` when the specifier climbs above `packages/`, which no shipped
+/// Returns `None` when the specifier climbs above `npm/`, which no shipped
 /// module may do.
 fn resolve_relative(module: &Utf8Path, specifier: &str) -> Option<Utf8PathBuf> {
     let mut segments: Vec<&str> = module
@@ -964,7 +964,7 @@ fn shipped_packages_never_publish_flow_declaration_files() {
 /// A published package must not ship a test file.
 ///
 /// This is a rule about the *allowlist*, not about the files that happen to be
-/// on disk today, and it has to be: there are no test files under `packages/`
+/// on disk today, and it has to be: there are no test files under `npm/`
 /// yet, so a test that only walked the tree would pass while every manifest
 /// was wide open. What is checked is whether a test file placed beside the
 /// module it tests — which is where this repository wants them, and where
@@ -1017,7 +1017,7 @@ fn a_shipped_package_never_publishes_a_test_file() {
 ///
 /// Every invariant in this file now says "except a test file", and an exemption
 /// is only as good as the predicate behind it. Two halves, and the second is
-/// the one that would rot: that `packages/` really does hold co-located tests,
+/// the one that would rot: that `npm/` really does hold co-located tests,
 /// so the exclusion is doing work rather than describing a case that never
 /// arises. Without it, `is_test_file` could stop matching anything — a rename
 /// to `alert.spec.js`, a manifest that dropped the negation — and every
@@ -1037,7 +1037,7 @@ fn a_test_file_is_exactly_what_the_allowlist_subtracts() {
         .count();
     assert!(
         colocated > 0,
-        "no test file sits under `packages/`, so every exemption {TEST_FILE_NEGATION:?} \
+        "no test file sits under `npm/`, so every exemption {TEST_FILE_NEGATION:?} \
          grants is exempting nothing — either the suite moved back out or the negation \
          stopped naming what a test file is called"
     );
@@ -1183,18 +1183,18 @@ fn ui_is_imported_through_its_barrel_and_nothing_else() {
     let ui = manifest(Utf8Path::new("ui/package.json"));
     let exports = ui["exports"]
         .as_object()
-        .expect("packages/ui/package.json exports a map");
+        .expect("npm/ui/package.json exports a map");
     let subpaths: Vec<&String> = exports.keys().filter(|key| *key != ".").collect();
     assert!(
         subpaths.is_empty(),
-        "packages/ui/package.json exports {subpaths:?} beside its barrel; \
+        "npm/ui/package.json exports {subpaths:?} beside its barrel; \
          `@uniflowed/ui` is imported one way, from `@uniflowed/ui`"
     );
     assert_eq!(exports["."], "./index.js");
 
     let repository = lib_root().join("..");
     let copied_from: &[&str] = &["registry", "docs", "examples", "crates/uf_project/src"];
-    let imported_by: &[&str] = &["packages", "tests"];
+    let imported_by: &[&str] = &["npm", "tests"];
     let mut found = Vec::new();
     for (directories, prose) in [(copied_from, true), (imported_by, false)] {
         for directory in directories {
@@ -1277,7 +1277,7 @@ fn every_relative_import_resolves_to_a_shipped_file() {
                 }
                 None => {
                     dangling.insert(format!(
-                        "{module} imports {specifier}, which climbs out of packages/"
+                        "{module} imports {specifier}, which climbs out of npm/"
                     ));
                 }
             }
@@ -1294,7 +1294,7 @@ fn every_relative_import_resolves_to_a_shipped_file() {
 
 /// A relative import may not leave the package that contains it.
 ///
-/// Each directory under `packages/` is published as its own npm package, so a
+/// Each directory under `npm/` is published as its own npm package, so a
 /// relative path that walks into a sibling names a file that exists in this
 /// repository and nowhere in an installed tree. Siblings are reached by
 /// specifier — that is what the specifier is for — and the workspace symlinks
@@ -1314,7 +1314,7 @@ fn relative_imports_stay_inside_their_package() {
             }
             let Some(target) = resolve_relative(&module, &specifier) else {
                 escaping.insert(format!(
-                    "{module} imports {specifier}, which climbs out of packages/"
+                    "{module} imports {specifier}, which climbs out of npm/"
                 ));
                 continue;
             };
@@ -1948,7 +1948,7 @@ fn a_std_module_that_claims_wintertc_alignment_names_no_host() {
 
     // Not a number: which modules these are is pinned by
     // `the_std_registry_names_exactly_what_the_std_package_exports` against
-    // `packages/std/package.json`, and writing the count down here as well is
+    // `npm/std/package.json`, and writing the count down here as well is
     // the second place with the same fact in it that #710 is about.
     assert!(
         checked > 0,
@@ -1974,7 +1974,7 @@ fn a_std_module_that_claims_wintertc_alignment_names_no_host() {
 /// is a package whose types do not resolve.
 ///
 /// {@link module_specifiers} is what makes this checkable rather than a
-/// search of the text, and the difference matters here. `packages/vite`
+/// search of the text, and the difference matters here. `npm/vite`
 /// builds application code in a template literal:
 ///
 /// ```text
@@ -1982,7 +1982,7 @@ fn a_std_module_that_claims_wintertc_alignment_names_no_host() {
 /// ```
 ///
 /// `@uniflowed/vite` does not import `@uniflowed/router` — the app it
-/// generates does, and that app declares it. `packages/react` names
+/// generates does, and that app declares it. `npm/react` names
 /// `@uniflowed/react` in a comment. A search reports both and is wrong about
 /// both.
 #[test]
@@ -2044,7 +2044,7 @@ fn declared_uniflowed_dependencies(manifest: &Value) -> BTreeSet<String> {
 /// with `--import @uniflowed/host/register` (`--preload` on Bun): the loader
 /// reaches the process as a command-line argument that
 /// `crates/uf_cli/src/commands/test.rs` builds, resolved out of the project's
-/// own `node_modules`, and no module under `packages/test` mentions it.
+/// own `node_modules`, and no module under `npm/test` mentions it.
 ///
 /// So nothing tied the runner to the loader, and a project that installed
 /// `@uniflowed/test` got a runner that could not run:

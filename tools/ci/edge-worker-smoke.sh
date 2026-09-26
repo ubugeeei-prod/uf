@@ -19,7 +19,7 @@
 #      Worker rendered, which a restarted Worker reads back out of Workers KV,
 #      and rendered by a Worker started after an invalidation rather than
 #      answered with the build's document;
-#   4. a probe built from `packages/vite/internal/worker-builtins.js`: every
+#   4. a probe built from `npm/vite/internal/worker-builtins.js`: every
 #      Node built-in that table says a Worker provides only as a stub must still
 #      throw, or the warnings `uf build --adapter edge` prints are wrong.
 set -eu
@@ -374,7 +374,7 @@ stop_worker
 # 4. The Node built-ins a Worker provides only as stubs, measured again.
 probe="$work/builtins"
 mkdir -p "$probe"
-PROBE_DIRECTORY="$probe" TABLE="$repo_root/packages/vite/internal/worker-builtins.js" \
+PROBE_DIRECTORY="$probe" TABLE="$repo_root/npm/vite/internal/worker-builtins.js" \
   node --input-type=module <<'NODE'
 import { writeFileSync } from "node:fs";
 import path from "node:path";
@@ -431,7 +431,7 @@ start_worker "$probe" builtins-probe
 assert_status GET / 200
 if grep -F "	provided" "$work/body" >/dev/null 2>&1; then
   sed -n '1,40p' "$work/body" >&2 || true
-  fail "a module packages/vite/internal/worker-builtins.js calls a stub works on this Worker; measure again and update the table"
+  fail "a module npm/vite/internal/worker-builtins.js calls a stub works on this Worker; measure again and update the table"
 fi
 [ "$(grep -c "	stub	" "$work/body" || true)" -gt 0 ] || fail "the built-ins probe answered nothing"
 pass "every Node built-in the table names is still a stub at its compatibility date"

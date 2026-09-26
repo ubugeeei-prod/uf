@@ -100,7 +100,7 @@ fn component_parameters(node: &mut Value) -> Result<Vec<Value>, TransformError> 
     // first copied each parameter's `typeAnnotation` subtree in full, only for
     // `strip_pattern` to remove it a few lines later: 5,374 allocations per
     // `component` declaration, which was 13% of what `uf lint` spent on
-    // `packages/router/internal/runtime.js`. See ubugeeei-prod/uf#668.
+    // `npm/router/internal/runtime.js`. See ubugeeei-prod/uf#668.
     let Value::Array(params) = take(node, "params") else {
         return Ok(Vec::new());
     };

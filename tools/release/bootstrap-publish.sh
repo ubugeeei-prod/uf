@@ -61,7 +61,7 @@ if [ -z "$who" ]; then
   exit 1
 fi
 
-version="$(node -p "require('./packages/core/package.json').version")"
+version="$(node -p "require('./npm/core/package.json').version")"
 
 # The dist-tag a prerelease goes to, so `latest` is not moved by one. The same
 # rule `publish.yml` applies, because a bootstrap that tagged differently would
@@ -148,7 +148,7 @@ fi
 # A dry run of every one before any real one, so a package that cannot be
 # packed stops this before half the names are out.
 for package in $missing; do
-  ( cd "packages/${package}" && npm publish --access public --tag "$tag" --dry-run >/dev/null ) \
+  ( cd "npm/${package}" && npm publish --access public --tag "$tag" --dry-run >/dev/null ) \
     || { echo "bootstrap-publish: @uniflowed/${package} would not publish" >&2; exit 1; }
 done
 echo "bootstrap-publish: all ${count} pack cleanly"
@@ -157,7 +157,7 @@ published=0
 for package in $missing; do
   name="@uniflowed/${package}"
   echo "bootstrap-publish: publishing ${name}@${version}"
-  ( cd "packages/${package}" && npm publish --access public --tag "$tag" )
+  ( cd "npm/${package}" && npm publish --access public --tag "$tag" )
   published=$((published + 1))
 done
 

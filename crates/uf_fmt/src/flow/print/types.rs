@@ -68,7 +68,7 @@ fn same_type(a: &Type, b: &Type) -> bool {
 /// newline after its `{` (see `print_object_type`'s `should_break`). A run
 /// that expands one for width alone therefore *creates* that newline, so the
 /// next run answers differently and the file is formatted two ways —
-/// `packages/effect/stream.js`, at a line width of 40, was the first source
+/// `npm/effect/stream.js`, at a line width of 40, was the first source
 /// to show it.
 ///
 /// So the question is asked of the syntax instead, which both runs agree

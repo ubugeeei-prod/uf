@@ -25,19 +25,19 @@
 // `uf check` builds its module map out of the files it is asked to check, and a
 // relative import that leaves that set resolves to an any-typed value — after
 // which `Side` is `any`, every line below passes, and the test would prove
-// nothing. So the test runs `uf check tests/type-tests packages/ui`, with both
+// nothing. So the test runs `uf check tests/type-tests npm/ui`, with both
 // in one set.
 //
-// It is here rather than inside `packages/ui` because everything under
-// `packages/` is shipped: `crates/uf_lib/tests/package_surface.rs` requires
+// It is here rather than inside `npm/ui` because everything under
+// `npm/` is shipped: `crates/uf_lib/tests/package_surface.rs` requires
 // every module there to be reachable through an `exports` subpath or to be an
 // `internal/` one, and npm's `files` patterns match at any depth, so a
 // `type-tests/` directory in the package would be published — a file of
 // deliberate type errors, with a React element built at import time, inside a
 // package that promises neither.
 
-import type { Align, LogicalSide, Side } from "../../packages/ui/internal/anchor.js";
-import { Popover, Tooltip } from "../../packages/ui/index.js";
+import type { Align, LogicalSide, Side } from "../../npm/ui/internal/anchor.js";
+import { Popover, Tooltip } from "../../npm/ui/index.js";
 
 // A side is one of four names, and a typo is not a fifth.
 // $FlowExpectedError[incompatible-type] incompatible with Side

@@ -865,7 +865,7 @@ issue paths through every composite; both entry points in both synchronous and
 asynchronous forms; `InferInput` and `InferOutput` over objects, shapes, tuples,
 unions, variants and pipelines; a `pipe` whose change of output type survives
 into the inferred type; and `toJsonSchema` with `$defs` for recursion and its
-`unrepresentable` list. `packages/validator/validator.test.js` covers each,
+`unrepresentable` list. `npm/validator/validator.test.js` covers each,
 including `@uniflowed/form`'s resolver over a synchronous and an asynchronous
 schema.
 
@@ -915,8 +915,8 @@ stand for code a real application would have written: `isTaken` for a database
 lookup, and `requireEditor` and `insertNote` for the session and database behind
 the action. The `@uniflowed/fetch` samples ran against a `fetch` injected into
 `createFetch`, so they never touched the network.
-`packages/validator/validator.test.js` is where the package's behaviour is
-pinned: `uf test packages/validator/validator.test.js`.
+`npm/validator/validator.test.js` is where the package's behaviour is
+pinned: `uf test npm/validator/validator.test.js`.
 
 ## Where to go next
 

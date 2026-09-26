@@ -279,7 +279,7 @@ fn a_project_script_with_no_source_map_is_left_out_and_counted() {
 #[test]
 fn a_dependency_under_the_project_root_is_not_the_projects_coverage() {
     // `node_modules` is inside the root and is not the project. The rule
-    // mirrors `isFlowModule` in `packages/host/transform.js`, which is what
+    // mirrors `isFlowModule` in `npm/host/transform.js`, which is what
     // decides whether uf compiled the module in the first place — measuring a
     // wider set than uf compiles would report every dependency as an unmapped
     // script and bury the ones that matter.
@@ -512,7 +512,7 @@ fn a_scope_keeps_what_it_includes_and_drops_what_it_excludes() {
     let scope = CoverageScope::new().with_include(["src/"]);
     assert!(widget().within(&scope).file("src/widget.js").is_some());
 
-    let scope = CoverageScope::new().with_include(["packages/"]);
+    let scope = CoverageScope::new().with_include(["npm/"]);
     assert!(widget().within(&scope).file("src/widget.js").is_none());
 
     // Exclusion wins, so a project can include a directory and still drop the

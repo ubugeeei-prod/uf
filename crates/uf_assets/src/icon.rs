@@ -18,7 +18,7 @@
 //! # Why an import and not an extension
 //!
 //! `docs/red-lines.md` leaves `.svg` to Vite, and
-//! `packages/host/assets.js` says why at length: claiming the extension would
+//! `npm/host/assets.js` says why at length: claiming the extension would
 //! take it from `vite-plugin-svgr` and everything like it, and a uf project
 //! must be able to do what a Vite project can. So icons are reached through
 //! uf's own namespace — `import Star from "uf:icon/star"` — resolved against a

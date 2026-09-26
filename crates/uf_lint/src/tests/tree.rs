@@ -50,7 +50,7 @@ fn alt_text_accepts_every_way_an_alt_can_arrive() {
         "    <img src=\"/mark.svg\" alt=\"\" />",
         "    <img src={source} alt={caption} />",
         // A spread may be carrying the `alt`, and this rule cannot see inside
-        // one. `packages/web/media.js` is written this way.
+        // one. `npm/web/media.js` is written this way.
         "    <img src=\"/cat.png\" {...rest} />",
         // A text input is not an image, and `type` decides which this is.
         "    <input type=\"text\" name=\"q\" />",
@@ -185,7 +185,7 @@ fn label_control_reports_a_label_attached_to_nothing() {
 #[test]
 fn label_control_accepts_a_label_that_could_be_naming_something() {
     for markup in [
-        // `packages/ui/field.js` and the tutorial both write this one.
+        // `npm/ui/field.js` and the tutorial both write this one.
         "    <label htmlFor=\"email\">Email</label>",
         "    <label htmlFor={field.controlId}>Email</label>",
         // The control is inside it.
@@ -194,7 +194,7 @@ fn label_control_accepts_a_label_that_could_be_naming_something() {
         "    <label><Field name=\"email\" /></label>",
         // An expression child may be anything at all.
         "    <label>{children}</label>",
-        // A spread may be carrying `htmlFor`. `packages/ui/combobox.js` does.
+        // A spread may be carrying `htmlFor`. `npm/ui/combobox.js` does.
         "    <label {...rest}>Email</label>",
     ] {
         let diagnostics = lint_js("a11y/label-has-associated-control", &component(markup));
@@ -395,12 +395,12 @@ fn hot_optional_chaining_accepts_the_two_forms_that_work() {
         // A local identifier has a refinement key, so the guard works.
         "// @flow\nconst hot = import.meta.hot;\nif (hot) {\n  hot.accept();\n}\n",
         // Testing the value itself refines nothing and needs nothing:
-        // `packages/router/client.js` gates a dynamic import on exactly this.
+        // `npm/router/client.js` gates a dynamic import on exactly this.
         "// @flow\nif (import.meta.hot != null) {\n  await import(\"./overlay.js\");\n}\n",
         // Other `import.meta` properties are always defined.
         "// @flow\nconst here = import.meta.url.toString();\n",
         "// @flow\nconst mode = import.meta.env.MODE;\n",
-        // Source being *printed*, not run: `packages/vite/internal/refresh.js`
+        // Source being *printed*, not run: `npm/vite/internal/refresh.js`
         // builds the HMR preamble as a template literal.
         "// @flow\nconst code = `if (import.meta.hot) { import.meta.hot.accept(); }`;\nexport { code };\n",
         // A property named `hot` on something else is not this at all.

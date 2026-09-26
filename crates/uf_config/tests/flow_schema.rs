@@ -6,7 +6,7 @@
 //!
 //! The guide's reason to write `uf.config.js` in Flow is that `defineConfig`
 //! type-checks it where it is written. That makes the two halves — the Flow
-//! type in `packages/config/internal/schema.js` and the `serde` shapes in this
+//! type in `npm/config/internal/schema.js` and the `serde` shapes in this
 //! crate — one surface with two authors, and for most of alpha nobody was
 //! comparing them:
 //!
@@ -51,7 +51,7 @@ use uf_config::{
 };
 
 /// The Flow type this test reads, for the messages.
-const SCHEMA: &str = "packages/config/internal/schema.js";
+const SCHEMA: &str = "npm/config/internal/schema.js";
 
 /// A config in which every optional *section* is present.
 ///
@@ -159,7 +159,7 @@ fn declared_paths(source: &str) -> BTreeSet<String> {
 /// The two lists are the two defects, and they have different fixes.
 ///
 /// *"uf reads … and the schema does not declare"* — a key was added to this
-/// crate and not to `packages/config/internal/schema.js`. A project that writes
+/// crate and not to `npm/config/internal/schema.js`. A project that writes
 /// it gets a Flow error on a working config, which is the whole of
 /// ubugeeei-prod/uf#481.
 ///

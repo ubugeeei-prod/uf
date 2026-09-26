@@ -583,7 +583,7 @@ jobs:
         if: needs.changes.outputs.full == 'true'
         shell: pwsh
         run: |
-          $version = & node -p "require('./packages/core/package.json').version"
+          $version = & node -p "require('./npm/core/package.json').version"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:UF_TEST_RELEASE_DIR = Join-Path $PWD "dist/release/uf/$version"
           pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/test-install.ps1
@@ -603,7 +603,7 @@ jobs:
           # Copy local packages into node_modules, as npm publication does.
           $env:npm_config_install_links = "true"
           Run-Uf --cwd $app install
-          $hostPackage = Join-Path $PWD "packages/host"
+          $hostPackage = Join-Path $PWD "npm/host"
           $resolveHost = @'
           const { createRequire } = require("node:module");
           const path = require("node:path");

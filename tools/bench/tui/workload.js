@@ -71,7 +71,7 @@ export function statusLine(frame: Frame): string {
 /** One list row. Padded to a fixed width so no step changes a line's length. */
 export function listRow(frame: Frame, index: number): string {
   const number = String(frame.offset + index).padStart(5, "0");
-  return `${number}  packages/example/module-${number}.js  compiled${frame.mark}`;
+  return `${number}  npm/example/module-${number}.js  compiled${frame.mark}`;
 }
 
 /** The last line, which never changes and is therefore worth having. */

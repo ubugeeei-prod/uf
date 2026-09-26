@@ -363,7 +363,7 @@ impl RscModule {
     /// definition, and for any module that transitively imports one.
     ///
     /// The second half is uf's client renderer talking rather than React's.
-    /// `packages/router/client.js` hydrates by re-rendering the whole matched
+    /// `npm/router/client.js` hydrates by re-rendering the whole matched
     /// tree from the same modules the server rendered it from, so a Server
     /// Component *above* a client boundary is a module React needs in the
     /// browser to reach the boundary at all. Dropping it needs a Flight-shaped

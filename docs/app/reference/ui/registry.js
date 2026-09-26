@@ -3,7 +3,7 @@
 // The registry, rendered: every component `uf ui add` writes, its example
 // running, and the source of both.
 //
-// Read from `registry/ui/` when the site is built, the directory `uf` embeds
+// Read from `npm/ui/registry/` when the site is built, the directory `uf` embeds
 // when uf is built, so this section and `uf ui list` cannot disagree about what
 // exists. A server module, so the sources reach the page as text and go no
 // further: only the examples, through `registry-examples.js`, reach the browser
@@ -17,22 +17,22 @@ import { RegistryExample } from "./registry-examples.js";
 /**
  * Every component file, as text, by path.
  *
- * The exclusions are spelled from `registry/ui/` like the pattern they narrow.
+ * The exclusions are spelled from `npm/ui/registry/` like the pattern they narrow.
  * A `!**` exclusion is resolved from this file's directory, so it matches
  * nothing in the registry, and every example and test would be read as a
  * component of its own.
  */
 const COMPONENTS = import.meta.glob<string>(
   [
-    "../../../../registry/ui/*.js",
-    "!../../../../registry/ui/*.example.js",
-    "!../../../../registry/ui/*.test.js",
+    "../../../../npm/ui/registry/*.js",
+    "!../../../../npm/ui/registry/*.example.js",
+    "!../../../../npm/ui/registry/*.test.js",
   ],
   { eager: true, import: "default", query: "?raw" },
 );
 
 /** Every example file, as text, by path. */
-const EXAMPLES = import.meta.glob<string>("../../../../registry/ui/*.example.js", {
+const EXAMPLES = import.meta.glob<string>("../../../../npm/ui/registry/*.example.js", {
   eager: true,
   import: "default",
   query: "?raw",
@@ -55,7 +55,7 @@ function entries(): $ReadOnlyArray<Entry> {
       name,
       description: description(source),
       source,
-      example: EXAMPLES[`../../../../registry/ui/${name}.example.js`] ?? "",
+      example: EXAMPLES[`../../../../npm/ui/registry/${name}.example.js`] ?? "",
     });
   }
   return found.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));

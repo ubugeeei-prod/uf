@@ -12,7 +12,7 @@ static GLOBAL: CountingAllocator = CountingAllocator::new();
 fn main() {
     let path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| String::from("packages/router/internal/runtime.js"));
+        .unwrap_or_else(|| String::from("npm/router/internal/runtime.js"));
     let source = std::fs::read_to_string(&path).expect("read the module");
 
     // `--dump`: the tree itself, so a change meant only to cost less can be

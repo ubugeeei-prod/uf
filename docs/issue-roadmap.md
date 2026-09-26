@@ -100,8 +100,8 @@
       `ci-opt` build: warm hover p95 0.2–4.6 ms across four files, inside the
       50 ms target; the first hover after an edit p95 7 ms on a 155-line file
       and 153 ms on a 2,375-line one, but 355 ms on
-      `packages/router/internal/runtime.js` and 651 ms on
-      `packages/effect/index.js` — over the 200 ms target, because the edited
+      `npm/router/internal/runtime.js` and 651 ms on
+      `npm/effect/index.js` — over the 200 ms target, because the edited
       file is re-inferred whole. `textDocument/references`,
       `documentHighlight`, `rename` (with `prepareRename`) and
       `documentSymbol` are Flow's `flow_services_references` and
@@ -246,12 +246,12 @@
 - [x] Implement `@uniflowed/stylex` with preset StyleX defaults: a compiled
       token set, a base layer of recipes over it, and `createTheme` so any of
       it can be replaced. `keyframes`, `firstThatWorks` and `positionTry` are
-      deliberately absent; the Readiness section in `packages/stylex/index.js`
+      deliberately absent; the Readiness section in `npm/stylex/index.js`
       says why.
 - [ ] Implement `@uniflowed/ui` as an RSC-compatible headless UI library that can replace shadcn for Flow React apps.
 - [x] Implement terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
       Flow React on React's own reconciler rather than a native binding;
-      `packages/tui/index.js` argues that out. Scrolling and the mouse — hit
+      `npm/tui/index.js` argues that out. Scrolling and the mouse — hit
       testing, hover, drag capture, drop and the wheel — are in, and a
       `ScrollBox` now costs its window rather than its content: moving one over
       a hundred thousand rows measures none of them and lays out, paints and
@@ -276,7 +276,7 @@
       positioning inside a `ScrollBox`, and notifications, audio and `Timeline` remain ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
-- [x] Add UI `renders` type utility declarations under `packages/ui`.
+- [x] Add UI `renders` type utility declarations under `npm/ui`.
 - [x] Make form UI validator-backed and React Compiler-safe by contract.
 - [x] Add compile-time form value/error type generation from validator schemas.
       Answered by removing the generator rather than writing one. A schema is a
@@ -289,14 +289,14 @@
       The error half cannot be generated at all — a form keys errors by the
       dotted field path, and Flow has no template-literal types, so a generated
       `FormErrors` would be `{ [string]: FieldError }` wearing a name that
-      claims more. `crates/uf_prepare/src/lib.rs` and `packages/prepare/index.js`
+      claims more. `crates/uf_prepare/src/lib.rs` and `npm/prepare/index.js`
       carry the reasoning where the step used to be.
 - [ ] Expose runtime bindings through Flow declarations.
 - [ ] Back the declarations with Rust native runtime modules.
 
 ## P3: Test Runner And DX
 
-- [x] Implement `import { describe, it, expect } from '@uniflowed/testing'`.
+- [x] Implement `import { describe, it, expect } from '@uniflowed/test'`.
 - [x] Start self-hosted `@uniflowed/test` runner planning.
 - [x] Execute the first native source-level assertion subset in `uf test`.
 - [x] Replace that subset with real execution on a Capability JS Host.
@@ -343,7 +343,8 @@
       a story is not a picture only a bespoke UI can draw. Six Flow modules,
       no native binding: the `NativeHandle` contract is replaced, not kept.
       `withBrowser` is gone rather than carried over, because
-      `@uniflowed/browser` is still a declaration whose every function throws.
+      the browser interface was not implemented at that time. Browser testing
+      now uses the published `@uniflowed/test/browser` API.
       Two gaps are named in the package's Readiness section rather than left to
       be discovered. `story` is not yet a role in
       `crates/uf_router/src/reserved.rs`, so `uf lint` reports
@@ -354,7 +355,7 @@
       and exits 0.
 - [x] Start `@uniflowed/vrt` native visual regression contracts.
 - [x] Implement `@uniflowed/mock` MSW-compatible request mocking, over `fetch`.
-- [ ] Implement `@uniflowed/browser` Playwright-compatible browser automation.
+- [ ] Implement `@uniflowed/test/browser` Playwright-compatible browser automation.
 - [ ] Add visual regression baselines, diffing, and update flows.
 - [x] Add `uf prepare` command surface for lint-staged-compatible checks and code generation.
 - [x] Write `.uf/prepare.json` and generated route metadata from `uf prepare`.

@@ -4,22 +4,22 @@
   "type": "module",
   "description": "Commonplace with Relay, streamed RSC data, and an independent Go GraphQL service.",
   "dependencies": {
-    "@uniflowed/config": "file:../../packages/config",
-    "@uniflowed/fetch": "file:../../packages/fetch",
-    "@uniflowed/graphql": "file:../../packages/graphql",
-    "@uniflowed/react": "file:../../packages/react",
-    "@uniflowed/relay": "file:../../packages/relay",
-    "@uniflowed/router": "file:../../packages/router",
-    "@uniflowed/server": "file:../../packages/server",
-    "@uniflowed/stylex": "file:../../packages/stylex",
-    "@uniflowed/ui": "file:../../packages/ui",
-    "@uniflowed/vite": "file:../../packages/vite",
+    "@uniflowed/config": "file:../../npm/config",
+    "@uniflowed/fetch": "file:../../npm/fetch",
+    "@uniflowed/graphql": "file:../../npm/graphql",
+    "@uniflowed/react": "file:../../npm/react",
+    "@uniflowed/relay": "file:../../npm/relay",
+    "@uniflowed/router": "file:../../npm/router",
+    "@uniflowed/server": "file:../../npm/server",
+    "@uniflowed/stylex": "file:../../npm/stylex",
+    "@uniflowed/ui": "file:../../npm/ui",
+    "@uniflowed/vite": "file:../../npm/vite",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-server-dom-parcel": "19.3.0",
     "react-relay": "21.0.1",
     "relay-runtime": "21.0.1",
-    "@uniflowed/effect": "file:../../packages/effect"
+    "@uniflowed/effect": "file:../../npm/effect"
   },
   "devDependencies": {
     "relay-compiler": "21.0.1"

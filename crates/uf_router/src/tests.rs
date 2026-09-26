@@ -370,7 +370,7 @@ fn an_empty_generated_router_is_already_formatted() {
 /// A middleware guards everything below the directory that declares it.
 ///
 /// The composition rule layouts already have, and the one
-/// `packages/vite/internal/routes.js` implements for the table the build runs.
+/// `npm/vite/internal/routes.js` implements for the table the build runs.
 /// Route discovery answered the narrower question — "does *this* directory
 /// declare one" — so `/dashboard/settings` looked unguarded to every caller in
 /// Rust while the build's own router had `app/dashboard/$middleware.js` on
@@ -470,7 +470,7 @@ fn a_route_recognises_the_urls_it_serves() {
 }
 
 /// The ranking that decides which of two matching routes answers, checked
-/// against the numbers in `packages/router/internal/runtime.js`'s
+/// against the numbers in `npm/router/internal/runtime.js`'s
 /// `specificity` — three for a static segment, two for a parameter, one for a
 /// catch-all. That function is the source of truth; this is the copy, and a
 /// copy that has drifted is worse than no copy, because `uf build` reports
@@ -749,7 +749,7 @@ fn an_optional_catch_all_is_a_list_in_the_generated_types() {
 fn the_two_routers_accept_the_same_extensions() {
     let source = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packages/vite/internal/routes.js"),
+            .join("../../npm/vite/internal/routes.js"),
     )
     .expect("the router the build runs");
 
@@ -760,7 +760,7 @@ fn the_two_routers_accept_the_same_extensions() {
         let theirs = extensions_named(&source, name);
         assert_eq!(
             theirs, ours,
-            "`{name}` in packages/vite/internal/routes.js and in uf_router disagree"
+            "`{name}` in npm/vite/internal/routes.js and in uf_router disagree"
         );
     }
 }
@@ -822,7 +822,7 @@ fn a_page_is_a_route_in_every_spelling_the_build_accepts() {
 ///
 /// The walk that finds pages is over *files*, so `app/guide/` with both
 /// `$page.js` and `$page.mdx` in it reached the route builder twice and
-/// produced two `/guide` routes — while `packages/vite/internal/routes.js`
+/// produced two `/guide` routes — while `npm/vite/internal/routes.js`
 /// asks `findModule` once and renders exactly one of them. The generated
 /// `RoutePath` carried the same string twice, `uf build`'s summary counted the
 /// page twice, and `uf inspect` listed a route nothing serves.

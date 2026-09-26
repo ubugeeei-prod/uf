@@ -18,7 +18,7 @@
 //     documented when `docs/app/reference/config` names it — in full, or
 //     relative to the `##` section for its first segment, which is how the
 //     reference's tables write them.
-//   * packages — every `packages/*` that is not private. Documented when
+//   * packages — every `npm/*` that is not private. Documented when
 //     `docs/app/reference/packages` names it.
 //
 // Every gap is compared with `tools/docs/coverage-gaps.txt`, the known list.
@@ -378,8 +378,8 @@ function configKeys(uf: string): Array<string> {
 
 function publishedPackages(): Array<string> {
   const names = [];
-  for (const dir of fs.readdirSync(path.join(REPO, "packages")).sort()) {
-    const manifest = path.join(REPO, "packages", dir, "package.json");
+  for (const dir of fs.readdirSync(path.join(REPO, "npm")).sort()) {
+    const manifest = path.join(REPO, "npm", dir, "package.json");
     if (!fs.existsSync(manifest)) {
       continue;
     }

@@ -72,7 +72,7 @@ component Panel{index}(props: Props{index}) renders React.Node {{
 /// product of the two — a module with many comments *and* many nodes is the
 /// only shape that shows it, and neither half alone does. Before the children
 /// of a visited node were cached, formatting
-/// `packages/router/internal/runtime.js` allocated 12.41 MiB; after, 7.95 MiB,
+/// `npm/router/internal/runtime.js` allocated 12.41 MiB; after, 7.95 MiB,
 /// with the peak unchanged. This is the bench that would notice that going
 /// away again.
 fn commented_source(components: usize) -> String {

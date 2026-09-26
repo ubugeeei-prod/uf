@@ -37,7 +37,7 @@ done
 packages="$(grep -vE '^[[:space:]]*(#|$)' "$list")"
 
 if [ -z "$version" ]; then
-  version="$(node -p "require('./packages/core/package.json').version")"
+  version="$(node -p "require('./npm/core/package.json').version")"
 fi
 
 # ---- 1. The closure ------------------------------------------------------
@@ -45,7 +45,7 @@ fi
 echo "verify-npm: checking the dependency closure of $list"
 missing_closure=""
 for name in $packages; do
-  manifest="packages/$name/package.json"
+  manifest="npm/$name/package.json"
   [ -f "$manifest" ] || { echo "verify-npm: no $manifest" >&2; exit 1; }
   for dependency in $(node -e "
     const m = require('./$manifest');

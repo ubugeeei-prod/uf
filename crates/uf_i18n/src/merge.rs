@@ -34,7 +34,7 @@
 //! # What this does not check
 //!
 //! Whether the translation's placeholders agree with the message's parameters.
-//! That needs MF2 parsed, `packages/i18n/syntax.js` is where MF2 is parsed,
+//! That needs MF2 parsed, `npm/i18n/syntax.js` is where MF2 is parsed,
 //! and a second implementation of it here would be a second answer to what
 //! `{$count :number}` means. `translate` performs that check against the
 //! source message's parameters when the locale loads, so a translator who drops

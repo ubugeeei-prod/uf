@@ -1,7 +1,7 @@
 #!/bin/sh
 # Fail when a package with real code behind it is not on its way to npm.
 #
-# `packages/` holds two kinds of directory. Most are declaration modules whose
+# `npm/` holds two kinds of directory. Most are declaration modules whose
 # functions call `nativeRuntimeRequired(...)` — a contract with nothing behind
 # it, and publishing one squats a name that cannot run. The rest are libraries
 # somebody wrote, and every one of those has to reach a user somehow, or the
@@ -71,7 +71,7 @@ const modules = function* (directory) {
 
 /** Whether every function this package exports needs a runtime it does not have. */
 const isDeclaration = (name) => {
-  for (const file of modules(`packages/${name}`)) {
+  for (const file of modules(`npm/${name}`)) {
     for (const line of fs.readFileSync(file, "utf8").split("\n")) {
       const code = line.trimStart();
       // Comment lines only. A call inside a string would count, and that is the
@@ -85,7 +85,7 @@ const isDeclaration = (name) => {
 };
 
 const directories = fs
-  .readdirSync("packages", { withFileTypes: true })
+  .readdirSync("npm", { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
   .sort();
@@ -96,7 +96,7 @@ for (const name of directories) {
   if (isDeclaration(name)) continue;
   if (published.includes(name) || pending.includes(name)) continue;
   problems.push(
-    `packages/${name} is implemented and is in neither list. Add it to ` +
+    `npm/${name} is implemented and is in neither list. Add it to ` +
       "tools/release/published-packages.txt if `npm trust` has bound it, and to " +
       "tools/release/pending-packages.txt if it has not.",
   );
@@ -119,12 +119,12 @@ for (const name of directories) {
 for (const name of directories) {
   if (!isDeclaration(name)) continue;
   if (published.includes(name) || pending.includes(name)) continue;
-  const manifest = JSON.parse(fs.readFileSync(`packages/${name}/package.json`, "utf8"));
+  const manifest = JSON.parse(fs.readFileSync(`npm/${name}/package.json`, "utf8"));
   if (manifest.private === true) continue;
   problems.push(
-    `packages/${name} is a declaration module in neither release list, so it is ` +
+    `npm/${name} is a declaration module in neither release list, so it is ` +
       'never published — but its manifest does not say so. Add `"private": true` ' +
-      "to packages/" +
+      "to npm/" +
       name +
       "/package.json, so `npm install` is not the only thing that refuses.",
   );
@@ -141,15 +141,15 @@ for (const [file, list] of [
   ["pending-packages.txt", pending],
 ]) {
   for (const name of list) {
-    if (!fs.existsSync(`packages/${name}/package.json`)) {
-      problems.push(`${file} names ${name}, and packages/${name} does not exist.`);
+    if (!fs.existsSync(`npm/${name}/package.json`)) {
+      problems.push(`${file} names ${name}, and npm/${name} does not exist.`);
     }
   }
 }
 
-/** The `@uniflowed/*` a package declares, as directory names under `packages/`. */
+/** The `@uniflowed/*` a package declares, as directory names under `npm/`. */
 const uniflowedDependencies = (name) => {
-  const manifest = JSON.parse(fs.readFileSync(`packages/${name}/package.json`, "utf8"));
+  const manifest = JSON.parse(fs.readFileSync(`npm/${name}/package.json`, "utf8"));
   const out = new Set();
   // `devDependencies` are deliberately not read: they are not installed for a
   // consumer, so a published package may depend on an unpublished one there.
@@ -166,7 +166,7 @@ const uniflowedDependencies = (name) => {
 // neither list and is deliberately never published either — depending on one
 // of those is the same ETARGET by a different route.
 for (const name of published) {
-  if (!fs.existsSync(`packages/${name}/package.json`)) continue;
+  if (!fs.existsSync(`npm/${name}/package.json`)) continue;
   for (const dependency of uniflowedDependencies(name)) {
     if (published.includes(dependency)) continue;
     const why = pending.includes(dependency)
@@ -181,7 +181,7 @@ for (const name of published) {
 }
 
 if (problems.length > 0) {
-  console.error("the release manifests do not describe packages/.");
+  console.error("the release manifests do not describe npm/.");
   for (const problem of problems) console.error(`  ${problem}`);
   process.exit(1);
 }

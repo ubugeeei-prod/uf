@@ -21,7 +21,7 @@ test("documentation edits retain site checks without the workspace suite", () =>
 test("source, dependencies, CI, unknown paths and empty diffs require the suite", () => {
   for (const path of [
     "crates/uf_cli/src/main.rs",
-    "packages/host/register.js",
+    "npm/host/register.js",
     "Cargo.lock",
     "README.js",
     "LICENSE.rs",
@@ -35,10 +35,10 @@ test("source, dependencies, CI, unknown paths and empty diffs require the suite"
 });
 test("a change to what the RSC and browser job exercises runs it on the pull request", () => {
   for (const path of [
-    "packages/router/internal/action-endpoint.js",
-    "packages/server/fetch.js",
-    "packages/vite/internal/flight.js",
-    "packages/test/app.js",
+    "npm/router/internal/action-endpoint.js",
+    "npm/server/fetch.js",
+    "npm/vite/internal/flight.js",
+    "npm/test/app.js",
     "crates/uf_rsc/src/lib.rs",
     "crates/uf_cli/tests/fixtures/rsc-test-app/tests/notes-app.test.js",
     "tools/ci/test-browser.sh",
@@ -49,7 +49,7 @@ test("a change to what the RSC and browser job exercises runs it on the pull req
 });
 test("a change nothing in the RSC and browser job reaches leaves it to the full suite", () => {
   for (const path of [
-    "packages/ui/button.js",
+    "npm/ui/button.js",
     "crates/uf_fmt/src/lib.rs",
     "docs/app/guide/testing-server/$page.mdx",
     "crates/uf_cli/tests/fixtures/rsc-split-app/app/$page.js",
@@ -58,15 +58,15 @@ test("a change nothing in the RSC and browser job reaches leaves it to the full 
 });
 test("the deploy matrix runs for adapters, the router, the build and itself", () => {
   for (const path of [
-    "packages/server/lambda.js",
-    "packages/router/internal/action-endpoint.js",
-    "packages/vite/driver.js",
+    "npm/server/lambda.js",
+    "npm/router/internal/action-endpoint.js",
+    "npm/vite/driver.js",
     "crates/uf_cli/src/commands/deploy/static_host.rs",
     "tools/deploy-matrix/matrix.json",
     ".github/workflows/ci.yml",
   ])
     assert.equal(touchesDeployment(["README.md", path]), true, path);
-  for (const path of ["crates/uf_fmt/src/lib.rs", "packages/ui/index.js", "docs/app/guide/start/$page.mdx"])
+  for (const path of ["crates/uf_fmt/src/lib.rs", "npm/ui/index.js", "docs/app/guide/start/$page.mdx"])
     assert.equal(touchesDeployment([path]), false, path);
   assert.equal(touchesDeployment([]), true);
 });
@@ -88,13 +88,13 @@ test("a crate change runs that crate's integration tests and uf_cli's", () => {
 test("the lane's own files run uf_cli's integration tests, and nothing else runs any", () => {
   for (const path of [".github/workflows/ci.yml", "tools/ci/change-scope.cjs", "tools/ci/rust-integration.sh"])
     assert.equal(rustIntegrationScope([path]), "uf_cli", path);
-  for (const path of ["packages/server/fetch.js", "docs/app/guide/start/$page.mdx", "tools/ci/test-browser.sh"])
+  for (const path of ["npm/server/fetch.js", "docs/app/guide/start/$page.mdx", "tools/ci/test-browser.sh"])
     assert.equal(rustIntegrationScope([path]), "", path);
 });
 test("the Deno library lane runs for the library, its script and the binary it drives", () => {
   for (const path of [
     // #1384 added a Vite test file that cannot load under Deno.
-    "packages/vite/build-passes.test.js",
+    "npm/vite/build-passes.test.js",
     "tests/library/payload.test.js",
     "tools/ci/deno-library.js",
     "tools/ci/deno-library.test.js",

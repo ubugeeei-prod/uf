@@ -8,7 +8,7 @@
 #   tools/release/bump-version.sh 0.0.0-alpha.2
 #
 # It rewrites the Cargo workspace version (every crate inherits it), every
-# `packages/*/package.json` (its own version and its `@uniflowed/*`
+# `npm/*/package.json` (its own version and its `@uniflowed/*`
 # dependencies, which are pinned exactly so a release is internally
 # consistent), the docs site's manifest, and then refreshes `Cargo.lock` and
 # `package-lock.json` so `--locked` and `npm ci` stay green.
@@ -86,12 +86,12 @@ fs.writeFileSync(cargo, toml.replace(/^version = "[^"]+"$/m, `version = "${versi
 
 // npm: every shipped package, and every manifest that depends on one.
 const manifests = [
-  ...fs.globSync("packages/*/package.json"),
+  ...fs.globSync("npm/*/package.json"),
   "docs/package.json",
 ];
 for (const file of manifests) {
   const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
-  if (file.startsWith("packages/")) manifest.version = version;
+  if (file.startsWith("npm/")) manifest.version = version;
   for (const field of ["dependencies", "peerDependencies", "devDependencies", "optionalDependencies"]) {
     for (const name of Object.keys(manifest[field] ?? {})) {
       if (name.startsWith("@uniflowed/")) manifest[field][name] = version;

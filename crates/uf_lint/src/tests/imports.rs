@@ -115,7 +115,7 @@ fn no_cycle_rejects_a_relative_import_cycle() {
 /// so modules joined only by them are never evaluated in a cycle. Two modules
 /// that share types both ways are the ordinary case in a Flow codebase, and
 /// this repository had several reported (the `import/no-cycle` warnings in
-/// `packages/router` and `packages/query`).
+/// `npm/router` and `npm/query`).
 #[test]
 fn no_cycle_ignores_imports_that_flow_erases() {
     let diagnostics = lint_many(
@@ -287,11 +287,11 @@ fn no_extraneous_dependencies_uses_the_nearest_package_manifest() {
                 r#"{ "name": "root", "dependencies": { "left-pad": "^1.0.0" } }"#,
             ),
             (
-                "packages/ui/package.json",
+                "npm/ui/package.json",
                 r#"{ "name": "@acme/ui", "dependencies": { "react": "^19.0.0" } }"#,
             ),
             (
-                "packages/ui/index.js",
+                "npm/ui/index.js",
                 "// @flow\nimport * as React from \"react\";\nimport leftPad from \"left-pad\";\n",
             ),
         ],
@@ -721,7 +721,7 @@ fn no_self_import_accepts_neighbouring_relative_imports() {
 fn no_relative_packages_rejects_a_relative_path_into_another_workspace_package() {
     let diagnostics = lint_one(
         "import/no-relative-packages",
-        "packages/web/src/page.js",
+        "npm/web/src/page.js",
         "// @flow\nimport state from \"../../state/index.js\";\n",
     );
 
@@ -734,7 +734,7 @@ fn no_relative_packages_rejects_a_relative_path_into_another_workspace_package()
 fn no_relative_packages_accepts_package_imports_and_same_package_relatives() {
     let diagnostics = lint_one(
         "import/no-relative-packages",
-        "packages/web/src/page.js",
+        "npm/web/src/page.js",
         "// @flow\nimport state from \"@uniflowed/state\";\nimport local from \"../state/index.js\";\nimport sibling from \"./button.js\";\n",
     );
 

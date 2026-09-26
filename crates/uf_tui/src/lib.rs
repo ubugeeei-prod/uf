@@ -4,7 +4,7 @@
 //!
 //! This crate holds no renderer. `@uniflowed/tui` is Flow-typed JavaScript on
 //! React's own reconciler — the argument for that, and against a Rust core
-//! with a binding, is in `packages/tui/index.js` where the code it decided
+//! with a binding, is in `npm/tui/index.js` where the code it decided
 //! about lives. What is here is the description `uf inspect` prints and
 //! `uf_lib`'s registry publishes: which standard the package follows, how it
 //! renders, and — the part this crate exists to keep honest — exactly which
@@ -65,7 +65,7 @@ impl Default for TuiFrameworkContract {
             input: TuiInputModel::KeyboardMouseSelectionFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
             // Eleven, not twenty-three. Every one of these is exercised by
-            // `packages/tui/tui.test.js` against a rendered frame; the other
+            // `npm/tui/tui.test.js` against a rendered frame; the other
             // twelve variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist.
@@ -389,7 +389,7 @@ pub struct ReactInkTarget {
     pub replacement_ready: bool,
     /// Whether rendering happens in native code rather than in JavaScript.
     ///
-    /// It does not, and deliberately — `packages/tui/index.js` argues it out.
+    /// It does not, and deliberately — `npm/tui/index.js` argues it out.
     /// The field stays because "is this native" is a question a reader of a
     /// toolchain asks, and a missing answer reads as yes.
     pub native_renderer: bool,
@@ -426,7 +426,7 @@ pub enum TuiPerformanceTarget {
     ///
     /// This replaces `"faster-than-react-ink"`, which was never measured
     /// against React Ink and so was not a claim, it was an ambition someone
-    /// wrote down. This one is measured, by `packages/tui/tui.test.js`: in an
+    /// wrote down. This one is measured, by `npm/tui/tui.test.js`: in an
     /// 80×24 terminal, the first frame sends 1,920 cells and changing one
     /// character of a status line then sends **one cell in seven bytes** — a
     /// cursor move and the character.

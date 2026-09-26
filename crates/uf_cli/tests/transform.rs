@@ -281,7 +281,7 @@ fn sparse_entry(path: &std::path::Path, bytes: u64, used_seconds_ago: u64) {
 
 /// The transform cache is bounded, and starting the service is what bounds it.
 ///
-/// `packages/host/internal/node-hooks.js` writes one `.mjs` per (compiler,
+/// `npm/host/internal/node-hooks.js` writes one `.mjs` per (compiler,
 /// file, source) and has no way to take one back — a source edit orphans an
 /// entry and a rebuild of `uf` orphans a generation, so `.uf/cache/transform`
 /// grew without a ceiling until this. The sweep is here, at the door of the

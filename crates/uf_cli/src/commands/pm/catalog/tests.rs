@@ -33,7 +33,7 @@ fn drawn(catalogue: &Catalogue) -> String {
 fn an_entry_is_a_package_more_than_one_manifest_declares() {
     let declared = [
         declaration("package.json", "react", "^18.2.0"),
-        declaration("packages/ui/package.json", "react", "^18.2.0"),
+        declaration("npm/ui/package.json", "react", "^18.2.0"),
         declaration("package.json", "vitest", "~1.0.0"),
     ];
 
@@ -52,7 +52,7 @@ fn an_entry_is_a_package_more_than_one_manifest_declares() {
 fn manifests_that_disagree_are_the_finding() {
     let declared = [
         declaration("package.json", "eslint", "^9.0.0"),
-        declaration("packages/ui/package.json", "eslint", "^8.57.0"),
+        declaration("npm/ui/package.json", "eslint", "^8.57.0"),
     ];
 
     let catalogue = catalogue(&declared);
@@ -77,9 +77,9 @@ fn manifests_that_disagree_are_the_finding() {
 fn a_disagreement_sorts_above_an_agreement() {
     let declared = [
         declaration("package.json", "aaa-agrees", "^1.0.0"),
-        declaration("packages/ui/package.json", "aaa-agrees", "^1.0.0"),
+        declaration("npm/ui/package.json", "aaa-agrees", "^1.0.0"),
         declaration("package.json", "zzz-differs", "^1.0.0"),
-        declaration("packages/ui/package.json", "zzz-differs", "^2.0.0"),
+        declaration("npm/ui/package.json", "zzz-differs", "^2.0.0"),
     ];
 
     let out = drawn(&catalogue(&declared));
@@ -93,7 +93,7 @@ fn a_disagreement_sorts_above_an_agreement() {
 fn a_workspace_that_agrees_says_so_rather_than_printing_an_empty_section() {
     let declared = [
         declaration("package.json", "react", "^18.2.0"),
-        declaration("packages/ui/package.json", "react", "^18.2.0"),
+        declaration("npm/ui/package.json", "react", "^18.2.0"),
     ];
 
     let out = drawn(&catalogue(&declared));
@@ -126,7 +126,7 @@ fn one_manifest_is_not_a_workspace_with_nothing_shared() {
 fn a_workspace_that_shares_nothing_says_which_nothing() {
     let declared = [
         declaration("package.json", "react", "^18.2.0"),
-        declaration("packages/ui/package.json", "vitest", "~1.0.0"),
+        declaration("npm/ui/package.json", "vitest", "~1.0.0"),
     ];
 
     let out = drawn(&catalogue(&declared));
@@ -142,8 +142,8 @@ fn a_workspace_that_shares_nothing_says_which_nothing() {
 fn pnpms_own_catalog_is_reported_rather_than_reinterpreted() {
     let declared = [
         declaration("package.json", "react", "catalog:"),
-        declaration("packages/ui/package.json", "react", "catalog:"),
-        declaration("packages/ui/package.json", "vue", "catalog:react17"),
+        declaration("npm/ui/package.json", "react", "catalog:"),
+        declaration("npm/ui/package.json", "vue", "catalog:react17"),
     ];
 
     let catalogue = catalogue(&declared);
@@ -162,7 +162,7 @@ fn the_root_manifest_is_a_dot_and_a_package_is_its_directory() {
     let root = Utf8Path::new("/p");
     assert_eq!(relative(root, Utf8Path::new("/p/package.json")), ".");
     assert_eq!(
-        relative(root, Utf8Path::new("/p/packages/ui/package.json")),
-        "packages/ui"
+        relative(root, Utf8Path::new("/p/npm/ui/package.json")),
+        "npm/ui"
     );
 }

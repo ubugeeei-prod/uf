@@ -2,7 +2,7 @@
 //!
 //! The vendored `bom.js` types `crypto.subtle` as an object with `digest` in
 //! it and nothing else, so a module that only hashes checked clean while
-//! `packages/server/internal/draft.js` — which HMACs the draft-mode cookie —
+//! `npm/server/internal/draft.js` — which HMACs the draft-mode cookie —
 //! reported four errors for calls every runtime uf targets implements, and had
 //! no `CryptoKey` to annotate the key with. `libdefs/web-crypto.js` is the
 //! answer. See ubugeeei-prod/uf#619.

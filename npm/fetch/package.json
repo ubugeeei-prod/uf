@@ -1,0 +1,24 @@
+{
+  "name": "@uniflowed/fetch",
+  "version": "0.9.0",
+  "description": "Typed HTTP over the platform fetch, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/fetch"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "internal",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1"
+  }
+}

@@ -254,8 +254,8 @@ fn the_root_manifest_is_a_dot_and_a_package_is_its_directory() {
     let root = Utf8Path::new("/p");
     assert_eq!(relative(root, Utf8Path::new("/p/package.json")), ".");
     assert_eq!(
-        relative(root, Utf8Path::new("/p/packages/ui/package.json")),
-        "packages/ui"
+        relative(root, Utf8Path::new("/p/npm/ui/package.json")),
+        "npm/ui"
     );
 }
 

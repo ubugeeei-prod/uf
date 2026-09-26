@@ -89,7 +89,7 @@ The smallest useful proof is:
 
 ```console
 $ uf build --target native
-$ uf test packages/router/native.test.js packages/react-native-testing/react-native-testing.test.js
+$ uf test npm/router/native.test.js npm/react-native-testing/react-native-testing.test.js
 ```
 
 The first command proves the route table and manifest can be generated for the
@@ -273,7 +273,7 @@ Metro serving what the previous build compiled.
 
 Source maps are not composed yet: a stack frame in a Flow module points into
 uf's output rather than at the Flow source. The `uncomposed source-map gap`
-test in `packages/react-native/react-native.test.js` records that boundary
+test in `npm/react-native/react-native.test.js` records that boundary
 explicitly; a successful bundle does not imply original-source stack locations.
 
 The build manifest records the same answer so a downstream tool can check it:

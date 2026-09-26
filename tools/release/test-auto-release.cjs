@@ -81,7 +81,7 @@ function world(patch = {}) {
     assert.equal(command, "show");
     if (spec === `${commit}:.github/release.json`) return JSON.stringify(facts.request);
     if (spec === `${commit}^:.github/release.json`) return JSON.stringify(facts.previousRequest);
-    if (spec === `${commit}:packages/core/package.json`)
+    if (spec === `${commit}:npm/core/package.json`)
       return JSON.stringify({ version: facts.coreVersion });
     throw new Error(`fatal: path does not exist: ${spec}`);
   };

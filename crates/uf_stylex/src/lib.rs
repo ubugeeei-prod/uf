@@ -21,7 +21,7 @@
 //!
 //! `@uniflowed/stylex` ships a preset: a token set, a base layer of recipes
 //! over it, and shipped themes. None of that is Rust — it is ordinary StyleX,
-//! written in Flow, in `packages/stylex/`, and its header is where the choice
+//! written in Flow, in `npm/stylex/`, and its header is where the choice
 //! of what belongs in uf is argued.
 //!
 //! What is Rust is the half a preset cannot exist without. A default token set

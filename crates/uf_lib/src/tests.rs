@@ -39,7 +39,7 @@ fn includes_react_flow_app_builtins() {
     assert!(specs.contains(&"@uniflowed/react-native"));
     assert!(specs.contains(&"@uniflowed/react-native-testing"));
     assert!(specs.contains(&"@uniflowed/brand"));
-    assert!(specs.contains(&"@uniflowed/testing"));
+    assert!(!specs.contains(&"@uniflowed/testing"));
     assert!(specs.contains(&"@uniflowed/lib"));
     assert!(specs.contains(&"@uniflowed/lint"));
     assert!(specs.contains(&"@uniflowed/server"));
@@ -62,7 +62,7 @@ fn includes_react_flow_app_builtins() {
     assert!(specs.contains(&"@uniflowed/state"));
     assert!(specs.contains(&"@uniflowed/validator"));
     assert!(specs.contains(&"@uniflowed/mock"));
-    assert!(specs.contains(&"@uniflowed/browser"));
+    assert!(!specs.contains(&"@uniflowed/browser"));
     assert!(specs.contains(&"@uniflowed/story"));
     assert!(specs.contains(&"@uniflowed/vrt"));
     assert!(specs.contains(&"@uniflowed/motion"));
@@ -220,7 +220,7 @@ fn ui_registry_keeps_the_roadmap_it_is_not_an_inventory_of() {
     }
     // The shadcn components ubugeeei-prod/uf#1354 found no entry for. Each is
     // decided here — declined as headless, with the reason on its entry — and
-    // shipped as a styled file in `registry/ui/`, which `crates/uf_ui` holds
+    // shipped as a styled file in `npm/ui/registry/`, which `crates/uf_ui` holds
     // to this table: a registry component with no module has to answer one
     // declined here.
     for styled_only in [
@@ -459,7 +459,7 @@ fn declared_value_names(node: &uf_flow::ast::statement::Statement<Loc, Loc>) -> 
         StatementInner::EnumDeclaration { inner, .. } => vec![inner.id.name.to_string()],
         StatementInner::VariableDeclaration { inner, .. } => {
             // Every declarator. `export const a = 1, b = 2;` is not written
-            // anywhere in `packages/` today, and reading only the first would
+            // anywhere in `npm/` today, and reading only the first would
             // be a silent hole in the one check that exists to find silent
             // holes — the day somebody writes it, this must notice `b`.
             let mut names = Vec::new();
@@ -507,7 +507,7 @@ fn the_registry_names_exactly_what_each_package_exports() {
         let Some(name) = module.specifier.strip_prefix("@uniflowed/") else {
             continue;
         };
-        let entry = root.join("packages").join(name).join("index.js");
+        let entry = root.join("npm").join(name).join("index.js");
         // Every entry in the registry has one today, so an unreadable entry
         // point is a failure rather than a skip. A `continue` here would let a
         // renamed or deleted package go unchecked while `checked` still looked
@@ -568,7 +568,7 @@ fn the_registry_names_exactly_what_each_package_exports() {
     assert_eq!(exempt, ["@uniflowed/react", "@uniflowed/react-native"]);
 }
 
-/// The std registry's shipping entries are exactly `packages/std`'s subpaths,
+/// The std registry's shipping entries are exactly `npm/std`'s subpaths,
 /// and each one names exactly what its file exports.
 ///
 /// The same check as [`the_registry_names_exactly_what_each_package_exports`],
@@ -576,7 +576,7 @@ fn the_registry_names_exactly_what_each_package_exports() {
 /// see this drift. `uf_lib::builtin_modules()` carries `@uniflowed/std` and
 /// stops there; `uf_std::std_modules()` carries the subpaths, and until
 /// ubugeeei-prod/uf#710 it named forty-four of them, of which zero had a file
-/// and none of the six that `packages/std` actually ships was among them.
+/// and none of the six that `npm/std` actually ships was among them.
 /// `uf inspect --json` printed all forty-four under `stdModules`, so a reader
 /// — or an agent — was told this project had an `@uniflowed/std/sql` with a
 /// migration runner in it.
@@ -593,18 +593,18 @@ fn the_registry_names_exactly_what_each_package_exports() {
 /// perfectly inside it, which is the shape of hole `@uniflowed/ui` lived in.
 #[test]
 fn the_std_registry_names_exactly_what_the_std_package_exports() {
-    let package = repository_root().join("packages").join("std");
+    let package = repository_root().join("npm").join("std");
     let manifest: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(package.join("package.json")).expect("packages/std/package.json"),
+        &fs::read_to_string(package.join("package.json")).expect("npm/std/package.json"),
     )
-    .expect("packages/std/package.json parses");
+    .expect("npm/std/package.json parses");
 
     // `./package.json` is a subpath every package publishes so that a consumer
     // can read the manifest, and `.` is the declaration surface, which has its
     // own status. Neither is a module this table is about.
     let published: BTreeSet<String> = manifest["exports"]
         .as_object()
-        .expect("packages/std declares exports")
+        .expect("npm/std declares exports")
         .keys()
         .filter(|key| key.as_str() != "." && key.as_str() != "./package.json")
         .map(|key| format!("@uniflowed/std/{}", key.trim_start_matches("./")))
@@ -619,12 +619,12 @@ fn the_std_registry_names_exactly_what_the_std_package_exports() {
 
     assert!(
         !published.is_empty(),
-        "packages/std exports no subpath, so this is not checking anything"
+        "npm/std exports no subpath, so this is not checking anything"
     );
     assert_eq!(
         shipping,
         published,
-        "the std registry and packages/std disagree\n  \
+        "the std registry and npm/std disagree\n  \
          the registry says ships and the manifest does not export: {:?}\n  \
          the manifest exports and the registry does not call shipped: {:?}",
         shipping.difference(&published).collect::<Vec<_>>(),
@@ -679,7 +679,7 @@ fn the_std_registry_names_exactly_what_the_std_package_exports() {
     // `.`; everything else in the package has to be a module the table knows
     // about.
     let mut unaccounted = Vec::new();
-    for entry in fs::read_dir(&package).expect("packages/std is readable") {
+    for entry in fs::read_dir(&package).expect("npm/std is readable") {
         let path = entry.expect("a readable directory entry").path();
         if path.extension().is_some_and(|extension| extension == "js")
             && path.file_name().is_some_and(|name| name != "index.js")
@@ -694,7 +694,7 @@ fn the_std_registry_names_exactly_what_the_std_package_exports() {
     }
     assert!(
         unaccounted.is_empty(),
-        "packages/std has {} module(s) the std registry does not name: {}",
+        "npm/std has {} module(s) the std registry does not name: {}",
         unaccounted.len(),
         unaccounted.join(", ")
     );
@@ -712,7 +712,7 @@ fn string_union(source: &str, name: &str) -> BTreeSet<String> {
     let head = format!("export type {name} =");
     let start = source
         .find(&head)
-        .unwrap_or_else(|| panic!("packages/std/index.js declares {name}"))
+        .unwrap_or_else(|| panic!("npm/std/index.js declares {name}"))
         + head.len();
     let body = &source[start..];
     let end = body
@@ -730,7 +730,7 @@ fn string_union(source: &str, name: &str) -> BTreeSet<String> {
     members
 }
 
-/// `packages/std/index.js`'s unions name the registry's own statuses and
+/// `npm/std/index.js`'s unions name the registry's own statuses and
 /// categories.
 ///
 /// `StdModule` is declared twice — once as a Rust struct that `uf inspect
@@ -748,11 +748,11 @@ fn string_union(source: &str, name: &str) -> BTreeSet<String> {
 fn the_flow_declaration_names_the_same_statuses_and_categories_as_the_registry() {
     let source = fs::read_to_string(
         repository_root()
-            .join("packages")
+            .join("npm")
             .join("std")
             .join("index.js"),
     )
-    .expect("packages/std/index.js");
+    .expect("npm/std/index.js");
 
     let name_of = |value: serde_json::Value| {
         value
@@ -791,7 +791,7 @@ fn the_flow_declaration_names_the_same_statuses_and_categories_as_the_registry()
 #[test]
 fn the_hook_table_names_exactly_the_hooks_the_package_exports() {
     let entry = repository_root()
-        .join("packages")
+        .join("npm")
         .join("hooks")
         .join("index.js");
     let source = fs::read_to_string(&entry)
@@ -844,7 +844,7 @@ fn is_hook_name(name: &str) -> bool {
 
 /// The components `@uniflowed/ui` ships, and the parts each one exposes.
 ///
-/// Read from `packages/ui/index.js` and the modules it names, because that is
+/// Read from `npm/ui/index.js` and the modules it names, because that is
 /// where the parts are. Two shapes, because the package has two:
 ///
 /// * A namespace — `export * as Tabs from "./tabs.js"` — whose parts are the
@@ -929,7 +929,7 @@ fn starts_capitalised(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }
 
-/// Every `export * as Name from "./file.js"` in `packages/ui/index.js`, as
+/// Every `export * as Name from "./file.js"` in `npm/ui/index.js`, as
 /// `(Name, "file.js")`.
 ///
 /// Read with the text of the statement rather than the parser because it is
@@ -998,25 +998,25 @@ fn module_of(name: &str) -> String {
 /// *deliberately* not implemented — a command palette is a `Combobox` in a
 /// `Dialog`, and the entry says so — while `Alert` was listed and simply not
 /// written yet, until ubugeeei-prod/uf#298 wrote it. Both were absent from
-/// `packages/ui` and only one of them was drift, so the check has to be able to
+/// `npm/ui` and only one of them was drift, so the check has to be able to
 /// tell them apart, and a comment is not something it can read.
 ///
 /// # Three sources, not two
 ///
-/// The modules in `packages/ui` are what a caller's import is built from, the
+/// The modules in `npm/ui` are what a caller's import is built from, the
 /// namespace objects in `index.js` are what they get, and this table is what
 /// `uf inspect` says they have. All three are checked against each other,
 /// because two of them agreeing is how the third goes stale.
 #[test]
 fn the_ui_table_names_exactly_what_the_package_ships() {
     let root = repository_root();
-    let shipped = ui_components_shipped(&root.join("packages/ui"))
-        .unwrap_or_else(|error| panic!("packages/ui cannot be read: {error}"));
+    let shipped = ui_components_shipped(&root.join("npm/ui"))
+        .unwrap_or_else(|error| panic!("npm/ui cannot be read: {error}"));
 
     // Every module beside the barrel, by name: `alert-dialog.js` is
     // `alert-dialog`. A test sits beside the module it tests and is not one.
-    let modules: BTreeSet<String> = fs::read_dir(root.join("packages/ui"))
-        .expect("packages/ui can be listed")
+    let modules: BTreeSet<String> = fs::read_dir(root.join("npm/ui"))
+        .expect("npm/ui can be listed")
         .map(|entry| entry.expect("a directory entry").file_name())
         .filter_map(|file| file.into_string().ok())
         .filter(|file| file != "index.js" && !file.ends_with(".test.js"))
@@ -1067,7 +1067,7 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
         .collect();
     assert_eq!(
         expected, modules,
-        "`packages/ui` and the table disagree about the modules"
+        "`npm/ui` and the table disagree about the modules"
     );
 
     // Nothing planned or declined is quietly shipped. This is the direction
@@ -1103,7 +1103,7 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
 /// exported between modules only: a namespace re-export would publish it.
 #[test]
 fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
-    let root = repository_root().join("packages/ui");
+    let root = repository_root().join("npm/ui");
     let read = |file: &str| {
         let path = root.join(file);
         let source = fs::read_to_string(&path)
@@ -1120,7 +1120,7 @@ fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
 
     let mut missing = Vec::new();
     let mut modules = 0usize;
-    for entry in fs::read_dir(&root).expect("packages/ui can be listed") {
+    for entry in fs::read_dir(&root).expect("npm/ui can be listed") {
         let file = entry
             .expect("a directory entry")
             .file_name()
@@ -1148,11 +1148,11 @@ fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
     }
     assert!(
         modules > 20,
-        "packages/ui listed almost nothing, so this is not checking anything: {modules}"
+        "npm/ui listed almost nothing, so this is not checking anything: {modules}"
     );
     assert!(
         missing.is_empty(),
-        "packages/ui/index.js leaves out what its modules export, so nothing can import it:\n  {}",
+        "npm/ui/index.js leaves out what its modules export, so nothing can import it:\n  {}",
         missing.join("\n  ")
     );
 }
@@ -1171,7 +1171,7 @@ fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
 fn the_ui_hook_modules_export_hooks_and_no_component() {
     let root = repository_root();
     for module in UI_HOOK_MODULES {
-        let path = root.join("packages/ui").join(format!("{module}.js"));
+        let path = root.join("npm/ui").join(format!("{module}.js"));
         let source = fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("{} cannot be read: {error}", path.display()));
         let exported = exported_values(&source)
@@ -1213,8 +1213,8 @@ fn the_ui_hook_modules_export_hooks_and_no_component() {
 #[test]
 fn the_parts_of_an_implemented_component_are_the_ones_it_exports() {
     let root = repository_root();
-    let shipped = ui_components_shipped(&root.join("packages/ui"))
-        .unwrap_or_else(|error| panic!("packages/ui cannot be read: {error}"));
+    let shipped = ui_components_shipped(&root.join("npm/ui"))
+        .unwrap_or_else(|error| panic!("npm/ui cannot be read: {error}"));
 
     let mut drifted = Vec::new();
     let mut checked = 0usize;
@@ -1270,7 +1270,7 @@ fn the_parts_of_an_implemented_component_are_the_ones_it_exports() {
 #[test]
 fn the_preset_styles_a_component_names_are_exports_of_the_preset() {
     let root = repository_root();
-    let preset = root.join("packages/stylex/preset.js");
+    let preset = root.join("npm/stylex/preset.js");
     let source = fs::read_to_string(&preset)
         .unwrap_or_else(|error| panic!("{} cannot be read: {error}", preset.display()));
     let exported: BTreeSet<String> = exported_values(&source)
@@ -1293,13 +1293,13 @@ fn the_preset_styles_a_component_names_are_exports_of_the_preset() {
     let invented: Vec<&str> = claimed.difference(&exported).map(String::as_str).collect();
     assert!(
         invented.is_empty(),
-        "the table names preset styles `packages/stylex/preset.js` does not export: {invented:?}"
+        "the table names preset styles `npm/stylex/preset.js` does not export: {invented:?}"
     );
 
     let orphaned: Vec<&str> = exported.difference(&claimed).map(String::as_str).collect();
     assert!(
         orphaned.is_empty(),
-        "`packages/stylex/preset.js` exports these and no component in the table \
+        "`npm/stylex/preset.js` exports these and no component in the table \
          claims them, so either a component is missing or a style is: {orphaned:?}"
     );
 }
@@ -1312,7 +1312,7 @@ fn the_preset_styles_a_component_names_are_exports_of_the_preset() {
 /// answer with a signature on it.
 #[test]
 fn the_export_reader_sees_every_shape_a_package_uses() {
-    // Every binding of one declaration, not the first. Nothing in `packages/`
+    // Every binding of one declaration, not the first. Nothing in `npm/`
     // is written this way today, which is exactly why the reader has to be.
     assert_eq!(
         exported_values("export const a = 1, b = 2;\n").unwrap(),
@@ -1461,7 +1461,7 @@ fn resolve_specifier(packages: &Path, importer: &Path, specifier: &str) -> Optio
 /// # What it checks, and in which namespace
 ///
 /// Every `export { … } from "…"` and `export type { … } from "…"` under
-/// `packages/`, against the module the specifier names. The namespace is part
+/// `npm/`, against the module the specifier names. The namespace is part
 /// of the claim and is checked as part of it: `export type { X }` from a module
 /// whose `X` is a value is as wrong as a name that is not there at all, and it
 /// fails the same way for the same reader.
@@ -1474,7 +1474,7 @@ fn resolve_specifier(packages: &Path, importer: &Path, specifier: &str) -> Optio
 #[test]
 fn a_barrel_re_export_names_something_its_source_has() {
     let root = repository_root();
-    let packages = root.join("packages");
+    let packages = root.join("npm");
     let mut broken = Vec::new();
     let mut checked = 0usize;
 

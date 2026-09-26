@@ -22,9 +22,9 @@ property lists use arrays instead of a temporary `Vec`. It preserves key order
 and values exactly; measured with:
 
     cargo run --release --example alloc_report -p uf_transform -- \
-      packages/router/internal/runtime.js
+      npm/router/internal/runtime.js
     cargo run --release --example alloc_report -p uf_transform -- \
-      packages/router/internal/runtime.js --dump
+      npm/router/internal/runtime.js --dump
 
 on the #668 router runtime fixture:
 

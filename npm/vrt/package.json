@@ -1,0 +1,24 @@
+{
+  "name": "@uniflowed/vrt",
+  "version": "0.9.0",
+  "private": true,
+  "description": "Chromium test pages and visual comparisons for Flow applications.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/vrt"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@uniflowed/test": "0.9.0"
+  }
+}

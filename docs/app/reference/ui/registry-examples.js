@@ -10,7 +10,7 @@
 // component cannot pass across the boundary. The page hands this module a name,
 // which it can.
 //
-// The examples are `registry/ui/` itself, read when the site is built, so a
+// The examples are `npm/ui/registry/` itself, read when the site is built, so a
 // component added there is rendered here without anyone adding it by hand.
 
 import * as React from "@uniflowed/react";
@@ -18,15 +18,15 @@ import * as React from "@uniflowed/react";
 /** What an example module exports. */
 type ExampleModule = { readonly Example: React.ComponentType<{}>, ... };
 
-const EXAMPLES = import.meta.glob<ExampleModule>("../../../../registry/ui/*.example.js", {
+const EXAMPLES = import.meta.glob<ExampleModule>("../../../../npm/ui/registry/*.example.js", {
   eager: true,
 });
 
 /** The example of the registry component called `name`, running. */
 export component RegistryExample(name: string) {
-  const example = EXAMPLES[`../../../../registry/ui/${name}.example.js`];
+  const example = EXAMPLES[`../../../../npm/ui/registry/${name}.example.js`];
   if (example == null) {
-    throw new Error(`registry/ui/ has no example for \`${name}\``);
+    throw new Error(`npm/ui/registry/ has no example for \`${name}\``);
   }
   const Example = example.Example;
   return <Example />;

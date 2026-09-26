@@ -9,7 +9,7 @@ describe("the public query, StyleX and byte I/O type contracts", () => {
     everyMisuseIsReported({
       fixture: "tests/type-tests/public-contracts.js",
       atLeast: 5,
-      alongside: ["packages/query", "packages/stylex", "packages/std"],
+      alongside: ["npm/query", "npm/stylex", "npm/std"],
     });
   });
 });

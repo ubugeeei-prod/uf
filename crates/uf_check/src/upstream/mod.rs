@@ -600,7 +600,7 @@ fn check_one(
     parsed: Option<Rc<parse::Parsed>>,
 ) -> Result<Vec<TypeDiagnostic>, CheckError> {
     // Three spans inside this one, and they partition it: on
-    // `packages/router/internal/runtime.js` they account for 1,951,920 of the
+    // `npm/router/internal/runtime.js` they account for 1,951,920 of the
     // 1,951,944 allocations `check::infer_one` reads, and the two dozen left
     // over are this function's own bookkeeping. That is the point of them —
     // ubugeeei-prod/uf#713 could say the checker spends 91.6% of its

@@ -1,0 +1,35 @@
+{
+  "name": "@uniflowed/validator",
+  "version": "0.9.0",
+  "description": "Schemas that parse rather than assert: typed inference, issue paths and JSON Schema export, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/validator"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./action": "./action.js",
+    "./collection": "./collection.js",
+    "./infer": "./infer.js",
+    "./issue": "./issue.js",
+    "./json-schema": "./json-schema.js",
+    "./lazy": "./lazy.js",
+    "./namespace": "./namespace.js",
+    "./object": "./object.js",
+    "./optional": "./optional.js",
+    "./parse": "./parse.js",
+    "./pipe": "./pipe.js",
+    "./plain-object": "./plain-object.js",
+    "./primitive": "./primitive.js",
+    "./schema": "./schema.js",
+    "./union": "./union.js"
+  },
+  "files": [
+    "*.js",
+    "!*.test.js"
+  ]
+}

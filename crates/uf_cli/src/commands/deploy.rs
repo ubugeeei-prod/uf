@@ -1301,14 +1301,14 @@ mod tests {
     /// The date `wrangler.json` pins is the date the Worker built-ins table was
     /// measured at.
     ///
-    /// `packages/vite/internal/worker-builtins.js` names the Node modules a
+    /// `npm/vite/internal/worker-builtins.js` names the Node modules a
     /// Worker provides only as stubs *at a compatibility date*, and the edge
     /// smoke checks that list against workerd at that date. Bumping the date
     /// here without measuring again would leave the build naming modules for a
     /// runtime nobody asked, so the two are one change or this fails.
     #[test]
     fn the_pinned_compatibility_date_is_the_one_the_builtins_table_was_measured_at() {
-        let table = include_str!("../../../../packages/vite/internal/worker-builtins.js");
+        let table = include_str!("../../../../npm/vite/internal/worker-builtins.js");
         let declared = uf_infra::into_string(uf_infra::cstr!(
             "WORKERS_COMPATIBILITY_DATE = \"{WORKERS_COMPATIBILITY_DATE}\""
         ));

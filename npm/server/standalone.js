@@ -1,0 +1,733 @@
+// @flow
+//
+// `@uniflowed/server/standalone`: the application, serving itself, from one file.
+//
+// `uf build --compile` links this module with the project's server bundle and
+// with an embedded copy of everything `uf build` wrote to `dist/`, then hands
+// the result to a JavaScript runtime that appends itself to it. What comes out
+// is a file that can be copied into an empty directory and run: no Node
+// installation, no `node_modules`, no `dist/` beside it.
+//
+// # Why `node:http`, and not the host's own server
+//
+// Bun has `Bun.serve` and Deno has `Deno.serve`, and both are faster than the
+// interface they emulate. Neither is a standard. Writing this file against
+// either would make it a Bun file or a Deno file, and the runtime that gets
+// embedded would stop being a decision `uf build --compile` makes and start
+// being a decision this module already made. `node:http` is the one server
+// interface all three hosts implement, so it is the one that leaves the choice
+// open — which matters more here than the throughput of a shim that spends
+// almost all of its time inside React.
+//
+// # Why this is not `@uniflowed/vite`'s `internal/serve.js`
+//
+// That module is the handler behind `uf preview` and `uf start`, and it is the
+// obvious thing to import rather than write a second one. It is the wrong
+// thing to import, for two reasons and either would be enough.
+//
+// It answers by opening files under `dist/`, and there is no `dist/` here —
+// the whole claim of a compiled binary is that it was copied into an empty
+// directory. Its static half is therefore not shareable at all, and its
+// application half arrives attached to it. And it lives in `@uniflowed/vite`,
+// so importing it would link the package named after the bundler into the
+// artefact a deployment runs, which is the property `uf start` exists to
+// establish and the one a single file makes strongest.
+//
+// So the code is not shared and the *answer* is. Both resolve a request in the
+// same order — a file the build already wrote, then a route handler for any
+// method, then a render for whatever is left — and that order is not a
+// preference either module gets to hold: `uf preview` is Vite's own server,
+// which runs its file middleware before anything uf mounts behind it, so
+// `internal/serve.js` matches Vite and this matches `internal/serve.js`. A
+// binary that resolved a page/handler collision the other way would behave
+// one way when it was checked with `uf preview` and another way once it was
+// deployed, which is the trap `uf preview` exists to prevent.
+//
+// Both copies are driven by a test: `serve.test.js` and
+// `preview_and_start_serve_the_whole_of_a_build` for that one,
+// `npm/server/standalone.test.js` and
+// `compile_writes_one_file_that_serves_the_site_from_an_empty_directory` for
+// this one.
+//
+// # The one thing this door does not have
+//
+// The route cache. `rendering.cache.route` reaches `createFetchHandler` —
+// which is `uf preview`, `uf start`, and every `--adapter` target through the
+// `handler.js` uf generates — and this module renders every request whatever
+// the configuration says. It is the fourth front door and the only one where
+// the caching is not a shared function but a second copy of the same
+// buffering, the same refusal to store a render that read the request, and the
+// same header, which is exactly the "two copies that agree until they do not"
+// this file's header is otherwise about. It is stated here rather than left to
+// be discovered, and ubugeeei-prod/uf#277 carries it.
+
+import { Buffer } from "node:buffer";
+import { createServer } from "node:http";
+
+import { copyHeaders, pinHeaders, reportMalformedRequests, send } from "./node.js";
+
+import type { Application, FormState } from "./internal/application.js";
+import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
+import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
+import { refuseOtherDeployment } from "./internal/deployment.js";
+import { prerenderedMayAnswer } from "./internal/draft.js";
+import { flightResponse } from "./internal/flight.js";
+import type { RoutingRules } from "./internal/routing.js";
+import { admit, headersFor, rewriteFor } from "./internal/routing.js";
+import { processLogger } from "./log.js";
+
+/**
+ * What a compiled binary can do, plus whatever the deployment supplied.
+ *
+ * The same two answers `nodeCapabilities` gives, because it is the same kind
+ * of host: a socket this process is holding, and a process that is still there
+ * once a response has gone. It is a separate function only so that the target
+ * a refusal names is the one somebody actually ran — "the standalone host has
+ * no WebSocket upgrader" points at a binary, and "the node host" points at a
+ * directory of JavaScript.
+ */
+export function standaloneCapabilities(options?: CapabilityOptions): ServerCapabilities {
+  return assertCapable(capabilitiesFor("standalone", { stream: true, persistent: true }, options));
+}
+
+/**
+ * The pieces of a Node request and response this module touches.
+ *
+ * Declared structurally rather than imported from a `node:http` libdef,
+ * because the set is five members wide and naming it here is what lets the
+ * same file be read without knowing which host's types are in scope.
+ */
+type NodeRequest = {
+  readonly method?: string,
+  readonly url?: string,
+  readonly headers: { readonly [string]: string | Array<string> | void },
+  ...
+};
+
+type NodeResponse = {
+  statusCode: number,
+  // `send` and `pinHeaders` in `./node.js` read and write these, and this
+  // module hands them its responses: a type without them described a response
+  // those functions could not have been given.
+  statusMessage: string,
+  headersSent: boolean,
+  setHeader(name: string, value: string | $ReadOnlyArray<string>): mixed,
+  // A `boolean`, as `./node.js` needs it: `send` paces a body by it.
+  write(chunk: Uint8Array | string): boolean,
+  end(chunk?: Uint8Array | string): mixed,
+  // Required rather than optional, because the one case it exists for is the
+  // one where nothing else will do: a render that fails after the shell has
+  // gone out cannot be answered with a status, and dropping the socket is the
+  // only way left to tell the client the document it received is not whole.
+  destroy(error?: mixed): mixed,
+  // The events a writer has to listen to rather than assume: `drain`, so a body
+  // is paced by what the socket will take, and `close`, so a client that hung
+  // up stops the producer instead of being written at. Named individually, like
+  // `stream.js`'s `NodeDestination`, so that a host missing one of them fails
+  // to compile rather than to serve.
+  on(event: string, listener: (...args: Array<mixed>) => mixed): mixed,
+  once(event: string, listener: (...args: Array<mixed>) => mixed): mixed,
+  off(event: string, listener: (...args: Array<mixed>) => mixed): mixed,
+  ...
+};
+
+/** One file from `dist/`, as `uf build --compile` embedded it. */
+export type EmbeddedAsset = {|
+  /** The `content-type` to serve it with, decided at build time. */
+  readonly type: string,
+  /** The file's bytes, base64. */
+  readonly body: string,
+|};
+
+/** Every embedded file, keyed by its path relative to the output directory. */
+export type EmbeddedAssets = { readonly [path: string]: EmbeddedAsset };
+
+/** The script, stylesheet and preload URLs a rendered document references. */
+export type DocumentAssets = {|
+  readonly scripts: $ReadOnlyArray<string>,
+  readonly styles: $ReadOnlyArray<string>,
+  readonly preloads: $ReadOnlyArray<string>,
+  /** The build these URLs belong to; see `./internal/application.js`. */
+  readonly deployment?: string,
+|};
+
+/**
+ * What the project's server bundle exports; see `virtual:uf/server`.
+ *
+ * The same `Application` every other front door takes (`./fetch.js`,
+ * `./node.js`, `@uniflowed/vite`), not a copy of it. This used to be a
+ * separate exact type written for this module, and it drifted from
+ * `Application` in three places: `render`'s `pipe` took this module's
+ * `NodeResponse` and promised a `Promise`, `beginRequest`'s context was a
+ * narrower shape, and it had no `resume`. So one server bundle could not
+ * satisfy both types, although one bundle is exactly what `uf build` hands to
+ * every host. What this module needs from each member is argued at the call
+ * site that uses it. In particular, `pipe` is awaited, which keeps a
+ * rejection after the shell from being dropped whether or not the type says
+ * it returns a promise.
+ */
+export type StandaloneApp = Application;
+
+/** Everything an application needs to answer a request, all of it built in. */
+export type HandlerOptions = {|
+  readonly app: StandaloneApp,
+  readonly assets: EmbeddedAssets,
+  readonly document: DocumentAssets,
+|};
+
+/** What [`serve`] needs: the above, and where to listen. */
+export type ServeOptions = {|
+  readonly app: StandaloneApp,
+  readonly assets: EmbeddedAssets,
+  readonly document: DocumentAssets,
+  /** Overridden by `--port` and then by `PORT`; defaults to 3000. */
+  readonly port?: number,
+  /** Overridden by `--host` and then by `HOST`; defaults to loopback. */
+  readonly host?: string,
+|};
+
+/**
+ * How long a browser may keep a file that is not a document.
+ *
+ * One hour, uniformly, and deliberately not the year-long `immutable` a
+ * content-hashed chunk could take: this module cannot tell a hashed chunk from
+ * an unhashed file copied out of `public/`, because `dist/` records no such
+ * distinction, and getting it wrong in the `immutable` direction pins a stale
+ * favicon in every visitor's cache with no way to recall it. A binary behind a
+ * CDN should let the CDN decide; an hour is the safe answer for one that is not.
+ */
+const ASSET_CACHE_CONTROL = "public, max-age=3600";
+
+/** Documents are revalidated every time, because a deploy replaces them. */
+const DOCUMENT_CACHE_CONTROL = "no-cache";
+
+/**
+ * Serve the application until the process is stopped.
+ *
+ * Resolves once the socket is listening, with the address it took — a caller
+ * that asked for port 0 has no other way to learn which port it got, and the
+ * test that drives a compiled binary needs exactly that.
+ */
+export async function serve(options: ServeOptions): Promise<{|
+  readonly host: string,
+  readonly port: number,
+  readonly close: () => Promise<void>,
+|}> {
+  const handle = createHandler({
+    app: options.app,
+    assets: options.assets,
+    document: options.document,
+  });
+
+  // Said before the socket, not after it, and that ordering is the point. It
+  // is the one fact about a compiled binary that cannot be checked from
+  // outside it — whether `dist/` really came along — and a count printed only
+  // on a successful bind is a count nobody can see on a machine that is not
+  // allowed to bind. `compile_writes_one_file_that_carries_the_whole_site`
+  // reads this line and nothing else.
+  process.stdout.write(`uf: ${String(Object.keys(options.assets).length)} embedded files\n`);
+
+  const server = createServer((request: NodeRequest, response: NodeResponse) => {
+    handle(request, response).catch((error: mixed) => {
+      // A request that throws is this server's last chance to say so: there is
+      // no framework above it and no log drain beside it. Report it on stderr
+      // and answer 500, rather than letting the host's unhandled-rejection
+      // policy decide whether the process survives.
+      process.stderr.write(`uf: ${described(error)}\n`);
+      try {
+        response.statusCode = 500;
+        response.setHeader("content-type", "text/plain; charset=utf-8");
+        response.end("internal server error\n");
+      } catch {
+        // The response was already partly written; nothing left to say.
+      }
+    });
+  });
+
+  // Bytes this server's parser refuses never reach `handle`, so without this
+  // the one front door that carries its own runtime would be the one that
+  // answers `400` and records it nowhere — the state ubugeeei-prod/uf#405
+  // describes, in the deployment that has the least else to look at. The
+  // budget and what is in the line are argued where the function is;
+  // `processLogger()` because this module takes no logger and a compiled binary
+  // has no terminal but the one it was started in.
+  reportMalformedRequests(server, processLogger());
+
+  const host = options.host ?? argument("--host") ?? process.env.HOST ?? "127.0.0.1";
+  const port = options.port ?? Number(argument("--port") ?? process.env.PORT ?? 3000);
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, resolve);
+  });
+
+  const address = server.address();
+  const bound = typeof address === "object" && address != null ? address.port : port;
+  process.stdout.write(`uf: listening on http://${host}:${String(bound)}\n`);
+
+  return {
+    host,
+    port: bound,
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve());
+      }),
+  };
+}
+
+/**
+ * The embedded files, as a map.
+ *
+ * A `Map` rather than the generated object itself, because a lookup keyed by a
+ * request path must not be able to find `__proto__` or `constructor`. Building
+ * it costs one pass over a few hundred entries at startup and removes the
+ * question entirely.
+ *
+ * The bytes are decoded lazily and then kept: a build that embeds a hundred
+ * megabytes of sourcemaps should not spend the startup decoding the ones this
+ * process will never be asked for.
+ */
+function index(
+  assets: EmbeddedAssets,
+): Map<string, {| readonly type: string, readonly bytes: () => Uint8Array |}> {
+  // `Uint8Array` rather than `Buffer` in the types: a `Buffer` is one, it is all
+  // `sendBytes` needs, and `Buffer` imported from `node:buffer` is a value to
+  // Flow rather than a type.
+  const files = new Map<string, {| readonly type: string, readonly bytes: () => Uint8Array |}>();
+  for (const path of Object.keys(assets)) {
+    const asset = assets[path];
+    let decoded: Uint8Array | null = null;
+    files.set(path, {
+      type: asset.type,
+      bytes: () => {
+        if (decoded == null) {
+          // `Buffer.from` rather than `atob`: `atob` answers with a string of
+          // char codes, and turning megabytes of that into bytes is a loop in
+          // JavaScript. Every host that has `node:http` has `node:buffer`.
+          decoded = Buffer.from(asset.body, "base64");
+        }
+        return decoded;
+      },
+    });
+  }
+  return files;
+}
+
+/**
+ * One request, answered — exported so an application can be mounted rather
+ * than only run.
+ *
+ * `serve` is the whole of a compiled binary, and it is not the whole of what
+ * anybody wants: a uf application behind an existing Node server, or beside
+ * other routes in one process, needs the request handling without the socket.
+ * That is this. It is also what the tests drive, which is not a coincidence —
+ * a request handler that can only be reached through a listening socket is one
+ * that can only be tested on a machine allowed to bind one.
+ *
+ * The order is `internal/serve.js`'s, which is Vite's:
+ *
+ *   1. a file `uf build` already wrote, for `GET` and `HEAD` only — an
+ *      embedded path that matches exactly, such as `/assets/index-a1b2c3.js`
+ *      or anything copied out of `public/`, and then the prerendered document
+ *      for this URL, because `/guide` was written as `guide/index.html`;
+ *   2. a route handler, for any method, because a handler is the only thing
+ *      that answers a `POST` and may also answer a `GET` for a path with no
+ *      page;
+ *   3. and otherwise the renderer, which also produces the 404.
+ *
+ * The prerendered document is looked up *before* the dispatcher, and that is
+ * the one place this used to disagree with `uf preview` and `uf start`. The
+ * router allows a handler to sit beside a page in the same directory, so a
+ * path can have both — and Vite's preview server serves the file first with no
+ * say in the matter, so a binary that let the handler win would answer
+ * differently from the command a build is checked with. Answering the same
+ * wrong-looking way as the other two is worth more than answering a better way
+ * alone.
+ *
+ * A page never answers a `POST`: letting one try turns a missing handler into
+ * a rendered page with a 200 where the caller expected a 405.
+ */
+export function createHandler(
+  options: HandlerOptions,
+): (NodeRequest, NodeResponse) => Promise<void> {
+  const { app, document } = options;
+  const files = index(options.assets);
+
+  return async function handle(request: NodeRequest, response: NodeResponse): Promise<void> {
+    const method = (request.method ?? "GET").toUpperCase();
+    const url = new URL(request.url ?? "/", "http://localhost");
+    const pathname = decodePath(url.pathname);
+    const cookie = request.headers.cookie;
+    const prerendered = prerenderedMayAnswer(typeof cookie === "string" ? cookie : null);
+    // Built before the lookups rather than after them, because the rules below
+    // are asked about it. A body is a stream nobody has read yet, so building
+    // it early costs nothing for a request a file answers.
+    const asRequest = toRequest(request, url);
+
+    // `app.router.headers` and `redirects`, in front of the embedded files as
+    // every other front door puts them. Pinned rather than set, because this
+    // door writes a file and a document with `setHeader` calls of its own, and
+    // the project's rule is the one that has to win. See `./internal/routing.js`.
+    pinHeaders(response, headersFor(app.routing, asRequest));
+    const admitted = admit(app.routing, asRequest);
+    if (admitted.kind === "answer") {
+      await sendUnlessHead(response, method, admitted.response);
+      return;
+    }
+    // The application path from here on: the base path is off, and the files
+    // this binary carries are keyed without it.
+    const addressed = admitted.request;
+    const filePath =
+      addressed === asRequest ? pathname : decodePath(new URL(addressed.url).pathname);
+
+    if (filePath != null && (method === "GET" || method === "HEAD")) {
+      const file = files.get(assetKey(filePath));
+      if (file != null) {
+        sendBytes(response, method, 200, file.type, ASSET_CACHE_CONTROL, file.bytes());
+        return;
+      }
+      // A document is revalidated where an asset is cached, because a deploy
+      // replaces documents and gives assets a new hashed name.
+      //
+      // Not for a draft request; `./internal/draft.js`'s `prerenderedMayAnswer`
+      // is where that is argued for every front door. What is this door's own
+      // is which of these bytes are a *document*, and here that is the key they
+      // were embedded under: `documentKey` below is skipped and `assetKey`
+      // above is not.
+      // `guide/index.html`, or `guide.html` for a build whose trailing-slash
+      // policy is `"never"`.
+      const page = prerendered
+        ? (files.get(documentKey(filePath)) ?? files.get(pageFileKey(filePath)))
+        : null;
+      if (page != null) {
+        sendBytes(response, method, 200, page.type, DOCUMENT_CACHE_CONTROL, page.bytes());
+        return;
+      }
+    }
+
+    // A browser on another build: after the files, which is what keeps its
+    // chunks loading, and before any application code, as `./fetch.js` does
+    // for every other front door. See `./internal/deployment.js`.
+    const stale = refuseOtherDeployment(addressed, document.deployment);
+    if (stale != null) {
+      await sendUnlessHead(response, method, stale);
+      return;
+    }
+
+    // The request begins here rather than at the top of the handler, and the
+    // two lookups above are why: an embedded chunk and a prerendered document
+    // are answered without any application code running at all, so there is
+    // nothing that could ask for cookies and nothing that could defer work.
+    // What is below is the application, and it is what a request is for.
+    //
+    // `app.beginRequest` and not this module's own import: the storage that
+    // holds a request belongs to one copy of `@uniflowed/server`, and the copy
+    // that matters is the one linked into the bundle beside this file.
+    //
+    // `settle` is in a `finally` and it is the last thing the handler does, so
+    // every `after()` runs after the response has been written — after `send`,
+    // after `sendBytes`, and after `pipe` resolves — which is what `after()`
+    // promises and what the other three hosts do. A request that failed is
+    // still a request that happened, so the drain is owed either way; see
+    // ubugeeei-prod/uf#389.
+    const lifecycle = app.beginRequest(asRequest);
+    const { run, settle } = lifecycle;
+    // Beside the request, the way `./fetch.js` does it for the other three: a
+    // handler that streams events or takes a socket must get the same answer
+    // from a compiled binary as it does from `uf start`, and this is the front
+    // door that does not come through that function.
+    lifecycle.context.capabilities ??= standaloneCapabilities();
+    try {
+      await run(async () => {
+        // Middleware above the dispatcher and above the render, and below the two
+        // lookups on purpose. It guards a path, so it must run for a page, for a
+        // route handler, and for a path under it that matches neither — but an
+        // embedded asset and a prerendered document are answered before it, which
+        // is exactly what `uf preview` does, because Vite's file middleware runs
+        // before anything mounted behind it. The front doors have to give one
+        // answer, and `tests/library/deploy.test.js` is where they are asked
+        // the same questions and compared — this one included, since
+        // ubugeeei-prod/uf#391.
+        //
+        // That a prerendered page under a guard ships unguarded is true of all
+        // of them, and is no longer an open question about what to do: since
+        // ubugeeei-prod/uf#342 `uf build` names every route it wrote a document
+        // for that a middleware guards (`crates/uf_cli/src/commands/build/
+        // guards.rs`), `--adapter static` refuses such a project outright, and
+        // `build.staticBuild` makes it an error rather than a warning. What is
+        // left here is the fact itself, which is inherent to prerendering: the
+        // document is bytes, and bytes do not run a guard.
+        //
+        // `app.router.rewrites` before it, after the files, as `./fetch.js`
+        // does for the other doors; and a `Request` back from the chain is a
+        // middleware's `rewrite()`.
+        let current = rewriteFor(app.routing, addressed) ?? addressed;
+        const guarded = await app.runMiddleware(current);
+        if (guarded instanceof Request) {
+          current = guarded;
+        } else if (guarded != null) {
+          await sendUnlessHead(response, method, guarded);
+          return;
+        }
+
+        // A server action between the guard and the handlers, exactly where
+        // the other three hosts put it. It declines a request that carries no
+        // action id, and answers every one that does.
+        // A form posted before its page hydrated is answered with the page,
+        // rendered with the action's result as the submitting
+        // `useActionState`'s state.
+        const posted = current;
+        const acted = await app.callAction(current, {
+          postback: async (formState) => {
+            const at = new URL(posted.url);
+            const rendered = await app.render(at.pathname + at.search, document, {
+              onError: (error) => {
+                console.error(error);
+              },
+              formState,
+            });
+            return new Response(rendered.stream(), {
+              status: rendered.status,
+              headers: {
+                ...rendered.headers,
+                "content-type": "text/html; charset=utf-8",
+                "cache-control": DOCUMENT_CACHE_CONTROL,
+              },
+            });
+          },
+        });
+        if (acted != null) {
+          await sendUnlessHead(response, method, acted);
+          return;
+        }
+
+        // A browser that is navigating, asking for the next route's payload:
+        // after the guard and before the handlers, as every front door does.
+        // See `./internal/flight.js`.
+        const flight = await flightResponse(app, current, {
+          onError: (error) => {
+            console.error(error);
+          },
+        });
+        if (flight != null) {
+          await sendUnlessHead(response, method, flight);
+          return;
+        }
+
+        const handled = await app.dispatch(current);
+        if (handled != null) {
+          await sendUnlessHead(response, method, handled);
+          return;
+        }
+
+        if (method !== "GET" && method !== "HEAD") {
+          // A page supports exactly `GET` and `HEAD`, which is why the `Allow` the
+          // specification requires on every 405 can be written here even though
+          // this side of the handler knows nothing about methods. A *handler* path
+          // with the wrong method never reaches this line: the dispatcher answers
+          // that one itself, with the methods that module really exports.
+          response.setHeader("allow", "GET, HEAD");
+          sendBytes(
+            response,
+            method,
+            405,
+            "text/plain; charset=utf-8",
+            DOCUMENT_CACHE_CONTROL,
+            Buffer.from("method not allowed\n"),
+          );
+          return;
+        }
+
+        const target = new URL(current.url);
+        const rendered = await app.render(target.pathname + target.search, document, {
+          // There is no terminal to render into: this is a binary somebody started
+          // with `./app`, possibly under a supervisor. The console is where a
+          // supervisor looks, and losing a boundary's exception entirely would be
+          // worse — it is the only trace a page that failed after its first byte
+          // leaves anywhere.
+          onError: (error) => {
+            console.error(error);
+          },
+        });
+        response.statusCode = rendered.status;
+        response.setHeader("content-type", "text/html; charset=utf-8");
+        response.setHeader("cache-control", DOCUMENT_CACHE_CONTROL);
+        const documentHeaders: { readonly [string]: string } = rendered.headers ?? {};
+        for (const name of Object.keys(documentHeaders)) {
+          response.setHeader(name, documentHeaders[name]);
+        }
+        // No `content-length`: the length is not known until the last byte, and
+        // waiting for it is the whole of what streaming is not. `HEAD` gets the
+        // status and the headers, and the stream is cancelled rather than dropped
+        // so the render behind it stops instead of filling its queue and waiting
+        // for a reader that is never coming.
+        if (method === "HEAD") {
+          await rendered.stream().cancel();
+          response.end();
+          return;
+        }
+        // Awaited, because `pipe` rejects: React hands a post-shell failure to the
+        // destination's `destroy(error)`, `ChunkQueue.fail` records it, and the
+        // generator `pipe` is iterating rethrows it. Called and dropped, that
+        // rejection escapes this handler — `serve`'s `handle(…).catch` has already
+        // resolved — and lands on the process, where `--unhandled-rejections=throw`
+        // is the default and a binary someone started with `./app` exits in the
+        // middle of a request that was otherwise recoverable.
+        //
+        // It cannot become a 500. The shell went out with its status and headers
+        // long before this, and `pipe`'s own `finally` has already called `end()`.
+        // What is left is to say so where a supervisor looks, and to drop the
+        // socket: a chunked response that is closed cleanly is a client being told
+        // a truncated document is the whole document, which is the failure this
+        // pull request is named after.
+        try {
+          await rendered.pipe(response);
+        } catch (error) {
+          process.stderr.write(`uf: ${described(error)}\n`);
+          response.destroy(error);
+        }
+      });
+    } finally {
+      await settle();
+    }
+  };
+}
+
+/**
+ * A request path as an embedded key, or `null` when it cannot be one.
+ *
+ * Percent-decoding happens here rather than at the lookup, because a path that
+ * does not decode is a malformed request and not a missing file.
+ */
+function decodePath(pathname: string): string | null {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+}
+
+/** `/assets/x.js` is the embedded `assets/x.js`. */
+function assetKey(pathname: string): string {
+  return pathname.replace(/^\/+/, "");
+}
+
+/**
+ * The prerendered document for a URL.
+ *
+ * `uf build` writes `/guide` as `guide/index.html`, and `/` as `index.html`,
+ * so both spellings of a directory URL find the same file.
+ */
+function documentKey(pathname: string): string {
+  const key = assetKey(pathname).replace(/\/+$/, "");
+  return key === "" ? "index.html" : `${key}/index.html`;
+}
+
+/** `/guide` as `guide.html`, which is how a `"never"` build writes it. */
+function pageFileKey(pathname: string): string {
+  const key = assetKey(pathname).replace(/\/+$/, "");
+  return key === "" ? "index.html" : `${key}.html`;
+}
+
+/**
+ * A Node request as a `Request`.
+ *
+ * The body is passed as a stream where the host allows it, so a handler that
+ * accepts an upload does not need the whole thing buffered before it starts.
+ * `duplex` is required by the specification whenever a body is a stream, and
+ * Node throws without it.
+ */
+function toRequest(incoming: NodeRequest, url: URL): Request {
+  const headers = new Headers();
+  for (const name of Object.keys(incoming.headers)) {
+    const value = incoming.headers[name];
+    if (value == null) continue;
+    for (const entry of Array.isArray(value) ? value : [value]) {
+      headers.append(name, entry);
+    }
+  }
+
+  const host = headers.get("host");
+  if (host != null && host !== "") {
+    url.host = host;
+  }
+
+  const method = (incoming.method ?? "GET").toUpperCase();
+  const init: { [string]: mixed } = { method, headers };
+  if (method !== "GET" && method !== "HEAD") {
+    init.body = incoming;
+    init.duplex = "half";
+  }
+  // `incoming` is a Node stream, which Node's `Request` accepts as a body with
+  // `duplex: "half"`. Flow's library definition has neither: its `BodyInit`
+  // is the web types only and its `RequestOptions` has no `duplex`. The code
+  // read `incompatible-call` before Flow renamed it.
+  // $FlowFixMe[incompatible-type]
+  return new Request(url, init);
+}
+
+/** `send`, except that a `HEAD` gets the status and the headers and no body. */
+async function sendUnlessHead(
+  outgoing: NodeResponse,
+  method: string,
+  result: Response,
+): Promise<void> {
+  if (method === "HEAD") {
+    outgoing.statusCode = result.status;
+    copyHeaders(outgoing, result.headers);
+    outgoing.end();
+    return;
+  }
+  await send(outgoing, result);
+}
+
+/**
+ * Write a `Response` to a Node response, minding the socket.
+ *
+ * `send` was written a third time here, with a comment saying the three copies
+ * had to answer alike because "a binary that buffered where `uf start` paced
+ * would be the one deployment target whose memory profile nobody had
+ * measured". They did not stay alike — ubugeeei-prod/uf#400 is the copy in
+ * `@uniflowed/server`'s `node.js` losing the pacing while this one kept it.
+ *
+ * The reason not to share was that importing `@uniflowed/vite` into the
+ * artefact a deployment runs is the property `uf start` exists to establish.
+ * That reason is gone: the loop lives in `@uniflowed/server` now, which is the
+ * package this file is *in*.
+ *
+ * `HEAD` stays here, at the call site, because it is a decision about a
+ * request rather than about writing a body.
+ */
+
+/** Write one embedded file, with the length a client needs to reuse a socket. */
+function sendBytes(
+  outgoing: NodeResponse,
+  method: string,
+  status: number,
+  type: string,
+  cacheControl: string,
+  bytes: Uint8Array,
+): void {
+  outgoing.statusCode = status;
+  outgoing.setHeader("content-type", type);
+  outgoing.setHeader("cache-control", cacheControl);
+  outgoing.setHeader("content-length", String(bytes.byteLength));
+  outgoing.end(method === "HEAD" ? undefined : bytes);
+}
+
+/**
+ * An error as a line on stderr: its stack when it has one, and what it is
+ * otherwise, since a `throw "text"` has no stack to give.
+ */
+function described(error: mixed): string {
+  if (typeof error === "object" && error != null && typeof error.stack === "string") {
+    return error.stack;
+  }
+  return String(error);
+}
+
+/** The value of a `--flag value` pair on the command line, if it is there. */
+function argument(name: string): string | null {
+  const at = process.argv.indexOf(name);
+  return at === -1 ? null : (process.argv[at + 1] ?? null);
+}

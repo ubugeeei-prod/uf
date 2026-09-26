@@ -156,9 +156,9 @@ started with `bun server.js` fails the same way, and the fix is the same Bun.
 
 `bun --preload @uniflowed/host/bun-preload app.js`, which is the same transform
 reached through Bun's plugin API. The filter is
-`packages/host/transform.js`'s `FLOW_MODULE_PATTERN`, which is `isFlowModule`
+`npm/host/transform.js`'s `FLOW_MODULE_PATTERN`, which is `isFlowModule`
 written as a pattern and pinned equal to it by
-`packages/host/flow-modules.test.js` — Bun's `onLoad` has no way to say "not
+`npm/host/flow-modules.test.js` — Bun's `onLoad` has no way to say "not
 mine", so the decision has to be made before the hook rather than inside it.
 
 Bun has **no permission model of any kind**. A project that declares
@@ -178,7 +178,7 @@ Coverage does not work here. Bun implements no `NODE_V8_COVERAGE`, so
 
 A uf project runs on Deno 2.8 and newer through **the same loader** a Node new
 enough for `registerHooks` uses: `@uniflowed/host`'s in-thread hooks,
-`packages/host/internal/sync-hooks.js`. Deno implemented `node:module`'s
+`npm/host/internal/sync-hooks.js`. Deno implemented `node:module`'s
 `registerHooks` in 2.8 and has never implemented `register()`, so the in-thread
 hooks are the only ones it can take — and they are the ones Node prefers anyway.
 `deno run --preload <path>/deno-preload.js app.js` installs them, with a path,
@@ -197,7 +197,7 @@ short-lived `uf transform` child instead, because the thread crashed Deno —
 every test of one CI run that compiled a module through it, and in none that
 read the cache, while another run of the same commit passed. A crash that
 depends on the run is worse than the ten milliseconds a child costs. The cache
-is shared, one key and one framing in `packages/host/internal/flow-cache.js`, so
+is shared, one key and one framing in `npm/host/internal/flow-cache.js`, so
 a module either runtime compiled is one the other reads.
 
 Two things were Deno's to add, and both are about its sandbox. The variables
@@ -302,7 +302,7 @@ contradictory native/Bun test-runner configuration is still refused.
 selections without starting a worker.
 
 CI's required **Library (Deno 2.9.7)** lane runs `uf run test:lib:deno` over
-`packages/` and `tests/library/`, using the same binary built by the toolchain
+`npm/` and `tests/library/`, using the same binary built by the toolchain
 job. Each file starts in a fresh process, four files at a time: Deno's module
 graph and React renderer context otherwise persist across files. Tests of
 multi-file worker behaviour still start and reuse their own Deno worker.
@@ -378,7 +378,7 @@ each under `wrangler dev --local`:
 | --- | --- |
 | the `served-app` fixture, built with `--adapter edge` | the home page, a prerendered page, a dynamic route, `GET` and `POST` on a route handler, the not-found boundary, and a hashed client script from the assets binding. After those requests, the Worker's own log must hold the access line for `/api/health`, with a request id uf generated, filed at `info` |
 | the `rsc-split-app` fixture, built the same way | a server action, called with the id the build minted and a cookie the action reads, and the same call from another origin, refused with 403 |
-| a probe generated from `packages/vite/internal/worker-builtins.js` | every Node built-in that table says a Worker provides only as a stub must still throw at the table's compatibility date |
+| a probe generated from `npm/vite/internal/worker-builtins.js` | every Node built-in that table says a Worker provides only as a stub must still throw at the table's compatibility date |
 
 The log check is there because of a real bug. uf's default sink writes every
 level to `console.error`, because stdout is a protocol in the process that runs

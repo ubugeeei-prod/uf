@@ -203,7 +203,7 @@ fn router_unsupported_segment_leaves_the_segments_uf_serves_alone() {
         "app/_drafts/(.)photo/notes.js",
         // Outside the router root entirely. `@scope` is a directory, not a
         // route, and a rule that reported it would report every workspace.
-        "packages/@uniflowed/router/index.js",
+        "npm/@uniflowed/router/index.js",
     ] {
         let diagnostics = lint_one("router/unsupported-segment", path, "// @flow\n");
 

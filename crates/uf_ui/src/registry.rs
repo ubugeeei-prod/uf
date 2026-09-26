@@ -12,19 +12,19 @@ pub(crate) struct Embedded {
     pub(crate) source: &'static str,
 }
 
-/// Embed `registry/ui/<name>.js` for every name given.
+/// Embed `npm/ui/registry/<name>.js` for every name given.
 ///
 /// A macro because `include_str!` takes a literal path and nothing computed.
 macro_rules! embed {
     ($($name:literal),* $(,)?) => {
         &[$(Embedded {
             name: $name,
-            source: include_str!(concat!("../../../registry/ui/", $name, ".js")),
+            source: include_str!(concat!("../../../npm/ui/registry/", $name, ".js")),
         }),*]
     };
 }
 
-/// Every component in `registry/ui/`, in alphabetical order.
+/// Every component in `npm/ui/registry/`, in alphabetical order.
 ///
 /// Written out, because the build cannot list a directory into `include_str!`.
 /// `tests.rs` holds this list to the directory in both directions, so a
@@ -361,7 +361,7 @@ fn classify(specifier: &str) -> Import<'_> {
 /// Every specifier `source` imports or re-exports from.
 ///
 /// A line scanner rather than a parser, and it can afford to be: every file it
-/// reads is in `registry/ui/`, where `uf fmt --check` holds each import to one
+/// reads is in `npm/ui/registry/`, where `uf fmt --check` holds each import to one
 /// shape — `import … from "…";` on one line, or a list closed by
 /// `} from "…";` — and the suite fails a file this reads differently from the
 /// way it is written.
@@ -407,7 +407,7 @@ pub fn namespace_name(component: &str) -> String {
 /// Every capitalised value a registry source exports, in source order.
 ///
 /// A line reader, for [`imports`]'s reason: `uf fmt --check` holds every file
-/// in `registry/ui/` to one shape per statement, and the suite checks what
+/// in `npm/ui/registry/` to one shape per statement, and the suite checks what
 /// this reads against what each component's example imports.
 pub(crate) fn exported_components(source: &str) -> Vec<&str> {
     let mut found: Vec<&str> = Vec::new();

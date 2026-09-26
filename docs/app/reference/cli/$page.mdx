@@ -41,11 +41,11 @@ scaffolding into `raect/` would be the worse answer.
 ### uf new PATH monorepo
 
 Scaffolds a repository of two workspace packages: `apps/web`, an application
-shaped like the `react` template, and `packages/ui`, a library shaped like
+shaped like the `react` template, and `npm/ui`, a library shaped like
 `--lib`, which the application imports by name. The root holds what a
 repository of several packages needs and one package does not:
 
-- a `package.json` whose `workspaces` field lists `apps/*` and `packages/*` —
+- a `package.json` whose `workspaces` field lists `apps/*` and `npm/*` —
   the field npm, Yarn and Bun read. The application depends on the library as
   `"@NAME/ui": "*"`, which a workspace install links rather than fetches. pnpm
   reads `pnpm-workspace.yaml` and the `workspace:` protocol instead, and needs
@@ -54,7 +54,7 @@ repository of several packages needs and one package does not:
   root read for every package, so formatting and lint levels are written once.
   Each package keeps its own config for its router or its library build.
 - tasks that reach one package with the `#member` selector, by path:
-  `uf build#packages/ui` builds the library and `uf build#apps/web` builds the
+  `uf build#npm/ui` builds the library and `uf build#apps/web` builds the
   application. `uf dev#apps/web` starts its development server. A package is
   also selected by its manifest's name, `@NAME/web`.
   [The task guide](/guide/tasks) explains how to connect these commands with
@@ -1115,14 +1115,14 @@ cache that guessed would fail by reporting a check as passed without looking.
 
 `--force` runs everything whatever the cache holds, and still records what it
 finds. `--why` prints, for every task, the reason it ran or was replayed —
-`packages/core/index.js changed`, `declares no inputs, so it always runs`,
+`npm/core/index.js changed`, `declares no inputs, so it always runs`,
 `dist/app.js is missing`.
 
 **Across a workspace.** `-r` / `--recursive` runs the task in every workspace
 member that defines it, each after the members its `package.json` depends on;
 the workspace root's own task is not one of them. `--filter SELECTOR` runs it
 only in the members the selector picks, implies `-r`, and may be repeated: a
-name, a glob over names and paths, a path (`./packages/ui`), `name...` for a
+name, a glob over names and paths, a path (`./npm/ui`), `name...` for a
 member and everything it depends on, `name^...` for only those, `...name` for a
 member and everything that depends on it, and `...^name` for only those. A
 selector that picks no member is an error. `member#task` in `dependsOn` names a
@@ -1773,7 +1773,7 @@ Adds dependencies: resolves them, installs them, and writes both the manifest
 and the lockfile.
 
 A specifier reaches the manager exactly as written, so `react`, `react@^19`,
-`react@next`, `react@npm:preact` and `./packages/ui` all mean what they mean
+`react@next`, `react@npm:preact` and `./npm/ui` all mean what they mean
 there. It is passed as a single argument and never through a shell, so a range
 with a space in it — `uf add "react@>=18 <20"` — stays one specifier. A
 specifier that starts with `-` is refused before anything runs, because every
@@ -1810,7 +1810,7 @@ members the selector picks instead of this project, and `-w`
 
 ```
 uf add zod --filter @acme/api --filter @acme/web
-uf remove lodash --filter './packages/*'
+uf remove lodash --filter './npm/*'
 uf add --dev vitest -w
 ```
 
@@ -1857,7 +1857,7 @@ published version the declared range does *not* allow:
 
   package     declared  newest  step   manifest
   react       ^18.2.0   19.2.8  major  .
-  react       ^17.0.0   19.2.8  major  packages/ui
+  react       ^17.0.0   19.2.8  major  npm/ui
   vitest      ~1.0.0    5.0.0   major  .
   classnames  2.2.6     2.5.1   minor  .
 
@@ -1976,10 +1976,10 @@ manifest declares — and, underneath, every package whose manifests *dis*agree:
 
   package  manifest      range
   eslint   .             ^9.0.0
-  eslint   packages/ui   ^8.57.0
+  eslint   npm/ui   ^8.57.0
   react    .             ^18.2.0
-  react    packages/api  ^17.0.0
-  react    packages/ui   ^18.2.0
+  react    npm/api  ^17.0.0
+  react    npm/ui   ^18.2.0
 
 ! 2 packages declared at more than one range
 › uf catalog set eslint <range> makes every manifest agree

@@ -877,62 +877,62 @@ mod tests {
         (
             "button",
             include_str!("../../../tests/fixtures/migrations/ui-copies/button.js"),
-            include_str!("../../../../../registry/ui/button.js"),
+            include_str!("../../../../../npm/ui/registry/button.js"),
         ),
         (
             "calendar",
             include_str!("../../../tests/fixtures/migrations/ui-copies/calendar.js"),
-            include_str!("../../../../../registry/ui/calendar.js"),
+            include_str!("../../../../../npm/ui/registry/calendar.js"),
         ),
         (
             "context-menu",
             include_str!("../../../tests/fixtures/migrations/ui-copies/context-menu.js"),
-            include_str!("../../../../../registry/ui/context-menu.js"),
+            include_str!("../../../../../npm/ui/registry/context-menu.js"),
         ),
         (
             "date-picker",
             include_str!("../../../tests/fixtures/migrations/ui-copies/date-picker.js"),
-            include_str!("../../../../../registry/ui/date-picker.js"),
+            include_str!("../../../../../npm/ui/registry/date-picker.js"),
         ),
         (
             "dialog",
             include_str!("../../../tests/fixtures/migrations/ui-copies/dialog.js"),
-            include_str!("../../../../../registry/ui/dialog.js"),
+            include_str!("../../../../../npm/ui/registry/dialog.js"),
         ),
         (
             "field",
             include_str!("../../../tests/fixtures/migrations/ui-copies/field.js"),
-            include_str!("../../../../../registry/ui/field.js"),
+            include_str!("../../../../../npm/ui/registry/field.js"),
         ),
         (
             "menu",
             include_str!("../../../tests/fixtures/migrations/ui-copies/menu.js"),
-            include_str!("../../../../../registry/ui/menu.js"),
+            include_str!("../../../../../npm/ui/registry/menu.js"),
         ),
         (
             "range-calendar",
             include_str!("../../../tests/fixtures/migrations/ui-copies/range-calendar.js"),
-            include_str!("../../../../../registry/ui/range-calendar.js"),
+            include_str!("../../../../../npm/ui/registry/range-calendar.js"),
         ),
         (
             "skeleton",
             include_str!("../../../tests/fixtures/migrations/ui-copies/skeleton.js"),
-            include_str!("../../../../../registry/ui/skeleton.js"),
+            include_str!("../../../../../npm/ui/registry/skeleton.js"),
         ),
         (
             "tabs",
             include_str!("../../../tests/fixtures/migrations/ui-copies/tabs.js"),
-            include_str!("../../../../../registry/ui/tabs.js"),
+            include_str!("../../../../../npm/ui/registry/tabs.js"),
         ),
         (
             "toast",
             include_str!("../../../tests/fixtures/migrations/ui-copies/toast.js"),
-            include_str!("../../../../../registry/ui/toast.js"),
+            include_str!("../../../../../npm/ui/registry/toast.js"),
         ),
         (
             "tooltip",
             include_str!("../../../tests/fixtures/migrations/ui-copies/tooltip.js"),
-            include_str!("../../../../../registry/ui/tooltip.js"),
+            include_str!("../../../../../npm/ui/registry/tooltip.js"),
         ),
     ];
 

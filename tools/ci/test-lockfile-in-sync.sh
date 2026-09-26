@@ -35,15 +35,15 @@ pass() {
 scratch() {
   root="$work/$1"
   rm -rf "$root"
-  mkdir -p "$root/tools/ci" "$root/packages/core" "$root/packages/cli" "$root/docs"
+  mkdir -p "$root/tools/ci" "$root/npm/core" "$root/npm/cli" "$root/docs"
   cp "$script" "$root/tools/ci/lockfile-in-sync.sh"
   cat > "$root/package.json" <<'JSON'
-{ "name": "uf-workspace", "workspaces": ["packages/*", "docs"], "devDependencies": { "biome": "^2.5.0" } }
+{ "name": "uf-workspace", "workspaces": ["npm/*", "docs"], "devDependencies": { "biome": "^2.5.0" } }
 JSON
-  cat > "$root/packages/core/package.json" <<'JSON'
+  cat > "$root/npm/core/package.json" <<'JSON'
 { "name": "@uniflowed/core", "version": "0.1.0", "dependencies": { "react": "^19.0.0" } }
 JSON
-  cat > "$root/packages/cli/package.json" <<'JSON'
+  cat > "$root/npm/cli/package.json" <<'JSON'
 { "name": "@uniflowed/cli", "version": "0.1.0", "dependencies": { "@uniflowed/core": "0.1.0" } }
 JSON
   cat > "$root/docs/package.json" <<'JSON'
@@ -54,12 +54,12 @@ JSON
   "name": "uf-workspace",
   "lockfileVersion": 3,
   "packages": {
-    "": { "name": "uf-workspace", "workspaces": ["packages/*", "docs"], "devDependencies": { "biome": "^2.5.0" } },
+    "": { "name": "uf-workspace", "workspaces": ["npm/*", "docs"], "devDependencies": { "biome": "^2.5.0" } },
     "docs": { "name": "uf-docs", "dependencies": { "@uniflowed/core": "0.1.0" } },
-    "packages/cli": { "name": "@uniflowed/cli", "version": "0.1.0", "dependencies": { "@uniflowed/core": "0.1.0" } },
-    "packages/core": { "name": "@uniflowed/core", "version": "0.1.0", "dependencies": { "react": "^19.0.0" } },
-    "node_modules/@uniflowed/cli": { "resolved": "packages/cli", "link": true },
-    "node_modules/@uniflowed/core": { "resolved": "packages/core", "link": true },
+    "npm/cli": { "name": "@uniflowed/cli", "version": "0.1.0", "dependencies": { "@uniflowed/core": "0.1.0" } },
+    "npm/core": { "name": "@uniflowed/core", "version": "0.1.0", "dependencies": { "react": "^19.0.0" } },
+    "node_modules/@uniflowed/cli": { "resolved": "npm/cli", "link": true },
+    "node_modules/@uniflowed/core": { "resolved": "npm/core", "link": true },
     "node_modules/uf-docs": { "resolved": "docs", "link": true },
     "node_modules/react": { "version": "19.2.8", "resolved": "https://registry.npmjs.org/react/-/react-19.2.8.tgz" }
   }
@@ -125,30 +125,30 @@ refuses "a root dependency the manifest has and the lock does not" "prettier"
 # --- a package that was added and never locked -------------------------------
 # The case that motivated the check: six jobs red over one missing entry.
 scratch added
-mkdir -p "$work/added/packages/story"
-printf '{ "name": "@uniflowed/story", "version": "0.1.0" }\n' > "$work/added/packages/story/package.json"
+mkdir -p "$work/added/npm/story"
+printf '{ "name": "@uniflowed/story", "version": "0.1.0" }\n' > "$work/added/npm/story/package.json"
 run added
-refuses "a package with no entry in the lock" "packages/story"
+refuses "a package with no entry in the lock" "npm/story"
 
 # --- a version bumped in the manifest and not in the lock --------------------
 scratch bumped
-edit "$work/bumped/packages/core/package.json" 'json.version = "0.2.0"'
+edit "$work/bumped/npm/core/package.json" 'json.version = "0.2.0"'
 run bumped
 refuses "a version the lock has not caught up with" "0.2.0"
 
 # --- dependencies that drifted, in both directions ---------------------------
 scratch depadded
-edit "$work/depadded/packages/core/package.json" 'json.dependencies["react-dom"] = "^19.0.0"'
+edit "$work/depadded/npm/core/package.json" 'json.dependencies["react-dom"] = "^19.0.0"'
 run depadded
 refuses "a dependency the manifest has and the lock does not" "react-dom"
 
 scratch depdropped
-edit "$work/depdropped/packages/core/package.json" 'delete json.dependencies.react'
+edit "$work/depdropped/npm/core/package.json" 'delete json.dependencies.react'
 run depdropped
 refuses "a dependency the lock has and the manifest does not" "react"
 
 scratch deprange
-edit "$work/deprange/packages/cli/package.json" 'json.dependencies["@uniflowed/core"] = "0.2.0"'
+edit "$work/deprange/npm/cli/package.json" 'json.dependencies["@uniflowed/core"] = "0.2.0"'
 run deprange
 refuses "a pin the two files disagree about" "@uniflowed/core"
 
@@ -156,7 +156,7 @@ refuses "a pin the two files disagree about" "@uniflowed/core"
 # The lock keeps the old name, and `npm ci` then installs a package under a
 # name nothing imports. The rename in #131 is why this case is here.
 scratch renamed
-edit "$work/renamed/packages/core/package.json" 'json.name = "@uniflowed/koru"'
+edit "$work/renamed/npm/core/package.json" 'json.name = "@uniflowed/koru"'
 run renamed
 # On the name rather than on the new name alone: the missing link fires for a
 # rename too, and an assertion that either message satisfies is an assertion
@@ -165,9 +165,9 @@ refuses "a package the two files call by different names" "the lock calls it @un
 
 # --- a workspace that is gone, and a link that is missing --------------------
 scratch removed
-rm -rf "$work/removed/packages/cli"
+rm -rf "$work/removed/npm/cli"
 run removed
-refuses "an entry for a workspace that no longer exists" "packages/cli"
+refuses "an entry for a workspace that no longer exists" "npm/cli"
 
 scratch unlinked
 edit "$work/unlinked/package-lock.json" 'delete json.packages["node_modules/@uniflowed/core"]'
@@ -175,9 +175,9 @@ run unlinked
 refuses "a package nothing links into node_modules" "node_modules/@uniflowed/core"
 
 scratch mislinked
-edit "$work/mislinked/package-lock.json" 'json.packages["node_modules/@uniflowed/core"].resolved = "packages/koru"'
+edit "$work/mislinked/package-lock.json" 'json.packages["node_modules/@uniflowed/core"].resolved = "npm/koru"'
 run mislinked
-refuses "a link that resolves somewhere else" "packages/koru"
+refuses "a link that resolves somewhere else" "npm/koru"
 
 # --- and the private workspace stays out of it -------------------------------
 # `docs` is private, so npm records no version for it. A check that demanded

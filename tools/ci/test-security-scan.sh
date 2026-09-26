@@ -39,14 +39,14 @@ root="$work/repo"
 scratch() {
   rm -rf "$root"
   mkdir -p "$root/tools/ci" "$root/docs/dist/docs" "$root/scaffold" \
-    "$root/crates/uf_demo/src" "$root/packages/demo" "$root/tests/library"
+    "$root/crates/uf_demo/src" "$root/npm/demo" "$root/tests/library"
   cp "$script" "$root/tools/ci/security-scan.sh"
 
   # Things the model's rows point at.
   printf '[package]\nname = "uf_demo"\n' > "$root/crates/uf_demo/Cargo.toml"
   printf 'pub mod guard;\n' > "$root/crates/uf_demo/src/lib.rs"
   printf 'pub fn refuse() {}\n' > "$root/crates/uf_demo/src/guard.rs"
-  printf '{"name": "@uniflowed/demo"}\n' > "$root/packages/demo/package.json"
+  printf '{"name": "@uniflowed/demo"}\n' > "$root/npm/demo/package.json"
   printf '// a test\n' > "$root/tests/library/demo.test.js"
 
   cat > "$root/docs/security.md" <<'MODEL'

@@ -109,7 +109,7 @@ Everything here is pure Flow over the web platform: `Uint8Array`,
 
 | Host | Status | How that was established |
 | --- | --- | --- |
-| Node.js | **runs** | `packages/std/std.test.js`, over every shipped module |
+| Node.js | **runs** | `npm/std/std.test.js`, over every shipped module |
 | Bun 1.3.13 | **runs** | Eighteen smoke assertions over the first six, by hand, through `@uniflowed/host/bun-preload` |
 | Deno | expected | Not run. Inference from the API surface, below |
 | Edge / workers | expected | Not run. Same |
@@ -265,7 +265,7 @@ forty-four of which had no file, every one of them constructed by a function
 that hardcoded `nativeBinding: true` and `wintertcAligned: true` — so it could
 not describe a shipped pure-JavaScript module without lying about it, and it
 described `@uniflowed/std/net` as WinterTC-aligned while `TcpListener` was in
-its export list. Four tests now hold the statuses to `packages/std`: the
+its export list. Four tests now hold the statuses to `npm/std`: the
 shipping specifiers are exactly the manifest's subpaths, each one's export list
 is exactly what the parser finds in its file, a shipping module never raises
 `NativeRuntimeRequiredError` and the root always does, and nothing claiming

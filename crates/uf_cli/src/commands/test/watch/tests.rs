@@ -217,6 +217,6 @@ fn only_what_could_be_a_source_file_is_worth_a_walk() {
     assert!(!might_be_source("src/.a.js.swp"));
     assert!(!might_be_source("README"));
     assert!(never_watched(".uf/test-timings.json"));
-    assert!(never_watched("packages/ui/node_modules/x.js"));
+    assert!(never_watched("npm/ui/node_modules/x.js"));
     assert!(!never_watched("src/uf.js"));
 }

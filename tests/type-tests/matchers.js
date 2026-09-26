@@ -24,7 +24,7 @@
 // Four of those lines are correct assertions that a stricter `expect` — one
 // carrying the received value's type through its matchers — refuses, which is
 // the one thing ubugeeei-prod/uf#402 asked for that is deliberately not here.
-// `packages/test/internal/expect.js` says why at length; this is where trying
+// `npm/test/internal/expect.js` says why at length; this is where trying
 // it again fails.
 //
 // One thing the issue asked for is missing and not marked: `expect(5).resolves`
@@ -37,11 +37,11 @@
 // relative import that leaves that set resolves to an any-typed value — after
 // which `expect` is `any` again and every line below passes, which is the exact
 // state this file exists to prevent returning to. So the test runs
-// `uf check tests/type-tests packages/test packages/react-testing`, with all of
+// `uf check tests/type-tests npm/test npm/react-testing`, with all of
 // them in one set. `anchoring.js`'s header says why the fixtures live here
 // rather than inside the packages they are about.
 
-import { expect } from "../../packages/test/index.js";
+import { expect } from "../../npm/test/index.js";
 
 declare var list: Array<string>;
 declare var count: number;
@@ -84,7 +84,7 @@ export const classNamesAreStrings: void = expect(list).toHaveClass(1);
 
 // The four whose entry in the *table* takes a `mixed`, which is what let the
 // `any` out of its indexer — see the note on `verdicts` in
-// `packages/test/internal/expect.js`. These say the widening stopped there:
+// `npm/test/internal/expect.js`. These say the widening stopped there:
 // `Matchers` is the published type and it still names the argument, so a table
 // that grew wider did not make `expect` wider.
 // $FlowExpectedError[incompatible-type] string

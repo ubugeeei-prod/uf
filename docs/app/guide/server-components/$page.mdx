@@ -145,7 +145,7 @@ For every module in the project, the analysis answers four questions.
 The last one is the split, and it is two facts joined by an `or`. A
 `"use client"` module is a bundle root by definition. A module *above* a
 boundary is in the browser too, and that second half is uf's client renderer
-talking rather than React's: `packages/router/client.js` hydrates by
+talking rather than React's: `npm/router/client.js` hydrates by
 re-rendering the matched tree from the same modules the server rendered it
 from, so a Server Component above a boundary is a module React needs in order
 to reach the boundary at all.

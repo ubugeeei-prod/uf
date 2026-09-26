@@ -75,7 +75,7 @@ import { expect } from "@uniflowed/test";
  *
  * It is now wrong in a second way, which is why the fix is worth keeping
  * rather than simplifying away. The files that reach this harness are no
- * longer all the same distance from the root: `packages/ui/ui.test.js` and
+ * longer all the same distance from the root: `npm/ui/ui.test.js` and
  * `tests/library/server-actions.test.js` are two apiece, and nothing says the
  * next one will be.
  *
@@ -88,7 +88,7 @@ import { expect } from "@uniflowed/test";
  *
  * The marker is `tests/type-tests` rather than a file belonging to one
  * package, because this module serves every package: a harness that looked for
- * `packages/ui` would be the wrong error for a fixture about forms.
+ * `npm/ui` would be the wrong error for a fixture about forms.
  */
 export const repositoryRoot: string = (() => {
   const wanted = path.join("tests", "type-tests");
@@ -199,7 +199,7 @@ const runEveryTime: Checker = (argv) => {
  *
  * A fixture goes to `uf check` with the whole of `tests/type-tests` and the
  * packages it imports, so every fixture of one package is the same command:
- * `packages/ui/types.test.js` asked `uf check tests/type-tests packages/ui`
+ * `npm/ui/types.test.js` asked `uf check tests/type-tests npm/ui`
  * three times, and `assertion-types.test.js` asked its own command twice. The
  * command's answer does not depend on which fixture is about to be read out
  * of it, and each run cost as much as the last — about two seconds of CPU

@@ -393,7 +393,7 @@ fn a_file_git_is_told_to_ignore_is_not_the_projects_source() {
 /// `.gitignore` says what the project's source *is*. It does not say what a
 /// person may ask about, and those are different questions.
 ///
-/// `packages/test/module-mock.test.js` is the case that found this: it writes a
+/// `npm/test/module-mock.test.js` is the case that found this: it writes a
 /// fixture into a gitignored directory — deliberately, so a killed run leaves
 /// nothing behind — and then asks `uf check` about it by name. Applying the
 /// ignore answered "no diagnostics" for a file that has one, which is silence
@@ -597,10 +597,10 @@ fn a_build_directory_is_ignored_wherever_it_sits() {
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("docs/app")).unwrap();
     fs::create_dir_all(root.join("docs/dist/assets")).unwrap();
-    fs::create_dir_all(root.join("packages/ui/node_modules")).unwrap();
+    fs::create_dir_all(root.join("npm/ui/node_modules")).unwrap();
     fs::write(root.join("docs/app/index.js"), "// @flow\n").unwrap();
     fs::write(root.join("docs/dist/assets/app.js"), "// built\n").unwrap();
-    fs::write(root.join("packages/ui/node_modules/dep.js"), "// vendor\n").unwrap();
+    fs::write(root.join("npm/ui/node_modules/dep.js"), "// vendor\n").unwrap();
 
     let files = scan_source_files(&root, &UniflowedConfig::default())
         .unwrap()
@@ -720,7 +720,7 @@ fn scaffolded_tasks_name_real_commands() {
 /// scaffold that imported ten packages which did not exist.
 ///
 /// `tools/release/published-packages.txt` is the list of names a release
-/// publishes, and it is deliberately shorter than `packages/`: most of those
+/// publishes, and it is deliberately shorter than `npm/`: most of those
 /// are declarations whose functions throw. A package earns its way onto that
 /// list by being implemented, and only then may a template depend on it.
 #[test]
@@ -844,7 +844,7 @@ fn a_large_project_is_walked_once_and_within_a_bound() {
             for source in 0..SOURCES {
                 write(
                     &root,
-                    &format!("packages/p{package}/src/d{directory}/f{source}.js"),
+                    &format!("npm/p{package}/src/d{directory}/f{source}.js"),
                     "// @flow\nexport const a: number = 1;\n",
                 );
             }
@@ -852,12 +852,12 @@ fn a_large_project_is_walked_once_and_within_a_bound() {
         for file in 0..IGNORED_PER_PACKAGE / 2 {
             write(
                 &root,
-                &format!("packages/p{package}/node_modules/dep/lib/v{file}.js"),
+                &format!("npm/p{package}/node_modules/dep/lib/v{file}.js"),
                 "// vendored\n",
             );
             write(
                 &root,
-                &format!("packages/p{package}/dist/assets/b{file}.js"),
+                &format!("npm/p{package}/dist/assets/b{file}.js"),
                 "// built\n",
             );
         }
@@ -894,29 +894,29 @@ fn a_large_project_is_walked_once_and_within_a_bound() {
 #[test]
 fn an_ignored_directory_is_ignored_at_every_depth() {
     let (_dir, root) = project_root();
-    write(&root, "packages/ui/src/button.js", "// @flow\n");
+    write(&root, "npm/ui/src/button.js", "// @flow\n");
     write(
         &root,
-        "packages/ui/node_modules/dep/index.js",
+        "npm/ui/node_modules/dep/index.js",
         "// vendored\n",
     );
     write(
         &root,
-        "packages/ui/node_modules/dep/node_modules/deeper/index.js",
+        "npm/ui/node_modules/dep/node_modules/deeper/index.js",
         "// vendored twice\n",
     );
-    write(&root, "packages/ui/dist/button.js", "// built\n");
-    write(&root, "packages/ui/target/debug/build.js", "// cargo's\n");
+    write(&root, "npm/ui/dist/button.js", "// built\n");
+    write(&root, "npm/ui/target/debug/build.js", "// cargo's\n");
     write(
         &root,
-        "packages/ui/.uf/cache/transform/a.js",
+        "npm/ui/.uf/cache/transform/a.js",
         "// uf's own\n",
     );
     write(&root, ".git/hooks/pre-commit.js", "// git's own\n");
 
     let scan = scan_source_files(&root, &UniflowedConfig::default()).expect("a walk");
 
-    assert_eq!(paths(&scan), ["packages/ui/src/button.js"]);
+    assert_eq!(paths(&scan), ["npm/ui/src/button.js"]);
 }
 
 /// `.uf` is uf's own working directory, and a project cannot opt back into it.

@@ -13,7 +13,7 @@ A PR also runs the release-only suites it can break (#1434), chosen by
   `Cargo.toml`, `Cargo.lock` or `rust-toolchain.toml` runs every crate's.
   `uf_cli`'s `vite.rs`, six minutes on its own, runs only when the deploy
   matrix's scope does.
-- `deno`: a PR touching `packages/`, `tests/library/`, `tools/ci/deno-library*`,
+- `deno`: a PR touching `npm/`, `tests/library/`, `tools/ci/deno-library*`,
   any crate, or the lockfiles runs `Library (Deno 2.9.7)` for real.
 
 - CI builds `uf` once. `UF_CI_PREBUILT=1` makes dependent tasks require that

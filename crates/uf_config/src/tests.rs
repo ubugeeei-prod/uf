@@ -352,7 +352,7 @@ fn evaluated_config_projection_uses_the_same_validation() {
 /// from there `createFetchHandler`'s `cache` option. Before ubugeeei-prod/uf#277
 /// they reached `dist/uf-build-manifest.json` and nothing else, which is
 /// indistinguishable from this assertion passing over a switch nobody reads —
-/// so the assertion that matters is in `packages/server/cache.test.js`, and this
+/// so the assertion that matters is in `npm/server/cache.test.js`, and this
 /// one only says the value survives the parse.
 #[test]
 fn reads_the_two_cache_switches_that_are_implemented() {
@@ -1250,7 +1250,7 @@ fn an_axe_rule_set_travels_as_the_json_the_matcher_reads() {
     assert_eq!(read["tags"][0], "wcag2aa");
     assert_eq!(read["disabledRules"][0], "color-contrast");
     // kebab-case, because that is what axe calls its own impacts and the JSON
-    // is read by `packages/test/internal/axe.js` rather than by Rust.
+    // is read by `npm/test/internal/axe.js` rather than by Rust.
     assert_eq!(read["minImpact"], "serious");
 }
 
@@ -1358,7 +1358,7 @@ fn an_empty_ignore_list_is_not_the_same_as_no_ignore_list() {
 /// `HighlightConfig` was declared, exported, and documented in the
 /// configuration reference — and was a field of no struct. Nothing
 /// deserialized those three keys and nothing read them, so a project that set
-/// a theme got no error and no effect. `packages/vite` had been reading
+/// a theme got no error and no effect. `npm/vite` had been reading
 /// `mdxConfig.highlight` the whole time and getting `undefined`. See
 /// ubugeeei-prod/uf#646.
 #[test]

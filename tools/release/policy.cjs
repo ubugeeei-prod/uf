@@ -123,7 +123,7 @@ function git(...args /*: Array<string> */) /*: string */ {
 const IO /*: IO */ = { api, git };
 function requestAt(ref /*: string */, io /*: IO */ = IO) /*: ReleaseRequest */ {
   const request /*: ReleaseRequest */ = JSON.parse(io.git("show", `${ref}:.github/release.json`));
-  const version = JSON.parse(io.git("show", `${ref}:packages/core/package.json`)).version;
+  const version = JSON.parse(io.git("show", `${ref}:npm/core/package.json`)).version;
   assertRequest(request, version);
   return request;
 }
@@ -145,8 +145,8 @@ function releasePR(
   return pr;
 }
 function checkCandidate(base /*: string */, paths /*: Array<string> */) /*: boolean */ {
-  const previous = JSON.parse(git("show", `${base}:packages/core/package.json`)).version;
-  const current = JSON.parse(fs.readFileSync("packages/core/package.json", "utf8")).version;
+  const previous = JSON.parse(git("show", `${base}:npm/core/package.json`)).version;
+  const current = JSON.parse(fs.readFileSync("npm/core/package.json", "utf8")).version;
   const requested = paths.includes(".github/release.json");
   if (previous === current && !requested) return false;
   if (!requested || previous === current)

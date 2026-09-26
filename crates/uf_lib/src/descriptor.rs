@@ -78,8 +78,7 @@ fn segment_for(specifier: &str, kind: NativeModuleKind) -> NativeModuleSegment {
         | "@uniflowed/lib"
         | "@uniflowed/runtime"
         | "@uniflowed/std" => NativeModuleSegment::Core,
-        "@uniflowed/browser"
-        | "@uniflowed/cli"
+        "@uniflowed/cli"
         | "@uniflowed/lint"
         | "@uniflowed/mock"
         | "@uniflowed/pm"
@@ -89,7 +88,6 @@ fn segment_for(specifier: &str, kind: NativeModuleKind) -> NativeModuleSegment {
         | "@uniflowed/rm"
         | "@uniflowed/story"
         | "@uniflowed/test"
-        | "@uniflowed/testing"
         | "@uniflowed/vite"
         | "@uniflowed/vrt" => NativeModuleSegment::Toolchain,
         _ => match kind {
@@ -143,7 +141,7 @@ pub enum UiRuntime {
 /// Three members rather than two, because the check in
 /// `the_ui_table_names_exactly_what_the_package_ships` has to tell an entry
 /// nobody has written yet from one nobody is going to. Both are absent from
-/// `packages/ui`; only one of them is a gap. Keeping that in a comment — which
+/// `npm/ui`; only one of them is a gap. Keeping that in a comment — which
 /// is where `Command` and `DataTable` kept it — means the check cannot read it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -176,7 +174,7 @@ pub struct UiComponent {
     /// nobody had drawn and the ones the preset has no function for. A list of
     /// names is a claim a reader can follow and a test can check —
     /// `the_preset_styles_a_component_names_are_exports_of_the_preset` holds
-    /// every name here to `packages/stylex/preset.js` and every export there to
+    /// every name here to `npm/stylex/preset.js` and every export there to
     /// this table, in both directions.
     ///
     /// Claimed conservatively: an entry names a function only where the

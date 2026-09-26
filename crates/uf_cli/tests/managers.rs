@@ -424,9 +424,9 @@ __metadata:
   version: 10
   cacheKey: 10c0
 
-"middle@file:packages/middle::locator=probe%40workspace%3A.":
+"middle@file:npm/middle::locator=probe%40workspace%3A.":
   version: 1.0.0
-  resolution: "middle@file:packages/middle#packages/middle::hash=ada2b9&locator=probe%40workspace%3A."
+  resolution: "middle@file:npm/middle#npm/middle::hash=ada2b9&locator=probe%40workspace%3A."
   dependencies:
     ms: "npm:^2.0.0"
   checksum: 10c0/10b7405db67122e4d85e161aa69b87efe3b6dfdd5776946c0dc526c961a65f29aa502b100c6f463b260312d11b364f6faab41d595b47570628404bc5bb11fe6a
@@ -451,7 +451,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "probe@workspace:."
   dependencies:
-    middle: "file:packages/middle"
+    middle: "file:npm/middle"
     ms: "npm:2.1.2"
   languageName: unknown
   linkType: soft
@@ -821,15 +821,15 @@ fn write_dedupe_duplicate(fixture: &Fixture) -> bool {
                 format!(
                     "{{\n  \"name\": \"probe\",\n  \"version\": \"1.0.0\",\n  \
                      \"packageManager\": \"{}\",\n  \"dependencies\": {{\n    \
-                     \"middle\": \"file:packages/middle\",\n    \
+                     \"middle\": \"file:npm/middle\",\n    \
                      \"ms\": \"2.1.2\"\n  }}\n}}\n",
                     fixture.manager.pin()
                 ),
             )
             .unwrap();
-            fs::create_dir_all(app.join("packages/middle")).unwrap();
+            fs::create_dir_all(app.join("npm/middle")).unwrap();
             fs::write(
-                app.join("packages/middle/package.json"),
+                app.join("npm/middle/package.json"),
                 "{\"name\":\"middle\",\"version\":\"1.0.0\",\"dependencies\":{\"ms\":\"^2.0.0\"}}\n",
             )
             .unwrap();

@@ -119,9 +119,9 @@ Because they answer with a plain `className`, they style
 exists — `<Switch {...controlStyles({ shape: "track" })} />` keeps every one of
 its ARIA attributes and its keyboard behaviour. Two files assert that rather
 than assuming it, and they are not the same file:
-`packages/stylex/stylex.test.js` renders the *styled* switch and holds the preset
+`npm/stylex/stylex.test.js` renders the *styled* switch and holds the preset
 against it — the classes land on the control, and it still reports
-`aria-checked` — while the keys are `packages/ui/ui.test.js`'s, in *"toggles a
+`aria-checked` — while the keys are `npm/ui/ui.test.js`'s, in *"toggles a
 switch on Space and on Enter"*, over a switch with no classes at all. Which is
 the arrangement the claim needs: a `className` cannot reach a key handler, so
 the styled test proves the styling arrives and the unstyled one proves there was
@@ -211,7 +211,7 @@ section said so.
 
 The rest is tested where it lives: the compiler (`crates/uf_stylex`, including
 the contrast suite above), the runtime merge in `props`
-(`packages/stylex/stylex.test.js`), and the preset applied to a headless
+(`npm/stylex/stylex.test.js`), and the preset applied to a headless
 component.
 
 ### Not there, and saying so

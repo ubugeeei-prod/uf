@@ -458,7 +458,7 @@ fn type_check(
             report.diagnostics.retain(|diagnostic| {
                 // A dependency was checked so that the files asked about could
                 // be typed against it, not so that its own errors could be
-                // reported. `uf check packages/form/watch.js` must not fail on
+                // reported. `uf check npm/form/watch.js` must not fail on
                 // a file the author did not name — and in a project that has
                 // errors elsewhere, one that did would be unusable.
                 diagnostic.kind != uf_check::DiagnosticKind::Parse

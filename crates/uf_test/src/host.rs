@@ -245,7 +245,7 @@ impl HostCommand {
             // *page* imports is transformed by the same `uf transform` through
             // a different door — the driver's module server — because a page
             // has no loader hook to install one in. Same compiler, same cache,
-            // two ways in; see `packages/test/internal/browser/serve.js`.
+            // two ways in; see `npm/test/internal/browser/serve.js`.
             HostKind::Node | HostKind::Browser => vec![
                 String::from("--enable-source-maps"),
                 String::from("--import"),
@@ -984,7 +984,7 @@ impl Worker {
             // and by nothing else, so a module compiled for a build can never
             // acquire an in-source block and a module compiled for a test run
             // can never lose one. The loader keys its cache on it too; see
-            // `packages/host/internal/node-hooks.js`.
+            // `npm/host/internal/node-hooks.js`.
             .env("UF_IN_SOURCE_TESTS", "1")
             .env(KEEP_WORKERS, if command.keeps_workers() { "1" } else { "" })
             .stdin(Stdio::piped())
@@ -1002,7 +1002,7 @@ impl Worker {
         // It also takes the workers out of the terminal's foreground group,
         // which is what a job-control signal — a Ctrl-C — is delivered to.
         // Nothing is lost: uf's own stdin is the pipe each worker reads, so a
-        // uf that dies for any reason closes it, and `packages/test/worker.js`
+        // uf that dies for any reason closes it, and `npm/test/worker.js`
         // exits on that end of input.
         #[cfg(unix)]
         {
@@ -1010,7 +1010,7 @@ impl Worker {
             process.process_group(0);
         }
         // A Node worker maps its stacks when one is read rather than when each
-        // module is compiled; see `packages/host/internal/lazy-source-maps.js`.
+        // module is compiled; see `npm/host/internal/lazy-source-maps.js`.
         // Asked for rather than assumed, and the worker keeps
         // `--enable-source-maps` either way, so an `@uniflowed/host` that does
         // not know the variable maps every module the way it always did. Not
@@ -1398,7 +1398,7 @@ impl Worker {
     /// Let the worker exit on its own, then stop it.
     ///
     /// Closing stdin is the worker's signal that there is no more work
-    /// (`packages/test/worker.js`'s `serve`), and it answers by draining its
+    /// (`npm/test/worker.js`'s `serve`), and it answers by draining its
     /// queue and calling `process.exit(0)`. That exit is the only moment a
     /// coverage document is written: `NODE_V8_COVERAGE` is flushed from an exit
     /// handler, and a process that is killed runs none. So a run that collects

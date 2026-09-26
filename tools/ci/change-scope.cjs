@@ -28,12 +28,12 @@ function needsFullSuite(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
 // out (#1434). Kept narrow on purpose: it starts a browser and builds an app,
 // and most code changes cannot reach either.
 const RSC_LANE = [
-  "packages/router/",
-  "packages/server/",
-  "packages/vite/",
-  "packages/test/",
-  "packages/react-testing/",
-  "packages/host/",
+  "npm/router/",
+  "npm/server/",
+  "npm/vite/",
+  "npm/test/",
+  "npm/react-testing/",
+  "npm/host/",
   "crates/uf_rsc/",
   "crates/uf_cli/tests/fixtures/rsc-test-app/",
   "crates/uf_cli/tests/fixtures/mcp-dev-app/",
@@ -57,10 +57,10 @@ function needsRscSuite(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
 // touching none of these skips the emulators; the release queue runs them
 // whatever changed.
 const deploymentPaths = [
-  "packages/server/",
-  "packages/router/",
-  "packages/vite/",
-  "packages/react/",
+  "npm/server/",
+  "npm/router/",
+  "npm/vite/",
+  "npm/react/",
   "crates/uf_cli/src/commands/deploy",
   "crates/uf_cli/src/commands/build",
   "crates/uf_router/",
@@ -128,7 +128,7 @@ function rustIntegrationScope(
 // Every crate is in it because the binary is built from all of them. The lane
 // itself takes well under a minute.
 const DENO_LANE = [
-  "packages/",
+  "npm/",
   "tests/library/",
   "tools/ci/deno-library",
   "crates/",
@@ -185,7 +185,7 @@ if (require.main === module) {
     );
   }
   const version = release
-    ? JSON.parse(require("node:fs").readFileSync("packages/core/package.json", "utf8")).version
+    ? JSON.parse(require("node:fs").readFileSync("npm/core/package.json", "utf8")).version
     : "";
   // Written only on CI, where Actions names the file; a local run has nowhere to
   // write the answer and says so rather than passing `undefined` to `fs`.

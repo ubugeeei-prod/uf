@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@uniflowed/test";
-import { contextFor, runWithContext } from "../../packages/server/internal/context.js";
+import { contextFor, runWithContext } from "../../npm/server/internal/context.js";
 import {
   database,
   closeDatabase,

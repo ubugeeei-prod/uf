@@ -1,0 +1,25 @@
+{
+  "name": "@uniflowed/markdown",
+  "version": "0.9.0",
+  "private": true,
+  "description": "Flow declarations for @uniflowed/markdown, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/markdown"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.9.0",
+    "@uniflowed/react": "0.9.0"
+  }
+}

@@ -19,7 +19,7 @@
 // goes. Both are marked here so that the loss is a thing somebody decided
 // rather than a thing somebody discovers.
 
-import { fireEvent } from "../../packages/react-testing/index.js";
+import { fireEvent } from "../../npm/react-testing/index.js";
 
 const button: HTMLElement = document.createElement("button");
 

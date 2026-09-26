@@ -57,7 +57,7 @@
 //! Everything above restates what is already written somewhere. Two lines do
 //! not: the ones that hold every action's arguments and result against
 //! [`ActionValue`], which is what a server action's arguments are allowed to
-//! be (`packages/router/internal/action-wire.js`).
+//! be (`npm/router/internal/action-wire.js`).
 //!
 //! ```js
 //! export type ServerActionArgsFitTheWire =
@@ -72,7 +72,7 @@
 //! an empty object. These two lines are the endpoint's argument boundary,
 //! stated once at build time over every action the project has.
 //!
-//! [`ActionValue`]: https://github.com/ubugeeei-prod/uf/blob/main/packages/router/internal/action-wire.js
+//! [`ActionValue`]: https://github.com/ubugeeei-prod/uf/blob/main/npm/router/internal/action-wire.js
 
 use std::fs;
 
@@ -183,7 +183,7 @@ pub fn generate_server_action_types(registry: &ServerActionRegistry) -> String {
         output.push('\n');
         // The bare specifier first, then the project's own modules: the order
         // `uf fmt` leaves an import block in, and the order every hand-written
-        // module in `packages/` is already written in.
+        // module in `npm/` is already written in.
         uf_infra::append!(
             output,
             "import type {{ ActionArguments, ActionResult }} from \"{ACTION_TYPES_MODULE}\";\n"

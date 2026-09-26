@@ -6,7 +6,7 @@
  * `react-native` is an optional peer of `@uniflowed/stylex`,
  * `@uniflowed/react-native` and `@uniflowed/router`, installed by the native
  * example and not at this repository's root. So at the root `uf check` saw it
- * as untyped, and `packages/stylex/native.js`'s `import type { ViewStyle }`
+ * as untyped, and `npm/stylex/native.js`'s `import type { ViewStyle }`
  * was "an any-typed value used as a type" — the error Flow gives a type
  * imported from an untyped module.
  *

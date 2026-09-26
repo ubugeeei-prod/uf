@@ -1,0 +1,21 @@
+{
+  "name": "@uniflowed/cell",
+  "version": "0.9.0",
+  "description": "Fine-grained reactivity: state, derived values, effects and resources, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/cell"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "internal",
+    "!*.test.js"
+  ]
+}

@@ -50,7 +50,7 @@ import type { NodeResponse } from "@uniflowed/server/node";
 
 // Not a package export: the generated server module's text is `@uniflowed/vite`'s
 // own, and `serve.test.js` reaches into that package the same way.
-import { serverModuleSource } from "../../packages/vite/internal/routes.js";
+import { serverModuleSource } from "../../npm/vite/internal/routes.js";
 
 const get = (url: string, init?: RequestOptions) => new Request(`http://localhost${url}`, init);
 

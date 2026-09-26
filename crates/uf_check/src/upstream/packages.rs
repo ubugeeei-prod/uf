@@ -1,6 +1,6 @@
 //! Turning a package's published name into a file in the same batch.
 //!
-//! A uf repository is a workspace: `packages/cell` publishes as
+//! A uf repository is a workspace: `npm/cell` publishes as
 //! `@uniflowed/cell`, `uf install` links it into `node_modules/@uniflowed/`,
 //! and every file that uses it — the documentation site, the library test
 //! suite, another package — imports it by that published name rather than by
@@ -28,8 +28,8 @@
 //! which is Node's own order.
 //!
 //! The wrong answer, tried first, was to map the last segment of the name onto
-//! `packages/<segment>/index.js`. It resolves `@uniflowed/cell` and lies about
-//! everything else: `@uniflowed/core/native` is `packages/core/internal/
+//! `npm/<segment>/index.js`. It resolves `@uniflowed/cell` and lies about
+//! everything else: `@uniflowed/core/native` is `npm/core/internal/
 //! native-runtime.js`, `@uniflowed/host` publishes no `.` export at all, and a
 //! package that moved a file would silently take its consumers' types with it.
 //! Guessing at paths is what the manifest exists to make unnecessary.
@@ -51,9 +51,9 @@
 //! ubugeeei-prod/uf#486.
 //!
 //! A manifest that is *not* under a `node_modules` directory is the project's
-//! own — a workspace package such as `packages/cell` — and is visible from
+//! own — a workspace package such as `npm/cell` — and is visible from
 //! everywhere, which is what a monorepo means and what no climb would find,
-//! since `packages/cell` is not on any importer's path. The climb comes first
+//! since `npm/cell` is not on any importer's path. The climb comes first
 //! so that a package inside `node_modules` still gets its own nested copy.
 
 use std::collections::HashMap;
@@ -164,8 +164,8 @@ struct Package {
     ///
     /// Kept rather than the directory because every target inside a manifest is
     /// relative to the manifest, so this is what [`resolve::join`] wants —
-    /// `./index.js` against `packages/cell/package.json` is
-    /// `packages/cell/index.js`, with the same normalisation a relative import
+    /// `./index.js` against `npm/cell/package.json` is
+    /// `npm/cell/index.js`, with the same normalisation a relative import
     /// gets.
     manifest_path: CompactString,
     manifest: Manifest,
@@ -391,8 +391,8 @@ impl WorkspacePackages {
     /// one.
     ///
     /// A caller assembling a batch needs this and not just the file: a check
-    /// that is handed `packages/cell/index.js` but not
-    /// `packages/cell/package.json` cannot resolve `@uniflowed/cell` at all,
+    /// that is handed `npm/cell/index.js` but not
+    /// `npm/cell/package.json` cannot resolve `@uniflowed/cell` at all,
     /// because the manifest is where the name comes from. So whatever pulls a
     /// package's file into a batch has to pull the manifest that named it in
     /// alongside. See [`super::closure`].
@@ -787,31 +787,31 @@ mod tests {
 
     #[test]
     fn a_package_root_resolves_through_its_exports_map() {
-        let packages = packages(&[Source::new("packages/cell/package.json", CELL)]);
+        let packages = packages(&[Source::new("npm/cell/package.json", CELL)]);
 
         assert_eq!(
             exact(&packages, "@uniflowed/cell"),
-            "packages/cell/index.js"
+            "npm/cell/index.js"
         );
     }
 
     #[test]
     fn a_subpath_resolves_to_the_file_the_map_names_rather_than_to_the_subpath() {
-        let packages = packages(&[Source::new("packages/core/package.json", CORE)]);
+        let packages = packages(&[Source::new("npm/core/package.json", CORE)]);
 
         // The whole reason to read the map: `./native` is not a file, and
-        // `packages/core/native.js` does not exist.
+        // `npm/core/native.js` does not exist.
         assert_eq!(
             exact(&packages, "@uniflowed/core/native"),
-            "packages/core/internal/native-runtime.js"
+            "npm/core/internal/native-runtime.js"
         );
     }
 
     #[test]
     fn a_subpath_an_exports_map_does_not_list_resolves_to_nothing() {
-        let packages = packages(&[Source::new("packages/core/package.json", CORE)]);
+        let packages = packages(&[Source::new("npm/core/package.json", CORE)]);
 
-        // `packages/core/internal/native-runtime.js` is in the repository and
+        // `npm/core/internal/native-runtime.js` is in the repository and
         // is deliberately not published under that path. A checker that
         // reached past the map for it would type an import the runtime would
         // refuse to load.
@@ -826,21 +826,21 @@ mod tests {
     fn a_package_with_no_dot_export_does_not_resolve_at_its_root() {
         // `@uniflowed/host` is this shape: subpaths only, no package root.
         let packages = packages(&[Source::new(
-            "packages/host/package.json",
+            "npm/host/package.json",
             r#"{ "name": "@uniflowed/host", "exports": { "./transform": "./transform.js" } }"#,
         )]);
 
         assert!(packages.resolve("app.js", "@uniflowed/host").is_none());
         assert_eq!(
             exact(&packages, "@uniflowed/host/transform"),
-            "packages/host/transform.js"
+            "npm/host/transform.js"
         );
     }
 
     #[test]
     fn host_only_exports_are_classified_without_resolving_the_checker_graph() {
         let packages = packages(&[Source::new(
-            "packages/hosted/package.json",
+            "npm/hosted/package.json",
             r#"{
               "name": "hosted",
               "exports": { ".": { "bun": "./bun.js", "node": "./node.js" } }
@@ -856,14 +856,14 @@ mod tests {
     #[test]
     fn an_exports_condition_picks_the_module_an_import_would_load() {
         let packages = packages(&[Source::new(
-            "packages/dual/package.json",
+            "npm/dual/package.json",
             r#"{
               "name": "dual",
               "exports": { ".": { "require": "./cjs.js", "import": "./esm.js" } }
             }"#,
         )]);
 
-        assert_eq!(exact(&packages, "dual"), "packages/dual/esm.js");
+        assert_eq!(exact(&packages, "dual"), "npm/dual/esm.js");
     }
 
     #[test]
@@ -906,13 +906,13 @@ mod tests {
     #[test]
     fn a_wildcard_subpath_expands() {
         let packages = packages(&[Source::new(
-            "packages/glob/package.json",
+            "npm/glob/package.json",
             r#"{ "name": "glob", "exports": { "./*": "./src/*.js" } }"#,
         )]);
 
         assert_eq!(
             exact(&packages, "glob/deep/thing"),
-            "packages/glob/src/deep/thing.js"
+            "npm/glob/src/deep/thing.js"
         );
     }
 
@@ -974,10 +974,10 @@ mod tests {
     fn a_package_imports_map_resolves_a_hash_specifier_from_its_scope() {
         let packages = packages(&[Source::new(
             "package.json",
-            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+            r##"{ "imports": { "#cell": "./npm/cell/index.js" } }"##,
         )]);
 
-        assert_eq!(exact(&packages, "#cell"), "packages/cell/index.js");
+        assert_eq!(exact(&packages, "#cell"), "npm/cell/index.js");
     }
 
     #[test]
@@ -1048,10 +1048,10 @@ mod tests {
     fn a_package_imports_map_above_the_batch_root_is_visible() {
         let packages = packages(&[Source::new(
             "../package.json",
-            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+            r##"{ "imports": { "#cell": "./npm/cell/index.js" } }"##,
         )]);
 
-        assert_eq!(exact(&packages, "#cell"), "../packages/cell/index.js");
+        assert_eq!(exact(&packages, "#cell"), "../npm/cell/index.js");
     }
 
     #[test]
@@ -1117,21 +1117,21 @@ mod tests {
                 r##"{ "imports": { "#mode": "./root.js" } }"##,
             ),
             Source::new(
-                "packages/app/package.json",
+                "npm/app/package.json",
                 r##"{ "name": "app", "imports": { "#mode": "./local.js" } }"##,
             ),
         ]);
 
         assert_eq!(
-            exact_from(&packages, "packages/app/index.js", "#mode"),
-            "packages/app/local.js"
+            exact_from(&packages, "npm/app/index.js", "#mode"),
+            "npm/app/local.js"
         );
         assert_eq!(exact_from(&packages, "other.js", "#mode"), "root.js");
     }
 
     #[test]
     fn a_name_no_manifest_in_the_batch_publishes_resolves_to_nothing() {
-        let packages = packages(&[Source::new("packages/cell/package.json", CELL)]);
+        let packages = packages(&[Source::new("npm/cell/package.json", CELL)]);
 
         assert!(packages.resolve("app.js", "react").is_none());
         assert!(packages.resolve("app.js", "@uniflowed/state").is_none());
@@ -1141,21 +1141,21 @@ mod tests {
     #[test]
     fn a_manifest_that_is_not_json_is_skipped_rather_than_failing_the_batch() {
         let packages = packages(&[
-            Source::new("packages/broken/package.json", r#"{ "name": "broken", "#),
-            Source::new("packages/cell/package.json", CELL),
+            Source::new("npm/broken/package.json", r#"{ "name": "broken", "#),
+            Source::new("npm/cell/package.json", CELL),
         ]);
 
         assert!(packages.resolve("app.js", "broken").is_none());
         assert_eq!(
             exact(&packages, "@uniflowed/cell"),
-            "packages/cell/index.js"
+            "npm/cell/index.js"
         );
     }
 
     #[test]
     fn the_first_manifest_wins_a_duplicated_name() {
         let packages = packages(&[
-            Source::new("packages/cell/package.json", CELL),
+            Source::new("npm/cell/package.json", CELL),
             Source::new(
                 "vendor/cell/package.json",
                 r#"{ "name": "@uniflowed/cell", "exports": { ".": "./other.js" } }"#,
@@ -1164,7 +1164,7 @@ mod tests {
 
         assert_eq!(
             exact(&packages, "@uniflowed/cell"),
-            "packages/cell/index.js"
+            "npm/cell/index.js"
         );
     }
 
@@ -1267,7 +1267,7 @@ mod tests {
 
     #[test]
     fn a_workspace_package_is_visible_from_everywhere() {
-        // `packages/cell` is on no importer's `node_modules` path, so a climb
+        // `npm/cell` is on no importer's `node_modules` path, so a climb
         // alone would never find it — and it is the package this repository's
         // own files import by name.
         //
@@ -1275,15 +1275,15 @@ mod tests {
         // repository's suite lives now: a co-located test says `@uniflowed/cell`
         // rather than `./index.js`, because the specifier is part of what it is
         // testing. The second is a stranger, and is the "from everywhere" half.
-        let packages = packages(&[Source::new("packages/cell/package.json", CELL)]);
+        let packages = packages(&[Source::new("npm/cell/package.json", CELL)]);
 
         assert_eq!(
-            exact_from(&packages, "packages/cell/cell.test.js", "@uniflowed/cell"),
-            "packages/cell/index.js"
+            exact_from(&packages, "npm/cell/cell.test.js", "@uniflowed/cell"),
+            "npm/cell/index.js"
         );
         assert_eq!(
             exact_from(&packages, "node_modules/foo/index.js", "@uniflowed/cell"),
-            "packages/cell/index.js"
+            "npm/cell/index.js"
         );
     }
 
@@ -1316,7 +1316,7 @@ mod tests {
             Some(("node_modules/foo", "bar"))
         );
         // Not under a `node_modules` at all: the project's own.
-        assert_eq!(installed_at("packages/cell/package.json"), None);
+        assert_eq!(installed_at("npm/cell/package.json"), None);
         // A directory whose name merely ends in the same characters.
         assert_eq!(installed_at("vendor/mynode_modules/x/package.json"), None);
         // Too many segments to be a package name.
@@ -1352,10 +1352,10 @@ mod tests {
     #[test]
     fn only_a_package_manifest_is_read_as_one() {
         assert!(is_manifest("package.json"));
-        assert!(is_manifest("packages/cell/package.json"));
-        assert!(!is_manifest("packages/cell/index.js"));
+        assert!(is_manifest("npm/cell/package.json"));
+        assert!(!is_manifest("npm/cell/index.js"));
         // A file whose name merely ends in the manifest's is not one.
-        assert!(!is_manifest("packages/cell/not-package.json"));
+        assert!(!is_manifest("npm/cell/not-package.json"));
     }
 
     /// A package hoisted **above** the batch root answers, and one inside it

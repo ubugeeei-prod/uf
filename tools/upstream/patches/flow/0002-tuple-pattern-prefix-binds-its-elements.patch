@@ -17,7 +17,7 @@ same pattern with no spread came out right:
 That does not fail, it answers wrongly, which is what makes it worth a patch:
 the recursion it blocks -- `T extends [infer H, ...infer R] ? ... : NoForm<R>`
 -- returns `true` for `[string, FormData]`, so anything built on it is silently
-inverted rather than rejected. `packages/router/action.js` says why
+inverted rather than rejected. `npm/router/action.js` says why
 `ActionArguments` cannot hold a call to at most one form because of it.
 
 A pattern with a spread in it is not built as a tuple type at all.

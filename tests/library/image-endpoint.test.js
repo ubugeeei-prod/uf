@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "@uniflowed/test";
 import { DEFAULT_QUALITY, DEFAULT_WIDTHS } from "@uniflowed/server/image";
 
-import { IMAGE_ENDPOINT } from "../../packages/web/internal/image-endpoint.js";
+import { IMAGE_ENDPOINT } from "../../npm/web/internal/image-endpoint.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 

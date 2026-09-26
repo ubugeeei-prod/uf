@@ -227,7 +227,7 @@ struct Attacher<'a, 't> {
     /// root's children, which for a real module is every top-level statement,
     /// were collected into a `Vec`, mapped into a second `Vec` and sorted once
     /// per comment. Profiling `uf fmt` over
-    /// `packages/router/internal/runtime.js` put comment attachment at
+    /// `npm/router/internal/runtime.js` put comment attachment at
     /// 4.6 MiB of allocation for a 111 KiB file — more than the parser and
     /// more than the printer, for the phase that does the least work.
     ///

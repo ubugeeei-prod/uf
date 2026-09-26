@@ -2,7 +2,7 @@
 //!
 //! `bench()` in `@uniflowed/test` declares a benchmark. An ordinary run reports
 //! it skipped, and `uf test --bench` runs the benchmarks in place of the tests;
-//! `packages/test/internal/run.js` is how one is timed. What comes back is one
+//! `npm/test/internal/run.js` is how one is timed. What comes back is one
 //! [`uf_test::BenchStats`] per benchmark, and this module is what happens to
 //! them: a table, a comparison with the baseline an earlier run saved, and a
 //! verdict.

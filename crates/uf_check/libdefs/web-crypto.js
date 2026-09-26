@@ -3,7 +3,7 @@
  *
  * Flow's `evals/flow-typed/environment/bom.js` types `crypto.subtle` as an
  * inline object with `digest` in it and nothing else. So a module that only
- * hashes checks clean, and a module that signs — `packages/server/internal/
+ * hashes checks clean, and a module that signs — `npm/server/internal/
  * draft.js`, which HMACs the draft-mode cookie so a holder cannot extend its
  * own expiry — reported four errors for calls that are correct and that every
  * runtime uf targets implements. There is no `CryptoKey` in that file at all,

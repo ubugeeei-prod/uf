@@ -280,7 +280,7 @@ async function main() /*: Promise<void> */ {
   if (!state) {
     const bump = requestedBump(process.argv.slice(2));
     git("fetch", "origin", "main", "--tags");
-    const current = JSON.parse(git("show", "origin/main:packages/core/package.json")).version;
+    const current = JSON.parse(git("show", "origin/main:npm/core/package.json")).version;
     const version = nextVersion(current, bump);
     if (version === current) throw new Error("The release must advance the current version.");
     const branch = `release/v${version}`;
@@ -358,7 +358,7 @@ async function main() /*: Promise<void> */ {
           "Cargo.toml",
           "Cargo.lock",
           "package-lock.json",
-          "packages",
+          "npm",
           "docs/package.json",
           "CHANGELOG.md",
           ".github/release.json",

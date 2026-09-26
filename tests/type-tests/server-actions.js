@@ -37,7 +37,7 @@
 // instantiations below are what that file contains, with a project's real
 // action table replaced by two written here.
 
-import type { ActionArguments, ActionResult, ActionValue } from "../../packages/router/action.js";
+import type { ActionArguments, ActionResult, ActionValue } from "../../npm/router/action.js";
 
 // A `"use server"` module, as Flow reads it. Ordinary declarations: what makes
 // them actions is a directive the checker does not need to know about.

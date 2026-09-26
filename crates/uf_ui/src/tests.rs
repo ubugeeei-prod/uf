@@ -27,9 +27,9 @@ fn repository_root() -> PathBuf {
         .expect("the crate is inside the repository")
 }
 
-/// Every file name in `registry/ui/`.
+/// Every file name in `npm/ui/registry/`.
 fn registry_files() -> BTreeSet<String> {
-    let directory = repository_root().join("registry/ui");
+    let directory = repository_root().join("npm/ui/registry");
     fs::read_dir(&directory)
         .unwrap_or_else(|error| panic!("{} cannot be listed: {error}", directory.display()))
         .map(|entry| {
@@ -81,7 +81,7 @@ fn project() -> (tempfile::TempDir, Utf8PathBuf) {
 
 /// The list `include_str!` embeds is the directory, in both directions.
 ///
-/// A component added to `registry/ui/` and not to `EMBEDDED` would be tested,
+/// A component added to `npm/ui/registry/` and not to `EMBEDDED` would be tested,
 /// documented and never shipped; one removed from the directory and still in
 /// the list does not compile, but one renamed in both halves of a hurry would.
 #[test]
@@ -90,7 +90,7 @@ fn the_embedded_list_is_the_directory() {
     assert_eq!(
         embedded,
         components_on_disk(),
-        "`registry::EMBEDDED` and `registry/ui/` disagree about which components exist"
+        "`registry::EMBEDDED` and `npm/ui/registry/` disagree about which components exist"
     );
 
     let names: Vec<&str> = EMBEDDED.iter().map(|entry| entry.name).collect();
@@ -105,7 +105,7 @@ fn the_embedded_list_is_the_directory() {
 fn every_component_has_an_example_and_a_test_and_nothing_else_does() {
     let files = registry_files();
     let components = components_on_disk();
-    let root = repository_root().join("registry/ui");
+    let root = repository_root().join("npm/ui/registry");
 
     for name in &components {
         let example = format!("{name}.example.js");
@@ -133,9 +133,9 @@ fn every_component_has_an_example_and_a_test_and_nothing_else_does() {
         match owner {
             Some(owner) => assert!(
                 components.contains(owner),
-                "registry/ui/{file} belongs to no component"
+                "npm/ui/registry/{file} belongs to no component"
             ),
-            None => panic!("registry/ui/{file} is not a component, an example or a test"),
+            None => panic!("npm/ui/registry/{file} is not a component, an example or a test"),
         }
     }
 }
@@ -170,7 +170,7 @@ fn every_module_the_headless_package_ships_has_a_component() {
         .collect();
     assert!(
         missing.is_empty(),
-        "these `@uniflowed/ui` modules have no styled component in `registry/ui/`: {missing:?}"
+        "these `@uniflowed/ui` modules have no styled component in `npm/ui/registry/`: {missing:?}"
     );
 }
 
@@ -197,7 +197,7 @@ fn a_component_with_no_module_answers_one_the_headless_package_declined() {
     }
 }
 
-/// The component modules `packages/ui` ships, by file name.
+/// The component modules `npm/ui` ships, by file name.
 ///
 /// Every module but the hook modules. `interactions.js` exports
 /// `usePress` and the rest of the interactions layer rather than a component, so
@@ -212,7 +212,7 @@ fn a_component_with_no_module_answers_one_the_headless_package_declined() {
 /// behind it fails here too, so a module renamed on one side cannot quietly
 /// turn the exemption into nothing.
 fn headless_modules() -> BTreeSet<String> {
-    let directory = repository_root().join("packages/ui");
+    let directory = repository_root().join("npm/ui");
     let mut modules: BTreeSet<String> = fs::read_dir(&directory)
         .unwrap_or_else(|error| panic!("{} cannot be listed: {error}", directory.display()))
         .map(|entry| {
@@ -228,12 +228,12 @@ fn headless_modules() -> BTreeSet<String> {
     for hooks in UI_HOOK_MODULES {
         assert!(
             modules.remove(*hooks),
-            "`UI_HOOK_MODULES` names `{hooks}`, and `packages/ui` has no such module"
+            "`UI_HOOK_MODULES` names `{hooks}`, and `npm/ui` has no such module"
         );
     }
     assert!(
         modules.len() > 20,
-        "`packages/ui` listed almost nothing, so this is not checking anything: {modules:?}"
+        "`npm/ui` listed almost nothing, so this is not checking anything: {modules:?}"
     );
     modules
 }
@@ -280,12 +280,12 @@ fn no_registry_source_carries_a_stamp_and_each_ends_with_one_newline() {
     for entry in EMBEDDED {
         assert!(
             Copy::read(entry.source).stamp.is_none(),
-            "registry/ui/{}.js carries a stamp, which only a copy should",
+            "npm/ui/registry/{}.js carries a stamp, which only a copy should",
             entry.name
         );
         assert!(
             entry.source.ends_with('\n') && !entry.source.ends_with("\n\n"),
-            "registry/ui/{}.js does not end with exactly one newline",
+            "npm/ui/registry/{}.js does not end with exactly one newline",
             entry.name
         );
     }
@@ -306,7 +306,7 @@ fn the_import_scanner_misses_nothing_in_the_registry() {
         assert_eq!(
             imports(entry.source).len(),
             written,
-            "registry/ui/{}.js has an import the scanner does not read",
+            "npm/ui/registry/{}.js has an import the scanner does not read",
             entry.name
         );
     }
@@ -1031,7 +1031,7 @@ fn a_name_the_project_never_added_is_refused_and_a_foreign_file_is_left_alone() 
 #[test]
 fn every_component_is_one_name_and_its_parts_are_members_of_it() {
     let registry = Registry::embedded().expect("the embedded registry reads");
-    let root = repository_root().join("registry/ui");
+    let root = repository_root().join("npm/ui/registry");
     let mut wrong = Vec::new();
     for component in registry.components() {
         let namespace = namespace_name(component.name);

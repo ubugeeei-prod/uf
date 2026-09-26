@@ -660,7 +660,7 @@ fn propagate(
                     //
                     // The rule is the transform's, so it is only true while
                     // the transform is: see `serverActionModules` in
-                    // `packages/vite/internal/rsc.js` and
+                    // `npm/vite/internal/rsc.js` and
                     // `crates/uf_rsc/src/action/registry.rs` for which exports
                     // become references at all.
                     ModuleEnvironment::ServerActions => EntryKind::Server,

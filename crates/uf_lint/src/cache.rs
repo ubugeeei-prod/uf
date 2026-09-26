@@ -4,7 +4,7 @@
 //! rules in this crate that cost more than a line scan: each module they read
 //! is lowered, rebuilt as a Babel tree, scope-analysed and handed to the
 //! official React Compiler — about 27 ms of CPU per module on
-//! `packages/ui`. `uf_transform::lint::cached` already remembered the
+//! `npm/ui`. `uf_transform::lint::cached` already remembered the
 //! compiler's answer inside one process, and that was all: every `uf lint` and
 //! every `uf check` did the whole thing again for every module, over files
 //! nobody had touched, and on a warm `uf check` — whose type check is answered

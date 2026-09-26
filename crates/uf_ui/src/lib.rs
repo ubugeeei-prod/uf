@@ -18,7 +18,7 @@
 //!
 //! # A copy step, after ubugeeei-prod/uf#303 declined one
 //!
-//! `packages/ui/index.js` records why `@uniflowed/ui` has no copy step: a copied
+//! `npm/ui/index.js` records why `@uniflowed/ui` has no copy step: a copied
 //! focus trap is a fork nobody's upgrade reaches, and a `renders*` constraint
 //! means nothing once the source has been pasted into an application. Both are
 //! arguments about copying *behaviour*, and neither is reopened here, because
@@ -33,7 +33,7 @@
 //!
 //! # Where the registry lives: in this repository, inside the binary
 //!
-//! `registry/ui/` at the root of this repository, embedded into `uf` when it is
+//! `npm/ui/registry/` at the root of this repository, embedded into `uf` when it is
 //! built. So `uf ui add` works offline, answers at once, and always writes the
 //! component that matches the uf running it — the `@uniflowed/*` version it
 //! pins, the StyleX conditions its compiler accepts, the parts `@uniflowed/ui`
@@ -43,15 +43,15 @@
 //! cost is that a fix to a registry component ships with a uf release, which is
 //! the cadence the packages it is built on move at anyway.
 //!
-//! At the root rather than under `crates/`, because four things read it and one
-//! of them is Rust: this crate embeds it, this repository's own `uf fmt`,
-//! `uf lint`, `uf check` and `uf test` hold every file in it the way they hold
-//! `packages/`, and the documentation renders it. `crates/` is outside those
-//! walks on purpose, and the root `uf.config.js` says why.
+//! The copyable components live beside the headless implementation in
+//! `npm/ui/registry/`. The binary embeds them, the documentation renders them,
+//! and the repository's formatter, checker and test runner validate that same
+//! source. `npm/ui` owns both surfaces; the headless API is its package root,
+//! while `uf ui add` copies the styled files into the consuming project.
 //!
 //! # A component is one file, and the registry is one directory
 //!
-//! `registry/ui/<name>.js` is the component, and it is the file `uf ui add`
+//! `npm/ui/registry/<name>.js` is the component, and it is the file `uf ui add`
 //! writes — byte for byte, with one line appended ([`stamp`]). Beside it are
 //! `<name>.example.js`, which the reference renders live, and `<name>.test.js`,
 //! which this repository's suite runs. [`registry::EMBEDDED`] is the list, and a

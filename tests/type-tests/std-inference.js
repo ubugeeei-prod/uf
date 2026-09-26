@@ -27,27 +27,27 @@
 // relative import that leaves that set resolves to an any-typed value — after
 // which every type below is `any`, every line passes, and the test would prove
 // the opposite of what it claims. So the test runs
-// `uf check tests/type-tests packages/std`, with both in one set.
+// `uf check tests/type-tests npm/std`, with both in one set.
 // `tests/type-tests/anchoring.js` says the rest of why these fixtures live here
 // rather than inside the packages they are about.
 
-import { decode as decodeBase32, encode as encodeBase32 } from "../../packages/std/base32.js";
+import { decode as decodeBase32, encode as encodeBase32 } from "../../npm/std/base32.js";
 import {
   BufferedReader,
   Scanner,
   TokenTooLongError,
   newReader as newBufferedReader,
   scanWords,
-} from "../../packages/std/bufio.js";
-import { Cursor, putVarint, uvarint } from "../../packages/std/binary.js";
-import { Builder, compare, equal, split } from "../../packages/std/bytes.js";
-import { background, key, withCancel, withTimeout, withValue } from "../../packages/std/context.js";
-import { parse as parseCsv, stringify as stringifyCsv } from "../../packages/std/csv.js";
-import { as, is, join, wrap } from "../../packages/std/errors.js";
-import { GlobPattern, glob, matchGlob } from "../../packages/std/glob.js";
-import { crc32, fnv1a64 } from "../../packages/std/hash.js";
-import { Heap, heapify } from "../../packages/std/heap.js";
-import { decode, encode } from "../../packages/std/hex.js";
+} from "../../npm/std/bufio.js";
+import { Cursor, putVarint, uvarint } from "../../npm/std/binary.js";
+import { Builder, compare, equal, split } from "../../npm/std/bytes.js";
+import { background, key, withCancel, withTimeout, withValue } from "../../npm/std/context.js";
+import { parse as parseCsv, stringify as stringifyCsv } from "../../npm/std/csv.js";
+import { as, is, join, wrap } from "../../npm/std/errors.js";
+import { GlobPattern, glob, matchGlob } from "../../npm/std/glob.js";
+import { crc32, fnv1a64 } from "../../npm/std/hash.js";
+import { Heap, heapify } from "../../npm/std/heap.js";
+import { decode, encode } from "../../npm/std/hex.js";
 import {
   BufferWriter,
   ShortWriteError,
@@ -55,15 +55,15 @@ import {
   limitReader,
   readAll as readAllBytes,
   readerFromBytes,
-} from "../../packages/std/io.js";
-import { List } from "../../packages/std/list.js";
+} from "../../npm/std/io.js";
+import { List } from "../../npm/std/list.js";
 import {
   isAbsolute as pathIsAbsolute,
   join as joinPath,
   relative as relativePath,
-} from "../../packages/std/path.js";
-import { binarySearch, binarySearchBy, search } from "../../packages/std/slices.js";
-import { Group, Mutex, Semaphore, once } from "../../packages/std/sync.js";
+} from "../../npm/std/path.js";
+import { binarySearch, binarySearchBy, search } from "../../npm/std/slices.js";
+import { Group, Mutex, Semaphore, once } from "../../npm/std/sync.js";
 import {
   InvalidHeaderError,
   append as appendHeader,
@@ -74,18 +74,18 @@ import {
   set as setHeader,
   stringifyHeaderBlock,
   values as headerValues,
-} from "../../packages/std/textproto.js";
-import type { HeaderMap } from "../../packages/std/textproto.js";
-import { Duration, Ticker, Timer, after, milliseconds, seconds } from "../../packages/std/time.js";
-import { TarReader, TarWriter } from "../../packages/std/tar.js";
-import type { TarEntry } from "../../packages/std/tar.js";
+} from "../../npm/std/textproto.js";
+import type { HeaderMap } from "../../npm/std/textproto.js";
+import { Duration, Ticker, Timer, after, milliseconds, seconds } from "../../npm/std/time.js";
+import { TarReader, TarWriter } from "../../npm/std/tar.js";
+import type { TarEntry } from "../../npm/std/tar.js";
 import {
   ZipReader,
   ZipWriter,
   deflate as zipDeflate,
   inflate as zipInflate,
-} from "../../packages/std/zip.js";
-import type { ZipEntry } from "../../packages/std/zip.js";
+} from "../../npm/std/zip.js";
+import type { ZipEntry } from "../../npm/std/zip.js";
 
 class HttpError extends Error {
   status: number;

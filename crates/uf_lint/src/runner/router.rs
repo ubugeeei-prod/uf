@@ -77,7 +77,7 @@ fn grammar() -> String {
 /// at; the message names the directory.
 ///
 /// Only inside the router root, because that is the only place these spellings
-/// mean anything — `packages/@scope/…` is a directory, not a route. And only
+/// mean anything — `npm/@scope/…` is a directory, not a route. And only
 /// on the way down through public directories: a leading `.` or `_` is a
 /// subtree both routers skip, so a slot inside one is not a route uf would
 /// have served.

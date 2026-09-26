@@ -92,7 +92,7 @@ import { createVercelHandler, vercelCapabilities } from "@uniflowed/server/verce
 // The other front door, for the comparison. Reached by path rather than by
 // specifier because `@uniflowed/vite` deliberately does not export it: it is
 // the bundler's copy of a question that is now answered in `@uniflowed/server`.
-import { createServeHandler as createViteServeHandler } from "../../packages/vite/internal/serve.js";
+import { createServeHandler as createViteServeHandler } from "../../npm/vite/internal/serve.js";
 
 // With a deployment id, as every document `uf build` records has one, so the
 // doors are compared on the skew check as well as on everything else.
@@ -1001,7 +1001,7 @@ describe("the front doors", () => {
         handler: (request: Request) =>
           new URL(request.url).pathname === "/api/health" ? Response.json({ ok: true }) : null,
         // What the router's runner hands a host for a middleware's `rewrite()`:
-        // the request at the destination. `packages/router/middleware-rewrite.test.js`
+        // the request at the destination. `npm/router/middleware-rewrite.test.js`
         // is the runner's own half.
         guard: (request: Request) => {
           const { pathname } = new URL(request.url);

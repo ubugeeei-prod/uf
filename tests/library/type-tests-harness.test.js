@@ -23,10 +23,10 @@ describe("one check per command", () => {
     const { run, started } = counting();
     const checker = oneCheckPerCommand(run);
 
-    const first = checker(["check", "tests/type-tests", "packages/ui", "--json"]);
-    const second = checker(["check", "tests/type-tests", "packages/ui", "--json"]);
+    const first = checker(["check", "tests/type-tests", "npm/ui", "--json"]);
+    const second = checker(["check", "tests/type-tests", "npm/ui", "--json"]);
 
-    expect(started).toEqual(["check tests/type-tests packages/ui --json"]);
+    expect(started).toEqual(["check tests/type-tests npm/ui --json"]);
     // The same answer, not a second one that happens to look alike.
     expect(second).toBe(first);
   });
@@ -35,15 +35,15 @@ describe("one check per command", () => {
     const { run, started } = counting();
     const checker = oneCheckPerCommand(run);
 
-    const ui = checker(["check", "tests/type-tests", "packages/ui", "--json"]);
-    const form = checker(["check", "tests/type-tests", "packages/form", "--json"]);
+    const ui = checker(["check", "tests/type-tests", "npm/ui", "--json"]);
+    const form = checker(["check", "tests/type-tests", "npm/form", "--json"]);
     // Paths that join to the same string are still different commands.
-    checker(["check", "tests/type-tests packages/ui", "--json"]);
+    checker(["check", "tests/type-tests npm/ui", "--json"]);
 
     expect(started).toEqual([
-      "check tests/type-tests packages/ui --json",
-      "check tests/type-tests packages/form --json",
-      "check tests/type-tests packages/ui --json",
+      "check tests/type-tests npm/ui --json",
+      "check tests/type-tests npm/form --json",
+      "check tests/type-tests npm/ui --json",
     ]);
     expect(ui.stdout).toBe('{"n":1}');
     expect(form.stdout).toBe('{"n":2}');
@@ -52,9 +52,9 @@ describe("one check per command", () => {
   it("keeps nothing between two checkers, as two files would each make one", () => {
     const { run, started } = counting();
 
-    oneCheckPerCommand(run)(["check", "packages/ui", "--json"]);
-    oneCheckPerCommand(run)(["check", "packages/ui", "--json"]);
+    oneCheckPerCommand(run)(["check", "npm/ui", "--json"]);
+    oneCheckPerCommand(run)(["check", "npm/ui", "--json"]);
 
-    expect(started).toEqual(["check packages/ui --json", "check packages/ui --json"]);
+    expect(started).toEqual(["check npm/ui --json", "check npm/ui --json"]);
   });
 });

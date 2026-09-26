@@ -27,7 +27,7 @@ fn repository_root() -> PathBuf {
 /// closest thing to a user's code the repository can test against.
 fn shipped_sources() -> Vec<(String, String)> {
     let mut sources = Vec::new();
-    let packages = repository_root().join("packages");
+    let packages = repository_root().join("npm");
     let mut modules = Vec::new();
     collect_js(&packages, &mut modules);
     modules.sort();
@@ -177,7 +177,7 @@ fn a_lone_parameter_stays_flat_whether_or_not_its_object_was_already_open() {
     // so a run that expands one for width alone *creates* that newline and the
     // next run answers differently.
     //
-    // `packages/effect/stream.js` found it, at the narrow configuration
+    // `npm/effect/stream.js` found it, at the narrow configuration
     // `configurations()` checks: `streamPaginate`'s one parameter broke on the
     // first run and not on the second. The decision is made from the syntax
     // now, which both runs agree about.
@@ -884,8 +884,8 @@ fn a_mapped_types_variance_operator_is_not_dropped() {
 /// The chain that was not its own fixed point, and the one that must stay flat.
 ///
 /// `shipped_sources_are_formatted_idempotently` catches this only when a file
-/// in `packages/` happens to contain the shape, which is how it was found —
-/// `packages/core/temporal.test.js`, moving into `packages/` in
+/// in `npm/` happens to contain the shape, which is how it was found —
+/// `npm/core/temporal.test.js`, moving into `npm/` in
 /// ubugeeei-prod/uf#729, put the printer's output back through the printer and
 /// got something else. Written down here as the shape rather than left to a
 /// file that might be edited.
@@ -900,8 +900,8 @@ fn a_mapped_types_variance_operator_is_not_dropped() {
 /// The second case is the one that makes the fix narrow rather than blunt.
 /// Refusing every flat form that breaks also breaks
 /// `permissions.query({ name }).then(cb)`, which is one line plus a body and is
-/// meant to be: `packages/hooks/browser.js`, `packages/i18n/negotiate.js` and
-/// `packages/router/internal/runtime.js` all reformat for the worse under that
+/// meant to be: `npm/hooks/browser.js`, `npm/i18n/negotiate.js` and
+/// `npm/router/internal/runtime.js` all reformat for the worse under that
 /// version. A callback breaks because it is a callback, not because of what the
 /// previous pass wrote.
 #[test]

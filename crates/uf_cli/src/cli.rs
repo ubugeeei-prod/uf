@@ -130,7 +130,7 @@ impl From<AddTarget> for DependencyKind {
 #[derive(Debug, Clone, Default, clap::Args)]
 pub(crate) struct WorkspaceArgs {
     /// Change the workspace members this selects instead of this project: a
-    /// name, a glob (`@acme/*`), a path (`./packages/ui`), `name...` for a
+    /// name, a glob (`@acme/*`), a path (`./npm/ui`), `name...` for a
     /// member and what it depends on, `...name` for what depends on it.
     /// Repeatable.
     ///
@@ -165,7 +165,7 @@ pub(crate) enum Commands {
         peer: bool,
         #[command(flatten)]
         workspace: WorkspaceArgs,
-        /// The packages: `react`, `react@^19`, `./packages/ui`.
+        /// The packages: `react`, `react@^19`, `./npm/ui`.
         #[arg(value_name = "SPEC", required = true)]
         specs: Vec<String>,
     },
@@ -759,7 +759,7 @@ pub(crate) enum Commands {
         #[arg(long, short = 'r')]
         recursive: bool,
         /// Run the task only in the members this selects: a name, a glob, a
-        /// path (`./packages/ui`), `name...` for a member and what it depends
+        /// path (`./npm/ui`), `name...` for a member and what it depends
         /// on, `...name` for a member and what depends on it. Repeatable, and
         /// implies `-r`.
         #[arg(long, value_name = "SELECTOR")]

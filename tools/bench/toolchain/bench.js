@@ -1342,7 +1342,7 @@ async function main(): Promise<void> {
   const found = await findTools(options, env);
   const context = { env, options };
   const fixtureVersions: Versions = {
-    uniflowed: packageVersion(path.join(REPO, "packages", "react")),
+    uniflowed: packageVersion(path.join(REPO, "npm", "react")),
     react: versions.react,
   };
 

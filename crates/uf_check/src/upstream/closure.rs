@@ -36,7 +36,7 @@
 //!   it imports would hold files nothing can reach.
 //! * A package's **manifest** is pulled in beside the file it publishes. The
 //!   manifest is where the name comes from, so a batch with
-//!   `packages/form/index.js` in it and no `packages/form/package.json`
+//!   `npm/form/index.js` in it and no `npm/form/package.json`
 //!   resolves `@uniflowed/form` to nothing, having been handed the answer.
 //!
 //! # What is left over
@@ -454,17 +454,17 @@ mod tests {
     fn a_package_import_reaches_the_file_and_the_manifest_that_named_it() {
         let available = [
             Source::new("app.js", "import { useForm } from '@uniflowed/form';\n"),
-            Source::new("packages/form/index.js", "export const useForm = 1;\n"),
-            Source::new("packages/form/package.json", FORM_MANIFEST),
-            Source::new("packages/form/watch.js", "export const watch = 1;\n"),
+            Source::new("npm/form/index.js", "export const useForm = 1;\n"),
+            Source::new("npm/form/package.json", FORM_MANIFEST),
+            Source::new("npm/form/watch.js", "export const watch = 1;\n"),
         ];
 
         assert_eq!(
             reached(&["app.js"], &available),
             [
                 "app.js",
-                "packages/form/index.js",
-                "packages/form/package.json"
+                "npm/form/index.js",
+                "npm/form/package.json"
             ]
         );
     }
@@ -473,17 +473,17 @@ mod tests {
     fn a_subpath_export_resolves_to_the_file_the_map_names() {
         let available = [
             Source::new("app.js", "import { watch } from '@uniflowed/form/watch';\n"),
-            Source::new("packages/form/index.js", "export const useForm = 1;\n"),
-            Source::new("packages/form/package.json", FORM_MANIFEST),
-            Source::new("packages/form/watch.js", "export const watch = 1;\n"),
+            Source::new("npm/form/index.js", "export const useForm = 1;\n"),
+            Source::new("npm/form/package.json", FORM_MANIFEST),
+            Source::new("npm/form/watch.js", "export const watch = 1;\n"),
         ];
 
         assert_eq!(
             reached(&["app.js"], &available),
             [
                 "app.js",
-                "packages/form/package.json",
-                "packages/form/watch.js"
+                "npm/form/package.json",
+                "npm/form/watch.js"
             ]
         );
     }
@@ -496,18 +496,18 @@ mod tests {
                 "// @flow\nimport type { Control } from '@uniflowed/form';\nexport type C = Control;\n",
             ),
             Source::new(
-                "packages/form/index.js",
+                "npm/form/index.js",
                 "// @flow\nexport type Control = string;\n",
             ),
-            Source::new("packages/form/package.json", FORM_MANIFEST),
+            Source::new("npm/form/package.json", FORM_MANIFEST),
         ];
 
         assert_eq!(
             reached(&["app.js"], &available),
             [
                 "app.js",
-                "packages/form/index.js",
-                "packages/form/package.json"
+                "npm/form/index.js",
+                "npm/form/package.json"
             ]
         );
     }

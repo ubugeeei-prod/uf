@@ -235,16 +235,16 @@ mod tests {
     #[test]
     fn a_sibling_resolves_against_the_importing_directory() {
         assert_eq!(
-            join("packages/immer/patches.js", "./draft.js").as_deref(),
-            Some("packages/immer/draft.js")
+            join("npm/immer/patches.js", "./draft.js").as_deref(),
+            Some("npm/immer/draft.js")
         );
     }
 
     #[test]
     fn a_parent_specifier_climbs_one_directory() {
         assert_eq!(
-            join("packages/ui/internal/field.js", "../tokens.js").as_deref(),
-            Some("packages/ui/tokens.js")
+            join("npm/ui/internal/field.js", "../tokens.js").as_deref(),
+            Some("npm/ui/tokens.js")
         );
     }
 

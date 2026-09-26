@@ -7,7 +7,7 @@
 // hook, even when the public API is a runner namespace and no component is
 // involved.
 
-import { uft } from "../../packages/test/index.js";
+import { uft } from "../../npm/test/index.js";
 
 export function controlsTheClock(): void {
   uft.useFakeTimers();

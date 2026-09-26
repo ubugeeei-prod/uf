@@ -393,7 +393,7 @@ mod tests {
     fn a_manifest_lockfile_config_or_env_change_runs_every_test() {
         for path in [
             "package.json",
-            "packages/ui/package.json",
+            "npm/ui/package.json",
             "pnpm-lock.yaml",
             "bun.lock",
             "uf.lock",

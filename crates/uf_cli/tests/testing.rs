@@ -661,7 +661,7 @@ fn a_line_printed_after_its_file_finished_is_not_reported_under_the_next_one() {
 /// only way to write "and the second file was reported correctly *anyway*" as
 /// an assertion rather than a hope.
 ///
-/// It speaks the same protocol as `packages/test/worker.js` and nothing else:
+/// It speaks the same protocol as `npm/test/worker.js` and nothing else:
 /// a request per line in, one event per line out, each event stamped with the
 /// generation it belongs to.
 const CANNED_WORKER: &str = r#"import { createInterface } from "node:readline";
@@ -1961,7 +1961,7 @@ it("changes the window a render installed and never changes it back", () => {
 import { afterEach, expect, it } from "@uniflowed/test";
 import { cleanup } from "@uniflowed/react-testing";
 
-// What `packages/router/intercepting-routes.test.js` does in a file whose cases
+// What `npm/router/intercepting-routes.test.js` does in a file whose cases
 // render on the server and never into a document. The root the file before
 // left mounted must already be gone, or unmounting it here reads a `window`
 // this file was never given.

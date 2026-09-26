@@ -50,7 +50,7 @@ cannot have a test that reads one.
 Measured with `cargo run --example alloc_report -p uf_check`, the harness
 ubugeeei-prod/uf#678 was filed with:
 
-    packages/router/internal/runtime.js, 123,056 bytes
+    npm/router/internal/runtime.js, 123,056 bytes
                         before        after
     allocations      2,130,342    1,703,582   -20.0%
     bytes           358.74 MiB   265.71 MiB   -25.9%

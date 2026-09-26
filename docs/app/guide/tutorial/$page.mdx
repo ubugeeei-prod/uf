@@ -25,7 +25,7 @@ uf new reading-list
 cd reading-list
 uf install
 uf add @uniflowed/state@alpha @uniflowed/ui@alpha @uniflowed/form@alpha
-uf add --dev @uniflowed/testing@alpha
+uf add --dev @uniflowed/test @uniflowed/react-testing
 ```
 
 `uf new` uses the React template by default. The extra packages provide the
@@ -460,7 +460,8 @@ Create `app/TopicTabs.test.js` for tab and save-button interactions:
 
 ```js
 // @flow
-import { describe, expect, it, render, screen, userEvent } from "@uniflowed/testing";
+import { describe, expect, it } from "@uniflowed/test";
+import { render, screen, userEvent } from "@uniflowed/react-testing";
 
 import { listArticles } from "./articles.js";
 import { TopicTabs } from "./TopicTabs.js";
@@ -481,14 +482,15 @@ describe("TopicTabs", () => {
 });
 ```
 
-`@uniflowed/testing` provides the test runner and DOM helpers. It creates the
+`@uniflowed/test` and `@uniflowed/react-testing` provides the test runner and DOM helpers. It creates the
 test DOM on the first render; no setup file is needed.
 
 Create `app/AddArticle.test.js` to check validation and accessible errors:
 
 ```js
 // @flow
-import { describe, expect, fireEvent, it, render, screen, userEvent } from "@uniflowed/testing";
+import { describe, expect, it } from "@uniflowed/test";
+import { fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 
 import { AddArticle } from "./AddArticle.js";
 

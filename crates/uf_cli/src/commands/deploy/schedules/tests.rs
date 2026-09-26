@@ -69,7 +69,7 @@ fn an_expression_that_is_not_five_fields_is_refused_here() {
     assert!(message.contains("day-of-week"), "{message}");
 }
 
-/// What each field *contains* is `packages/server/internal/cron.js`'s to say,
+/// What each field *contains* is `npm/server/internal/cron.js`'s to say,
 /// and a second matcher here would be two implementations of one rule. So this
 /// passes something that module refuses, deliberately — loudly at start-up
 /// rather than quietly in both places.

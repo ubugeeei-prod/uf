@@ -32,7 +32,7 @@ component Sidebar() {
 The rest of the package — timers, the state shapes, the element observers, the
 key chords — is not here, because it has no server half to document. Each of
 those modules carries its own header in
-[`packages/hooks`](https://github.com/ubugeeei-prod/uf/tree/main/packages/hooks).
+[`npm/hooks`](https://github.com/ubugeeei-prod/uf/tree/main/npm/hooks).
 
 ## Why a prerender is the constraint
 
@@ -180,7 +180,7 @@ the browser does not measure bandwidth and because it had not decided yet.
 
 ## Proving it
 
-`packages/hooks/hooks-ssr.test.js` renders every hook in the package in a process
+`npm/hooks/hooks-ssr.test.js` renders every hook in the package in a process
 with **no document at all** — the globals are removed before the file runs and
 put back after — and asserts the markup each one produces. A row of the table
 above that stopped being true fails there rather than in somebody's browser, and

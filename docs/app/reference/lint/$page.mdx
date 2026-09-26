@@ -4544,11 +4544,11 @@ import IconButton, { Button } from "./Button.js";
 
 Default: `error`. Workspace packages should import each other by package name.
 
-A relative path from one workspace package into another, such as `../../state/index.js` from `packages/web`, skips the other package's `exports` and its declared dependencies. It stops working as soon as either package is published or moved. Import the package by its name.
+A relative path from one workspace package into another, such as `../../state/index.js` from `npm/web`, skips the other package's `exports` and its declared dependencies. It stops working as soon as either package is published or moved. Import the package by its name.
 
 #### Bad
 
-`packages/web/src/page.js`
+`npm/web/src/page.js`
 
 ```js
 // @flow
@@ -4558,12 +4558,12 @@ import { createStore } from "../../state/index.js";
 `uf lint` reports:
 
 ```text
-packages/web/src/page.js:2:29 use the `state` package name instead of a relative path into it
+npm/web/src/page.js:2:29 use the `state` package name instead of a relative path into it
 ```
 
 #### Good
 
-`packages/web/src/page.js`
+`npm/web/src/page.js`
 
 ```js
 // @flow

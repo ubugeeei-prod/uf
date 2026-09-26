@@ -11,7 +11,7 @@
 //! The checker's need is different, and narrower. An import is typed against a
 //! file in the same batch, so `import type { Control } from "@uniflowed/form"`
 //! is `any` unless `@uniflowed/form`'s own source is in it. In this repository
-//! the source is in `packages/form`, which the scan already collects; in a
+//! the source is in `npm/form`, which the scan already collects; in a
 //! project that merely *uses* uf it is in `node_modules/@uniflowed/form`, and
 //! nothing collects it. That is the second half of ubugeeei-prod/uf#403, and
 //! this module is it: a package is read only because a specifier asked for it,
@@ -284,7 +284,7 @@ fn package_name(specifier: &str) -> Option<&str> {
 fn read_package(root: &Utf8Path, directory: &str) -> Vec<SourceFile> {
     let installed = root.join(directory);
     // Resolved through the link before the walk rather than during it. A
-    // workspace package *is* a symlink — `uf install` links `packages/form`
+    // workspace package *is* a symlink — `uf install` links `npm/form`
     // into `node_modules/@uniflowed/` — so a walk that did not follow one
     // would find the very case this exists for empty, and a walk that followed
     // every link it met could leave the package entirely.
@@ -340,7 +340,7 @@ fn read_package(root: &Utf8Path, directory: &str) -> Vec<SourceFile> {
             // manifest, so a package read as
             // `node_modules/@uniflowed/form/package.json` resolves its own
             // `./index.js` to a path in the same shape, and one read as
-            // `packages/form/package.json` would collide with the copy the
+            // `npm/form/package.json` would collide with the copy the
             // scan already holds.
             path: uf_infra::into_string(uf_infra::cstr!("{directory}/{relative}")),
             source,
@@ -428,11 +428,11 @@ mod tests {
 
         // outside/            — no manifest: the wall
         //   repo/             — manifest: the workspace root
-        //     packages/       — manifest
+        //     npm/       — manifest
         //       app/          — manifest: where `uf check` runs
-        let app = outside.join("repo/packages/app");
+        let app = outside.join("repo/npm/app");
         fs::create_dir_all(&app).unwrap();
-        for directory in ["repo", "repo/packages", "repo/packages/app"] {
+        for directory in ["repo", "repo/packages", "repo/npm/app"] {
             fs::write(outside.join(directory).join(MANIFEST), "{}").unwrap();
         }
 

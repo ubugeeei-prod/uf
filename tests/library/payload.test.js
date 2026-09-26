@@ -53,14 +53,14 @@ import {
   parseRowMessage,
   payloadRowId,
   payloadJson,
-} from "../../packages/router/internal/payload.js";
-import { createPayloadReader } from "../../packages/router/internal/payload-rows.js";
+} from "../../npm/router/internal/payload.js";
+import { createPayloadReader } from "../../npm/router/internal/payload-rows.js";
 
 // `@uniflowed/router/client` statically imports `react-dom/client`, which reads
 // `document` while it is being evaluated — so the DOM has to exist before the
 // *import* and not merely before the first render. `streaming.test.js` and
 // `rsc-split.test.js` reach for the same two for the same reason.
-import { installDom } from "../../packages/react-testing/internal/dom.js";
+import { installDom } from "../../npm/react-testing/internal/dom.js";
 
 async function clientModule() {
   installDom();

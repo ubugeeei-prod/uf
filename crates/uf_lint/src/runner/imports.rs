@@ -1802,7 +1802,7 @@ struct WorkspacePackage {
 fn workspace_package(path: &Path) -> Option<WorkspacePackage> {
     let components = path.components().collect::<Vec<_>>();
     for (index, component) in components.iter().enumerate() {
-        if component.as_os_str() != "packages" {
+        if component.as_os_str() != "packages" && component.as_os_str() != "npm" {
             continue;
         }
         let Some(Component::Normal(name)) = components.get(index + 1) else {

@@ -243,7 +243,7 @@ async function main(): Promise<void> {
   const ufDir = path.join(work, "uf");
   const nextDir = path.join(work, "next");
   const version = JSON.parse(
-    fs.readFileSync(path.join(repo, "packages/react/package.json"), "utf8"),
+    fs.readFileSync(path.join(repo, "npm/react/package.json"), "utf8"),
   ).version;
   const react = JSON.parse(
     fs.readFileSync(path.join(repo, "node_modules/react/package.json"), "utf8"),

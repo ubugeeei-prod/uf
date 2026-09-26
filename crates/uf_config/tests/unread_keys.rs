@@ -29,7 +29,7 @@
 //! The corpus is `src/` of this crate, of the crates it takes section types
 //! from (`uf_bundle`'s budgets, `uf_runtime`'s permissions), and of every crate
 //! that depends on it — nothing else can hold a `UniflowedConfig` — and every
-//! non-test module under `packages/`, which is where the evaluated config's
+//! non-test module under `npm/`, which is where the evaluated config's
 //! JSON projection is read.
 //!
 //! It is a reading of *names*, not of types. A section is recognised by the
@@ -42,7 +42,7 @@
 //! # Reading a failure
 //!
 //! *"declared, and read by nothing"* — wire the key, or remove it from
-//! `packages/config/internal/schema.js` and [`uf_config::UniflowedConfig`]
+//! `npm/config/internal/schema.js` and [`uf_config::UniflowedConfig`]
 //! together and give a project that sets it a `uf codemod` step, as
 //! `unread-config-keys-1387` does for the ones #1387 removed. There is no list
 //! of exceptions to add it to: the day this test landed nothing was on one.
@@ -57,7 +57,7 @@ use uf_config::schema::{SOURCE, Schema};
 use uf_flow::scan::{Token, TokenKind, tokenize_jsx};
 
 /// The Flow type this test reads, for the messages.
-const SCHEMA: &str = "packages/config/internal/schema.js";
+const SCHEMA: &str = "npm/config/internal/schema.js";
 
 fn workspace() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -698,7 +698,7 @@ fn read_rust(holders: &Holders, out: &mut Reads) {
 
 fn js_files() -> Vec<PathBuf> {
     let mut found = Vec::new();
-    let mut pending = vec![workspace().join("packages")];
+    let mut pending = vec![workspace().join("npm")];
     while let Some(directory) = pending.pop() {
         let Ok(entries) = fs::read_dir(&directory) else {
             continue;
