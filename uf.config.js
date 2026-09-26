@@ -370,7 +370,7 @@ export default defineConfig({
     // cleared area while the rest of the root check is still being repaired.
     "check:contracts": {
       command:
-        "./target/release/uf check packages/query packages/std/io.js packages/std/bufio.js packages/std/std.test.js packages/server/cache.test.js packages/server/standalone.test.js tests/library/deploy.test.js tests/library/deploy-matrix.test.js packages/stylex/theme.js packages/stylex/tokens.stylex.js examples/simple-sns/app/_shared/commonplace.stylex.js tests/library/public-contracts.test.js",
+        "./target/release/uf check packages/query packages/std/io.js packages/std/bufio.js packages/std/std.test.js packages/server/cache.test.js packages/server/lambda.js packages/router/rsc.js packages/server/standalone.test.js tests/library/deploy.test.js tests/library/deploy-matrix.test.js packages/stylex/theme.js packages/stylex/tokens.stylex.js examples/simple-sns/app/_shared/commonplace.stylex.js tests/library/public-contracts.test.js",
       dependsOn: ["build"],
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },

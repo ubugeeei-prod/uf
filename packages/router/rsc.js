@@ -113,7 +113,9 @@ export function registerServerFunction<T>(fn: T, id: string, name: string): T {
   if (typeof fn !== "function") {
     return fn;
   }
-  registerServerReference(fn, id, name);
+  // Registration attaches metadata without invoking this unknown signature.
+  // Keep typed calls checked; reflection is for this runtime-narrowed value.
+  Reflect.apply(registerServerReference, undefined, [fn, id, name]);
   return fn;
 }
 

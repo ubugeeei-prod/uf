@@ -130,10 +130,20 @@ const responseModel: Promise<string> = createFromFetch(Promise.resolve(new Respo
 setServerCallback(async (id: string, args: Array<mixed>): Promise<mixed> => id);
 const action = registerServerReference(async (n: number): Promise<string> => String(n), "id", "name");
 const answer: Promise<string> = action(1);
+function mark<T>(value: T): T {
+  if (typeof value === "function") Reflect.apply(registerServerReference, undefined, [value, "id", "name"]);
+  return value;
+}
+const marked: number = mark(42);
+renderToReadableStream("model", { onError: () => null });
 // error
 createFromReadableStream(42);
 // error
 action("no");
+// error
+registerServerReference(42, "id", "name");
+// error
+renderToReadableStream("model", { onError: () => 42 });
 // error
 import { setServerCallback as unavailable } from "react-server-dom-parcel/client.edge";
 // error

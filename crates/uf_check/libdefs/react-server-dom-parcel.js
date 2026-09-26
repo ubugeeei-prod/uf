@@ -63,7 +63,7 @@ declare module "react-server-dom-parcel/client.edge" {
 
 declare module "react-server-dom-parcel/server" {
   declare export type Options = {
-    readonly onError?: (error: mixed) => string | void,
+    readonly onError?: (error: mixed) => ?string,
     readonly signal?: AbortSignal,
     readonly identifierPrefix?: string,
     readonly temporaryReferences?: WeakMap<Object, string>,
