@@ -30,6 +30,7 @@ upstream-typecheck = [
   "dep:flow_flowlib",
   "dep:flow_lazy",
   "dep:flow_lint_settings",
+  "dep:flow_lsp_server",
   "dep:flow_parser",
   "dep:flow_parser_utils",
   "dep:flow_parsing",
@@ -37,6 +38,7 @@ upstream-typecheck = [
   "dep:flow_services_autocomplete",
   "dep:flow_services_export",
   "dep:flow_services_get_def",
+  "dep:flow_services_references",
   "dep:flow_type_sig",
   "dep:flow_typing",
   "dep:flow_typing_builtins",
@@ -45,6 +47,7 @@ upstream-typecheck = [
   "dep:flow_typing_type",
   "dep:flow_typing_utils",
   "dep:flow_utils_concurrency",
+  "dep:lsp-types",
   "dep:uf_flow",
 ]
 
@@ -78,6 +81,14 @@ flow_parser_utils_output = { workspace = true, optional = true }
 flow_services_autocomplete = { workspace = true, optional = true }
 flow_services_export = { workspace = true, optional = true }
 flow_services_get_def = { workspace = true, optional = true }
+# Find references, rename and document highlights (`Session::references`,
+# `Session::rename`, `Session::highlights`), with the module-rename half that
+# needs Flow's server heap left out. See `tools/upstream/patches/flow/0015-*`.
+flow_services_references = { workspace = true, optional = true }
+# Only its `document_symbol_provider`: the server half, and the tokio runtime
+# it brings, stay out behind its `server` feature. Same patch.
+flow_lsp_server = { workspace = true, optional = true }
+lsp-types = { workspace = true, optional = true }
 flow_type_sig = { workspace = true, optional = true }
 flow_typing = { workspace = true, optional = true }
 flow_typing_builtins = { workspace = true, optional = true }

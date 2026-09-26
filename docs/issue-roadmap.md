@@ -102,8 +102,12 @@
       and 153 ms on a 2,375-line one, but 355 ms on
       `packages/router/internal/runtime.js` and 651 ms on
       `packages/effect/index.js` — over the 200 ms target, because the edited
-      file is re-inferred whole. Not yet: that target, `signatureHelp`,
-      `references` and `rename`, type errors as pushed diagnostics, and answers
+      file is re-inferred whole. `textDocument/references`,
+      `documentHighlight`, `rename` (with `prepareRename`) and
+      `documentSymbol` are Flow's `flow_services_references` and
+      `document_symbol_provider` over the same session (ubugeeei-prod/uf#1381):
+      references cross into every project file that reaches the definition
+      through its imports. Not yet: that target, `signatureHelp`, and answers
       in a file that does not parse.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
 - [x] Implement editor extension packages on top of `uf lsp`.

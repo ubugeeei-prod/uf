@@ -2541,12 +2541,12 @@ fn lsp_republishes_on_change_and_clears_on_close() {
 /// An editor waiting on an id that never comes back is a hang, which is the
 /// failure this whole command had. The answer is the one the specification
 /// names — `MethodNotFound` — rather than a `null` result, because a null
-/// result says "there are no document symbols here" and the truth is "uf does
-/// not do document symbols".
+/// result says "there is no signature here" and the truth is "uf does not do
+/// signature help".
 #[test]
 fn lsp_answers_a_request_it_does_not_serve() {
     let messages = lsp_session(&[
-        framed(r#"{"jsonrpc":"2.0","id":7,"method":"textDocument/documentSymbol","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","id":7,"method":"textDocument/signatureHelp","params":{}}"#),
         framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
     ]);
 
@@ -2555,7 +2555,7 @@ fn lsp_answers_a_request_it_does_not_serve() {
         answer(&messages, 7)["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("textDocument/documentSymbol"),
+            .contains("textDocument/signatureHelp"),
         "{messages:#?}"
     );
 }

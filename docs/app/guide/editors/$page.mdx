@@ -57,9 +57,9 @@ Where each integration comes from, and what `uf editor install` does for it:
 | Helix | nothing to install: Helix speaks LSP itself | nothing; `uf editor setup helix` writes the project's `.helix/languages.toml` |
 
 Every one of them gets uf's diagnostics, hover, go to definition, go to type
-definition, completion, quick fixes, fix-all and formatting, because they all
-come from `uf lsp`. None of them gets rename or references, because `uf lsp`
-does not serve those.
+definition, completion, find references, highlights, rename, the document
+outline, quick fixes, fix-all and formatting, because they all come from
+`uf lsp`. None of them gets signature help, because `uf lsp` does not serve it.
 
 ## What the server answers
 
@@ -69,7 +69,7 @@ A session with one file, `app/flags.js`, which declares `export type Flag = bool
 
 ```
 initialize
-{"serverInfo":{"name":"uf-lsp","version":"…"},"capabilities":{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true,"codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.uf"]},"completionProvider":{"triggerCharacters":["\"","@","."]},"definitionProvider":true,"typeDefinitionProvider":true}}
+{"serverInfo":{"name":"uf-lsp","version":"…"},"capabilities":{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true,"codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.uf"]},"completionProvider":{"triggerCharacters":["\"","@","."]},"definitionProvider":true,"typeDefinitionProvider":true,"referencesProvider":true,"documentHighlightProvider":true,"renameProvider":{"prepareProvider":true},"documentSymbolProvider":true}}
 
 textDocument/publishDiagnostics
 flow/deprecated-type  severity 1  4:20  the `bool` type alias is deprecated; write `boolean`
@@ -100,6 +100,10 @@ Flow's own lint set · default `error` · decided from the source text
 | **Hover** | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`; anywhere else in a Flow file, the inferred type under the cursor, printed as Flow | the lint rules, uf's module registry, `@uniflowed/config`, and Flow's own inference |
 | **Go to definition** | Where the name under the cursor is declared: in the same file, in the file it was imported from, in a package under `node_modules`, or in the project's `flow-typed/` library definitions | Flow's inference |
 | **Go to type definition** | Where the named types in the type under the cursor are declared: for `const user: User`, the `type User` | Flow's inference |
+| **Find references** | Every place the name under the cursor is written: in this file, and in every project file that reaches its declaration through an import, transitively. A property is found through the type each access has, so `user.name` in one file finds `name` in the `type User` another declares. Packages under `node_modules` are not searched | Flow's references service, `flow_services_references`, the one Flow's own server calls |
+| **Highlights** | The uses of the name under the cursor in this file | the same service, over the one file |
+| **Rename** | `prepareRename` says which identifier would change; `rename` edits it in every file find references reaches. A shorthand property keeps its key: renaming `user` in `{ user }` writes `{ user: account }`. Refused, with the reason, for a name a package under `node_modules` or a library definition declares, and for a new name that is not an identifier | the same service, and Flow's own AST differ and printer for the edits |
+| **Document symbols** | The file's outline — classes and their members, functions, variables, types — nested as it is written. Answered from the parse, so a `@noflow` file has one too | Flow's `document_symbol_provider` |
 | **Completion** | In `uf.config.js`: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec like `runtime: "node@26"`, the names its key takes and, after `@`, that tool's versions, newest first. In any other Flow file: after `value.`, the members of `value`'s type with their types, and elsewhere the names in scope | `@uniflowed/config`'s Flow type, compiled into `uf`, so it works in a file that is half-typed; versions from the release lists uf caches under `$XDG_CACHE_HOME/uf/index`, fetched in the background and never on a request's time. Elsewhere, Flow's own completion service |
 
 The type answers come from the checker [`uf check`](/guide/check) runs, over the
@@ -128,6 +132,16 @@ app/flags.js  2:13
 textDocument/completion after `first.`
 toString  () => string
 valueOf   () => boolean
+
+textDocument/references on `flags`
+app/flags.js  3:14
+app/main.js   2:10
+app/main.js   3:15
+
+textDocument/rename `flags` to `features`
+app/flags.js  3:14  features
+app/main.js   2:10  features
+app/main.js   3:15  features
 ```
 
 </figure>
@@ -139,19 +153,20 @@ the files that import it when *they* are — not the project. What the editor ha
 open and unsaved is what is asked about, not the file on disk.
 
 A file that does not parse — half a keystroke into an edit — has no inference
-to ask, so hover and definitions answer nothing until it parses again.
+to ask, so hover, definitions, references and rename answer nothing until it
+parses again.
 Completion does answer there: `value.` is the one place a file is most often
 broken, and the completion service reads it as an access being typed.
 
-What it does not answer: rename, find-references, document symbols and
-signature help. It advertises none of them, and a request for one is refused
-rather than left waiting:
+What it does not answer: signature help, workspace symbols and inlay hints. It
+advertises none of them, and a request for one is refused rather than left
+waiting:
 
 <figure className="terminal">
 
 ```
-textDocument/references
-{"code":-32601,"message":"uf lsp does not serve `textDocument/references`"}
+textDocument/signatureHelp
+{"code":-32601,"message":"uf lsp does not serve `textDocument/signatureHelp`"}
 ```
 
 </figure>

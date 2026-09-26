@@ -34,6 +34,11 @@
 //! | [`Session::type_definition`] | the symbols `type_at_pos_type` reports for the type it printed |
 //! | [`Session::completion`] | `flow_services_autocomplete::autocomplete_service_js` |
 //! | [`Session::diagnostics`] | the context's own errors, filtered and printed as `uf check` does |
+//! | [`Session::references`] | `flow_services_references::find_refs_js`, over the file asked about and every file that reaches the definition through an import |
+//! | [`Session::highlights`] | `find_refs_js::find_local_refs`, over the one file |
+//! | [`Session::rename_range`] | `flow_services_references::prepare_rename_searcher` |
+//! | [`Session::rename`] | the references, then `rename_mapper` and Flow's AST differ and printer |
+//! | [`Session::symbols`] | `flow_lsp_server::document_symbol_provider`, over the parse alone |
 //!
 //! # Threads
 //!
@@ -145,6 +150,58 @@ pub struct Completions {
     /// Whether the service says the list is not everything, so that an editor
     /// should ask again as the word grows rather than filter this one.
     pub incomplete: bool,
+}
+
+/// Every place a name is written: its declarations and each use.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct References {
+    /// Each place, declarations included, in file and then source order.
+    pub spans: Vec<Span>,
+    /// Which of [`Self::spans`] declare the name, for an editor asked to
+    /// leave declarations out.
+    pub declarations: Vec<Span>,
+}
+
+/// One replacement a rename makes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextEdit {
+    /// The text replaced.
+    pub span: Span,
+    /// What replaces it. Not always the new name alone: renaming the binding
+    /// behind a shorthand property `{ user }` writes `{ user: account }`, so
+    /// the property keeps its name.
+    pub new_text: String,
+}
+
+/// What renaming the name under a position would do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Rename {
+    /// There is no name there with a definition to rename.
+    Nothing,
+    /// The edits, across every file in the batch that writes the name.
+    Edits(Vec<TextEdit>),
+    /// The name is declared, or written, somewhere a rename must not edit: a
+    /// library definition, or a package under `node_modules`. This span is
+    /// the first such place.
+    Outside(Span),
+}
+
+/// One entry of a file's outline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Symbol {
+    /// What is declared: a function, a class, a variable, a property.
+    pub name: String,
+    /// What the provider says about it beyond its name, when anything.
+    pub detail: Option<String>,
+    /// Its kind, in the Language Server Protocol's `SymbolKind` numbering,
+    /// which is the vocabulary Flow's provider answers in.
+    pub kind: u32,
+    /// The whole declaration.
+    pub span: Span,
+    /// The part an editor selects when the entry is picked: usually the name.
+    pub selection: Span,
+    /// What is declared inside it: a class's members, an object's properties.
+    pub children: Vec<Symbol>,
 }
 
 /// A type environment kept warm across questions. See the module header.
@@ -363,6 +420,117 @@ impl Session {
                     .diagnostics(&path)?
                     .map(|found| found.iter().cloned().collect()))
             })
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = path;
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// Every place the name under `at` is written: in `path`, and in every
+    /// file of the batch that reaches the file declaring it through an import,
+    /// transitively.
+    ///
+    /// Packages under `node_modules` are not searched — a use of a project
+    /// name there is not the project's to find — though a declaration there
+    /// is reported. [`None`] when nothing under `at` has a definition.
+    ///
+    /// A property is found through the types the checker gave each access,
+    /// with one gap: an object literal checked against an annotated type is
+    /// not linked back to that type's property, since that needs Flow's
+    /// server-side inference hook.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::type_at`], for any file searched.
+    pub fn references(&self, path: &str, at: Position) -> Result<Option<References>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| worker.references(&path, at))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// Every place in `path` itself that the name under `at` is written: what
+    /// an editor highlights while the cursor rests on it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::type_at`].
+    pub fn highlights(&self, path: &str, at: Position) -> Result<Vec<Span>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| worker.highlights(&path, at))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The identifier under `at` that a rename would replace, before asking
+    /// for the new name. [`None`] when the cursor is not on one.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Worker`] when the worker has gone.
+    pub fn rename_range(&self, path: &str, at: Position) -> Result<Option<Span>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| worker.rename_range(&path, at))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, at);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// Rename the name under `at` to `new_name` everywhere
+    /// [`Session::references`] finds it.
+    ///
+    /// Nothing is written: the answer is the edits. Whether `new_name` is an
+    /// identifier is the caller's to check.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::references`].
+    pub fn rename(&self, path: &str, at: Position, new_name: &str) -> Result<Rename, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            let new_name = new_name.to_owned();
+            self.ask(move |worker| worker.rename(&path, at, &new_name))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = (path, at, new_name);
+            Err(CheckError::Unavailable)
+        }
+    }
+
+    /// The outline of `path`: what it declares, nested as it is written.
+    ///
+    /// Read from the parse alone, so a file that says `@noflow` has one too.
+    /// [`None`] when `path` is not in the batch.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Worker`] when the worker has gone.
+    pub fn symbols(&self, path: &str) -> Result<Option<Vec<Symbol>>, CheckError> {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let path = path.to_owned();
+            self.ask(move |worker| Ok(worker.symbols(&path)))
         }
         #[cfg(not(feature = "upstream-typecheck"))]
         {

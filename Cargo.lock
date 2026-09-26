@@ -1271,6 +1271,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_lsp_server"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_lsp",
+ "flow_parser",
+ "lsp-types",
+]
+
+[[package]]
 name = "flow_monitor_rpc"
 version = "0.0.0"
 dependencies = [
@@ -1483,6 +1493,30 @@ dependencies = [
  "flow_parser_utils",
  "flow_utils_concurrency",
  "regex",
+ "vec1",
+]
+
+[[package]]
+name = "flow_services_references"
+version = "0.0.0"
+dependencies = [
+ "dupe",
+ "flow_aloc",
+ "flow_analysis",
+ "flow_common",
+ "flow_data_structure_wrapper",
+ "flow_lsp",
+ "flow_parser",
+ "flow_parser_utils",
+ "flow_parser_utils_output",
+ "flow_services_get_def",
+ "flow_typing_context",
+ "flow_typing_flow_js",
+ "flow_typing_tvar",
+ "flow_typing_type",
+ "flow_typing_utils",
+ "flow_utils_concurrency",
+ "lsp-types",
  "vec1",
 ]
 
@@ -4372,6 +4406,7 @@ dependencies = [
  "flow_flowlib",
  "flow_lazy",
  "flow_lint_settings",
+ "flow_lsp_server",
  "flow_parser",
  "flow_parser_utils",
  "flow_parser_utils_output",
@@ -4379,6 +4414,7 @@ dependencies = [
  "flow_services_autocomplete",
  "flow_services_export",
  "flow_services_get_def",
+ "flow_services_references",
  "flow_type_sig",
  "flow_typing",
  "flow_typing_builtins",
@@ -4387,6 +4423,7 @@ dependencies = [
  "flow_typing_type",
  "flow_typing_utils",
  "flow_utils_concurrency",
+ "lsp-types",
  "serde",
  "serde_json",
  "sha2",
