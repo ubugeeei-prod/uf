@@ -146,9 +146,9 @@ phf = { version = "0.14.0", features = ["macros"] }
 # already matched is all of that it needs. Already in the graph through
 # `serde_derive`, so it costs no download.
 proc-macro2 = "1.0.107"
-react_compiler = "0.1.0"
-react_compiler_ast = "0.1.0"
-react_compiler_diagnostics = "0.1.0"
+react_compiler = { path = "upstream/react/compiler/crates/react_compiler" }
+react_compiler_ast = { path = "upstream/react/compiler/crates/react_compiler_ast" }
+react_compiler_diagnostics = { path = "upstream/react/compiler/crates/react_compiler_diagnostics" }
 rustc-hash = "2.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }

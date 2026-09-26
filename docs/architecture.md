@@ -302,32 +302,37 @@ built code and the readable checkout stop being the same bytes by construction.
 workspace does not resolve without it, so `tools/upstream/sync.sh` materializes
 it on every checkout and in every CI job.
 
-Three more upstream repositories are pinned by commit in
-`tools/upstream/repos.txt` and fetched on request:
+`upstream/react` is also a submodule, from the official
+[`react/react`](https://github.com/react/react) repository. Cargo builds
+`react_compiler`, `react_compiler_ast`, `react_compiler_diagnostics` and their
+Rust dependencies directly from its pinned `compiler/crates` source. The
+compiler's own fixtures and `.expect.md` snapshots come from that same checkout;
+`tools/react-compiler/pin.txt` and the gitlink must agree. CI checks that pin and
+runs the conformance corpus through uf's native pipeline.
+
+No Babel parser, traversal, plugin or JavaScript compiler runs in that pipeline.
+The official Rust compiler expects a Babel-shaped AST and `ScopeInfo`, so uf's
+Flow parser and Rust adapters provide those structures. Babel's AST vocabulary
+is a data format here. Code generation remains oxc.
+
+Relay and React Native remain optional pinned source checkouts in
+`tools/upstream/repos.txt`, fetched with:
 
 ```sh
 tools/upstream/sync.sh --integrations   # uf run upstream:sync:integrations
 ```
 
-They are not submodules, and they are not fetched by default, for one reason:
-**nothing in the cargo graph depends on them yet**, and `sync.sh` runs in every
-CI job. Vendoring them into that path would slow every job to hold source that
-nothing compiles.
-
-Each is filtered to the subtrees uf reads, which is about 45 MB of roughly a
-gigabyte.
-
-| Pinned source | What it is | What uf does today |
+| Pinned source | What it is | What uf uses |
 | --- | --- | --- |
-| `upstream/react` — `compiler/crates` | The React Compiler's official Rust port: `react_compiler_validation`, `react_compiler_hir`, `react_compiler_inference` and nine more. | uf depends on the crates published from this source (`react_compiler` 0.1.0 on crates.io). `uf_transform` compiles with it for `uf build`, `uf dev` and `uf test`, and runs it in lint mode for `uf lint`, whose `react-compiler/*` rules are its diagnostics. uf has no React Compiler checks of its own. |
-| `upstream/relay` — `compiler/crates` | Relay's compiler, in Rust: `graphql-syntax`, `graphql-ir`, `relay-transforms`, and 44 others. | `@uniflowed/relay` re-exports the JavaScript Relay runtime and shells out to the published `relay-compiler`. Artifact generation is the hot path the redundancy guide says must be native. |
-| `upstream/react-native` — `packages/react-native-codegen`, `packages/react-native/Libraries` | React Native's codegen and its Flow-typed JavaScript libraries. | `@uniflowed/react-native` re-exports the React Native JavaScript runtime as a peer package. The codegen and Libraries pins remain the source for native bindings and Flow surface work that belongs in uf itself. |
+| `upstream/react` — `compiler/crates` and compiler fixtures | The official React Compiler in Rust and its snapshot corpus | Compiled directly for `uf build`, `uf dev`, `uf test` and lint diagnostics; snapshots verify uf's native front end |
+| `upstream/relay` — `compiler/crates` | Relay's compiler in Rust | `@uniflowed/relay` re-exports the JavaScript runtime and invokes the published `relay-compiler` |
+| `upstream/react-native` — codegen and Libraries | Native codegen and Flow library sources | Native bindings and Flow surface work; the JavaScript runtime remains a peer package |
 
-The pins are the four repositories' `main` as of the commit that added this
+The optional pins are the repositories' `main` as of the commit that added this
 section. Bumping one is a line in `repos.txt`; `sync.sh` fetches the new commit
 and nothing is left behind.
 
-The "Upstream Integrations" CI job fetches all three and checks the subtrees
+The "Upstream Integrations" CI job fetches both optional repositories and checks the subtrees
 are where the manifest says. That is the whole of what it asserts: a pin that
 has been force-pushed away, or a directory that upstream moved, fails there
 rather than the next time someone tries to build against it.
@@ -344,7 +349,7 @@ in the pipeline.
 | Parse | Meta's Flow Rust port (`flow_parser`), rendered as ESTree by its own translator |
 | Lower `component`/`hook`, `match`, enums; erase types | Ports of `hermes-parser`'s `TransformComponentSyntax`, `TransformMatchSyntax`, `TransformEnumSyntax` and `StripFlowTypes` — the rules Flow's own toolchain applies |
 | Babel AST + scopes | A port of `hermes-parser`'s `TransformESTreeToBabel`, plus a scope analysis in Babel's terms, because that is the contract the compiler consumes |
-| React Compiler | The official Rust implementation (`react_compiler` on crates.io) in `syntax` mode: only `component` and `hook` declarations are memoised |
+| React Compiler | The official Rust implementation (`react_compiler` from the pinned `react/react` source) in `syntax` mode: only `component` and `hook` declarations are memoised |
 | JSX, Fast Refresh, code generation, source maps | oxc — the engine inside Vite and Rolldown — so a module is byte-identical whether Vite or `uf test` asked for it |
 
 The output is the JavaScript Flow documents: a `match` becomes the

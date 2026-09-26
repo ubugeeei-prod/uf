@@ -14,13 +14,17 @@
       url = "github:facebook/flow/81b0c2a3dd591c66c51167aac341d851932bd9c5";
       flake = false;
     };
+    react = {
+      url = "github:react/react/ff7445e636429ab26ce3d388535a79c845d88c94";
+      flake = false;
+    };
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-x86_64-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, flow, nixpkgs, nixpkgs-x86_64-darwin, rust-overlay }:
+  outputs = { self, flow, react, nixpkgs, nixpkgs-x86_64-darwin, rust-overlay }:
     let
       systems = [
         "aarch64-darwin"
@@ -116,6 +120,15 @@
           # failure that directory's README exists to prevent. A symlink also
           # cannot be patched, so this is a copy.
           postPatch = ''
+            rm -rf upstream/react
+            mkdir -p upstream/react/compiler
+            cp -R ${react}/compiler/crates upstream/react/compiler/crates
+            # The compiler workspace also names the native adapter manifest.
+            mkdir -p upstream/react/compiler/packages/babel-plugin-react-compiler-rust
+            cp -R ${react}/compiler/packages/babel-plugin-react-compiler-rust/native \
+              upstream/react/compiler/packages/babel-plugin-react-compiler-rust/native
+            chmod -R u+w upstream/react
+
             rm -rf upstream/flow
             mkdir -p upstream/flow
             # The same five subtrees `tools/upstream/sync.sh` sparse-checks out,

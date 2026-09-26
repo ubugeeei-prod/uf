@@ -75,10 +75,6 @@ infra/cloudflare/.wrangler/
 # submodules stopped being an exception in #137.
 /tests/fixtures/git/*
 
-# The React Compiler's fixture corpus, checked out by
-# `tools/react-compiler/sync.sh` at the commit `tools/react-compiler/pin.txt`
-# names — the one `react_compiler` was published from. Nothing here is tracked.
-/tests/fixtures/react-compiler/
 
 # Upstream integration sources, fetched on request by
 # `tools/upstream/sync.sh --integrations` from `tools/upstream/repos.txt`.

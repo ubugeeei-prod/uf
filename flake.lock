@@ -49,11 +49,29 @@
         "type": "github"
       }
     },
+    "react": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788185788,
+        "narHash": "sha256-NFUry7+iYxxYucViISitLGAozl6QME+CEhko1Yr65t0=",
+        "owner": "react",
+        "repo": "react",
+        "rev": "ff7445e636429ab26ce3d388535a79c845d88c94",
+        "type": "github"
+      },
+      "original": {
+        "owner": "react",
+        "repo": "react",
+        "rev": "ff7445e636429ab26ce3d388535a79c845d88c94",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flow": "flow",
         "nixpkgs": "nixpkgs",
         "nixpkgs-x86_64-darwin": "nixpkgs-x86_64-darwin",
+        "react": "react",
         "rust-overlay": "rust-overlay"
       }
     },

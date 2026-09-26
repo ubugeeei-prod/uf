@@ -1,22 +1,10 @@
-# The React Compiler fixture corpus the conformance run measures uf against.
-#
-# `react_compiler` on crates.io is published from facebook/react's
-# `compiler/crates/`, and the published crate records the commit it was cut
-# from in `.cargo_vcs_info.json`:
-#
-#     $ cat ~/.cargo/registry/src/index.crates.io-*/react_compiler-0.1.0/.cargo_vcs_info.json
-#     {"git": {"sha1": "ff7445e636429ab26ce3d388535a79c845d88c94"},
-#      "path_in_vcs": "compiler/crates/react_compiler"}
-#
-# The fixtures and their `.expect.md` snapshots are read at that same commit,
-# so the compiler uf runs and the compiler that wrote the snapshots are one
-# source tree. Moving `react_compiler` in Cargo.lock without moving `commit`
-# here fails the conformance test, which reads both.
-#
-# One `key value` pair per line; `tools/react-compiler/sync.sh` and
-# `crates/uf_transform/tests/react_compiler_conformance/main.rs` both read it.
+# The official React Compiler source and its matching fixture snapshots.
+# upstream/react is a submodule at `commit`; Cargo builds its Rust crates
+# directly. The same checkout supplies the upstream .expect.md snapshots.
+# The front end is uf's Flow parser and Rust AST/scope adapter, not Babel.
+# Move the gitlink and this pin together when updating the compiler.
 crate      react_compiler
 version    0.1.0
-repository https://github.com/facebook/react.git
+repository https://github.com/react/react.git
 commit     ff7445e636429ab26ce3d388535a79c845d88c94
 fixtures   compiler/packages/babel-plugin-react-compiler/src/__tests__/fixtures/compiler

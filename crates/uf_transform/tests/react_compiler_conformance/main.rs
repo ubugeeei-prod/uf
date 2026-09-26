@@ -1,7 +1,7 @@
 //! uf's compile path, measured against the React Compiler's own fixtures.
 //!
-//! uf runs the official compiler — the `react_compiler` crate, published from
-//! facebook/react's `compiler/crates/` — but the crate has no front end. It
+//! uf runs the official compiler — the `react_compiler` crate, sourced from
+//! react/react's `compiler/crates/` — but the crate has no front end. It
 //! reads Babel's AST and a `ScopeInfo` that whoever parsed the file built;
 //! upstream those come from `@babel/parser` and `@babel/traverse`, and in uf
 //! from the Flow parser, `babel.rs` and `scope.rs`. Wherever those differ from
@@ -12,7 +12,7 @@
 //!
 //! Every fixture in `babel-plugin-react-compiler/src/__tests__/fixtures/compiler`
 //! at the commit `tools/react-compiler/pin.txt` names — the commit the crate
-//! was published from — goes through [`pipeline::compile`] with the options
+//! was sourced from — goes through [`pipeline::compile`] with the options
 //! its first line asks for ([`pragma`]), and the result is compared with the
 //! `.expect.md` snapshot the TypeScript plugin wrote ([`expect`]), in the form
 //! [`normalize`] describes. No Babel runs anywhere in this.
@@ -53,6 +53,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -214,64 +215,38 @@ fn baseline_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/react_compiler_conformance/baseline.tsv")
 }
 
-/// The fixtures are measured against the compiler that wrote their snapshots.
-///
-/// `Cargo.lock` must resolve `react_compiler` to the version the pin names, and
-/// when the crate's registry source is on this machine — it is wherever the
-/// crate was built — its `.cargo_vcs_info.json` must name the pinned commit.
+/// The compiler and its snapshots come from the same official source checkout.
 #[test]
-fn the_pin_is_the_commit_react_compiler_was_published_from() {
+fn the_pin_matches_the_official_compiler_source() {
     let pin = pin();
+    let source = repo_root().join("upstream/react");
+    let manifest = fs::read_to_string(source.join("compiler/crates/react_compiler/Cargo.toml"))
+        .expect("run tools/upstream/sync.sh to materialize upstream/react");
+    assert!(manifest.contains(&format!("version = \"{}\"", pin.version)));
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(&source)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .expect("read upstream/react HEAD");
+    assert!(head.status.success());
+    assert_eq!(String::from_utf8(head.stdout).unwrap().trim(), pin.commit);
     let lock = fs::read_to_string(repo_root().join("Cargo.lock")).expect("Cargo.lock");
-    let locked = lock
+    let compiler = lock
         .split("[[package]]")
         .find(|package| package.contains("\nname = \"react_compiler\"\n"))
-        .and_then(|package| {
-            package
-                .lines()
-                .find_map(|line| line.strip_prefix("version = \""))
-                .map(|version| version.trim_end_matches('"').to_owned())
-        })
         .expect("react_compiler in Cargo.lock");
-    assert_eq!(
-        locked, pin.version,
-        "Cargo.lock resolves react_compiler {locked}, but tools/react-compiler/pin.txt pins the \
-         fixtures of {}; move the pin to the commit the new version was published from",
-        pin.version
+    assert!(compiler.contains(&format!("version = \"{}\"", pin.version)));
+    assert!(
+        !compiler.contains("source ="),
+        "compile the official pinned path source"
     );
-
-    let cargo_home = std::env::var_os("CARGO_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")));
-    let Some(registry) = cargo_home.map(|home| home.join("registry/src")) else {
-        return;
-    };
-    let Ok(indexes) = fs::read_dir(&registry) else {
-        return;
-    };
-    for index in indexes.flatten() {
-        let info = index.path().join(format!(
-            "react_compiler-{}/.cargo_vcs_info.json",
-            pin.version
-        ));
-        if let Ok(text) = fs::read_to_string(&info) {
-            assert!(
-                text.contains(&pin.commit),
-                "{} does not name the pinned commit {}:\n{text}",
-                info.display(),
-                pin.commit
-            );
-        }
-    }
 }
 
 #[test]
 fn uf_compiles_the_react_compiler_fixtures_as_babel_plugin_react_compiler_does() {
     let pin = pin();
-    let corpus = repo_root()
-        .join("tests/fixtures/react-compiler")
-        .join(&pin.commit)
-        .join(&pin.fixtures);
+    let corpus = repo_root().join("upstream/react").join(&pin.fixtures);
     if !corpus.is_dir() {
         assert!(
             std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),

@@ -432,14 +432,14 @@ export default defineConfig({
     // uf's compile path, over the React Compiler's own fixtures.
     //
     // `crates/uf_transform/tests/react_compiler_conformance` runs each fixture
-    // in facebook/react's compiler corpus through the Flow parser, `babel.rs`,
+    // in react/react's compiler corpus through the Flow parser, `babel.rs`,
     // `scope.rs`, the official `react_compiler` crate and `print.rs`, and
     // compares the result with the `.expect.md` snapshot that
     // `babel-plugin-react-compiler` wrote. `baseline.tsv` beside the test is
     // the floor: a fixture whose result changes fails the test.
     //
     // In `ci` through `rust:test`, which the Test job runs after syncing the
-    // fixtures (about 3 MB, pinned in `tools/react-compiler/pin.txt`). This
+    // fixtures from `upstream/react`, pinned in `tools/react-compiler/pin.txt`. This
     // task is the same run with its report printed.
     "react-compiler:sync": "tools/react-compiler/sync.sh",
     "react-compiler:conformance": {
