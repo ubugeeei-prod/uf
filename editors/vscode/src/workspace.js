@@ -2,31 +2,17 @@
 //
 // The settings a uf project wants VS Code to have, and which of them to write.
 //
-// # Why the extension writes any settings at all
+// # Why the extension configures Flow language mode
 //
-// VS Code ships TypeScript's language service for JavaScript, and it reads a
-// Flow file as JavaScript: `component Button()`, `hook useThing()`, `match`,
-// `renders` and every type annotation come back as TypeScript errors
-// ("Type annotations can only be used in TypeScript files"), under uf's own
-// findings for the same lines. Flow's own VS Code extension has asked its
-// users to turn that off by hand since it was written.
+// Turning off JavaScript validation/suggestions leaves TypeScript's hover,
+// definitions and semantic coloring active. The `flow` language id is served
+// by uf and its grammar; JavaScript/TypeScript providers do not match it.
+// The public setTextDocumentLanguage API selects Flow only inside a uf
+// project, including multi-root windows. Window-wide file associations are
+// left unchanged.
 //
-// The switch is the validation setting, and it has two names. VS Code 1.110
-// (February 2026) moved it to `js/ts.validate.enabled`, language-overridable,
-// and still reads the old `javascript.validate.enable` — but only while the
-// new key has no value anywhere, a `"[typescript]"` block in someone's user
-// settings included. So both are written: the old name for older VS Code and
-// for Cursor (whose extension API is older than 1.110), and the new one
-// scoped to `"[javascript]"`, which is the language id the built-in service
-// reads it under for `.jsx` files too. Either turns off syntax, semantic and
-// suggestion diagnostics for JavaScript and nothing else: hover, go to
-// definition and suggestions from the built-in service stay, beside uf's,
-// because VS Code has no setting that turns those off short of disabling the
-// built-in extension (see the editors guide).
-//
-// A VS Code that does not know the new key is not written to under it: the
-// plan says "unsupported", because VS Code refuses to write a setting nothing
-// registered.
+// Legacy and unified validation settings remain for projects that explicitly
+// keep the JavaScript language id. A value already set is preserved.
 //
 // # What is written, and when
 //
@@ -96,6 +82,13 @@ const VALIDATION_UNIFIED /*: Setting */ = {
   why: "the same switch under the name VS Code 1.110 and later read first; [javascript] covers .jsx as well",
 };
 
+const FORMATTER_FLOW /*: Setting */ = {
+  key: "editor.defaultFormatter",
+  language: "flow",
+  value: EXTENSION_ID,
+  why: "format Flow documents with this project's uf",
+};
+
 const FORMATTER_JS /*: Setting */ = {
   key: "editor.defaultFormatter",
   language: "javascript",
@@ -117,6 +110,7 @@ const AUTOMATIC /*: $ReadOnlyArray<Setting> */ = [VALIDATION, VALIDATION_UNIFIED
 const RECOMMENDED /*: $ReadOnlyArray<Setting> */ = [
   VALIDATION,
   VALIDATION_UNIFIED,
+  FORMATTER_FLOW,
   FORMATTER_JS,
   FORMATTER_JSX,
 ];

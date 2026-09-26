@@ -82,6 +82,8 @@ export default defineConfig({
     "tools/release/test-policy.cjs",
     "tools/release/test-trusted-policy.cjs",
     "tools/release/test-auto-release.cjs",
+    // Real VS Code and TextMate tests run in the Editors Actions lane.
+    "editors/vscode/test",
   ],
 
   test: {

@@ -181,6 +181,7 @@ function fake(
     },
     workspace: {
       workspaceFolders: folders,
+      textDocuments: [],
       getWorkspaceFolder: (target: { fsPath: string }) =>
         folders.find((folder) => target.fsPath.startsWith(folder.uri.fsPath)),
       getConfiguration: (section: ?string) => ({
@@ -209,6 +210,7 @@ function fake(
       onDidChangeWorkspaceFolders: event,
       onDidChangeConfiguration: event,
       onWillSaveTextDocument: event,
+      onDidOpenTextDocument: event,
     },
     commands: {
       registerCommand: (name: string, handler: () => mixed) => {
@@ -365,6 +367,15 @@ describe("VS Code's built-in JavaScript validation", () => {
       serverVersion: "0.2.0",
       settings: { "uf.workspace.disableBuiltinValidation": false },
     });
+    await activate(f);
+    expect(f.updates).toEqual([]);
+  });
+
+  it("upgrades existing projects without restoring deleted validation settings", async () => {
+    const root = ufProject();
+    const workspaceState = new Map<string, mixed>();
+    const f = fake([root], { serverVersion: "0.11.0", workspaceState });
+    workspaceState.set(`uf.automaticSettings:${f.folderUris[0]}`, true);
     await activate(f);
     expect(f.updates).toEqual([]);
   });

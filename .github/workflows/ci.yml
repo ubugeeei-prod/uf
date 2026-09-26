@@ -659,6 +659,17 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           ./node_modules/.bin/vsce package --out "$RUNNER_TEMP/uf.vsix"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.code == 'true'
+        with:
+          name: uf-ci
+          path: target/release
+      - name: Verify Flow highlighting and hover in VS Code
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          chmod +x target/release/uf
+          export UF_BINARY="$GITHUB_WORKSPACE/target/release/uf"
+          xvfb-run -a node editors/vscode/test/run-host.cjs
       - run: cargo clippy --manifest-path editors/zed/Cargo.toml --locked --all-targets -- -D warnings
         if: needs.changes.outputs.code == 'true'
       - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2

@@ -1,0 +1,6 @@
+{
+  "$comment": "A separate Flow language keeps JavaScript/TypeScript providers off Flow files and gives fenced Flow hover snippets the same grammar as the editor. Reuse VS Code's JavaScript/JSX grammar; the injection supplies Flow declarations and type contexts.",
+  "name": "Flow",
+  "scopeName": "source.js.flow",
+  "patterns": [{ "include": "source.flow.injection.uf" }, { "include": "source.js.jsx" }]
+}

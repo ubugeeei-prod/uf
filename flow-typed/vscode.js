@@ -55,6 +55,10 @@ declare module "vscode" {
     readonly languageId: string;
   }
 
+  declare export var languages: {
+    setTextDocumentLanguage(document: TextDocument, languageId: string): Promise<TextDocument>,
+  };
+
   declare export interface TextDocumentWillSaveEvent {
     readonly document: TextDocument;
     waitUntil(thenable: Promise<$ReadOnlyArray<TextEdit>>): void;
@@ -176,12 +180,14 @@ declare module "vscode" {
 
   declare export var workspace: {
     readonly workspaceFolders: $ReadOnlyArray<WorkspaceFolder> | void,
+    readonly textDocuments: $ReadOnlyArray<TextDocument>,
     getConfiguration(section?: string, scope?: ConfigurationScope | null): WorkspaceConfiguration,
     getWorkspaceFolder(uri: Uri): WorkspaceFolder | void,
     createFileSystemWatcher(globPattern: RelativePattern | string): FileSystemWatcher,
     onDidChangeWorkspaceFolders: Event<WorkspaceFoldersChangeEvent>,
     onDidChangeConfiguration: Event<ConfigurationChangeEvent>,
     onWillSaveTextDocument: Event<TextDocumentWillSaveEvent>,
+    onDidOpenTextDocument: Event<TextDocument>,
   };
 
   declare export var commands: {

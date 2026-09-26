@@ -90,8 +90,7 @@ the background and its versions appear a keystroke or two later.
 
 The extension needed no change for any of this: `uf.config.js` is one of the
 files it already hands the server, and VS Code registers a completion provider
-from the capabilities the server advertises. VS Code's own JavaScript
-suggestions still appear beside uf's.
+from the capabilities the server advertises. The Flow language mode keeps the built-in JavaScript providers out of the way.
 
 Quick fixes are offered only where uf's answer is mechanical.
 `flow/deprecated-type` has one — `bool` becomes `boolean`. `flow/unclear-type`
@@ -167,48 +166,34 @@ commands above.
 An old `uf` still starts: lint findings and formatting from it are better than
 none. The extension says so once, with the version it found and what to do.
 
-## VS Code's own JavaScript service, in a uf project
+## Flow language mode and highlighting
 
-VS Code runs TypeScript's language service over JavaScript, so a Flow file gets
-TypeScript's errors — `component`, `hook`, `match`, `renders`, every type
-annotation — under uf's findings for the same lines. In a folder with
-`uf.config.js`, the extension turns that off **for that folder** when its server
-first starts, by writing to its `.vscode/settings.json`:
+In a uf project, `.js`, `.jsx`, `.mjs` and `.cjs` use the **Flow**
+language mode. It provides proper signature contexts for `component` and
+`hook`: names, parameters, type annotations, generics, exact objects and
+`renders` types. JavaScript expressions and JSX reuse VS Code's built-in
+grammar. Fenced `flow` signatures in hover use the same grammar and theme.
 
-```jsonc
-"javascript.validate.enable": false,
-"[javascript]": { "js/ts.validate.enabled": false }
-```
+VS Code's TypeScript service does not match Flow documents, so its inaccurate
+`any` hover, completion and semantic coloring do not appear beside uf's
+inferred types. The built-in extension remains enabled for `.ts` files and
+JavaScript outside the uf project.
 
-Two names for one switch: VS Code 1.110 renamed it, and reads the old name only
-while the new one is set nowhere. `"[javascript]"` also covers `.jsx`, because
-that is the language id VS Code reads it under. A VS Code without the new name
-(before 1.110, and Cursor) gets only the old one. It turns off diagnostics only;
-hover, go to definition and suggestions from VS Code's service remain beside
-uf's, since no setting turns those off short of disabling the built-in
-"TypeScript and JavaScript Language Features" extension for the workspace.
+`uf editor setup vscode` (or `cursor`) writes `[flow]` formatter/on-save
+settings. The extension selects Flow with the public `setTextDocumentLanguage`
+API only for files inside the uf folder, including multi-root windows. It
+leaves file associations unchanged; window-wide associations would affect
+JavaScript files opened from outside the uf project too.
 
-In a multi-root workspace VS Code treats the old name as window-scoped and
-refuses it as a folder setting; the extension then skips it rather than write
-it to the `.code-workspace` file, which would turn validation off for a
-TypeScript folder beside this one, and the per-folder new name does the work on
-VS Code 1.110 and later.
+A project that explicitly associates `*.js` with another language keeps it.
+Choose **Flow** from the language-mode picker to opt in for that document, or
+remove the custom association and reopen the file.
+`"uf.workspace.disableBuiltinValidation": false` opts out of automatic
+configuration and language selection. The setup notification offers **Undo**.
 
-It never writes over a value the project set, either way; it writes once per
-folder, so deleting the lines is respected; it never touches `typescript.*` or
-`.ts` files; and the notification it shows has an **Undo**.
-`"uf.workspace.disableBuiltinValidation": false` turns it off.
-
-## Flow syntax highlighting
-
-VS Code's JavaScript grammar does not know Flow's component syntax, so
-`syntaxes/flow.injection.json` is injected into it (and into the JSX grammar)
-and scopes `component` and `hook` declarations with their names, `renders`,
-`renders?` and `renders*` after a signature or a colon, `match (…) {`, and
-`opaque type`. Each pattern is narrow enough to leave ordinary JavaScript
-alone — `text.match(re)`, a variable called `renders` — and the tests hold both
-directions. The rest of the line is still the JavaScript grammar's, so
-parameters of a `component` are coloured as a call's arguments would be.
+JavaScript validation settings are retained for older/custom setups that keep
+the JavaScript language id. They are written once per folder, preserve values
+the project already set, and never modify TypeScript validation.
 
 ## Finding the binary
 
@@ -288,24 +273,12 @@ project set nothing, and every contributed command is registered.
 
 ## What no test here covers
 
-An extension host cannot be started in this repository's CI, so these need a
-person with VS Code open:
+The Editors CI lane starts real VS Code with an isolated profile in both a
+single-folder and a multi-root workspace. It verifies one inferred Flow hover
+without TypeScript's `any` entry, completion, formatting, preserved settings,
+and unchanged JavaScript/TypeScript outside the uf project. TextMate tests
+exercise complete signatures and JSX with the built-in JavaScript grammar,
+and verify distinct colors in both Dark+ and Light+ for source and hover.
 
-* that VS Code honours the folder-level validation settings the extension
-  writes (the setting names and scopes are from VS Code's own
-  `typescript-language-features` source, as of 1.110),
-* that the status bar item looks right in each state,
-* that the injection grammar colours a file in a real editor — it was checked
-  by hand with `vscode-textmate` against the JavaScript grammars VS Code ships,
-  which scope `component`, `hook`, `renders*` and `match` as above and add
-  nothing to the extension's own sources,
-
-* that VS Code registers the providers from the server's capabilities,
-* that the suggest widget shows `uf.config.js` completions as you type, and
-  after `"`,
-* that `editor.codeActionsOnSave` reaches `source.fixAll.uf`,
-* that the missing-binary notification and its buttons appear,
-* that `uf.formatOnSave` runs on save,
-* that the `uf.config.js` watcher restarts the server.
-
-The pieces underneath each of them are tested; the wiring in VS Code is not.
+Native editor shortcuts, notification placement and integration with custom
+third-party themes are still manual checks.

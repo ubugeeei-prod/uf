@@ -176,7 +176,7 @@ fn vscode_settings(unified_name: bool) -> Vec<Want> {
             json!(false),
         ));
     }
-    for language in ["[javascript]", "[javascriptreact]"] {
+    for language in ["[flow]", "[javascript]", "[javascriptreact]"] {
         wants.push(Want::value(
             &[language, "editor.defaultFormatter"],
             json!(VSCODE_EXTENSION),
