@@ -8,9 +8,9 @@
 # YAML for three systems this repository has no runner for, and until this
 # existed nothing at all read them:
 #
-#   integrations/github-actions/action.yml
-#   integrations/gitlab/uf.gitlab-ci.yml
-#   integrations/circleci/orb.yml
+#   ci-setup/github-actions/action.yml
+#   ci-setup/gitlab/uf.gitlab-ci.yml
+#   ci-setup/circleci/orb.yml
 #   docs/app/guide/ci/$page.mdx     (its fenced blocks, which are copied)
 #
 # That is the whole argument for this file. A shipped recipe is a copy of the
@@ -52,9 +52,9 @@ cd "$repo_root"
 # --- The written lists -----------------------------------------------------
 
 # Recipes that ship, and the guide whose fenced blocks people copy.
-YAML_RECIPES="integrations/github-actions/action.yml
-integrations/gitlab/uf.gitlab-ci.yml
-integrations/circleci/orb.yml"
+YAML_RECIPES="ci-setup/github-actions/action.yml
+ci-setup/gitlab/uf.gitlab-ci.yml
+ci-setup/circleci/orb.yml"
 GUIDE='docs/app/guide/ci/$page.mdx'
 
 # Commands that read `node_modules`, and therefore need `uf install` to have run.

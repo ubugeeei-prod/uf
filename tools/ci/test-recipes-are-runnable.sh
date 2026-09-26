@@ -66,16 +66,16 @@ scratch() {
   root="$work/$1"
   rm -rf "$root"
   mkdir -p "$root/tools/ci" \
-    "$root/integrations/github-actions" \
-    "$root/integrations/gitlab" \
-    "$root/integrations/circleci" \
+    "$root/ci-setup/github-actions" \
+    "$root/ci-setup/gitlab" \
+    "$root/ci-setup/circleci" \
     "$root/docs/app/guide/ci"
   cp "$script" "$root/tools/ci/recipes-are-runnable.sh"
 
   # The action installs the toolchain and runs no uf command of its own, and
   # its description is prose that names commands — which is exactly the text a
   # reader of these files must not mistake for a recipe.
-  cat > "$root/integrations/github-actions/action.yml" <<'ACTION'
+  cat > "$root/ci-setup/github-actions/action.yml" <<'ACTION'
 name: Set up uf
 description: >-
   Install the uf toolchain so a workflow can run uf check and uf test.
@@ -89,7 +89,7 @@ runs:
         key: uf-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}
 ACTION
 
-  cat > "$root/integrations/gitlab/uf.gitlab-ci.yml" <<'GITLAB'
+  cat > "$root/ci-setup/gitlab/uf.gitlab-ci.yml" <<'GITLAB'
 variables:
   UF_VERSION: "latest"
 
@@ -107,7 +107,7 @@ uf:check:
     - uf check
 GITLAB
 
-  cat > "$root/integrations/circleci/orb.yml" <<'ORB'
+  cat > "$root/ci-setup/circleci/orb.yml" <<'ORB'
 executors:
   default:
     docker:
@@ -168,8 +168,8 @@ pass "prose that names commands is not read as one"
 
 # 3. Rule 3: the mistake the GitLab and CircleCI recipes shipped.
 root="$(scratch no-install)"
-sed '/uf install/d' "$root/integrations/gitlab/uf.gitlab-ci.yml" > "$work/edited"
-cp "$work/edited" "$root/integrations/gitlab/uf.gitlab-ci.yml"
+sed '/uf install/d' "$root/ci-setup/gitlab/uf.gitlab-ci.yml" > "$work/edited"
+cp "$work/edited" "$root/ci-setup/gitlab/uf.gitlab-ci.yml"
 if check "$root"; then
   fail "accepted a \`uf check\` with no \`uf install\` before it"
 fi
@@ -180,7 +180,7 @@ pass "rejects a command that reads node_modules with nothing installed"
 # 4. And it is the *order* it objects to, not the presence of the word: an
 #    install after the check is not an install the check ran with.
 root="$(scratch install-after)"
-cat > "$root/integrations/gitlab/uf.gitlab-ci.yml" <<'GITLAB'
+cat > "$root/ci-setup/gitlab/uf.gitlab-ci.yml" <<'GITLAB'
 .uf:
   image: node:24-bookworm-slim
 
@@ -197,7 +197,7 @@ pass "rejects an install that comes after the command"
 
 # 5. And an install in a different job is a different job's install.
 root="$(scratch install-elsewhere)"
-cat > "$root/integrations/gitlab/uf.gitlab-ci.yml" <<'GITLAB'
+cat > "$root/ci-setup/gitlab/uf.gitlab-ci.yml" <<'GITLAB'
 .uf:
   image: node:24-bookworm-slim
 
@@ -219,8 +219,8 @@ pass "rejects an install that belongs to another job"
 # 6. Rule 1: a command the binary does not have. This is the staleness the
 #    whole file is for — a recipe outliving the name it was written against.
 root="$(scratch renamed)"
-sed 's/- uf check$/- uf typecheck/' "$root/integrations/gitlab/uf.gitlab-ci.yml" > "$work/edited"
-cp "$work/edited" "$root/integrations/gitlab/uf.gitlab-ci.yml"
+sed 's/- uf check$/- uf typecheck/' "$root/ci-setup/gitlab/uf.gitlab-ci.yml" > "$work/edited"
+cp "$work/edited" "$root/ci-setup/gitlab/uf.gitlab-ci.yml"
 if check "$root"; then
   fail "accepted a command this uf has no name for"
 fi
@@ -230,8 +230,8 @@ pass "rejects a command the binary does not have"
 # 7. Rule 1 again, for a flag. Same failure, one level down, and the more
 #    likely of the two.
 root="$(scratch unknown-flag)"
-sed 's/- uf check$/- uf check --format json/' "$root/integrations/gitlab/uf.gitlab-ci.yml" > "$work/edited"
-cp "$work/edited" "$root/integrations/gitlab/uf.gitlab-ci.yml"
+sed 's/- uf check$/- uf check --format json/' "$root/ci-setup/gitlab/uf.gitlab-ci.yml" > "$work/edited"
+cp "$work/edited" "$root/ci-setup/gitlab/uf.gitlab-ci.yml"
 if check "$root"; then
   fail "accepted a flag \`uf check\` does not take"
 fi
@@ -241,8 +241,8 @@ pass "rejects a flag the command does not accept"
 # 8. Rule 4: an image that cannot run what the recipe runs.
 root="$(scratch no-host)"
 sed 's|image: node:24-bookworm-slim|image: debian:stable-slim|' \
-  "$root/integrations/gitlab/uf.gitlab-ci.yml" > "$work/edited"
-cp "$work/edited" "$root/integrations/gitlab/uf.gitlab-ci.yml"
+  "$root/ci-setup/gitlab/uf.gitlab-ci.yml" > "$work/edited"
+cp "$work/edited" "$root/ci-setup/gitlab/uf.gitlab-ci.yml"
 if check "$root"; then
   fail "accepted an image with no JavaScript runtime on it"
 fi
@@ -252,8 +252,8 @@ pass "rejects an image that cannot run what the recipe runs"
 # 9. Rule 5: a toolchain cache key with no architecture in it.
 root="$(scratch key-without-arch)"
 sed 's/uf-${UF_VERSION}-${CI_RUNNER_EXECUTABLE_ARCH}/uf-${UF_VERSION}/' \
-  "$root/integrations/gitlab/uf.gitlab-ci.yml" > "$work/edited"
-cp "$work/edited" "$root/integrations/gitlab/uf.gitlab-ci.yml"
+  "$root/ci-setup/gitlab/uf.gitlab-ci.yml" > "$work/edited"
+cp "$work/edited" "$root/ci-setup/gitlab/uf.gitlab-ci.yml"
 if check "$root"; then
   fail "accepted a toolchain cache key naming no architecture"
 fi
@@ -262,8 +262,8 @@ pass "rejects a toolchain cache key with no architecture"
 
 # 10. Rule 2: a command whose result a job cannot read, with no written reason.
 root="$(scratch unreadable)"
-sed 's/- uf check$/- uf clean/' "$root/integrations/gitlab/uf.gitlab-ci.yml" > "$work/edited"
-cp "$work/edited" "$root/integrations/gitlab/uf.gitlab-ci.yml"
+sed 's/- uf check$/- uf clean/' "$root/ci-setup/gitlab/uf.gitlab-ci.yml" > "$work/edited"
+cp "$work/edited" "$root/ci-setup/gitlab/uf.gitlab-ci.yml"
 if check "$root"; then
   fail "accepted a command with no --json and no written exemption"
 fi

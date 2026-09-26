@@ -1,4 +1,4 @@
-# CI integrations
+# CI setup
 
 Setup for the three CI systems, so that a pipeline installs `uf` in one step
 instead of building it from source.
@@ -6,8 +6,14 @@ instead of building it from source.
 | System | File | How a project uses it |
 | --- | --- | --- |
 | GitHub Actions | [`github-actions/action.yml`](github-actions/action.yml) | `uses: ubugeeei-prod/uf/integrations/github-actions@uf@0.0.0-alpha.10` |
-| GitLab CI | [`gitlab/uf.gitlab-ci.yml`](gitlab/uf.gitlab-ci.yml) | `include: [{ remote: "…/integrations/gitlab/uf.gitlab-ci.yml" }]`, then `extends: .uf` |
+| GitLab CI | [`gitlab/uf.gitlab-ci.yml`](gitlab/uf.gitlab-ci.yml) | `include: [{ remote: "…/ci-setup/gitlab/uf.gitlab-ci.yml" }]`, then `extends: .uf` |
 | CircleCI | [`circleci/orb.yml`](circleci/orb.yml) | `orbs: { uf: uniflowed/uf@1 }`, then `uf/install` or the `uf/run` job |
+
+The source directory is `ci-setup/`. The pinned examples below use releases
+published before that rename, so their URLs retain `integrations/`: that is the
+path at those tags. When pinning a release that contains this directory, use
+`ubugeeei-prod/uf/ci-setup/github-actions@<release-tag>` or the corresponding
+`ci-setup/gitlab/uf.gitlab-ci.yml` URL.
 
 Each file documents its own inputs. What follows is what they have in common,
 and why they are three thin files rather than three implementations.
@@ -97,8 +103,8 @@ On Windows, run uf under WSL2.
 step rather than something in this repository's CI:
 
 ```sh
-circleci orb validate integrations/circleci/orb.yml
-circleci orb publish integrations/circleci/orb.yml uniflowed/uf@<version>
+circleci orb validate ci-setup/circleci/orb.yml
+circleci orb publish ci-setup/circleci/orb.yml uniflowed/uf@<version>
 ```
 
 Until it is published, a CircleCI config can use the file directly by copying
