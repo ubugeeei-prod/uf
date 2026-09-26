@@ -34,6 +34,7 @@
   "dependencies": {
     "@babel/core": "^7.29.7",
     "@mdx-js/rollup": "^3.1.1",
+    "@ox-content/napi": "3.2.11",
     "@shikijs/rehype": "^3.23.0",
     "@uniflowed/host": "0.10.0",
     "@uniflowed/router": "0.10.0",
@@ -41,14 +42,13 @@
     "@uniflowed/validator": "0.10.0",
     "babel-plugin-relay": "^21.0.1",
     "estree-util-value-to-estree": "^3.5.0",
-    "rehype-slug": "^6.0.0",
-    "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
+    "rehype-slug": "^6.0.0",
+    "rolldown": "^1.2.7",
     "shiki": "^3.23.0",
     "unist-util-mdx-define": "^1.1.2",
     "vite": "^8.2.2",
-    "yaml": "^2.9.1",
-    "rolldown": "^1.2.7"
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
     "axe-core": ">=4",

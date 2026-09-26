@@ -112,7 +112,8 @@ const UNSUPPORTED_SLOT_BOUNDARY_FILES = Object.freeze({
 });
 
 /** Extensions a page or layout may use; `.mdx` is a page written as content. */
-const PAGE_EXTENSIONS = [".js", ".jsx", ".mdx"];
+const PAGE_EXTENSIONS = [".js", ".jsx", ".mdx", ".md"];
+const isMarkdown = (file) => file.endsWith(".mdx") || file.endsWith(".md");
 const MODULE_EXTENSIONS = [".js", ".jsx"];
 
 /** Application targets the route scanner knows how to select files for. */
@@ -479,7 +480,7 @@ export function scanRoutes(appRoot, options = {}) {
         loading: nextLoading,
         templates: nextTemplates,
         slots: nextSlots,
-        mdx: page.endsWith(".mdx"),
+        mdx: isMarkdown(page),
       });
     }
     // A handler answers the request itself, so it takes no layouts and is not
@@ -501,7 +502,7 @@ export function scanRoutes(appRoot, options = {}) {
         path: routeFromSegments(segments).path,
         page: ownNotFound,
         layouts: nextLayouts,
-        mdx: ownNotFound.endsWith(".mdx"),
+        mdx: isMarkdown(ownNotFound),
       });
     }
 
@@ -890,7 +891,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
         templates: nextTemplates,
         errorBoundary: nextErrorBoundary,
         slots: nestedSlots,
-        mdx: page.endsWith(".mdx"),
+        mdx: isMarkdown(page),
       });
     }
 
@@ -948,7 +949,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
     name,
     above,
     defaultPage,
-    defaultMdx: defaultPage != null && defaultPage.endsWith(".mdx"),
+    defaultMdx: defaultPage != null && isMarkdown(defaultPage),
     defaultErrorBoundary: defaultError == null ? null : { above: 0, module: defaultError },
     routes,
     intercepts,

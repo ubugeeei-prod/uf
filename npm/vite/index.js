@@ -24,10 +24,8 @@
 //                 `internal/rsc.js` reads the RSC analysis and leaves out the
 //                 page of every route no client boundary reaches, so that
 //                 route's modules never enter the browser bundle.
-// * `uf:mdx`    — `@mdx-js/rollup`, configured for React with GitHub-flavoured
-//                 markdown, front matter, heading ids and build-time syntax
-//                 highlighting, so `.mdx` works with
-//                 no configuration.
+// * `uf:mdx`    — ox-content's native Markdown/MDX parser, with React codegen,
+//                 front matter, heading ids and build-time syntax highlighting.
 // * `uf:barrel-imports` — a named import from `@uniflowed/ui` becomes an import
 //                 from the file that defines the name, in every environment,
 //                 so a page using one component loads that component's module
@@ -68,7 +66,7 @@ import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import { moduleId } from "./internal/module-graph.js";
-import remarkFrontmatter from "remark-frontmatter";
+import remarkOxContent from "./internal/markdown.js";
 import remarkGfm from "remark-gfm";
 
 import {
@@ -1346,7 +1344,7 @@ function mdxPlugin(markdown) {
       // key's old default, which has no runtime in it — where the config is
       // read, so it never arrives here.
       jsxImportSource: mdxConfig.jsxImportSource ?? "react",
-      remarkPlugins: [remarkGfm, remarkFrontmatter, remarkFrontmatterExport],
+      remarkPlugins: [remarkGfm, remarkOxContent, remarkFrontmatterExport],
       rehypePlugins,
     }),
     name: "uf:mdx",

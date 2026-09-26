@@ -25,7 +25,12 @@ import { parse } from "yaml";
 export default function remarkFrontmatterExport() {
   return (tree, file) => {
     const node = tree.children.find((child) => child.type === "yaml");
-    const data = node == null ? undefined : parse(node.value);
+    const data =
+      file.data != null && Object.hasOwn(file.data, "ufFrontmatter")
+        ? file.data.ufFrontmatter
+        : node == null
+          ? undefined
+          : parse(node.value);
     define(tree, file, {
       frontmatter: valueToEstree(data, { preserveReferences: true }),
     });
