@@ -1,14 +1,14 @@
 // @flow
 import * as React from "@uniflowed/react";
 import { afterEach, expect, it } from "@uniflowed/test";
-import { cleanup, fireEvent, render, screen } from "@uniflowed/react-testing";
+import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 import { Example } from "./list-box.example.js";
 afterEach(cleanup);
-it("preserves the primitive's keyboard behavior", () => {
+it("preserves the primitive's keyboard behavior", async () => {
   render(<Example />);
   const control = screen.getByRole("listbox", { name: "Options" });
-  fireEvent.keyDown(control, { key: "ArrowDown" });
-  fireEvent.keyDown(control, { key: " " });
+  control.focus();
+  await userEvent.keyboard("{ArrowDown} ");
   const selected = screen.getByRole("option", { name: "Beta" });
   expect(selected).toHaveAttribute("aria-selected", "true");
   expect(selected).toHaveAttribute("data-active", "true");
