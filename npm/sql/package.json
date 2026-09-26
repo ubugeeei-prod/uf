@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/sql",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "description": "The runtime for sqlc's Flow target: exact codecs and driver adapters, part of the Unified Toolchain for Flow.",
   "type": "module",
