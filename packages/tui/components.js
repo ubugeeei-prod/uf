@@ -131,12 +131,18 @@ export type BoxLayoutProps = {
   readonly rowGap?: number,
   readonly columnGap?: number,
   readonly overflow?: Overflow,
-  /** In its parent's flex line (`"relative"`, the default) or out of it. */
+  /**
+   * In its parent's flex line (`"relative"`, the default) or out of it
+   * (`"absolute"`). `"static"` is in the line too, but is not what an
+   * absolute box under it is placed against: that is the nearest ancestor
+   * that is not static.
+   */
   readonly position?: Position,
   /**
    * Offsets: where an absolutely positioned box sits against the inside of
-   * its parent's border, or how far a relative one is nudged from where its
-   * line put it. Cells or a percentage; negative is allowed.
+   * its containing block's border, or how far a relative one is nudged from
+   * where its line put it. A static box ignores them. Cells or a percentage;
+   * negative is allowed.
    */
   readonly top?: Dimension,
   readonly right?: Dimension,

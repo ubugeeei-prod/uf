@@ -3,8 +3,9 @@
 # This is the manifest half of a Zed extension. Zed has no way to add an
 # arbitrary language server from settings, so the language server has to arrive
 # as an extension, and an extension that provides one is a Rust crate compiled
-# to WebAssembly. `src/lib.rs` is that half; CI tests it on the host and builds
-# it for the `wasm32-wasip1` target.
+# to WebAssembly. `src/lib.rs` is that half; CI tests it on the host, and
+# packages it with Zed's own `zed-extension`, which builds it for
+# `wasm32-wasip2` as Zed does.
 #
 # Install with Zed's "Install Dev Extension" against this directory.
 

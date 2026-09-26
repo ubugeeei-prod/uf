@@ -124,14 +124,17 @@
       manifest and the `zed_extension_api` Rust/WASM half that starts
       `uf lsp --cwd <worktree>`, finding `uf` in the `lsp.uf.binary.path`
       setting, then `node_modules/.bin`, then `PATH`; the Editors workflow
-      tests those decisions on the host and builds the `.wasm`, and it is
-      installed as a dev extension, not from Zed's registry. JetBrains uses an
+      tests those decisions on the host and packages the extension with
+      Zed's own `zed-extension` for `wasm32-wasip2`, as the registry would,
+      and it is installed as a dev extension, not from Zed's registry. JetBrains uses an
       LSP4IJ template in `editors/jetbrains`. Each release publishes the VS Code
       extension as `uniflowed.uf` to the Visual Studio Marketplace and Open VSX
       (#977), mapping uf's version onto one the Marketplace accepts
       (`0.1.0` is `0.1.9999`, and `0.0.0-alpha.46` was the pre-release
       `0.0.46`); that needs the owner's
-      `VSCE_PAT` and `OVSX_PAT`, and no release has gone out with them yet.
+      `VSCE_PAT` and `OVSX_PAT`, and no release has gone out with them yet,
+      so the installable copy is the `.vsix` each release attaches, which
+      `uf editor install vscode` downloads and checks.
       Nobody has yet confirmed in Zed or a JetBrains IDE that the server starts
       and shows diagnostics.
       `tests/library/vscode-extension.test.js` covers the extension's own
@@ -261,11 +264,12 @@
       explicitly when there is no terminal transport. `Select`, `TabSelect`
       and `Textarea` are in with OpenTUI's keys and events, drawn after layout
       because what they show depends on their size, and layout now wraps
-      (`flexWrap`, `alignContent`) and positions (`position: "absolute"`,
-      offsets, `zIndex`) as well as taking `auto` margins. The repeated-press
-      gestures that widen a selection to a word or a line, `Slider`,
-      `ScrollBar`, the rich-content and media components, `aspectRatio`, and
-      notifications, audio and `Timeline` remain ubugeeei-prod/uf#314.
+      (`flexWrap`, `alignContent`) and positions (`position: "absolute"`
+      against the nearest ancestor that is not `"static"`, offsets, `zIndex`)
+      as well as taking `auto` margins. The repeated-press gestures that
+      widen a selection to a word or a line, `Slider`, `ScrollBar`, the
+      rich-content and media components, `aspectRatio`, wrapping and
+      positioning inside a `ScrollBox`, and notifications, audio and `Timeline` remain ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.

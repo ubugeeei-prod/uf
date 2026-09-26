@@ -8,17 +8,16 @@ the restart command, drifting apart one fix at a time.
 
 ## In place
 
-Cursor installs extensions from [Open VSX](https://open-vsx.org/extension/uniflowed/uf),
-where each uf release publishes the extension as `uniflowed.uf` (see
-`editors/vscode/README.md` for the version it carries). Search for **uf** in Cursor's Extensions view, or:
+From a terminal, `uf editor install cursor` downloads the `.vsix` attached to
+the GitHub release of the `uf` you run, checks it against the `.sha256` beside
+it, and runs `cursor --install-extension` on it.
 
-```sh
-cursor --install-extension uniflowed.uf
-```
-
-Publishing needs the Open VSX token the repository owner creates. Until a
-release has gone out with it, or to run a build of your own, build a `.vsix` from
-`editors/vscode` and install that:
+Cursor's own Extensions view installs from
+[Open VSX](https://open-vsx.org/extension/uniflowed/uf). The release job
+publishes `uniflowed.uf` there only with the Open VSX token the repository
+owner creates, and no release has had it yet, so `cursor --install-extension
+uniflowed.uf` finds nothing until one does. To run a build of your own, build
+a `.vsix` from `editors/vscode` and install that:
 
 ```sh
 cd editors/vscode

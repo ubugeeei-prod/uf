@@ -42,20 +42,24 @@ project.
 
 ## 1. Install the extension
 
-The extension is `uniflowed.uf`. Cursor installs the same one. From a
-terminal, `uf editor install vscode` (or `cursor`) downloads the extension that
-matches your uf from its GitHub release, checks it against the published
-sha256, and installs it with the editor's own `--install-extension`. Or, from
-the registries:
+The extension is `uniflowed.uf`, and Cursor installs the same one. Each uf
+release attaches it to its GitHub release, and uf installs the one that
+matches it:
 
 ```sh
-code --install-extension uniflowed.uf      # VS Code, from the Marketplace
-cursor --install-extension uniflowed.uf    # Cursor, from Open VSX
+uf editor install vscode    # or: uf editor install cursor
 ```
 
-A release reaches the Marketplace and Open VSX only once the repository owner
-has set the publishing tokens. Until then, or to run your own build, package
-it from a checkout and install the `.vsix`, as
+It downloads `uf-vscode-<version>.vsix` from the release of the uf you run,
+checks it against the published sha256, and installs it with the editor's own
+`--install-extension`. `--version` picks another release, and `--vsix FILE`
+installs one you already have.
+
+The release job also publishes to the Visual Studio Marketplace and Open VSX,
+but only with the publishing tokens the repository owner sets, and no release
+has had them yet: until one does, `code --install-extension uniflowed.uf`
+and a search in the Extensions view find nothing. To run your own build,
+package it from a checkout and install the `.vsix`, as
 [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode)
 describes. The extension starts the project's own `uf` (`node_modules/.bin/uf`)
 before one on `PATH`, one server per folder that has a `uf.config.js`.

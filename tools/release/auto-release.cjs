@@ -29,26 +29,46 @@
 
 const { execFileSync } = require("node:child_process");
 const policy = require("./policy.cjs");
+/*::
+import type { Env, IO as PolicyIO, PullRequest, WorkflowRun } from "./policy.cjs";
+
+export type IO = {
+  ...PolicyIO,
+  readonly post: (path: string, body: { ... }) => void,
+  readonly sleep: (ms: number) => Promise<void>,
+  readonly log: (line: string) => void,
+  ...
+};
+export type Release = { version: string, pr: number };
+type Inputs = { readonly [name: string]: string };
+*/
 
 const VERIFY_JOB = "Verify the npm release";
 const POLL_MS = 30_000;
 const FIND_TRIES = 20;
 const RUN_DEADLINE_MS = 90 * 60 * 1000;
 
-function post(path, body) {
+function post(path /*: string */, body /*: { ... } */) /*: void */ {
   execFileSync("gh", ["api", "-X", "POST", path, "--input", "-"], {
     encoding: "utf8",
     input: JSON.stringify(body),
     stdio: ["pipe", "pipe", "inherit"],
   });
 }
-const IO = {
+const IO /*: IO */ = {
   api: policy.api,
   git: policy.git,
   post,
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  log: (line) => console.log(line),
+  sleep: (ms /*: number */) /*: Promise<void> */ =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+  log: (line /*: string */) => console.log(line),
 };
+
+function assertCommit(commit /*: ?string */) /*: string */ {
+  if (commit == null || !policy.SHA.test(commit))
+    throw new Error(`Not a commit: ${String(commit)}`);
+  return commit;
+}
 
 /**
  * The release this commit is the merge of, or `null` when it is not one.
@@ -59,32 +79,40 @@ const IO = {
  * the file says is checked against the workspace version by `requestAt`, the
  * same check `policy.cjs` makes.
  */
-function findRelease(commit, repository, io = IO) {
-  if (!policy.SHA.test(commit || "")) throw new Error(`Not a commit: ${commit}`);
+function findRelease(
+  commit /*: ?string */,
+  repository /*: string */,
+  io /*: IO */ = IO,
+) /*: Release | null */ {
+  const sha = assertCommit(commit);
   let after;
   try {
-    after = io.git("show", `${commit}:.github/release.json`);
+    after = io.git("show", `${sha}:.github/release.json`);
   } catch {
     return null;
   }
   let before = null;
   try {
-    before = io.git("show", `${commit}^:.github/release.json`);
+    before = io.git("show", `${sha}^:.github/release.json`);
   } catch {}
   if (before === after) return null;
-  const request = policy.requestAt(commit, io);
+  const request = policy.requestAt(sha, io);
   const owner = repository.split("/")[0];
-  const prs = io.api(
+  const prs /*: Array<PullRequest> */ = io.api(
     `repos/${repository}/pulls?state=closed&base=main&head=${encodeURIComponent(`${owner}:${request.branch}`)}&per_page=100`,
   );
-  const pr = prs.find((item) => item.merged_at && item.merge_commit_sha === commit);
+  const pr = prs.find((item) => item.merged_at && item.merge_commit_sha === sha);
   if (!pr) return null;
   return { version: request.version, pr: pr.number };
 }
 
 /** The successful merge-queue `ci.yml` run for exactly this commit. */
-function findValidation(commit, repository, io = IO) {
-  const runs = io.api(
+function findValidation(
+  commit /*: string */,
+  repository /*: string */,
+  io /*: IO */ = IO,
+) /*: number */ {
+  const runs /*: Array<WorkflowRun> */ = io.api(
     `repos/${repository}/actions/workflows/ci.yml/runs?event=merge_group&head_sha=${commit}&per_page=100`,
   ).workflow_runs;
   for (const run of runs) {
@@ -98,36 +126,57 @@ function findValidation(commit, repository, io = IO) {
   );
 }
 
-function runsNamed(repository, workflow, title, io) {
+function runsNamed(
+  repository /*: string */,
+  workflow /*: string */,
+  title /*: string */,
+  io /*: IO */,
+) /*: Array<WorkflowRun> */ {
   return io
     .api(
       `repos/${repository}/actions/workflows/${workflow}/runs?event=workflow_dispatch&branch=main&per_page=100`,
     )
-    .workflow_runs.filter((run) => run.display_title === title);
+    .workflow_runs.filter((run /*: WorkflowRun */) => run.display_title === title);
 }
 
-async function waitFor(repository, id, attempt, io) {
+async function waitFor(
+  repository /*: string */,
+  id /*: number */,
+  attempt /*: number */,
+  io /*: IO */,
+) /*: Promise<WorkflowRun> */ {
   const until = Date.now() + RUN_DEADLINE_MS;
-  for (;;) {
-    const run = io.api(`repos/${repository}/actions/runs/${id}`);
-    if (run.status === "completed" && run.run_attempt >= attempt) return run;
+  let run /*: WorkflowRun */ = io.api(`repos/${repository}/actions/runs/${id}`);
+  while (!(run.status === "completed" && run.run_attempt >= attempt)) {
     if (Date.now() > until) throw new Error(`${run.html_url} is still running after 90 minutes.`);
     await io.sleep(POLL_MS);
+    run = io.api(`repos/${repository}/actions/runs/${id}`);
   }
+  return run;
 }
 
-function failedJobs(repository, run, io) {
+function failedJobs(
+  repository /*: string */,
+  run /*: WorkflowRun */,
+  io /*: IO */,
+) /*: Array<string> */ {
   return io
     .api(`repos/${repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`)
-    .jobs.filter((job) => job.conclusion === "failure")
-    .map((job) => job.name);
+    .jobs.filter((job /*: { readonly conclusion: ?string, ... } */) => job.conclusion === "failure")
+    .map((job /*: { readonly name: string, ... } */) => job.name);
 }
 
 /**
  * Run `workflow` with `inputs` unless a run named `title` exists, and wait
  * for it to succeed. Returns the run.
  */
-async function runWorkflow(repository, workflow, title, inputs, io = IO) {
+async function runWorkflow(
+  repository /*: string */,
+  workflow /*: string */,
+  title /*: string */,
+  inputs /*: Inputs */,
+  io /*: IO */ = IO,
+) /*: Promise<WorkflowRun> */ {
   let [run] = runsNamed(repository, workflow, title, io);
   if (run) {
     io.log(`${title}: found ${run.html_url}`);
@@ -150,7 +199,7 @@ async function runWorkflow(repository, workflow, title, inputs, io = IO) {
     const lagging = workflow === "publish.yml" && failed.length === 1 && failed[0] === VERIFY_JOB;
     if (!lagging || retried)
       throw new Error(
-        `${title} ended with ${done.conclusion}${failed.length ? ` (${failed.join(", ")})` : ""}: ${done.html_url}`,
+        `${title} ended with ${String(done.conclusion)}${failed.length ? ` (${failed.join(", ")})` : ""}: ${done.html_url}`,
       );
     retried = true;
     io.log(`${title}: npm had not caught up; rerunning "${VERIFY_JOB}" once`);
@@ -161,9 +210,12 @@ async function runWorkflow(repository, workflow, title, inputs, io = IO) {
   return done;
 }
 
-async function autoRelease(env = process.env, io = IO) {
-  const repository = env.GITHUB_REPOSITORY;
-  const commit = env.RELEASE_COMMIT;
+async function autoRelease(
+  env /*: Env */ = process.env,
+  io /*: IO */ = IO,
+) /*: Promise<Release | null> */ {
+  const repository = policy.requireEnv(env, "GITHUB_REPOSITORY");
+  const commit = assertCommit(env.RELEASE_COMMIT);
   const release = findRelease(commit, repository, io);
   if (!release) {
     io.log(`${commit} is not the merge of a release PR; nothing to publish.`);

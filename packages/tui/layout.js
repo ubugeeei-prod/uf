@@ -86,15 +86,24 @@ export type AlignContent =
   | "space-evenly";
 
 /**
- * Whether a node takes part in its parent's flex line.
+ * Whether a node takes part in its parent's flex line, and whether it is a
+ * containing block for the absolutely positioned boxes under it.
  *
- * `"relative"` — the default, as it is in OpenTUI and Yoga — does, and its
- * `top`/`right`/`bottom`/`left` then nudge where it is drawn without moving
- * anything around it. `"absolute"` does not: its parent lays out as if it
- * were not there, and it is placed against the inside of its parent's border
- * by those four offsets.
+ * `"relative"` — the default, as it is in OpenTUI and Yoga — takes part, and
+ * its `top`/`right`/`bottom`/`left` then nudge where it is drawn without
+ * moving anything around it. `"absolute"` does not: its parent lays out as if
+ * it were not there, and it is placed by those four offsets against the inside
+ * of its containing block's border. Both are *positioned*, which is what makes
+ * a box a containing block.
+ *
+ * `"static"` takes part in the line like `"relative"`, ignores the four
+ * offsets, and is not a containing block: an absolutely positioned box under
+ * it looks past it to the nearest ancestor that is positioned, or to the root.
+ * That is CSS's rule and Yoga 3's, and it is the only way for a box to be
+ * placed against something other than its parent — which is what a tooltip
+ * inside a row of a panel needs to sit against the panel.
  */
-export type Position = "relative" | "absolute";
+export type Position = "static" | "relative" | "absolute";
 
 /**
  * What happens to content larger than its box.
@@ -328,6 +337,31 @@ function resolveOffset(value: Dimension | void, basis: number): number | null {
 /** Whether a child is out of its parent's flex line. */
 const isAbsolute = (node: LayoutNode): boolean => node.style.position === "absolute";
 
+/** Whether a node is a containing block for the absolute boxes under it. */
+const isPositioned = (node: LayoutNode): boolean => node.style.position !== "static";
+
+/**
+ * The box an absolutely positioned descendant is placed against: the padding
+ * box of its nearest positioned ancestor, in frame coordinates.
+ */
+type ContainingBlock = {
+  readonly x: number,
+  readonly y: number,
+  readonly width: number,
+  readonly height: number,
+};
+
+/** A node's padding box — inside its border, not inside its padding. */
+function paddingBox(node: LayoutNode): ContainingBlock {
+  const border = node.borderWidth;
+  return {
+    x: node.x + border,
+    y: node.y + border,
+    width: Math.max(0, node.width - border * 2),
+    height: Math.max(0, node.height - border * 2),
+  };
+}
+
 /**
  * How far a relatively positioned child is drawn from where the line put it.
  *
@@ -335,6 +369,12 @@ const isAbsolute = (node: LayoutNode): boolean => node.style.position === "absol
  * is CSS's rule for a box whose width is already decided.
  */
 function relativeShift(style: LayoutStyle, width: number, height: number): [number, number] {
+  // A static box is exactly where its line put it. The offsets are not an
+  // error on one, only unread — which is what lets a caller flip `position`
+  // without also deleting the props it had.
+  if (style.position === "static") {
+    return [0, 0];
+  }
   const left = resolveOffset(style.left, width);
   const right = resolveOffset(style.right, width);
   const top = resolveOffset(style.top, height);
@@ -690,6 +730,11 @@ function alignLines(
  *
  * Writes `x`, `y`, `width` and `height` onto every node in the subtree. The
  * caller decides the root's box, which for a terminal is the whole screen.
+ *
+ * `containing` is the containing block the nearest positioned ancestor offers,
+ * and only this module passes it: a caller laying out a root has no ancestor,
+ * and a root that is `"static"` is then its own containing block — the screen,
+ * which is where a box with no positioned ancestor is placed in CSS as well.
  */
 export function layout(
   node: LayoutNode,
@@ -697,6 +742,7 @@ export function layout(
   y: number,
   width: number,
   height: number,
+  containing: ContainingBlock | null = null,
 ): void {
   node.x = x;
   node.y = y;
@@ -718,6 +764,10 @@ export function layout(
   }
 
   const style = node.style;
+  // What an absolute box anywhere under this one is placed against, until a
+  // positioned descendant offers another. Decided here, after this node's own
+  // box is, because a containing block is a box and not a promise of one.
+  const block = isPositioned(node) || containing == null ? paddingBox(node) : containing;
   const [insetTop, insetRight, insetBottom, insetLeft] = insets(node);
   const contentX = x + insetLeft;
   const contentY = y + insetTop;
@@ -725,7 +775,7 @@ export function layout(
   const contentHeight = Math.max(0, height - insetTop - insetBottom);
 
   if (style.overflow === "scroll") {
-    layoutScroll(node, contentX, contentY, contentWidth, contentHeight);
+    layoutScroll(node, contentX, contentY, contentWidth, contentHeight, block);
     return;
   }
 
@@ -919,6 +969,7 @@ export function layout(
         childY,
         clampDimension(childWidth, child.style.minWidth, child.style.maxWidth, contentWidth),
         clampDimension(childHeight, child.style.minHeight, child.style.maxHeight, contentHeight),
+        block,
       );
 
       cursor = mainStart + mainSizes[index] + mainMarginEnd + between;
@@ -983,7 +1034,7 @@ export function layout(
   if (children !== node.children) {
     for (const child of node.children) {
       if (isAbsolute(child)) {
-        layoutAbsolute(node, child, x, y, width, height);
+        layoutAbsolute(node, child, block);
       }
     }
   }
@@ -992,33 +1043,29 @@ export function layout(
 /**
  * Place a child that is out of its parent's line.
  *
- * Its containing block is its parent's *padding* box — inside the border, not
- * inside the padding — which is CSS's rule and Yoga's, and the reason `top: 0`
- * puts it on the first row inside a frame rather than on the frame. The
- * parent is always the containing block, as it is in OpenTUI: every node is
- * positioned there, so there is no further ancestor to look for.
+ * Its containing block is the *padding* box — inside the border, not inside
+ * the padding — of its nearest positioned ancestor, which is CSS's rule and
+ * Yoga's, and the reason `top: 0` puts it on the first row inside a frame
+ * rather than on the frame. Every node is positioned unless it says
+ * `position: "static"`, as in OpenTUI, so that ancestor is the parent unless a
+ * static box is in the way.
  *
- * Each axis is decided the same way. A size given is that size. Otherwise both
- * offsets on an axis stretch it between them, and one or none leaves it the
- * size of its content. The start offset places it, or failing that the end
- * one; with neither, it goes where its parent's `justifyContent` and
- * `alignItems` would have put a lone child — Yoga's static position — and not
- * at the corner, which is what makes `position: "absolute"` with no offsets
- * an overlay centred by the same props that centre anything else.
+ * Each axis is decided the same way. A size given is that size, and a
+ * percentage is of the containing block. Otherwise both offsets on an axis
+ * stretch it between them, and one or none leaves it the size of its content.
+ * The start offset places it, or failing that the end one; with neither, it
+ * goes where its *parent's* `justifyContent` and `alignItems` would have put a
+ * lone child — Yoga's static position, which is about the line the box was
+ * taken out of and so is the parent's even when the containing block is
+ * further up — and not at the corner, which is what makes `position:
+ * "absolute"` with no offsets an overlay centred by the same props that
+ * centre anything else.
  */
-function layoutAbsolute(
-  parent: LayoutNode,
-  child: LayoutNode,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): void {
-  const border = parent.borderWidth;
-  const boxX = x + border;
-  const boxY = y + border;
-  const boxWidth = Math.max(0, width - border * 2);
-  const boxHeight = Math.max(0, height - border * 2);
+function layoutAbsolute(parent: LayoutNode, child: LayoutNode, block: ContainingBlock): void {
+  const boxX = block.x;
+  const boxY = block.y;
+  const boxWidth = block.width;
+  const boxHeight = block.height;
   const style = child.style;
   const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(style));
   const left = resolveOffset(style.left, boxWidth);
@@ -1046,6 +1093,7 @@ function layoutAbsolute(
 
   // The static position, for an axis with no offset on it: where the parent's
   // own alignment would put a child of this size inside its padding.
+  const own = paddingBox(parent);
   const [padTop, padRight, padBottom, padLeft] = padding(parent.style);
   const flexDirection = direction(parent.style);
   const row = isRow(flexDirection);
@@ -1069,14 +1117,14 @@ function layoutAbsolute(
   const justify = parent.style.justifyContent ?? "flex-start";
   const ownAlign = style.alignSelf ?? "auto";
   const align = ownAlign === "auto" ? (parent.style.alignItems ?? "stretch") : ownAlign;
-  const innerWidth = Math.max(0, boxWidth - padLeft - padRight);
-  const innerHeight = Math.max(0, boxHeight - padTop - padBottom);
+  const innerWidth = Math.max(0, own.width - padLeft - padRight);
+  const innerHeight = Math.max(0, own.height - padTop - padBottom);
   const staticX = row
-    ? place(justify, reverse, boxX + padLeft, innerWidth, childWidth, marginLeft, marginRight)
-    : place(align, false, boxX + padLeft, innerWidth, childWidth, marginLeft, marginRight);
+    ? place(justify, reverse, own.x + padLeft, innerWidth, childWidth, marginLeft, marginRight)
+    : place(align, false, own.x + padLeft, innerWidth, childWidth, marginLeft, marginRight);
   const staticY = row
-    ? place(align, false, boxY + padTop, innerHeight, childHeight, marginTop, marginBottom)
-    : place(justify, reverse, boxY + padTop, innerHeight, childHeight, marginTop, marginBottom);
+    ? place(align, false, own.y + padTop, innerHeight, childHeight, marginTop, marginBottom)
+    : place(justify, reverse, own.y + padTop, innerHeight, childHeight, marginTop, marginBottom);
 
   let childX = staticX;
   if (left != null) {
@@ -1090,7 +1138,7 @@ function layoutAbsolute(
   } else if (bottom != null) {
     childY = boxY + boxHeight - bottom - marginBottom - childHeight;
   }
-  layout(child, childX, childY, childWidth, childHeight);
+  layout(child, childX, childY, childWidth, childHeight, block);
 }
 
 /**
@@ -1122,7 +1170,14 @@ function layoutAbsolute(
  * seventy-six are — which is the property the whole component exists for, and
  * the reason this is not `overflow: "hidden"` with a margin on top.
  */
-function layoutScroll(node: LayoutNode, x: number, y: number, width: number, height: number): void {
+function layoutScroll(
+  node: LayoutNode,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  block: ContainingBlock,
+): void {
   const children = node.children;
   const stack = scrollStack(node, width, height);
   const content = stack.content;
@@ -1153,7 +1208,7 @@ function layoutScroll(node: LayoutNode, x: number, y: number, width: number, hei
     const [, marginRight, , marginLeft] = fixedMargins(margin(child.style));
     const available = Math.max(0, width - marginLeft - marginRight);
     const childWidth = Math.min(available, resolve(child.style.width, width) ?? available);
-    layout(child, x + marginLeft, y + top - offset, childWidth, stack.heights[index]);
+    layout(child, x + marginLeft, y + top - offset, childWidth, stack.heights[index], block);
     count += 1;
   }
   node.scrollFirst = first;
@@ -1276,6 +1331,16 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
   return stack;
 }
 
+// Implemented, and asserted as cells in `packages/tui/tui.test.js`: `flexWrap`
+// with `alignContent`; `auto` margins on both axes; and `position` in all
+// three of Yoga 3's values, with an absolute box placed against the padding
+// box of its nearest ancestor that is not `"static"` (or the root). Paint, and
+// so the hit grid, still follow the *tree*: an absolute box is drawn when its
+// parent is, under its parent's `zIndex` order and inside its parent's clip —
+// which is OpenTUI's rule, and CSS's is different: there, `overflow: hidden`
+// on a static box between an absolute one and its containing block does not
+// clip it. Here it does.
+//
 // Not implemented here, on purpose, and tracked rather than discovered:
 //
 // - `aspectRatio`. A terminal resolves whole cells, and nothing here has a

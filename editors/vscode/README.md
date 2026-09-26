@@ -7,32 +7,39 @@ go to definition, completion — is answered by that server, from the same crate
 
 ## Install
 
-The extension is `uniflowed.uf`, published with each uf release to the
-[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=uniflowed.uf)
-and to [Open VSX](https://open-vsx.org/extension/uniflowed/uf), the registry
-Cursor, VSCodium and other VS Code forks install from:
+The extension is `uniflowed.uf`. Each uf release attaches it to its GitHub
+release as `uf-vscode-<version>.vsix`, with a `.sha256` beside it, and `uf`
+installs the one that matches it:
 
 ```sh
-code --install-extension uniflowed.uf
+uf editor install vscode        # or `cursor`
 ```
 
-or search for **uf** in the Extensions view. A uf release such as `0.1.0`
-publishes an ordinary release of the extension; the extensions published for
-the `0.0.0-alpha.N` series were **pre-releases** (the Extensions view offers
-"Install Pre-Release" for those), and VS Code updates from them to the newer
-releases.
+That downloads the `.vsix` from the release of the `uf` you run, refuses it if
+its digest does not match, and hands it to `code --install-extension` (or
+`cursor`). `--version 0.9.0` takes another release's, and `--vsix FILE`
+installs one you have. By hand, download both files from the
+[release](https://github.com/ubugeeei-prod/uf/releases), check the digest with
+`sha256sum -c`, and run `code --install-extension uf-vscode-<version>.vsix`.
+
+**Not in the registries yet.** The release job also publishes to the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=uniflowed.uf)
+and to [Open VSX](https://open-vsx.org/extension/uniflowed/uf) — the registry
+Cursor, VSCodium and other VS Code forks install from — but only with the
+publisher tokens the repository owner creates (`VSCE_PAT`, `OVSX_PAT`). No
+release has had them, so every release so far has skipped both steps by name,
+and `code --install-extension uniflowed.uf` finds nothing. Once they are set,
+that command and a search for **uf** in the Extensions view work, and VS Code
+updates the extension from then on.
 
 The extension's version is not uf's, because the Marketplace takes no semver
-prerelease: uf `0.1.0` is extension `0.1.9999`, and uf `0.0.0-alpha.46` was the
-pre-release `0.0.46`. `release/version.js` has
-the mapping; it keeps the order of uf's versions, a release after its
-prereleases. The extension starts whichever `uf` it finds (below), not a copy of
-its own, so the two need not match.
+prerelease: uf `0.1.0` is extension `0.1.9999`, and uf `0.0.0-alpha.46` is the
+pre-release `0.0.46` (the Extensions view offers "Install Pre-Release" for
+those). `release/version.js` has the mapping; it keeps the order of uf's
+versions, a release after its prereleases. The extension starts whichever `uf`
+it finds (below), not a copy of its own, so the two need not match.
 
-Publishing needs the publisher tokens the repository owner creates; a release
-made without them packages the extension and says by name which registry it
-skipped. Until a release has gone out with them, or to run a build of your own,
-package it from a uf checkout:
+To run a build of your own, package it from a uf checkout:
 
 ```sh
 cd editors/vscode

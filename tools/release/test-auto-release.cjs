@@ -165,6 +165,18 @@ test("publication is refused off main, whoever dispatches it", () => {
       /from main/,
     );
 });
+test("publication without inputs or a repository is refused before anything is read", () => {
+  const nothing = { api: () => assert.fail("read GitHub"), git: () => assert.fail("read git") };
+  for (const name of ["RELEASE_COMMIT", "RELEASE_VERSION", "VALIDATION_RUN"])
+    assert.throws(
+      () => authorizePublication(env({ [name]: undefined }), nothing),
+      /Invalid publication inputs/,
+    );
+  assert.throws(
+    () => authorizePublication(env({ GITHUB_REPOSITORY: undefined }), nothing),
+    /GITHUB_REPOSITORY is not set/,
+  );
+});
 
 test("a release commit changes release.json and is its PR's merge commit", () => {
   assert.deepEqual(findRelease(commit, repository, world()), { version, pr: 7 });
@@ -274,6 +286,23 @@ test("a release commit dispatches publish, release and editors in order", async 
     npm_run: "200",
   });
   assert.deepEqual(posted[2].body.inputs, { version });
+});
+test("automation without a commit or a repository fails before reading anything", async () => {
+  const { io, posted } = actions();
+  const blind = {
+    ...io,
+    api: () => assert.fail("read GitHub"),
+    git: () => assert.fail("read git"),
+  };
+  await assert.rejects(
+    autoRelease({ GITHUB_REPOSITORY: repository }, blind),
+    /Not a commit: undefined/,
+  );
+  await assert.rejects(
+    autoRelease({ RELEASE_COMMIT: commit }, blind),
+    /GITHUB_REPOSITORY is not set/,
+  );
+  assert.deepEqual(posted, []);
 });
 test("a commit that is not a release dispatches nothing", async () => {
   const { io, posted } = actions();

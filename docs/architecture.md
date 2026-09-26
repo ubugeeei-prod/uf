@@ -1497,7 +1497,7 @@ re-infers one file against dependencies that are still merged.
 VS Code is a package, and Cursor installs that same package because it is the
 same extension format. Zed is also a package: the manifest names the language
 server and a `zed_extension_api` Rust crate returns the command Zed starts, with
-CI checking the `wasm32-wasip1` target. The rest are configuration — a
+CI packaging it with Zed's own `zed-extension` for the `wasm32-wasip2` target. The rest are configuration — a
 `languages.toml`, a Lua module, a `uf.el`, a `uf.vim`, or an LSP4IJ definition
 — small enough to copy, and short because the protocol does the work.
 `tests/library/lsp.test.js` drives the real `uf lsp` binary over framed messages
