@@ -43,6 +43,7 @@ import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { builtinModules, register } from "node:module";
 import { esmExternalRequirePlugin } from "rolldown/plugins";
+import "@ox-content/napi";
 import { installFlowHooks } from "@uniflowed/host/internal/sync-hooks.js";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -118,8 +119,8 @@ process.env.UF_PROJECT_ROOT = root;
 // Deno has no `register` either, and it gets its hooks *here* rather than from
 // a preload, for a reason that is about order. While a Deno `load` hook is
 // registered, `require()` of a native addon fails — and Vite requires one,
-// Rolldown's binding. The static imports above have already loaded Vite by
-// this line, binding included, so hooks installed now see only what is
+// Rolldown's binding and ox-content's Markdown parser. The static imports
+// above load both native bindings before hooks, so hooks now see only what is
 // imported after them: the config, and the `@uniflowed/*` modules this driver
 // reaches dynamically. They are the in-thread hooks a new enough Node takes
 // through `@uniflowed/host/register` too; see
