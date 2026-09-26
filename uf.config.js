@@ -353,44 +353,17 @@ export default defineConfig({
       // The same superset, for the same reason, over the same binary.
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },
-    // The UI subtree now passes the type checker, including its imported
-    // dependencies. Keep that area green while the root check is repaired.
-    "check:ui": {
-      command: "./target/release/uf check packages/ui",
-      dependsOn: ["build"],
-      inputs: ["**", "!upstream/**", "target/release/uf"],
-    },
-    // Keep the web primitives typechecked, including their imported types.
-    "check:web": {
-      command: "./target/release/uf check packages/web",
-      dependsOn: ["build"],
-      inputs: ["**", "!upstream/**", "target/release/uf"],
-    },
-    // Public data and adapter contracts repaired under #1451. Gate each
-    // cleared area while the rest of the root check is still being repaired.
-    "check:contracts": {
-      command:
-        "./target/release/uf check packages/query packages/std/io.js packages/std/bufio.js packages/std/std.test.js packages/server/cache.test.js packages/server/lambda.js packages/router/rsc.js packages/server/standalone.test.js tests/library/deploy.test.js tests/library/deploy-matrix.test.js packages/stylex/theme.js packages/stylex/tokens.stylex.js examples/simple-sns/app/_shared/commonplace.stylex.js tests/library/public-contracts.test.js",
-      dependsOn: ["build"],
-      inputs: ["**", "!upstream/**", "target/release/uf"],
-    },
-    // The release tooling (#1451). It runs under plain `node`, so its types
-    // are Flow comments, checked here like any other cleared area.
-    "check:release": {
-      command: "./target/release/uf check tools/release",
-      dependsOn: ["build"],
-      inputs: ["**", "!upstream/**", "target/release/uf"],
-    },
-    // The repository's own scripts and the SNS example, also cleared under
-    // #1451. The trailing slashes matter: a path selects every file whose path
-    // contains it, and `examples/simple-sns` alone would also select
-    // `examples/simple-sns-graphql`, which is its own npm project, installs
-    // its own Relay beside the one `@uniflowed/relay` resolves from the
-    // repository root, and is checked inside itself by `example:sns:graphql`.
-    // `tools/release` has a task of its own, `check:release`.
-    "check:tools": {
-      command:
-        "./target/release/uf check tools/aria/ tools/bench/ tools/ci/ tools/deploy-matrix/ tools/docs/ examples/simple-sns/",
+    // The type checker, over the whole repository: every package, test, tool
+    // and example `ignore` above does not exclude. `check:lib` is the linter;
+    // this is `uf check`, which no job ran over the repository as a whole
+    // until #1451 — the errors piled up to 2,650 through PRs that were each
+    // green, and were cleared area by area. It replaces the per-area gates
+    // (`check:ui`, `check:web`, `check:contracts`, `check:release`,
+    // `check:tools`) that held each cleared area while the rest was repaired:
+    // the root check reads every file they did, in the same project, so a
+    // regression any of them would catch fails this one too.
+    "check:root": {
+      command: "./target/release/uf check",
       dependsOn: ["build"],
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },
@@ -1161,11 +1134,7 @@ export default defineConfig({
         "flow:test",
         "fmt:check",
         "check:lib",
-        "check:ui",
-        "check:web",
-        "check:contracts",
-        "check:release",
-        "check:tools",
+        "check:root",
         "test:lib",
         "test:lib:deno",
         "edge:smoke",
