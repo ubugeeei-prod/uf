@@ -1,5 +1,15 @@
 # Changelog
 
+## uf@0.8.0
+
+- fix(check): type Node file URLs as URL instances (#1594) (67c226f1)
+- fix(check): gate web primitives with Intl types (#1593) (718686b4)
+- fix(test): run remaining Deno library cases (#1592) (6af4605e)
+- fix(check): gate the UI subtree in CI (#1590) (c094ba0b)
+- fix(test): preload Rolldown before Deno hooks (#1589) (501d231d)
+- fix(router): report recoverable hydration errors on Deno (#1588) (8b9e026e)
+- docs: reconcile framework and UI parity audits (#1587) (0a4ce947)
+
 ## uf@0.7.0
 
 - fix(check): retain native StyleX inference (#1586) (497b7d50)
