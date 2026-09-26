@@ -63,8 +63,8 @@ pipeline over a program nothing checked.
 ## Pin the version
 
 Every file defaults to `latest` and every file tells you not to leave it there.
-`latest` is *the newest release including prereleases* — which is every release
-uf has published so far — so it moves under a pipeline that did not change.
+`latest` is *the newest release including prereleases*, so it moves under a
+pipeline that did not change.
 
 It is also the one value the caches cannot help with. A cache keyed on the word
 `latest` answers with whatever release was newest the first time the pipeline
@@ -85,16 +85,19 @@ key did exactly that until it gained `CI_RUNNER_EXECUTABLE_ARCH`.
 
 ## Platforms
 
-uf publishes macOS and Linux binaries for `x86_64` and `aarch64`. There is no
-Windows build, and none of these pretend otherwise:
+uf publishes macOS and Linux binaries for `x86_64` and `aarch64`, and a native
+Windows binary for `x86_64`. These shared CI helpers currently install the
+macOS and Linux builds:
 
-* the GitHub action **fails** on a Windows runner with the reason, rather than
-  skipping — a matrix leg that quietly does nothing still reports green;
+* the GitHub action **fails** on a Windows runner instead of skipping the
+  installation; its steps have not yet been wired to the PowerShell installer;
 * the GitLab template and the CircleCI orb default to a glibc image, and both
   say why Alpine is not offered: uf ships a `*-unknown-linux-gnu` binary, and a
   glibc binary does not start on musl.
 
-On Windows, run uf under WSL2.
+On a Windows runner, install the native build with the PowerShell installer
+following [the installation guide](https://docs.uniflowed.dev/guide/install),
+or run the Linux setup under WSL2.
 
 ## Publishing the CircleCI orb
 

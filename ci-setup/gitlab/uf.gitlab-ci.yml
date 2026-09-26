@@ -35,9 +35,8 @@
 # in `.gitignore` terms a build directory, not something to commit.
 
 variables:
-  # Pin this. `latest` is the newest release including prereleases — which is
-  # every release uf has published so far — so it moves under a pipeline that
-  # did not change, and it is the one value the cache below cannot help with.
+  # Pin this. `latest` is the newest release including prereleases, so it moves under a
+  # pipeline that did not change, and it is the one value the cache below cannot help with.
   #
   # It is also the only value that asks GitHub's API which release is newest,
   # and anonymous calls to that API are rate limited *by IP* — which on shared

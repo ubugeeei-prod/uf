@@ -67,9 +67,10 @@ The action installs the *toolchain*. `uf install` is a separate line because it
 is a separate thing — see [Install before you check](#install-before-you-check),
 which is the one mistake in this page that does not announce itself.
 
-On a Windows runner it uses the PowerShell installer and installs the Windows
-release artifact. A matrix leg that cannot install uf fails rather than quietly
-doing nothing, because a skipped platform still reports the matrix green.
+The shared action currently installs uf on macOS and Linux runners. It refuses
+Windows runners; its steps have not yet been wired to the PowerShell installer.
+For a Windows runner, follow the [installation guide](/guide/install) to install
+the native Windows release directly, or run the Linux setup under WSL2.
 
 ## GitLab CI
 
