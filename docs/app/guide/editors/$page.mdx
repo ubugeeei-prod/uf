@@ -46,6 +46,16 @@ From a terminal, `uf editor install <editor>` installs the integration, and
 what is missing, keeps anything the project already sets, and with `--check`
 writes nothing and fails when something is missing.
 
+Where each integration comes from, and what `uf editor install` does for it:
+
+| Editor | Installed from | `uf editor install` |
+| --- | --- | --- |
+| VS Code, Cursor | the `.vsix` attached to each uf GitHub release. The Visual Studio Marketplace and Open VSX once the owner's publishing tokens are set; no release has been published there yet | downloads the release's `.vsix`, checks its sha256, runs `code`/`cursor --install-extension` |
+| Zed | a dev extension, compiled by Zed from its sources; not in Zed's extension registry yet | writes the sources to `~/.local/share/uf/editors/zed` for **zed: install dev extension** |
+| JetBrains IDEs | the LSP4IJ plugin from the JetBrains Marketplace, and uf's LSP4IJ template | writes the template to `~/.local/share/uf/editors/jetbrains/lsp4ij-template` for LSP4IJ's **Import from custom template…** |
+| Neovim, Vim, Emacs | one configuration file each, compiled into uf | writes it where the editor looks; the page says which file |
+| Helix | nothing to install: Helix speaks LSP itself | nothing; `uf editor setup helix` writes the project's `.helix/languages.toml` |
+
 Every one of them gets uf's diagnostics, hover, go to definition, go to type
 definition, completion, quick fixes, fix-all and formatting, because they all
 come from `uf lsp`. None of them gets rename or references, because `uf lsp`

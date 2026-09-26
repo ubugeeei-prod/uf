@@ -160,15 +160,26 @@ jobs:
   zed:
     name: Zed
     runs-on: ubuntu-latest
+    env:
+      # Zed's own `zed-extension`, the tool zed-industries/extensions runs to
+      # package every extension in the registry: it loads extension.toml the
+      # way Zed does, compiles the crate the way Zed does (`cargo build
+      # --release --target wasm32-wasip2`), reads the extension API version out
+      # of the component, and writes the manifest.json and archive the
+      # registry would publish. Pinned to the commit that repository's CI
+      # uses, and to the digest of that build.
+      ZED_EXTENSION_CLI_SHA: 9ee3c503a4bbbc6b4a0f8a789acca4871d773223
+      ZED_EXTENSION_CLI_SHA256: a6fca5ef11ff23f0ef8b03bd2453270591c9fc6c03700c3c92017e5082ada757
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version != '' && format('uf@{0}', inputs.version) || github.ref }}
+      # Zed compiles extensions for wasm32-wasip2, the component-model target.
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: nightly-2026-08-01
-          targets: wasm32-wasip1
+          targets: wasm32-wasip2
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -181,12 +192,40 @@ jobs:
       # plain functions, tested on the host.
       - run: cargo test --manifest-path editors/zed/Cargo.toml --locked
       - run: cargo clippy --manifest-path editors/zed/Cargo.toml --locked --all-targets -- -D warnings
-      - run: cargo clippy --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip1 -- -D warnings
-      - run: cargo build --manifest-path editors/zed/Cargo.toml --locked --release --target wasm32-wasip1
+      - run: cargo clippy --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip2 -- -D warnings
+      - name: Package with zed-extension
+        run: |
+          set -eu
+          cli="$RUNNER_TEMP/zed-extension"
+          curl -fsSL --retry 3 -o "$cli" \
+            "https://zed-extension-cli.nyc3.digitaloceanspaces.com/${ZED_EXTENSION_CLI_SHA}/x86_64-unknown-linux-gnu/zed-extension"
+          echo "${ZED_EXTENSION_CLI_SHA256}  $cli" | sha256sum -c -
+          chmod +x "$cli"
+          mkdir -p "$RUNNER_TEMP/zed-output"
+          RUST_LOG=info "$cli" \
+            --source-dir editors/zed \
+            --scratch-dir "$RUNNER_TEMP/zed-scratch" \
+            --output-dir "$RUNNER_TEMP/zed-output"
+          manifest="$RUNNER_TEMP/zed-output/manifest.json"
+          cat "$manifest"
+          # What the registry would list: a language server and nothing else,
+          # built against the API version Cargo.lock pins.
+          api="$(sed -n '/^name = "zed_extension_api"$/{n;s/^version = "\(.*\)"$/\1/p;}' editors/zed/Cargo.lock)"
+          test -n "$api"
+          jq -e --arg api "$api" '
+            .name == "uf"
+            and .provides == ["language-servers"]
+            and .wasm_api_version == $api
+            and .schema_version == 1
+          ' "$manifest"
+          test -s "$RUNNER_TEMP/zed-output/archive.tar.gz"
+          tar -tzf "$RUNNER_TEMP/zed-output/archive.tar.gz" | grep -qx './extension.wasm'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: uf-zed-wasm
-          path: editors/zed/target/wasm32-wasip1/release/uf_zed.wasm
+          name: uf-zed-extension
+          path: |
+            ${{ runner.temp }}/zed-output/manifest.json
+            ${{ runner.temp }}/zed-output/archive.tar.gz
           if-no-files-found: error
 
   # The configuration-only integrations, run in the editors themselves. Each
