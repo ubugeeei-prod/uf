@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/orm",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Flow declarations for @uniflowed/orm, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -19,6 +19,6 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.7.0"
+    "@uniflowed/core": "0.8.0"
   }
 }
