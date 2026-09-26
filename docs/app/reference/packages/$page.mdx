@@ -10,8 +10,8 @@ readiness: "Implemented"
 
 <div className="lede">
 Every `@uniflowed/*` package, what it is for, and whether it is real yet. They
-are plain Flow — no native bindings — so what runs in the browser is what you
-can read.
+include runnable Flow libraries, host facades, and private declaration surfaces.
+The tables below distinguish their implementation and publication status.
 </div>
 
 *Released* says whether a release sends the package to npm. **On npm** is in
@@ -30,15 +30,41 @@ no `export *` unless the package is a peer facade for React, Relay or React
 Native; no side effects at import time, so a bundler can drop what you do not
 use; and a `// @flow` pragma on every file.
 
+## Private declarations
+
+The following private packages contain declarations whose runtime functions
+all call `nativeRuntimeRequired` and throw. They have no JavaScript imports
+or package dependency consumers in this repository. Their names remain in
+`uf_lib` as proposed contracts; that registry is metadata, not a native binding
+loader. Do not import these functions into an application.
+
+| Packages | Available implementation |
+| --- | --- |
+| `@uniflowed/jsx-runtime`, `@uniflowed/react-compiler` | React's JSX runtime, and the official Rust compiler through `uf build` / `uf dev` |
+| `@uniflowed/cli`, `@uniflowed/lint`, `@uniflowed/lib` | The `uf` binary, its linter, and `uf inspect` |
+| `@uniflowed/pm`, `@uniflowed/rm`, `@uniflowed/prepare` | The corresponding `uf` commands |
+| `@uniflowed/runtime`, `@uniflowed/loader` | [Host integration](/guide/toolchain) and [router data loading](/guide/data) |
+| `@uniflowed/markdown` | Markdown and MDX through `uf build` |
+| `@uniflowed/motion` | [Motion components in `@uniflowed/ui`](/reference/ui) |
+| `@uniflowed/pwa` | The declared package has no runtime implementation |
+
+Other private packages need a different decision: `browser` and `vrt` have
+working browser and visual testing implementations; `sql` implements the
+runtime used by generated queries; `std` has runnable subpaths beside its
+unimplemented root; `hmr` has a working client beside an unavailable native
+channel. Their private flag alone is not a reason to delete them.
+
+The unused ORM declaration surface has been removed.
+
 ## Core
 
 | Package | What it is | Released |
 | --- | --- | --- |
 | `@uniflowed/core` | The pieces every other package builds on | On npm |
 | `@uniflowed/react` | React, re-exported by name, with Flow's own types | On npm |
-| `@uniflowed/jsx-runtime` | The JSX runtime uf compiles to | In this repository only |
-| `@uniflowed/react-compiler` | The official React Compiler, wired for uf | In this repository only |
-| `@uniflowed/runtime` | Host capabilities, resolved at run time | In this repository only |
+| `@uniflowed/jsx-runtime` | Declaration only; use React’s JSX runtime | In this repository only |
+| `@uniflowed/react-compiler` | Declaration only; `uf build` and `uf dev` run the official Rust compiler | In this repository only |
+| `@uniflowed/runtime` | Declaration only; host capabilities are implemented by the toolchain | In this repository only |
 | `@uniflowed/std` | [The standard library](/reference/std): the parts of Go's that JavaScript does not have | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 
 ## Application
