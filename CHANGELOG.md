@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.9.0
+
+- fix(check): align platform and public package contracts (#1607) (82ad0298)
+
 ## uf@0.8.0
 
 - fix(check): type Node file URLs as URL instances (#1594) (67c226f1)

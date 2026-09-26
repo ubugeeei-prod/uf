@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/web",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "The primitives a web page is built from, for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -25,8 +25,8 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.8.0",
-    "@uniflowed/hooks": "0.8.0",
-    "@uniflowed/react": "0.8.0"
+    "@uniflowed/core": "0.9.0",
+    "@uniflowed/hooks": "0.9.0",
+    "@uniflowed/react": "0.9.0"
   }
 }
