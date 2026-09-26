@@ -3,37 +3,62 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { VERSION, assertMaintainer, gh, api, git } = require("./policy.cjs");
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/*::
+import type { WorkflowRun } from "./policy.cjs";
+
+// What `uf-release-state.json` holds between runs, so a release that stops
+// part-way resumes where it stopped. The keys are the file's format.
+type State = {
+  repository: string,
+  version: string,
+  branch: string,
+  pr?: ?number,
+  worktree?: string,
+  commit?: string,
+  validationRun?: number,
+  publishRun?: number,
+  releaseRun?: number,
+  editorsRun?: number,
+};
+type Workflow = "publish" | "release" | "editors";
+type Inputs = { readonly [name: string]: string | number };
+*/
+const sleep = (ms /*: number */) /*: Promise<void> */ =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 // Releases are `0.x.0`: a minor bump unless the command names another. The
 // `0.0.0-alpha.N` series ended with alpha.47 (alpha.48 merged without a queue
 // run and was never published), and the owner chose `0.1.0` as the next one.
 // `patch` is for a fix-only release; `alpha`, `major` and an exact version
 // still work.
-const DEFAULT_BUMP = "minor";
+const DEFAULT_BUMP /*: string */ = "minor";
 const USAGE =
   "Usage: uf run release -- [minor|patch|major|alpha|<version>] [--dry-run] (default: minor)";
-function requestedBump(argv) {
+function requestedBump(argv /*: $ReadOnlyArray<string> */) /*: string */ {
   return argv.find((arg) => arg !== "--dry-run") || DEFAULT_BUMP;
 }
 
-function nextVersion(current, bump) {
+function nextVersion(current /*: string */, bump /*: string */) /*: string */ {
   if (VERSION.test(bump)) {
-    const parts = (version) => {
+    // `VERSION` admits only these channels; a stable version sorts last.
+    const rank /*: { readonly [channel: string]: number } */ = {
+      alpha: 0,
+      beta: 1,
+      rc: 2,
+      stable: 3,
+    };
+    const parts = (version /*: string */) /*: Array<number> */ => {
       const [base, channel] = version.split("-");
       const [name, number] = (channel || "stable.0").split(".");
-      return [
-        ...base.split(".").map(Number),
-        { alpha: 0, beta: 1, rc: 2, stable: 3 }[name],
-        Number(number),
-      ];
+      return [...base.split(".").map(Number), rank[name], Number(number)];
     };
     const before = parts(current);
     const after = parts(bump);
     const difference = after
       .map((value, index) => value - before[index])
       .find((value) => value !== 0);
-    if (!(difference > 0)) throw new Error("The release version must be newer than current main.");
+    if (!(difference != null && difference > 0))
+      throw new Error("The release version must be newer than current main.");
     return bump;
   }
   const match = /^(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?$/.exec(current);
@@ -48,7 +73,7 @@ function nextVersion(current, bump) {
   if (bump === "major") return `${Number(major) + 1}.0.0`;
   throw new Error(USAGE);
 }
-function writeNotes(state) {
+function writeNotes(state /*: { readonly version: string, ... } */) /*: void */ {
   const tag = git("describe", "--tags", "--match", "uf@*", "--abbrev=0", "origin/main");
   const notes = git("log", "--no-merges", "--format=- %s (%h)", `${tag}..origin/main`);
   const text = fs.readFileSync("CHANGELOG.md", "utf8");
@@ -70,18 +95,17 @@ function writeNotes(state) {
     );
   }
 }
-function refreshBranch(state) {
+function refreshBranch(state /*: State */) /*: void */ {
   git("fetch", "origin", "main", state.branch);
-  if (!state.worktree || !fs.existsSync(state.worktree)) {
-    state.worktree = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "uf-release-resume-")),
-      "repo",
-    );
-    git("worktree", "add", "--detach", state.worktree, `origin/${state.branch}`);
+  let worktree = state.worktree;
+  if (!worktree || !fs.existsSync(worktree)) {
+    worktree = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "uf-release-resume-")), "repo");
+    state.worktree = worktree;
+    git("worktree", "add", "--detach", worktree, `origin/${state.branch}`);
   }
   const previous = process.cwd();
   try {
-    process.chdir(state.worktree);
+    process.chdir(worktree);
     git("merge", "--ff-only", `origin/${state.branch}`);
     git("merge", "--no-edit", "origin/main");
     writeNotes(state);
@@ -93,7 +117,13 @@ function refreshBranch(state) {
     process.chdir(previous);
   }
 }
-async function waitForMerge(state) {
+const FAILED_CONCLUSIONS /*: $ReadOnlyArray<?string> */ = [
+  "FAILURE",
+  "TIMED_OUT",
+  "ACTION_REQUIRED",
+];
+async function waitForMerge(state /*: State */) /*: Promise<string> */ {
+  const number = String(state.pr);
   let reported = "";
   const until = Date.now() + 6 * 60 * 60 * 1000;
   while (Date.now() < until) {
@@ -101,7 +131,7 @@ async function waitForMerge(state) {
       gh(
         "pr",
         "view",
-        String(state.pr),
+        number,
         "--repo",
         state.repository,
         "--json",
@@ -109,8 +139,7 @@ async function waitForMerge(state) {
       ),
     );
     if (pr.state === "MERGED") return pr.mergeCommit.oid;
-    if (pr.state === "CLOSED")
-      throw new Error(`Release PR #${state.pr} was closed without merging.`);
+    if (pr.state === "CLOSED") throw new Error(`Release PR #${number} was closed without merging.`);
     if (pr.mergeStateStatus === "BEHIND") {
       refreshBranch(state);
       console.log("Updated the release PR with current main; waiting for new checks.");
@@ -118,13 +147,12 @@ async function waitForMerge(state) {
       continue;
     }
     const failed = pr.statusCheckRollup.filter(
-      (check) =>
-        ["FAILURE", "TIMED_OUT", "ACTION_REQUIRED"].includes(check.conclusion) ||
-        check.state === "FAILURE",
+      (check /*: { readonly conclusion: ?string, readonly state?: string, ... } */) =>
+        FAILED_CONCLUSIONS.includes(check.conclusion) || check.state === "FAILURE",
     );
     if (failed.length)
       throw new Error(
-        `Release PR checks failed: ${failed.map((check) => check.name || check.context).join(", ")}. Fix or rerun them, then repeat the release command.`,
+        `Release PR checks failed: ${failed.map((check /*: { readonly name?: string, readonly context?: string, ... } */) => check.name || check.context).join(", ")}. Fix or rerun them, then repeat the release command.`,
       );
     if (!pr.autoMergeRequest) {
       const [owner, name] = state.repository.split("/");
@@ -139,19 +167,20 @@ async function waitForMerge(state) {
           "-f",
           `name=${name}`,
           "-F",
-          `number=${state.pr}`,
+          `number=${number}`,
         ),
       ).data.repository.pullRequest;
       if (current.state === "MERGED") return current.mergeCommit.oid;
       if (!current.autoMergeRequest && !current.mergeQueueEntry)
         throw new Error(
-          `Release PR #${state.pr} is no longer queued. Check the merge-queue results, fix or rerun them, then repeat the release command.`,
+          `Release PR #${number} is no longer queued. Check the merge-queue results, fix or rerun them, then repeat the release command.`,
         );
     }
     const pending = pr.statusCheckRollup.filter(
-      (check) => check.status !== "COMPLETED" && check.state !== "SUCCESS",
+      (check /*: { readonly status?: string, readonly state?: string, ... } */) =>
+        check.status !== "COMPLETED" && check.state !== "SUCCESS",
     ).length;
-    const message = `PR #${state.pr}: ${pr.mergeStateStatus}, ${pending} checks pending`;
+    const message = `PR #${number}: ${pr.mergeStateStatus}, ${pending} checks pending`;
     if (message !== reported) {
       console.log(message);
       reported = message;
@@ -160,14 +189,14 @@ async function waitForMerge(state) {
   }
   throw new Error("Release is still pending. Repeat the command to resume.");
 }
-async function waitRun(repository, id) {
+async function waitRun(repository /*: string */, id /*: number */) /*: Promise<WorkflowRun> */ {
   const until = Date.now() + 6 * 60 * 60 * 1000;
   while (Date.now() < until) {
-    const run = api(`repos/${repository}/actions/runs/${id}`);
+    const run /*: WorkflowRun */ = api(`repos/${repository}/actions/runs/${id}`);
     if (run.status === "completed") {
       if (run.conclusion !== "success")
         throw new Error(
-          `Workflow ${run.html_url} ended with ${run.conclusion}. Fix or rerun failed jobs, then repeat the command.`,
+          `Workflow ${run.html_url} ended with ${String(run.conclusion)}. Fix or rerun failed jobs, then repeat the command.`,
         );
       return run;
     }
@@ -175,14 +204,27 @@ async function waitRun(repository, id) {
   }
   throw new Error(`Workflow ${id} is still running. Repeat the command to resume.`);
 }
-async function dispatch(state, workflow, title, inputs, save) {
-  const key = `${workflow}Run`;
-  if (!state[key]) {
+// The state key that records each workflow's run: `${workflow}Run`.
+const RUN_KEYS /*: { readonly [Workflow]: "publishRun" | "releaseRun" | "editorsRun" } */ = {
+  publish: "publishRun",
+  release: "releaseRun",
+  editors: "editorsRun",
+};
+async function dispatch(
+  state /*: State */,
+  workflow /*: Workflow */,
+  title /*: string */,
+  inputs /*: Inputs */,
+  save /*: () => void */,
+) /*: Promise<WorkflowRun> */ {
+  const key = RUN_KEYS[workflow];
+  let id = state[key];
+  if (!id) {
     // Find an existing run after an interrupted dispatch, before starting one.
-    const find = () =>
+    const find = () /*: ?WorkflowRun */ =>
       api(
         `repos/${state.repository}/actions/workflows/${workflow}.yml/runs?event=workflow_dispatch&branch=main&per_page=100`,
-      ).workflow_runs.find((run) => run.display_title === title);
+      ).workflow_runs.find((run /*: WorkflowRun */) => run.display_title === title);
     let run = find();
     if (!run) {
       const args = [
@@ -203,22 +245,23 @@ async function dispatch(state, workflow, title, inputs, save) {
     }
     if (!run)
       throw new Error("Workflow dispatch is not visible yet. Repeat the command to resume.");
-    state[key] = run.id;
+    id = run.id;
+    state[key] = id;
     save();
   }
-  const previous = api(`repos/${state.repository}/actions/runs/${state[key]}`);
+  const previous /*: WorkflowRun */ = api(`repos/${state.repository}/actions/runs/${id}`);
   if (previous.status === "completed" && previous.conclusion !== "success") {
-    gh("run", "rerun", String(state[key]), "--repo", state.repository, "--failed");
+    gh("run", "rerun", String(id), "--repo", state.repository, "--failed");
     for (let retry = 0; retry < 20; retry++) {
       await sleep(3000);
-      const current = api(`repos/${state.repository}/actions/runs/${state[key]}`);
+      const current /*: WorkflowRun */ = api(`repos/${state.repository}/actions/runs/${id}`);
       if (current.run_attempt > previous.run_attempt || current.status !== "completed") break;
     }
   }
-  console.log(`Waiting for https://github.com/${state.repository}/actions/runs/${state[key]}`);
-  return waitRun(state.repository, state[key]);
+  console.log(`Waiting for https://github.com/${state.repository}/actions/runs/${id}`);
+  return waitRun(state.repository, id);
 }
-async function main() {
+async function main() /*: Promise<void> */ {
   const root = git("rev-parse", "--show-toplevel");
   process.chdir(root);
   const common = git("rev-parse", "--path-format=absolute", "--git-common-dir");
@@ -228,7 +271,9 @@ async function main() {
   assertMaintainer(
     api(`repos/${repository}/collaborators/${encodeURIComponent(actor)}/permission`),
   );
-  let state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf8")) : null;
+  let state /*: State | null */ = fs.existsSync(stateFile)
+    ? JSON.parse(fs.readFileSync(stateFile, "utf8"))
+    : null;
   if (state && state.repository !== repository)
     throw new Error("Saved release belongs to another repository.");
   const save = () => fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
@@ -279,7 +324,7 @@ async function main() {
     );
     if (existing.length > 1 || existing[0]?.state === "CLOSED")
       throw new Error("Release branch has a closed or ambiguous PR; inspect it before retrying.");
-    state = { repository, version, branch, pr: existing[0]?.number };
+    state = { repository, version, branch, pr: existing[0]?.number } /*:: as State */;
     save();
   }
   if (process.argv.includes("--dry-run")) {
@@ -287,14 +332,16 @@ async function main() {
     return;
   }
   if (!state.pr) {
-    if (!state.worktree) {
-      state.worktree = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "uf-release-pr-")), "repo");
+    let worktree = state.worktree;
+    if (!worktree) {
+      worktree = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "uf-release-pr-")), "repo");
+      state.worktree = worktree;
       save();
-      git("worktree", "add", "-b", state.branch, state.worktree, "origin/main");
+      git("worktree", "add", "-b", state.branch, worktree, "origin/main");
     }
     const previous = process.cwd();
     try {
-      process.chdir(state.worktree);
+      process.chdir(worktree);
       if (
         !fs.existsSync(".github/release.json") ||
         JSON.parse(fs.readFileSync(".github/release.json", "utf8")).version !== state.version
@@ -319,7 +366,7 @@ async function main() {
         git("commit", "-m", `chore(release): uf@${state.version}`);
       }
       git("push", "-u", "origin", state.branch);
-      const body = path.join(path.dirname(state.worktree), "release-pr.md");
+      const body = path.join(path.dirname(worktree), "release-pr.md");
       fs.writeFileSync(
         body,
         `Release uf ${state.version}.\n\nFull integration tests and all native archives are validated before merge. The merge queue checks current main. Publication reuses those archives; no tag is pushed by this command.\n`,
@@ -360,39 +407,43 @@ async function main() {
       process.chdir(previous);
     }
   }
-  if (!state.commit) {
+  let commit = state.commit;
+  if (!commit) {
     gh("pr", "merge", String(state.pr), "--repo", repository, "--auto", "--squash");
-    state.commit = await waitForMerge(state);
+    commit = await waitForMerge(state);
+    state.commit = commit;
     save();
   }
-  if (!state.validationRun) {
-    const runs = api(
-      `repos/${repository}/actions/workflows/ci.yml/runs?event=merge_group&head_sha=${state.commit}&per_page=100`,
+  let validationRun = state.validationRun;
+  if (!validationRun) {
+    const runs /*: Array<WorkflowRun> */ = api(
+      `repos/${repository}/actions/workflows/ci.yml/runs?event=merge_group&head_sha=${commit}&per_page=100`,
     ).workflow_runs;
     const run = runs.find(
       (run) =>
-        run.head_sha === state.commit && run.status === "completed" && run.conclusion === "success",
+        run.head_sha === commit && run.status === "completed" && run.conclusion === "success",
     );
     if (!run) throw new Error("No successful merge-queue validation found for the merged commit.");
-    state.validationRun = run.id;
+    validationRun = run.id;
+    state.validationRun = validationRun;
     save();
   }
   const inputs = {
     version: state.version,
-    commit: state.commit,
-    validation_run: state.validationRun,
+    commit,
+    validation_run: validationRun,
   };
   const npm = await dispatch(
     state,
     "publish",
-    `Publish ${state.version} (${state.commit})`,
+    `Publish ${state.version} (${commit})`,
     inputs,
     save,
   );
   await dispatch(
     state,
     "release",
-    `Release ${state.version} (${state.commit})`,
+    `Release ${state.version} (${commit})`,
     { ...inputs, npm_run: npm.id },
     save,
   );
