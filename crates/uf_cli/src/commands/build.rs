@@ -389,13 +389,12 @@ pub(crate) fn build(
         && let Some(target) = runtime.target
         && runtime.fetches_a_runtime()
     {
-        let notice = uf_infra::cstr!(
+        let notice = uf_infra::into_string(uf_infra::cstr!(
             "the {} runtime for {} is not cached yet; producing this binary downloads it (about \
              90 MB) into .uf/cache/bun",
             runtime.backend.name(),
             target.triple
-        )
-        .into_string();
+        ));
         ui.render(|renderer, out| renderer.status(out, Status::Info, &notice));
     }
     // The same rule for the same reason: an adapter nobody has written is a
@@ -695,14 +694,14 @@ pub(crate) fn build(
             // watching, because it is the one step of a build whose duration
             // has nothing to do with the size of their application.
             progress.tick(&match (runtime.target, runtime.fetches_a_runtime()) {
-                (Some(target), true) => {
-                    uf_infra::cstr!("fetching the {} runtime, then compiling", target.triple)
-                        .into_string()
-                }
-                (Some(target), false) => {
-                    uf_infra::cstr!("compiling a standalone binary for {}", target.triple)
-                        .into_string()
-                }
+                (Some(target), true) => uf_infra::into_string(uf_infra::cstr!(
+                    "fetching the {} runtime, then compiling",
+                    target.triple
+                )),
+                (Some(target), false) => uf_infra::into_string(uf_infra::cstr!(
+                    "compiling a standalone binary for {}",
+                    target.triple
+                )),
                 (None, _) => String::from("compiling a standalone binary"),
             });
             Some(timer.measure("compile", || compile::compile(ui, &runtimes, link))?)
@@ -871,13 +870,10 @@ pub(crate) fn build(
     // one it wrote, and the silent version of that is a person reading
     // `site.robots` in `uf.config.js` and wondering why none of it applies.
     for kept in &metadata_files.kept {
-        warnings.push(
-            uf_infra::cstr!(
-                "{} was already in the output directory, so `site` did not write it",
-                relative_to(&resolved.root, kept)
-            )
-            .into_string(),
-        );
+        warnings.push(uf_infra::into_string(uf_infra::cstr!(
+            "{} was already in the output directory, so `site` did not write it",
+            relative_to(&resolved.root, kept)
+        )));
     }
     // Prerendered documents under a rule whose value names `{uf.nonce}`. A
     // nonce is minted per request and the file was written without one, so the
@@ -909,7 +905,7 @@ pub(crate) fn build(
             )
         })
         .collect();
-    let guarded_summary = uf_infra::cstr!(
+    let guarded_summary = uf_infra::into_string(uf_infra::cstr!(
         "{} prerendered to {} a host serves without running the middleware that guards {}",
         plural(guarded_rows.len(), "route"),
         if guarded_rows.len() == 1 {
@@ -922,8 +918,7 @@ pub(crate) fn build(
         } else {
             "them"
         },
-    )
-    .into_string();
+    ));
     let host_name = host.name();
     let adapter_summary = deployed.as_ref().map(|deployed| {
         let directory = relative_to(&resolved.root, &deployed.directory);

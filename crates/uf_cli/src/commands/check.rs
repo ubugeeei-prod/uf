@@ -879,21 +879,19 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             // Only shown when a selection pulled more in. A whole-project run
             // imports nothing it was not also asked about, and a reader should
             // not have to work that out from a zero.
-            let requested = uf_infra::cstr!(
+            let requested = uf_infra::into_string(uf_infra::cstr!(
                 "{} of {}",
                 batch.requested,
                 batch.requested + batch.imported
-            )
-            .into_string();
+            ));
             let inference = uf_infra::into_string(uf_infra::cstr!("{:.1?}", report.elapsed));
             let builtins_timing = batch.builtins.unwrap_or(report.builtins);
             let builtins = if builtins_timing.needed {
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "{:.1?} ({})",
                     builtins_timing.cold_elapsed,
                     if builtins_timing.cold { "cold" } else { "warm" }
-                )
-                .into_string()
+                ))
             } else {
                 String::from("not needed")
             };
@@ -985,49 +983,41 @@ fn explanation_lines(explained: &declarations::Explanation) -> (String, Vec<Stri
     let package = &explained.package;
     if !explained.translated {
         return (
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "uf check typed no package named {package} from TypeScript declarations in this \
                  run: nothing imported it, it ships Flow, or it has no declarations"
-            )
-            .into_string(),
+            )),
             Vec::new(),
         );
     }
-    let heading = uf_infra::cstr!(
+    let heading = uf_infra::into_string(uf_infra::cstr!(
         "{package}: {} typed as any, {} inside its translation",
         plural(explained.holes.len(), "hole"),
         plural(explained.findings.len(), "Flow error"),
-    )
-    .into_string();
+    ));
     let mut lines = Vec::with_capacity(explained.holes.len() + explained.findings.len());
     for hole in &explained.holes {
-        lines.push(
-            uf_infra::cstr!(
-                "{}:{} {} [{}] {}",
-                hole.path,
-                hole.line,
-                hole.declaration,
-                hole.construct,
-                hole.reason
-            )
-            .into_string(),
-        );
+        lines.push(uf_infra::into_string(uf_infra::cstr!(
+            "{}:{} {} [{}] {}",
+            hole.path,
+            hole.line,
+            hole.declaration,
+            hole.construct,
+            hole.reason
+        )));
     }
     for finding in &explained.findings {
-        lines.push(
-            uf_infra::cstr!(
-                "{}:{} {} [{}] {}",
-                finding.path,
-                finding.line,
-                finding
-                    .declaration
-                    .as_deref()
-                    .unwrap_or("(outside a declaration)"),
-                finding.code.as_deref().unwrap_or("error"),
-                finding.message
-            )
-            .into_string(),
-        );
+        lines.push(uf_infra::into_string(uf_infra::cstr!(
+            "{}:{} {} [{}] {}",
+            finding.path,
+            finding.line,
+            finding
+                .declaration
+                .as_deref()
+                .unwrap_or("(outside a declaration)"),
+            finding.code.as_deref().unwrap_or("error"),
+            finding.message
+        )));
     }
     (heading, lines)
 }
@@ -1059,12 +1049,12 @@ fn translated_package_list(packages: &[declarations::TranslatedPackage]) -> Vec<
             };
             match package.findings {
                 0 => uf_infra::into_string(uf_infra::cstr!("{name}: {holes}")),
-                1 => uf_infra::cstr!("{name}: {holes}, 1 Flow error inside its translation")
-                    .into_string(),
-                findings => uf_infra::cstr!(
+                1 => uf_infra::into_string(uf_infra::cstr!(
+                    "{name}: {holes}, 1 Flow error inside its translation"
+                )),
+                findings => uf_infra::into_string(uf_infra::cstr!(
                     "{name}: {holes}, {findings} Flow errors inside its translation"
-                )
-                .into_string(),
+                )),
             }
         })
         .collect()

@@ -50,14 +50,13 @@ pub fn compatibility_warnings(root: &Utf8Path) -> Vec<String> {
                 .and_then(Value::as_str),
             dependency.get("version").and_then(Value::as_str),
         ) {
-            let owner = compact_str::format_compact!(
+            let owner = uf_infra::into_string(compact_str::format_compact!(
                 "Expo {}",
                 expo.as_ref()
                     .and_then(|value| value.get("version"))
                     .and_then(Value::as_str)
                     .unwrap_or("SDK")
-            )
-            .into_string();
+            ));
             compare(&mut warnings, name, version, range, &owner);
         }
         if let (Some(range), Some(version)) = (

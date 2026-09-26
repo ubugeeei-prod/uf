@@ -795,13 +795,12 @@ impl<'de> Deserialize<'de> for NonFlowFormatConfig {
             .iter()
             .find(|argument| forbidden_formatter_argument(argument))
         {
-            return Err(serde::de::Error::custom(
+            return Err(serde::de::Error::custom(uf_infra::into_string(
                 compact_str::format_compact!(
                     "fmt.nonFlow.arguments may not contain `{argument}`: it decides whether \
                  `uf fmt --check` writes, and that is the command's own contract"
-                )
-                .into_string(),
-            ));
+                ),
+            )));
         }
         Ok(Self {
             formatter: fields.formatter.unwrap_or_default(),
@@ -1911,8 +1910,9 @@ fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), Con
         if !(1..=100).contains(quality) {
             return Err(refuse(
                 uf_infra::into_string(compact_str::format_compact!("qualities[{index}]")),
-                compact_str::format_compact!("is {quality}, and a quality is 1 to 100")
-                    .into_string(),
+                uf_infra::into_string(compact_str::format_compact!(
+                    "is {quality}, and a quality is 1 to 100"
+                )),
             ));
         }
     }

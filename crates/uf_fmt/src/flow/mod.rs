@@ -78,10 +78,9 @@ pub fn format(source: &str, config: &FmtConfig) -> Result<String, FlowFormatErro
         return Err(FlowFormatError::Syntax {
             line: u32::try_from(opening.loc.start.line).unwrap_or(0),
             column: u32::try_from(opening.loc.start.column).unwrap_or(0),
-            message: uf_infra::cstr!(
+            message: uf_infra::into_string(uf_infra::cstr!(
                 "Unexpected end of input, expected the closing tag `</{name}>`"
-            )
-            .into_string(),
+            )),
         });
     }
 

@@ -59,12 +59,11 @@ fn tool_row(declared: &Declared, state: &str) -> String {
         }
         Resolution::OnPath | Resolution::Exact(_) | Resolution::Unlocked { .. } => String::new(),
     };
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{}{release}  {}  {state}",
         declared.spec(),
         declared.roles()
-    )
-    .into_string()
+    ))
 }
 
 /// Install every tool this project declares a version of, lock what had to be
@@ -134,12 +133,11 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         })
         .collect();
     let lock_note = (!locked.is_empty()).then(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "locked {} in {}",
             locked.join(", "),
             relative_to(&resolved.root, &toolchain.lock_path)
-        )
-        .into_string()
+        ))
     });
     let bin = envs.bin_dir(&resolved.root).to_string();
     let summary = uf_infra::into_string(uf_infra::cstr!(
@@ -357,19 +355,17 @@ fn gc(ui: &mut Ui, dry_run: bool) -> Result<()> {
     let summary = if plan.is_empty() {
         uf_infra::into_string(uf_infra::cstr!("nothing to collect; {kept} in use"))
     } else if dry_run {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} would be removed; {kept} in use",
             entries_word(plan.unreachable.len())
-        )
-        .into_string()
+        ))
     } else {
         let (entries, roots_removed) = uf_env::gc::collect(&store, &roots, &plan)?;
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "removed {}, forgot {}; {kept} in use",
             entries_word(entries),
             plural(roots_removed, "root")
-        )
-        .into_string()
+        ))
     };
 
     ui.render(|renderer, out| {
@@ -416,11 +412,10 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
     // What it selects, not only what was recorded: "active environment:
     // staging" was true of a file nothing read, and the reader's next question
     // is which files this now means.
-    let message = uf_infra::cstr!(
+    let message = uf_infra::into_string(uf_infra::cstr!(
         "mode {name}: `.env`, `.env.local`, `.env.{name}` and `.env.{name}.local`, in {}",
         env_files::PROFILE_FILE
-    )
-    .into_string();
+    ));
     ui.render(|renderer, out| renderer.status(out, Status::Success, &message));
     Ok(())
 }

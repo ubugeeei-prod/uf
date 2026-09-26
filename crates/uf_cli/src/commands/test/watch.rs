@@ -509,12 +509,11 @@ fn run_and_report(
     pool: Option<&WorkerPool>,
 ) {
     if let Some(moved) = moved {
-        let message = uf_infra::cstr!(
+        let message = uf_infra::into_string(uf_infra::cstr!(
             "{} changed, re-running {}",
             plural(moved.len(), "file"),
             plural(subset.len(), "test file")
-        )
-        .into_string();
+        ));
         ui.render(|renderer, out| {
             renderer.blank(out);
             renderer.status(out, Status::Info, &message);
@@ -576,12 +575,11 @@ fn announce(
     unavailable: Option<&str>,
 ) {
     let mut message = match interval {
-        Some(interval) if unavailable.is_none() => uf_infra::cstr!(
+        Some(interval) if unavailable.is_none() => uf_infra::into_string(uf_infra::cstr!(
             "watching {} every {}",
             plural(files, "file"),
             uf_term::format_duration(interval)
-        )
-        .into_string(),
+        )),
         _ => uf_infra::into_string(uf_infra::cstr!("watching {}", plural(files, "file"))),
     };
     if let Some(reason) = unavailable {

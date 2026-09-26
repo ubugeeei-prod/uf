@@ -119,12 +119,11 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
         })
         .collect::<Vec<_>>();
 
-    let summary = uf_infra::cstr!(
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "{} in {}",
         ByteSize::from_bytes(total_bytes),
         plural(total_files as usize, "file")
-    )
-    .into_string();
+    ));
     let dry = dry_run;
     ui.render(|renderer, out| {
         renderer.banner(out, "uf clean", Some(&project));

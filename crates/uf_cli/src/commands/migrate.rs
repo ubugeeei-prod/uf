@@ -142,27 +142,21 @@ fn finish(root: &Utf8Path, ui: &mut Ui, plan: Plan, dry_run: bool) -> Result<()>
     if ui.is_json() {
         ui.json(&serde_json::json!({ "dryRun": dry_run, "plan": plan }))?;
     } else {
-        ui.plain(
-            &uf_infra::cstr!(
-                "uf {}{}\n",
-                plan.command,
-                if dry_run { " --dry-run" } else { "" }
-            )
-            .into_string(),
-        );
+        ui.plain(&uf_infra::into_string(uf_infra::cstr!(
+            "uf {}{}\n",
+            plan.command,
+            if dry_run { " --dry-run" } else { "" }
+        )));
         for change in &plan.changes {
-            ui.plain(
-                &uf_infra::cstr!(
-                    "\n{} {}\n",
-                    if change.after.is_some() {
-                        "write"
-                    } else {
-                        "remove"
-                    },
-                    change.path
-                )
-                .into_string(),
-            );
+            ui.plain(&uf_infra::into_string(uf_infra::cstr!(
+                "\n{} {}\n",
+                if change.after.is_some() {
+                    "write"
+                } else {
+                    "remove"
+                },
+                change.path
+            )));
             if let Some(text) = &change.after {
                 ui.plain(text);
             }

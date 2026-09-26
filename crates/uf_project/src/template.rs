@@ -79,7 +79,7 @@ pub(crate) fn monorepo_files(name: &str) -> Vec<(&'static str, String)> {
 
 fn monorepo_package_json(name: &str) -> String {
     let uf = UNIFLOWED_VERSION;
-    compact_str::format_compact!(
+    uf_infra::into_string(compact_str::format_compact!(
         r#"{{
   "name": "{name}",
   "private": true,
@@ -94,8 +94,7 @@ fn monorepo_package_json(name: &str) -> String {
   }}
 }}
 "#
-    )
-    .into_string()
+    ))
 }
 
 fn monorepo_config() -> String {
@@ -128,7 +127,7 @@ export default defineConfig({
 /// library by name.
 fn web_package_json() -> String {
     let uf = UNIFLOWED_VERSION;
-    compact_str::format_compact!(
+    uf_infra::into_string(compact_str::format_compact!(
         r#"{{
   "name": "@__NAME__/web",
   "private": true,
@@ -148,8 +147,7 @@ fn web_package_json() -> String {
   }}
 }}
 "#
-    )
-    .into_string()
+    ))
 }
 
 /// The library's manifest: the library template's, under the repository's
@@ -267,7 +265,7 @@ const UNIFLOWED_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn app_package_json(name: &str) -> String {
     let uf = UNIFLOWED_VERSION;
-    compact_str::format_compact!(
+    uf_infra::into_string(compact_str::format_compact!(
         r#"{{
   "name": "{name}",
   "private": true,
@@ -286,8 +284,7 @@ fn app_package_json(name: &str) -> String {
   }}
 }}
 "#
-    )
-    .into_string()
+    ))
 }
 
 /// The manifest `uf create lib` writes.
@@ -340,7 +337,7 @@ fn app_package_json(name: &str) -> String {
 /// question.
 fn lib_package_json(name: &str) -> String {
     let uf = UNIFLOWED_VERSION;
-    compact_str::format_compact!(
+    uf_infra::into_string(compact_str::format_compact!(
         r#"{{
   "name": "{name}",
   "version": "0.0.0",
@@ -363,8 +360,7 @@ fn lib_package_json(name: &str) -> String {
   }}
 }}
 "#
-    )
-    .into_string()
+    ))
 }
 
 fn app_config() -> String {

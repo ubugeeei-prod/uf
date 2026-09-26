@@ -63,11 +63,10 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "no routes under {}; `uf routes add /` writes the first one",
                     relative_to(&resolved.root, &router_root)
-                )
-                .into_string(),
+                )),
             );
             renderer.blank(out);
             return;

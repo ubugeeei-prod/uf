@@ -224,11 +224,10 @@ pub(super) fn render_report(
     let failed_tests = failed_tests(report);
     let (output_groups, output_hidden) = other_output(report);
     let output_note = (output_hidden > 0).then(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} not shown; `uf test --json` has every one",
             plural(output_hidden, "more line")
-        )
-        .into_string()
+        ))
     });
     let slowest = slowest_rows(report);
     let coverage_rows = coverage.map(coverage_block);
@@ -238,14 +237,13 @@ pub(super) fn render_report(
         .unsupported
         .iter()
         .map(|entry| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{}:{}:{} {}",
                 entry.file,
                 entry.line,
                 entry.column,
                 entry.describe()
-            )
-            .into_string()
+            ))
         })
         .collect();
 
@@ -526,8 +524,11 @@ pub(super) fn render_file(
                 renderer.status(
                     out,
                     Status::Warn,
-                    &uf_infra::cstr!("{}  passed on attempt {}", record.name, record.attempts)
-                        .into_string(),
+                    &uf_infra::into_string(uf_infra::cstr!(
+                        "{}  passed on attempt {}",
+                        record.name,
+                        record.attempts
+                    )),
                 );
             }
             _ => {}
@@ -807,12 +808,11 @@ fn counts(report: &TestRunReport) -> Counts {
         skipped: summary.skipped.to_string(),
         todo: summary.todo.to_string(),
         files: summary.files.to_string(),
-        schedule: uf_infra::cstr!(
+        schedule: uf_infra::into_string(uf_infra::cstr!(
             "{} recorded, {} by size",
             summary.scheduled_warm,
             summary.scheduled_cold
-        )
-        .into_string(),
+        )),
     }
 }
 
@@ -934,19 +934,16 @@ fn coverage_block(section: &CoverageSection) -> CoverageBlock {
         // Named as a count and not folded into the percentage: a file no test
         // imports has no measured line to divide by, so counting it either way
         // would be an invention. The count is the honest form of it.
-        notes.push(
-            uf_infra::cstr!(
-                "{} no test loaded, so nothing above is about {}: {}",
-                plural(section.never_loaded.len(), "project file"),
-                if section.never_loaded.len() == 1 {
-                    "it"
-                } else {
-                    "them"
-                },
-                preview(&section.never_loaded),
-            )
-            .into_string(),
-        );
+        notes.push(uf_infra::into_string(uf_infra::cstr!(
+            "{} no test loaded, so nothing above is about {}: {}",
+            plural(section.never_loaded.len(), "project file"),
+            if section.never_loaded.len() == 1 {
+                "it"
+            } else {
+                "them"
+            },
+            preview(&section.never_loaded),
+        )));
     }
     if !section.unmapped.is_empty() {
         // Named, because this is the report admitting what it could not see.
@@ -954,19 +951,16 @@ fn coverage_block(section: &CoverageSection) -> CoverageBlock {
         // position for a count to belong to, and silently leaving it out is how
         // a coverage number starts describing a smaller program than the one
         // that ran.
-        notes.push(
-            uf_infra::cstr!(
-                "{} ran with no source map back to Flow and {} left out: {}",
-                plural(section.unmapped.len(), "module"),
-                if section.unmapped.len() == 1 {
-                    "was"
-                } else {
-                    "were"
-                },
-                preview(&section.unmapped),
-            )
-            .into_string(),
-        );
+        notes.push(uf_infra::into_string(uf_infra::cstr!(
+            "{} ran with no source map back to Flow and {} left out: {}",
+            plural(section.unmapped.len(), "module"),
+            if section.unmapped.len() == 1 {
+                "was"
+            } else {
+                "were"
+            },
+            preview(&section.unmapped),
+        )));
     }
     for path in &section.written {
         notes.push(uf_infra::into_string(uf_infra::cstr!("wrote {path}")));
@@ -1003,13 +997,12 @@ fn preview(paths: &[String]) -> String {
 }
 
 fn ratio_text(ratio: uf_test::Ratio) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{:.2}% ({}/{})",
         ratio.percent(),
         ratio.covered,
         ratio.total
-    )
-    .into_string()
+    ))
 }
 
 /// Red only for a per-file threshold the project set and this file missed.

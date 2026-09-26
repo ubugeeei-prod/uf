@@ -605,11 +605,10 @@ impl Types {
             Ok(Rename::Edits(edits)) => edits,
             Ok(Rename::Nothing) => return Ok(Value::Null),
             Ok(Rename::Outside(span)) => {
-                return Err(uf_infra::cstr!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "the name is written in {}, which a rename does not edit",
                     span.path,
-                )
-                .into_string());
+                )));
             }
             Err(error) => return Err(error.to_string()),
         };

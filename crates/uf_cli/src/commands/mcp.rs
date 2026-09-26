@@ -615,12 +615,9 @@ fn outside_the_project(root: &Utf8Path, paths: &[String]) -> Option<String> {
         return None;
     }
     let Ok(resolved_root) = root.canonicalize_utf8() else {
-        return Some(
-            uf_infra::cstr!(
-                "the project root {root} cannot be resolved, so no `paths` entry can be held to it"
-            )
-            .into_string(),
-        );
+        return Some(uf_infra::into_string(uf_infra::cstr!(
+            "the project root {root} cannot be resolved, so no `paths` entry can be held to it"
+        )));
     };
     for entry in paths {
         let named = Utf8Path::new(entry.trim_start_matches("./"));
@@ -647,10 +644,9 @@ fn outside_the_project(root: &Utf8Path, paths: &[String]) -> Option<String> {
             .ancestors()
             .find_map(|at| at.canonicalize_utf8().ok());
         if reached.is_some_and(|reached| !reached.starts_with(&resolved_root)) {
-            return Some(
-                uf_infra::cstr!("`{entry}` leads out of the project root through a symbolic link")
-                    .into_string(),
-            );
+            return Some(uf_infra::into_string(uf_infra::cstr!(
+                "`{entry}` leads out of the project root through a symbolic link"
+            )));
         }
     }
     None
@@ -691,13 +687,12 @@ fn fit(schema: &Value, value: &Value, at: Option<&str>) -> Result<(), String> {
     if let Some(expected) = schema.get("type").and_then(Value::as_str)
         && !is_type(value, expected)
     {
-        return Err(uf_infra::cstr!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "`{}` must be {}, not {}",
             at.unwrap_or("arguments"),
             a_type(expected),
             a_value(value),
-        )
-        .into_string());
+        )));
     }
     if let Some(object) = value.as_object() {
         let properties = schema.get("properties").and_then(Value::as_object);
@@ -711,15 +706,16 @@ fn fit(schema: &Value, value: &Value, at: Option<&str>) -> Result<(), String> {
                 .map(|(key, _)| uf_infra::into_string(uf_infra::cstr!("`{}`", named(key))))
                 .collect();
             return Err(if names.is_empty() {
-                uf_infra::cstr!("`{}` is not an argument, and it takes none", named(unknown))
-                    .into_string()
+                uf_infra::into_string(uf_infra::cstr!(
+                    "`{}` is not an argument, and it takes none",
+                    named(unknown)
+                ))
             } else {
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`{}` is not an argument; the arguments are {}",
                     named(unknown),
                     names.join(", ")
-                )
-                .into_string()
+                ))
             });
         }
         let required = schema.get("required").and_then(Value::as_array);

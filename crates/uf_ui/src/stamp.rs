@@ -48,13 +48,12 @@ impl Stamp {
 
     /// The line, with no line ending.
     pub fn line(&self) -> String {
-        compact_str::format_compact!(
+        uf_infra::into_string(compact_str::format_compact!(
             "{OPENING}{}` from uf {}, sha256 {}.",
             self.component,
             self.version,
             self.digest
-        )
-        .into_string()
+        ))
     }
 
     /// Read a line as a stamp, or say it is not one.

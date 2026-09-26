@@ -244,12 +244,11 @@ pub(super) fn question(config: &UniflowedConfig, work: &ReactWork) -> String {
     } = switches(work);
     // The mode's own serialized name, which covers every mode there is.
     let mode = serde_json::to_string(&compiler_mode(config)).unwrap_or_default();
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "memo={}\0compiler={}\0effect-dependencies={effect_dependencies}\0mode={mode}",
         work.wants_memo,
         work.compiler.is_some(),
-    )
-    .into_string()
+    ))
 }
 
 /// What these rules worked out about one module, before any project decides

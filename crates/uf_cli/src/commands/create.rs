@@ -247,12 +247,11 @@ fn render_remote(
     if !scripts.is_empty() {
         notes.push((
             Status::Warn,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "package.json declares {}, and `uf install` refuses to run it until \
                  `pm.allowLifecycleScripts` in uf.config.js allows it — read it before you do",
                 scripts.join(", ")
-            )
-            .into_string(),
+            )),
         ));
     }
     render(
@@ -295,12 +294,11 @@ fn render(cwd: &Utf8Path, ui: &mut Ui, created: &Created<'_>) -> Result<()> {
         .collect::<Vec<_>>();
     let paths = files.iter().map(String::as_str).collect::<Vec<_>>();
     let root = project_label(&created.root).to_string();
-    let summary = uf_infra::cstr!(
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "created {} in {}",
         plural(files.len(), "file"),
         created.root
-    )
-    .into_string();
+    ));
 
     let change_directory = (created.root != cwd)
         .then(|| uf_infra::into_string(uf_infra::cstr!("cd {}", project_label(&created.root))));

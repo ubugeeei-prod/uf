@@ -276,12 +276,11 @@ const SHOWN: usize = 10;
 /// four targets that *can* serve it and the project does not have to change to
 /// use one.
 pub(crate) fn refusal(findings: &[Unservable]) -> String {
-    let mut message = uf_infra::cstr!(
+    let mut message = uf_infra::into_string(uf_infra::cstr!(
         "this project cannot be served by a static host, so `uf build --adapter static` \
          would have written a directory that answers {} of it and silently dropped the rest",
         if findings.len() == 1 { "most" } else { "part" }
-    )
-    .into_string();
+    ));
     for finding in findings.iter().take(SHOWN) {
         uf_infra::append!(
             message,

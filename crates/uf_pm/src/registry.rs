@@ -492,12 +492,11 @@ fn classify(exit: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Result<Vec<u8>, 
         // through — and half a packument is not a packument.
         Some(200..=299) if exit == Some(0) => {
             if body.len() > MAX_PACKUMENT_BYTES {
-                return Err(HttpFailure::Answered(
+                return Err(HttpFailure::Answered(uf_infra::into_string(
                     compact_str::format_compact!(
                         "the answer is larger than {MAX_PACKUMENT_BYTES} bytes"
-                    )
-                    .into_string(),
-                ));
+                    ),
+                )));
             }
             Ok(body.to_vec())
         }
@@ -573,12 +572,11 @@ fn url_for(registry: &str, name: &str) -> Result<String, RegistryError> {
     }
     // npm's own encoding for a scoped name: `@scope%2fname` is one path
     // segment, so a scope cannot become a directory in the URL.
-    Ok(compact_str::format_compact!(
+    Ok(uf_infra::into_string(compact_str::format_compact!(
         "{}/{}",
         registry.trim_end_matches('/'),
         name.replace('/', "%2f")
-    )
-    .into_string())
+    )))
 }
 
 /// npm's package-name alphabet, and nothing else.

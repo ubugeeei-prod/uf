@@ -511,30 +511,24 @@ pub fn self_host(request: &FontRequest<'_>) -> Result<FontAsset, FontError> {
         Some(name) => match local_face(name) {
             None => (
                 None,
-                Some(
-                    uf_infra::cstr!(
-                        "uf has no metrics for the local face {name:?}; known faces are {}",
-                        LOCAL_FACES
-                            .iter()
-                            .map(|face| face.name)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                    .into_string(),
-                ),
+                Some(uf_infra::into_string(uf_infra::cstr!(
+                    "uf has no metrics for the local face {name:?}; known faces are {}",
+                    LOCAL_FACES
+                        .iter()
+                        .map(|face| face.name)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))),
             ),
             Some(face) => match metrics.fallback_for(face) {
                 Some(matched) => (Some(matched), None),
                 None => (
                     None,
-                    Some(
-                        uf_infra::cstr!(
-                            "{} has no OS/2 xAvgCharWidth, so there is no width ratio to scale \
+                    Some(uf_infra::into_string(uf_infra::cstr!(
+                        "{} has no OS/2 xAvgCharWidth, so there is no width ratio to scale \
                          {name:?} by",
-                            request.source
-                        )
-                        .into_string(),
-                    ),
+                        request.source
+                    ))),
                 ),
             },
         },
@@ -780,16 +774,14 @@ type Tables = Vec<([u8; 4], Vec<u8>)>;
 pub(crate) fn to_sfnt(path: &Utf8Path, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let tag = bytes.get(0..4).ok_or_else(|| String::from("empty file"))?;
     match tag {
-        b"wOF2" => Err(uf_infra::cstr!(
+        b"wOF2" => Err(uf_infra::into_string(uf_infra::cstr!(
             "{path} is WOFF2, whose glyf table is stored in a transformed form uf does not \
              reverse. Point this at the .ttf or .otf the .woff2 was built from"
-        )
-        .into_string()),
-        b"ttcf" => Err(uf_infra::cstr!(
+        ))),
+        b"ttcf" => Err(uf_infra::into_string(uf_infra::cstr!(
             "{path} is a TrueType collection and does not say which of its faces was meant; \
              extract the one you want first"
-        )
-        .into_string()),
+        ))),
         b"wOFF" => {
             let flavor = be_u32(bytes, 4).ok_or_else(|| String::from("truncated WOFF header"))?;
             let tables = woff_tables(bytes)?;
@@ -1140,10 +1132,9 @@ fn woff2_tables(bytes: &[u8]) -> Result<Tables, String> {
     }
     let total = be_u32(bytes, 16).ok_or("truncated WOFF2 header")? as usize;
     if total as u64 > MAX_FONT_BYTES {
-        return Err(uf_infra::cstr!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "the WOFF2 declares {total} bytes of tables, more than uf will decompress"
-        )
-        .into_string());
+        )));
     }
 
     let mut cursor = 48;

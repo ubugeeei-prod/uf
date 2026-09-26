@@ -416,15 +416,14 @@ impl ThresholdViolation {
             Some(file) => file.clone(),
             None => String::from("the project"),
         };
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{scope}: {} coverage is {:.2}% ({}/{}), below the required {}%",
             self.metric.as_str(),
             self.actual.percent(),
             self.actual.covered,
             self.actual.total,
             self.required
-        )
-        .into_string()
+        ))
     }
 }
 
@@ -545,12 +544,9 @@ impl<'de> Deserialize<'de> for Coverage {
 
         let record = CoverageRecord::deserialize(deserializer)?;
         let outside = |path: &str| {
-            D::Error::custom(
-                uf_infra::cstr!(
-                    "the coverage names {path:?}, which is not a path inside the project"
-                )
-                .into_string(),
-            )
+            D::Error::custom(uf_infra::into_string(uf_infra::cstr!(
+                "the coverage names {path:?}, which is not a path inside the project"
+            )))
         };
         let mut coverage = Self::new();
         for file in record.files {

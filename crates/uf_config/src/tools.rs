@@ -1078,11 +1078,10 @@ impl ToolDeclaration {
             (Some(spec), None) => {
                 uf_infra::into_string(compact_str::format_compact!("{spec} (uf's default)"))
             }
-            (None, _) => compact_str::format_compact!(
+            (None, _) => uf_infra::into_string(compact_str::format_compact!(
                 "not declared — {}",
                 self.undeclared.unwrap_or("uf's default")
-            )
-            .into_string(),
+            )),
         }
     }
 }
@@ -1272,13 +1271,10 @@ impl UniflowedConfig {
         } else {
             instead.join(" and ")
         };
-        Some(
-            compact_str::format_compact!(
-                "env.toolchain says which tools this project has and not what each is for; declare \
+        Some(uf_infra::into_string(compact_str::format_compact!(
+            "env.toolchain says which tools this project has and not what each is for; declare \
              each where it is used instead — {instead}"
-            )
-            .into_string(),
-        )
+        )))
     }
 
     /// The sentence for a project still writing `builder.module`.
@@ -1290,13 +1286,10 @@ impl UniflowedConfig {
         } else {
             module
         };
-        Some(
-            compact_str::format_compact!(
-                "builder.module is `build.builder` now, beside the build it describes — write \
+        Some(uf_infra::into_string(compact_str::format_compact!(
+            "builder.module is `build.builder` now, beside the build it describes — write \
              `build: {{ builder: \"{spec}\" }}`"
-            )
-            .into_string(),
-        )
+        )))
     }
 
     /// The sentence for a project still naming its manager in
@@ -1583,11 +1576,10 @@ pub(crate) fn disagreement_fix(key: &str, legacy_key: &str, legacy_written: &str
             .to_owned(),
         pin => {
             let name = pin.strip_prefix("env.toolchain.").unwrap_or(pin);
-            compact_str::format_compact!(
+            uf_infra::into_string(compact_str::format_compact!(
                 "delete `{pin}`, and write `{key}: \"{name}@{legacy_written}\"` if \
                  {legacy_written} is the release you mean"
-            )
-            .into_string()
+            ))
         }
     }
 }

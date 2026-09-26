@@ -338,13 +338,10 @@ fn store_tool(
 
     let store = uf_env::Store::discover()?;
     if !store.has(&pin) {
-        notify(
-            &uf_infra::cstr!(
-                "installing {pin} for {key} — once, into the store every project on this machine \
+        notify(&uf_infra::into_string(uf_infra::cstr!(
+            "installing {pin} for {key} — once, into the store every project on this machine \
              shares"
-            )
-            .into_string(),
-        );
+        )));
         uf_env::archive::ensure(&store, &pin).with_context(|| {
             uf_infra::into_string(uf_infra::cstr!(
                 "{key} is `{spec}`, and {pin} could not be installed"
@@ -435,11 +432,10 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
         ToolVersion::OnPath => {
             return Described {
                 provider: uf_infra::into_string(uf_infra::cstr!("{name} (on PATH)")),
-                detail: uf_infra::cstr!(
+                detail: uf_infra::into_string(uf_infra::cstr!(
                     "{purpose}; `{key}` names no version, so whichever `{name}` is on PATH runs, \
                      and a machine without one is told so rather than handed another"
-                )
-                .into_string(),
+                )),
             };
         }
         ToolVersion::Exact(version) => (
@@ -453,16 +449,16 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
             match locked {
                 Some(version) => (
                     Some(version.clone()),
-                    uf_infra::cstr!("`{key}` names {spec}, locked at {version} in {lockfile}")
-                        .into_string(),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "`{key}` names {spec}, locked at {version} in {lockfile}"
+                    )),
                 ),
                 None => (
                     None,
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`{key}` names {spec}, not locked yet — the newest release is resolved \
                          and locked in {lockfile} the first time a command needs it"
-                    )
-                    .into_string(),
+                    )),
                 ),
             }
         }
@@ -489,10 +485,9 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
             Some(version) => uf_infra::into_string(uf_infra::cstr!("{name} {version}")),
             None => spec.to_owned(),
         },
-        detail: uf_infra::cstr!(
+        detail: uf_infra::into_string(uf_infra::cstr!(
             "{purpose}; {named}; {store}, and first on PATH for every process it starts"
-        )
-        .into_string(),
+        )),
     }
 }
 

@@ -782,11 +782,10 @@ fn refuse_optional_catch_all_collisions(routes: &[Route]) -> Result<(), RouterEr
 fn path_shape(path: &str) -> String {
     path.split('/')
         .map(|segment| match segment.strip_prefix(':') {
-            Some(name) => compact_str::format_compact!(
+            Some(name) => uf_infra::into_string(compact_str::format_compact!(
                 ":{}",
                 name.trim_start_matches(|c: char| c != '*' && c != '?')
-            )
-            .into_string(),
+            )),
             None => segment.to_string(),
         })
         .collect::<Vec<_>>()
@@ -1107,15 +1106,14 @@ fn path_from(segments: &[PathSegment]) -> String {
     if segments.is_empty() {
         return "/".to_string();
     }
-    compact_str::format_compact!(
+    uf_infra::into_string(compact_str::format_compact!(
         "/{}",
         segments
             .iter()
             .map(|segment| segment.spelling.as_str())
             .collect::<Vec<_>>()
             .join("/")
-    )
-    .into_string()
+    ))
 }
 
 /// Refuse the directory spellings uf reserves without serving.
@@ -1215,12 +1213,11 @@ fn refuse_unsupported_template_files(app_root: &Utf8Path) -> Result<(), RouterEr
 }
 
 fn unsupported_template_file_reason(file_name: &str) -> String {
-    compact_str::format_compact!(
+    uf_infra::into_string(compact_str::format_compact!(
         "`{file_name}` looks like a route template, but uf's route template file is \
          `$template.js`. This file would be ignored rather than remounting the route, so it is \
          refused; rename it to `$template.js`. https://github.com/ubugeeei-prod/uf/issues/267"
-    )
-    .into_string()
+    ))
 }
 
 fn unsupported_slot_boundary_role(file_name: &str) -> Option<&'static str> {
@@ -1746,15 +1743,14 @@ fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
     let path = if segments.is_empty() {
         "/".to_string()
     } else {
-        compact_str::format_compact!(
+        uf_infra::into_string(compact_str::format_compact!(
             "/{}",
             segments
                 .iter()
                 .map(|segment| segment.spelling.as_str())
                 .collect::<Vec<_>>()
                 .join("/")
-        )
-        .into_string()
+        ))
     };
     (path, params)
 }

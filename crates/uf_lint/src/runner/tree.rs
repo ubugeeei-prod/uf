@@ -636,12 +636,11 @@ impl<'ast> Tree<'ast> {
         self.report(
             &opening.loc,
             ALT_TEXT,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`<{name}>` has no `alt`, so a screen reader announces its URL or nothing at all; \
                  give it the words the image is carrying, or `alt=\"\"` when it carries none and \
                  the page already says them"
-            )
-            .into_string(),
+            )),
         );
     }
 
@@ -671,12 +670,11 @@ impl<'ast> Tree<'ast> {
             self.report(
                 &attribute.loc,
                 ARIA_PROPS,
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`{name}` is not an ARIA attribute, so nothing reads it: the browser keeps it, \
                      no assistive technology looks at it, and the element stays unlabelled with no \
                      symptom to notice{suggestion}"
-                )
-                .into_string(),
+                )),
             );
         }
     }
@@ -709,11 +707,10 @@ impl<'ast> Tree<'ast> {
         self.report(
             &opening.loc,
             STATIC_INTERACTIONS,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`<{name}>` has an `onClick` but no `role` and no key handler, so nothing but a \
                  mouse can reach it; make it a `<button>`, or give it a `role` and an `onKeyDown`"
-            )
-            .into_string(),
+            )),
         );
     }
 
@@ -774,12 +771,11 @@ impl<'ast> Tree<'ast> {
         self.report(
             &opening.loc,
             HEADING_ORDER,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "heading level jumps from `<h{previous}>` to `<{name}>`, and a reader navigating \
                  by heading reads the gap as a section that is missing; use `<h{wanted}>` and give \
                  it the size you wanted with CSS"
-            )
-            .into_string(),
+            )),
         );
     }
 
@@ -807,12 +803,11 @@ impl<'ast> Tree<'ast> {
         self.report(
             &opening.loc,
             INVALID_NESTING,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`<{name}>` inside `<{parent}>` is not markup a browser keeps: {rewrite}. React \
                  renders one tree and the parser builds another, which is a hydration mismatch \
                  rather than a matter of taste"
-            )
-            .into_string(),
+            )),
         );
     }
 
@@ -898,12 +893,11 @@ impl<'ast> Tree<'ast> {
         self.report(
             loc,
             HOT_OPTIONAL_CHAINING,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`import.meta.hot` is undefined in a build, and `if (import.meta.hot)` does not \
                  refine it: Flow cannot key a refinement on `import.meta`. Write {read} with `?.`, \
                  or bind `const hot = import.meta.hot;` first and test that"
-            )
-            .into_string(),
+            )),
         );
     }
 }

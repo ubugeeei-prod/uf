@@ -158,14 +158,13 @@ fn no_distracting_elements(tree: &mut Tree<'_>, name: &str, opening: &jsx::Openi
     tree.report(
         &opening.loc,
         NO_DISTRACTING_ELEMENTS,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{name}>` animates on its own and gives the reader no way to stop it, which WCAG \
              2.2.2 requires for anything that moves for more than five seconds; HTML removed the \
              element and browsers still render it, so this keeps working and keeps being a \
              problem — drop it, or animate with CSS the reader can turn off through \
              `prefers-reduced-motion`"
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -241,13 +240,12 @@ fn scope(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) {
     tree.report(
         &written.loc,
         SCOPE,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "HTML defines `scope` on `<th>` and nowhere else, so on a `<{name}>` it is ignored and \
              the header it was meant to describe is not announced as a header at all; make this a \
              `<th scope=\"col\">` or `<th scope=\"row\">`, which is what lets a screen reader read \
              a data table cell by cell"
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -280,12 +278,11 @@ fn lang(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) {
     tree.report(
         &written.loc,
         LANG,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`lang=\"{text}\"` is not a language tag, so a screen reader cannot tell what to \
              pronounce this page as and carries on in whatever voice it was already using; write \
              a BCP 47 tag such as `en`, `en-GB` or `ja`"
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -361,13 +358,12 @@ fn autocomplete_valid(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Lo
     tree.report(
         &written.loc,
         AUTOCOMPLETE_VALID,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`{unknown}` is not an autofill token, so the browser cannot tell what this field is \
              for and fills nothing — which WCAG 1.3.5 asks for, and which matters most to somebody \
              for whom typing an address again is the hard part; use a token from the HTML autofill \
              list, such as `name`, `email`, `street-address` or `cc-number`, or `off` on its own"
-        )
-        .into_string(),
+        )),
     );
 }
 

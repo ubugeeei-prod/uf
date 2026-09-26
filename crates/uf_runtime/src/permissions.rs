@@ -451,11 +451,10 @@ pub fn explain(
                  list it could only widen"
                     .to_string()
             }
-            (false, _, _) => compact_str::format_compact!(
+            (false, _, _) => uf_infra::into_string(compact_str::format_compact!(
                 "not enforced: {} has no such flag",
                 host.display_name()
-            )
-            .into_string(),
+            )),
             (true, RuntimeHost::Node, Permission::Read) => {
                 "`node --permission --allow-fs-read`".to_string()
             }
@@ -466,12 +465,9 @@ pub fn explain(
                 "`deno run --allow-{permission}`"
             )),
         };
-        lines.push(
-            compact_str::format_compact!(
-                "{permission}: {declared} declared, {added} added by uf, {how}"
-            )
-            .into_string(),
-        );
+        lines.push(uf_infra::into_string(compact_str::format_compact!(
+            "{permission}: {declared} declared, {added} added by uf, {how}"
+        )));
     }
     lines
 }

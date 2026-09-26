@@ -144,17 +144,18 @@ mod tests {
             ("bytes", "x".repeat(MAX_PARSE_BYTES + 1)),
             (
                 "brackets",
-                compact_str::format_compact!(
+                uf_infra::into_string(compact_str::format_compact!(
                     "x = {}1{};",
                     "(".repeat(MAX_NESTING_DEPTH + 1),
                     ")".repeat(MAX_NESTING_DEPTH + 1)
-                )
-                .into_string(),
+                )),
             ),
             (
                 "chain",
-                compact_str::format_compact!("x = a{};", ".f()".repeat(MAX_CHAIN_DEPTH))
-                    .into_string(),
+                uf_infra::into_string(compact_str::format_compact!(
+                    "x = a{};",
+                    ".f()".repeat(MAX_CHAIN_DEPTH)
+                )),
             ),
         ]
     }
@@ -210,12 +211,11 @@ mod tests {
         // 134 on a file `uf fmt` refused politely. A named failure would need a
         // child process, which ubugeeei-prod/uf#230 builds for the same hazard
         // one function over.
-        let source = compact_str::format_compact!(
+        let source = uf_infra::into_string(compact_str::format_compact!(
             "x = {}1{};",
             "(".repeat(MAX_NESTING_DEPTH),
             ")".repeat(MAX_NESTING_DEPTH)
-        )
-        .into_string();
+        ));
         let outcome = std::thread::Builder::new()
             .stack_size(2 * 1024 * 1024)
             .spawn(move || validate_source(&source))

@@ -237,12 +237,11 @@ pub(crate) fn update(
             project_label(&root)
         ))
     })?;
-    let summary = uf_infra::cstr!(
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "{} in {}",
         plural(written, "range"),
         plural(changes.len(), "manifest")
-    )
-    .into_string();
+    ));
     ui.render(|renderer, out| {
         renderer.status(
             out,
@@ -383,11 +382,10 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
         renderer.status(
             out,
             Status::Info,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "and {} more; --json prints all of them",
                 report.rows.len() - ROWS_SHOWN
-            )
-            .into_string(),
+            )),
         );
     }
     renderer.blank(out);
@@ -402,7 +400,7 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{} {} newer than {} range allows",
                     plural(report.rows.len(), "dependency"),
                     if report.rows.len() == 1 { "is" } else { "are" },
@@ -411,8 +409,7 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
                     } else {
                         "their"
                     }
-                )
-                .into_string(),
+                )),
             );
             renderer.status(
                 out,
@@ -424,11 +421,10 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{} would be rewritten; run without --dry-run",
                     plural(report.rows.len(), "range")
-                )
-                .into_string(),
+                )),
             );
         }
         Some(_) => {
@@ -436,11 +432,10 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
                 renderer.status(
                     out,
                     Status::Warn,
-                    &uf_infra::cstr!(
+                    &uf_infra::into_string(uf_infra::cstr!(
                         "{} of these is a major; read what changed before you ship it",
                         majors
-                    )
-                    .into_string(),
+                    )),
                 );
             }
         }
@@ -475,11 +470,10 @@ fn render_notes(renderer: &uf_term::Renderer, out: &mut String, report: &Report)
     renderer.status(
         out,
         Status::Warn,
-        &uf_infra::cstr!(
+        &uf_infra::into_string(uf_infra::cstr!(
             "{} could not be read from the registry",
             plural(report.unreachable.len(), "package")
-        )
-        .into_string(),
+        )),
     );
     for line in report.unreachable.iter().take(3) {
         renderer.status(out, Status::Info, line);

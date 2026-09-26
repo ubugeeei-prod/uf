@@ -622,12 +622,11 @@ impl<'a> Reader<'a> {
                     // out: `{ [string]: TaskDefinition }` says what goes in it,
                     // and there are no declared keys to complete instead.
                     (Some(types::object::Property::Indexer(indexer)), None) => {
-                        compact_str::format_compact!(
+                        uf_infra::into_string(compact_str::format_compact!(
                             "{{ [{}]: {} }}",
                             self.render(&indexer.key),
                             self.render(&indexer.value)
-                        )
-                        .into_string()
+                        ))
                     }
                     _ => String::from("{ … }"),
                 }
@@ -653,16 +652,17 @@ impl<'a> Reader<'a> {
                     _ => self.slice(ty.loc()),
                 };
                 match &inner.targs {
-                    Some(targs) if !targs.arguments.is_empty() => compact_str::format_compact!(
-                        "{name}<{}>",
-                        targs
-                            .arguments
-                            .iter()
-                            .map(|argument| self.render(argument))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                    .into_string(),
+                    Some(targs) if !targs.arguments.is_empty() => {
+                        uf_infra::into_string(compact_str::format_compact!(
+                            "{name}<{}>",
+                            targs
+                                .arguments
+                                .iter()
+                                .map(|argument| self.render(argument))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                    }
                     _ => name,
                 }
             }

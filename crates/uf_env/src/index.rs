@@ -459,10 +459,11 @@ fn write_cache(dir: &Utf8Path, index: &Index) -> Result<(), EnvError> {
         source,
     })?;
     let path = cache_path(dir, index.tool);
-    let staging = dir.join(
-        compact_str::format_compact!(".{}.json.{}", index.tool.name(), std::process::id())
-            .into_string(),
-    );
+    let staging = dir.join(uf_infra::into_string(compact_str::format_compact!(
+        ".{}.json.{}",
+        index.tool.name(),
+        std::process::id()
+    )));
     let body = serde_json::to_vec(index).map_err(EnvError::Encode)?;
     fs::write(&staging, body).map_err(|source| EnvError::Write {
         path: staging.clone(),

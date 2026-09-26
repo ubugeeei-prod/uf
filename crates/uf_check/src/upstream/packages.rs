@@ -741,9 +741,7 @@ fn split(specifier: &str) -> Option<(&str, CompactString)> {
     }
 
     let subpath = match segments.next() {
-        Some(rest) => uf_infra::cstr!("./{rest}")
-            .into_string()
-            .to_compact_string(),
+        Some(rest) => uf_infra::into_string(uf_infra::cstr!("./{rest}")).to_compact_string(),
         None => CompactString::const_new("."),
     };
     Some((&specifier[..name_len], subpath))

@@ -237,8 +237,9 @@ fn check_duplicate(
     if !seen.insert(name.to_owned()) {
         return Err(refuse(
             node,
-            uf_infra::cstr!("Duplicate variable name '{name}' in match case pattern.")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "Duplicate variable name '{name}' in match case pattern."
+            )),
         ));
     }
     Ok(())
@@ -292,8 +293,9 @@ fn analyze_properties(
         if !names.insert(name.clone()) {
             return Err(refuse(
                 &prop["pattern"],
-                uf_infra::cstr!("Duplicate property name '{name}' in match object pattern.")
-                    .into_string(),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "Duplicate property name '{name}' in match object pattern."
+                )),
             ));
         }
         object_keys.push(object_key.clone());

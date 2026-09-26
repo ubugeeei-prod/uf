@@ -171,10 +171,9 @@ fn transform_post_at(
                 Edit::Replace(next) => *child = next,
                 Edit::Remove => *child = Value::Null,
                 Edit::Splice(_) => {
-                    return Err(TransformError::Internal(
-                        uf_infra::cstr!("cannot splice several nodes into the single slot `{key}`")
-                            .into_string(),
-                    ));
+                    return Err(TransformError::Internal(uf_infra::into_string(
+                        uf_infra::cstr!("cannot splice several nodes into the single slot `{key}`"),
+                    )));
                 }
             },
             _ => {}

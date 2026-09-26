@@ -213,11 +213,10 @@ pub fn bind_order(found: &[Found], params: &[Parameter]) -> Result<Vec<usize>, S
             .column
             .as_ref()
             .map_or("", |column| column.name.as_str());
-        return Err(uf_infra::cstr!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "parameter {} ({name}) appears in no placeholder",
             params[unused].number
-        )
-        .into_string());
+        )));
     }
     Ok(order)
 }
@@ -272,8 +271,9 @@ pub fn copy_split(text: &str, dialect: Dialect, params: &[Parameter]) -> Result<
                     .iter()
                     .position(|param| param.number == number)
                     .ok_or_else(|| {
-                        uf_infra::cstr!("the placeholder ${number} names no parameter")
-                            .into_string()
+                        uf_infra::into_string(uf_infra::cstr!(
+                            "the placeholder ${number} names no parameter"
+                        ))
                     }),
                 _ => Err("an unexpected placeholder".to_owned()),
             })

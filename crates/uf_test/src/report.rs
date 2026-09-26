@@ -295,11 +295,10 @@ impl FileStatus {
             Self::HostFailed { message } => {
                 uf_infra::into_string(uf_infra::cstr!("the host failed: {message}"))
             }
-            Self::RegisteredNothing { declared } => uf_infra::cstr!(
+            Self::RegisteredNothing { declared } => uf_infra::into_string(uf_infra::cstr!(
                 "registered nothing with `@uniflowed/test`, though discovery found {declared} \
                  there; none of it ran"
-            )
-            .into_string(),
+            )),
             Self::NotRun => "was not scheduled because the run bailed".to_string(),
         }
     }

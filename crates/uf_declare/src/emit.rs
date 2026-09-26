@@ -1941,11 +1941,10 @@ impl Emitter {
             ) => {
                 self.gap(
                     Construct::FlowUtility,
-                    &uf_infra::cstr!(
+                    &uf_infra::into_string(uf_infra::cstr!(
                         "`{name}` has no TypeScript equivalent that reduces the same way, so it \
                          is published as `unknown`"
-                    )
-                    .into_string(),
+                    )),
                     at,
                 );
                 self.printer.text("unknown");

@@ -171,8 +171,9 @@ pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Con
             tracking: support.tracking_issue.map_or_else(
                 || String::from("docs/hosts.md"),
                 |issue| {
-                    compact_str::format_compact!("docs/hosts.md and ubugeeei-prod/uf#{issue}")
-                        .into_string()
+                    uf_infra::into_string(compact_str::format_compact!(
+                        "docs/hosts.md and ubugeeei-prod/uf#{issue}"
+                    ))
                 },
             ),
         });

@@ -143,11 +143,10 @@ impl Component {
             [one] => uf_infra::into_string(compact_str::format_compact!(
                 "import {{ {one} }} from \"{from}\";"
             )),
-            _ => compact_str::format_compact!(
+            _ => uf_infra::into_string(compact_str::format_compact!(
                 "import * as {} from \"{from}\";",
                 namespace_name(self.name)
-            )
-            .into_string(),
+            )),
         }
     }
 

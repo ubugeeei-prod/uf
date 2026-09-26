@@ -37,10 +37,9 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
             continue;
         }
         let Some(command) = value.as_str() else {
-            plan.unmapped.push(
-                uf_infra::cstr!("package.json#scripts.{name}: expected a command string")
-                    .into_string(),
-            );
+            plan.unmapped.push(uf_infra::into_string(uf_infra::cstr!(
+                "package.json#scripts.{name}: expected a command string"
+            )));
             continue;
         };
         let mapped = script(command);
@@ -100,10 +99,9 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
                 let mut values = serde_json::Map::new();
                 for entry in object.entries {
                     let Some(key) = entry.key else {
-                        plan.unmapped.push(
-                            uf_infra::cstr!("{name}: computed key, spread or method retained")
-                                .into_string(),
-                        );
+                        plan.unmapped.push(uf_infra::into_string(uf_infra::cstr!(
+                            "{name}: computed key, spread or method retained"
+                        )));
                         continue;
                     };
                     let key = key.text(&text);
@@ -114,10 +112,9 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
                         Some(value) => {
                             values.insert(key.to_owned(), value);
                         }
-                        None => plan.unmapped.push(
-                            uf_infra::cstr!("{name}#{key}: dynamic expression retained")
-                                .into_string(),
-                        ),
+                        None => plan.unmapped.push(uf_infra::into_string(uf_infra::cstr!(
+                            "{name}#{key}: dynamic expression retained"
+                        ))),
                     }
                 }
                 Value::Object(values)
@@ -139,10 +136,9 @@ pub(super) fn plan(root: &Utf8Path) -> Result<Plan> {
                     plan.remove(name, text);
                 }
             }
-            Err(error) => plan.unmapped.push(
-                uf_infra::cstr!("{name}: dynamic or unsupported configuration retained ({error})")
-                    .into_string(),
-            ),
+            Err(error) => plan.unmapped.push(uf_infra::into_string(uf_infra::cstr!(
+                "{name}: dynamic or unsupported configuration retained ({error})"
+            ))),
         }
     }
     for key in ["babel", "prettier", "eslintConfig", "jest"] {
@@ -365,12 +361,9 @@ fn tests(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
         let mut used = Vec::new();
         for token in &tokens {
             if token.is_ident(&before, "jest") {
-                plan.unmapped.push(
-                    uf_infra::cstr!(
-                        "{path}: jest mocks/timers require review against uf's uft API"
-                    )
-                    .into_string(),
-                );
+                plan.unmapped.push(uf_infra::into_string(uf_infra::cstr!(
+                    "{path}: jest mocks/timers require review against uf's uft API"
+                )));
             }
             for name in &api {
                 if token.is_ident(&before, name) && !used.contains(name) {
@@ -448,11 +441,10 @@ fn tests(root: &Utf8Path, plan: &mut Plan) -> Result<()> {
             let at = tokens.first().map_or(0, |t| t.start);
             after.insert_str(
                 at,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "import {{ {} }} from \"@uniflowed/test\";\n",
                     used.join(", ")
-                )
-                .into_string(),
+                )),
             );
         }
         if uf_flow::validate_source(&after)?.is_ok() {

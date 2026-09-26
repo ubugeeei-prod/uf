@@ -144,12 +144,11 @@ fn files_were(count: usize) -> String {
 /// or say that this project does not want one.
 #[must_use]
 pub fn skipped_message(formatter: &str, count: usize) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{formatter} is not installed, so {} skipped. Install it, or set \
          `fmt.nonFlow.formatter` to \"none\" in uf.config.js.",
         files_were(count)
-    )
-    .into_string()
+    ))
 }
 
 /// How many bytes of a formatter's complaint are worth repeating.
@@ -204,14 +203,11 @@ pub fn invocation(
             // so the style is not a setting, only the width is.
             arguments.push("--indent-style=space".into());
             arguments.push(
-                uf_infra::cstr!("--indent-width={}", config.indent_width)
-                    .into_string()
+                uf_infra::into_string(uf_infra::cstr!("--indent-width={}", config.indent_width))
                     .into(),
             );
             arguments.push(
-                uf_infra::cstr!("--line-width={}", config.line_width)
-                    .into_string()
-                    .into(),
+                uf_infra::into_string(uf_infra::cstr!("--line-width={}", config.line_width)).into(),
             );
             "biome"
         }
@@ -225,13 +221,11 @@ pub fn invocation(
             arguments.push("--log-level".into());
             arguments.push("warn".into());
             arguments.push(
-                uf_infra::cstr!("--tab-width={}", config.indent_width)
-                    .into_string()
+                uf_infra::into_string(uf_infra::cstr!("--tab-width={}", config.indent_width))
                     .into(),
             );
             arguments.push(
-                uf_infra::cstr!("--print-width={}", config.line_width)
-                    .into_string()
+                uf_infra::into_string(uf_infra::cstr!("--print-width={}", config.line_width))
                     .into(),
             );
             if config.quotes == QuoteStyle::Single {

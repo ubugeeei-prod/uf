@@ -286,11 +286,10 @@ pub(super) fn install_running_binary(store: &Store, version: &str) -> Result<()>
     for name in BINARIES {
         let destination = bin.join(binary_file(name));
         fs::copy(&current_exe, &destination).with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "failed to install {destination} from {}",
                 current_exe.display()
-            )
-            .into_string()
+            ))
         })?;
         mark_executable(&destination)?;
     }
@@ -386,9 +385,7 @@ pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> 
     }
     write_atomically(
         &path.with_extension("cmd"),
-        uf_infra::cstr!("@echo off\r\n\"{target}\" %*\r\n")
-            .into_string()
-            .as_bytes(),
+        uf_infra::into_string(uf_infra::cstr!("@echo off\r\n\"{target}\" %*\r\n")).as_bytes(),
     )
 }
 

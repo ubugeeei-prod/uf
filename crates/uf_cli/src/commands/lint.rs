@@ -535,33 +535,26 @@ pub(crate) fn render_fix_summary(ui: &mut Ui, fixed: &FixSummary) {
     let headline = if fixed.applied == 0 {
         String::from("no finding here had a fix to apply")
     } else {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "applied {} in {}",
             fix_count(fixed.applied),
             plural(fixed.changed.len(), "file")
-        )
-        .into_string()
+        ))
     };
     let changed: Vec<&str> = fixed.changed.iter().map(String::as_str).collect();
     let refused: Vec<&str> = fixed.refused.iter().map(String::as_str).collect();
     let mut notes = Vec::new();
     if fixed.needs_unsafe > 0 {
-        notes.push(
-            uf_infra::cstr!(
-                "{} would be fixed by `--fix-unsafe`, which can change what the program does",
-                plural(fixed.needs_unsafe, "finding")
-            )
-            .into_string(),
-        );
+        notes.push(uf_infra::into_string(uf_infra::cstr!(
+            "{} would be fixed by `--fix-unsafe`, which can change what the program does",
+            plural(fixed.needs_unsafe, "finding")
+        )));
     }
     if fixed.needs_fmt > 0 {
-        notes.push(
-            uf_infra::cstr!(
-                "{} would be cleared by `uf fmt`",
-                plural(fixed.needs_fmt, "finding")
-            )
-            .into_string(),
-        );
+        notes.push(uf_infra::into_string(uf_infra::cstr!(
+            "{} would be cleared by `uf fmt`",
+            plural(fixed.needs_fmt, "finding")
+        )));
     }
 
     ui.render(|renderer, out| {
@@ -686,12 +679,11 @@ pub(crate) fn render_verdict(
     };
     let skipped = report.unavailable.len();
     let skipped = (skipped > 0).then(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} skipped: they need Flow type inference, which uf does not have yet; \
              `uf lint --rules` marks them",
             plural(skipped, "enabled rule")
-        )
-        .into_string()
+        ))
     });
 
     ui.render(|renderer, out| {

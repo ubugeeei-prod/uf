@@ -256,9 +256,9 @@ mod tests {
             "import {stylex as s} from '@uniflowed/stylex/native';",
             "import * as s from '@uniflowed/stylex/native';",
         ] {
-            let source =
-                uf_infra::cstr!("{import} const styles = s.create({{root: {{padding: 12}}}});")
-                    .into_string();
+            let source = uf_infra::into_string(uf_infra::cstr!(
+                "{import} const styles = s.create({{root: {{padding: 12}}}});"
+            ));
             let native = compile_native_module(&source).unwrap();
             assert!(native.contains("\"$$native\":true,\"padding\":12"));
             assert_eq!(compile_native_module(&native).unwrap(), native);
@@ -275,12 +275,9 @@ mod tests {
             ("width: '3rem'", "3rem"),
             ("color: 'var(--brand)'", "var(--brand)"),
         ] {
-            let error = compile_native_module(
-                &uf_infra::cstr!(
-                    "import {{create}} from '@uniflowed/stylex'; create({{root: {{{property}}}}});"
-                )
-                .into_string(),
-            )
+            let error = compile_native_module(&uf_infra::into_string(uf_infra::cstr!(
+                "import {{create}} from '@uniflowed/stylex'; create({{root: {{{property}}}}});"
+            )))
             .unwrap_err()
             .to_string();
             assert!(error.contains(name), "{error}");

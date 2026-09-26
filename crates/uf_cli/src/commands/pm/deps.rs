@@ -349,23 +349,24 @@ fn dedupe_check(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         ),
         WouldCollapse::These(named) => (
             Status::Warn,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{} package{} would collapse; `uf dedupe` collapses {}",
                 named.len(),
                 if named.len() == 1 { "" } else { "s" },
                 if named.len() == 1 { "it" } else { "them" }
-            )
-            .into_string(),
+            )),
         ),
         WouldCollapse::Something => (
             Status::Warn,
-            uf_infra::cstr!("{manager_label} would collapse something; `uf dedupe` collapses it")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{manager_label} would collapse something; `uf dedupe` collapses it"
+            )),
         ),
         WouldCollapse::Failed => (
             Status::Error,
-            uf_infra::cstr!("{manager_label} did not answer whether anything would collapse")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{manager_label} did not answer whether anything would collapse"
+            )),
         ),
     };
 
@@ -618,7 +619,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
     let failed = |error: ManagerRunError| {
         failed_hint(
             error,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "the manager printed why above; fix that and run `{}` again",
                 retry_line(
                     "uf unlink",
@@ -627,8 +628,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
                         .into_iter()
                         .collect::<Vec<_>>()
                 )
-            )
-            .into_string(),
+            )),
         )
     };
 
@@ -688,12 +688,11 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
             ));
         }
         report.removed = Some(("unregistered", request.name.clone(), entry.to_string()));
-        report.headline = uf_infra::cstr!(
+        report.headline = uf_infra::into_string(uf_infra::cstr!(
             "unregistered {} in {}; other projects can no longer link it by name",
             request.name,
             format_duration(started.elapsed())
-        )
-        .into_string();
+        ));
         ui.render(|renderer, out| render_unlink(renderer, out, &report));
         return Ok(());
     }
@@ -810,34 +809,30 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
     (report.status, report.headline) = match outcome {
         Unlinked::Reinstalled(version) => (
             Status::Success,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "unlinked {name} in {elapsed}; node_modules has {name} {version} again, as \
                  package.json declares"
-            )
-            .into_string(),
+            )),
         ),
         Unlinked::Transitive(version) => (
             Status::Success,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "unlinked {name} in {elapsed}; node_modules has {name} {version}, which another \
                  dependency brings in"
-            )
-            .into_string(),
+            )),
         ),
         Unlinked::Gone => (
             Status::Success,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "unlinked {name} in {elapsed}; nothing here declares it, so node_modules has none"
-            )
-            .into_string(),
+            )),
         ),
         Unlinked::StillDeclared(range) => (
             Status::Warn,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{name} is still linked after {elapsed}: package.json declares it as {range}, \
                  which links it on every install; `uf remove {name}` takes that out"
-            )
-            .into_string(),
+            )),
         ),
     };
     ui.render(|renderer, out| render_unlink(renderer, out, &report));
@@ -966,14 +961,12 @@ fn unregister_plan(
 ) -> Result<Utf8PathBuf, String> {
     match registration {
         Registration::Linked(entry) => Ok(entry.clone()),
-        Registration::Elsewhere { entry, to } => Err(uf_infra::cstr!(
+        Registration::Elsewhere { entry, to } => Err(uf_infra::into_string(uf_infra::cstr!(
             "{manager}'s {name} at {entry} links to {to}, not to this package"
-        )
-        .into_string()),
-        Registration::Installed(entry) => Err(uf_infra::cstr!(
+        ))),
+        Registration::Installed(entry) => Err(uf_infra::into_string(uf_infra::cstr!(
             "{entry} is {name} installed from a registry, not a link to this package"
-        )
-        .into_string()),
+        ))),
         Registration::Absent => Err(uf_infra::into_string(uf_infra::cstr!(
             "{name} is not registered with {manager}"
         ))),
@@ -1023,12 +1016,11 @@ fn unlink_plan(
             if let Some(directory) = &request.directory
                 && directory != to
             {
-                return Err(uf_infra::cstr!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "node_modules/{name} links to {}, not to {}",
                     shown_path(root, to),
                     shown_path(root, directory)
-                )
-                .into_string());
+                )));
             }
             // A path dependency the manifest declares is installed as a link
             // too, and taking it out is `uf remove`'s job.
@@ -1036,11 +1028,10 @@ fn unlink_plan(
                 && declares_link_to(root, range, to)
                 && !(manager == uf_pm::PackageManager::Pnpm && pnpm_override)
             {
-                return Err(uf_infra::cstr!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "package.json declares {name} as {range}, and {manager} installs that as a \
                      link; `uf remove {name}` takes it out"
-                )
-                .into_string());
+                )));
             }
             Ok(Undone {
                 shown: shown_path(root, to),
@@ -1051,10 +1042,9 @@ fn unlink_plan(
             shown: to.to_string(),
             target: None,
         }),
-        Some(LinkState::Installed) => Err(uf_infra::cstr!(
+        Some(LinkState::Installed) => Err(uf_infra::into_string(uf_infra::cstr!(
             "node_modules/{name} is an installed package, not a link"
-        )
-        .into_string()),
+        ))),
         Some(LinkState::Absent) | None => Err(uf_infra::into_string(uf_infra::cstr!(
             "there is no node_modules/{name}"
         ))),
@@ -1137,7 +1127,7 @@ fn unlink_outcome(
             Some(range) if declares_link_to(root, range, to) => {
                 Ok(Unlinked::Reinstalled(version()))
             }
-            _ => Err(uf_infra::cstr!(
+            _ => Err(uf_infra::into_string(uf_infra::cstr!(
                 "node_modules/{name} still links to {}{}",
                 shown_path(root, to),
                 if manager == uf_pm::PackageManager::Pnpm {
@@ -1147,24 +1137,21 @@ fn unlink_outcome(
                 } else {
                     ""
                 }
-            )
-            .into_string()),
+            ))),
         },
-        Some(LinkState::Broken(to)) => Err(uf_infra::cstr!(
+        Some(LinkState::Broken(to)) => Err(uf_infra::into_string(uf_infra::cstr!(
             "node_modules/{name} is still a link, to {to}, which does not exist"
-        )
-        .into_string()),
+        ))),
         Some(LinkState::Installed) => Ok(if declared.is_some() {
             Unlinked::Reinstalled(version())
         } else {
             Unlinked::Transitive(version())
         }),
         Some(LinkState::Absent) | None => match declared {
-            Some(range) => Err(uf_infra::cstr!(
+            Some(range) => Err(uf_infra::into_string(uf_infra::cstr!(
                 "package.json declares {name} as {range}, and node_modules has none: run `uf \
                  install`"
-            )
-            .into_string()),
+            ))),
             None => Ok(Unlinked::Gone),
         },
     }
@@ -1375,9 +1362,9 @@ pub(crate) fn query(
         &path,
     )
     .map_err(|error| {
-        let mut what_to_do =
-            uf_infra::cstr!("{manager_label} reported a problem; its output is above")
-                .into_string();
+        let mut what_to_do = uf_infra::into_string(uf_infra::cstr!(
+            "{manager_label} reported a problem; its output is above"
+        ));
         // What the refusal means, where uf knows: pnpm 12 answers `pnpm link`
         // with nothing named with a usage error, and does not say what to run.
         if let Some(hint) = uf_pm::run::failure_hint(manager, operation) {
@@ -1479,11 +1466,10 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     .map_err(|error| {
         failed_hint(
             error,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "{manager_label} could not explain {package:?}; it is not in this project's tree, \
                  or the name is spelled differently in the manifest"
-            )
-            .into_string(),
+            )),
         )
     })?;
     Ok(())
@@ -1609,11 +1595,10 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
                         "the manager printed why above{place}\n\n  {hint}"
                     ))
                 } else {
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "the manager printed why above{place}; fix that and run `{}` again",
                         request.retry
-                    )
-                    .into_string()
+                    ))
                 };
             failed_hint(error, &what_to_do)
         })?;
@@ -1634,20 +1619,18 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     // leaves that to npm, pnpm, Yarn or Bun.
     if tracks_uf_lock {
         install_workspace(base, &resolved.config).with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{}` succeeded, but uf could not rewrite {} from the manifests it changed",
                 outcome.invocation,
                 resolved.config.pm.lockfile
-            )
-            .into_string()
+            ))
         })?;
     } else {
         check_workspace_manifests(base, &resolved.config).with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{}` succeeded, but uf could not re-check the manifests it changed",
                 outcome.invocation
-            )
-            .into_string()
+            ))
         })?;
     }
 
@@ -1802,12 +1785,11 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
         Some(link) if link.recorded => renderer.status(
             out,
             Status::Warn,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "{} recorded in resolutions in {elapsed}; nothing here depends on it yet, so \
                  node_modules has no link to it",
                 link.name
-            )
-            .into_string(),
+            )),
         ),
         Some(link) => renderer.status(
             out,
@@ -1876,14 +1858,12 @@ fn link_report(
         });
     }
     Err(match state {
-        Some(LinkState::Broken(to)) => uf_infra::cstr!(
+        Some(LinkState::Broken(to)) => uf_infra::into_string(uf_infra::cstr!(
             "node_modules/{name} is a link to {to}, which does not exist: nothing was linked"
-        )
-        .into_string(),
-        Some(LinkState::Installed) => uf_infra::cstr!(
+        )),
+        Some(LinkState::Installed) => uf_infra::into_string(uf_infra::cstr!(
             "node_modules/{name} is an installed package, not a link: nothing was linked"
-        )
-        .into_string(),
+        )),
         _ => uf_infra::into_string(uf_infra::cstr!(
             "there is no node_modules/{name}: nothing was linked"
         )),
@@ -1927,17 +1907,15 @@ fn headline(report: &DepsReport) -> String {
         // change. Saying "the manifest already said so" there would read as a
         // denial of the line the reader just saw.
         if report.continued || !manifest_was_the_point {
-            return uf_infra::cstr!(
+            return uf_infra::into_string(uf_infra::cstr!(
                 "{} in the tree",
                 plural(report.tree.changes.len(), "change")
-            )
-            .into_string();
+            ));
         }
-        return uf_infra::cstr!(
+        return uf_infra::into_string(uf_infra::cstr!(
             "the manifest already said so; {} in the tree",
             plural(report.tree.changes.len(), "change")
-        )
-        .into_string();
+        ));
     }
     let verb = match report.heading {
         "uf remove" => "taken out of",
@@ -1952,12 +1930,11 @@ fn headline(report: &DepsReport) -> String {
         .into_iter()
         .collect();
     fields.sort_unstable();
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{} {verb} {}",
         plural(report.manifest.len(), "package"),
         fields.join(", ")
-    )
-    .into_string()
+    ))
 }
 
 /// The manifest entries that moved, capped, with the field they moved in —

@@ -182,8 +182,9 @@ pub(crate) fn approve_builds(
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!("{summary} would be approved; run without --dry-run")
-                    .into_string(),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "{summary} would be approved; run without --dry-run"
+                )),
             );
         }
     });
@@ -409,11 +410,10 @@ fn render(
         renderer.status(
             out,
             Status::Info,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "and {} more; --json prints all of them",
                 waiting.len() - ROWS_SHOWN
-            )
-            .into_string(),
+            )),
         );
     }
     renderer.blank(out);
@@ -428,13 +428,12 @@ fn render(
     renderer.status(
         out,
         Status::Info,
-        &uf_infra::cstr!(
+        &uf_infra::into_string(uf_infra::cstr!(
             "{} would run code at install time and {} not approved, so uf does not let {} run",
             plural(pending, "package"),
             if pending == 1 { "is" } else { "are" },
             if pending == 1 { "it" } else { "them" }
-        )
-        .into_string(),
+        )),
     );
     if approvals == Approvals::AllOrNothing {
         // The honest sentence, rather than an approval that quietly means
@@ -442,11 +441,10 @@ fn render(
         renderer.status(
             out,
             Status::Warn,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "{manager} cannot approve one and not another: `--ignore-scripts` is all of them \
                  or none"
-            )
-            .into_string(),
+            )),
         );
         renderer.status(
             out,
@@ -480,13 +478,10 @@ fn render_origins(
             Attested::Yes(origin) if !origin.is_empty() => Some(uf_infra::into_string(
                 uf_infra::cstr!("{} built by {origin}", package.name),
             )),
-            Attested::Mismatch => Some(
-                uf_infra::cstr!(
-                    "{} publishes an attestation that is not about this version",
-                    package.name
-                )
-                .into_string(),
-            ),
+            Attested::Mismatch => Some(uf_infra::into_string(uf_infra::cstr!(
+                "{} publishes an attestation that is not about this version",
+                package.name
+            ))),
             _ => None,
         })
         .collect();

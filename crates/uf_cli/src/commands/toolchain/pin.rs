@@ -116,12 +116,11 @@ pub(crate) fn follow() -> Result<Option<ExitCode>> {
     if !store.has_complete(&version) {
         announce_install(&version, &source);
         acquire(&store, &version).with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{} pins uf@{version}, which is not installed and could not be\n\n  \
                  `UF_TOOLCHAIN=current` runs the uf that was started instead",
                 source.describe()
-            )
-            .into_string()
+            ))
         })?;
     }
     let target = store
@@ -255,11 +254,10 @@ fn invoked_as() -> &'static str {
 /// Say why a download is about to start, before the installer draws it.
 fn announce_install(version: &str, source: &Source) {
     let mut ui = Ui::new(uf_term::ColorChoice::Auto, crate::ui::OutputMode::Human);
-    let line = uf_infra::cstr!(
+    let line = uf_infra::into_string(uf_infra::cstr!(
         "{} pins uf@{version}, which is not installed; installing it",
         source.describe()
-    )
-    .into_string();
+    ));
     ui.render_err(|renderer, out| renderer.status(out, Status::Info, &line));
 }
 

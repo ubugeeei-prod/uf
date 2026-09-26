@@ -338,12 +338,11 @@ fn unrun_scripts_line(
     let declared = unrun
         .iter()
         .map(|(manifest, names)| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{} declares {}",
                 crate::support::relative_to(root, manifest),
                 names.join(", ")
-            )
-            .into_string()
+            ))
         })
         .collect::<Vec<_>>()
         .join("; ");
@@ -530,17 +529,15 @@ fn refuse_confusion(
     // nothing after it, and "2 packages resolves" is the kind of sentence a
     // reader stops trusting the rest of.
     let headline = if found.len() == 1 {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} resolves from a registry its scope is not bound to",
             plural(1, "package")
-        )
-        .into_string()
+        ))
     } else {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} resolve from registries their scopes are not bound to",
             plural(found.len(), "package")
-        )
-        .into_string()
+        ))
     };
     Err(anyhow!(uf_infra::cstr!(
         "{headline}\n\n  {listed}\n\n  {}",
@@ -815,11 +812,10 @@ fn render_provenance(renderer: &Renderer, out: &mut String, summary: &Provenance
         renderer.status(
             out,
             Status::Info,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "and {} more with no attestation",
                 summary.unattested.len() - listed.len()
-            )
-            .into_string(),
+            )),
         );
     }
     // Not a failure. Most of npm publishes no provenance, and a tool that
@@ -960,8 +956,9 @@ pub(crate) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
             DetectionSource::Lockfile { lockfile, .. } => lockfile.file_name(),
             DetectionSource::WorkspaceRoot { .. } => "the workspace root",
         };
-        return uf_infra::cstr!("{evidence} names uf, whose resolver cannot fetch yet")
-            .into_string();
+        return uf_infra::into_string(uf_infra::cstr!(
+            "{evidence} names uf, whose resolver cannot fetch yet"
+        ));
     }
     match source {
         // `packageManager`, or its deprecated spelling, which cannot disagree

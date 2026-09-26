@@ -518,14 +518,11 @@ fn unresolved_exports(root: &Utf8Path, out_dir: &Utf8Path) -> Vec<String> {
     if missing.is_empty() {
         return Vec::new();
     }
-    vec![
-        uf_infra::cstr!(
-            "package.json exports {} this build did not write: {}",
-            plural(missing.len(), "file"),
-            missing.join(", "),
-        )
-        .into_string(),
-    ]
+    vec![uf_infra::into_string(uf_infra::cstr!(
+        "package.json exports {} this build did not write: {}",
+        plural(missing.len(), "file"),
+        missing.join(", "),
+    ))]
 }
 
 /// Subpaths whose `exports` target is not included by `package.json#files`.
@@ -573,14 +570,11 @@ fn unpublished_exports(root: &Utf8Path) -> Vec<String> {
     if missing.is_empty() {
         return Vec::new();
     }
-    vec![
-        uf_infra::cstr!(
-            "package.json exports {} not covered by files: {}",
-            plural(missing.len(), "file"),
-            missing.join(", "),
-        )
-        .into_string(),
-    ]
+    vec![uf_infra::into_string(uf_infra::cstr!(
+        "package.json exports {} not covered by files: {}",
+        plural(missing.len(), "file"),
+        missing.join(", "),
+    ))]
 }
 
 /// A relative target out of `exports`, or nothing for package specifiers.
@@ -863,11 +857,10 @@ fn gap_summary(declarations: &Declarations) -> Vec<String> {
         .iter()
         .filter(|(_, gap)| !gap.construct.keeps_the_type())
         .count();
-    let mut message = uf_infra::cstr!(
+    let mut message = uf_infra::into_string(uf_infra::cstr!(
         "{} could not be translated to TypeScript exactly",
         plural(declarations.gaps.len(), "declaration"),
-    )
-    .into_string();
+    ));
     if refusals > 0 {
         uf_infra::append!(message, ", {refusals} of them published as `unknown`",);
     }

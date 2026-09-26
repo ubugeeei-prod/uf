@@ -96,12 +96,11 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
         .as_deref()
         .map(|path| KeyValue::toned("changelog", path, Tone::Path));
     let summary = match &changelog {
-        Some(written) => uf_infra::cstr!(
+        Some(written) => uf_infra::into_string(uf_infra::cstr!(
             "release {tag} planned, {} change{} written to the changelog",
             written.changes,
             if written.changes == 1 { "" } else { "s" }
-        )
-        .into_string(),
+        )),
         None => uf_infra::into_string(uf_infra::cstr!("release {tag} planned")),
     };
     let unnumbered_rows: Vec<&str> = unnumbered.iter().map(String::as_str).collect();
@@ -208,9 +207,8 @@ impl Published {
             } else {
                 ""
             };
-            return Some(
-                uf_infra::cstr!(
-                    "{tag} is already released\n  \
+            return Some(uf_infra::into_string(uf_infra::cstr!(
+                "{tag} is already released\n  \
                  this repository has a {tag} tag{also}.\n  \
                  `uf release` plans the version after the one compiled into the binary running\n  \
                  it, and this binary is {current_version} — so it is older than the tree, and\n  \
@@ -218,22 +216,17 @@ impl Published {
                  release's commits.\n  \
                  Build uf from this tree and run it again. `--force` does not cover a version\n  \
                  that has been tagged: a section a release was cut from is finished."
-                )
-                .into_string(),
-            );
+            )));
         }
         if self.sectioned && !force {
-            return Some(
-                uf_infra::cstr!(
-                    "CHANGELOG.md already has a section for {tag}\n  \
+            return Some(uf_infra::into_string(uf_infra::cstr!(
+                "CHANGELOG.md already has a section for {tag}\n  \
                  This run would replace it. If that is the release you are preparing and the\n  \
                  section should be rewritten from the commits that exist now, pass `--force`.\n  \
                  If it is not, the binary is older than the tree: `uf release` plans the\n  \
                  version after the {current_version} compiled into it, so an out-of-date binary\n  \
                  plans a version the tree has already written. Build uf from this tree."
-                )
-                .into_string(),
-            );
+            )));
         }
         None
     }

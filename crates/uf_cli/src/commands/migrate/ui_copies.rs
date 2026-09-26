@@ -756,10 +756,9 @@ fn name_headless_imports(source: &str) -> Result<String, String> {
             continue;
         };
         if !dot.is_punct(b'.') || name.kind != TokenKind::Ident {
-            return Err(uf_infra::cstr!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "uses `{local}` other than as `{local}.Part`; import what it uses by hand"
-            )
-            .into_string());
+            )));
         }
         let name_text = name.text(source);
         let (imported, replacement) = if let Some((namespace, member)) = part(name_text) {
@@ -800,11 +799,10 @@ fn name_headless_imports(source: &str) -> Result<String, String> {
                 .map(|name| uf_infra::into_string(uf_infra::cstr!("type {name}"))),
         )
         .collect();
-    edits[0].1 = uf_infra::cstr!(
+    edits[0].1 = uf_infra::into_string(uf_infra::cstr!(
         "import {{ {} }} from \"@uniflowed/ui\";",
         specifiers.join(", ")
-    )
-    .into_string();
+    ));
     edits.sort_by_key(|(range, _)| range.start);
     let mut out = String::with_capacity(source.len());
     let mut at = 0;

@@ -388,8 +388,11 @@ impl Declarations {
         for (index, (package, translation)) in translated.iter().enumerate() {
             for module in &translation.modules {
                 owners.insert(
-                    uf_infra::cstr!("{}/{}", package.declarations, flow_path(&module.path))
-                        .into_string(),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "{}/{}",
+                        package.declarations,
+                        flow_path(&module.path)
+                    )),
                     index,
                 );
             }
@@ -449,8 +452,11 @@ impl Declarations {
                     module.path
                 ));
                 declaration_files.insert(
-                    uf_infra::cstr!("{}/{}", package.declarations, flow_path(&module.path))
-                        .into_string(),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "{}/{}",
+                        package.declarations,
+                        flow_path(&module.path)
+                    )),
                     path.clone(),
                 );
                 holes.extend(module.holes.iter().map(|hole| ExplainedHole {
@@ -560,8 +566,11 @@ impl Package {
         for module in &translation.modules {
             if let Some(flow) = &module.flow {
                 sources.push(SourceFile {
-                    path: uf_infra::cstr!("{}/{}", self.declarations, flow_path(&module.path))
-                        .into_string(),
+                    path: uf_infra::into_string(uf_infra::cstr!(
+                        "{}/{}",
+                        self.declarations,
+                        flow_path(&module.path)
+                    )),
                     source: flow.clone(),
                 });
             }

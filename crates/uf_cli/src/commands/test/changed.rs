@@ -104,17 +104,15 @@ impl Selection {
             self.reference
         ));
         match &self.whole_suite {
-            Some(file) => uf_infra::cstr!(
+            Some(file) => uf_infra::into_string(uf_infra::cstr!(
                 "{file} {since}, and every test depends on it · running all {}",
                 plural(tests, "test file")
-            )
-            .into_string(),
-            None => uf_infra::cstr!(
+            )),
+            None => uf_infra::into_string(uf_infra::cstr!(
                 "{} {since} · {running} of {} reach them",
                 plural(self.changed, "file"),
                 plural(tests, "test file")
-            )
-            .into_string(),
+            )),
         }
     }
 }
@@ -232,13 +230,12 @@ fn changed_since(root: &Utf8Path, reference: &str) -> Result<(String, Vec<String
         ));
     }
     let base = git(root, &["merge-base", reference, "HEAD"]).with_context(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`uf test --changed {reference}` measures a change from the commit where HEAD's \
              history left `{reference}`, and git could not name one. Check that \
              `{reference}` exists; a shallow CI clone also needs the history where the two meet \
              (`fetch-depth: 0` for `actions/checkout`)"
-        )
-        .into_string()
+        ))
     })?;
     let base = base.trim().to_owned();
     let mut changed = paths(&git(

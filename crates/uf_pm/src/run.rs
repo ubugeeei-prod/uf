@@ -668,11 +668,10 @@ pub fn check_operands(operands: &[String]) -> Result<(), ManagerRunError> {
         if operand.starts_with('-') {
             return Err(ManagerRunError::Operand {
                 operand: operand.clone(),
-                reason: compact_str::format_compact!(
+                reason: uf_infra::into_string(compact_str::format_compact!(
                     "it starts with `-`, which the package manager would read as a flag; \
                      write the package name, or `./{operand}` for a path"
-                )
-                .into_string(),
+                )),
             });
         }
     }

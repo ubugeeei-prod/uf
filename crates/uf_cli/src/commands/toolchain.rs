@@ -430,8 +430,9 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
             renderer.status(
                 out,
                 Status::Success,
-                &uf_infra::cstr!("{runtime_label} is already active; nothing changed")
-                    .into_string(),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "{runtime_label} is already active; nothing changed"
+                )),
             );
         });
         return Ok(());
@@ -448,10 +449,9 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
 
     let from = match &active {
         Some(active) => uf_infra::into_string(uf_infra::cstr!("uf@{active}")),
-        None => {
-            uf_infra::cstr!("uf@{OWN_VERSION}, this binary; no runtime in the store was active")
-                .into_string()
-        }
+        None => uf_infra::into_string(uf_infra::cstr!(
+            "uf@{OWN_VERSION}, this binary; no runtime in the store was active"
+        )),
     };
     let shim = report.shim.to_string();
     let binary = report.runtime_binary.to_string();
@@ -490,14 +490,17 @@ fn check(ui: &mut Ui, store: &Store) -> Result<()> {
     let newest = resolve(store, "latest")?;
     let (current, active) = match active_version(store) {
         Some(version) => {
-            let detail = uf_infra::cstr!("uf@{version}, linked at {}", store.bin_dir.join("uf"))
-                .into_string();
+            let detail = uf_infra::into_string(uf_infra::cstr!(
+                "uf@{version}, linked at {}",
+                store.bin_dir.join("uf")
+            ));
             (version, detail)
         }
         None => (
             OWN_VERSION.to_owned(),
-            uf_infra::cstr!("uf@{OWN_VERSION}, this binary; no runtime in the store is active")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "uf@{OWN_VERSION}, this binary; no runtime in the store is active"
+            )),
         ),
     };
     let newest_label = uf_infra::into_string(uf_infra::cstr!("uf@{newest}"));
@@ -511,8 +514,9 @@ fn check(ui: &mut Ui, store: &Store) -> Result<()> {
         ),
         Some(Ordering::Less) => (
             Status::Info,
-            uf_infra::cstr!("uf@{current} is newer than the newest release, {newest_label}")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "uf@{current} is newer than the newest release, {newest_label}"
+            )),
         ),
         Some(Ordering::Equal) => (
             Status::Success,
@@ -524,10 +528,9 @@ fn check(ui: &mut Ui, store: &Store) -> Result<()> {
         ),
         None => (
             Status::Info,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "the newest release is {newest_label}, and uf cannot order it against uf@{current}"
-            )
-            .into_string(),
+            )),
         ),
     };
 

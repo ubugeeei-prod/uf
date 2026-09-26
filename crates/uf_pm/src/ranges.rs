@@ -182,9 +182,11 @@ impl Range {
     /// The same comparator, about `version`.
     #[must_use]
     pub fn rewritten_to(&self, version: &Version) -> CompactString {
-        compact_str::format_compact!("{}{version}", self.prefix.as_str())
-            .into_string()
-            .to_compact_string()
+        uf_infra::into_string(compact_str::format_compact!(
+            "{}{version}",
+            self.prefix.as_str()
+        ))
+        .to_compact_string()
     }
 }
 

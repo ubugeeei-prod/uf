@@ -50,10 +50,9 @@ pub fn emit(
     let source_type = SourceType::mjs().with_jsx(true);
     let parsed = Parser::new(&allocator, &printed.code, source_type).parse();
     if let Some(error) = parsed.diagnostics.iter().next() {
-        return Err(TransformError::Internal(
-            uf_infra::cstr!("printed module does not parse: {error}\n{}", printed.code)
-                .into_string(),
-        ));
+        return Err(TransformError::Internal(uf_infra::into_string(
+            uf_infra::cstr!("printed module does not parse: {error}\n{}", printed.code),
+        )));
     }
     let mut program = parsed.program;
 

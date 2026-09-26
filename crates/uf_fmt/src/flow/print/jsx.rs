@@ -877,10 +877,9 @@ impl<'a> Printer<'a> {
                 self.print_node(NodeRef::JsxAttribute(attribute), |p| {
                     let name = match &attribute.name {
                         jsx::attribute::Name::Identifier(id) => p.docs.borrowed(&id.name),
-                        jsx::attribute::Name::NamespacedName(ns) => p.text(
-                            &uf_infra::cstr!("{}:{}", ns.namespace.name, ns.name.name)
-                                .into_string(),
-                        ),
+                        jsx::attribute::Name::NamespacedName(ns) => p.text(&uf_infra::into_string(
+                            uf_infra::cstr!("{}:{}", ns.namespace.name, ns.name.name),
+                        )),
                     };
                     let Some(value) = &attribute.value else {
                         return name;

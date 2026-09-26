@@ -171,7 +171,7 @@ pub fn dispatcher(project: &str) -> String {
             shell_quote(project)
         ))
     };
-    compact_str::format_compact!(
+    uf_infra::into_string(compact_str::format_compact!(
         "#!/bin/sh\n\
          {DISPATCHER_MARK}\n\
          #\n\
@@ -185,8 +185,7 @@ pub fn dispatcher(project: &str) -> String {
          \x20 exit 1\n\
          fi\n\
          {run}\n"
-    )
-    .into_string()
+    ))
 }
 
 /// `text` as one word to a POSIX shell.

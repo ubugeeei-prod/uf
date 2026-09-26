@@ -72,23 +72,19 @@ fn refusal(written: &str) -> Option<String> {
     }
     if let Some(version) = written.strip_prefix("uf@") {
         return Some(if is_exact(version) {
-            compact_str::format_compact!(
+            uf_infra::into_string(compact_str::format_compact!(
                 "and the key already names uf. Write the version alone: `uf: \"{version}\"`"
-            )
-            .into_string()
+            ))
         } else {
             String::from("and the key already names uf. Write the version alone, such as `0.3.0`")
         });
     }
     if is_prefix(written) {
-        return Some(
-            compact_str::format_compact!(
-                "which is a prefix, and uf pins itself to an exact release. Write the release, \
+        return Some(uf_infra::into_string(compact_str::format_compact!(
+            "which is a prefix, and uf pins itself to an exact release. Write the release, \
              such as `{written}{}`",
-                if written.contains('.') { ".0" } else { ".0.0" }
-            )
-            .into_string(),
-        );
+            if written.contains('.') { ".0" } else { ".0.0" }
+        )));
     }
     Some(String::from(
         "which is not a release. uf pins itself to an exact version, such as `0.3.0`",

@@ -62,13 +62,12 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             .count()
     };
     let std_modules = std_by(StdStatus::Ships).to_string();
-    let std_roadmap = uf_infra::cstr!(
+    let std_roadmap = uf_infra::into_string(uf_infra::cstr!(
         "{} planned, {} declined, {} declaration only",
         std_by(StdStatus::Planned),
         std_by(StdStatus::Declined),
         std_by(StdStatus::Declared)
-    )
-    .into_string();
+    ));
     // Two lines rather than one number, because the table behind them is two
     // things at once. `ui_components().len()` was reported here as a project
     // fact and it was the size of a roadmap: at ubugeeei-prod/uf#249, fifty-one
@@ -86,12 +85,11 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             .count()
     };
     let ui_component_count = ui_by(UiReadiness::Implemented).to_string();
-    let ui_roadmap = uf_infra::cstr!(
+    let ui_roadmap = uf_infra::into_string(uf_infra::cstr!(
         "{} planned, {} declined",
         ui_by(UiReadiness::Planned),
         ui_by(UiReadiness::Declined)
-    )
-    .into_string();
+    ));
     let tui_component_count = tui_contract().components.len().to_string();
     let hooks = hook_descriptors().len().to_string();
     let lint_rules = uf_lint::rules().len().to_string();

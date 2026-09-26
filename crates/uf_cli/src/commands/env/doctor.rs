@@ -257,13 +257,10 @@ fn on_path(finding: &mut Finding, program: &str) {
         None => {
             finding.status = Health::Error;
             finding.found = "not on PATH".to_owned();
-            finding.fix = Some(
-                uf_infra::cstr!(
-                    "install {program}, or write a version — `{program}@<major>` — and uf installs \
+            finding.fix = Some(uf_infra::into_string(uf_infra::cstr!(
+                "install {program}, or write a version — `{program}@<major>` — and uf installs \
                  that release the first time a command needs it"
-                )
-                .into_string(),
-            );
+            )));
         }
     }
 }
@@ -334,11 +331,10 @@ fn detected_manager(resolved: &ResolvedConfig) -> Finding {
                      \"npm@<version>\"` in uf.config.js and uf installs it"
                         .to_owned()
                 }
-                _ => uf_infra::cstr!(
+                _ => uf_infra::into_string(uf_infra::cstr!(
                     "install {program}, or write `packageManager: \"{program}@<version>\"` in \
                      uf.config.js and uf installs it"
-                )
-                .into_string(),
+                )),
             });
         }
     }

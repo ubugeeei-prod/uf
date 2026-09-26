@@ -648,16 +648,14 @@ fn backend_for_program(
                 Some(parsed) if parsed >= NODE_SEA_FLOOR => {
                     Ok((Backend::NodeSea, program, version))
                 }
-                Some(parsed) => Err(uf_infra::cstr!(
+                Some(parsed) => Err(uf_infra::into_string(uf_infra::cstr!(
                     "node: {parsed} is older than {NODE_SEA_FLOOR}, the first with `--build-sea`; \
                      before it, building a single-executable application needs the `postject` \
                      package installed into your project, which uf will not do"
-                )
-                .into_string()),
-                None => Err(
-                    uf_infra::cstr!("node: could not read a version out of `{version}`")
-                        .into_string(),
-                ),
+                ))),
+                None => Err(uf_infra::into_string(uf_infra::cstr!(
+                    "node: could not read a version out of `{version}`"
+                ))),
             }
         }
         CapabilityJsHost::Deno => {
@@ -678,15 +676,12 @@ fn refuse_target(backend: Backend, target: Option<Target>) -> Option<String> {
     let target = target?;
     match backend {
         Backend::Bun => None,
-        Backend::NodeSea => Some(
-            uf_infra::cstr!(
-                "node: a single-executable application is a copy of the running `node` with the \
+        Backend::NodeSea => Some(uf_infra::into_string(uf_infra::cstr!(
+            "node: a single-executable application is a copy of the running `node` with the \
              bundle appended, so it cannot be built for {} — Node has no cross-compilation, with \
              a flag or without one. Bun's backend does",
-                target.triple
-            )
-            .into_string(),
-        ),
+            target.triple
+        ))),
     }
 }
 
@@ -945,11 +940,10 @@ pub(crate) fn compile(
 
     let bytes = std::fs::metadata(binary.as_std_path())
         .with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{}` reported success but wrote no {binary}",
                 runtime.backend.name()
-            )
-            .into_string()
+            ))
         })?
         .len();
     let fetched = match (&runtime.cache, runtime.target) {
@@ -1020,12 +1014,11 @@ fn wrap<'a>(
                         )),
                     });
                 };
-                let said = uf_infra::cstr!(
+                let said = uf_infra::into_string(uf_infra::cstr!(
                     "{} could not write the binary, so uf is trying {} instead:\n{failure:?}",
                     runtime.label(),
                     next.label()
-                )
-                .into_string();
+                ));
                 ui.render(|renderer, out| renderer.status(out, Status::Warn, &said));
                 failures.push(said);
             }
@@ -1063,11 +1056,10 @@ fn wrap_with_bun(
         command.env(BUN_CACHE_ENV, cache.as_str());
     }
     let output = command.output().with_context(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "failed to start {} for `uf build --compile`",
             runtime.program
-        )
-        .into_string()
+        ))
     })?;
     if output.status.success() {
         return Ok(());
@@ -1075,12 +1067,11 @@ fn wrap_with_bun(
     // Bun writes the useful half of a compile failure to stderr and says
     // nothing on stdout; both are forwarded because a message split across
     // the two is worse than a message repeated.
-    let said = uf_infra::cstr!(
+    let said = uf_infra::into_string(uf_infra::cstr!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
-    )
-    .into_string();
+    ));
     // The one failure uf can say more about than Bun does. Which targets a Bun
     // has runtimes for changes between releases and there is no command that
     // asks, so uf names the triple it accepted, the Bun that declined it, and
@@ -1160,19 +1151,17 @@ fn wrap_with_node(
         .current_dir(root.as_std_path())
         .output()
         .with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "failed to start {} for `uf build --compile`",
                 runtime.program
-            )
-            .into_string()
+            ))
         })?;
     if !output.status.success() {
-        let said = uf_infra::cstr!(
+        let said = uf_infra::into_string(uf_infra::cstr!(
             "{}{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
-        )
-        .into_string();
+        ));
         bail!(uf_infra::cstr!(
             "`node --build-sea` exited with {}\n{}\n\n\
              Single-executable support is compiled into a `node` binary as well as being a \

@@ -56,8 +56,10 @@ pub(crate) fn run_import_no_duplicates(
                 rule,
                 severity,
                 import.source_at,
-                uf_infra::cstr!("`{}` is already imported in this file", import.source)
-                    .into_string(),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "`{}` is already imported in this file",
+                    import.source
+                )),
             );
         } else {
             seen.push(import);
@@ -85,11 +87,10 @@ pub(crate) fn run_import_no_cycle(
         rule,
         severity,
         cycle.source_at,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "this import creates a cycle through `{}`",
             cycle.target_path
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -123,8 +124,9 @@ pub(crate) fn run_import_no_extraneous_dependencies(
             rule,
             severity,
             import.source_at,
-            uf_infra::cstr!("`{package}` must be declared in the nearest package.json")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "`{package}` must be declared in the nearest package.json"
+            )),
         );
     }
 }
@@ -170,8 +172,9 @@ pub(crate) fn run_import_no_deprecated(
             rule,
             severity,
             import.member_at,
-            uf_infra::cstr!("`{name}` is deprecated by `{target}`; use a supported export instead")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "`{name}` is deprecated by `{target}`; use a supported export instead"
+            )),
         );
     }
 }
@@ -246,11 +249,10 @@ pub(crate) fn run_import_no_named_as_default(
             rule,
             severity,
             default.name_at,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{}` is a named export of `{target}`; import it by name instead of as the default",
                 default.name
-            )
-            .into_string(),
+            )),
         );
     }
 }
@@ -297,10 +299,9 @@ pub(crate) fn run_import_no_relative_packages(
                 rule,
                 severity,
                 import.source_at,
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "use the `{target}` package name instead of a relative path into it"
-                )
-                .into_string(),
+                )),
             );
         }
     }

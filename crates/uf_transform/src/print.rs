@@ -279,13 +279,10 @@ impl Printer {
     }
 
     fn unknown(node: &Value, context: &str) -> TransformError {
-        TransformError::Internal(
-            uf_infra::cstr!(
-                "printer does not know {} in {context}",
-                node_type(node).unwrap_or("a non-node")
-            )
-            .into_string(),
-        )
+        TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+            "printer does not know {} in {context}",
+            node_type(node).unwrap_or("a non-node")
+        )))
     }
 
     // ------------------------------------------------------------------
@@ -1636,8 +1633,7 @@ fn format_number(value: f64) -> String {
     }
     let text = uf_infra::into_string(uf_infra::cstr!("{value}"));
     if value.is_finite() && value.abs() >= 1e21 {
-        return uf_infra::cstr!("{value:e}")
-            .into_string()
+        return uf_infra::into_string(uf_infra::cstr!("{value:e}"))
             .replace("e", "e+")
             .replace("e+-", "e-");
     }

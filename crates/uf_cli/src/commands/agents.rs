@@ -25,14 +25,13 @@ pub(crate) fn update(root: &Utf8Path) -> Result<()> {
         env!("CARGO_PKG_VERSION")
     ));
     let after = match (before.find(START), before.find(END)) {
-        (Some(start), Some(end)) if end >= start => uf_infra::cstr!(
+        (Some(start), Some(end)) if end >= start => uf_infra::into_string(uf_infra::cstr!(
             "{}{}{}",
             &before[..start],
             block,
             &before[end + END.len()..]
-        )
-        .into_string(),
-        (None, None) => uf_infra::cstr!(
+        )),
+        (None, None) => uf_infra::into_string(uf_infra::cstr!(
             "{}{}{}\n",
             before,
             if before.is_empty() || before.ends_with("\n\n") {
@@ -41,8 +40,7 @@ pub(crate) fn update(root: &Utf8Path) -> Result<()> {
                 "\n\n"
             },
             block
-        )
-        .into_string(),
+        )),
         _ => anyhow::bail!(uf_infra::cstr!(
             "AGENTS.md has an incomplete uf managed block; preserve or repair its markers"
         )),

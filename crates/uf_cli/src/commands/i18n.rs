@@ -230,13 +230,12 @@ fn render_extract_problems(ui: &mut Ui, report: &ExtractReport) {
         .problems
         .iter()
         .map(|problem| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{}: {} — {}",
                 problem.at,
                 problem.kind.label(),
                 problem.detail
-            )
-            .into_string()
+            ))
         })
         .collect::<Vec<_>>();
 
@@ -246,8 +245,10 @@ fn render_extract_problems(ui: &mut Ui, report: &ExtractReport) {
             renderer.status(
                 out,
                 Status::Warn,
-                &uf_infra::cstr!("{} could not be read", plural(unreadable.len(), "file"))
-                    .into_string(),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "{} could not be read",
+                    plural(unreadable.len(), "file")
+                )),
             );
             renderer.bullet_list(out, 2, &unreadable);
             renderer.blank(out);
@@ -296,13 +297,12 @@ fn render_merge_problems(ui: &mut Ui, report: &MergeReport) {
         .stale
         .iter()
         .map(|message| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{}: {} ({})",
                 message.key,
                 message.what,
                 message.declared_at
-            )
-            .into_string()
+            ))
         })
         .collect::<Vec<_>>();
 
@@ -317,11 +317,10 @@ fn render_merge_problems(ui: &mut Ui, report: &MergeReport) {
         renderer.status(
             out,
             Status::Error,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "{} changed since this file was extracted",
                 plural(stale.len(), "message")
-            )
-            .into_string(),
+            )),
         );
         for message in &stale {
             renderer.status(out, Status::Error, message);

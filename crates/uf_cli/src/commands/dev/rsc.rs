@@ -275,9 +275,9 @@ impl RscReport {
             // A project that cannot be scanned is not a dev server that should
             // stop: the file being edited is very often the unreadable one.
             Err(error) => {
-                let message =
-                    uf_infra::cstr!("the server-component analysis could not run: {error}")
-                        .into_string();
+                let message = uf_infra::into_string(uf_infra::cstr!(
+                    "the server-component analysis could not run: {error}"
+                ));
                 // The scan is forgotten and the screen is not. A failure says
                 // nothing about whether the violations it cannot recompute are
                 // still true, so the next success redraws them in full; but it
@@ -435,11 +435,10 @@ fn path_boundary_reason(paths: &[&str]) -> String {
         // The chain reads as the imports somebody would follow, and the last
         // hop is named for what it is rather than left to be inferred from the
         // arrow before it.
-        Some((boundary, above)) => uf_infra::cstr!(
+        Some((boundary, above)) => uf_infra::into_string(uf_infra::cstr!(
             "{} imports {boundary}, which declares `\"use client\"`",
             above.join(" imports ")
-        )
-        .into_string(),
+        )),
         None => "it reaches a client boundary".to_owned(),
     }
 }
@@ -447,13 +446,13 @@ fn path_boundary_reason(paths: &[&str]) -> String {
 fn package_boundary_reason(paths: &[&str], specifier: &str) -> String {
     match paths {
         [] => "it reaches a client boundary".to_owned(),
-        [only] => uf_infra::cstr!("{only} imports {specifier}, which uf knows is a client module")
-            .into_string(),
-        _ => uf_infra::cstr!(
+        [only] => uf_infra::into_string(uf_infra::cstr!(
+            "{only} imports {specifier}, which uf knows is a client module"
+        )),
+        _ => uf_infra::into_string(uf_infra::cstr!(
             "{} imports {specifier}, which uf knows is a client module",
             paths.join(" imports ")
-        )
-        .into_string(),
+        )),
     }
 }
 
@@ -480,17 +479,15 @@ fn render_bundle(ui: &mut Ui, update: &BundleUpdate) {
     let items = lines.iter().map(String::as_str).collect::<Vec<_>>();
     let elided = update.total.saturating_sub(update.moves.len());
     let summary = if elided == 0 {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} moved across the client bundle",
             plural(update.total, "module")
-        )
-        .into_string()
+        ))
     } else {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} moved across the client bundle, {elided} not listed",
             plural(update.total, "module"),
-        )
-        .into_string()
+        ))
     };
     ui.render_err(|renderer, out| {
         renderer.blank(out);
@@ -521,13 +518,12 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
                 .iter()
                 .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
                 .count();
-            let summary = uf_infra::cstr!(
+            let summary = uf_infra::into_string(uf_infra::cstr!(
                 "{} against the server/client contract, {} of them fatal to `uf \
                  build` (ubugeeei-prod/uf#281)",
                 plural(diagnostics.len(), "diagnostic"),
                 errors,
-            )
-            .into_string();
+            ));
             ui.render_err(|renderer, out| {
                 renderer.blank(out);
                 renderer.heading(out, 2, "server components");
@@ -542,12 +538,11 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
                         // and so the one that has to prepare the message
                         // itself. The rule id is uf's own; the message is the
                         // checkout's. #659.
-                        let line = uf_infra::cstr!(
+                        let line = uf_infra::into_string(uf_infra::cstr!(
                             "{}: {}",
                             frame.rule,
                             uf_term::safe_message(&frame.message)
-                        )
-                        .into_string();
+                        ));
                         renderer.status(out, frame.status(), &line);
                     } else {
                         renderer.code_frame_at(out, &frame.frame(), 4);

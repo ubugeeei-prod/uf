@@ -120,37 +120,35 @@ fn request_state_message(
     };
     let plural = routes.len() != 1;
     let reached = if chain.len() < 2 {
-        uf_infra::cstr!(", which `{module}` imports from `@uniflowed/server` at line {line}")
-            .into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            ", which `{module}` imports from `@uniflowed/server` at line {line}"
+        ))
     } else {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             " through {}, where `{module}` imports it from `@uniflowed/server` at line {line}",
             arrows(chain)
-        )
-        .into_string()
+        ))
     };
     match reason {
-        StaticRouteReason::Prerendered => uf_infra::cstr!(
+        StaticRouteReason::Prerendered => uf_infra::into_string(uf_infra::cstr!(
             "{subject} {} prerendered, and {their} render reads `{api}()`{reached}. A prerendered \
              document is written once, at build time, for no request. Export `const dynamic = \
              \"force-dynamic\"` from {} to render it for each request, or move the read out of \
              the render",
             if plural { "are" } else { "is" },
             if plural { "each page" } else { "the page" },
-        )
-        .into_string(),
+        )),
         StaticRouteReason::Cached {
             module: stated,
             line: stated_line,
-        } => uf_infra::cstr!(
+        } => uf_infra::into_string(uf_infra::cstr!(
             "{subject} {} a cache lifetime through `cacheLife`, which `{stated}` imports at line \
              {stated_line}, and {their} render reads `{api}()`{reached}. A render that reads the \
              request is never stored, so that lifetime is never kept. Move the read out of the \
              render, or state no lifetime for {}",
             if plural { "state" } else { "states" },
             if plural { "these routes" } else { "this route" },
-        )
-        .into_string(),
+        )),
     }
 }
 

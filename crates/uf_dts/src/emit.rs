@@ -1040,12 +1040,11 @@ impl<'e> Emitter<'e> {
                 let specifier = module.id.value.to_compact_string();
                 self.hole(
                     Construct::ModuleAugmentation,
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`declare module \"{specifier}\"` adds to another module, and Flow reads \
                          a module's declarations from that module alone; the block is not \
                          translated"
-                    )
-                    .into_string(),
+                    )),
                     module.span.start,
                 );
             }
@@ -1219,11 +1218,10 @@ impl<'e> Emitter<'e> {
     fn merged_hole(&mut self, name: &str, kept: &str, dropped: &str, offset: u32) {
         self.hole(
             Construct::MergedDeclaration,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{name}` is declared as both a {kept} and a {dropped}, and Flow binds a name \
                  once; the {dropped} is left out"
-            )
-            .into_string(),
+            )),
             offset,
         );
     }
@@ -1283,11 +1281,10 @@ impl<'e> Emitter<'e> {
             } else {
                 self.hole(
                     Construct::ClassHeritage,
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`{name}` extends an expression that is not a name, which a Flow \
                          declaration cannot; the class extends nothing"
-                    )
-                    .into_string(),
+                    )),
                     heritage.expression.span().start,
                 );
             }
@@ -1742,12 +1739,11 @@ impl<'e> Emitter<'e> {
         if !interfaces.is_empty() {
             self.hole(
                 Construct::MergedDeclaration,
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`{name}` is declared as both an interface and a namespace, and Flow binds a \
                      name once; the namespace keeps the name and the interface is `{name}.$Self`, \
                      so a `{name}<…>` written outside this package names nothing"
-                )
-                .into_string(),
+                )),
                 offset,
             );
         }
@@ -1816,11 +1812,10 @@ impl<'e> Emitter<'e> {
             self.context.push(name.to_compact_string());
             self.hole(
                 Construct::GlobalAugmentation,
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`declare global` adds `{name}` to every module's scope, and a Flow module \
                      declares only its own; it is not translated"
-                )
-                .into_string(),
+                )),
                 statement.span().start,
             );
             self.context.pop();
@@ -1880,11 +1875,10 @@ impl<'e> Emitter<'e> {
                 if self.missing.insert(written.to_compact_string()) {
                     self.hole(
                         Construct::MissingFile,
-                        uf_infra::cstr!(
+                        uf_infra::into_string(uf_infra::cstr!(
                             "`{written}` names no declaration file this package ships, so \
                              everything imported from it is `any`"
-                        )
-                        .into_string(),
+                        )),
                         offset,
                     );
                 }
@@ -1922,14 +1916,11 @@ impl<'e> Emitter<'e> {
                     default.local.name.to_compact_string(),
                 ),
                 ImportDeclarationSpecifier::ImportNamespaceSpecifier(namespace) => {
-                    self.printer.text(
-                        &uf_infra::cstr!(
-                            "import * as {} from {};",
-                            namespace.local.name,
-                            quoted(&source)
-                        )
-                        .into_string(),
-                    );
+                    self.printer.text(&uf_infra::into_string(uf_infra::cstr!(
+                        "import * as {} from {};",
+                        namespace.local.name,
+                        quoted(&source)
+                    )));
                     continue;
                 }
             };
@@ -2032,10 +2023,10 @@ impl<'e> Emitter<'e> {
                     Some(Target::Module(module)) if !self.oracle.assigns_exports(module)
                 );
                 if es_target {
-                    self.printer.text(
-                        &uf_infra::cstr!("import * as {local} from {};", quoted(&source))
-                            .into_string(),
-                    );
+                    self.printer.text(&uf_infra::into_string(uf_infra::cstr!(
+                        "import * as {local} from {};",
+                        quoted(&source)
+                    )));
                 } else {
                     self.printer
                         .text(uf_infra::cstr!("import {local} from {};", quoted(&source)).as_str());
@@ -2049,11 +2040,10 @@ impl<'e> Emitter<'e> {
                 self.context.push(local.to_compact_string());
                 self.hole(
                     Construct::ImportAlias,
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`import {local} = …` aliases a namespace member, which a Flow module \
                          cannot import; every use of `{local}` is `any`"
-                    )
-                    .into_string(),
+                    )),
                     import.span.start,
                 );
                 self.context.pop();
@@ -4093,8 +4083,9 @@ fn enum_members(group: &[&TSEnumDeclaration<'_>]) -> Result<Vec<EnumMember>, (St
             let value = match &member.initializer {
                 Some(initializer) => evaluate(initializer, &members).ok_or_else(|| {
                     (
-                        uf_infra::cstr!("the value of `{name}` is not a constant uf can compute")
-                            .into_string(),
+                        uf_infra::into_string(uf_infra::cstr!(
+                            "the value of `{name}` is not a constant uf can compute"
+                        )),
                         offset,
                     )
                 })?,
@@ -4103,8 +4094,9 @@ fn enum_members(group: &[&TSEnumDeclaration<'_>]) -> Result<Vec<EnumMember>, (St
                     Some(EnumValue::Number(number)) => EnumValue::Number(number + 1.0),
                     Some(EnumValue::String(_)) => {
                         return Err((
-                            uf_infra::cstr!("`{name}` follows a string member and has no value")
-                                .into_string(),
+                            uf_infra::into_string(uf_infra::cstr!(
+                                "`{name}` follows a string member and has no value"
+                            )),
                             offset,
                         ));
                     }

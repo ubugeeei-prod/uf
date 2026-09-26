@@ -221,11 +221,10 @@ impl NativeServer {
             ),
             (Self::ReactNativeCli { .. }, Some(_)) => (
                 uf_infra::into_string(uf_infra::cstr!("{host}:{port}")),
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "a phone on the same network connects here from the Dev Menu (Configure \
                      Bundler); a simulator or emulator uses localhost:{port}"
-                )
-                .into_string(),
+                )),
             ),
             (Self::ReactNativeCli { .. }, None) => (
                 uf_infra::into_string(uf_infra::cstr!("localhost:{port}")),
@@ -278,7 +277,7 @@ pub(crate) fn dev(
     let tables = discover_native_route_tables(root, &resolved.config)?;
     let modules = write_native_route_tables(root, &resolved.config, &tables)?;
     let routes = (!modules.files.is_empty()).then(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} → {}",
             plural(modules.routes, "route"),
             modules
@@ -287,8 +286,7 @@ pub(crate) fn dev(
                 .map(|file| relative_to(root, file))
                 .collect::<Vec<_>>()
                 .join(", ")
-        )
-        .into_string()
+        ))
     });
 
     let env = project_env(resolved, args.mode.as_deref(), DEVELOPMENT)?;
@@ -300,11 +298,10 @@ pub(crate) fn dev(
     let transform = metro.upstream.as_deref().map_or_else(
         || "uf transform, then the project's Babel transformer".to_string(),
         |upstream| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "uf transform, then {}",
                 relative_to(root, Utf8Path::new(upstream))
-            )
-            .into_string()
+            ))
         },
     );
     let metro_config = metro
@@ -349,12 +346,11 @@ pub(crate) fn dev(
         .current_dir(root.as_std_path())
         .env("UF_BINARY", &uf);
     let status = command.status().with_context(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "failed to start `{}` ({})",
             server.command(),
             server.binary()
-        )
-        .into_string()
+        ))
     })?;
     if status.success() || interrupted(status) {
         return Ok(());
@@ -544,11 +540,10 @@ fn composed(
                     .to_string()
             },
             |file| {
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "{} does not route modules through uf's transformer",
                     relative_to(root, Utf8Path::new(file))
-                )
-                .into_string()
+                ))
             },
         );
         bail!(uf_infra::cstr!(

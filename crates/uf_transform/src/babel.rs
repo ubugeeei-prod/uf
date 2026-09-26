@@ -269,13 +269,12 @@ fn property(node: &mut Value) -> Result<Value, TransformError> {
 
     if is_method || kind != "init" {
         if node_type(&value) != Some("FunctionExpression") {
-            return Err(TransformError::Internal(
+            return Err(TransformError::Internal(uf_infra::into_string(
                 uf_infra::cstr!(
                     "a method property must hold a FunctionExpression, found {}",
                     node_type(&value).unwrap_or("nothing")
-                )
-                .into_string(),
-            ));
+                ),
+            )));
         }
         let mut out = base(node, "ObjectMethod");
         out.insert(

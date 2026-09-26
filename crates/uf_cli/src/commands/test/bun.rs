@@ -365,11 +365,10 @@ pub(crate) fn run(
     }
 
     let file = std::fs::File::open(&report).with_context(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`bun test` exited ({status}) and wrote no report to {report}, so uf cannot say which \
              cases ran"
-        )
-        .into_string()
+        ))
     })?;
     let document = read_report(file, junit::MAX_JUNIT_BYTES).with_context(|| {
         uf_infra::into_string(uf_infra::cstr!(
@@ -384,12 +383,9 @@ pub(crate) fn run(
         count(junit::BunOutcome::Failed),
         count(junit::BunOutcome::Skipped),
     );
-    ui.plain(
-        &uf_infra::cstr!(
-            "\nrunner  bun test ({program}) · {passed} passed, {failed} failed, {skipped} skipped\n"
-        )
-        .into_string(),
-    );
+    ui.plain(&uf_infra::into_string(uf_infra::cstr!(
+        "\nrunner  bun test ({program}) · {passed} passed, {failed} failed, {skipped} skipped\n"
+    )));
 
     // Before the exit status: Bun exits 0 when a file's registrations went
     // somewhere it could not see, and that is the run most in need of failing.

@@ -313,9 +313,11 @@ mod tests {
                     Vec::new()
                 } else {
                     vec![CachedRequire {
-                        specifier: uf_infra::cstr!("./module{}.js", index + 1)
-                            .into_string()
-                            .to_compact_string(),
+                        specifier: uf_infra::into_string(uf_infra::cstr!(
+                            "./module{}.js",
+                            index + 1
+                        ))
+                        .to_compact_string(),
                         declared: false,
                     }]
                 };

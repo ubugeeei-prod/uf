@@ -502,18 +502,16 @@ fn passthrough(
              rasterising it at a set of widths",
         )
     } else if measured.is_some() {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "uf read .{extension} but did not re-encode it: the only WebP this build can \
              write is lossless, which for an already-compressed source is larger than the \
              file you have. It was served unchanged and its intrinsic size was measured"
-        )
-        .into_string()
+        ))
     } else {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "uf has no decoder for .{extension} and served the file unchanged: it was not \
              resized, no alternative format was made, and its intrinsic size is unknown"
-        )
-        .into_string()
+        ))
     };
 
     let (width, height) = measured.unzip();

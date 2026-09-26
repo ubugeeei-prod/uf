@@ -199,17 +199,17 @@ pub fn read(path: &Utf8Path) -> Result<ToolchainLock, EnvError> {
         if !is_locked_spec(spec) {
             return Err(unreadable(
                 path,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "`toolchain.{spec}` is not a tool and a version prefix, such as `node@26`"
-                )
-                .into_string(),
+                )),
             ));
         }
         if !crate::project::is_exact_version(version) {
             return Err(unreadable(
                 path,
-                &uf_infra::cstr!("`toolchain.{spec}` is `{version}`, which is not a release")
-                    .into_string(),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "`toolchain.{spec}` is `{version}`, which is not a release"
+                )),
             ));
         }
         entries.insert(spec.clone(), version.clone());
@@ -273,14 +273,11 @@ pub fn write(path: &Utf8Path, lock: &ToolchainLock) -> Result<(), EnvError> {
     let mut text =
         serde_json::to_string_pretty(&Value::Object(document)).map_err(EnvError::Encode)?;
     text.push('\n');
-    let staging = path.with_file_name(
-        uf_infra::cstr!(
-            ".{}.{}",
-            path.file_name().unwrap_or("uf.lock"),
-            std::process::id()
-        )
-        .into_string(),
-    );
+    let staging = path.with_file_name(uf_infra::into_string(uf_infra::cstr!(
+        ".{}.{}",
+        path.file_name().unwrap_or("uf.lock"),
+        std::process::id()
+    )));
     fs::write(&staging, text).map_err(|source| EnvError::Write {
         path: staging.clone(),
         source,

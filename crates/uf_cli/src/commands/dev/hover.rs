@@ -100,12 +100,11 @@ fn diagnostic_answer(request: &Request<'_>, text: &str) -> Option<Answer> {
         Severity::Error => "error",
         Severity::Warn => "warning",
     };
-    let mut markdown = uf_infra::cstr!(
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!(
         "**`{rule}`** · {severity}\n\n{message}",
         rule = found.rule,
         message = found.message,
-    )
-    .into_string();
+    ));
     if let Some(descriptor) = uf_lint::rule(found.rule) {
         markdown.push_str("\n\n---\n\n");
         markdown.push_str(&catalogue_entry(descriptor, Some(&found.message)));
@@ -198,11 +197,10 @@ fn catalogue_entry(descriptor: &RuleDescriptor, said: Option<&str>) -> String {
     ));
     match said {
         Some(said) if said == descriptor.description => summary,
-        _ => uf_infra::cstr!(
+        _ => uf_infra::into_string(uf_infra::cstr!(
             "{description}\n\n{summary}",
             description = descriptor.description
-        )
-        .into_string(),
+        )),
     }
 }
 
@@ -249,9 +247,9 @@ fn describe_native_module(module: &NativeModule) -> String {
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_else(|| String::from("uncategorized"));
 
-    let mut markdown =
-        uf_infra::cstr!("A uf `{kind}` module in the `{segment}` segment, {stability}.")
-            .into_string();
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!(
+        "A uf `{kind}` module in the `{segment}` segment, {stability}."
+    ));
     if !module.flow_exports.is_empty() {
         let exports = module
             .flow_exports
@@ -286,7 +284,7 @@ fn describe_relative(specifier: &str, path: &str) -> String {
             ));
         }
     }
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "A relative import. Nothing on disk at `{target}`, with or without uf's module \
          extensions ({extensions}).",
         extensions = MODULE_EXTENSIONS
@@ -294,8 +292,7 @@ fn describe_relative(specifier: &str, path: &str) -> String {
             .map(|extension| uf_infra::into_string(uf_infra::cstr!("`.{extension}`")))
             .collect::<Vec<_>>()
             .join(", "),
-    )
-    .into_string()
+    ))
 }
 
 /// Every path a relative specifier could name, in resolution order.

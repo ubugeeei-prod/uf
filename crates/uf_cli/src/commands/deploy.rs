@@ -690,11 +690,10 @@ fn wrangler_config(
                 .collect::<Vec<_>>(),
         });
     }
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{}\n",
         serde_json::to_string_pretty(&config).unwrap_or_default()
-    )
-    .into_string()
+    ))
 }
 
 /// The binding `@uniflowed/server/cache/kv` reads its namespace from.
@@ -843,8 +842,9 @@ pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &
         }
         DeployAdapter::Container => {
             let name = worker_name(root);
-            uf_infra::cstr!("docker build -t {name} {directory} && docker run -p 3000:3000 {name}")
-                .into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "docker build -t {name} {directory} && docker run -p 3000:3000 {name}"
+            ))
         }
         DeployAdapter::Edge => {
             uf_infra::into_string(uf_infra::cstr!("cd {directory} && npx wrangler deploy"))
@@ -870,11 +870,10 @@ pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &
         // in: the route cache's filesystem store is `.uf/cache` in the working
         // directory, and a build with `isr` creates it at start-up. Without it
         // Deno refuses the `mkdir` and the server exits before answering (#1497).
-        DeployAdapter::Deno => uf_infra::cstr!(
+        DeployAdapter::Deno => uf_infra::into_string(uf_infra::cstr!(
             "cd {directory} && deno run --allow-net --allow-read --allow-env \
              --allow-write=.uf server.js"
-        )
-        .into_string(),
+        )),
     }
 }
 
@@ -1215,8 +1214,9 @@ mod tests {
 
         fs::write(
             work.join("handler.js"),
-            uf_infra::cstr!("import {{ createCacheProvider }} from \"{KV_PROVIDER}\";\n")
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "import {{ createCacheProvider }} from \"{KV_PROVIDER}\";\n"
+            )),
         )
         .unwrap();
         assert!(links_kv_cache(work));
@@ -1309,9 +1309,9 @@ mod tests {
     #[test]
     fn the_pinned_compatibility_date_is_the_one_the_builtins_table_was_measured_at() {
         let table = include_str!("../../../../packages/vite/internal/worker-builtins.js");
-        let declared =
-            uf_infra::cstr!("WORKERS_COMPATIBILITY_DATE = \"{WORKERS_COMPATIBILITY_DATE}\"")
-                .into_string();
+        let declared = uf_infra::into_string(uf_infra::cstr!(
+            "WORKERS_COMPATIBILITY_DATE = \"{WORKERS_COMPATIBILITY_DATE}\""
+        ));
         assert!(
             table.contains(&declared),
             "worker-builtins.js does not declare {WORKERS_COMPATIBILITY_DATE}"

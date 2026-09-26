@@ -177,10 +177,9 @@ pub fn generate(request: &GenerateRequest) -> Result<Vec<File>, String> {
         .chain(models.iter().map(|model| &model.type_name))
     {
         if !seen.insert(name.clone()) {
-            return Err(compact_str::format_compact!(
+            return Err(uf_infra::into_string(compact_str::format_compact!(
                 "two tables or enums would both be called `{name}`; give one a name with `rename`"
-            )
-            .into_string());
+            )));
         }
     }
 
@@ -218,15 +217,16 @@ pub fn generate(request: &GenerateRequest) -> Result<Vec<File>, String> {
         let mut module = Module::new(&shared, false);
         for query in queries {
             if !function_names.insert(query.name.clone()) {
-                return Err(compact_str::format_compact!(
+                return Err(uf_infra::into_string(compact_str::format_compact!(
                     "two queries are called `{}`",
                     query.name
-                )
-                .into_string());
+                )));
             }
             module.query(query).map_err(|error| {
-                compact_str::format_compact!("{filename}: query {}: {error}", query.name)
-                    .into_string()
+                uf_infra::into_string(compact_str::format_compact!(
+                    "{filename}: query {}: {error}",
+                    query.name
+                ))
             })?;
         }
         let stem = if filename.is_empty() {
@@ -364,10 +364,10 @@ fn models_file(shared: &Shared<'_>) -> Result<String, String> {
             let name = unique(&mut names, shared.field_name(&column.name));
             let flow = module.type_of(&mapped);
             let comment = doc(std::slice::from_ref(&column.comment), "  ");
-            fields.push(
-                compact_str::format_compact!("{comment}  readonly {}: {flow},\n", key(&name))
-                    .into_string(),
-            );
+            fields.push(uf_infra::into_string(compact_str::format_compact!(
+                "{comment}  readonly {}: {flow},\n",
+                key(&name)
+            )));
         }
         module
             .body
@@ -540,8 +540,10 @@ impl<'a> Module<'a> {
             }
             Codec::Factory(factory, sql_type) => self.hoist(
                 sql_type,
-                compact_str::format_compact!("{alias}.{factory}({})", js_string(sql_type))
-                    .into_string(),
+                uf_infra::into_string(compact_str::format_compact!(
+                    "{alias}.{factory}({})",
+                    js_string(sql_type)
+                )),
             ),
             Codec::Enum { codec, .. } => {
                 if !self.is_models {
@@ -570,11 +572,10 @@ impl<'a> Module<'a> {
                 };
                 self.hoist(
                     &over.name,
-                    compact_str::format_compact!(
+                    uf_infra::into_string(compact_str::format_compact!(
                         "{alias}.map({base_ref}, {}, {encode})",
                         over.decode
-                    )
-                    .into_string(),
+                    )),
                 )
             }
         }
@@ -649,11 +650,10 @@ impl<'a> Module<'a> {
         for column in &query.columns {
             if let Some(embed) = &column.embed_table {
                 let model = shared.model(embed).ok_or_else(|| {
-                    compact_str::format_compact!(
+                    uf_infra::into_string(compact_str::format_compact!(
                         "sqlc.embed({}) names no table in the schema",
                         embed.name
-                    )
-                    .into_string()
+                    ))
                 })?;
                 let mut inner = Vec::new();
                 let mut inner_names = BTreeSet::new();
@@ -676,8 +676,10 @@ impl<'a> Module<'a> {
                 fields.push(RowField {
                     name,
                     flow: model.type_name.clone(),
-                    decode: compact_str::format_compact!("{{ {} }}", inner.join(", "))
-                        .into_string(),
+                    decode: uf_infra::into_string(compact_str::format_compact!(
+                        "{{ {} }}",
+                        inner.join(", ")
+                    )),
                 });
                 continue;
             }
@@ -723,11 +725,10 @@ impl<'a> Module<'a> {
         }
         let prefix = pascal(&query.name);
         let cmd = query.cmd.as_str();
-        let sql_name = compact_str::format_compact!(
+        let sql_name = uf_infra::into_string(compact_str::format_compact!(
             "{function}{}",
             if cmd == ":copyfrom" { "Plan" } else { "Sql" }
-        )
-        .into_string();
+        ));
         self.claim(&function)?;
         self.claim(&sql_name)?;
         let rows = matches!(cmd, ":one" | ":many" | ":batchone" | ":batchmany");
@@ -746,10 +747,9 @@ impl<'a> Module<'a> {
                 | ":batchmany"
                 | ":batchone"
         ) {
-            return Err(compact_str::format_compact!(
+            return Err(uf_infra::into_string(compact_str::format_compact!(
                 "the command `{cmd}` is not one sqlc defines"
-            )
-            .into_string());
+            )));
         }
 
         // Arguments: one field per distinct name. A named parameter used
@@ -780,8 +780,10 @@ impl<'a> Module<'a> {
                 let name = unique(&mut names, shared.field_name(&sql_name));
                 let mut flow = self.type_of(&mapped);
                 if slice {
-                    flow = compact_str::format_compact!("$ReadOnlyArray<{}>", mapped.flow)
-                        .into_string();
+                    flow = uf_infra::into_string(compact_str::format_compact!(
+                        "$ReadOnlyArray<{}>",
+                        mapped.flow
+                    ));
                 }
                 arg_fields.push((name.clone(), flow));
                 if column.is_named_param {
@@ -802,14 +804,16 @@ impl<'a> Module<'a> {
             let fields: String = arg_fields
                 .iter()
                 .map(|(name, flow)| {
-                    compact_str::format_compact!("  readonly {}: {flow},\n", key(name))
-                        .into_string()
+                    uf_infra::into_string(compact_str::format_compact!(
+                        "  readonly {}: {flow},\n",
+                        key(name)
+                    ))
                 })
                 .collect();
-            self.body.push_str(
-                &compact_str::format_compact!("export type {args_type} = {{|\n{fields}|}};\n\n")
-                    .into_string(),
-            );
+            self.body
+                .push_str(&uf_infra::into_string(compact_str::format_compact!(
+                    "export type {args_type} = {{|\n{fields}|}};\n\n"
+                )));
         }
 
         let is_slice = |index: usize| {
@@ -876,9 +880,10 @@ impl<'a> Module<'a> {
                     None => values.push("null".to_owned()),
                 }
             }
-            text_const =
-                compact_str::format_compact!("const {sql_name} = {};\n\n", js_string(&query.text))
-                    .into_string();
+            text_const = uf_infra::into_string(compact_str::format_compact!(
+                "const {sql_name} = {};\n\n",
+                js_string(&query.text)
+            ));
         } else {
             let found = placeholders::scan(&query.text, dialect);
             let order = placeholders::bind_order(&found, &query.params)?;
@@ -886,9 +891,10 @@ impl<'a> Module<'a> {
             expands = parts.len() > 1;
             if expands {
                 let parts: Vec<String> = parts.iter().map(|part| js_string(part)).collect();
-                text_const =
-                    compact_str::format_compact!("const {sql_name} = [{}];\n\n", parts.join(", "))
-                        .into_string();
+                text_const = uf_infra::into_string(compact_str::format_compact!(
+                    "const {sql_name} = [{}];\n\n",
+                    parts.join(", ")
+                ));
             } else {
                 uf_infra::append!(
                     text_const,
@@ -934,30 +940,32 @@ impl<'a> Module<'a> {
                     let lines: String = fields
                         .iter()
                         .map(|field| {
-                            compact_str::format_compact!(
+                            uf_infra::into_string(compact_str::format_compact!(
                                 "  readonly {}: {},\n",
                                 key(&field.name),
                                 field.flow
-                            )
-                            .into_string()
+                            ))
                         })
                         .collect();
-                    self.body.push_str(
-                        &compact_str::format_compact!(
+                    self.body
+                        .push_str(&uf_infra::into_string(compact_str::format_compact!(
                             "export type {result_type} = {{|\n{lines}|}};\n\n"
-                        )
-                        .into_string(),
-                    );
+                        )));
                 }
                 let entries: Vec<String> = fields
                     .iter()
                     .map(|field| {
-                        compact_str::format_compact!("{}: {}", key(&field.name), field.decode)
-                            .into_string()
+                        uf_infra::into_string(compact_str::format_compact!(
+                            "{}: {}",
+                            key(&field.name),
+                            field.decode
+                        ))
                     })
                     .collect();
-                decoder = compact_str::format_compact!("(row) => ({{ {} }})", entries.join(", "))
-                    .into_string();
+                decoder = uf_infra::into_string(compact_str::format_compact!(
+                    "(row) => ({{ {} }})",
+                    entries.join(", ")
+                ));
             }
         }
 
@@ -969,40 +977,33 @@ impl<'a> Module<'a> {
             (
                 "text".to_owned(),
                 "params".to_owned(),
-                compact_str::format_compact!(
+                uf_infra::into_string(compact_str::format_compact!(
                     "const {{ text, params }} = sql.expand({sql_name}, {values_list});\n"
-                )
-                .into_string(),
+                )),
             )
         } else {
             (sql_name.clone(), values_list.clone(), String::new())
         };
         let call = |db: &str| -> String {
             match cmd {
-                ":one" | ":batchone" => compact_str::format_compact!(
+                ":one" | ":batchone" => uf_infra::into_string(compact_str::format_compact!(
                     "sql.one({db}, {name}, {text_expr}, {params_expr}, {width}, {decoder})"
-                )
-                .into_string(),
-                ":many" | ":batchmany" => compact_str::format_compact!(
+                )),
+                ":many" | ":batchmany" => uf_infra::into_string(compact_str::format_compact!(
                     "sql.many({db}, {name}, {text_expr}, {params_expr}, {width}, {decoder})"
-                )
-                .into_string(),
-                ":execrows" => compact_str::format_compact!(
+                )),
+                ":execrows" => uf_infra::into_string(compact_str::format_compact!(
                     "sql.execRows({db}, {name}, {text_expr}, {params_expr})"
-                )
-                .into_string(),
-                ":execresult" => compact_str::format_compact!(
+                )),
+                ":execresult" => uf_infra::into_string(compact_str::format_compact!(
                     "sql.execResult({db}, {name}, {text_expr}, {params_expr})"
-                )
-                .into_string(),
-                ":execlastid" => compact_str::format_compact!(
+                )),
+                ":execlastid" => uf_infra::into_string(compact_str::format_compact!(
                     "sql.execLastId({db}, {name}, {text_expr}, {params_expr})"
-                )
-                .into_string(),
-                _ => compact_str::format_compact!(
+                )),
+                _ => uf_infra::into_string(compact_str::format_compact!(
                     "sql.exec({db}, {name}, {text_expr}, {params_expr})"
-                )
-                .into_string(),
+                )),
             }
         };
         let item_type = match cmd {
@@ -1028,18 +1029,19 @@ impl<'a> Module<'a> {
             let inner = if prelude.is_empty() {
                 call("q")
             } else {
-                compact_str::format_compact!("{{\n    {prelude}    return {};\n  }}", call("q"))
-                    .into_string()
+                uf_infra::into_string(compact_str::format_compact!(
+                    "{{\n    {prelude}    return {};\n  }}",
+                    call("q")
+                ))
             };
             let then = if cmd == ":batchexec" {
                 ".then(() => {})"
             } else {
                 ""
             };
-            compact_str::format_compact!(
+            uf_infra::into_string(compact_str::format_compact!(
                 "  return sql.batch(db, items, (q, args) => {inner}){then};\n"
-            )
-            .into_string()
+            ))
         } else {
             let prelude = if prelude.is_empty() {
                 String::new()
@@ -1053,8 +1055,9 @@ impl<'a> Module<'a> {
         };
         let (signature, returns) = if is_copy {
             (
-                compact_str::format_compact!("db: Queryable, rows: $ReadOnlyArray<{args_type}>")
-                    .into_string(),
+                uf_infra::into_string(compact_str::format_compact!(
+                    "db: Queryable, rows: $ReadOnlyArray<{args_type}>"
+                )),
                 item_type,
             )
         } else if is_batch {
@@ -1064,8 +1067,9 @@ impl<'a> Module<'a> {
                 uf_infra::into_string(compact_str::format_compact!("Array<{item_type}>"))
             };
             (
-                compact_str::format_compact!("db: Queryable, items: $ReadOnlyArray<{args_type}>")
-                    .into_string(),
+                uf_infra::into_string(compact_str::format_compact!(
+                    "db: Queryable, items: $ReadOnlyArray<{args_type}>"
+                )),
                 returns,
             )
         } else if has_args {
@@ -1129,10 +1133,10 @@ impl<'a> Module<'a> {
                 out,
                 "import * as {} from {};\n",
                 self.alias,
-                js_string(
-                    &compact_str::format_compact!("{runtime}/{}", shared.engine.module())
-                        .into_string()
-                )
+                js_string(&uf_infra::into_string(compact_str::format_compact!(
+                    "{runtime}/{}",
+                    shared.engine.module()
+                )))
             );
         }
         for (specifier, (types, values)) in &self.foreign {

@@ -324,11 +324,10 @@ pub fn generate_native_router_flow(
             .join(", ")
     };
     let lazy = |file: &Utf8Path| {
-        compact_str::format_compact!(
+        uf_infra::into_string(compact_str::format_compact!(
             "() => import({})",
             js_string(&import_specifier(directory, file))
-        )
-        .into_string()
+        ))
     };
     let display = |file: &Utf8Path| js_string(&display_path(root, file));
 
@@ -360,12 +359,11 @@ pub fn generate_native_router_flow(
             .params
             .iter()
             .map(|param| {
-                compact_str::format_compact!(
+                uf_infra::into_string(compact_str::format_compact!(
                     "{{ name: {}, catchAll: {} }}",
                     js_string(&param.name),
                     param.kind.is_catch_all()
-                )
-                .into_string()
+                ))
             })
             .collect::<Vec<_>>()
             .join(", ");
@@ -578,12 +576,11 @@ mod tests {
                 .routes
                 .iter()
                 .map(|route| {
-                    compact_str::format_compact!(
+                    uf_infra::into_string(compact_str::format_compact!(
                         "{} {}",
                         route.route.path,
                         relative(&root, &route.route.page)
-                    )
-                    .into_string()
+                    ))
                 })
                 .collect::<Vec<_>>()
         };

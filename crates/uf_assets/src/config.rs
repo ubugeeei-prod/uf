@@ -139,11 +139,10 @@ pub fn check_remote_pattern(pattern: &RemotePattern) -> Result<(), String> {
         .or_else(|| hostname.strip_prefix("*."))
         .unwrap_or(hostname);
     if named.is_empty() || named.contains('*') {
-        return Err(uf_infra::cstr!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "hostname {hostname:?} puts a wildcard somewhere other than a leading `*.` or `**.`, \
              or is nothing but one; an allow-list that admits every host is not an allow-list"
-        )
-        .into_string());
+        )));
     }
     if !named.split('.').all(|label| {
         !label.is_empty()
@@ -151,18 +150,16 @@ pub fn check_remote_pattern(pattern: &RemotePattern) -> Result<(), String> {
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
     }) {
-        return Err(uf_infra::cstr!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "hostname {hostname:?} is not a host name: labels of letters, digits and `-` \
              separated by dots, lowercase as a URL parser writes them"
-        )
-        .into_string());
+        )));
     }
     if named.bytes().any(|byte| byte.is_ascii_uppercase()) {
-        return Err(uf_infra::cstr!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "hostname {hostname:?} has capitals, and a URL's host never does once parsed, \
              so it would match nothing"
-        )
-        .into_string());
+        )));
     }
     if let Some(port) = pattern.port.as_deref()
         && (port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()))
@@ -173,20 +170,18 @@ pub fn check_remote_pattern(pattern: &RemotePattern) -> Result<(), String> {
     }
     if let Some(pathname) = pattern.pathname.as_deref() {
         if !pathname.starts_with('/') {
-            return Err(uf_infra::cstr!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "pathname {pathname:?} does not start with `/`, and every URL's path does"
-            )
-            .into_string());
+            )));
         }
         if pathname
             .split('/')
             .any(|segment| segment.contains('*') && segment != "*" && segment != "**")
         {
-            return Err(uf_infra::cstr!(
+            return Err(uf_infra::into_string(uf_infra::cstr!(
                 "pathname {pathname:?} puts a wildcard inside a segment; a wildcard is a whole \
                  segment, `*` for one and `**` for any number"
-            )
-            .into_string());
+            )));
         }
     }
     Ok(())

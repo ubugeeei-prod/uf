@@ -716,18 +716,15 @@ impl<'a> RouteSegment<'a> {
             return None;
         };
         self.interception_climb()?;
-        Some(
-            uf_infra::cstr!(
-                "`{segment}` is an intercepting route, and an intercepting route renders into a \
+        Some(uf_infra::into_string(uf_infra::cstr!(
+            "`{segment}` is an intercepting route, and an intercepting route renders into a \
              `@slot`: it is what a client navigation shows in a named place instead of the page \
              its URL names, and outside a slot there is no named place for it to show in. It is \
              refused rather than served as the URL segment `/{segment}`, which is what it used to \
              become. Move it inside a slot directory beside the layout that renders the slot, or \
              rename the directory to the literal segment `{route}`. \
              https://github.com/ubugeeei-prod/uf/issues/267"
-            )
-            .into_string(),
-        )
+        )))
     }
 }
 

@@ -308,14 +308,13 @@ fn five_fields(cron: &str, file: &Utf8Path) -> Result<String> {
 
 /// What to say about a `schedule` this build cannot read.
 fn unreadable(file: &Utf8Path) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "{file} exports `{EXPORT}` as something this build cannot read.\n  \
          It has to be a string written in the file — `export const {EXPORT} = \
          \"*/15 * * * *\"` — because uf writes a platform's cron configuration without \
          running the project, and an expression it would have to evaluate is one it cannot \
          write down."
-    )
-    .into_string()
+    ))
 }
 
 /// Whether `adapter` would actually run what a project declared.
@@ -671,14 +670,13 @@ fn shown(file: &Utf8Path, source: &str) -> String {
 /// two things each time: what has gone wrong in general, and where to read
 /// about why it is refused rather than warned about.
 fn pairing_note(adapter: DeployAdapter) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "a schedule and the code that runs it must arrive together, and the `{}` artefact \
          `uf build` just wrote has one without the other. This is a fault in uf rather than \
          in the project: report it with the file(s) named above \
          (ubugeeei-prod/uf#712, ubugeeei-prod/uf#531).",
         adapter.as_str()
-    )
-    .into_string()
+    ))
 }
 
 /// One string, quoted the way JavaScript quotes it.

@@ -792,11 +792,10 @@ mod tests {
         std::thread::Builder::new()
             .stack_size(crate::PARSE_STACK_BYTES)
             .spawn(|| {
-                let source = compact_str::format_compact!(
+                let source = uf_infra::into_string(compact_str::format_compact!(
                     "export const value = await load();\nconst chain = {};\n",
                     vec!["1"; crate::MAX_CHAIN_DEPTH].join(" + ")
-                )
-                .into_string();
+                ));
                 let parsed = parse(&source).expect("parses");
                 assert!(parsed.is_ok(), "{:?}", parsed.diagnostics);
             })

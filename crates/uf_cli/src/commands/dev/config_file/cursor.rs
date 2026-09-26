@@ -242,12 +242,11 @@ mod tests {
                 word,
                 colon,
                 present,
-            } => uf_infra::cstr!(
+            } => uf_infra::into_string(uf_infra::cstr!(
                 "key {:?}{} present {present:?}",
                 word.map(|word| word.text(&source)),
                 if colon { " with colon" } else { "" },
-            )
-            .into_string(),
+            )),
             Site::Value { word } => uf_infra::into_string(uf_infra::cstr!(
                 "value {:?}",
                 word.map(|word| word.text(&source))

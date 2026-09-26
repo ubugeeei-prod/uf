@@ -325,8 +325,11 @@ fn values(
             }
             (Shape::StringLiteral(value), None) => {
                 let quote = quote_byte(quotes);
-                let written = uf_infra::cstr!("{0}{1}{0}", char::from(quote), escape(value, quote))
-                    .into_string();
+                let written = uf_infra::into_string(uf_infra::cstr!(
+                    "{0}{1}{0}",
+                    char::from(quote),
+                    escape(value, quote)
+                ));
                 offer(
                     &mut items,
                     &described,
@@ -515,13 +518,12 @@ mod tests {
 
     /// Accept an item the way an editor does.
     fn accept(source: &str, item: &Item) -> String {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{}{}{}",
             &source[..item.replace.start],
             item.new_text,
             &source[item.replace.end..]
-        )
-        .into_string()
+        ))
     }
 
     #[test]

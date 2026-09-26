@@ -123,13 +123,12 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
         || !unreadable.is_empty()
         || non_flow_failure.is_some();
     let summary = if check {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} of {} {} formatting",
             plural(changed.len(), "file"),
             scanned,
             if changed.len() == 1 { "needs" } else { "need" }
-        )
-        .into_string()
+        ))
     } else {
         uf_infra::into_string(uf_infra::cstr!(
             "formatted {} of {}",
@@ -144,11 +143,10 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
     // parsed or read is not something `uf fmt` would fix.
     let rerun =
         (check && !changed.is_empty() && skipped.is_empty() && unreadable.is_empty()).then(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`uf fmt` formats {}",
                 if changed.len() == 1 { "it" } else { "them" }
-            )
-            .into_string()
+            ))
         });
     let project = project_label(&resolved.root).to_owned();
 
@@ -176,11 +174,10 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                 renderer.status(
                     out,
                     Status::Warn,
-                    &uf_infra::cstr!(
+                    &uf_infra::into_string(uf_infra::cstr!(
                         "{} could not be parsed",
                         plural(skipped_paths.len(), "file")
-                    )
-                    .into_string(),
+                    )),
                 );
                 renderer.bullet_list(out, 2, &skipped_paths);
                 renderer.blank(out);
@@ -189,8 +186,10 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                 renderer.status(
                     out,
                     Status::Warn,
-                    &uf_infra::cstr!("{} could not be read", plural(unreadable.len(), "file"))
-                        .into_string(),
+                    &uf_infra::into_string(uf_infra::cstr!(
+                        "{} could not be read",
+                        plural(unreadable.len(), "file")
+                    )),
                 );
                 renderer.bullet_list(
                     out,
@@ -215,11 +214,10 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
                 renderer.status(
                     out,
                     Status::Warn,
-                    &uf_infra::cstr!(
+                    &uf_infra::into_string(uf_infra::cstr!(
                         "{formatter_name} reports that some non-Flow files need formatting; \
                          run `uf fmt` to fix them"
-                    )
-                    .into_string(),
+                    )),
                 );
                 renderer.blank(out);
             }

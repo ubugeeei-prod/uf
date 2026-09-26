@@ -1028,11 +1028,10 @@ impl<'ast> Walk<'ast> {
                 self.report(
                     loc,
                     JSX_KEY,
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "a `<>` fragment {place} cannot take a `key`, so React matches it by \
                          position; write `<React.Fragment key={{…}}>` instead"
-                    )
-                    .into_string(),
+                    )),
                 );
             }
             _ => {}
@@ -1296,12 +1295,11 @@ impl<'ast> Walk<'ast> {
                 rule: COMMENT_TEXT,
                 line,
                 column,
-                message: uf_infra::cstr!(
+                message: uf_infra::into_string(uf_infra::cstr!(
                     "`{opener}` between JSX tags is text, not a comment, so it shows on the page; \
                      write `{{/* … */}}` to comment it out, or `{{\"{opener} …\"}}` if the slashes \
                      are meant to be seen"
-                )
-                .into_string(),
+                )),
             });
         }
     }
@@ -1348,12 +1346,11 @@ impl<'ast> Walk<'ast> {
                     rule: UNESCAPED_ENTITIES,
                     line,
                     column,
-                    message: uf_infra::cstr!(
+                    message: uf_infra::into_string(uf_infra::cstr!(
                         "`{found}` in JSX text renders as itself, and is usually what a mistyped \
                          tag or a dropped brace left behind; write `{escape}` if it is meant to \
                          be read"
-                    )
-                    .into_string(),
+                    )),
                 });
             }
         }
@@ -1762,10 +1759,9 @@ fn renders_something(child: &jsx::Child<Loc, Loc>) -> bool {
 fn attribute_name(name: &jsx::attribute::Name<Loc, Loc>) -> Cow<'_, str> {
     match name {
         jsx::attribute::Name::Identifier(identifier) => Cow::Borrowed(&identifier.name),
-        jsx::attribute::Name::NamespacedName(namespaced) => Cow::Owned(
-            uf_infra::cstr!("{}:{}", &*namespaced.namespace.name, &*namespaced.name.name)
-                .into_string(),
-        ),
+        jsx::attribute::Name::NamespacedName(namespaced) => Cow::Owned(uf_infra::into_string(
+            uf_infra::cstr!("{}:{}", &*namespaced.namespace.name, &*namespaced.name.name),
+        )),
     }
 }
 
@@ -1773,10 +1769,11 @@ fn attribute_name(name: &jsx::attribute::Name<Loc, Loc>) -> Cow<'_, str> {
 fn element_name(name: &jsx::Name<Loc, Loc>) -> String {
     match name {
         jsx::Name::Identifier(identifier) => String::from(&*identifier.name),
-        jsx::Name::NamespacedName(namespaced) => {
-            uf_infra::cstr!("{}:{}", &*namespaced.namespace.name, &*namespaced.name.name)
-                .into_string()
-        }
+        jsx::Name::NamespacedName(namespaced) => uf_infra::into_string(uf_infra::cstr!(
+            "{}:{}",
+            &*namespaced.namespace.name,
+            &*namespaced.name.name
+        )),
         jsx::Name::MemberExpression(member) => member_name(member),
     }
 }
@@ -1826,12 +1823,11 @@ fn declared_props<'ast>(
 }
 
 fn this_message(kind: &str) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "`this` names nothing inside a `{kind}`: Flow calls one as a plain function, so `this` is \
          `undefined` here and reading anything off it throws; take the value from a parameter, or \
          from the scope around the declaration"
-    )
-    .into_string()
+    ))
 }
 
 fn unused_message(component: &str, prop: &PropParam<'_>) -> String {
@@ -1840,21 +1836,19 @@ fn unused_message(component: &str, prop: &PropParam<'_>) -> String {
     } else {
         uf_infra::into_string(uf_infra::cstr!(", bound as `{}`,", prop.local))
     };
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "`<{component}>` declares the prop `{}`{read_as} and never reads it, so every caller is \
          asked for a value that goes nowhere; read it, or drop it from the parameter list",
         prop.written
-    )
-    .into_string()
+    ))
 }
 
 fn index_message(index: &str) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "`key` is built from the list index `{index}`, so React ties each item's state to its \
          position and hands it to a different item when the list is reordered, filtered or added \
          to at the front; key it by something the item carries, such as its id"
-    )
-    .into_string()
+    ))
 }
 
 fn void_message(name: &str, held: &str) -> String {

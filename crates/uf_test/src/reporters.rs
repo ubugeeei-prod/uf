@@ -346,13 +346,12 @@ const fn skip_reason(reason: SkipReason) -> &'static str {
 }
 
 fn failure_body(file: &str, failure: &crate::report::AssertionFailure) -> String {
-    let mut body = uf_infra::cstr!(
+    let mut body = uf_infra::into_string(uf_infra::cstr!(
         "{file}:{}:{}: {}",
         failure.line,
         failure.column,
         failure.message
-    )
-    .into_string();
+    ));
     if let Some(expected) = &failure.expected {
         let _ = write!(body, "\nexpected: {expected}");
     }

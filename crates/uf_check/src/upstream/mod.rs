@@ -537,13 +537,12 @@ pub(super) fn file_key(
 /// record" waste as ubugeeei-prod/uf#406, for a difference that is not a
 /// difference.
 fn limits_field(limits: &CheckLimits) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "max-source-bytes={};recursion-limit={};type-expansion-recursion-limit={}",
         limits.max_source_bytes,
         limits.recursion_limit,
         limits.type_expansion_recursion_limit,
-    )
-    .into_string()
+    ))
 }
 
 /// What a record says about the file, or [`None`] when it does not say it in a

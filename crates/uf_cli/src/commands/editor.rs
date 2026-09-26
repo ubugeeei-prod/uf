@@ -304,11 +304,10 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{} has no project settings file uf writes; by hand:",
                     editor.name()
-                )
-                .into_string(),
+                )),
             );
             let items = steps.iter().map(String::as_str).collect::<Vec<_>>();
             renderer.ordered_list(out, 2, &items);
@@ -322,11 +321,10 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
         let path = root.join(target.path);
         let existing = read_optional(&path)?;
         let plan = setup::plan(target, existing.as_deref()).with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "{} is not a file uf can read as settings; nothing was written to it",
                 target.path
-            )
-            .into_string()
+            ))
         })?;
         planned.push((target, path, existing, plan));
     }
@@ -481,12 +479,11 @@ fn render_plan(
                 renderer.hint(
                     out,
                     4,
-                    &uf_infra::cstr!(
+                    &uf_infra::into_string(uf_infra::cstr!(
                         "kept {} = {current}, which this project set; uf would write {}",
                         want.path.join(" › "),
                         setup::wanted_value(want)
-                    )
-                    .into_string(),
+                    )),
                 );
             }
         }

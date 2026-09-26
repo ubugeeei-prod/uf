@@ -107,10 +107,10 @@ pub(crate) fn unanswerable(
                 // A middleware guards a subtree rather than a URL that is
                 // necessarily served, and is reported the way
                 // `deploy::static_host` reports one: by the subtree.
-                ServerModuleKind::Middleware => {
-                    uf_infra::cstr!("{}/*", if module.path == "/" { "" } else { &module.path })
-                        .into_string()
-                }
+                ServerModuleKind::Middleware => uf_infra::into_string(uf_infra::cstr!(
+                    "{}/*",
+                    if module.path == "/" { "" } else { &module.path }
+                )),
                 ServerModuleKind::RouteHandler => module.path.to_string(),
             }),
             file: relative_to(root, &module.file),
@@ -240,13 +240,12 @@ pub(crate) fn refuse(
     if findings.is_empty() {
         return Ok(());
     }
-    let mut message = uf_infra::cstr!(
+    let mut message = uf_infra::into_string(uf_infra::cstr!(
         "{} {} this project {} a server, and {because}",
         findings.len(),
         plural(findings.len(), "thing"),
         if findings.len() == 1 { "needs" } else { "need" },
-    )
-    .into_string();
+    ));
     for finding in findings.iter().take(SHOWN) {
         message.push('\n');
         message.push_str(&finding.line());
@@ -288,10 +287,9 @@ fn server_only_modules(graph: &RscGraph) -> BTreeMap<ModuleId, String> {
         if module.path.as_str().ends_with(SERVER_ONLY_SUFFIX) {
             found.insert(
                 id,
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "its name ends in `{SERVER_ONLY_SUFFIX}`, which says it runs on a server"
-                )
-                .into_string(),
+                )),
             );
             continue;
         }
@@ -302,11 +300,10 @@ fn server_only_modules(graph: &RscGraph) -> BTreeMap<ModuleId, String> {
         {
             found.insert(
                 id,
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "it imports `{specifier}`, which only runs on a server — `cookies()`, \
                      `headers()` and `draftMode()` all read a request, and there is none"
-                )
-                .into_string(),
+                )),
             );
         }
     }

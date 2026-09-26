@@ -266,12 +266,11 @@ impl Versions<'_> {
                 }
                 None => newest.version.clone(),
             };
-            let documentation = uf_infra::cstr!(
+            let documentation = uf_infra::into_string(uf_infra::cstr!(
                 "The newest release of `{name}` that starts with `{major}`: **{version}** in the \
                  list fetched {fetched}. Resolved once and locked in `uf.lock`.",
                 version = newest.version,
-            )
-            .into_string();
+            ));
             self.push(items, major, Some(detail), Some(documentation));
         }
 
@@ -465,13 +464,12 @@ mod tests {
     }
 
     fn accept(source: &str, item: &Item) -> String {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{}{}{}",
             &source[..item.replace.start],
             item.new_text,
             &source[item.replace.end..]
-        )
-        .into_string()
+        ))
     }
 
     /// The contract with `@uniflowed/config`: every key it types with a spec

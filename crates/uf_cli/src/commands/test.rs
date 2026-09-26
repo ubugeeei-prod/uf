@@ -816,8 +816,9 @@ pub(crate) fn test_host(
         // be separate sentences and the enum's said nothing at all.
         let support = uf_runtime::HostSupport::for_host(runtime_host(kind));
         let tracking = support.tracking_issue.map_or_else(String::new, |issue| {
-            uf_infra::cstr!(" Tracked by https://github.com/ubugeeei-prod/uf/issues/{issue}.")
-                .into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                " Tracked by https://github.com/ubugeeei-prod/uf/issues/{issue}."
+            ))
         });
         bail!(uf_infra::cstr!(
             "`uf test` cannot run on {host_name} yet: it has no Flow loader, so a test file \
@@ -878,14 +879,13 @@ fn require_deno_hooks(program: &Utf8Path) -> Result<()> {
 
 /// What a person is told about a Deno older than [`DENO_WITH_HOOKS`].
 fn deno_too_old(program: &Utf8Path, (major, minor): (u64, u64)) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "`uf test` cannot run on the Deno at {program}: it is {major}.{minor}, and uf loads Flow \
          on Deno through `node:module`'s `registerHooks`, which Deno implemented in {}.{}. Run \
          `deno upgrade`, or name Node.js or Bun in `app.runtime.capabilityJsHost.default`.",
         DENO_WITH_HOOKS.0,
         DENO_WITH_HOOKS.1
-    )
-    .into_string()
+    ))
 }
 
 /// The `major.minor` in what `deno --version` prints.
@@ -1291,13 +1291,10 @@ pub(crate) fn read_timings(root: &Utf8Path) -> (TestTimings, Option<String>) {
         Ok((timings, audit)) if audit.is_clean() => (timings, None),
         Ok((timings, audit)) => (
             timings,
-            Some(
-                uf_infra::cstr!(
-                    "ignored {} in .uf/test-timings.json",
-                    plural(audit.rejected(), "unusable entry")
-                )
-                .into_string(),
-            ),
+            Some(uf_infra::into_string(uf_infra::cstr!(
+                "ignored {} in .uf/test-timings.json",
+                plural(audit.rejected(), "unusable entry")
+            ))),
         ),
         Err(error) => (
             TestTimings::new(),
@@ -1395,11 +1392,10 @@ fn finish(report: &TestRunReport, violations: &[uf_test::ThresholdViolation]) ->
         if violations.is_empty() {
             return Ok(());
         }
-        let mut message = uf_infra::cstr!(
+        let mut message = uf_infra::into_string(uf_infra::cstr!(
             "uf test did not reach {}",
             plural(violations.len(), "coverage threshold")
-        )
-        .into_string();
+        ));
         for violation in violations {
             message.push_str("\n  ");
             message.push_str(&violation.describe());

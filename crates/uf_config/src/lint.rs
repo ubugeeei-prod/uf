@@ -595,10 +595,9 @@ impl<'de> Deserialize<'de> for RuleLevel {
                     0 => Ok(RuleLevel::Off),
                     1 => Ok(RuleLevel::Warn),
                     2 => Ok(RuleLevel::Error),
-                    _ => Err(E::custom(
-                        compact_str::format_compact!("unsupported rule level {value}")
-                            .into_string(),
-                    )),
+                    _ => Err(E::custom(uf_infra::into_string(
+                        compact_str::format_compact!("unsupported rule level {value}"),
+                    ))),
                 }
             }
 
@@ -610,10 +609,9 @@ impl<'de> Deserialize<'de> for RuleLevel {
                     "off" => Ok(RuleLevel::Off),
                     "warn" | "warning" => Ok(RuleLevel::Warn),
                     "error" => Ok(RuleLevel::Error),
-                    _ => Err(E::custom(
-                        compact_str::format_compact!("unsupported rule level {value:?}")
-                            .into_string(),
-                    )),
+                    _ => Err(E::custom(uf_infra::into_string(
+                        compact_str::format_compact!("unsupported rule level {value:?}"),
+                    ))),
                 }
             }
         }

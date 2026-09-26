@@ -543,12 +543,11 @@ impl Event {
                 uf_infra::into_string(uf_infra::cstr!("the case \"{}\"", excerpt(&event.name)))
             }
             Self::File(event) => match &event.message {
-                Some(message) => uf_infra::cstr!(
+                Some(message) => uf_infra::into_string(uf_infra::cstr!(
                     "the file result \"{}\": {}",
                     excerpt(&event.status),
                     excerpt(message)
-                )
-                .into_string(),
+                )),
                 None => uf_infra::into_string(uf_infra::cstr!(
                     "the file result \"{}\"",
                     excerpt(&event.status)
@@ -756,8 +755,9 @@ impl StaleEvents {
                 .and_then(|at| served.get(at))
                 .map_or_else(
                     || {
-                        uf_infra::cstr!("a request this worker never served ({generation})")
-                            .into_string()
+                        uf_infra::into_string(uf_infra::cstr!(
+                            "a request this worker never served ({generation})"
+                        ))
                     },
                     |file| uf_infra::into_string(uf_infra::cstr!("`{file}`")),
                 );
@@ -786,11 +786,10 @@ impl StaleEvents {
         if self.beyond > 0 {
             notes.push(OutputChunk {
                 stream: OutputStream::Stderr,
-                text: uf_infra::cstr!(
+                text: uf_infra::into_string(uf_infra::cstr!(
                     "[uf] and {} more from further runs this worker had already finished\n",
                     self.beyond
-                )
-                .into_string(),
+                )),
             });
         }
         notes
@@ -1057,8 +1056,10 @@ impl Worker {
         }
 
         let mut child = process.spawn().map_err(|error| SpawnError {
-            message: uf_infra::cstr!("could not start `{}`: {error}", command.program)
-                .into_string(),
+            message: uf_infra::into_string(uf_infra::cstr!(
+                "could not start `{}`: {error}",
+                command.program
+            )),
         })?;
         let stdin = child.stdin.take().ok_or_else(|| SpawnError {
             message: String::from("the worker has no stdin"),
@@ -1081,8 +1082,9 @@ impl Worker {
                 }
             })
             .map_err(|error| SpawnError {
-                message: uf_infra::cstr!("could not start the worker reader: {error}")
-                    .into_string(),
+                message: uf_infra::into_string(uf_infra::cstr!(
+                    "could not start the worker reader: {error}"
+                )),
             })?;
 
         Ok(Self {
@@ -1258,10 +1260,9 @@ impl Worker {
                         self.kill();
                         return FileOutcome {
                             status: FileStatus::HostFailed {
-                                message: uf_infra::cstr!(
+                                message: uf_infra::into_string(uf_infra::cstr!(
                                     "unreadable worker output: {error}: {line}"
-                                )
-                                .into_string(),
+                                )),
                             },
                             records,
                             output: file_output(&mut pending, &stale, &self.served),

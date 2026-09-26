@@ -190,19 +190,17 @@ pub fn icon(request: &IconRequest<'_>) -> Result<IconAsset, IconError> {
     // so an edited icon gets a new symbol id and a sprite cached under the old
     // one cannot answer for it.
     let digest = hashed_name("i", raw.as_bytes(), &[request.name.as_bytes()], "x");
-    let id = uf_infra::cstr!(
+    let id = uf_infra::into_string(uf_infra::cstr!(
         "{SYMBOL_PREFIX}{}-{}",
         sanitise(request.name),
         digest.trim_start_matches("i.").trim_end_matches(".x")
-    )
-    .into_string();
+    ));
     let body = namespace_ids(&inner, &id);
-    let symbol = uf_infra::cstr!(
+    let symbol = uf_infra::into_string(uf_infra::cstr!(
         "<symbol id=\"{id}\" viewBox=\"{view_box}\"{carried}>{body}</symbol>",
         view_box = escape(&view_box),
         carried = carried(&attributes),
-    )
-    .into_string();
+    ));
 
     Ok(IconAsset {
         name: request.name.to_owned(),

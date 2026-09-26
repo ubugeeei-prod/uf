@@ -434,11 +434,10 @@ pub(crate) fn load_project_config(
         Ok(resolved) => Ok(resolved),
         Err(error @ (ConfigError::UnsupportedExpression { .. } | ConfigError::Parse { .. })) => {
             load_evaluated_config(cwd, requested_mode, default_mode).with_context(|| {
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "failed to evaluate uf.config.js after the static loader could not read it: \
                      {error}"
-                )
-                .into_string()
+                ))
             })
         }
         Err(error) => Err(error.into()),

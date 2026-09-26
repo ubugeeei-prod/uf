@@ -101,11 +101,10 @@ fn render_rules(ui: &mut Ui, listed: &[ListedRule]) {
     let enabled = listed.iter().filter(|rule| rule.level.is_enabled()).count();
     let fixable = listed.iter().filter(|rule| rule.fix.is_some()).count();
     let any_skipped = listed.iter().any(ListedRule::skipped);
-    let summary = uf_infra::cstr!(
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "{}, {enabled} enabled in this project, {fixable} with a fix",
         plural(listed.len(), "rule")
-    )
-    .into_string();
+    ));
     // A marker on the level, not a column: it is true of a handful of rules,
     // and a column that is empty on every other row is width nobody reads.
     let levels: Vec<String> = listed

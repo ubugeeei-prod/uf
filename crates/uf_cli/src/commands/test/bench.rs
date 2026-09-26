@@ -219,7 +219,7 @@ impl Comparison {
             .iter()
             .filter(|row| row.verdict == Verdict::Regressed)
             .map(|row| {
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "{} > {}: {} against {} ({})",
                     row.file,
                     row.name,
@@ -227,8 +227,7 @@ impl Comparison {
                     row.baseline_median_micros
                         .map_or_else(String::new, duration),
                     row.change_basis_points.map_or_else(String::new, change)
-                )
-                .into_string()
+                ))
             })
             .collect();
         if regressed.is_empty() {
@@ -276,17 +275,15 @@ pub(crate) fn render(ui: &mut Ui, comparison: &Comparison) {
         .collect();
     let against = match (comparison.found, comparison.saved) {
         (_, true) => uf_infra::into_string(uf_infra::cstr!("saved to {}", comparison.baseline)),
-        (true, false) => uf_infra::cstr!(
+        (true, false) => uf_infra::into_string(uf_infra::cstr!(
             "{} · a median more than {}% over it fails the run",
             comparison.baseline,
             comparison.threshold
-        )
-        .into_string(),
-        (false, false) => uf_infra::cstr!(
+        )),
+        (false, false) => uf_infra::into_string(uf_infra::cstr!(
             "none at {} yet · `--save-baseline` writes one",
             comparison.baseline
-        )
-        .into_string(),
+        )),
     };
     ui.render(|renderer, out| {
         renderer.blank(out);

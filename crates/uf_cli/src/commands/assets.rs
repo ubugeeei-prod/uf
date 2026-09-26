@@ -341,8 +341,10 @@ fn variant(request: &Request, source: &Utf8Path) -> Reply {
     {
         return failed(
             &request.id,
-            uf_infra::cstr!("failed to write {}: {error}", request.out_dir.join(&file))
-                .into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "failed to write {}: {error}",
+                request.out_dir.join(&file)
+            )),
         );
     }
     Reply {
@@ -435,11 +437,10 @@ fn font(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply 
                 None => {
                     return failed(
                         &request.id,
-                        uf_infra::cstr!(
+                        uf_infra::into_string(uf_infra::cstr!(
                             "{declared:?} is not a subset mode; app.builtins.fonts.subset is \
                              \"none\" or \"ranges\""
-                        )
-                        .into_string(),
+                        )),
                     );
                 }
             }

@@ -210,11 +210,10 @@ pub(crate) fn render(
         if command.find_subcommand(name).is_none() {
             break;
         }
-        let bin = uf_infra::cstr!(
+        let bin = uf_infra::into_string(uf_infra::cstr!(
             "{} {name}",
             command.get_bin_name().unwrap_or(command.get_name())
-        )
-        .into_string();
+        ));
         command = command
             .find_subcommand_mut(name)
             .expect("the subcommand was found above");
@@ -314,10 +313,9 @@ fn root_page(
         out,
         0,
         width,
-        &uf_infra::cstr!(
+        &uf_infra::into_string(uf_infra::cstr!(
             "`{bin} <command> --help` for a command's options, or `{bin}` alone for a menu"
-        )
-        .into_string(),
+        )),
     );
     renderer.hint_within(
         out,

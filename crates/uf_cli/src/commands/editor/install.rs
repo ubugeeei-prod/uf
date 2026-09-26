@@ -54,10 +54,9 @@ pub(crate) fn asset_url(base: Option<&str>, version: &str, asset: &str) -> Strin
         Some(base) if !base.is_empty() => {
             uf_infra::into_string(uf_infra::cstr!("{base}/{version}/{asset}"))
         }
-        _ => uf_infra::cstr!(
+        _ => uf_infra::into_string(uf_infra::cstr!(
             "https://github.com/{REPOSITORY}/releases/download/uf@{version}/{asset}"
-        )
-        .into_string(),
+        )),
     }
 }
 
@@ -163,12 +162,11 @@ pub(crate) fn fetch_verified(
     let file = into.join(asset);
     let listing_file = into.join(uf_infra::into_string(uf_infra::cstr!("{asset}.sha256")));
     download(uf_infra::cstr!("{url}.sha256").as_str(), &listing_file).with_context(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "the uf@{version} release has no {asset}.sha256. Releases before the one that \
              added `uf editor install` did not attach the extension; install it from the \
              Marketplace or Open VSX, or pass --vsix with a file you built"
-        )
-        .into_string()
+        ))
     })?;
     download(&url, &file)?;
     let listing = std::fs::read_to_string(&listing_file)

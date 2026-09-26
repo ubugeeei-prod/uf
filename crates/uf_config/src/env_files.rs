@@ -684,10 +684,9 @@ fn parse_into(
         if scanner.peek() != Some('=') {
             return Err(scanner.error(
                 line,
-                compact_str::format_compact!(
+                uf_infra::into_string(compact_str::format_compact!(
                     "`{name}` has no `=`; every line is `NAME=value`, a comment, or blank"
-                )
-                .into_string(),
+                )),
             ));
         }
         scanner.advance();
@@ -699,8 +698,9 @@ fn parse_into(
         if name == INJECTED {
             return Err(scanner.error(
                 line,
-                compact_str::format_compact!("`{INJECTED}` is uf's own; a file cannot set it")
-                    .into_string(),
+                uf_infra::into_string(compact_str::format_compact!(
+                    "`{INJECTED}` is uf's own; a file cannot set it"
+                )),
             ));
         }
         let value = scanner.value(&name, &|wanted| {
@@ -828,11 +828,10 @@ impl Scanner<'_> {
         };
         Err(self.error(
             line,
-            compact_str::format_compact!(
+            uf_infra::into_string(compact_str::format_compact!(
                 "`{shown}` is not a variable name; names start with a letter or `_` and continue \
                  with letters, digits or `_`"
-            )
-            .into_string(),
+            )),
         ))
     }
 
@@ -873,10 +872,9 @@ impl Scanner<'_> {
             let Some(character) = self.peek() else {
                 return Err(self.error(
                     opened,
-                    compact_str::format_compact!(
+                    uf_infra::into_string(compact_str::format_compact!(
                         "the value for `{name}` opens with {quote} and is never closed"
-                    )
-                    .into_string(),
+                    )),
                 ));
             };
             if character == quote {
@@ -888,10 +886,9 @@ impl Scanner<'_> {
                 let Some(escaped) = self.peek() else {
                     return Err(self.error(
                         opened,
-                        compact_str::format_compact!(
+                        uf_infra::into_string(compact_str::format_compact!(
                             "the value for `{name}` ends with a backslash"
-                        )
-                        .into_string(),
+                        )),
                     ));
                 };
                 self.advance();
@@ -975,10 +972,9 @@ impl Scanner<'_> {
             if self.peek() != Some('}') {
                 return Err(self.error(
                     line,
-                    compact_str::format_compact!(
+                    uf_infra::into_string(compact_str::format_compact!(
                         "`${{{wanted}` is never closed; write `${{{wanted}}}`"
-                    )
-                    .into_string(),
+                    )),
                 ));
             }
             self.advance();
@@ -994,7 +990,7 @@ impl Scanner<'_> {
             }
             None => Err(self.error(
                 line,
-                compact_str::format_compact!(
+                uf_infra::into_string(compact_str::format_compact!(
                     "`{}` is not defined; define it earlier, set it in the environment, or write \
                      `\\${}` for a literal dollar",
                     if braced {
@@ -1007,8 +1003,7 @@ impl Scanner<'_> {
                     } else {
                         wanted.clone()
                     }
-                )
-                .into_string(),
+                )),
             )),
         }
     }
@@ -1026,11 +1021,10 @@ impl Scanner<'_> {
                 let line = self.line;
                 Err(self.error(
                     line,
-                    compact_str::format_compact!(
+                    uf_infra::into_string(compact_str::format_compact!(
                         "there is text after the quoted value for `{name}`; end the line, or \
                          start a comment with `#`"
-                    )
-                    .into_string(),
+                    )),
                 ))
             }
         }

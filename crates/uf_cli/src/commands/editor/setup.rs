@@ -252,11 +252,10 @@ pub(crate) fn plan(target: &Target, existing: Option<&str>) -> Result<FilePlan> 
             }
             if let Some(found) = conflicts.iter().find(|needle| existing.contains(*needle)) {
                 return Ok(FilePlan::Conflict {
-                    reason: uf_infra::cstr!(
+                    reason: uf_infra::into_string(uf_infra::cstr!(
                         "it already has `{found}`, so uf would be a second configuration of the \
                          same language; add uf to that one by hand"
-                    )
-                    .into_string(),
+                    )),
                 });
             }
             if !appendable {

@@ -187,12 +187,11 @@ pub(crate) fn problem_summary(errors: usize, warnings: usize) -> String {
         (0, 0) => "no problems".to_string(),
         (0, warnings) => plural(warnings, "warning"),
         (errors, 0) => plural(errors, "error"),
-        (errors, warnings) => uf_infra::cstr!(
+        (errors, warnings) => uf_infra::into_string(uf_infra::cstr!(
             "{}, {}",
             plural(errors, "error"),
             plural(warnings, "warning")
-        )
-        .into_string(),
+        )),
     }
 }
 

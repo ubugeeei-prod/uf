@@ -163,12 +163,11 @@ fn add(cwd: &Utf8Path, ui: &mut Ui, names: &[String], overwrite: bool) -> Result
             &crate::commands::pm::Scope::Project,
         )
         .with_context(|| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`uf ui add` wrote no component, because the packages they import could not \
                      be added: {}",
                 specs.join(" ")
-            )
-            .into_string()
+            ))
         })?;
     }
 
@@ -228,19 +227,17 @@ fn refusal(place: &Place, conflicts: &[Conflict]) -> anyhow::Error {
         .collect();
     let names = named.join(" ");
     let mut message = match conflicts {
-        [one] => uf_infra::cstr!(
+        [one] => uf_infra::into_string(uf_infra::cstr!(
             "{} {}, and `uf ui add` will not replace it",
             place.relative(&one.path),
             what_it_is(one)
-        )
-        .into_string(),
+        )),
         _ => {
-            let mut message = uf_infra::cstr!(
+            let mut message = uf_infra::into_string(uf_infra::cstr!(
                 "{} files would be replaced, and `uf ui add` will not replace a file it did not \
                  write:",
                 conflicts.len()
-            )
-            .into_string();
+            ));
             for conflict in conflicts {
                 uf_infra::append!(
                     message,
@@ -436,11 +433,10 @@ fn list(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> {
         renderer.status(
             out,
             Status::Info,
-            &uf_infra::cstr!(
+            &uf_infra::into_string(uf_infra::cstr!(
                 "{} in uf {REGISTRY_VERSION}; {added} added to {directory}",
                 plural(rows.len(), "component")
-            )
-            .into_string(),
+            )),
         );
         renderer.blank(out);
     });
@@ -473,11 +469,10 @@ fn describe_state(state: &CopyState) -> (String, Tone) {
             stamp,
             registry_moved: true,
         } => (
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "edited since uf {}; this uf's version differs too",
                 stamp.version
-            )
-            .into_string(),
+            )),
             Tone::Warn,
         ),
         CopyState::Foreign => ("a file uf ui add did not write".to_owned(), Tone::Warn),
@@ -573,22 +568,20 @@ fn diff(cwd: &Utf8Path, ui: &mut Ui, names: &[String], as_json: bool) -> Result<
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "no component has been added to {directory}; `uf ui list` shows what this uf \
                      carries"
-                )
-                .into_string(),
+                )),
             );
             renderer.blank(out);
             return;
         }
         for each in &compared {
-            let heading = uf_infra::cstr!(
+            let heading = uf_infra::into_string(uf_infra::cstr!(
                 "{}  {}",
                 each.component.name,
                 place.relative(&each.copy.path)
-            )
-            .into_string();
+            ));
             renderer.heading(out, 2, &heading);
             let (status, sentence) = explain_state(&each.copy.state, each.component.name);
             renderer.status(out, status, &sentence);
@@ -751,17 +744,18 @@ fn update(cwd: &Utf8Path, ui: &mut Ui, names: &[String], options: UpdateOptions)
                 &crate::commands::pm::Scope::Project,
             )
             .with_context(|| {
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "`uf ui update` wrote no component, because the packages they import could \
                      not be added: {}",
                     specs.join(" ")
-                )
-                .into_string()
+                ))
             })?;
         }
         update::apply(&plan).with_context(|| {
-            uf_infra::cstr!("could not write into {}", place.relative(&place.directory))
-                .into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "could not write into {}",
+                place.relative(&place.directory)
+            ))
         })?;
     }
 
@@ -965,18 +959,22 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
                     Tone::Good,
                 ),
                 UpdateAction::Merged { from, conflicts: 0 } => (
-                    uf_infra::cstr!("merged: your edits kept, uf {from} → {REGISTRY_VERSION}")
-                        .into_string(),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "merged: your edits kept, uf {from} → {REGISTRY_VERSION}"
+                    )),
                     Tone::Good,
                 ),
                 UpdateAction::Merged { conflicts, .. } => (
-                    uf_infra::cstr!("merged with {} to resolve", plural(*conflicts, "conflict"))
-                        .into_string(),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "merged with {} to resolve",
+                        plural(*conflicts, "conflict")
+                    )),
                     Tone::Bad,
                 ),
                 UpdateAction::NoBase { from } => (
-                    uf_infra::cstr!("not merged: the uf {from} text it began as was not found")
-                        .into_string(),
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "not merged: the uf {from} text it began as was not found"
+                    )),
                     Tone::Warn,
                 ),
                 UpdateAction::Foreign => (
@@ -1015,10 +1013,9 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "no component has been added to {directory}; `uf ui add` writes one"
-                )
-                .into_string(),
+                )),
             );
             renderer.blank(out);
             return;
@@ -1042,8 +1039,10 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
             (count, true) => renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!("would write {}; nothing was written", plural(count, "file"))
-                    .into_string(),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "would write {}; nothing was written",
+                    plural(count, "file")
+                )),
             ),
             (count, false) => {
                 renderer.status(
@@ -1058,7 +1057,7 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
             renderer.status(
                 out,
                 Status::Warn,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "a copy is merged from the exact text it began as, found in this project's \
                      git history or in that uf release{}; for the rest, `uf ui diff {names}` \
                      shows both changes together and `uf ui add {names} --overwrite` takes this \
@@ -1068,8 +1067,7 @@ fn render_updated(ui: &mut Ui, place: &Place, plan: &UpdatePlan, options: Update
                     } else {
                         ""
                     }
-                )
-                .into_string(),
+                )),
             );
         }
         renderer.blank(out);

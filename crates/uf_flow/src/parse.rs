@@ -993,12 +993,11 @@ const y = (x: any) as const;
                     ("`${", "}`"),
                     ("f(", ")"),
                 ] {
-                    let source = compact_str::format_compact!(
+                    let source = uf_infra::into_string(compact_str::format_compact!(
                         "x = {}1{};\n",
                         open.repeat(MAX_NESTING_DEPTH),
                         close.repeat(MAX_NESTING_DEPTH)
-                    )
-                    .into_string();
+                    ));
                     let parsed = parse(&source).expect("at the ceiling");
                     assert!(parsed.is_ok(), "{open}: {:?}", parsed.diagnostics);
                 }
@@ -1131,9 +1130,10 @@ const y = (x: any) as const;
         std::thread::Builder::new()
             .stack_size(PARSE_STACK_BYTES)
             .spawn(|| {
-                let source =
-                    compact_str::format_compact!("x = {};", vec!["1"; MAX_CHAIN_DEPTH].join(" + "))
-                        .into_string();
+                let source = uf_infra::into_string(compact_str::format_compact!(
+                    "x = {};",
+                    vec!["1"; MAX_CHAIN_DEPTH].join(" + ")
+                ));
                 let parsed = parse(&source).expect("parses");
                 assert!(parsed.is_ok(), "{:?}", parsed.diagnostics);
             })
@@ -1192,16 +1192,17 @@ const y = (x: any) as const;
     fn frees_a_tree_at_the_ceilings_here_and_now() {
         for source in [
             // At `MAX_CHAIN_DEPTH`: one `=` and 9,999 `+`.
-            compact_str::format_compact!("x = {};", vec!["1"; MAX_CHAIN_DEPTH].join(" + "))
-                .into_string(),
+            uf_infra::into_string(compact_str::format_compact!(
+                "x = {};",
+                vec!["1"; MAX_CHAIN_DEPTH].join(" + ")
+            )),
             // At `MAX_NESTING_DEPTH`, in the shape that costs the parser the
             // most per level.
-            compact_str::format_compact!(
+            uf_infra::into_string(compact_str::format_compact!(
                 "x = {}1{};\n",
                 "{a:".repeat(MAX_NESTING_DEPTH),
                 "}".repeat(MAX_NESTING_DEPTH)
-            )
-            .into_string(),
+            )),
         ] {
             // Built where the parser has the room it asks for...
             let parsed = std::thread::Builder::new()
@@ -1242,11 +1243,10 @@ const y = (x: any) as const;
 
         // And that the threshold is a threshold: one level past it goes to a
         // thread, so the comparison cannot quietly stop deciding anything.
-        let deep = compact_str::format_compact!(
+        let deep = uf_infra::into_string(compact_str::format_compact!(
             "x = {};",
             vec!["1"; MAX_DEPTH_FREED_IN_PLACE + 1].join(" + ")
-        )
-        .into_string();
+        ));
         assert!(parse(&deep).expect("parses").freed_off_thread());
     }
 }

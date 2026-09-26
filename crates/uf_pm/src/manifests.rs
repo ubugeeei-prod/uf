@@ -261,19 +261,16 @@ fn restore(undo: Vec<(&Utf8PathBuf, String)>, cause: PackageManagerError) -> Pac
     };
     PackageManagerError::Write {
         path: (*first).clone(),
-        source: std::io::Error::other(
-            compact_str::format_compact!(
-                "{cause}; and {} could not be put back, so {} still {} the new range",
-                stranded
-                    .iter()
-                    .map(|path| path.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                if stranded.len() == 1 { "it" } else { "they" },
-                if stranded.len() == 1 { "holds" } else { "hold" },
-            )
-            .into_string(),
-        ),
+        source: std::io::Error::other(uf_infra::into_string(compact_str::format_compact!(
+            "{cause}; and {} could not be put back, so {} still {} the new range",
+            stranded
+                .iter()
+                .map(|path| path.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+            if stranded.len() == 1 { "it" } else { "they" },
+            if stranded.len() == 1 { "holds" } else { "hold" },
+        ))),
     }
 }
 
@@ -352,8 +349,9 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
         path: manifest.to_path_buf(),
         source: std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            compact_str::format_compact!("`{key}` is already something other than an object")
-                .into_string(),
+            uf_infra::into_string(compact_str::format_compact!(
+                "`{key}` is already something other than an object"
+            )),
         ),
     }
 }

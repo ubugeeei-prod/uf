@@ -214,12 +214,11 @@ fn tabindex_no_positive(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
     tree.report(
         &written.loc,
         TABINDEX_NO_POSITIVE,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "a `tabIndex` of {index} puts this element ahead of everything the document orders \
              itself, so the tab order stops matching the reading order; give it `tabIndex={{0}}` \
              and let its position in the markup decide"
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -246,12 +245,11 @@ fn no_aria_hidden_on_focusable(tree: &mut Tree<'_>, name: &str, opening: &jsx::O
     tree.report(
         &written.loc,
         NO_ARIA_HIDDEN_ON_FOCUSABLE,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{name}>` is hidden from assistive technology but still takes focus, so a keyboard \
              lands on an element a screen reader cannot announce; drop the `aria-hidden`, or take \
              it out of the tab order with `tabIndex={{-1}}`"
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -276,11 +274,10 @@ fn activedescendant_has_tabindex(
     tree.report(
         &written.loc,
         ACTIVEDESCENDANT_TABINDEX,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`aria-activedescendant` says which element focus is standing in for, and `<{name}>` \
              cannot take focus, so nothing ever reads it; give it `tabIndex={{0}}`"
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -302,12 +299,11 @@ fn mouse_events_have_key_events(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc,
         tree.report(
             &written.loc,
             MOUSE_EVENTS_HAVE_KEY_EVENTS,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`{mouse}` fires for a pointer and nothing else, so whatever it does never happens \
                  for a keyboard; add `{key}`, which is the same moment for somebody tabbing \
                  through"
-            )
-            .into_string(),
+            )),
         );
     }
 }
@@ -339,11 +335,10 @@ fn click_events_have_key_events(tree: &mut Tree<'_>, name: &str, opening: &jsx::
     tree.report(
         &written.loc,
         CLICK_EVENTS_HAVE_KEY_EVENTS,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{name} role=\"{role}\">` answers a click and no key press, so a keyboard can reach \
              it and still not use it; add an `onKeyDown` that runs the same handler"
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -368,13 +363,12 @@ fn interactive_supports_focus(tree: &mut Tree<'_>, name: &str, opening: &jsx::Op
     tree.report(
         &written.loc,
         INTERACTIVE_SUPPORTS_FOCUS,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`role=\"{role}\"` is a widget and `<{name}>` cannot take focus, so a keyboard never \
              reaches the handler on it; give it `tabIndex={{0}}`, or use the element that is \
              already this role",
             role = role.name,
-        )
-        .into_string(),
+        )),
     );
 }
 
@@ -420,22 +414,20 @@ fn no_noninteractive_tabindex(tree: &mut Tree<'_>, name: &str, opening: &jsx::Op
         tree.report(
             &written.loc,
             NO_NONINTERACTIVE_TABINDEX,
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "`role=\"{role}\"` is not a control, so this `tabIndex` adds a stop with nothing \
                  to do at it; drop it, or use `tabIndex={{-1}}` if something focuses this \
                  element itself"
-            )
-            .into_string(),
+            )),
         );
         return;
     }
     tree.report(
         &written.loc,
         NO_NONINTERACTIVE_TABINDEX,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`<{name}>` is not a control, so this `tabIndex` adds a stop with nothing to do at \
              it; drop it, or use `tabIndex={{-1}}` if something focuses this element itself"
-        )
-        .into_string(),
+        )),
     );
 }

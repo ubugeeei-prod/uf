@@ -334,8 +334,9 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!("{named} changed; restarting with the new environment")
-                    .into_string(),
+                &uf_infra::into_string(uf_infra::cstr!(
+                    "{named} changed; restarting with the new environment"
+                )),
             );
         });
         // Read again, and on the same runtime: a reload that dropped it from
@@ -1895,11 +1896,10 @@ mod tests {
     #[test]
     fn messages_are_read_one_frame_at_a_time() {
         let body = r#"{"jsonrpc":"2.0","id":7,"method":"x"}"#;
-        let stream = uf_infra::cstr!(
+        let stream = uf_infra::into_string(uf_infra::cstr!(
             "Content-Length: {n}\r\n\r\n{body}Content-Length: {n}\r\n\r\n{body}",
             n = body.len()
-        )
-        .into_string();
+        ));
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         // Two messages on one stream, and then end of input rather than a
@@ -1929,12 +1929,11 @@ mod tests {
     fn a_body_that_is_not_json_leaves_the_stream_in_sync() {
         let broken = "{not json";
         let good = r#"{"id":2}"#;
-        let stream = uf_infra::cstr!(
+        let stream = uf_infra::into_string(uf_infra::cstr!(
             "Content-Length: {}\r\n\r\n{broken}Content-Length: {}\r\n\r\n{good}",
             broken.len(),
             good.len()
-        )
-        .into_string();
+        ));
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         assert!(matches!(

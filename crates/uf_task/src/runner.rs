@@ -688,10 +688,10 @@ impl Executor<'_> {
             Ok(command) => command,
             Err(error) => {
                 return Executed {
-                    status: Status::Failed(
-                        uf_infra::cstr!("task {:?} could not be started: {error}", task.label)
-                            .into_string(),
-                    ),
+                    status: Status::Failed(uf_infra::into_string(uf_infra::cstr!(
+                        "task {:?} could not be started: {error}",
+                        task.label
+                    ))),
                     captured: Captured::None,
                 };
             }
@@ -716,14 +716,11 @@ impl Executor<'_> {
                 // itself now: a shell that could not find `cargo` said so,
                 // and "No such file or directory" on its own does not.
                 return Executed {
-                    status: Status::Failed(
-                        uf_infra::cstr!(
-                            "task {:?} could not start `{}`: {error}",
-                            task.label,
-                            command.get_program().to_string_lossy()
-                        )
-                        .into_string(),
-                    ),
+                    status: Status::Failed(uf_infra::into_string(uf_infra::cstr!(
+                        "task {:?} could not start `{}`: {error}",
+                        task.label,
+                        command.get_program().to_string_lossy()
+                    ))),
                     captured: Captured::None,
                 };
             }
@@ -759,10 +756,10 @@ impl Executor<'_> {
                 "task {:?} exited with {status}",
                 task.label
             ))),
-            Err(error) => Status::Failed(
-                uf_infra::cstr!("task {:?} could not be waited on: {error}", task.label)
-                    .into_string(),
-            ),
+            Err(error) => Status::Failed(uf_infra::into_string(uf_infra::cstr!(
+                "task {:?} could not be waited on: {error}",
+                task.label
+            ))),
         };
         Executed {
             status,

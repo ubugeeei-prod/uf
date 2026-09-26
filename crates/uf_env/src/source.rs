@@ -129,7 +129,7 @@ impl Source {
     fn node(pin: &Pin) -> Self {
         let base = base("https://nodejs.org/dist");
         let version = &pin.version;
-        let name = uf_infra::cstr!(
+        let name = uf_infra::into_string(uf_infra::cstr!(
             "node-v{version}-{}-{}",
             match pin.platform.os {
                 Os::Darwin => "darwin",
@@ -139,8 +139,7 @@ impl Source {
                 Arch::Arm64 => "arm64",
                 Arch::X64 => "x64",
             }
-        )
-        .into_string();
+        ));
         let file = uf_infra::into_string(uf_infra::cstr!("{name}.tar.gz"));
         Self {
             archive: uf_infra::into_string(uf_infra::cstr!("{base}/v{version}/{file}")),

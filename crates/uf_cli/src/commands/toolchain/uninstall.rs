@@ -108,12 +108,11 @@ pub(crate) fn self_uninstall(ui: &mut Ui, dry_run: bool, yes: bool) -> Result<()
         .iter()
         .map(|removal| removal.bytes)
         .sum::<u64>();
-    let summary = uf_infra::cstr!(
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "{}, {}",
         plural(plan.removals.len(), "item"),
         ByteSize::from_bytes(total)
-    )
-    .into_string();
+    ));
     render_plan(ui, &plan);
 
     if dry_run {
@@ -121,10 +120,9 @@ pub(crate) fn self_uninstall(ui: &mut Ui, dry_run: bool, yes: bool) -> Result<()
             renderer.status(
                 out,
                 Status::Info,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{summary} would be removed; run without --dry-run to remove them"
-                )
-                .into_string(),
+                )),
             );
         });
         return Ok(());
@@ -148,11 +146,10 @@ pub(crate) fn self_uninstall(ui: &mut Ui, dry_run: bool, yes: bool) -> Result<()
     remove(&store, &plan.removals)?;
 
     let notes = [
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "{} stays, and so does any line that puts it on PATH",
             store.bin_dir
-        )
-        .into_string(),
+        )),
         "every project keeps its .uf directory and uf.lock".to_owned(),
         "curl -fsSL https://setup.uniflowed.dev | sh installs uf again".to_owned(),
     ];
@@ -186,13 +183,10 @@ fn plan(store: &Store) -> Result<Plan> {
                 kind: Kind::Link,
                 bytes: 0,
             }),
-            Ok(target) => plan.left_alone.push(
-                uf_infra::cstr!(
-                    "{path}, a link to {}, which is not in uf's runtime store",
-                    target.display()
-                )
-                .into_string(),
-            ),
+            Ok(target) => plan.left_alone.push(uf_infra::into_string(uf_infra::cstr!(
+                "{path}, a link to {}, which is not in uf's runtime store",
+                target.display()
+            ))),
             Err(_) => plan.left_alone.push(uf_infra::into_string(uf_infra::cstr!(
                 "{path}, which is not a link uf made"
             ))),

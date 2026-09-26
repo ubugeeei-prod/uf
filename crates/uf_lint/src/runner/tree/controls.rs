@@ -138,12 +138,11 @@ fn button_has_type(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, 
     tree.report(
         &written.loc,
         BUTTON_HAS_TYPE,
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "`type=\"{text}\"` is not a button type — HTML defines `submit`, `reset` and `button`, \
              and treats anything else as `submit`, which is the one behaviour nobody writes a \
              custom value to get"
-        )
-        .into_string(),
+        )),
     );
 }
 

@@ -314,18 +314,16 @@ impl Session {
             Err(stopped) => {
                 self.worker = None;
                 self.outcome.problems.push(match stopped {
-                    Stopped::TimedOut => uf_infra::cstr!(
+                    Stopped::TimedOut => uf_infra::into_string(uf_infra::cstr!(
                         "project rules did not finish `{}` within {} s, so the rule host was \
                          stopped",
                         file.path,
                         FILE_BUDGET.as_secs()
-                    )
-                    .into_string(),
-                    Stopped::Exited => uf_infra::cstr!(
+                    )),
+                    Stopped::Exited => uf_infra::into_string(uf_infra::cstr!(
                         "the rule host exited while linting `{}`; what it printed is above",
                         file.path
-                    )
-                    .into_string(),
+                    )),
                 });
             }
         }
@@ -366,11 +364,10 @@ impl Session {
             Err(stopped) => {
                 self.gave_up = true;
                 self.outcome.problems.push(match stopped {
-                    Stopped::TimedOut => uf_infra::cstr!(
+                    Stopped::TimedOut => uf_infra::into_string(uf_infra::cstr!(
                         "the rule host did not load the project's plugins within {} s",
                         LOAD_BUDGET.as_secs()
-                    )
-                    .into_string(),
+                    )),
                     Stopped::Exited => String::from(
                         "the rule host exited while loading the project's plugins; what it \
                          printed is above",
@@ -480,12 +477,11 @@ pub(crate) fn render(ui: &mut Ui, outcome: &ProjectRules) {
         .collect::<Vec<_>>()
         .join(", ");
     let total = Duration::from_micros(outcome.micros).as_secs_f64() * 1000.0;
-    let mut headline = uf_infra::cstr!(
+    let mut headline = uf_infra::into_string(uf_infra::cstr!(
         "project rules: {} over {} in {total:.0} ms",
         plural(outcome.timings.len(), "rule"),
         plural(outcome.files, "file")
-    )
-    .into_string();
+    ));
     if !slowest.is_empty() {
         headline.push_str(" — ");
         headline.push_str(&slowest);
@@ -498,11 +494,10 @@ pub(crate) fn render(ui: &mut Ui, outcome: &ProjectRules) {
             renderer.status(
                 out,
                 Status::Error,
-                &uf_infra::cstr!(
+                &uf_infra::into_string(uf_infra::cstr!(
                     "{} kept project rules from answering",
                     plural(problems.len(), "problem")
-                )
-                .into_string(),
+                )),
             );
             renderer.bullet_list(out, 2, &problems);
         }

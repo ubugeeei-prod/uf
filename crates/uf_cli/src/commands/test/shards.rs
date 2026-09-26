@@ -77,12 +77,11 @@ pub(crate) fn cut(
         .filter(|file| chosen.contains(file.relative_path.as_str()))
         .cloned()
         .collect();
-    let summary = uf_infra::cstr!(
+    let summary = uf_infra::into_string(uf_infra::cstr!(
         "{shard} · {} of {}",
         files.len(),
         plural(schedule.len(), "test file")
-    )
-    .into_string();
+    ));
     ui.render(|renderer, out| {
         renderer.key_values(out, 2, &[KeyValue::new("shard", &summary)]);
     });
@@ -200,13 +199,12 @@ pub(crate) fn merge(cwd: &Utf8Path, ui: &mut Ui, directory: &str, args: &TestArg
         });
         ui.json(&document)?;
     } else {
-        let summary = uf_infra::cstr!(
+        let summary = uf_infra::into_string(uf_infra::cstr!(
             "{} from {} · fingerprint {}",
             plural(merged.report.summary.files, "test file"),
             plural(usize::try_from(merged.count).unwrap_or(usize::MAX), "shard"),
             merged.fingerprint
-        )
-        .into_string();
+        ));
         ui.render(|renderer, out| {
             renderer.key_values(out, 2, &[KeyValue::new("merged", &summary)]);
         });
