@@ -10,13 +10,13 @@ a client, and none of them implements a language feature.
 
 | Editor | What is here | Working |
 | --- | --- | --- |
-| [VS Code](vscode) | An extension: `package.json`, four source files, a `.vscodeignore` | Yes. CI packages it; each release publishes it as `uniflowed.uf` to the Visual Studio Marketplace (with `VSCE_PAT`) and Open VSX (with `OVSX_PAT`). |
-| [Cursor](cursor) | Nothing of its own — it installs the VS Code extension, from Open VSX | Yes |
+| [VS Code](vscode) | An extension: `package.json`, four source files, a `.vscodeignore` | Yes. CI packages it; each release attaches the `.vsix` to its GitHub release, which `uf editor install vscode` installs. Publishing `uniflowed.uf` to the Visual Studio Marketplace and Open VSX waits for the owner's `VSCE_PAT` and `OVSX_PAT`; until then those steps skip by name. |
+| [Cursor](cursor) | Nothing of its own — it installs the VS Code extension: `uf editor install cursor`, or from Open VSX once it is published there | Yes |
 | [Neovim](neovim) | [`lua/uf.lua`](neovim/lua/uf.lua), using core `vim.lsp.start`; keeps `ts_ls`/`vtsls` off uf projects | Yes. CI runs it in headless Neovim against a stand-in server. |
 | [Vim](vim) | [`uf.vim`](vim/uf.vim), a vim-lsp registration | Yes; not run by CI. A TypeScript server vim-lsp also registers has to be disabled per project by hand. |
 | [Helix](helix) | [`languages.toml`](helix/languages.toml), per project, replacing `typescript-language-server` | Yes; not run by CI. |
 | [Emacs](emacs) | [`uf.el`](emacs/uf.el), for Eglot or lsp-mode; uf in a uf project, the usual server elsewhere | Yes. CI byte-compiles it and runs its ERT tests in batch Emacs. |
-| [Zed](zed) | [`extension.toml`](zed/extension.toml) and a `zed_extension_api` Rust extension, installed as a dev extension; serves only worktrees with `uf.config.js` | CI tests it on the host and builds the WASM; not yet in Zed's registry, and not run in Zed by CI. |
+| [Zed](zed) | [`extension.toml`](zed/extension.toml) and a `zed_extension_api` Rust extension, installed as a dev extension; serves only worktrees with `uf.config.js` | CI tests it on the host and packages it with Zed's own `zed-extension`, as the registry would; not yet in Zed's registry, and not run in Zed by CI. |
 | [JetBrains](jetbrains) | An [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) template to import | Through LSP4IJ rather than a native plugin; not run in an IDE by CI. The IDE's own JavaScript checking stays on beside uf's. |
 
 VS Code and Zed are packages. The rest are configuration: a file to copy, four

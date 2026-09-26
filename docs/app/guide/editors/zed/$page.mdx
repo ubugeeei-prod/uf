@@ -105,4 +105,6 @@ unaffected.
 The setting syntax, the defaults, the merge behaviour and worktree trust were
 read from Zed's documentation and source (`assets/settings/default.json`, the
 settings merge, `trusted_worktrees`) in September 2026. CI tests the extension's
-decisions on the host and builds its WebAssembly. No Zed runs in CI.
+decisions on the host, and packages it with `zed-extension`, the tool Zed's
+extension registry runs, which loads the manifest and compiles the WebAssembly
+as Zed does. No Zed runs in CI.
