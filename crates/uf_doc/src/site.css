@@ -65,7 +65,7 @@ footer { padding: 1.5rem 0; border-top: 1px solid var(--doc-rule); color: var(--
 @media (max-width: 720px) {
   .masthead { flex-wrap: wrap; gap: 0.5rem; padding: 1.5rem 0; }
   .project { width: 100%; }
-  .manual { grid-template-columns: 1fr; }
+  .manual { grid-template-columns: minmax(0, 1fr); }
   .sidebar { padding: 1.5rem 0; }
   .sidebar ul { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
   .sidebar li { margin: 0; }
