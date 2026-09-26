@@ -9,6 +9,7 @@
 
 # The release's own tooling, run by CI rather than by VS Code.
 release/**
+test/**
 .vscode/**
 .vscode-test/**
 .gitignore

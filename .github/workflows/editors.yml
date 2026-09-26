@@ -89,6 +89,9 @@ jobs:
             flags="--pre-release"
           fi
           ./node_modules/.bin/vsce package $flags --out "../../uf-vscode-${{ steps.version.outputs.version }}.vsix"
+      - name: Verify packaged grammar with VS Code's TextMate engine
+        run: |
+          node -e 'const {downloadAndUnzipVSCode}=require("./editors/vscode/node_modules/@vscode/test-electron"); const path=require("node:path"); downloadAndUnzipVSCode({version:"stable"}).then(executable => require("./editors/vscode/test/syntax.cjs").verifySyntax(path.resolve(executable,"..","resources","app"))).catch(error => { console.error(error); process.exitCode=1; });'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uf-vscode-${{ steps.version.outputs.version }}

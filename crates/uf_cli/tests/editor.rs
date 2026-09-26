@@ -501,6 +501,10 @@ fn new_sets_up_multiple_selected_editors_and_installs_the_release_extension() {
     assert_eq!(settings["javascript.validate.enable"], false);
     assert_eq!(settings["javascript.suggest.enabled"], false);
     assert_eq!(settings["[javascript]"]["js/ts.suggest.enabled"], false);
+    assert_eq!(
+        settings["[flow]"]["editor.defaultFormatter"],
+        "uniflowed.uf"
+    );
     assert!(machine.path("board/.helix/languages.toml").is_file());
     assert!(!machine.path("board/.zed").exists());
     assert!(

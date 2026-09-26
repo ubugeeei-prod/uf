@@ -507,8 +507,8 @@ describe("the settings a uf project gets", () => {
     const lines = workspace.describePlan(steps);
     expect(lines[0]).toContain('+ "javascript.validate.enable": false');
     expect(lines[1]).toContain('+ "[javascript]": { "js/ts.validate.enabled": false }');
-    expect(lines[3]).toContain("esbenp.prettier-vscode");
-    expect(lines[3]).toContain("kept");
+    expect(lines[4]).toContain("esbenp.prettier-vscode");
+    expect(lines[4]).toContain("kept");
   });
 });
 
@@ -518,7 +518,8 @@ describe("the Flow grammar injected into JavaScript", () => {
   );
   // TextMate grammars are Oniguruma; every pattern here is also valid
   // JavaScript, which is what lets them be tested without an editor.
-  const pattern = (name: string) => new RegExp(grammar.repository[name].match, "g");
+  const pattern = (name: string) =>
+    new RegExp(grammar.repository[name].match ?? grammar.repository[name].begin, "g");
   const matches = (name: string, source: string): Array<string> =>
     Array.from(source.matchAll(pattern(name)), (match) => match[1]);
 
@@ -526,7 +527,7 @@ describe("the Flow grammar injected into JavaScript", () => {
     const contributed = manifest.contributes.grammars.find(
       (entry) => entry.scopeName === grammar.scopeName,
     );
-    expect(contributed?.injectTo).toEqual(["source.js", "source.js.jsx"]);
+    expect(contributed?.injectTo).toEqual(["source.js", "source.js.jsx", "source.js.flow"]);
     expect(fs.existsSync(path.join(EXTENSION, contributed?.path ?? ""))).toBe(true);
     for (const include of grammar.patterns) {
       expect(grammar.repository[include.include.slice(1)] != null).toBe(true);
@@ -562,7 +563,8 @@ describe("the Flow grammar injected into JavaScript", () => {
       "const renders = 3; const o = { renders, count: renders };",
       "const opaque = true;",
     ].join("\n");
-    for (const name of Object.keys(grammar.repository)) {
+    for (const { include } of grammar.patterns) {
+      const name = include.slice(1);
       expect(`${name}: ${JSON.stringify(matches(name, plain))}`).toBe(`${name}: []`);
     }
   });

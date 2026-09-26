@@ -84,25 +84,13 @@ package it from a checkout and install the `.vsix`, as
 describes. The extension starts the project's own `uf` (`node_modules/.bin/uf`)
 before one on `PATH`, one server per folder that has a `uf.config.js`.
 
-### VS Code: 2. Turn off VS Code's JavaScript validation, for this project
+### VS Code: 2. Use Flow language mode for this project
 
-`uf editor setup vscode` (or `cursor`) writes the settings below and the
-recommendation. It adds what is missing, keeps anything the project already
-sets, and prints each line it adds. By hand, commit this as
-`.vscode/settings.json` in the project:
+Run `uf editor setup vscode` (or `cursor`) and commit the generated settings:
 
 ```jsonc
 {
-  // VS Code before 1.110, and Cursor.
-  "javascript.validate.enable": false,
-  "[javascript]": {
-    // VS Code 1.110 and later. Also covers .jsx.
-    "js/ts.validate.enabled": false,
-    "editor.defaultFormatter": "uniflowed.uf",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": { "source.fixAll.uf": "explicit" }
-  },
-  "[javascriptreact]": {
+  "[flow]": {
     "editor.defaultFormatter": "uniflowed.uf",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": { "source.fixAll.uf": "explicit" }
@@ -110,58 +98,32 @@ sets, and prints each line it adds. By hand, commit this as
 }
 ```
 
-What each part does:
+The **Flow** language mode colors component and hook signatures, parameters,
+type annotations, generics, exact objects and JSX. Hover signatures use the same
+Flow grammar and your theme. TypeScript's JavaScript providers do not match
+these documents, so a second `any` hover or conflicting semantic coloring does
+not appear beside uf's inferred type.
 
-- **The two validation lines are one switch with two names.** VS Code 1.110
-  (February 2026) renamed `javascript.validate.enable` to
-  `js/ts.validate.enabled`. It still reads the old name, but only while the new
-  one has no value anywhere, including a `"[typescript]"` block in your user
-  settings. Writing both covers every VS Code. Cursor's extension API is older
-  than 1.110 and has only the old name. It shows the new key as unknown and
-  ignores it.
-- **`"[javascript]"` covers `.jsx` too.** VS Code reads the validation setting
-  under the `javascript` language id for both. A `"[javascriptreact]"` block
-  alone would be ignored for validation.
-- **Validation off removes syntax, semantic and suggestion diagnostics for
-  JavaScript only.** `.ts` and `.tsx` files are checked as before, because
-  TypeScript's switch is a separate setting and nothing here touches it.
-- **The formatter lines** make Format Document and format on save use uf, which
-  formats to this project's `uf.config.js`. **`source.fixAll.uf`** applies every
-  safe uf lint fix on save.
+The extension selects Flow through VS Code's public language API only for files
+inside the uf folder, including multi-root windows. File associations are left
+unchanged. JavaScript opened from other folders and `.ts` files retain their
+own language services.
 
-The extension writes the two validation lines by itself the first time it
-starts a server in a folder with a `uf.config.js`. It writes only to that
-folder, never over a value the project set, and only once, so deleting the lines
-sticks. The notification it shows has an **Undo**, and
-`"uf.workspace.disableBuiltinValidation": false` turns the behaviour off.
-**uf: Configure Workspace for Flow** writes the full block above, after listing
-what it will write.
+A custom association such as `"*.js": "javascript"` is kept. Remove it to use
+Flow automatically, or select **Flow** in the file's language-mode picker.
+`"uf.workspace.disableBuiltinValidation": false` opts out of automatic setup.
+The setup notification offers **Undo**, and **uf: Configure Workspace for Flow**
+shows the full configuration before writing it.
 
-Commit `.vscode/extensions.json` as well, so VS Code offers the extension to
-everyone who opens the project:
+Setup also retains the legacy JavaScript validation/completion switches for
+custom configurations that keep the JavaScript language mode. Switching off
+validation alone does not remove TypeScript hover; Flow mode does.
+
+Commit `.vscode/extensions.json` so teammates are offered the extension:
 
 ```jsonc
 { "recommendations": ["uniflowed.uf"] }
 ```
-
-### VS Code: 3. What VS Code still does itself
-
-With validation off, VS Code's service still answers **hover**, **go to
-definition** and **suggestions** in JavaScript, beside uf's answers. VS Code has
-no setting that turns those off for JavaScript alone. Two options:
-
-- **Leave them.** Hover shows both answers, and go to definition may offer two
-  targets.
-- **Turn the service off for the workspace.** In the Extensions view, search
-  `@builtin TypeScript`, open **TypeScript and JavaScript Language Features**,
-  and choose **Disable (Workspace)**. That stops it for every file in this
-  workspace, `.ts` included, which suits a Flow-only project. VS Code keeps that
-  choice in its own workspace storage, not in a file, so each person makes it
-  once.
-
-To keep VS Code's suggestions out of JavaScript while leaving its hover, add
-`"javascript.suggest.enabled": false` and, in `"[javascript]"`,
-`"js/ts.suggest.enabled": false`.
 
 ### VS Code: 4. Check that it worked
 
@@ -181,23 +143,9 @@ Nothing above leaves the project. The settings live in its `.vscode/`, and the
 extension starts no server and writes no settings in a folder without
 `uf.config.js`.
 
-A multi-root workspace is the one case to know about. VS Code treats
-`javascript.validate.enable` as window-scoped there, so it cannot be set for one
-folder. The extension skips it rather than write it to the `.code-workspace`
-file, which would turn validation off for a TypeScript folder next to the uf
-one. On VS Code 1.110 and later, `js/ts.validate.enabled` is set per folder
-and does the job. On older versions the uf folder keeps TypeScript's errors
-in a multi-root window.
-
-### VS Code: Checked against
-
-The setting names, their scopes and the `"[javascript]"` behaviour were read
-from VS Code's `typescript-language-features` source (1.110) and its release
-notes in September 2026. The Cursor behaviour comes from Cursor's changelog
-(extension API 1.105.1) and has not been checked in a running Cursor. No VS Code
-runs in this repository's CI. The extension's own decisions are tested without
-one, as [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode)
-describes.
+In a multi-root window, Flow mode is selected per document in the uf folder.
+The extension does not disable the built-in TypeScript extension or write the
+uf folder's associations to the shared `.code-workspace` file.
 
 ## Zed
 

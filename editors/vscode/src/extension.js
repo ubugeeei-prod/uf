@@ -33,9 +33,9 @@
 // checking the version the server reports (`version.js`), a status bar item
 // with each server's state (`status.js`), and — in a uf project only — the
 // settings that stop VS Code's built-in TypeScript service reporting Flow
-// syntax as errors (`workspace.js`). The syntax highlighting for
-// `component`, `hook`, `match` and `renders` is a TextMate injection
-// grammar, `syntaxes/flow.injection.json`, contributed from package.json.
+// syntax as errors (`workspace.js`). Flow mode keeps TypeScript providers
+// away from uf files. Its TextMate grammar colors signatures and hover code
+// blocks, while reusing VS Code's JavaScript/JSX expression grammar.
 //
 // # One server per folder, started in that folder
 //
@@ -391,8 +391,19 @@ async function applyAutomaticSettings(folder /*: vscode.WorkspaceFolder */) /*: 
   for (const line of describePlan(steps)) {
     log(line);
   }
+  // A notification stays pending until the user dismisses it. It must not
+  // hold extension activation or requests waiting for the language client.
+  void notifyAutomaticSettings(folder, steps).catch((error) => {
+    log(`uf: could not show Flow setup notification: ${String(error)}`);
+  });
+}
+
+async function notifyAutomaticSettings(
+  folder /*: vscode.WorkspaceFolder */,
+  steps /*: $ReadOnlyArray<Step> */,
+) /*: Promise<void> */ {
   const choice = await vscode.window.showInformationMessage(
-    `uf: turned off VS Code's built-in JavaScript validation in ${folder.name} (.vscode/settings.json), so Flow syntax is not reported as TypeScript errors. uf reports this folder's problems.`,
+    `uf: configured Flow language mode and turned off built-in JavaScript validation in ${folder.name} (.vscode/settings.json). uf supplies Flow types and highlighting without TypeScript hover entries.`,
     "Undo",
     "Show Log",
   );
@@ -426,6 +437,51 @@ async function applyAutomaticSettings(folder /*: vscode.WorkspaceFolder */) /*: 
       );
   } else if (choice === "Show Log" && output != null) {
     output.show(true);
+  }
+}
+
+/**
+ * files.associations cannot be folder scoped in a multi-root workspace.
+ * Assign Flow only to documents belonging to this uf project, using the
+ * public language API. JS/TS in other folders keep their own providers.
+ */
+async function selectFlowLanguage(document /*: vscode.TextDocument */) /*: Promise<void> */ {
+  if (
+    document.uri.scheme !== "file" ||
+    !isFlowFile(document.uri.fsPath) ||
+    !["javascript", "javascriptreact"].includes(document.languageId)
+  ) {
+    return;
+  }
+  const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (folder == null || !isUfProject(folder.uri.fsPath, exists)) return;
+  if (
+    vscode.workspace
+      .getConfiguration("uf", document.uri)
+      .get("workspace.disableBuiltinValidation") === false
+  )
+    return;
+  const inspection = vscode.workspace
+    .getConfiguration("files", document.uri)
+    .inspect("associations");
+  for (const selected of [
+    inspection?.globalValue,
+    inspection?.workspaceValue,
+    inspection?.workspaceFolderValue,
+  ]) {
+    if (selected == null || typeof selected !== "object" || Array.isArray(selected)) continue;
+    for (const pattern of Object.keys(selected)) {
+      if (selected[pattern] === "flow") continue;
+      // Associations without a slash match a basename. Reuse the editor's
+      // selector matcher for path globs, including braces and character sets.
+      const glob = pattern.includes("/") ? pattern : `**/${pattern}`;
+      if (vscode.languages.match({ pattern: glob }, document) > 0) return;
+    }
+  }
+  try {
+    await vscode.languages.setTextDocumentLanguage(document, "flow");
+  } catch (error) {
+    log(`uf: could not use Flow language mode for ${document.uri.fsPath}: ${String(error)}`);
   }
 }
 
@@ -656,8 +712,14 @@ async function activate(context /*: vscode.ExtensionContext */) /*: Promise<void
     vscode.workspace.onWillSaveTextDocument((event) => {
       event.waitUntil(formatOnSave(event));
     }),
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      void selectFlowLanguage(document);
+    }),
   );
 
+  for (const document of vscode.workspace.textDocuments) {
+    await selectFlowLanguage(document);
+  }
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     await start(folder);
   }

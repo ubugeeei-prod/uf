@@ -1,0 +1,99 @@
+{
+  "$comment": "A separate Flow language keeps JavaScript/TypeScript providers off Flow files and gives fenced Flow hover snippets the same grammar as the editor. Reuse VS Code's JavaScript/JSX grammar; the injection supplies Flow declarations and type contexts.",
+  "name": "Flow",
+  "scopeName": "source.js.flow",
+  "patterns": [
+    {
+      "include": "#hover-parameter"
+    },
+    {
+      "include": "#hover-member"
+    },
+    {
+      "include": "#hover-method"
+    },
+    {
+      "include": "source.flow.injection.uf"
+    },
+    {
+      "include": "source.js.jsx"
+    }
+  ],
+  "repository": {
+    "hover-parameter": {
+      "name": "meta.type.hover.flow",
+      "begin": "^\\s*(\\(parameter\\))\\s+([_$[:alpha:]][_$[:alnum:]]*)\\s*(:)",
+      "beginCaptures": {
+        "1": {
+          "name": "comment.line.documentation.flow"
+        },
+        "2": {
+          "name": "variable.parameter.flow"
+        },
+        "3": {
+          "name": "keyword.operator.type.annotation.flow"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "source.flow.injection.uf#type"
+        }
+      ]
+    },
+    "hover-member": {
+      "name": "meta.type.hover.flow",
+      "begin": "^\\s*(\\((?:property|getter|setter|enum member)\\))\\s+(?:([_$[:alpha:]][_$[:alnum:].]*)(\\.))?([_$[:alpha:]][_$[:alnum:]]*)\\s*(:)",
+      "beginCaptures": {
+        "1": {
+          "name": "comment.line.documentation.flow"
+        },
+        "2": {
+          "name": "entity.name.type.flow"
+        },
+        "3": {
+          "name": "punctuation.accessor.flow"
+        },
+        "4": {
+          "name": "variable.other.property.flow"
+        },
+        "5": {
+          "name": "keyword.operator.type.annotation.flow"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "source.flow.injection.uf#type"
+        }
+      ]
+    },
+    "hover-method": {
+      "name": "meta.function.hover.flow",
+      "begin": "^\\s*(\\(method\\))\\s+(?:([_$[:alpha:]][_$[:alnum:].]*)(\\.))?([_$[:alpha:]][_$[:alnum:]]*)",
+      "beginCaptures": {
+        "1": {
+          "name": "comment.line.documentation.flow"
+        },
+        "2": {
+          "name": "entity.name.type.flow"
+        },
+        "3": {
+          "name": "punctuation.accessor.flow"
+        },
+        "4": {
+          "name": "entity.name.function.flow"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "source.flow.injection.uf#parameters"
+        },
+        {
+          "include": "source.flow.injection.uf#annotation"
+        }
+      ]
+    }
+  }
+}

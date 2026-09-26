@@ -1,46 +1,367 @@
 {
-  "$comment": "Flow's component syntax, injected into VS Code's JavaScript grammars. Keywords only: the surrounding code is still scoped by the JavaScript grammar. Each pattern is narrow enough to leave ordinary JavaScript alone (a `match(` call, a variable named `renders`); tests/library/vscode-extension.test.js holds both directions.",
+  "$comment": "Flow declarations use complete signature contexts, not keyword-only matches. Types use standard theme scopes for both source and hover signatures. JavaScript/JSX expressions reuse VS Code's built-in grammar.",
   "scopeName": "source.flow.injection.uf",
-  "injectionSelector": "L:source.js -comment -string, L:source.js.jsx -comment -string",
+  "injectionSelector": "L:source.js -comment -string, L:source.js.jsx -comment -string, L:source.js.flow -comment -string",
   "patterns": [
-    { "include": "#component-declaration" },
-    { "include": "#hook-declaration" },
-    { "include": "#renders" },
-    { "include": "#match" },
-    { "include": "#opaque" }
+    {
+      "include": "#component-declaration"
+    },
+    {
+      "include": "#hook-declaration"
+    },
+    {
+      "include": "#type-declaration"
+    },
+    {
+      "include": "#renders"
+    },
+    {
+      "include": "#match"
+    },
+    {
+      "include": "#opaque"
+    }
   ],
   "repository": {
     "component-declaration": {
-      "match": "(?<![\\w$.])(component)\\s+([A-Za-z_$][\\w$]*)(?=\\s*[<(])",
-      "captures": {
-        "1": { "name": "storage.type.component.flow" },
-        "2": { "name": "entity.name.function.component.flow" }
-      }
+      "begin": "(?<![\\w$.])(component)\\s+([A-Za-z_$][\\w$]*)(?=\\s*[<(])",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.type.component.flow"
+        },
+        "2": {
+          "name": "entity.name.function.component.flow"
+        }
+      },
+      "end": "(?<=\\})|(?=;|^\\s*(?:export\\s+)?(?:component|hook|function|const|let|type|opaque)\\b)",
+      "name": "meta.function.flow",
+      "patterns": [
+        {
+          "include": "#signature"
+        }
+      ]
     },
     "hook-declaration": {
-      "match": "(?<![\\w$.])(hook)\\s+(use[\\w$]*)(?=\\s*[<(])",
-      "captures": {
-        "1": { "name": "storage.type.hook.flow" },
-        "2": { "name": "entity.name.function.hook.flow" }
-      }
+      "begin": "(?<![\\w$.])(hook)\\s+(use[\\w$]*)(?=\\s*[<(])",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.type.hook.flow"
+        },
+        "2": {
+          "name": "entity.name.function.hook.flow"
+        }
+      },
+      "end": "(?<=\\})|(?=;|^\\s*(?:export\\s+)?(?:component|hook|function|const|let|type|opaque)\\b)",
+      "name": "meta.function.flow",
+      "patterns": [
+        {
+          "include": "#signature"
+        }
+      ]
     },
     "renders": {
-      "match": "(?<=\\)|\\) |:|: )(renders[?*]?)(?=\\s+[A-Za-z_$(])",
-      "captures": {
-        "1": { "name": "keyword.other.renders.flow" }
-      }
+      "name": "meta.type.annotation.flow",
+      "begin": "(?<=\\)|\\) |:|: )(renders[?*]?)(?=\\s+[A-Za-z_$(])",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.other.renders.flow"
+        }
+      },
+      "end": "(?=\\{|;)|(?<=\\S)(?=\\s*$)",
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
     },
     "match": {
       "match": "(?<![\\w$.])(match)(?=\\s*\\([^()]*\\)\\s*\\{)",
       "captures": {
-        "1": { "name": "keyword.control.match.flow" }
+        "1": {
+          "name": "keyword.control.match.flow"
+        }
       }
     },
     "opaque": {
       "match": "(?<![\\w$.])(opaque)(?=\\s+type\\b)",
       "captures": {
-        "1": { "name": "storage.modifier.opaque.flow" }
+        "1": {
+          "name": "storage.modifier.opaque.flow"
+        }
       }
+    },
+    "signature": {
+      "patterns": [
+        {
+          "include": "source.js.jsx#comment"
+        },
+        {
+          "include": "#type-arguments"
+        },
+        {
+          "include": "#parameters"
+        },
+        {
+          "include": "#renders-type"
+        },
+        {
+          "include": "#annotation"
+        },
+        {
+          "include": "source.js.jsx#decl-block"
+        }
+      ]
+    },
+    "parameters": {
+      "name": "meta.parameters.flow",
+      "begin": "\\(",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.parameters.begin.flow"
+        }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.parameters.end.flow"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.js.jsx#comment"
+        },
+        {
+          "include": "#annotation"
+        },
+        {
+          "include": "#parameters"
+        },
+        {
+          "match": "\\b(as)\\b",
+          "name": "keyword.operator.flow"
+        },
+        {
+          "match": "\\b(?!(?:true|false|null|undefined)\\b)([_$[:alpha:]][_$[:alnum:]]*)(\\?)?(?=\\s*[:,)=]|\\s+as\\b)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.flow"
+            },
+            "2": {
+              "name": "keyword.operator.optional.flow"
+            }
+          }
+        },
+        {
+          "include": "source.js.jsx#expression"
+        }
+      ]
+    },
+    "annotation": {
+      "name": "meta.type.annotation.flow",
+      "begin": "(:)\\s*",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.operator.type.annotation.flow"
+        }
+      },
+      "end": "(?<![:|&])(?!\\s*[|&]\\s+)((?=[,);\\}\\]]|//)|(?==[^>])|((?<=[\\}>\\]\\)]|[_$[:alpha:]])\\s*(?=\\{)))",
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "renders-type": {
+      "name": "meta.type.annotation.flow",
+      "begin": "\\b(renders[?*]?)(?=\\s+[_$[:alpha:](])",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.other.renders.flow"
+        }
+      },
+      "end": "(?=\\{|;)|(?<=\\S)(?=\\s*$)",
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "type": {
+      "patterns": [
+        {
+          "include": "source.js.jsx#comment"
+        },
+        {
+          "include": "source.js.jsx#type-string"
+        },
+        {
+          "include": "source.js.jsx#numeric-literal"
+        },
+        {
+          "match": "\\b(any|mixed|empty|void|null|number|string|boolean|bool|symbol|bigint|true|false)\\b",
+          "name": "support.type.primitive.flow"
+        },
+        {
+          "include": "#type-object"
+        },
+        {
+          "include": "#type-tuple"
+        },
+        {
+          "include": "#type-arguments"
+        },
+        {
+          "include": "#type-function"
+        },
+        {
+          "match": "\\b(component|hook|typeof|keyof|readonly|infer|extends|renders[?*]?)\\b",
+          "name": "storage.type.flow"
+        },
+        {
+          "match": "(=>)|[?:|&+*=.\\-]",
+          "name": "keyword.operator.type.flow"
+        },
+        {
+          "match": "[_$[:alpha:]][_$[:alnum:]]*",
+          "name": "entity.name.type.flow"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.comma.flow"
+        }
+      ]
+    },
+    "type-object": {
+      "name": "meta.type.object.flow",
+      "begin": "(\\{)(\\|)?",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.block.begin.flow"
+        },
+        "2": {
+          "name": "keyword.operator.exact.flow"
+        }
+      },
+      "end": "(\\|)?(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.operator.exact.flow"
+        },
+        "2": {
+          "name": "punctuation.definition.block.end.flow"
+        }
+      },
+      "patterns": [
+        {
+          "match": "([+\\-])?([_$[:alpha:]][_$[:alnum:]]*)(\\?)?(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.variance.flow"
+            },
+            "2": {
+              "name": "variable.other.property.flow"
+            },
+            "3": {
+              "name": "keyword.operator.optional.flow"
+            }
+          }
+        },
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "type-tuple": {
+      "name": "meta.type.flow",
+      "begin": "\\[",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.bracket.begin.flow"
+        }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.bracket.end.flow"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "type-arguments": {
+      "name": "meta.type.flow",
+      "begin": "\\<",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.typeparameters.begin.flow"
+        }
+      },
+      "end": "\\>",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.typeparameters.end.flow"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "type-function": {
+      "name": "meta.type.flow",
+      "begin": "\\(",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.parameters.begin.flow"
+        }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.parameters.end.flow"
+        }
+      },
+      "patterns": [
+        {
+          "match": "([_$[:alpha:]][_$[:alnum:]]*)(\\?)?(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.flow"
+            },
+            "2": {
+              "name": "keyword.operator.optional.flow"
+            }
+          }
+        },
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "type-declaration": {
+      "name": "meta.type.declaration.flow",
+      "begin": "(?<![\\w$.])(?:(opaque)\\s+)?(type)\\s+([_$[:alpha:]][_$[:alnum:]]*)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.modifier.opaque.flow"
+        },
+        "2": {
+          "name": "storage.type.type.flow"
+        },
+        "3": {
+          "name": "entity.name.type.alias.flow"
+        }
+      },
+      "end": "(?=;|^\\s*(?:export\\s+)?(?:const|let|var|function|component|hook|type|opaque|declare|class|enum|import)\\b)",
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
     }
   }
 }
