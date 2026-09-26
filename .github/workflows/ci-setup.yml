@@ -10,19 +10,19 @@
 # branch is — which is a different question and belongs to a different red
 # check. It is also the only workflow here that would fail with no code change
 # at all, the day `setup.uniflowed.dev` stops answering.
-name: Integrations
+name: CI setup
 
 on:
   push:
     branches: [main]
     paths:
-      - integrations/**
-      - .github/workflows/integrations.yml
+      - ci-setup/**
+      - .github/workflows/ci-setup.yml
       - infra/cloudflare/setup-assets/install.sh
   pull_request:
     paths:
-      - integrations/**
-      - .github/workflows/integrations.yml
+      - ci-setup/**
+      - .github/workflows/ci-setup.yml
       - infra/cloudflare/setup-assets/install.sh
   # A release can break the action without either changing, so once a week and
   # on request.
@@ -42,7 +42,7 @@ env:
   PINNED: 0.0.0-alpha.10
 
 concurrency:
-  group: integrations-${{ github.ref }}
+  group: ci-setup-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -87,7 +87,7 @@ jobs:
       # GitHub treat it as fully pinned.
       - name: Install uf
         id: setup
-        uses: $/integrations/github-actions
+        uses: $/ci-setup/github-actions
         with:
           version: ${{ matrix.resolves == 'latest' && 'latest' || env.PINNED }}
           setup-url: ${{ matrix.resolves == 'latest' && format('file://{0}/infra/cloudflare/setup-assets/install.sh', github.workspace) || 'https://setup.uniflowed.dev' }}

@@ -1,7 +1,7 @@
 #!/bin/sh
 # The CI integrations set only environment variables the installer reads.
 #
-# `integrations/` holds three files that install `uf` by running the same
+# `ci-setup/` holds three files that install `uf` by running the same
 # script `curl -fsSL https://setup.uniflowed.dev | sh` runs, configured
 # entirely through environment variables. Nothing else connects them: the
 # installer is shell, the integrations are YAML for three different systems,
@@ -33,9 +33,9 @@ repo_root="$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$repo_root"
 
 installer="infra/cloudflare/setup-assets/install.sh"
-integrations="integrations/github-actions/action.yml
-integrations/gitlab/uf.gitlab-ci.yml
-integrations/circleci/orb.yml"
+integrations="ci-setup/github-actions/action.yml
+ci-setup/gitlab/uf.gitlab-ci.yml
+ci-setup/circleci/orb.yml"
 
 status=0
 

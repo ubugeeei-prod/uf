@@ -1,65 +1,595 @@
 ---
-title: "Editors · uf"
-description: "uf lsp in VS Code, Cursor, Neovim, Vim, Helix, Emacs, Zed and JetBrains: what it answers, what it does not, and the config it reads."
+title: "IDE setup · uf"
+description: "Set up uf in VS Code, Cursor, Zed, JetBrains, Neovim, Vim, Helix or Emacs, with project settings and shared language-server guidance."
 readiness: "Implemented"
 ---
 
 <p className="eyebrow">Start</p>
 
-# Editors
+# IDE setup
 
 <div className="lede">
-`uf lsp` is uf's language server, and every integration under
-[`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client of
-it. What an editor shows — a lint finding under a line, a file formatted on save,
-a quick fix — comes from the same crates `uf lint` and `uf fmt` run in a terminal,
-so the editor and CI cannot disagree about a file.
+Connect your editor to `uf lsp`, configure formatting on save, and keep its
+JavaScript service from reporting TypeScript errors on Flow files. Choose your
+editor below; all integrations use the same language server and project settings.
 </div>
-
-**What you will be able to do:** set up your editor, know exactly what the server
-answers and what it does not, and make sure it formats and lints to your project's
-configuration rather than to uf's defaults.
 
 **What you need first:** uf [installed](/guide/install), and a project with a
 `uf.config.js` — [Your first project](/guide/project) makes one.
 
-## Your editor
+## Choose your editor
 
-Every editor on this list that ships a JavaScript language server, or usually
-runs one, reads a Flow file as TypeScript: `component`, `hook`, `match`,
-`renders` and every type annotation are reported as errors beside uf's. Each
-page below turns that off **for a uf project only**, in a file you commit with
-the project, so the same editor still checks a TypeScript project as before.
-Each page also says what the editor keeps doing that no setting turns off.
-
-| Editor | Its JavaScript server | Turned off, per project, by | uf formats on save | Left on | CI runs the integration |
-| --- | --- | --- | --- | --- | --- |
-| [VS Code and Cursor](/guide/editors/vscode) | TypeScript's, built in | `.vscode/settings.json`: `javascript.validate.enable` and `js/ts.validate.enabled`, which the extension writes | `editor.defaultFormatter` | the built-in hover, definitions and suggestions, unless the built-in extension is disabled for the workspace | its decisions, and its wiring against a stand-in for VS Code |
-| [Zed](/guide/editors/zed) | vtsls | `.zed/settings.json`: `"!vtsls"` in `language_servers` | `formatter` and `format_on_save` | Zed's tree-sitter highlighting, which does not know Flow's component syntax | its decisions, on the host |
-| [JetBrains IDEs](/guide/editors/jetbrains) | the IDE's own JavaScript and TypeScript support | the Flow language level and the TypeScript service setting | Reformat Code, through LSP4IJ | the IDE's own parser and inspections (not verified against Flow's component syntax) | no |
-| [Neovim and Vim](/guide/editors/neovim) | usually `ts_ls` or `vtsls`, from nvim-lspconfig | `uf.lua`'s `exclude`, or a `root_dir` that skips uf projects | `format_on_save` | nothing in Neovim; in Vim, a vim-lsp TypeScript server you disable yourself | Neovim, headless |
-| [Helix](/guide/editors/helix) | typescript-language-server | `.helix/languages.toml`: `language-servers = ["uf"]` | `auto-format` | nothing | no |
-| [Emacs](/guide/editors/emacs) | typescript-language-server, from Eglot or lsp-mode | `uf.el`, which serves uf projects with uf and everything else as before | `uf-format-on-save` | nothing | batch Emacs |
-
-From a terminal, `uf editor install <editor>` installs the integration, and
-`uf editor setup <editor>` writes the project's file from the table. Setup adds
-what is missing, keeps anything the project already sets, and with `--check`
-writes nothing and fails when something is missing.
-
-Where each integration comes from, and what `uf editor install` does for it:
-
-| Editor | Installed from | `uf editor install` |
+| Editor | Install the integration | Configure the project |
 | --- | --- | --- |
-| VS Code, Cursor | the `.vsix` attached to each uf GitHub release. The Visual Studio Marketplace and Open VSX once the owner's publishing tokens are set; no release has been published there yet | downloads the release's `.vsix`, checks its sha256, runs `code`/`cursor --install-extension` |
-| Zed | a dev extension, compiled by Zed from its sources; not in Zed's extension registry yet | writes the sources to `~/.local/share/uf/editors/zed` for **zed: install dev extension** |
-| JetBrains IDEs | the LSP4IJ plugin from the JetBrains Marketplace, and uf's LSP4IJ template | writes the template to `~/.local/share/uf/editors/jetbrains/lsp4ij-template` for LSP4IJ's **Import from custom template…** |
-| Neovim, Vim, Emacs | one configuration file each, compiled into uf | writes it where the editor looks; the page says which file |
-| Helix | nothing to install: Helix speaks LSP itself | nothing; `uf editor setup helix` writes the project's `.helix/languages.toml` |
+| [VS Code and Cursor](#vs-code-and-cursor) | `uf editor install vscode` or `cursor` | `uf editor setup vscode` or `cursor` |
+| [Zed](#zed) (experimental) | `uf editor install zed`, then install the dev extension | `uf editor setup zed` |
+| [JetBrains IDEs](#jetbrains-ides) | `uf editor install jetbrains`, then import the LSP4IJ template | Set the Flow language level and TypeScript service in the IDE |
+| [Neovim and Vim](#neovim-and-vim) | `uf editor install neovim` or `vim` | `uf editor setup neovim`; configure vim-lsp for Vim |
+| [Helix](#helix) | None: Helix has an LSP client | `uf editor setup helix` |
+| [Emacs](#emacs) | `uf editor install emacs`, then load `uf.el` | `uf editor setup emacs` |
 
-Every one of them gets uf's diagnostics, hover, go to definition, go to type
-definition, completion, find references, highlights, rename, the document
-outline, quick fixes, fix-all and formatting, because they all come from
-`uf lsp`. None of them gets signature help, because `uf lsp` does not serve it.
+Run setup from your project root and commit the settings it writes. Setup adds
+what is missing and keeps existing values. `uf editor setup <editor> --check`
+writes nothing and fails when settings are missing.
+
+Every integration provides uf's diagnostics, hover, definitions, completion,
+references, highlights, rename, document symbols, quick fixes, fix-all and
+formatting through `uf lsp`. The
+[shared server guidance](#what-the-server-answers) below explains those features,
+and [configuration](#which-configuration-it-reads) explains how to restart the
+server after changing `uf.config.js`.
+
+## VS Code and Cursor
+
+VS Code runs TypeScript's language service over every JavaScript file, so a Flow
+file gets TypeScript's errors beside uf's. The settings below turn those off for one
+project, in a settings file you commit, and make uf the formatter — without
+changing anything in a TypeScript project opened in the same editor.
+
+### VS Code: 1. Install the extension
+
+The extension is `uniflowed.uf`, and Cursor installs the same one. Each uf
+release attaches it to its GitHub release, and uf installs the one that
+matches it:
+
+```sh
+uf editor install vscode    # or: uf editor install cursor
+```
+
+It downloads `uf-vscode-<version>.vsix` from the release of the uf you run,
+checks it against the published sha256, and installs it with the editor's own
+`--install-extension`. `--version` picks another release, and `--vsix FILE`
+installs one you already have.
+
+The release job also publishes to the Visual Studio Marketplace and Open VSX,
+but only with the publishing tokens the repository owner sets, and no release
+has had them yet: until one does, `code --install-extension uniflowed.uf`
+and a search in the Extensions view find nothing. To run your own build,
+package it from a checkout and install the `.vsix`, as
+[`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode)
+describes. The extension starts the project's own `uf` (`node_modules/.bin/uf`)
+before one on `PATH`, one server per folder that has a `uf.config.js`.
+
+### VS Code: 2. Turn off VS Code's JavaScript validation, for this project
+
+`uf editor setup vscode` (or `cursor`) writes the settings below and the
+recommendation. It adds what is missing, keeps anything the project already
+sets, and prints each line it adds. By hand, commit this as
+`.vscode/settings.json` in the project:
+
+```jsonc
+{
+  // VS Code before 1.110, and Cursor.
+  "javascript.validate.enable": false,
+  "[javascript]": {
+    // VS Code 1.110 and later. Also covers .jsx.
+    "js/ts.validate.enabled": false,
+    "editor.defaultFormatter": "uniflowed.uf",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.fixAll.uf": "explicit" }
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "uniflowed.uf",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.fixAll.uf": "explicit" }
+  }
+}
+```
+
+What each part does:
+
+- **The two validation lines are one switch with two names.** VS Code 1.110
+  (February 2026) renamed `javascript.validate.enable` to
+  `js/ts.validate.enabled`. It still reads the old name, but only while the new
+  one has no value anywhere, including a `"[typescript]"` block in your user
+  settings. Writing both covers every VS Code. Cursor's extension API is older
+  than 1.110 and has only the old name. It shows the new key as unknown and
+  ignores it.
+- **`"[javascript]"` covers `.jsx` too.** VS Code reads the validation setting
+  under the `javascript` language id for both. A `"[javascriptreact]"` block
+  alone would be ignored for validation.
+- **Validation off removes syntax, semantic and suggestion diagnostics for
+  JavaScript only.** `.ts` and `.tsx` files are checked as before, because
+  TypeScript's switch is a separate setting and nothing here touches it.
+- **The formatter lines** make Format Document and format on save use uf, which
+  formats to this project's `uf.config.js`. **`source.fixAll.uf`** applies every
+  safe uf lint fix on save.
+
+The extension writes the two validation lines by itself the first time it
+starts a server in a folder with a `uf.config.js`. It writes only to that
+folder, never over a value the project set, and only once, so deleting the lines
+sticks. The notification it shows has an **Undo**, and
+`"uf.workspace.disableBuiltinValidation": false` turns the behaviour off.
+**uf: Configure Workspace for Flow** writes the full block above, after listing
+what it will write.
+
+Commit `.vscode/extensions.json` as well, so VS Code offers the extension to
+everyone who opens the project:
+
+```jsonc
+{ "recommendations": ["uniflowed.uf"] }
+```
+
+### VS Code: 3. What VS Code still does itself
+
+With validation off, VS Code's service still answers **hover**, **go to
+definition** and **suggestions** in JavaScript, beside uf's answers. VS Code has
+no setting that turns those off for JavaScript alone. Two options:
+
+- **Leave them.** Hover shows both answers, and go to definition may offer two
+  targets.
+- **Turn the service off for the workspace.** In the Extensions view, search
+  `@builtin TypeScript`, open **TypeScript and JavaScript Language Features**,
+  and choose **Disable (Workspace)**. That stops it for every file in this
+  workspace, `.ts` included, which suits a Flow-only project. VS Code keeps that
+  choice in its own workspace storage, not in a file, so each person makes it
+  once.
+
+To keep VS Code's suggestions out of JavaScript while leaving its hover, add
+`"javascript.suggest.enabled": false` and, in `"[javascript]"`,
+`"js/ts.suggest.enabled": false`.
+
+### VS Code: 4. Check that it worked
+
+1. Open a file that uses `component` or `match`. The Problems panel lists only
+   entries whose source is `uf` or `flow`, with no `ts(…)` codes.
+2. Hover a variable. uf's hover shows the type as Flow infers it
+   (`const first: Flag`).
+3. Run **Format Document**, then `uf fmt --check` in a terminal. If the terminal
+   reports the file, the server read a different configuration. Open the folder
+   that holds `uf.config.js`.
+4. The status bar item on the right shows `uf` with the version it is running.
+   Click it for the log and a restart.
+
+### VS Code: A TypeScript project in the same editor
+
+Nothing above leaves the project. The settings live in its `.vscode/`, and the
+extension starts no server and writes no settings in a folder without
+`uf.config.js`.
+
+A multi-root workspace is the one case to know about. VS Code treats
+`javascript.validate.enable` as window-scoped there, so it cannot be set for one
+folder. The extension skips it rather than write it to the `.code-workspace`
+file, which would turn validation off for a TypeScript folder next to the uf
+one. On VS Code 1.110 and later, `js/ts.validate.enabled` is set per folder
+and does the job. On older versions the uf folder keeps TypeScript's errors
+in a multi-root window.
+
+### VS Code: Checked against
+
+The setting names, their scopes and the `"[javascript]"` behaviour were read
+from VS Code's `typescript-language-features` source (1.110) and its release
+notes in September 2026. The Cursor behaviour comes from Cursor's changelog
+(extension API 1.105.1) and has not been checked in a running Cursor. No VS Code
+runs in this repository's CI. The extension's own decisions are tested without
+one, as [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode)
+describes.
+
+## Zed
+
+**Experimental:** install a dev extension; Rust through `rustup` is required.
+The integration is tested on the host, but Zed itself is not run in CI.
+
+Zed starts vtsls, a TypeScript server, for every JavaScript file, and it reads
+a Flow file as TypeScript. A project's own <code>.zed/settings.json</code> can
+drop vtsls for that project and put uf in its place, both as the language
+server and as the formatter.
+
+### Zed: 1. Install the extension
+
+Zed has no setting that adds a language server of your own. A server has to
+come from an extension, so uf's lives in
+[`editors/zed`](https://github.com/ubugeeei-prod/uf/tree/main/editors/zed).
+It is not in Zed's extension registry yet, so install it as a dev extension.
+`uf editor install zed` writes its sources to `~/.local/share/uf/editors/zed`
+(under `$XDG_DATA_HOME` when that is set). Zed has no command-line install, so
+then open the command palette, run **zed: install dev extension**, and select
+that directory, or `editors/zed` in a uf checkout.
+
+The extension starts `uf lsp --cwd <worktree>`, using the project's
+`node_modules/.bin/uf` before one on `PATH`. `lsp.uf.binary.path` in Zed's
+settings overrides both. It serves only a worktree with `uf.config.js` at its
+root. Zed's defaults ask every JavaScript server in every JavaScript project,
+so in a project without that file the extension declines, with a message
+saying why.
+
+### Zed: 2. Keep vtsls off this project
+
+`uf editor setup zed` writes this, keeping anything the project's file already
+says. By hand, commit it as `.zed/settings.json` in the project:
+
+```jsonc
+{
+  "languages": {
+    "JavaScript": {
+      "language_servers": ["uf", "!vtsls", "!typescript-language-server", "..."],
+      "formatter": { "language_server": { "name": "uf" } },
+      "format_on_save": "on"
+    }
+  }
+}
+```
+
+- **`language_servers`**: `"uf"` turns uf on, `"!name"` turns a server off, and
+  `"..."` means every other server registered for the language, so ESLint and
+  Tailwind keep running if the project uses them. Zed's default for JavaScript
+  is `["!typescript-language-server", "vtsls", "..."]`.
+- **Zed's JavaScript is `.js`, `.jsx`, `.mjs` and `.cjs`.** `.jsx` is not TSX,
+  so this one block covers every file uf reads.
+- **`formatter`** names uf explicitly. With the default `"auto"`, Zed would pick
+  Prettier for JavaScript. `format_on_save` is `"off"` by default.
+- **A project's list replaces your user list.** Lists in Zed's settings do not
+  merge. That is what makes this per project: a TypeScript project opened in
+  the same Zed still gets vtsls from the defaults.
+
+To stop Zed asking the uf extension in projects that are not uf projects at
+all, add `"!uf"` to `languages.JavaScript.language_servers` in your user
+settings. The project's list above names `"uf"` and wins.
+
+### Zed: 3. Trust the project
+
+Zed's worktree trust (restricted mode) does not start language servers that a
+project's `.zed/settings.json` asks for until you trust the project. Trust it
+when Zed asks, or from the restricted-mode banner.
+
+### Zed: 4. Check that it worked
+
+1. Open a file with `component` or `match`. The diagnostics panel lists only
+   `uf` and `flow` entries.
+2. The language server menu in the status bar lists `uf` for the buffer and
+   not `vtsls`.
+3. Save a file, then run `uf fmt --check` in a terminal. If it reports the
+   file, Zed opened a different folder than the one that holds `uf.config.js`.
+
+Editing `uf.config.js` needs **editor: restart language server**, because the
+server reads it once, at start-up.
+
+### Zed: What Zed does not get
+
+Zed highlights JavaScript with a tree-sitter grammar that does not know
+`component`, `hook`, `match` or `renders`. No maintained tree-sitter grammar
+for modern Flow exists to ship instead, so those lines are highlighted as the
+JavaScript grammar parses them. The language features come from uf and are
+unaffected.
+
+### Zed: Checked against
+
+The setting syntax, the defaults, the merge behaviour and worktree trust were
+read from Zed's documentation and source (`assets/settings/default.json`, the
+settings merge, `trusted_worktrees`) in September 2026. CI tests the extension's
+decisions on the host, and packages it with `zed-extension`, the tool Zed's
+extension registry runs, which loads the manifest and compiles the WebAssembly
+as Zed does. No Zed runs in CI.
+
+## JetBrains IDEs
+
+Use WebStorm or IntelliJ IDEA Ultimate with JavaScript support.
+
+WebStorm and IntelliJ IDEA Ultimate parse and check JavaScript themselves, and
+no language server can take that away. What you can do is set the IDE's
+JavaScript to Flow, turn its TypeScript service off, and add uf's diagnostics
+and formatting through the LSP4IJ plugin. The verification notes below describe the remaining gaps.
+
+### JetBrains: 1. Add uf's server through LSP4IJ
+
+JetBrains' own language server API is only for plugins, and there is no
+JetBrains plugin for uf. [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij),
+Red Hat's LSP client plugin, runs any server:
+
+1. **Settings → Plugins**: install LSP4IJ.
+2. **Settings → Languages & Frameworks → Language Servers → +**, then
+   **Template → Import from custom template…**, and select the template
+   directory. `uf editor install jetbrains` writes it to
+   `~/.local/share/uf/editors/jetbrains/lsp4ij-template`, and a uf checkout
+   has it at `editors/jetbrains/lsp4ij-template`.
+3. It fills in `uf lsp --cwd $PROJECT_DIR$` for `*.js`, `*.mjs` and `*.cjs`
+   (as `javascript`) and `*.jsx` (as `javascriptreact`). The
+   [README](https://github.com/ubugeeei-prod/uf/tree/main/editors/jetbrains)
+   has the same values to type by hand, and the command for a project-pinned uf.
+
+LSP4IJ keeps its servers in IDE-wide settings, not in the project, so each
+person does this once per IDE. It cannot be committed.
+
+### JetBrains: 2. Set the IDE's JavaScript to Flow
+
+**Settings → Languages & Frameworks → JavaScript → JavaScript language version:
+Flow.** This makes the IDE's parser accept Flow's type annotations. The IDE
+stores the choice in the project's `.idea/misc.xml`, under the
+`JavaScriptSettings` component's `languageLevel`, so it can be committed if you
+commit `.idea/`.
+
+On the same page, leave **Flow package or executable** empty and **Use Flow
+server for** unchecked. Those options run Meta's `flow` server, which needs a
+`.flowconfig` and `flow-bin`. In a uf project, uf is the Flow server.
+
+### JetBrains: 3. Turn the TypeScript service off
+
+**Settings → Languages & Frameworks → TypeScript**: uncheck **TypeScript
+language service**. This is per project.
+
+### JetBrains: What is not verified
+
+The JavaScript plugin is closed source, and no JetBrains IDE runs in this
+repository's CI. These points come from JetBrains' documentation (2026.2) and
+were not checked in an IDE:
+
+- the exact `languageLevel` value the Flow choice writes;
+- whether turning off the TypeScript language service also silences it for
+  `.js` files, not only `.ts`;
+- whether the IDE's Flow parser accepts `component`, `hook`, `match` and
+  `renders`. If it does not, the IDE marks those lines as syntax errors itself.
+  Those errors are the IDE's, and uf's diagnostics appear beside them rather
+  than in place of them.
+
+What *is* tested is the server behind LSP4IJ: `tests/library/lsp.test.js`
+drives `uf lsp` over the protocol, including `--cwd`.
+
+### JetBrains: Check that it worked
+
+Open the LSP console (**View → Tool Windows → Language Servers**). `uf` should
+be running for the project. A Flow file's problems should include entries from
+`uf`. Run **Reformat Code**, then `uf fmt --check` in a terminal: they agree
+when the server read the project's `uf.config.js`. After editing
+`uf.config.js`, restart the server from its context menu in the console.
+
+## Neovim and Vim
+
+Neovim 0.8 or later is required; Vim uses the vim-lsp plugin.
+
+Neovim has no JavaScript server of its own, but most configurations start one:
+<code>ts_ls</code> or <code>vtsls</code> through nvim-lspconfig. It reads a
+Flow file as TypeScript. uf's Neovim file starts <code>uf lsp</code> in a uf
+project and keeps those servers off that project's buffers, while every other
+project keeps them.
+
+### Neovim and Vim: 1. Start uf in a uf project
+
+`uf editor install neovim` writes `uf.lua` to `~/.config/nvim/lua/`. It will not
+replace a file of that name that uf did not write. Or copy [`editors/neovim/lua/uf.lua`](https://github.com/ubugeeei-prod/uf/tree/main/editors/neovim)
+to `~/.config/nvim/lua/uf.lua`, then in `init.lua`:
+
+```lua
+require("uf").setup({
+  cmd = { "uf", "lsp" },       -- or { "./node_modules/.bin/uf", "lsp" }
+  format_on_save = true,
+})
+```
+
+A `javascript` or `javascriptreact` buffer gets a client when a `uf.config.js`
+is in its directory or above. The server is started in that directory, which is
+where `uf lsp` reads the project's configuration. `:UfRestart` restarts it after
+you edit `uf.config.js`.
+
+### Neovim and Vim: 2. Keep the TypeScript servers off uf projects
+
+`setup` does this by default. Its `exclude` option lists the clients to keep
+away from uf projects: `ts_ls`, `tsserver`, `vtsls`, `denols` and
+`typescript-tools`, whichever you have. When one of them attaches to a buffer
+in a uf project, `uf.lua` detaches it again and drops the diagnostics it
+publishes for files there. It does this whatever started the client
+(nvim-lspconfig, `vim.lsp.enable`, a plugin). Buffers outside a uf project are
+untouched.
+
+```lua
+require("uf").setup({ exclude = { "ts_ls", "vtsls" } })  -- only these
+require("uf").setup({ exclude = {} })                    -- keep them all
+```
+
+On Neovim 0.11 and later you can instead stop `ts_ls` from starting in a uf
+project at all. A `root_dir` function that never calls `on_dir` does not start
+the client for that buffer:
+
+```lua
+vim.lsp.config("ts_ls", {
+  root_dir = function(bufnr, on_dir)
+    if vim.fs.root(bufnr, { "uf.config.js" }) then
+      return -- a uf project: uf serves it
+    end
+    on_dir(vim.fs.root(bufnr, { "tsconfig.json", "jsconfig.json", "package.json", ".git" }))
+  end,
+})
+```
+
+This replaces nvim-lspconfig's own `root_dir` for `ts_ls`, including the part
+that skips Deno projects. The markers are then yours to maintain.
+
+### Neovim and Vim: Per project instead
+
+To keep the configuration in the project, Neovim's `exrc` option reads a
+`.nvim.lua` from the directory Neovim starts in, after you approve it once with
+`:trust`. With `vim.o.exrc = true` in your own configuration, commit a
+`.nvim.lua` that calls `require("uf").setup()`. `uf editor setup neovim` writes
+it.
+
+### Neovim and Vim: Vim
+
+Vim has no LSP client of its own. uf's registration for
+[vim-lsp](https://github.com/prabirshrestha/vim-lsp) is
+[`editors/vim/uf.vim`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vim).
+`uf editor install vim` puts it in `~/.vim/plugin/`. Otherwise, source it
+after vim-lsp is loaded. It runs `uf lsp --cwd <root>` for a uf
+project. vim-lsp chooses servers by file type, not by project, so `uf.vim`
+cannot keep `typescript-language-server` off a uf project. If
+vim-lsp-settings registers that server for you, its documented per-server
+`disabled` option, set in the project's local vimrc, turns it off. That option
+is not checked here.
+
+### Neovim and Vim: Check that it worked
+
+1. `:checkhealth vim.lsp` (or `:LspInfo`) lists `uf` for a Flow buffer and no
+   `ts_ls`.
+2. `:lua vim.diagnostic.open_float()` on a finding shows source `uf` or `flow`.
+3. `:lua vim.lsp.buf.format({ name = "uf" })`, then `uf fmt --check` in a
+   terminal: they agree when the server read the project's `uf.config.js`.
+
+### Neovim and Vim: Checked against
+
+`uf.lua` is run in headless Neovim by the Editors workflow, with a stand-in
+server in place of `uf lsp` and `ts_ls`. The run checks that uf attaches in a
+uf project and starts in its root, that `ts_ls` is detached there and its
+diagnostics dropped, that nothing changes outside a uf project, and that
+`:UfRestart` starts a new client. It has been run on Neovim 0.8, 0.11 and
+0.12. The `root_dir`/`on_dir` contract and `exrc` were read from Neovim's
+`lsp.txt` and `options.txt`. `uf.vim` is not run by CI.
+
+## Helix
+
+Helix gives JavaScript and JSX files <code>typescript-language-server</code> and
+nothing else, and it reads a Flow file as TypeScript. A project's own
+<code>.helix/languages.toml</code> replaces that list with uf for that project
+only.
+
+### Helix: 1. Commit `.helix/languages.toml`
+
+`uf editor setup helix` writes it. If the project already has a
+`.helix/languages.toml` that configures JavaScript, it prints the lines to add
+instead of writing. Or copy [`editors/helix/languages.toml`](https://github.com/ubugeeei-prod/uf/tree/main/editors/helix)
+into the project. Its substance:
+
+```toml
+[language-server.uf]
+command = "uf"
+args = ["lsp"]
+required-root-patterns = ["uf.config.js"]
+
+[[language]]
+name = "javascript"
+roots = ["uf.config.js"]
+language-servers = ["uf"]
+auto-format = true
+
+[[language]]
+name = "jsx"
+roots = ["uf.config.js"]
+language-servers = ["uf"]
+auto-format = true
+```
+
+- **`language-servers` replaces the default list.** Helix merges a project's
+  `languages.toml` into its own by language name, and a list inside it
+  replaces the default list. `["uf"]` therefore drops
+  `typescript-language-server` for this project and no other. Both
+  `javascript` (`.js`, `.mjs`, `.cjs`) and `jsx` need the line.
+- **`auto-format`** formats on write through the server. There is no
+  `formatter` line: `uf fmt` writes files and does not read a buffer on stdin,
+  so the server is what formats the buffer.
+- **`required-root-patterns`** starts uf only where the workspace root has a
+  `uf.config.js`. In the project's own file that is always true. It matters if
+  the file is merged into `~/.config/helix/languages.toml`, which is not
+  recommended, because there `language-servers` would replace the JavaScript
+  servers of every project.
+
+Start `hx` from the project root: the server reads `uf.config.js` from the
+directory it starts in.
+
+### Helix: 2. Trust the project, on newer Helix
+
+Helix 25.07.1 reads `.helix/languages.toml` without asking. Helix's master
+branch, after 25.07, reads it and starts the servers it names only once you run
+`:workspace-trust` in the project. It asks again after `.helix/` changes.
+
+### Helix: Check that it worked
+
+`hx --health javascript` lists `uf` as the language server. In a Flow file,
+`Space + d` lists only `uf` and `flow` diagnostics. Write the file, then run
+`uf fmt --check` in a terminal: they agree when the server read the project's
+`uf.config.js`. `:lsp-restart` after editing `uf.config.js`.
+
+### Helix: Checked against
+
+The merge rules, `required-root-patterns`, the default servers and workspace
+trust were read from Helix's `languages.toml`, `helix-loader` and the book in
+September 2026. No Helix runs in CI.
+
+## Emacs
+
+Use Emacs 29 or later with built-in Eglot, or lsp-mode.
+
+Eglot and lsp-mode both give JavaScript buffers typescript-language-server by
+default, and it reads a Flow file as TypeScript. <code>uf.el</code> makes uf
+the server for a uf project's buffers and leaves every other project with the
+server it would have had.
+
+### Emacs: 1. Load `uf.el`
+
+`uf editor install emacs` writes `uf.el` to `~/.local/share/uf/editors/emacs`
+and prints the `load-path` line. `uf.el` is also in a uf checkout:
+
+```elisp
+(add-to-list 'load-path "/path/to/uf/editors/emacs")
+(require 'uf)
+(setq uf-format-on-save t)                     ; optional
+(add-hook 'js-mode-hook #'uf-eglot-ensure)     ; Eglot: start it in uf projects
+(add-hook 'js-ts-mode-hook #'uf-eglot-ensure)
+```
+
+[`uf.el`](https://github.com/ubugeeei-prod/uf/tree/main/editors/emacs) makes a
+directory with `uf.config.js` a project.el project. That project root is where
+Eglot starts the server, and the command names it again with `--cwd`.
+
+### Emacs: 2. How the TypeScript server stays off
+
+- **Eglot.** `uf.el` puts its entry first in `eglot-server-programs`. Its
+  contact function answers `uf lsp` in a uf project. Anywhere else it answers
+  with whatever the rest of `eglot-server-programs` gives the buffer's mode:
+  typescript-language-server on Emacs 30, and on Emacs 31 the `rass ts`
+  alternative it tries first. A TypeScript project therefore keeps its server.
+- **lsp-mode.** `uf.el` registers a client, `uf`, at priority 1, whose
+  activation function accepts a buffer only in a uf project. lsp-mode starts
+  the highest-priority client that accepts a buffer, and `ts-ls` is -2, so a uf
+  project gets uf and every other project is unchanged.
+
+To say it per project for lsp-mode as well, commit a `.dir-locals.el`
+(`uf editor setup emacs` writes it when the project has none).
+`lsp-disabled-clients` is marked safe as a directory-local variable, so Emacs
+applies it without asking:
+
+```elisp
+((js-mode . ((lsp-disabled-clients . (ts-ls jsts-ls tsgo deno-ls))))
+ (js-ts-mode . ((lsp-disabled-clients . (ts-ls jsts-ls tsgo deno-ls)))))
+```
+
+Setting `eglot-server-programs` from `.dir-locals.el` also works, but it is not
+marked safe, so Emacs asks every time. `uf.el`'s contact function makes that
+unnecessary.
+
+### Emacs: Check that it worked
+
+`M-x eglot-events-buffer` (or `M-x lsp-describe-session`) shows `uf` for a
+Flow buffer. `M-x flymake-show-buffer-diagnostics` lists `uf` and `flow`
+entries. `M-x eglot-format-buffer`, then `uf fmt --check` in a terminal: they
+agree when the server read the project's `uf.config.js`. After editing
+`uf.config.js`, `M-x eglot-reconnect` (or `M-x lsp-workspace-restart`).
+
+### Emacs: Checked against
+
+Eglot's defaults and lsp-mode's client ids, priorities and
+`lsp-disabled-clients` were read from `eglot.el` (emacs-30 and master) and
+lsp-mode's source in September 2026. The Editors workflow byte-compiles
+`uf.el` with warnings as errors and runs its ERT tests in batch Emacs. Those
+tests cover the project root, the command, the fallback to another server
+outside a uf project, and lsp-mode's activation. Eglot and lsp-mode themselves
+are not started by the tests.
 
 ## What the server answers
 
@@ -179,7 +709,7 @@ directory `--cwd` names, or its working directory, walking up to the nearest
 
 - **Editing `uf.config.js` needs a restart.** The server has no way to be told.
   The VS Code extension watches the file and restarts by itself; every other
-  editor's page says how to restart it.
+  editor's section above says how to restart it.
 - **A configuration it cannot read is not reported.** The server falls back to
   uf's defaults, and the editor formats and lints to those without a word. The
   check is to format a file in the editor and run `uf fmt --check` in a terminal:
