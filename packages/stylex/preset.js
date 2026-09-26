@@ -234,36 +234,55 @@ const fields = stylex.create({
 
 const overlays = stylex.create({
   // Enter: the wash fades in over `durationSlow`, the same time as the panel
-  // in front of it. A fade is what reduced motion keeps, so it keeps this.
+  // in front of it. Exit: it clears with the panel, in `durationBase` on the
+  // accelerating curve, while `@uniflowed/ui` keeps it on the page with
+  // `data-state="closed"` and `inert`. A fade is what reduced motion keeps,
+  // so it keeps both.
   backdrop: {
     position: "fixed",
     inset: 0,
     backgroundColor: ufTokens.scrim,
-    opacity: { default: 1, "@starting-style": 0 },
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transitionProperty: "opacity",
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
   },
   // Enter: the panel fades in and grows from 96% of its size where it rests,
   // on the decelerating curve, so it is legible almost at once and is seen
   // settling rather than popping. The centring translate is part of both
-  // values, or the panel would start in the corner. Under reduced motion it
-  // only fades.
+  // values, or the panel would start in the corner. Exit: back to 96% as it
+  // fades, in `durationBase` on the accelerating curve. Under reduced motion
+  // both only fade: `--uf-exit-travel` is 0 there, so the scale does not jump.
   dialog: {
     position: "fixed",
     top: "50%",
     left: "50%",
-    opacity: { default: 1, "@starting-style": 0 },
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
       default: "translate(-50%, -50%)",
       "@starting-style": "translate(-50%, -50%) scale(0.96)",
+      ":is([data-state=closed])":
+        "translate(-50%, -50%) scale(calc(1 - 0.04 * var(--uf-exit-travel)))",
     },
     transitionProperty: {
       default: "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationSlow,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationSlow,
+      ":is([data-state=closed])": ufTokens.durationBase,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
     width: "calc(100% - 32px)",
     maxWidth: "32rem",
     backgroundColor: ufTokens.surface,
@@ -280,7 +299,8 @@ const overlays = stylex.create({
 const menus = stylex.create({
   // Enter: it fades in while travelling 4px out of its trigger, from the side
   // `@uniflowed/ui` put it on (`data-side`), the way `registry/ui/menu.js`
-  // does. Under reduced motion it only fades.
+  // does. Exit: back towards the trigger in `durationFast` on the
+  // accelerating curve. Under reduced motion both only fade.
   menu: {
     "--uf-enter-x": {
       default: "0px",
@@ -292,17 +312,26 @@ const menus = stylex.create({
       ":is([data-side=top])": "4px",
       ":is([data-side=bottom])": "-4px",
     },
-    opacity: { default: 1, "@starting-style": 0 },
+    "--uf-exit-travel": { default: "1", "@media (prefers-reduced-motion: reduce)": "0" },
+    opacity: { default: 1, "@starting-style": 0, ":is([data-state=closed])": 0 },
     transform: {
       default: "none",
       "@starting-style": "translate(var(--uf-enter-x), var(--uf-enter-y))",
+      ":is([data-state=closed])":
+        "translate(calc(var(--uf-enter-x) * var(--uf-exit-travel)), calc(var(--uf-enter-y) * var(--uf-exit-travel)))",
     },
     transitionProperty: {
       default: "opacity, transform",
       "@media (prefers-reduced-motion: reduce)": "opacity",
     },
-    transitionDuration: ufTokens.durationBase,
-    transitionTimingFunction: ufTokens.easingEnter,
+    transitionDuration: {
+      default: ufTokens.durationBase,
+      ":is([data-state=closed])": ufTokens.durationFast,
+    },
+    transitionTimingFunction: {
+      default: ufTokens.easingEnter,
+      ":is([data-state=closed])": ufTokens.easingExit,
+    },
     minWidth: "12rem",
     margin: 0,
     padding: ufTokens.space1,

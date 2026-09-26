@@ -99,7 +99,8 @@ import {
 } from "./internal/merge-props.js";
 import { moveOnKey } from "./internal/roving-focus.js";
 import type { RovingSet } from "./internal/roving-focus.js";
-import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
+import { useDisclosurePanel, useRegistered } from "./internal/disclosure.js";
+import { presenceProps } from "./internal/presence.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /** Whether one section is open at a time, or any number of them. */
@@ -333,15 +334,17 @@ component AccordionContent(children: React.Node, render?: RenderProp, ...rest: R
   const accordion = useAccordion("Accordion.Content");
   const item = useAccordionItem("Accordion.Content");
   const contentRef = useRef<HTMLElement | null>(null);
-  usePresence(item.registerContent);
-  useUntilFound(contentRef, item.open);
-  useMeasuredHeight(contentRef, accordion.measure);
+  useRegistered(item.registerContent);
+  const presence = useDisclosurePanel(contentRef, item.open, accordion.measure);
 
   const props = withProps(withoutComposed(rest, ["ref"]), {
+    ...presenceProps(presence),
     // The name a reader hears for this landmark is the header they pressed.
     "aria-labelledby": item.triggerId,
     children,
-    hidden: !item.open,
+    // After the panel's closing transition, not at the moment it closes; see
+    // `collapsible.js`'s header.
+    hidden: !presence.present,
     id: item.contentId,
     // React calls callback refs during commit; this node is only read by effects.
     // uf-lint-disable-next-line react-compiler/refs

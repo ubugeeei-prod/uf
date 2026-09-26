@@ -88,6 +88,16 @@
 // A notification given `duration: null` never expires at all, which is what
 // anything carrying an action should be.
 //
+// # Leaving
+//
+// A notification is taken out of the queue the moment it is dismissed, and it
+// is not taken off the screen at that moment. The region remembers it and
+// keeps rendering it where it was, with `data-state="closed"` and `inert`, for
+// as long as its exit transition runs; `internal/presence.js` decides when
+// that is. `inert` is what keeps this honest: a leaving notification is out of
+// the accessibility tree and out of the tab order at once, so a reader is
+// never told about, or tabbed into, something that has already gone.
+//
 // # The queue lives outside React
 //
 // `toast("Saved")` is called from an event handler, from a `catch`, from a
@@ -141,6 +151,7 @@ import { useTimeout } from "@uniflowed/hooks/timing";
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 
 /** How loudly a notification interrupts. */
 export type Urgency = "polite" | "assertive";
@@ -319,6 +330,74 @@ function readQueue(): $ReadOnlyArray<Notification> {
 
 const NotificationContext: React.Context<Notification | null> = createContext(null);
 
+/** A notification the region is rendering, and whether it is still in the queue. */
+type Shown = {|
+  readonly notification: Notification,
+  /** False once it has been dismissed, while its exit plays. */
+  readonly open: boolean,
+|};
+
+/** What a `Toast.Root` is told about its own life by the region. */
+type ToastLife = {|
+  readonly open: boolean,
+  /** Called once a dismissed notification's exit has finished. */
+  readonly gone: () => void,
+|};
+
+const ToastLifeContext: React.Context<ToastLife | null> = createContext(null);
+
+/**
+ * What the region renders next, given what it rendered and what is queued now.
+ *
+ * Everything queued is open, in queue order. Everything the region was showing
+ * that is no longer queued stays, closed, where it was, so a notification
+ * leaving from the middle of the stack does not jump to the end of it first.
+ * A notification that arrives is placed after the last one before it in the
+ * queue, which for a queue that only ever appends is the end.
+ */
+function nextShown(
+  previous: $ReadOnlyArray<Shown>,
+  queued: $ReadOnlyArray<Notification>,
+): $ReadOnlyArray<Shown> {
+  const byId = new Map<string, Notification>();
+  for (const notification of queued) {
+    byId.set(notification.id, notification);
+  }
+  const placed = new Set<string>();
+  const next: Array<Shown> = [];
+  let at = 0;
+  for (const entry of previous) {
+    const current = byId.get(entry.notification.id);
+    if (current == null) {
+      next.push(entry.open ? { notification: entry.notification, open: false } : entry);
+      continue;
+    }
+    // Whatever arrived in the queue before this one goes in front of it.
+    while (at < queued.length && queued[at].id !== current.id) {
+      const arrived = queued[at];
+      if (
+        !placed.has(arrived.id) &&
+        !previous.some((each) => each.notification.id === arrived.id)
+      ) {
+        next.push({ notification: arrived, open: true });
+        placed.add(arrived.id);
+      }
+      at += 1;
+    }
+    next.push({ notification: current, open: true });
+    placed.add(current.id);
+    at += 1;
+  }
+  for (; at < queued.length; at += 1) {
+    const arrived = queued[at];
+    if (!placed.has(arrived.id)) {
+      next.push({ notification: arrived, open: true });
+      placed.add(arrived.id);
+    }
+  }
+  return next;
+}
+
 hook useNotification(part: string): Notification {
   const notification = useContext(NotificationContext);
   if (notification == null) {
@@ -387,12 +466,37 @@ component ToastRegion(
   // pile that hides what arrived first. What is over the limit is not rendered
   // at all, which is also what keeps its countdown from running before anyone
   // has seen it.
-  const shown = queued.slice(0, limit);
+  const visible = queued.slice(0, limit);
 
-  const place = (notification: Notification) => (
-    <NotificationContext.Provider key={notification.id} value={notification}>
-      {children(notification)}
-    </NotificationContext.Provider>
+  // What was queued at the last render, and what the region is rendering: the
+  // visible notifications, and the dismissed ones still playing their exit.
+  // Brought up to date during render, the pattern React documents for
+  // "storing information from previous renders", so a dismissal never commits
+  // a frame without the notification that is leaving.
+  const [seen, setSeen] = useState<$ReadOnlyArray<Notification>>(visible);
+  const [shown, setShown] = useState<$ReadOnlyArray<Shown>>(() =>
+    visible.map((notification) => ({ notification, open: true })),
+  );
+  if (!sameNotifications(seen, visible)) {
+    setSeen(visible);
+    setShown(nextShown(shown, visible));
+  }
+
+  const place = (entry: Shown) => (
+    <ToastLifeContext.Provider
+      key={entry.notification.id}
+      value={{
+        open: entry.open,
+        gone: () =>
+          setShown((current) =>
+            current.filter((each) => each.open || each.notification.id !== entry.notification.id),
+          ),
+      }}
+    >
+      <NotificationContext.Provider value={entry.notification}>
+        {children(entry.notification)}
+      </NotificationContext.Provider>
+    </ToastLifeContext.Provider>
   );
 
   return (
@@ -408,13 +512,21 @@ component ToastRegion(
       tabIndex={-1}
     >
       <div aria-atomic="true" aria-live="polite" role="status">
-        {shown.filter((each) => each.urgency === "polite").map(place)}
+        {shown.filter((each) => each.notification.urgency === "polite").map(place)}
       </div>
       <div aria-atomic="true" aria-live="assertive" role="alert">
-        {shown.filter((each) => each.urgency === "assertive").map(place)}
+        {shown.filter((each) => each.notification.urgency === "assertive").map(place)}
       </div>
     </div>
   );
+}
+
+/** Whether two lists hold the same notifications, in the same order. */
+function sameNotifications(
+  left: $ReadOnlyArray<Notification>,
+  right: $ReadOnlyArray<Notification>,
+): boolean {
+  return left.length === right.length && left.every((each, index) => each === right[index]);
 }
 
 /**
@@ -434,6 +546,18 @@ component ToastRoot(children: React.Node, ...rest: Rest) {
   const [titled, setTitled] = useState(false);
   const [described, setDescribed] = useState(false);
   const passed = withoutComposed(rest, ["ref"]);
+  // Outside a `Toast.Region` — a notification rendered on its own, in a story
+  // or a test — there is no queue to leave, so it is simply open.
+  const life = useContext(ToastLifeContext);
+  const presence = usePresence(life?.open ?? true, elementRef);
+  const gone = life?.gone;
+  const present = presence.present;
+
+  useEffect(() => {
+    if (!present) {
+      gone?.();
+    }
+  }, [present, gone]);
 
   const hovered = useHover(elementRef);
   const focusInside = useFocusWithin(elementRef);
@@ -481,10 +605,15 @@ component ToastRoot(children: React.Node, ...rest: Rest) {
     [base],
   );
 
+  if (!present) {
+    return null;
+  }
+
   return (
     <ToastPartsContext.Provider value={parts}>
       <div
         {...passed}
+        {...presenceProps(presence)}
         aria-describedby={described ? parts.descriptionId : undefined}
         aria-labelledby={titled ? parts.titleId : undefined}
         ref={composeRefs(rest.ref, (node) => {

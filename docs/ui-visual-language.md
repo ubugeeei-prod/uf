@@ -105,19 +105,26 @@ which was a different failure. The rules below are the middle.
   Nothing bounces, and no `scale()` goes below 0.9 or above 1.
 - **What moves, and how:**
 
-  | Part | Enter | Duration, easing |
+  | Part | Motion | Duration, easing |
   | --- | --- | --- |
   | Dialog, alert dialog | scrim fades in; panel fades in from `scale(0.96)` | slow, enter |
+  | … leaving | scrim fades out; panel fades back to `scale(0.96)` | base, exit |
   | Sheet, drawer | scrim fades in; panel slides its own size in from `data-side` | slow, enter |
+  | … leaving | scrim fades out; panel slides back off its edge | base, exit |
   | Popover, menu, select and combobox lists, hover card, tooltip, date pickers | fade in and travel 4px out of the trigger, from `data-side` | base, enter |
+  | … leaving | fade out and travel 4px back towards the trigger | fast, exit |
   | Navigation menu panel | fades in and drops 4px out of the bar | base, enter |
+  | … leaving | fades out and rises 4px back into the bar | fast, exit |
   | Toast | fades in and rises 16px into the stack | slow, enter |
+  | … leaving | fades out and sinks 16px, in its place in the stack | base, exit |
+  | Accordion, collapsible panel | height from 0 to the measured `--uf-collapsible-height` | base, enter |
+  | … closing | height back to 0, then `hidden` | fast, exit |
   | Button | gives to `scale(0.97)` while pressed | fast, standard |
   | Focus ring | draws outward, `outline-width` 0 to 2px | fast, standard |
   | Switch | thumb slides, track colour turns with it | base, standard |
   | Checkbox | box fills; the tick is drawn from its short arm (`stroke-dashoffset`) | fast / base, standard |
   | Radio | ring colour, then the dot fades in | fast / base |
-  | Tabs | underline and label colour change together | base, standard |
+  | Tabs | the underline slides to the selected tab; label colour changes with it | base, standard |
   | Progress | the fill's `scaleX` moves to the new value | slow, standard |
   | Chevrons (accordion, collapsible, select, navigation menu) | a half turn | base, standard |
   | Menu item highlight | background follows the pointer | fast, standard |
@@ -125,9 +132,10 @@ which was a different failure. The rules below are the middle.
 
 - **The preset moves the same way.** `@uniflowed/stylex/preset` is the
   default look for a project that styles `@uniflowed/ui` without the
-  registry, and it follows the table: `backdropStyles()` fades in,
-  `dialogStyles()` fades in from `scale(0.96)` around its centring translate,
-  `menuStyles()` travels 4px from `data-side`, and buttons, fields, menu
+  registry, and it follows the table: `backdropStyles()` fades in and out,
+  `dialogStyles()` fades in from `scale(0.96)` around its centring translate
+  and back to it, `menuStyles()` travels 4px from `data-side` and back, and
+  buttons, fields, menu
   items, tabs and controls transition their colours and focus rings.
 - **Enter comes from a `@starting-style`.** uf's StyleX has no `@keyframes`.
   An entrance does not need them: a `@starting-style` value is the style an
@@ -135,30 +143,56 @@ which was a different failure. The rules below are the middle.
   from it as soon as the part mounts. An anchored surface reads the side
   `@uniflowed/ui` put it on (`data-side`) and starts 4px back towards its
   trigger.
-- **Exit is Planned.** Every overlay part in `@uniflowed/ui` unmounts the
-  moment it closes, so there is nothing left to animate, and leaving is still
-  a cut. Exit transitions need the behaviour layer to keep a closing part
-  mounted, marked `data-state="closed"`, until its transitions finish. The
-  same work gives accordion and collapsible height and a sliding tabs
-  indicator. `easingExit` is declared for that work, which ubugeeei-prod/uf#1564
-  tracks.
+- **Exit is the entrance in reverse, and quicker.** A closing overlay part in
+  `@uniflowed/ui` stays on the page, marked `data-state="closed"` and `inert`,
+  until the transitions on it have finished (`getAnimations()`), and is then
+  removed; with nothing animating it goes in the same commit. So an exit is a
+  `:is([data-state=closed])` value for what the entrance moved:
+  - it goes back the way it came — the same opacity, the same 4px, the same
+    `scale(0.96)` or the same edge — rather than somewhere new;
+  - it takes one duration token less than the entrance (slow → base,
+    base → fast), because a reader who closed something has already moved on;
+  - it runs on `easingExit`, which starts slowly and gets out of the way,
+    where an entrance settles on `easingEnter`;
+  - under reduced motion it only fades, or is instant: `--uf-exit-travel` is
+    0 there, so a transform that is not transitioned does not jump either.
+
+  Nothing a reader acts on waits for it. Focus goes back to the trigger, the
+  page scrolls again and a modal gives the page back at the moment of
+  closing, while the part is still fading; `inert` keeps the fading part out
+  of the tab order, the accessibility tree and the pointer's way. A part
+  reopened while it is closing is the same element, and its transition turns
+  round from wherever it had got to.
+- **A disclosure's height moves, and a tab's underline slides.** An accordion
+  or collapsible panel transitions `height` to the number `@uniflowed/ui`
+  measures for it, `--uf-collapsible-height`, from a `@starting-style` of 0,
+  and back to 0 on `data-state="closed"`; it becomes `hidden` (findable,
+  `until-found`) only when that has finished. The tab list writes where the
+  selected tab is (`--uf-tabs-indicator-left`, `-top`, `-width`, `-height`,
+  unitless pixels), and the registry's bar follows it with `translate` and
+  `scaleX` alone.
 - **Named properties only.** A transition lists what it moves, never `all`,
   and a duration never appears without a property list. Nothing animates a
-  layout property: the progress bar moves a `transform`, not its `width`. The
-  one exception is the drawer, a fixed overlay that resizes between snap
-  points without moving anything else. A slider's thumb follows the pointer
-  exactly and does not ease.
+  layout property: the progress bar moves a `transform`, not its `width`, and
+  the tabs underline is stretched with `scaleX` rather than sized. The
+  exceptions are the drawer, a fixed overlay that resizes between snap points
+  without moving anything else, and an accordion or collapsible panel, whose
+  opening *is* the content below making room: it moves to a measured height,
+  never to `auto`, and stops under reduced motion. A slider's thumb follows
+  the pointer exactly and does not ease.
 - **Reduced motion fades or stops.** Under `prefers-reduced-motion: reduce`
   nothing travels, grows or is drawn. A transition either becomes `0s` or
   keeps only opacity and colour, so an overlay still fades in rather than
   cutting, and a sheet fades where it would have slid.
 - `crates/uf_stylex/src/tests/defaults.rs` enforces each of these rules on the
   compiled styles and on the tokens. `what_deserves_motion_has_it` is the
-  other half: it fails if an overlay loses its entrance or a control stops
-  moving, so the defaults cannot go quiet again unnoticed. An overlay's
-  entrance there means a `@starting-style` opacity, a `@starting-style` for
-  what travels or grows, and `easingEnter`, in the registry and in the preset
-  alike.
+  other half: it fails if an overlay loses its entrance or its exit or a
+  control stops moving, so the defaults cannot go quiet again unnoticed. An
+  overlay's entrance there means a `@starting-style` opacity, a
+  `@starting-style` for what travels or grows, and `easingEnter`; its exit
+  means a `[data-state=closed]` value for the same properties, `easingExit`,
+  and a shorter duration token than the entrance, in the registry and in the
+  preset alike.
 
 ## Where this does not apply
 

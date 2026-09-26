@@ -22,6 +22,14 @@
 // `value` all draw the same underline without this file hearing about any of
 // them.
 //
+// The underline slides. `Tabs.List` writes where the selected tab is as four
+// unitless custom properties (`--uf-tabs-indicator-left`, `-top`, `-width`,
+// `-height`), and one bar in the list follows them with `transform` alone: a
+// one-pixel bar moved by `translateX` and stretched to the tab by `scaleX`, so
+// nothing is laid out while it travels. Until the part has measured — on the
+// server, and before hydration — each selected tab draws its own underline
+// instead, so the selection is never shown by colour alone.
+//
 // # What to keep true when you change it
 //
 // * **A tab list holds tabs and nothing else.** `Tabs.List` takes
@@ -43,7 +51,7 @@
 //   to 4.5:1 in the light default and the dark theme.
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useState } from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
@@ -66,6 +74,12 @@ type Rest = { readonly key?: empty, readonly [string]: mixed };
  */
 const OrientationContext: React.Context<TabsOrientation> = createContext("horizontal");
 
+/**
+ * Whether the list's sliding bar is drawn, so a tab stops drawing its own
+ * underline. False on the server and until the list has been measured.
+ */
+const SlidingContext: React.Context<boolean> = createContext(false);
+
 const styles = stylex.create({
   root: {
     display: "flex",
@@ -78,6 +92,8 @@ const styles = stylex.create({
     flexDirection: "row",
   },
   list: {
+    // The containing block the sliding bar is placed in.
+    position: "relative",
     display: "flex",
     gap: ufTokens.space1,
     borderBottomWidth: "1px",
@@ -138,6 +154,50 @@ const styles = stylex.create({
     },
     transitionDuration: ufTokens.durationBase,
     transitionTimingFunction: ufTokens.easing,
+  },
+  // Once the bar is drawn, the tab's own underline goes: the bar is the mark.
+  tabSliding: {
+    borderBottomColor: "transparent",
+  },
+  tabSlidingVertical: {
+    borderInlineEndColor: "transparent",
+  },
+  // The bar: one pixel along the row, moved to the selected tab and stretched
+  // to its width by the part's measurements, over the list's own border line
+  // where a tab's underline would be. `transform` only, so it slides without
+  // laying anything out; `durationBase` on the standard curve, because it is
+  // travelling between two places that are both on screen, not arriving.
+  // `scaleX` here is the tab's width in pixels, geometry rather than a grow.
+  // It fades in when it is first drawn. Under reduced motion it moves at once.
+  indicator: {
+    position: "absolute",
+    left: 0,
+    bottom: "-1px",
+    width: "1px",
+    height: "2px",
+    backgroundColor: ufTokens.accent,
+    pointerEvents: "none",
+    transformOrigin: "0 0",
+    transform:
+      "translateX(calc(var(--uf-tabs-indicator-left, 0) * 1px)) scaleX(var(--uf-tabs-indicator-width, 0))",
+    opacity: { default: 1, "@starting-style": 0 },
+    transitionProperty: {
+      default: "transform, opacity",
+      "@media (prefers-reduced-motion: reduce)": "opacity",
+    },
+    transitionDuration: ufTokens.durationBase,
+    transitionTimingFunction: ufTokens.easing,
+  },
+  // Down the inline-end edge of a vertical list, where its border is.
+  indicatorVertical: {
+    left: "auto",
+    bottom: "auto",
+    top: 0,
+    insetInlineEnd: "-1px",
+    width: "2px",
+    height: "1px",
+    transform:
+      "translateY(calc(var(--uf-tabs-indicator-top, 0) * 1px)) scaleY(var(--uf-tabs-indicator-height, 0))",
   },
   tabVertical: {
     justifyContent: "flex-start",
@@ -207,10 +267,38 @@ component TabsList(
   children: renders* TabsTab,
   xstyle?: StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...given: Rest
 ) {
   const orientation = useContext(OrientationContext);
+  const vertical = orientation === "vertical";
   const styled = props(styles.list, orientation === "vertical" && styles.listVertical, xstyle);
+  // The sliding bar, drawn from the commit after the first, by which time
+  // `Tabs.List` has written where the selected tab is: a bar drawn before
+  // that would slide in from the list's corner on every page load. It goes
+  // after the tabs, through the part's `render`, and tells them through
+  // `SlidingContext` that they need not underline themselves.
+  const [sliding, setSliding] = useState(false);
+  useEffect(() => {
+    // uf-lint-disable-next-line react-compiler/set-state-in-effect
+    setSliding(true);
+  }, []);
+  const rest: Rest = {
+    ...given,
+    render: (list: Rest) => (
+      <SlidingContext.Provider value={sliding}>
+        <div {...forwarded(list)}>
+          {children}
+          {sliding ? (
+            <span
+              {...props(styles.indicator, vertical && styles.indicatorVertical)}
+              aria-hidden="true"
+            />
+          ) : null}
+        </div>
+      </SlidingContext.Provider>
+    ),
+  };
+
   return (
     <Tabs.List {...forwarded(rest)} className={classNames(styled.className, className)}>
       {children}
@@ -228,7 +316,14 @@ component TabsTab(
   ...rest: Rest
 ) renders Tabs.Tab {
   const orientation = useContext(OrientationContext);
-  const styled = props(styles.tab, orientation === "vertical" && styles.tabVertical, xstyle);
+  const sliding = useContext(SlidingContext);
+  const vertical = orientation === "vertical";
+  const styled = props(
+    styles.tab,
+    vertical && styles.tabVertical,
+    sliding && (vertical ? styles.tabSlidingVertical : styles.tabSliding),
+    xstyle,
+  );
   return (
     <Tabs.Tab
       {...forwarded(rest)}

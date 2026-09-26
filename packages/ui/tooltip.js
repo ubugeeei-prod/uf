@@ -88,6 +88,7 @@ import {
 } from "./internal/hover-intent.js";
 import { useAnchor } from "./internal/anchor.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -343,6 +344,9 @@ component TooltipBody(
     intent.cancel();
     tooltip.setOpen(false);
   });
+  // On the page while its exit runs. The trigger's `aria-describedby` and
+  // everything below stay keyed on `open`.
+  const presence = usePresence(open, bodyRef);
 
   const anchored = useAnchor({
     align,
@@ -350,7 +354,7 @@ component TooltipBody(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    open,
+    open: presence.present,
     overlayRef: bodyRef,
     side,
     sideOffset,
@@ -377,7 +381,7 @@ component TooltipBody(
     };
   }, [open, intent, closeDelay]);
 
-  if (!open) {
+  if (!presence.present) {
     return null;
   }
 
@@ -385,7 +389,7 @@ component TooltipBody(
     children,
     "data-align": anchored.align,
     "data-side": anchored.side,
-    "data-state": "open",
+    ...presenceProps(presence),
     id: `${tooltip.base}-body`,
     // React calls callback refs during commit; placement effects read it later.
     // uf-lint-disable-next-line react-compiler/refs
