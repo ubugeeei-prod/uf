@@ -57,7 +57,7 @@ exec ${quote(realDeno)} run --allow-read --allow-write --allow-env --allow-run -
   );
   const env = { ...process.env, PATH: `${temporary}${path.delimiter}${process.env.PATH ?? ""}` };
   for (const name of Object.keys(env)) if (/^(LD_|DYLD_)/.test(name)) delete env[name];
-  const paths = process.argv.length > 2 ? process.argv.slice(2) : ["packages", "tests/library"];
+  const paths = process.argv.length > 2 ? process.argv.slice(2) : ["npm", "tests/library"];
   const discovery = spawnSync(uf, ["test", "--list", "--json", ...paths], {
     cwd: root,
     env,

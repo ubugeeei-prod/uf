@@ -28,8 +28,8 @@ what the generator writes against, and nothing here is production-ready.
 | `uf` as a sqlc process plugin (`cmd: uf`) | Implemented | `crates/uf_cli/tests/sqlc.rs`; the `sqlc Flow target` CI job, with the pinned real sqlc |
 | `uf sqlc generate` / `uf sqlc diff` | Implemented | `crates/uf_cli/tests/sqlc.rs` (a stand-in sqlc); `tools/ci/sqlc.sh` (the pinned real one) |
 | Generated code passes `uf check`, `uf lint` and `uf fmt --check` | Implemented | `tools/ci/sqlc.sh`, over every case |
-| Runtime `@uniflowed/sql`: codecs, slices, `:copyfrom`, `:batch*`, transactions and savepoints | Implemented | `packages/sql/sql.test.js`; `tests/sqlc/transactions.js` against every tested adapter |
-| Adapter: `node:sqlite` | Implemented | `packages/sql/sql.test.js`, `tests/sqlc/sqlite.test.js` |
+| Runtime `@uniflowed/sql`: codecs, slices, `:copyfrom`, `:batch*`, transactions and savepoints | Implemented | `npm/sql/sql.test.js`; `tests/sqlc/transactions.js` against every tested adapter |
+| Adapter: `node:sqlite` | Implemented | `npm/sql/sql.test.js`, `tests/sqlc/sqlite.test.js` |
 | Adapter: `bun:sqlite` | Implemented | `tests/sqlc/sqlite.test.js` under `uf test --host bun`, on Bun 1.3.14 in CI |
 | Adapters: PGlite, `pg` (`fromPgClient`, `fromPgPool`), `postgres` | Implemented | `tests/sqlc/postgresql.test.js`: every scenario under all four, against a real PostgreSQL (PGlite, reached by `pg` and `postgres` over the wire protocol) |
 | Adapter: `mysql2` (`fromMysql2Pool`) | Implemented | `tests/sqlc/mysql.test.js`, against the MySQL 8.4 service container of the `sqlc Flow target` CI job |

@@ -3,7 +3,7 @@
 // What left, in what order, and what each chunk built.
 //
 // ubugeeei-prod/uf#520 asks for an inspector for the payload. uf has no Flight
-// payload — `packages/router/client.js` re-renders the matched tree from the
+// payload — `npm/router/client.js` re-renders the matched tree from the
 // same modules the server used, and ubugeeei-prod/uf#519 is where a payload is
 // being worked out — but it does stream a document whose Suspense boundaries
 // resolve one at a time, and the issue's three questions are questions about
@@ -34,7 +34,7 @@ import { routerView } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { beforeEach, describe, expect, it } from "@uniflowed/test";
 
-import { describeElement } from "../../packages/router/internal/boundaries.js";
+import { describeElement } from "../../npm/router/internal/boundaries.js";
 import {
   type StreamDiagnostic,
   type StreamRecord,
@@ -46,7 +46,7 @@ import {
   inspected,
   streamReporter,
   streamSignature,
-} from "../../packages/router/internal/inspector.js";
+} from "../../npm/router/internal/inspector.js";
 
 beforeEach(() => {
   forgetStreams();

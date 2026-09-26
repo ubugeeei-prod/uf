@@ -42,7 +42,6 @@
 # and `uf inspect` reports it.
 
 brand
-browser
 effect
 form
 immer
@@ -50,7 +49,6 @@ mock
 sql
 std
 story
-testing
 tui
 vrt
 web

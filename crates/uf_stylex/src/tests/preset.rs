@@ -1,6 +1,6 @@
 //! The preset uf ships, put through the compiler that has to compile it.
 //!
-//! `packages/stylex/tokens.stylex.js`, `preset.js` and `theme.js` are ordinary
+//! `npm/stylex/tokens.stylex.js`, `preset.js` and `theme.js` are ordinary
 //! StyleX, so the only way to know they work is to compile them — and a preset
 //! that only worked at run time would be a preset the build could not inline,
 //! which is the one thing it must never be. The sources are included verbatim,
@@ -23,11 +23,11 @@ use crate::sheet::StyleSheet;
 use crate::{compile_module, variable_name};
 
 /// The shipped token module.
-const TOKENS: &str = include_str!("../../../../packages/stylex/tokens.stylex.js");
+const TOKENS: &str = include_str!("../../../../npm/stylex/tokens.stylex.js");
 /// The shipped base layer.
-const PRESET: &str = include_str!("../../../../packages/stylex/preset.js");
+const PRESET: &str = include_str!("../../../../npm/stylex/preset.js");
 /// The shipped themes.
-const THEMES: &str = include_str!("../../../../packages/stylex/theme.js");
+const THEMES: &str = include_str!("../../../../npm/stylex/theme.js");
 
 /// The namespace the preset's tokens are declared under.
 const NAMESPACE: &str = "ufTokens";
@@ -35,7 +35,7 @@ const NAMESPACE: &str = "ufTokens";
 /// Compile one shipped module, naming it if it does not compile.
 fn shipped(name: &str, source: &str) -> CompiledModule {
     compile_module(source)
-        .unwrap_or_else(|error| panic!("packages/stylex/{name} must compile, got: {error}"))
+        .unwrap_or_else(|error| panic!("npm/stylex/{name} must compile, got: {error}"))
 }
 
 /// The value the token module gives `key`.
@@ -141,14 +141,14 @@ fn no_stylex_call_survives_in_the_shipped_preset() {
         ("theme.js", THEMES),
     ] {
         let compiled = shipped(name, source);
-        assert!(compiled.changed, "packages/stylex/{name} declares styles");
+        assert!(compiled.changed, "npm/stylex/{name} declares styles");
         // Compiling the output again finds nothing, which is the same thing as
         // saying no call site is left — and unlike a text search it is not
         // fooled by the calls these modules' own documentation quotes.
         let again = shipped(name, &compiled.code);
         assert!(
             !again.changed,
-            "packages/stylex/{name} still calls StyleX after the rewrite"
+            "npm/stylex/{name} still calls StyleX after the rewrite"
         );
     }
 }

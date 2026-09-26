@@ -310,13 +310,13 @@ function installRoot(repoRoot: string): string {
  * Give the uf copy a `node_modules` of links into this checkout's.
  *
  * The same policy as the toolchain benchmark's: every `@uniflowed/*` points at
- * this checkout's `packages/`, so the suite measures the working tree rather
+ * this checkout's `npm/`, so the suite measures the working tree rather
  * than a published alpha, and everything else points at the install found
  * above. Dot-entries are skipped — they are npm's and Vite's own bookkeeping,
  * and the suite runs each runner by path rather than out of `.bin`.
  */
 export function linkDependencies(root: string, repoRoot: string): number {
-  const packages = path.join(repoRoot, "packages");
+  const packages = path.join(repoRoot, "npm");
   const installed = installRoot(repoRoot);
   const target = path.join(root, "node_modules");
   fs.mkdirSync(path.join(target, "@uniflowed"), { recursive: true });

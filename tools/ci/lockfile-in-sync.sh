@@ -32,7 +32,7 @@ const problems = [];
 const note = (where, what) => problems.push(`${where}: ${what}`);
 
 // The workspace directories, from the root manifest's own globs, so a new
-// `packages/*` is in scope the moment it exists rather than when someone
+// `npm/*` is in scope the moment it exists rather than when someone
 // remembers to add it here.
 const workspaces = (root.workspaces ?? [])
   .flatMap((pattern) => (pattern.includes("*") ? fs.globSync(pattern) : [pattern]))
@@ -67,7 +67,7 @@ for (const dir of directories) {
 
   // npm records a version for a package it could publish and omits it for a
   // private one, so the lock having none is only wrong when the manifest is
-  // publishable — which is every `packages/*`, and the case a release bump
+  // publishable — which is every `npm/*`, and the case a release bump
   // that forgot the lock would land in.
   // The root has no version to publish, so npm records none for it, and
   // demanding one would fail on every clean checkout.

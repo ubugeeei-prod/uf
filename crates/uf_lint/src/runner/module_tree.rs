@@ -10,7 +10,7 @@
 //! reading, whichever command asked".
 //!
 //! This is that sentence made true inside a command as well as across
-//! commands. A parse of `packages/router/internal/runtime.js` is about 24,000
+//! commands. A parse of `npm/router/internal/runtime.js` is about 24,000
 //! allocations, so the two that are gone were 15% of what `uf lint` spent on
 //! it. See ubugeeei-prod/uf#668.
 //!

@@ -116,7 +116,7 @@ fn every_targeted_host_has_a_support_row() {
 ///
 /// This is the rule the table exists to enforce. Bun was described as working
 /// in the README, in `docs/architecture.md` and in this crate's own host list
-/// while `packages/host/bun-preload.js` could not load an ordinary dependency,
+/// while `npm/host/bun-preload.js` could not load an ordinary dependency,
 /// and the reason nobody noticed is that no test had ever started Bun. A row
 /// that says `Implemented` with no `verified_by` is that state of affairs
 /// written down again, so it fails here instead.

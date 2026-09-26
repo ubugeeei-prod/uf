@@ -45,7 +45,7 @@ fn main() {
             other => path = Some(other.to_owned()),
         }
     }
-    let path = path.unwrap_or_else(|| String::from("packages/router/internal/runtime.js"));
+    let path = path.unwrap_or_else(|| String::from("npm/router/internal/runtime.js"));
     let source = std::fs::read_to_string(&path).expect("read the module");
     let config = UniflowedConfig::default();
     println!("{path}: {} bytes", source.len());

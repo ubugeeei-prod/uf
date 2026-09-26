@@ -50,7 +50,7 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
     // The same two lines as `ui` below, and for the same reason found twice.
     // `std_module_descriptors().len()` was reported here as a project fact and
     // it was the size of a wish: at ubugeeei-prod/uf#710, forty-five entries of
-    // which `packages/std` shipped none — every one of them constructed with
+    // which `npm/std` shipped none — every one of them constructed with
     // `nativeBinding: true` by a function that could not say otherwise. Six
     // subpaths are real code now, and the rest carry a status the JSON emits,
     // so a consumer can filter rather than trust a count.

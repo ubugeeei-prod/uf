@@ -12,6 +12,6 @@ export function denoWorkerArguments(repository: string): Array<string> {
     "--allow-ffi",
     "--allow-sys=uid,homedir",
     "--preload",
-    `${repository}/packages/host/deno-preload.js`,
+    `${repository}/npm/host/deno-preload.js`,
   ];
 }

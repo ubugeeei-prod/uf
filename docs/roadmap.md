@@ -34,7 +34,7 @@ Stated as failures because each is easier to notice than its opposite. Two of
 the three have a check behind them; the third says so, which is the point of
 listing it here rather than trusting anyone to remember:
 
-1. **A declared API that throws.** `packages/*` holds both real libraries and
+1. **A declared API that throws.** `npm/*` holds both real libraries and
    declaration modules whose functions call `nativeRuntimeRequired`, and a
    declaration is not a feature. `tools/ci/publishable.sh` refuses a real
    implementation that is on its way nowhere; nothing yet refuses a declaration

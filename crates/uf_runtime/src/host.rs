@@ -4,7 +4,7 @@
 //! *written for*. This says what each of them does when you run it, which is a
 //! different question and for a while was answered in three places that
 //! disagreed: an enum listing Node, Deno and Bun as equals, a README claiming
-//! Bun worked while `packages/host/bun-preload.js` could not load a single
+//! Bun worked while `npm/host/bun-preload.js` could not load a single
 //! ordinary dependency (ubugeeei-prod/uf#418), and `uf test`'s own
 //! `HostCommand::loads_flow`, which was the only honest record and was private
 //! to the test runner.
@@ -104,7 +104,7 @@ pub struct HostSupport {
 /// deployment needs, which is what this is. Bun 1.3.13 rejects the built
 /// `handler.js`; 1.3.14 imports it and serves it. See ubugeeei-prod/uf#1048.
 ///
-/// `packages/vite/driver.js` holds the same number for the generated entry,
+/// `npm/vite/driver.js` holds the same number for the generated entry,
 /// and `crates/uf_cli/tests/vite.rs` reads it back out of a built artefact so
 /// the two cannot drift.
 pub const BUN_MINIMUM: &str = "1.3.14";

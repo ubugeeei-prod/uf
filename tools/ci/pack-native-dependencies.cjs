@@ -7,7 +7,7 @@ const destination = process.argv[2];
 const packed /*: { [string]: string } */ = {};
 function pack(name /*: string */) /*: void */ {
   if (packed[name]) return;
-  const directory = `packages/${name.slice("@uniflowed/".length)}`;
+  const directory = `npm/${name.slice("@uniflowed/".length)}`;
   const manifest = JSON.parse(fs.readFileSync(`${directory}/package.json`, "utf8"));
   const archive = execFileSync(
     "npm",

@@ -21,10 +21,10 @@
 //!   under `source-map-cache`, with the generated file's line lengths beside it.
 //!   Everything the mapping needs is in the one file Node already writes.
 //! * The loader appends an inline source map to every module it transforms
-//!   (`packages/host/internal/node-hooks.js`), so every module of the project's
+//!   (`npm/host/internal/node-hooks.js`), so every module of the project's
 //!   own is mapped, and mapped by the same `uf` that compiled it.
 //! * The worker is a process that ends by closing its stdin
-//!   (`packages/test/worker.js`), so there is an exit for Node to flush at.
+//!   (`npm/test/worker.js`), so there is an exit for Node to flush at.
 //!
 //! The cost is stated rather than hidden: this is Node-only. Bun does not
 //! implement `NODE_V8_COVERAGE`; Deno counts through `--coverage`, into a
@@ -928,7 +928,7 @@ pub fn parse_document(text: &str, root: &Utf8Path) -> Result<Coverage, String> {
 /// expensive one.
 ///
 /// The `node_modules` rule mirrors `isFlowModule` in
-/// `packages/host/transform.js`, and mirrors it deliberately: that function
+/// `npm/host/transform.js`, and mirrors it deliberately: that function
 /// decides which modules `uf` compiles, and coverage is a report about compiled
 /// modules, so the two answering differently would mean measuring a set of
 /// files nothing produced a map for. A dependency that ships JavaScript is not
@@ -944,7 +944,7 @@ fn project_script(url: &str, root: &Utf8Path) -> Option<String> {
     // worker's `?uf-run=N` cache-buster, the module mocker's own — and it is
     // not part of the file's name. Dropped here so a module loaded twice under
     // two specifiers is one path, the way `stripQuery` in
-    // `packages/host/transform.js` does it for the same reason.
+    // `npm/host/transform.js` does it for the same reason.
     let url = url.split_once('?').map_or(url, |(path, _)| path);
     let path = decode_file_url(url)?;
     let relative = path.strip_prefix(root).ok()?;

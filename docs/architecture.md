@@ -38,7 +38,7 @@ The current shape is three layers:
 
 | Layer | What it protects | Example |
 | --- | --- | --- |
-| Command budget | A whole user-visible command stays below a cost envelope for a real fixture | `crates/uf_check/tests/allocation_budget.rs` and `crates/uf_lint/tests/allocation_budget.rs` measure `packages/router/internal/runtime.js` |
+| Command budget | A whole user-visible command stays below a cost envelope for a real fixture | `crates/uf_check/tests/allocation_budget.rs` and `crates/uf_lint/tests/allocation_budget.rs` measure `npm/router/internal/runtime.js` |
 | Phase budget | A known internal phase does not drift back to the allocation profile it had before a fix | `crates/uf_check/tests/upstream_patch_allocations.rs` guards the Flow SSA patch |
 | Cache budget | A warm path stays warm instead of rebuilding work under a successful answer | `crates/uf_check/tests/cache_hit_allocations.rs` guards full cache hits, parse-error misses and closure walks |
 
@@ -105,8 +105,8 @@ opening the profiler first:
 
 1. **Which user command got slower?** The test name should say `check`, `lint`,
    `test`, `build` or the exact public path that regressed.
-2. **Which real fixture exercises it?** Prefer `packages/router`,
-   `packages/ui`, the documentation app, or a library fixture over generated
+2. **Which real fixture exercises it?** Prefer `npm/router`,
+   `npm/ui`, the documentation app, or a library fixture over generated
    text. Use a generated file only when the bug is about scale itself.
 3. **Which slope is protected?** If a legitimate feature grows the fixture,
    the test should make it obvious whether the bytes-per-byte or
@@ -150,7 +150,7 @@ the fix from leaking away while the next slice is being cut.
 These are the crates that survive. `uf` used to ship a Rust crate per library
 surface — `uf_motion`, `uf_orm`, `uf_markdown`, `uf_temporal`, `uf_web` and ten
 more — each holding a `serde` struct that described a feature rather than
-implementing one, and each duplicating a `packages/*/index.js` module
+implementing one, and each duplicating a `npm/*/index.js` module
 that was the real thing. Effect and validator are now plain `.js` + Flow
 packages rather than Rust crates. Twelve had no consumer at all; three existed so
 `uf inspect` could print their `::default()`. They are gone: the JavaScript in
@@ -370,8 +370,8 @@ The three hosts ask that question at different moments, and Bun's is the one
 that constrains the design. Node's hooks may hand a module back untouched;
 Bun's plugin API selects a module by *pattern* and then requires the hook to
 answer with contents, and there is no shape that means "not mine" — so the
-policy exists twice in `packages/host/transform.js`, as `isFlowModule` and as
-`FLOW_MODULE_PATTERN`, and `packages/host/flow-modules.test.js` pins the two
+policy exists twice in `npm/host/transform.js`, as `isFlowModule` and as
+`FLOW_MODULE_PATTERN`, and `npm/host/flow-modules.test.js` pins the two
 equal path for path. It has to be equality rather than approximation in both
 directions: a pattern that under-matched would leave a `@uniflowed` package's
 Flow to Bun's parser, and one that over-matched would put a CommonJS
@@ -392,7 +392,7 @@ line and a round trip per module, and `uf test` starts a Node process per
 worker, so on the suite `docs/app/guide/testing` measures it was a third of
 every worker's start-up. The in-thread hooks serve a cached module with a file
 read, and hand a miss to a transform thread they start only when something
-actually has to be compiled; `packages/host/internal/sync-hooks.js` has the
+actually has to be compiled; `npm/host/internal/sync-hooks.js` has the
 measurements.
 
 Source maps point at the Flow source. The printer records a mapping for every
@@ -768,7 +768,7 @@ refused rather than ignored — `rendering.cache.data: true` and
 accepts `true` and does nothing is indistinguishable from a cache that is off.
 See ubugeeei-prod/uf#277.
 
-The store is `packages/server/internal/cache-store.js`, and its header answers
+The store is `npm/server/internal/cache-store.js`, and its header answers
 the five questions every cache bug is one of: what a key is, what an entry is,
 when an entry is stale, who evicts, and what happens to a request that arrives
 while an entry is being filled. In short — a key is a list of strings; an entry
@@ -791,7 +791,7 @@ is refused where it is constructed rather than allowed to guess.
 `"filesystem"` for uf's built-in provider, or a module specifier exporting
 `createCacheProvider` — the same shape `builder.module` has, so a Redis or a KV
 namespace goes behind the seam without uf naming either. The seam itself is
-`packages/server/internal/cache-provider.js`: five methods over strings, no
+`npm/server/internal/cache-provider.js`: five methods over strings, no
 staleness, no eviction policy, no fill. Everything a cache decides stays in the
 store; a provider decides only where bytes go. A durable store makes the route
 cache shared — a URL rendered once, served from a store four processes share,
@@ -861,7 +861,7 @@ export condition is on, because it needs the *other* build of React, the one
 with no `useState` in it; and `react-dom/server`, which turns the payload into
 HTML, needs the ordinary one. Two builds of React in one module registry is not
 a thing Node or a bundler will do, so `@uniflowed/vite` declares a third Vite
-environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
+environment beside `client` and `ssr` (`npm/vite/internal/flight.js`):
 
 - **`rsc`**, resolved under `react-server` with every dependency bundled in,
   holds the route table, every page, layout and loader, the server-action
@@ -931,7 +931,7 @@ graph under them. See ubugeeei-prod/uf#519 and ubugeeei-prod/uf#252.
 
 The row framing below predates that, and is what an application rendered from
 its modules (`app.rsc: false`) still uses.
-`packages/router/internal/payload.js` is the wire format: a payload is a
+`npm/router/internal/payload.js` is the wire format: a payload is a
 sequence of numbered rows rather than one value, row 0 is the model with each
 unresolved value replaced by a `"$P<n>"` reference, and each later row is a
 `<script type="application/json" data-uf-row="n">` React streams into the
@@ -986,7 +986,7 @@ middleware guarding that path runs above it and no path is reserved. Every host
 runs it between the guard and the route handlers — `uf dev`, `uf preview`,
 `uf start`, a compiled binary, and all four deploy adapters, which share one
 `handler.js`. What may cross in either direction is a closed grammar of plain
-JSON data, applied by `packages/router/internal/action-wire.js` on both sides
+JSON data, applied by `npm/router/internal/action-wire.js` on both sides
 and by Flow at build time; `docs/security.md` has the boundary and what is
 deliberately outside it.
 
@@ -999,7 +999,7 @@ does not move, and the only constructor the decoder can call is fixed in the
 source. A form that submits before the page has hydrated is a different request
 and gets a different door. React's progressive enhancement asks the action for
 `$$FORM_ACTION` and turns the submit into a native form post; a server action
-answers it (`packages/router/internal/form-action.js`) with a urlencoded
+answers it (`npm/router/internal/form-action.js`) with a urlencoded
 `POST` to the page and hidden fields naming the action, and the endpoint
 accepts that post only as `application/x-www-form-urlencoded`, only when
 `Origin` equals `Host`, and only through the same lookup and grammar as the
@@ -1126,7 +1126,7 @@ Native engines being deepened:
 - React hook utilities that preserve render idempotency and cover the practical
   VueUse-style browser/state/async hooks a React app reaches for
 - OpenTUI-aligned terminal UI primitives with cell-diff rendering and in-memory
-  tests, in Flow rather than native — see `packages/tui/index.js`
+  tests, in Flow rather than native — see `npm/tui/index.js`
 - stdlib contracts for OS, net, DNS, path, streams, URL, WebAssembly, glob, TUI,
   cron, S3, SigV4, worker/lambda functions, UUID, and ZIP utilities
 - host-provided event loop and IO capability mapping for Node.js, Deno, and Bun

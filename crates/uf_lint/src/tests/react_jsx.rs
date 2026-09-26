@@ -316,7 +316,7 @@ fn array_index_key_accepts_keys_that_are_not_positions() {
         "<p>{items[0].label.split(\" \").map((word, index) => <b key={`${index}:${word}`}>{word}</b>)}</p>",
         "<p>{items[0].label.split(\" \").map((word, index) => <b key={String(index) + word}>{word}</b>)}</p>",
         // An empty cell keeps no state for a key to hand over.
-        // `packages/ui/calendar.js` keys its blank days by column.
+        // `npm/ui/calendar.js` keys its blank days by column.
         "<tr>{items.map((item, column) => <td key={`blank-${column}`} />)}</tr>",
         "<ul>{React.Children.map(children, (child) => React.cloneElement(child, { key: child.key }))}</ul>",
     ] {

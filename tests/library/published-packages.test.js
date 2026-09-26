@@ -94,13 +94,13 @@ const cache: string = (() => {
  * many specs as it is given and reports one object per spec. Nothing about
  * what is asked changed; only how many processes were started to ask it.
  *
- * A folder spec has to be written as a path — `./packages/ui` rather than
- * `packages/ui` — or npm reads it as `user/repo` on GitHub and tries to clone
+ * A folder spec has to be written as a path — `./npm/ui` rather than
+ * `npm/ui` — or npm reads it as `user/repo` on GitHub and tries to clone
  * it. With one spec that never came up, because the folder was the working
  * directory and there was no spec at all.
  */
 const packedPaths = (names: Array<string>): Map<string, Set<string>> => {
-  const specs = names.map((name) => `./packages/${name}`);
+  const specs = names.map((name) => `./npm/${name}`);
   let stdout;
   try {
     stdout = execFileSync("npm", ["pack", "--dry-run", "--json", ...specs], {
@@ -144,12 +144,12 @@ const packedPaths = (names: Array<string>): Map<string, Set<string>> => {
   return new Map(
     names.map((name) => {
       const manifest = JSON.parse(
-        fs.readFileSync(path.join(repository, "packages", name, "package.json"), "utf8"),
+        fs.readFileSync(path.join(repository, "npm", name, "package.json"), "utf8"),
       );
       const files = byName.get(manifest.name);
       if (files === undefined) {
         throw new Error(
-          `npm pack reported nothing for ${manifest.name} (packages/${name}), so this test ` +
+          `npm pack reported nothing for ${manifest.name} (npm/${name}), so this test ` +
             "would have passed over it",
         );
       }
@@ -269,10 +269,7 @@ describe("what the release packages pack", () => {
     // when Node's two Flow loaders began sharing one cache — so if the scanner
     // ever stops seeing that one, both assertions below are passing over an
     // empty list.
-    const cache = fs.readFileSync(
-      path.join(repository, "packages/host/internal/flow-cache.js"),
-      "utf8",
-    );
+    const cache = fs.readFileSync(path.join(repository, "npm/host/internal/flow-cache.js"), "utf8");
     expect(relativeImports(cache)).toContain("../write-atomically.js");
     expect(
       relativeImports(`import x from "./a.js";\nconst y = await import('../b/c.js');`),
@@ -319,7 +316,7 @@ describe("what the release packages pack", () => {
   it("every package publishes every file it exports", () => {
     const missing = [];
     for (const name of releasePackages) {
-      const directory = path.join(repository, "packages", name);
+      const directory = path.join(repository, "npm", name);
       const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
       const files = packed.get(name) ?? new Set();
       for (const target of exportTargets(manifest.exports ?? {}, [])) {
@@ -331,7 +328,7 @@ describe("what the release packages pack", () => {
   });
 
   // The suite moved next to the code it tests, so this is no longer a
-  // hypothetical: `packages/ui/ui.test.js` is on disk, inside a package that
+  // hypothetical: `npm/ui/ui.test.js` is on disk, inside a package that
   // goes to npm. `crates/uf_lib/tests/package_surface.rs` asserts the rule that
   // keeps it out — every manifest's `files` ends `"!*.test.js"`, and the order
   // is load-bearing — and this asserts the consequence, by asking npm.
@@ -347,7 +344,7 @@ describe("what the release packages pack", () => {
         if (file.endsWith(".test.js")) shipped.push(`@uniflowed/${name} packs ${file}`);
       }
       beside += fs
-        .readdirSync(path.join(repository, "packages", name), { recursive: true })
+        .readdirSync(path.join(repository, "npm", name), { recursive: true })
         .filter((entry) => String(entry).endsWith(".test.js")).length;
     }
 
@@ -361,7 +358,7 @@ describe("what the release packages pack", () => {
   it("every package publishes every file its published files import", () => {
     const missing = [];
     for (const name of releasePackages) {
-      const directory = path.join(repository, "packages", name);
+      const directory = path.join(repository, "npm", name);
       const files = packed.get(name) ?? new Set();
       for (const file of files) {
         if (!file.endsWith(".js")) continue;
@@ -385,7 +382,7 @@ describe("what the release packages pack", () => {
 /**
  * Every `.js` file `directory` publishes, relative to the repository root.
  *
- * The suite lives beside the packages now, so a `.js` under `packages/` is not
+ * The suite lives beside the packages now, so a `.js` under `npm/` is not
  * necessarily one of them: a `.test.js` is subtracted by the `"!*.test.js"`
  * every manifest's `files` ends with, and never reaches a tarball. The edge
  * below is a rule about what a *published* package imports, so reading a test
@@ -482,7 +479,7 @@ describe("the edges between the packages", () => {
   it("the only thing @uniflowed/form takes from @uniflowed/ui is a type", () => {
     const offenders = [];
     let seen = 0;
-    for (const file of sourcesUnder("packages/form")) {
+    for (const file of sourcesUnder("npm/form")) {
       const source = fs.readFileSync(path.join(repository, file), "utf8");
       for (const found of packageImports(source)) {
         if (!found.specifier.startsWith("@uniflowed/ui")) continue;

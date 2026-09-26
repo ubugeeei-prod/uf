@@ -148,7 +148,7 @@ impl ProjectTransform {
     }
 }
 
-/// Where `packages/host/internal/node-hooks.js` files what this service
+/// Where `npm/host/internal/node-hooks.js` files what this service
 /// compiles, relative to the project root it was started with.
 ///
 /// Named here because this process is the only *native* thing that knows the

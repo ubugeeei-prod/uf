@@ -50,7 +50,7 @@ const UNSUPPORTED_SLOT_BOUNDARY_FILES: [(&str, &str); 6] = [
 ///
 /// # Why this is a list and why it is here twice
 ///
-/// `packages/vite/internal/routes.js` is the router the build actually runs,
+/// `npm/vite/internal/routes.js` is the router the build actually runs,
 /// and it has accepted `.jsx` and `.mdx` since it was written. This crate
 /// accepted `.js` and nothing else, and it is the one `uf build` asks for the
 /// summary — so uf's own documentation site reported `routes 1` beside
@@ -215,7 +215,7 @@ pub struct Route {
     /// outermost first.
     ///
     /// Inherited down the tree, the way layouts are, because that is what
-    /// `packages/vite/internal/routes.js` puts on the route table the build
+    /// `npm/vite/internal/routes.js` puts on the route table the build
     /// actually runs (`ownMiddleware`, accumulated root-first). This field was
     /// a `has_middleware: bool` read off `directory`, and the two answer
     /// different questions: `app/dashboard/$middleware.js` guards
@@ -298,7 +298,7 @@ impl Route {
     /// which outranks an optional one, and a longer path outranks a shorter
     /// one — three, two, one and nothing per segment.
     ///
-    /// `packages/router/internal/runtime.js`'s `specificity` is the source of
+    /// `npm/router/internal/runtime.js`'s `specificity` is the source of
     /// truth for these numbers, and this is a copy of it. Only one of the two
     /// decides which route answers a request, and it is that one: it runs in
     /// the server and in the browser, and this crate runs in neither. What
@@ -360,7 +360,7 @@ pub enum RouterError {
     ///
     /// Refused rather than served, because there is nothing to serve. A
     /// catch-all takes every segment of the URL that is left, so a segment
-    /// after it has nothing to match against: `packages/router/internal/
+    /// after it has nothing to match against: `npm/router/internal/
     /// runtime.js`'s `matchSegments` compares `parts[parts.length]` — which is
     /// `undefined` — against the following segment and gives up, and
     /// [`Route::matches_url`] returns `false` for every URL. Both routers
@@ -625,7 +625,7 @@ pub enum RouterError {
 ///
 /// Two, and both are `RouteView`'s: `children` is what the layout wraps and
 /// `params` is the route's. Kept here rather than at the check so that
-/// `packages/vite/internal/routes.js` has one list to mirror.
+/// `npm/vite/internal/routes.js` has one list to mirror.
 pub const LAYOUT_PROP_NAMES: [&str; 2] = ["children", "params"];
 
 pub fn discover_routes(
@@ -1390,7 +1390,7 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
 /// Walked upwards and reversed rather than accumulated on the way down,
 /// because `discover_routes` finds pages with `WalkDir` and never sees a
 /// directory as a directory. The result is the same list
-/// `packages/vite/internal/routes.js` builds on its descent, and it has to be:
+/// `npm/vite/internal/routes.js` builds on its descent, and it has to be:
 /// one of the two decides what runs, and the other decides what `uf build`
 /// says about it.
 fn middleware_chain(

@@ -13,13 +13,13 @@
 // get exactly what the schema produces — numbers where the schema coerces to a
 // number, a list where it says array — so the prop and the export cannot drift
 // apart. That is a claim about types and is proved by the checker:
-// `packages/router/search-params.test.js` runs this file with the router and
+// `npm/router/search-params.test.js` runs this file with the router and
 // the validator beside it, for the reason `field-paths.js` gives.
 
 import * as React from "@uniflowed/react";
 
-import type { PageProps, SearchParamsOf } from "../../packages/router/index.js";
-import type { Schema } from "../../packages/validator/index.js";
+import type { PageProps, SearchParamsOf } from "../../npm/router/index.js";
+import type { Schema } from "../../npm/validator/index.js";
 import {
   array,
   number,
@@ -28,7 +28,7 @@ import {
   pipe,
   string,
   transform,
-} from "../../packages/validator/index.js";
+} from "../../npm/validator/index.js";
 
 export const searchParams: Schema<{
   page: number,

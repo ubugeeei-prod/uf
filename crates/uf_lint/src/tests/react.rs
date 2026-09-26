@@ -39,7 +39,7 @@ fn no_default_export_component_covers_reserved_router_modules() {
 fn no_default_export_component_reads_code_and_not_the_prose_beside_it() {
     // The rule only looks at a file that declares a `component`, and that fact
     // was a substring search over the whole file. So a module whose comment
-    // said "server-component analysis" — `packages/vite/index.js` does — was
+    // said "server-component analysis" — `npm/vite/index.js` does — was
     // treated as declaring one, and its default export, a Vite plugin factory,
     // was reported. The comment was reworded to get a clean run, which is the
     // wrong direction: the file was right and the rule was not.
@@ -233,7 +233,7 @@ fn the_default_export_message_does_not_claim_the_router_needs_a_name() {
 
 /// ubugeeei-prod/uf#451: source a module *generates* is not source it *is*.
 ///
-/// `packages/vite/driver.js` builds a Cloudflare Worker entry as text, and the
+/// `npm/vite/driver.js` builds a Cloudflare Worker entry as text, and the
 /// generated `export default { fetch: … }` was reported against the line of the
 /// file holding the template. Every adapter does this, and so does
 /// `internal/routes.js`.

@@ -58,7 +58,7 @@ scratch() {
   root="$work/$1"
   version="$2"
   rm -rf "$root"
-  mkdir -p "$root/tools/release" "$root/packages/core" "$root/packages/cli" "$root/docs"
+  mkdir -p "$root/tools/release" "$root/npm/core" "$root/npm/cli" "$root/docs"
   cp "$script" "$root/tools/release/bump-version.sh"
   cat > "$root/Cargo.toml" <<TOML
 [workspace]
@@ -68,7 +68,7 @@ members = ["crates/*"]
 version = "$version"
 edition = "2024"
 TOML
-  cat > "$root/packages/core/package.json" <<JSON
+  cat > "$root/npm/core/package.json" <<JSON
 {
   "name": "@uniflowed/core",
   "version": "$version",
@@ -76,7 +76,7 @@ TOML
   "peerDependencies": { "react": "^19.0.0" }
 }
 JSON
-  cat > "$root/packages/cli/package.json" <<JSON
+  cat > "$root/npm/cli/package.json" <<JSON
 {
   "name": "@uniflowed/cli",
   "version": "$version",
@@ -130,13 +130,13 @@ printf '\n## uf@0.2.0\n\n_2026-01-02_\n' >> "$work/happy/CHANGELOG.md"
 run happy 0.2.0
 [ "$status" -eq 0 ] || fail "a bump with a changelog section exited $status: $out"
 grep -q '^version = "0.2.0"$' "$work/happy/Cargo.toml" || fail "Cargo.toml keeps the old workspace version"
-[ "$(declares "$work/happy/packages/core/package.json")" = "0.2.0" ] || fail "packages/core keeps its old version"
-[ "$(declares "$work/happy/packages/cli/package.json")" = "0.2.0" ] || fail "packages/cli keeps its old version"
+[ "$(declares "$work/happy/npm/core/package.json")" = "0.2.0" ] || fail "npm/core keeps its old version"
+[ "$(declares "$work/happy/npm/cli/package.json")" = "0.2.0" ] || fail "npm/cli keeps its old version"
 pass "the workspace and every package declare the new version"
 
-for field in "packages/core/package.json @uniflowed/std" \
-             "packages/cli/package.json @uniflowed/core" \
-             "packages/cli/package.json @uniflowed/cli-darwin-arm64" \
+for field in "npm/core/package.json @uniflowed/std" \
+             "npm/cli/package.json @uniflowed/core" \
+             "npm/cli/package.json @uniflowed/cli-darwin-arm64" \
              "docs/package.json @uniflowed/core"; do
   set -- $field
   [ "$(pins "$work/happy/$1" "$2")" = "0.2.0" ] || fail "$1 still pins $2 at the old version"
@@ -160,7 +160,7 @@ case "$out" in
   *) fail "the refusal does not name CHANGELOG.md: $out" ;;
 esac
 grep -q '^version = "0.1.0"$' "$work/order/Cargo.toml" || fail "the refusal still rewrote Cargo.toml"
-[ "$(declares "$work/order/packages/core/package.json")" = "0.1.0" ] || fail "the refusal still rewrote a package"
+[ "$(declares "$work/order/npm/core/package.json")" = "0.1.0" ] || fail "the refusal still rewrote a package"
 pass "a bump to a version the changelog does not have is refused, and changes nothing"
 
 # --- and the heading is matched, not pattern-matched -------------------------
@@ -179,7 +179,7 @@ scratch resume 0.2.0
 run resume 0.2.0
 [ "$status" -eq 0 ] || fail "re-running a completed bump exited $status: $out"
 grep -q '^version = "0.2.0"$' "$work/resume/Cargo.toml" || fail "the re-run moved the workspace version"
-[ "$(declares "$work/resume/packages/core/package.json")" = "0.2.0" ] || fail "the re-run moved a package version"
+[ "$(declares "$work/resume/npm/core/package.json")" = "0.2.0" ] || fail "the re-run moved a package version"
 pass "a bump to the version the tree already carries is a no-op that succeeds"
 
 # --- and a Cargo.toml that really has no version still says so ---------------
@@ -212,7 +212,7 @@ case "$out" in
   *) fail "the refusal does not say the version is tagged: $out" ;;
 esac
 grep -q '^version = "0.1.0"$' "$work/released/Cargo.toml" || fail "the refusal still rewrote Cargo.toml"
-[ "$(declares "$work/released/packages/core/package.json")" = "0.1.0" ] || fail "the refusal still rewrote a package"
+[ "$(declares "$work/released/npm/core/package.json")" = "0.1.0" ] || fail "the refusal still rewrote a package"
 pass "a bump onto a version that already has a tag is refused, and changes nothing"
 
 # --- and finishing a release that already tagged is still a no-op ------------

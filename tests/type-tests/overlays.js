@@ -18,13 +18,13 @@
 // tells a reader the page runs the other way. None of them fails at run time
 // and none of them is visible in a screenshot.
 
-import type { DialogRole } from "../../packages/ui/dialog.js";
-import type { Edge } from "../../packages/ui/sheet.js";
-import type { InputOtpKind } from "../../packages/ui/input-otp.js";
-import type { Orientation } from "../../packages/ui/separator.js";
-import type { SidebarSide } from "../../packages/ui/sidebar.js";
-import { Carousel, Dialog, InputOtp, Sheet, Sidebar } from "../../packages/ui/index.js";
-import { Separator } from "../../packages/ui/separator.js";
+import type { DialogRole } from "../../npm/ui/dialog.js";
+import type { Edge } from "../../npm/ui/sheet.js";
+import type { InputOtpKind } from "../../npm/ui/input-otp.js";
+import type { Orientation } from "../../npm/ui/separator.js";
+import type { SidebarSide } from "../../npm/ui/sidebar.js";
+import { Carousel, Dialog, InputOtp, Sheet, Sidebar } from "../../npm/ui/index.js";
+import { Separator } from "../../npm/ui/separator.js";
 
 // A modal announces itself as one of two things, and a typo is not a third.
 // $FlowExpectedError[incompatible-type] incompatible with DialogRole

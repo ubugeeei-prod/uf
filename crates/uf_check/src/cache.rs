@@ -7,7 +7,7 @@
 //!
 //! # The key, and why it is shaped like the transform cache's
 //!
-//! `@uniflowed/host`'s transform cache (`packages/host/internal/node-hooks.js`)
+//! `@uniflowed/host`'s transform cache (`npm/host/internal/node-hooks.js`)
 //! settled the hard half of this key first, in #219: **the compiler's own
 //! identity has to be in it**. A content-addressed cache "has no invalidation
 //! to get wrong" only if every other input to the computation is a constant,
@@ -65,7 +65,7 @@
 //! # Why a record holds several answers and not one
 //!
 //! A file is checked in more than one batch. `uf check` hands the checker the
-//! whole project; `uf check packages/form/watch.js` hands it the closure of one
+//! whole project; `uf check npm/form/watch.js` hands it the closure of one
 //! file, and an editor asking about the buffer in front of it hands over less
 //! again. The file's own text is the same in all of them, so they share a key
 //! — but they are different batches, so each computes a different dependency

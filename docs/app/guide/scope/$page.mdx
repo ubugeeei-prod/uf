@@ -43,7 +43,7 @@ system. The reasoning, and the audit of where uf does not yet live up to it, is
 
 ### It does not own the bundler, and will not fork it
 
-The dev server and the production build are Vite — `packages/vite/package.json`
+The dev server and the production build are Vite — `npm/vite/package.json`
 depends on `vite: "^8.2.2"`, and uf drives it over a JSON protocol. If uf needs
 behaviour Vite does not have, the answer is a plugin or an upstream change,
 never a fork. That is the first red line and it is first for a reason: a

@@ -1117,9 +1117,9 @@ const CELL_SCHEDULE: &str = "// @flow\nexport type Task = {| readonly run: () =>
 /// The whole package, as the batch holds it.
 fn cell_package() -> Vec<Source<'static>> {
     vec![
-        Source::new("packages/cell/package.json", CELL_MANIFEST),
-        Source::new("packages/cell/index.js", CELL_INDEX),
-        Source::new("packages/cell/internal/schedule.js", CELL_SCHEDULE),
+        Source::new("npm/cell/package.json", CELL_MANIFEST),
+        Source::new("npm/cell/index.js", CELL_INDEX),
+        Source::new("npm/cell/internal/schedule.js", CELL_SCHEDULE),
     ]
 }
 
@@ -1219,9 +1219,9 @@ fn a_package_imports_map_gives_hash_specifiers_the_target_type() {
     let report = batch(&[
         Source::new(
             "package.json",
-            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+            r##"{ "imports": { "#cell": "./npm/cell/index.js" } }"##,
         ),
-        Source::new("packages/cell/index.js", CELL_INDEX),
+        Source::new("npm/cell/index.js", CELL_INDEX),
         Source::new(
             "app.js",
             "// @flow\nimport { cell } from \"#cell\";\nconst n: number = cell(\"one\");\n",
@@ -1247,9 +1247,9 @@ fn a_package_imports_map_above_the_batch_root_gives_hash_specifiers_the_target_t
     let report = batch(&[
         Source::new(
             "../package.json",
-            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+            r##"{ "imports": { "#cell": "./npm/cell/index.js" } }"##,
         ),
-        Source::new("../packages/cell/index.js", CELL_INDEX),
+        Source::new("../npm/cell/index.js", CELL_INDEX),
         Source::new(
             "app.js",
             "// @flow\nimport { cell } from \"#cell\";\nconst n: number = cell(\"one\");\n",
@@ -1272,7 +1272,7 @@ fn a_package_imports_map_above_the_batch_root_gives_hash_specifiers_the_target_t
 fn a_path_the_exports_map_does_not_publish_stays_unresolved() {
     require_checker!();
 
-    // `packages/cell/internal/schedule.js` is in the batch, and the manifest
+    // `npm/cell/internal/schedule.js` is in the batch, and the manifest
     // publishes it only as `./schedule`. Reaching past the map for it would
     // type an import that the runtime refuses to load, and would make a
     // package's internal layout its consumers' business.
@@ -1298,7 +1298,7 @@ fn host_only_package_exports_are_reported_separately_from_missing_packages() {
 
     let report = batch(&[
         Source::new(
-            "packages/hosted/package.json",
+            "npm/hosted/package.json",
             r#"{
               "name": "hosted",
               "exports": {
@@ -1307,11 +1307,11 @@ fn host_only_package_exports_are_reported_separately_from_missing_packages() {
             }"#,
         ),
         Source::new(
-            "packages/hosted/node.js",
+            "npm/hosted/node.js",
             "// @flow\nexport type Mode = \"node\";\n",
         ),
         Source::new(
-            "packages/hosted/bun.js",
+            "npm/hosted/bun.js",
             "// @flow\nexport type Mode = \"bun\";\n",
         ),
         Source::new(
@@ -1336,7 +1336,7 @@ fn the_published_name_and_the_relative_path_give_the_same_type() {
     // import it by name, and a value that crossed both has to stay assignable.
     let report = batch_with_package(
         "// @flow\nimport type { Cell } from \"@uniflowed/cell\";\n\
-         import { cell } from \"./packages/cell/index.js\";\n\
+         import { cell } from \"./npm/cell/index.js\";\n\
          export const ok: Cell<number> = cell(1);\n\
          export const bad: Cell<string> = cell(2);\n",
     );
@@ -1357,10 +1357,10 @@ fn a_package_whose_entry_file_is_not_in_the_batch_is_unchecked_and_recorded() {
     require_checker!();
 
     // The manifest is not a promise that the file was collected. `uf check
-    // packages/cell` narrows the batch to one directory, and a package outside
+    // npm/cell` narrows the batch to one directory, and a package outside
     // it is exactly as untyped as it was before its manifest was read.
     let report = batch(&[
-        Source::new("packages/cell/package.json", CELL_MANIFEST),
+        Source::new("npm/cell/package.json", CELL_MANIFEST),
         Source::new(
             "app.js",
             "// @flow\nimport { cell } from \"@uniflowed/cell\";\nconst n: number = cell(1);\n",
@@ -1386,7 +1386,7 @@ fn a_package_is_merged_once_however_it_is_spelled() {
     ));
     sources.push(Source::new(
         "by-path.js",
-        "// @flow\nimport type { Cell } from \"./packages/cell/index.js\";\n\
+        "// @flow\nimport type { Cell } from \"./npm/cell/index.js\";\n\
          import { one } from \"./by-name.js\";\nexport const two: Cell<number> = one;\n",
     ));
 

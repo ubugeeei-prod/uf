@@ -9,13 +9,13 @@ it("fails native-addon errors in Vite and unrelated files", () => {
     skipped: 0,
     tests: [],
     fileReports: [
-      { file: "packages/vite/flight.test.js", status: "load-failed", reason },
-      { file: "packages/ui/ui.test.js", status: "load-failed", reason },
+      { file: "npm/vite/flight.test.js", status: "load-failed", reason },
+      { file: "npm/ui/ui.test.js", status: "load-failed", reason },
     ],
   });
   expect(report.failures.length).toBe(2);
-  expect(report.failures[0].file).toBe("packages/vite/flight.test.js");
-  expect(report.failures[1].file).toBe("packages/ui/ui.test.js");
+  expect(report.failures[0].file).toBe("npm/vite/flight.test.js");
+  expect(report.failures[1].file).toBe("npm/ui/ui.test.js");
 });
 it("fails a different error in an otherwise exempted file", () => {
   const report = classify({
@@ -24,7 +24,7 @@ it("fails a different error in an otherwise exempted file", () => {
     tests: [],
     fileReports: [
       {
-        file: "packages/vite/flight.test.js",
+        file: "npm/vite/flight.test.js",
         status: "load-failed",
         reason: "unexpected syntax error",
       },
@@ -100,20 +100,20 @@ it("fails the former Relay and document storage exceptions", () => {
     fileReports: [],
     tests: [
       {
-        file: "packages/vite/relay.test.js",
+        file: "npm/vite/relay.test.js",
         name: "Relay transform",
         status: "failed",
         failures: [{ message: "globalsBuiltinLower is not iterable" }],
       },
       {
-        file: "packages/react-testing/dom-storage.test.js",
+        file: "npm/react-testing/dom-storage.test.js",
         name: "document storage probe",
         status: "failed",
-        failures: [{ message: "Loading unprepared module: /packages/react/react" }],
+        failures: [{ message: "Loading unprepared module: /npm/react/react" }],
       },
     ],
   });
   expect(report.failures.length).toBe(2);
-  expect(report.failures[0].file).toBe("packages/vite/relay.test.js");
-  expect(report.failures[1].file).toBe("packages/react-testing/dom-storage.test.js");
+  expect(report.failures[0].file).toBe("npm/vite/relay.test.js");
+  expect(report.failures[1].file).toBe("npm/react-testing/dom-storage.test.js");
 });

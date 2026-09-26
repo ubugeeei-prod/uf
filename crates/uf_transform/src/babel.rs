@@ -750,7 +750,7 @@ fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable, with_index: 
     // node — because `get_mut` cannot run while `keys` is borrowed. `iter_mut`
     // hands out the key and the child together and needs neither, and it is
     // the same order, so `_nodeId` still counts the tree the way it did.
-    // On `packages/router/internal/runtime.js` this was the largest single
+    // On `npm/router/internal/runtime.js` this was the largest single
     // line in ubugeeei-prod/uf#668.
     for (key, child) in object.iter_mut() {
         if SKIPPED.contains(&key.as_str()) {

@@ -3,7 +3,7 @@
 //! What `uf build` emits for an imported image and an imported font.
 //!
 //! The unit tests in `crates/uf_assets` prove the pipeline resizes and
-//! re-encodes; `packages/vite/assets.test.js` proves the components write the
+//! re-encodes; `npm/vite/assets.test.js` proves the components write the
 //! right attributes from a manifest. Neither proves the two halves are wired
 //! to each other, and that is the whole of this file: a real project, a real
 //! `uf build`, and assertions that go to the bytes in `dist/` and the string in

@@ -440,7 +440,7 @@ impl TerminalSize {
     /// Resolve the terminal's size, once.
     ///
     /// Precedence, highest first — the same list `@uniflowed/tui`'s
-    /// `detectSize` walks, and `packages/tui/tui.test.js` compares the two
+    /// `detectSize` walks, and `npm/tui/tui.test.js` compares the two
     /// orders rather than believing this sentence:
     ///
     /// 1. `COLUMNS` and `LINES`, each on its own, when they parse as a
@@ -486,7 +486,7 @@ impl TerminalSize {
 /// above it is a pure function of its inputs.
 ///
 /// `@uniflowed/tui`'s `detectSize` is this function, chain for chain, and
-/// `packages/tui/tui.test.js` compares the two rather than believing this
+/// `npm/tui/tui.test.js` compares the two rather than believing this
 /// sentence.
 fn detect_size(env: &TerminalEnv, reported: Option<(usize, usize)>) -> TerminalSize {
     let columns = env
@@ -627,7 +627,7 @@ fn detect_color(choice: ColorChoice, tty: Tty, env: &TerminalEnv) -> ColorLevel 
 /// UTF-8 terminal whose owner asked for no colour can still draw `├─`, and
 /// giving it `+- ` instead is worse output for no reason.
 ///
-/// `packages/tui/capability.js` decides it the same way, and
+/// `npm/tui/capability.js` decides it the same way, and
 /// `tests/library/tui.test.js` compares the two rules so they cannot drift
 /// apart again — which is what let them disagree in the first place.
 fn detect_glyphs(env: &TerminalEnv) -> GlyphSet {

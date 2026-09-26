@@ -33,7 +33,7 @@
 //! parameter's name and kind are in the syntax tree and need no MF2 parser
 //! here — and deliberately so. A second MF2 implementation in Rust would be a
 //! second answer to what `{$count :number}` means, in a repository whose first
-//! answer is a tested one in `packages/i18n/syntax.js`. So this crate never
+//! answer is a tested one in `npm/i18n/syntax.js`. So this crate never
 //! parses a message; it copies the source string verbatim and reads the
 //! parameter object beside it.
 //!

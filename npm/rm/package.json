@@ -1,0 +1,25 @@
+{
+  "name": "@uniflowed/rm",
+  "version": "0.10.0",
+  "private": true,
+  "description": "Flow declarations for @uniflowed/rm, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/rm"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@uniflowed/config": "0.10.0",
+    "@uniflowed/core": "0.10.0"
+  }
+}

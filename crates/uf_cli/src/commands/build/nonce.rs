@@ -60,7 +60,7 @@ use crate::support::plural;
 
 /// The token an `app.router.headers` value writes where the nonce goes.
 ///
-/// `packages/server/internal/routing.js`'s `NONCE_TOKEN` is the source of truth
+/// `npm/server/internal/routing.js`'s `NONCE_TOKEN` is the source of truth
 /// and this is a copy of it, the way `uf_router::Route::specificity` copies the
 /// router's own numbers. The two have to spell it the same, or this check
 /// reports a policy the server does not write — or misses the one it does.
@@ -143,7 +143,7 @@ pub(crate) fn nonced_pages(pages: &[Prerendered], headers: &[HeaderRule]) -> Vec
 
 /// Whether a rule's `source` covers `url`.
 ///
-/// A port of `matchSegments` in `packages/server/internal/routing.js`, which is
+/// A port of `matchSegments` in `npm/server/internal/routing.js`, which is
 /// the function that decides this for a real request.
 ///
 /// It is **not** `uf_router::Route::matches_url`, and the difference is the

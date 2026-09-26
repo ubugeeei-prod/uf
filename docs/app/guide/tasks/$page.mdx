@@ -271,8 +271,8 @@ Account for these when choosing `inputs`:
   [Cross-member dependencies](#workspaces) also include the dependency result.
 - **Excluded directories:** `**` skips `.git`, `.uf`, `.uniflowed`, `dist`,
   `node_modules` and `target`, and does not follow symlinks. Name an excluded
-  directory with its literal path: `packages/ui/dist/**` works;
-  `packages/*/dist/**` does not.
+  directory with its literal path: `npm/ui/dist/**` works;
+  `npm/*/dist/**` does not.
 
 ## Handle failures
 
@@ -333,8 +333,8 @@ The root's own tasks are excluded from `-r`; run those without `-r`.
 | `--filter` | Selects |
 | --- | --- |
 | `ui` | Member named `ui` or at path `ui` |
-| `@acme/*`, `packages/*` | Members matching the name or path glob |
-| `./packages/ui` | Member at that path; globs after `./` match paths only |
+| `@acme/*`, `npm/*` | Members matching the name or path glob |
+| `./npm/ui` | Member at that path; globs after `./` match paths only |
 | `app...` | `app` and its dependencies |
 | `app^...` | Only the dependencies of `app` |
 | `...ui` | `ui` and its dependents |

@@ -20,7 +20,7 @@
 // action={…}>` supplies that `FormData`, and `useFormStatus` reads the submit
 // that is in flight from inside the form. What makes it work against a server
 // is that a reference is an ordinary async function — see
-// `packages/router/action.js`.
+// `npm/router/action.js`.
 
 import * as React from "@uniflowed/react";
 import { useActionState, useState } from "@uniflowed/react";

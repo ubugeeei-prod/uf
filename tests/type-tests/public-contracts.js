@@ -1,12 +1,12 @@
 // @flow
 // Correct inferred public types and the invalid assignments they must reject.
 
-import { useInfiniteQuery, useQuery } from "../../packages/query/index.js";
-import { ufTokens } from "../../packages/stylex/tokens.stylex.js";
-import type { ThemeOverrides } from "../../packages/stylex/index.js";
-import { BufferWriter, BytesReader, copy, readAll } from "../../packages/std/io.js";
-import type { Reader, Writer } from "../../packages/std/io.js";
-import { BufferedReader } from "../../packages/std/bufio.js";
+import { useInfiniteQuery, useQuery } from "../../npm/query/index.js";
+import { ufTokens } from "../../npm/stylex/tokens.stylex.js";
+import type { ThemeOverrides } from "../../npm/stylex/index.js";
+import { BufferWriter, BytesReader, copy, readAll } from "../../npm/std/io.js";
+import type { Reader, Writer } from "../../npm/std/io.js";
+import { BufferedReader } from "../../npm/std/bufio.js";
 
 export hook useInferredQueryContracts(): void {
   const plain = useQuery({ queryKey: ["plain"], queryFn: async () => ["ada"] });

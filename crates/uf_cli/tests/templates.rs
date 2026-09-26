@@ -137,8 +137,8 @@ fn the_monorepo_template_is_checked_at_its_root_and_built_across_its_packages() 
         "uf.config.js",
         "apps/web/uf.config.js",
         "apps/web/app/$page.js",
-        "packages/ui/uf.config.js",
-        "packages/ui/index.test.js",
+        "npm/ui/uf.config.js",
+        "npm/ui/index.test.js",
     ] {
         assert!(dir.join(file).is_file(), "the template wrote no {file}");
     }
@@ -149,12 +149,12 @@ fn the_monorepo_template_is_checked_at_its_root_and_built_across_its_packages() 
     let scope = dir.join("node_modules/@acme");
     std::fs::create_dir_all(&scope).expect("the scope directory");
     #[cfg(unix)]
-    std::os::unix::fs::symlink("../../packages/ui", scope.join("ui")).expect("the workspace link");
+    std::os::unix::fs::symlink("../../npm/ui", scope.join("ui")).expect("the workspace link");
 
     step(&dir, &["run", "bundle"]);
 
     assert!(
-        dir.join("packages/ui/dist").is_dir(),
+        dir.join("npm/ui/dist").is_dir(),
         "the library was not built"
     );
     assert!(

@@ -6,7 +6,7 @@
 //! from `@uniflowed/config`'s Flow type, read by [`uf_config::schema`]. That is
 //! the reader `crates/uf_config/tests/flow_schema.rs` holds to the loader, so a
 //! key offered here is a key uf reads, and the words shown for it are the ones
-//! written above it in `packages/config/internal/schema.js`. The schema is
+//! written above it in `npm/config/internal/schema.js`. The schema is
 //! compiled into the binary and parsed once per process, by the first request
 //! that needs it.
 //!

@@ -92,16 +92,16 @@ export default defineConfig({
     splitFiles: true,
     // `uf run test:lib:coverage` measures the packages this repository ships,
     // and nothing else. The suite that drives them now lives *inside* them —
-    // `packages/ui/ui.test.js` beside `packages/ui/alert.js`, the way
+    // `npm/ui/ui.test.js` beside `npm/ui/alert.js`, the way
     // `crates/*/src/tests.rs` sits beside its own — and the docs site and the
     // fixtures under `tests/` are not the product, so counting them would move
     // the number for reasons nobody could act on.
     //
     // What a co-located suite does *not* do is measure itself. `exclude`
     // defaults to `[".test.", ".spec."]` and is left at that default, so a
-    // test file inside `packages/` is a project file the runner loads and not
+    // test file inside `npm/` is a project file the runner loads and not
     // a file the report counts. A hundred per cent by construction is not
-    // information, and before the move `include: ["packages/"]` was what kept
+    // information, and before the move `include: ["npm/"]` was what kept
     // it out; now the default `exclude` is. Widening `include` without
     // knowing that would silently add eighty files at 100%.
     //
@@ -110,7 +110,7 @@ export default defineConfig({
     // settle; a threshold set on the first measurement is a threshold set by
     // whatever happened to be true that afternoon. #280 says what it is.
     coverage: {
-      include: ["packages/"],
+      include: ["npm/"],
       reporters: ["text", "lcov"],
     },
   },
@@ -208,10 +208,10 @@ export default defineConfig({
     // suite could move next to the code it tests. A uf workspace member is any
     // directory with its own `uf.config.js` (`crates/uf_project/src/workspace.rs`),
     // so `uf test#library` made `tests/library` the project root — and
-    // discovery walks *down* from the root, which put `packages/` outside it.
-    // A test file moved into `packages/ui` was not a test that failed; it was
+    // discovery walks *down* from the root, which put `npm/` outside it.
+    // A test file moved into `npm/ui` was not a test that failed; it was
     // a test that silently stopped existing. Entering here is what makes the
-    // two halves one suite: `packages/**` and whatever is left in
+    // two halves one suite: `npm/**` and whatever is left in
     // `tests/library/**` are both under this root.
     //
     // The name stays `test:lib` because that is what it runs — the library's
@@ -344,7 +344,7 @@ export default defineConfig({
     // former hand-written hooks rule (86) as the largest groups when both
     // reported nothing — the first is one of sixteen rules that need type
     // inference uf does not implement yet, so it is skipped rather than
-    // passing — and then 153 errors including eight in `packages/test`'s fake
+    // passing — and then 153 errors including eight in `npm/test`'s fake
     // timers, which #237 had already fixed. ubugeeei-prod/uf#225 has the count
     // this replaces.
     "check:lib": {
@@ -612,7 +612,7 @@ export default defineConfig({
     // `bench:tui` needs React Ink, which is a dependency of the benchmark and
     // of nothing else in this repository — `npm install` inside
     // `tools/bench/tui` first. Its byte counts are deterministic and *are*
-    // checked in CI, by `packages/tui/tui.test.js`, which asserts uf's half of
+    // checked in CI, by `npm/tui/tui.test.js`, which asserts uf's half of
     // the table in `docs/app/guide/tui/$page.mdx` against the renderer. What
     // this task adds is Ink's half and the wall clock, and a wall clock on a
     // shared build agent is a measurement of the agent.
@@ -653,7 +653,7 @@ export default defineConfig({
     // `setTimeout`, so the cold column is a measurement of a sleep and the
     // whole thing is a wall clock on whatever machine ran it. The behaviour it
     // is a number *about* is checked without a clock at all, in
-    // `packages/server/cache.test.js`, which drives the store's own `now`.
+    // `npm/server/cache.test.js`, which drives the store's own `now`.
     "bench:route-cache": {
       command:
         "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/cache/route-cache.js",
@@ -775,7 +775,7 @@ export default defineConfig({
       // The offline phase reads the published list and each named package's
       // manifest, and returns before the phase that talks to the registry.
       inputs: [
-        "packages/*/package.json",
+        "npm/*/package.json",
         "tools/release/verify-npm.sh",
         "tools/release/published-packages.txt",
       ],
@@ -788,10 +788,10 @@ export default defineConfig({
     // `nativeRuntimeRequired` has to be named in one of the two manifests.
     publishable: {
       command: "tools/ci/publishable.sh",
-      // It reads two manifests and every `.js` under `packages/`, looking for
+      // It reads two manifests and every `.js` under `npm/`, looking for
       // a `nativeRuntimeRequired(` call. That is the whole of it.
       inputs: [
-        "packages/**/*.js",
+        "npm/**/*.js",
         "tools/ci/publishable.sh",
         "tools/release/published-packages.txt",
         "tools/release/pending-packages.txt",
@@ -967,7 +967,7 @@ export default defineConfig({
       inputs: [
         "package-lock.json",
         "package.json",
-        "packages/*/package.json",
+        "npm/*/package.json",
         "tools/ci/lockfile-in-sync.sh",
       ],
     },
@@ -1103,8 +1103,8 @@ export default defineConfig({
 
     manifests: {
       command:
-        "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
-      inputs: ["packages/*/package.json"],
+        "node -e \"for (const f of require('node:fs').globSync('npm/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
+      inputs: ["npm/*/package.json"],
     },
 
     // --- The whole thing -----------------------------------------------

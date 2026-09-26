@@ -110,7 +110,7 @@ pub(crate) fn unguarded_pages(
         // is a report about a file that is served exactly as intended.
         //
         // "Most specific" is `Route::specificity`, which copies the numbers
-        // out of `packages/router/internal/runtime.js`'s `specificity`. That
+        // out of `npm/router/internal/runtime.js`'s `specificity`. That
         // function is the source of truth: it is the one that picks the route
         // for a real request, and this warning is a claim about what it will
         // pick. Counting literal segments was the earlier answer and is a

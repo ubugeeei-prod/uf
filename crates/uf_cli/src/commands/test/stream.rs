@@ -308,8 +308,8 @@ impl<W: Write> State<'_, W> {
     }
 
     /// ```text
-    /// ⠋ packages/ui/ui.test.js       312/525 › Dialog > opens on click
-    /// ⠋ packages/form/form.test.js    40/92  › validates on blur
+    /// ⠋ npm/ui/ui.test.js       312/525 › Dialog > opens on click
+    /// ⠋ npm/form/form.test.js    40/92  › validates on blur
     ///   3120 cases · 45/230 files · 1 failed · 2.4s
     /// ```
     fn compose(&mut self) {

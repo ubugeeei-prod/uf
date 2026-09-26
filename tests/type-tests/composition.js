@@ -4,7 +4,7 @@
 // beside it.
 //
 // Every refusal in this file is a type error `uf check` must raise, suppressed
-// where it stands. `packages/ui/index.js` makes one claim no other component
+// where it stands. `npm/ui/index.js` makes one claim no other component
 // library can make:
 //
 //   > `Tabs.List` declares `renders* Tabs.Tab`, so a `<button>` in a tab list
@@ -47,7 +47,7 @@
 // `uf check` builds its module map out of the files it is asked to check, and a
 // relative import that leaves that set resolves to an any-typed value — after
 // which every `renders*` below is `any`, every line passes, and the test would
-// prove nothing. So the test runs `uf check tests/type-tests packages/ui`, with
+// prove nothing. So the test runs `uf check tests/type-tests npm/ui`, with
 // both in one set. `anchoring.js` beside this says the rest of why the fixtures
 // live here rather than inside the package they are about.
 //
@@ -77,7 +77,7 @@ import {
   Tabs,
   Toast,
   ToggleGroup,
-} from "../../packages/ui/index.js";
+} from "../../npm/ui/index.js";
 
 // --- Tabs.List ---------------------------------------------------------------
 //

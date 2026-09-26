@@ -2,7 +2,7 @@
 //!
 //! # One reader, and who reads through it
 //!
-//! `packages/config/internal/schema.js` is the type `defineConfig` checks a
+//! `npm/config/internal/schema.js` is the type `defineConfig` checks a
 //! config against. Two things in uf read it as *data* rather than as a type:
 //!
 //! * `tests/flow_schema.rs`, which holds the key names it declares to the ones
@@ -55,8 +55,8 @@ use thiserror::Error;
 use uf_flow::ast::{Comment, CommentKind, expression, statement, types};
 use uf_flow::{Loc, ParseFailure, Position};
 
-/// `packages/config/internal/schema.js`, as this build of uf was compiled with.
-pub const SOURCE: &str = include_str!("../../../packages/config/internal/schema.js");
+/// `npm/config/internal/schema.js`, as this build of uf was compiled with.
+pub const SOURCE: &str = include_str!("../../../npm/config/internal/schema.js");
 
 /// The alias `defineConfig` takes, which is the root of every path.
 const ROOT: &str = "UniflowedConfig";

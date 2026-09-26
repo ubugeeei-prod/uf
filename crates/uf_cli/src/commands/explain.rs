@@ -2211,15 +2211,15 @@ mod tests {
         };
         write(
             "package.json",
-            r#"{ "private": true, "workspaces": ["packages/*"] }"#,
+            r#"{ "private": true, "workspaces": ["npm/*"] }"#,
         );
-        write("packages/ui/package.json", r#"{ "name": "ui" }"#);
+        write("npm/ui/package.json", r#"{ "name": "ui" }"#);
         write(
-            "packages/ui/uf.config.js",
+            "npm/ui/uf.config.js",
             r#"export default { tasks: { build: "true" } };"#,
         );
         write(
-            "packages/app/package.json",
+            "npm/app/package.json",
             r#"{ "name": "app", "dependencies": { "ui": "workspace:*" } }"#,
         );
         let resolved = load_config(root).unwrap();

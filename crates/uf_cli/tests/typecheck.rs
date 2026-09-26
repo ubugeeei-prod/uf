@@ -451,7 +451,7 @@ fn a_workspace_package_is_typed_through_the_manifest_that_publishes_it() {
     // The library tests state a batch directly and so cannot see this; only a
     // project on disk can.
     let dir = tempfile::tempdir().unwrap();
-    let package = dir.path().join("packages/cell");
+    let package = dir.path().join("npm/cell");
     fs::create_dir_all(&package).unwrap();
     fs::write(
         package.join("package.json"),
@@ -523,7 +523,7 @@ fn imports_that_uf_cannot_type_yet_are_named_rather_than_hidden() {
 fn host_conditional_package_exports_are_reported_apart_from_missing_packages() {
     let dir = tempfile::tempdir().unwrap();
     let src = dir.path().join("src");
-    let package = dir.path().join("packages/hosted");
+    let package = dir.path().join("npm/hosted");
     fs::create_dir_all(&src).unwrap();
     fs::create_dir_all(&package).unwrap();
     fs::write(

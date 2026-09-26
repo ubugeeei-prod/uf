@@ -1,7 +1,7 @@
 // @flow
 //
 // One transaction scenario, run by each engine's suite against a real
-// database behind each adapter: `packages/sql/sql.test.js` checks the
+// database behind each adapter: `npm/sql/sql.test.js` checks the
 // statements `transactionOn` sends to a recording connection, and this checks
 // that a real server agrees with what they mean.
 //

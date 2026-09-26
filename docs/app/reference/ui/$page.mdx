@@ -58,7 +58,7 @@ explains why components are imported as namespaces.
 
 Every component the registry has: the command that writes it, the line that
 imports it, its example running on this page, and its two files, folded under
-it. The list is `registry/ui/` itself, read when this site is built from the
+it. The list is `npm/ui/registry/` itself, read when this site is built from the
 same directory `uf` embeds, so every component `uf ui list` offers is shown
 here. The examples render in the tokens' default theme, whatever this site's
 theme is, because that is what a project sees before it applies a theme of its
@@ -151,10 +151,10 @@ structured around the failures these primitives are meant to prevent:
 
 | Contract | Held by |
 | --- | --- |
-| Composition types reject the wrong child before a browser exists | `tests/type-tests/composition.js`, run from `packages/ui/ui.test.js` |
+| Composition types reject the wrong child before a browser exists | `tests/type-tests/composition.js`, run from `npm/ui/ui.test.js` |
 | Overlay side, alignment, modal role, input alphabet and orientation are checked unions | `tests/type-tests/anchoring.js` and `tests/type-tests/overlays.js` |
-| A caller's `className`, `id`, `data-*`, `aria-*`, handlers and refs arrive without replacing the component's own behaviour | the prop-composition block in `packages/ui/ui.test.js` |
-| `render` exists only where it is implemented, and every exported part is classified | the render-hatch table in `packages/ui/ui.test.js` |
+| A caller's `className`, `id`, `data-*`, `aria-*`, handlers and refs arrive without replacing the component's own behaviour | the prop-composition block in `npm/ui/ui.test.js` |
+| `render` exists only where it is implemented, and every exported part is classified | the render-hatch table in `npm/ui/ui.test.js` |
 | No `aria-labelledby`, `aria-describedby`, `aria-controls` or `aria-activedescendant` points at a missing element | the dangling-reference helper used across the suite |
 | Keyboard behaviour is asserted as user-visible focus, state and announcement changes | the component blocks below, one primitive at a time |
 
@@ -242,7 +242,7 @@ and proposed order of work are tracked in [#1368](https://github.com/ubugeeei-pr
 | `Calendar`, `RangeCalendar`, `DateField`, `TimeField`, `DatePicker`, `DateRangePicker` | **Partial**: Gregorian dates and segmented fields work; no non-Gregorian calendar or zoned date-time values, and DatePicker uses a text input rather than segmented DateField |
 | `I18nProvider`, `useLocale`, `useCollator`, `useFilter` | **Implemented** for locale and direction; built-in component announcements remain mostly English |
 
-The `packages/ui` tests cover the shipped behaviours, but component-wide
+The `npm/ui` tests cover the shipped behaviours, but component-wide
 hydration coverage and strict-mode coverage remain incomplete. A missing row
 above should be treated as unavailable when planning an application.
 
@@ -494,7 +494,7 @@ contract, not the styling hook.
 
 ### Where it exists
 
-The exact source of truth is the audited table in `packages/ui/ui.test.js`; it
+The exact source of truth is the audited table in `npm/ui/ui.test.js`; it
 fails if a part is exported but not classified. At this release line:
 
 | Coverage | Parts |
@@ -2336,7 +2336,7 @@ keeps `role="checkbox"` and preserves `aria-checked="mixed"` when
 A reference for what `@uniflowed/ui` guarantees, not a gallery. The only styling
 on it is under [Registry components](#registry-components), because those are
 files a project owns, not parts of the package. The guarantees
-are stated as tests in `packages/ui/ui.test.js`, where every assertion is
+are stated as tests in `npm/ui/ui.test.js`, where every assertion is
 either "a reader is told X" or "this key does Y" — a snapshot of the markup
 would pass while every one of them was broken.
 

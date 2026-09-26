@@ -1,0 +1,27 @@
+{
+  "name": "@uniflowed/mock",
+  "version": "0.10.0",
+  "description": "MSW-compatible request mocking over the platform's own fetch, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/mock"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./handler": "./handler.js",
+    "./registry": "./registry.js",
+    "./response": "./response.js"
+  },
+  "files": [
+    "*.js",
+    "internal",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.10.0"
+  }
+}

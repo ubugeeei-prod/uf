@@ -3,7 +3,7 @@
 //! The native route table and the web build's router choose the same files.
 //!
 //! There are two scanners over one router root, and there have to be: the web
-//! build scans in `@uniflowed/vite` (`packages/vite/internal/routes.js`) while
+//! build scans in `@uniflowed/vite` (`npm/vite/internal/routes.js`) while
 //! Vite runs, and a native route table is written by `uf` for Metro, which runs
 //! no uf JavaScript at all. Two implementations of one precedence rule are a
 //! drift risk, and this test is what makes them not one: for every target it
@@ -154,7 +154,7 @@ fn rust_lines(root: &Utf8Path, target: RouteTarget) -> Vec<String> {
 
 fn js_lines(root: &Utf8Path, target: RouteTarget) -> Vec<String> {
     let routes_js = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../packages/vite/internal/routes.js")
+        .join("../../npm/vite/internal/routes.js")
         .canonicalize_utf8()
         .unwrap();
     let script = JS_SCANNER.replace("__ROUTES_JS__", &format!("file://{routes_js}"));

@@ -1,14 +1,14 @@
 //! The rules every default style keeps, checked on what the compiler emits.
 //!
 //! "Default styles" are what a project gets without writing a line of CSS:
-//! `packages/stylex/tokens.stylex.js`, `preset.js` and `theme.js`, and every
-//! component and example in `registry/ui/`, which `uf ui add` copies into a
+//! `npm/stylex/tokens.stylex.js`, `preset.js` and `theme.js`, and every
+//! component and example in `npm/ui/registry/`, which `uf ui add` copies into a
 //! project and the documentation renders live. Each is compiled here the way
 //! a build compiles it, and the rules are read off the stylesheet rather than
 //! searched for in the source. That way a comment that names a shadow is not a
 //! failure, and a shadow spelled in any way the compiler accepts is one.
 //!
-//! What they hold, and why, is `packages/stylex/tokens.stylex.js`'s header:
+//! What they hold, and why, is `npm/stylex/tokens.stylex.js`'s header:
 //!
 //! * **no shadow and no gradient**: no `box-shadow`, no `text-shadow`, no
 //!   `drop-shadow()`, no `*-gradient()`, in a rule or in a token;
@@ -55,14 +55,14 @@ fn repository() -> PathBuf {
 fn defaults() -> Vec<(String, String)> {
     let root = repository();
     let mut files: Vec<String> = [
-        "packages/stylex/tokens.stylex.js",
-        "packages/stylex/preset.js",
-        "packages/stylex/theme.js",
+        "npm/stylex/tokens.stylex.js",
+        "npm/stylex/preset.js",
+        "npm/stylex/theme.js",
     ]
     .iter()
     .map(|path| (*path).to_owned())
     .collect();
-    let registry = root.join("registry/ui");
+    let registry = root.join("npm/ui/registry");
     let mut components: Vec<String> = fs::read_dir(&registry)
         .unwrap_or_else(|error| panic!("{} cannot be listed: {error}", registry.display()))
         .map(|entry| {
@@ -78,12 +78,12 @@ fn defaults() -> Vec<(String, String)> {
                 .is_some_and(|extension| extension == "js")
                 && !name.ends_with(".test.js")
         })
-        .map(|name| format!("registry/ui/{name}"))
+        .map(|name| format!("npm/ui/registry/{name}"))
         .collect();
     components.sort();
     assert!(
         components.len() > 50,
-        "registry/ui/ listed almost nothing, so this is not checking anything"
+        "npm/ui/registry/ listed almost nothing, so this is not checking anything"
     );
     files.extend(components);
     files
@@ -134,9 +134,9 @@ fn no_default_style_casts_a_shadow_or_paints_a_gradient() {
 
 #[test]
 fn no_token_is_a_shadow() {
-    let tokens = repository().join("packages/stylex/tokens.stylex.js");
+    let tokens = repository().join("npm/stylex/tokens.stylex.js");
     let source = fs::read_to_string(&tokens).expect("the token module");
-    let module = compiled("packages/stylex/tokens.stylex.js", &source);
+    let module = compiled("npm/stylex/tokens.stylex.js", &source);
     for key in ["shadowCard", "shadowPanel"] {
         let name = variable_name(NAMESPACE, key);
         assert!(
@@ -156,9 +156,9 @@ fn pixels(value: &str) -> Option<u32> {
 
 #[test]
 fn the_radius_tokens_are_restrained() {
-    let source = fs::read_to_string(repository().join("packages/stylex/tokens.stylex.js"))
+    let source = fs::read_to_string(repository().join("npm/stylex/tokens.stylex.js"))
         .expect("the token module");
-    let module = compiled("packages/stylex/tokens.stylex.js", &source);
+    let module = compiled("npm/stylex/tokens.stylex.js", &source);
     for (key, largest) in RADII {
         let name = variable_name(NAMESPACE, key);
         let value = module
@@ -276,18 +276,18 @@ const LAYOUT: &[&str] = &[
 /// Where a default style animates a layout property on purpose, and why.
 const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[
     (
-        "registry/ui/drawer.js",
+        "npm/ui/registry/drawer.js",
         "a drawer is a fixed overlay on its own edge, and moving between snap points resizes \
          it; nothing else on the page moves",
     ),
     (
-        "registry/ui/accordion.js",
+        "npm/ui/registry/accordion.js",
         "a panel opening is the content below it making room, which is the one thing the \
          reader has to see happen; it moves to a measured height, not to `auto`, and stops \
          under reduced motion",
     ),
     (
-        "registry/ui/collapsible.js",
+        "npm/ui/registry/collapsible.js",
         "the same as an accordion's panel, one section at a time",
     ),
 ];
@@ -307,71 +307,96 @@ const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[
 /// again. #1414 made motion so restrained it was nearly absent, and a rule
 /// that only limits motion cannot notice that.
 const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
-    ("registry/ui/dialog.js", "overlay", "opacity", true),
-    ("registry/ui/dialog.js", "panel", "transform", true),
-    ("registry/ui/alert-dialog.js", "overlay", "opacity", true),
-    ("registry/ui/alert-dialog.js", "panel", "transform", true),
-    ("registry/ui/sheet.js", "overlay", "opacity", true),
-    ("registry/ui/sheet.js", "panel", "transform", true),
-    ("registry/ui/drawer.js", "overlay", "opacity", true),
-    ("registry/ui/drawer.js", "panel", "transform", true),
-    ("registry/ui/popover.js", "content", "transform", true),
-    ("registry/ui/menu.js", "content", "transform", true),
-    ("registry/ui/select.js", "list", "transform", true),
-    ("registry/ui/combobox.js", "list", "transform", true),
-    ("registry/ui/hover-card.js", "content", "transform", true),
-    ("registry/ui/tooltip.js", "content", "transform", true),
+    ("npm/ui/registry/dialog.js", "overlay", "opacity", true),
+    ("npm/ui/registry/dialog.js", "panel", "transform", true),
     (
-        "registry/ui/navigation-menu.js",
-        "content",
-        "transform",
+        "npm/ui/registry/alert-dialog.js",
+        "overlay",
+        "opacity",
         true,
     ),
-    ("registry/ui/date-picker.js", "content", "transform", true),
     (
-        "registry/ui/date-range-picker.js",
+        "npm/ui/registry/alert-dialog.js",
         "panel",
         "transform",
         true,
     ),
-    ("registry/ui/toast.js", "toast", "transform", true),
-    ("registry/ui/button.js", "base", "transform", false),
-    ("registry/ui/button.js", "base", "outline-width", false),
-    ("registry/ui/switch.js", "thumb", "transform", false),
+    ("npm/ui/registry/sheet.js", "overlay", "opacity", true),
+    ("npm/ui/registry/sheet.js", "panel", "transform", true),
+    ("npm/ui/registry/drawer.js", "overlay", "opacity", true),
+    ("npm/ui/registry/drawer.js", "panel", "transform", true),
+    ("npm/ui/registry/popover.js", "content", "transform", true),
+    ("npm/ui/registry/menu.js", "content", "transform", true),
+    ("npm/ui/registry/select.js", "list", "transform", true),
+    ("npm/ui/registry/combobox.js", "list", "transform", true),
     (
-        "registry/ui/checkbox.js",
+        "npm/ui/registry/hover-card.js",
+        "content",
+        "transform",
+        true,
+    ),
+    ("npm/ui/registry/tooltip.js", "content", "transform", true),
+    (
+        "npm/ui/registry/navigation-menu.js",
+        "content",
+        "transform",
+        true,
+    ),
+    (
+        "npm/ui/registry/date-picker.js",
+        "content",
+        "transform",
+        true,
+    ),
+    (
+        "npm/ui/registry/date-range-picker.js",
+        "panel",
+        "transform",
+        true,
+    ),
+    ("npm/ui/registry/toast.js", "toast", "transform", true),
+    ("npm/ui/registry/button.js", "base", "transform", false),
+    ("npm/ui/registry/button.js", "base", "outline-width", false),
+    ("npm/ui/registry/switch.js", "thumb", "transform", false),
+    (
+        "npm/ui/registry/checkbox.js",
         "tick",
         "stroke-dashoffset",
         false,
     ),
-    ("registry/ui/radio-group.js", "dot", "opacity", false),
-    ("registry/ui/tabs.js", "tab", "border-color", false),
-    ("registry/ui/tabs.js", "indicator", "transform", false),
-    ("registry/ui/accordion.js", "content", "height", false),
-    ("registry/ui/collapsible.js", "content", "height", false),
-    ("registry/ui/progress.js", "fill", "transform", false),
-    ("registry/ui/accordion.js", "chevron", "transform", false),
-    ("registry/ui/collapsible.js", "chevron", "transform", false),
-    ("registry/ui/select.js", "chevron", "transform", false),
+    ("npm/ui/registry/radio-group.js", "dot", "opacity", false),
+    ("npm/ui/registry/tabs.js", "tab", "border-color", false),
+    ("npm/ui/registry/tabs.js", "indicator", "transform", false),
+    ("npm/ui/registry/accordion.js", "content", "height", false),
+    ("npm/ui/registry/collapsible.js", "content", "height", false),
+    ("npm/ui/registry/progress.js", "fill", "transform", false),
     (
-        "registry/ui/navigation-menu.js",
+        "npm/ui/registry/accordion.js",
+        "chevron",
+        "transform",
+        false,
+    ),
+    (
+        "npm/ui/registry/collapsible.js",
+        "chevron",
+        "transform",
+        false,
+    ),
+    ("npm/ui/registry/select.js", "chevron", "transform", false),
+    (
+        "npm/ui/registry/navigation-menu.js",
         "arrow",
         "transform",
         false,
     ),
     // `@uniflowed/stylex/preset`, which a project reaches without the
     // registry: the same overlays enter and the same controls move.
-    ("packages/stylex/preset.js", "backdrop", "opacity", true),
-    ("packages/stylex/preset.js", "dialog", "transform", true),
-    ("packages/stylex/preset.js", "menu", "transform", true),
-    (
-        "packages/stylex/preset.js",
-        "item",
-        "background-color",
-        false,
-    ),
-    ("packages/stylex/preset.js", "tab", "border-color", false),
-    ("packages/stylex/preset.js", "tab", "outline-width", false),
+    ("npm/stylex/preset.js", "backdrop", "opacity", true),
+    ("npm/stylex/preset.js", "dialog", "transform", true),
+    ("npm/stylex/preset.js", "menu", "transform", true),
+    ("npm/stylex/preset.js", "item", "background-color", false),
+    ("npm/stylex/preset.js", "tab", "border-color", false),
+    ("npm/stylex/preset.js", "tab", "outline-width", false),
 ];
 
 /// The attribute `@uniflowed/ui` writes on a part that is closing and still on
@@ -415,9 +440,9 @@ fn bezier(module: &CompiledModule, key: &str) -> [f64; 4] {
 
 /// The token module, compiled.
 fn tokens() -> CompiledModule {
-    let source = fs::read_to_string(repository().join("packages/stylex/tokens.stylex.js"))
+    let source = fs::read_to_string(repository().join("npm/stylex/tokens.stylex.js"))
         .expect("the token module");
-    compiled("packages/stylex/tokens.stylex.js", &source)
+    compiled("npm/stylex/tokens.stylex.js", &source)
 }
 
 #[test]

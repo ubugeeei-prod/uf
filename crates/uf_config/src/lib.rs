@@ -172,7 +172,7 @@ pub struct UniflowedConfig {
 /// the heading levels the component actually produced skip a step.
 ///
 /// Everything here is inert without axe-core, which uf does not install: see
-/// `packages/test/internal/axe.js` for why the engine is an optional
+/// `npm/test/internal/axe.js` for why the engine is an optional
 /// dependency rather than a vendored reimplementation of four hundred rules.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -193,7 +193,7 @@ pub struct AccessibilityConfig {
 
 /// How much of axe-core an audit runs.
 ///
-/// Data, not modules: the engine is named in `packages/test/internal/axe.js`
+/// Data, not modules: the engine is named in `npm/test/internal/axe.js`
 /// as a constant, because `uf.config.js` arrives with a cloned repository and
 /// "which module does the runner import" is not a question it may answer.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,7 +239,7 @@ impl Default for AccessibilityConfig {
 }
 
 impl AxeConfig {
-    /// This block as the JSON `packages/test/internal/axe.js` reads, or `None`
+    /// This block as the JSON `npm/test/internal/axe.js` reads, or `None`
     /// when it says nothing.
     ///
     /// `None` rather than `"{}"` for the empty case so the variable is absent

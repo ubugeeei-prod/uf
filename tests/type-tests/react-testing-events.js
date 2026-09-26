@@ -7,8 +7,8 @@
 // into, clear, blur and select controls directly from the query that found
 // them.
 
-import * as React from "../../packages/react/index.js";
-import { render, screen, userEvent } from "../../packages/react-testing/index.js";
+import * as React from "../../npm/react/index.js";
+import { render, screen, userEvent } from "../../npm/react-testing/index.js";
 
 component Controls() {
   return (

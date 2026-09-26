@@ -109,7 +109,7 @@ Start with the files, not the formatter. `uf fmt` walks the same project set as
 directory in none of those lists is source, so it will be printed.
 
 ```sh
-uf fmt --check packages/ui
+uf fmt --check npm/ui
 uf fmt --check dialog.js
 ```
 
@@ -343,7 +343,7 @@ what the exit status means.
 
 `uf fmt`, `uf lint` and `uf check` all take paths, the way `uf test` does:
 
-<div className="command"><code>uf lint packages/ui</code></div>
+<div className="command"><code>uf lint npm/ui</code></div>
 
 Anything whose path contains one of the arguments is read and nothing else, so
 `uf fmt dialog.js` is a way to format the file in front of you. A pattern that

@@ -1,0 +1,26 @@
+{
+  "name": "@uniflowed/graphql",
+  "version": "0.10.0",
+  "description": "The Relay environment, without the boilerplate, for the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/graphql"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@uniflowed/fetch": "0.10.0"
+  },
+  "peerDependencies": {
+    "relay-runtime": ">=20"
+  }
+}

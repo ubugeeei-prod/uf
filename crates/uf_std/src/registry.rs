@@ -19,7 +19,7 @@
 //!
 //! No count is written down here, deliberately — a number in a comment is the
 //! part of #249 that went wrong. `uf inspect` counts the statuses, and the
-//! tests hold each status to `packages/std`, so the count is produced rather
+//! tests hold each status to `npm/std`, so the count is produced rather
 //! than remembered.
 //!
 //! # What the statuses are held to
@@ -32,12 +32,12 @@
 //! In `crates/uf_lib/src/tests.rs`:
 //!
 //! * `the_std_registry_names_exactly_what_the_std_package_exports` — the
-//!   [`StdStatus::Ships`] specifiers and `packages/std/package.json#exports`
+//!   [`StdStatus::Ships`] specifiers and `npm/std/package.json#exports`
 //!   are the same set, each shipped entry's [`StdModule::exports`] is exactly
 //!   what its file exports read with uf's own parser, and no `.js` in the
 //!   package is left over.
 //! * `the_flow_declaration_names_the_same_statuses_and_categories_as_the_registry`
-//!   — `packages/std/index.js` declares `StdModule` a second time, for Flow,
+//!   — `npm/std/index.js` declares `StdModule` a second time, for Flow,
 //!   and its unions are these enums'.
 //!
 //! In `crates/uf_lib/tests/package_surface.rs`, where the scanners that read a
@@ -82,11 +82,11 @@ pub type StdModuleList = SmallVec<[StdModule; 64]>;
 ///
 /// The three the package's own survey is sorted into — what ships, what is
 /// next, what is not ours — plus the one the root needs, because
-/// `packages/std/index.js` is a file that exists and does not run.
+/// `npm/std/index.js` is a file that exists and does not run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StdStatus {
-    /// `packages/std` has a file for it, `package.json#exports` names the
+    /// `npm/std` has a file for it, `package.json#exports` names the
     /// subpath, and [`StdModule::exports`] is exactly what that file exports.
     /// Checked against the package on every test run, in both directions.
     Ships,
@@ -150,7 +150,7 @@ pub struct StdModule {
 }
 
 impl StdModule {
-    /// A module `packages/std` ships.
+    /// A module `npm/std` ships.
     pub fn ships(specifier: &str, category: StdCategory, exports: &[&str]) -> Self {
         Self::new(specifier, category, StdStatus::Ships, true, exports)
     }
@@ -232,7 +232,7 @@ pub fn std_modules() -> StdModuleList {
         // The root.
         // ---------------------------------------------------------------
         //
-        // `packages/std/index.js` is 274 lines of functions that raise
+        // `npm/std/index.js` is 274 lines of functions that raise
         // `NativeRuntimeRequiredError`, and it is deliberately still that: the
         // shipped modules below are separate subpaths so that importing a hex
         // codec brings in a hex codec. Its export list is not repeated here —

@@ -24,7 +24,7 @@
 // about. Flow suppresses the error, so `uf check` at the repository root stays
 // clean, and a suppression that stops matching an error is reported as unused,
 // which fails the test. A line without one must not be reported at all.
-// `packages/i18n/i18n.test.js` runs `uf check` and compares the two, via the
+// `npm/i18n/i18n.test.js` runs `uf check` and compares the two, via the
 // shared harness in `tests/library/type-tests.js`.
 //
 // # Why it is checked with the package rather than on its own
@@ -33,17 +33,17 @@
 // relative import that leaves that set resolves to an any-typed value — after
 // which `ArgsOf` is `any`, every line below passes, and the test proves the
 // opposite of what it says. So it runs `uf check tests/type-tests
-// packages/i18n`, with both in one set.
+// npm/i18n`, with both in one set.
 //
 // # Why it is not inside the package
 //
-// A file of deliberate type errors inside `packages/i18n` would be shipped to
+// A file of deliberate type errors inside `npm/i18n` would be shipped to
 // anyone who installed it and would fail every check the package runs on
 // itself. It lives here for the same reason `anchoring.js` and `field-paths.js`
 // do.
 
-import type { Catalogue } from "../../packages/i18n/index.js";
-import { defineCatalogue, message, number, string } from "../../packages/i18n/index.js";
+import type { Catalogue } from "../../npm/i18n/index.js";
+import { defineCatalogue, message, number, string } from "../../npm/i18n/index.js";
 
 const UNREAD = `.input {$count :number}
 .match $count

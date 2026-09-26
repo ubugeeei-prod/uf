@@ -312,7 +312,7 @@ impl<'a> Printer<'a> {
             // own previous output, because an object keeps the line break its
             // author wrote after `{`.
             //
-            // `packages/core/temporal.test.js` in ubugeeei-prod/uf#729 is where
+            // `npm/core/temporal.test.js` in ubugeeei-prod/uf#729 is where
             // it surfaced, and it needs three things at once to show: an object
             // argument, an outer chain, and enough indentation that the flat
             // form does not fit.

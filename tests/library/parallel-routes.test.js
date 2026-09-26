@@ -32,7 +32,7 @@ import {
   LAYOUT_PROP_NAMES,
   routesModuleSource,
   scanRoutes,
-} from "../../packages/vite/internal/routes.js";
+} from "../../npm/vite/internal/routes.js";
 
 const roots: Array<string> = [];
 

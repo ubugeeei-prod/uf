@@ -19,7 +19,7 @@
 //! router and the linter drifted apart the first time.
 //!
 //! It drifted again anyway, in the direction this module could not see.
-//! `packages/vite/internal/routes.js` is the router the build actually runs,
+//! `npm/vite/internal/routes.js` is the router the build actually runs,
 //! it keeps its own `RESERVED` table, and its comment says the two "cannot be
 //! allowed to disagree" — while `$not-found` was in that table and not in
 //! this enum, so `uf lint` rejected the file name uf's own documentation site
@@ -915,7 +915,7 @@ mod tests {
     #[test]
     fn a_not_found_file_is_reserved_without_a_route_leading_to_it() {
         // The file uf's own documentation site uses for its 404 page.
-        // `packages/vite/internal/routes.js` has reserved this name since the
+        // `npm/vite/internal/routes.js` has reserved this name since the
         // router was written; this enum did not, so `uf lint` told the site to
         // rename a file the router resolves. See `tests/reserved_names.rs`.
         assert_eq!(recognized("$not-found.js").role, ReservedRole::NotFound);

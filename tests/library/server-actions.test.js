@@ -19,7 +19,7 @@
 //    one. Driven with no server, no port and no build, the way
 //    `route-handler.test.js` drives `createDispatcher`. A form call is asked
 //    the same questions as every other, because it is the same request.
-// 3. `packages/vite/internal/rsc.js` — the client's references and the
+// 3. `npm/vite/internal/rsc.js` — the client's references and the
 //    server's table, from a manifest, so that what the two halves agree on is
 //    a file rather than a habit.
 //
@@ -34,8 +34,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import uniflowed from "../../packages/vite/index.js";
-import { VIRTUAL } from "../../packages/vite/internal/routes.js";
+import uniflowed from "../../npm/vite/index.js";
+import { VIRTUAL } from "../../npm/vite/internal/routes.js";
 import {
   ACTION_HEADER as VITE_ACTION_HEADER,
   RSC_MANIFEST_ENV,
@@ -45,7 +45,7 @@ import {
   serverActionSource,
   serverActionModules,
   serverActionTable,
-} from "../../packages/vite/internal/rsc.js";
+} from "../../npm/vite/internal/rsc.js";
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
@@ -62,7 +62,7 @@ import {
   encodeActionArguments,
   encodeActionResult,
   isActionId,
-} from "../../packages/router/internal/action-wire.js";
+} from "../../npm/router/internal/action-wire.js";
 import { beginRequest, createActionDispatcher } from "@uniflowed/router/server";
 import { createFetchHandler } from "@uniflowed/server/fetch";
 import { cookies, draftMode, headers } from "@uniflowed/server";
@@ -843,7 +843,7 @@ describe("an action misused, held to what the checker actually says", () => {
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported({
       fixture: path.join("tests", "type-tests", "server-actions.js"),
-      alongside: ["packages/router"],
+      alongside: ["npm/router"],
       atLeast: 4,
     });
   });

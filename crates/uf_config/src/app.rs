@@ -278,7 +278,7 @@ pub struct MdxConfig {
     /// A field here rather than nowhere. `HighlightConfig` was declared,
     /// exported and documented in the configuration reference — and was a
     /// field of no struct, so nothing deserialized those keys and nothing
-    /// read them. `packages/vite` has read `mdxConfig.highlight` the whole
+    /// read them. `npm/vite` has read `mdxConfig.highlight` the whole
     /// time; what it got was `undefined`, and a project that set a theme got
     /// no error and no effect. See ubugeeei-prod/uf#646.
     pub highlight: HighlightConfig,

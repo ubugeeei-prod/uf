@@ -47,7 +47,7 @@ fn a_full_analysis_flows_from_sources_to_a_manifest() {
 /// The list exists because the scan skips `node_modules` (#718), so in an
 /// installed tree uf cannot see its own components' directives. A list that
 /// nothing checks is a list that is wrong by the second component added, so
-/// this holds it to the files — the modules `packages/ui/index.js` imports and
+/// this holds it to the files — the modules `npm/ui/index.js` imports and
 /// re-exports from, since the barrel is the package's only entry point and a
 /// module it does not reach is not one a project can use.
 ///
@@ -58,9 +58,9 @@ fn a_full_analysis_flows_from_sources_to_a_manifest() {
 /// holds the data; the crate that owns the rule holds the guard.
 #[test]
 fn the_client_module_list_names_exactly_the_ui_modules_that_are_client_modules() {
-    let package = repository_root().join("packages").join("ui");
-    let barrel = std::fs::read_to_string(package.join("index.js"))
-        .expect("packages/ui/index.js cannot be read");
+    let package = repository_root().join("npm").join("ui");
+    let barrel =
+        std::fs::read_to_string(package.join("index.js")).expect("npm/ui/index.js cannot be read");
 
     let mut client: Vec<String> = Vec::new();
     for import in crate::scan::scan_imports(&barrel).iter() {
@@ -117,7 +117,7 @@ fn the_client_module_list_names_exactly_the_ui_modules_that_are_client_modules()
 /// The guard on `uf_lib::client_modules_exporting`: every name the barrel binds
 /// reaches exactly the client modules its value comes from.
 ///
-/// Read from `packages/ui/index.js` itself, with this crate's scanner for its
+/// Read from `npm/ui/index.js` itself, with this crate's scanner for its
 /// imports and re-exports, so the rule is held to what the barrel does rather
 /// than to a second description of it. A namespace such as `Dialog` is a
 /// module re-exported whole (`export * as Dialog from "./dialog.js"`,
@@ -128,9 +128,9 @@ fn the_client_module_list_names_exactly_the_ui_modules_that_are_client_modules()
 fn the_barrel_names_the_client_modules_each_export_comes_from() {
     use std::collections::{BTreeMap, BTreeSet};
 
-    let package = repository_root().join("packages/ui");
-    let source = std::fs::read_to_string(package.join("index.js"))
-        .expect("packages/ui/index.js cannot be read");
+    let package = repository_root().join("npm/ui");
+    let source =
+        std::fs::read_to_string(package.join("index.js")).expect("npm/ui/index.js cannot be read");
     let module_of = |specifier: &str| -> Option<String> {
         Some(
             specifier
@@ -183,7 +183,7 @@ fn the_barrel_names_the_client_modules_each_export_comes_from() {
     // empty.
     assert!(
         origin.len() > 20 && namespaces.len() > 30,
-        "almost nothing came out of packages/ui/index.js: {} names, {} namespaces",
+        "almost nothing came out of npm/ui/index.js: {} names, {} namespaces",
         origin.len(),
         namespaces.len()
     );
@@ -211,7 +211,7 @@ fn the_barrel_names_the_client_modules_each_export_comes_from() {
     }
     assert!(
         wrong.is_empty(),
-        "client_modules_exporting and packages/ui/index.js disagree:\n  {}",
+        "client_modules_exporting and npm/ui/index.js disagree:\n  {}",
         wrong.join("\n  ")
     );
 }

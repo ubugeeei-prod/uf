@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn the_dispatcher_runs_uf_prepare_in_the_project() {
         assert!(dispatcher("").ends_with("exec uf prepare\n"));
-        assert!(dispatcher("packages/app").ends_with("exec uf --cwd packages/app prepare\n"));
+        assert!(dispatcher("npm/app").ends_with("exec uf --cwd npm/app prepare\n"));
         assert!(dispatcher("my app").ends_with("exec uf --cwd 'my app' prepare\n"));
         assert!(dispatcher("").starts_with("#!/bin/sh\n"));
     }

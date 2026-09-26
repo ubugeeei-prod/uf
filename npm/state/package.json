@@ -1,0 +1,25 @@
+{
+  "name": "@uniflowed/state",
+  "version": "0.10.0",
+  "description": "Atoms and the React binding for @uniflowed/state, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/state"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "internal",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@uniflowed/cell": "0.10.0",
+    "@uniflowed/react": "0.10.0"
+  }
+}

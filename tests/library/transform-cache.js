@@ -14,7 +14,7 @@
 // stop existing. The names are therefore written twice, once per loader, and
 // the bodies once.
 //
-// Here rather than beside `packages/host` because a module that is not a
+// Here rather than beside `npm/host` because a module that is not a
 // `*.test.js` inside a package is a module npm would publish: every manifest's
 // `files` ends `"!*.test.js"`, and a harness is not part of what
 // `@uniflowed/host` ships. `type-tests.js` and `dom.js` are here for the same
@@ -24,7 +24,7 @@
 // The on-disk transform cache, what it is allowed to reuse, and the two Node
 // loaders that read and write it.
 //
-// `packages/host/internal/flow-cache.js` keeps every module a Node loader
+// `npm/host/internal/flow-cache.js` keeps every module a Node loader
 // compiles under `.uf/cache/transform/`, and the key has to name the compiler
 // as well as the source. For a long time it named only the source, so a
 // rebuilt `uf` went on serving what the previous one had produced — silently,
@@ -42,7 +42,7 @@
 // A checkout has one `uf` and this needs two builds of it, so the binary here
 // is a stand-in. That is a smaller substitution than it sounds: the loader's
 // entire contract with `uf` is the newline-delimited JSON in
-// `packages/host/transform.js` — one request per line, one reply per line, in
+// `npm/host/transform.js` — one request per line, one reply per line, in
 // order — and a program that honours it is a compiler as far as the loader is
 // concerned. Everything around it is real: the real hooks, a real Node
 // process, a real cache on a real disk.
@@ -54,12 +54,12 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect } from "@uniflowed/test";
 
-/** `packages/host`, which is no longer the directory this file is in. */
+/** `npm/host`, which is no longer the directory this file is in. */
 const HOST: string = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
-  "packages",
+  "npm",
   "host",
 );
 

@@ -1,0 +1,26 @@
+{
+  "name": "@uniflowed/loader",
+  "version": "0.10.0",
+  "private": true,
+  "description": "Flow declarations for @uniflowed/loader, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/loader"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "!*.test.js"
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.10.0",
+    "@uniflowed/cell": "0.10.0",
+    "@uniflowed/fetch": "0.10.0"
+  }
+}

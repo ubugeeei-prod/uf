@@ -3,7 +3,7 @@
 //! The Bun half of the Capability JS Host, started for real.
 //!
 //! `runtime.capabilityJsHost.hosts` lists Bun, the README lists it, and
-//! `docs/architecture.md` describes `packages/host/bun-preload.js` as the Bun
+//! `docs/architecture.md` describes `npm/host/bun-preload.js` as the Bun
 //! counterpart of what `register.js` is on Node. Nothing ran it. The library
 //! suite runs on Node — that is what `uf test` means here — so every claim
 //! uf makes about Bun was unchecked, and the preload was in fact broken in two
@@ -79,11 +79,11 @@ fn run_on_bun(project: &Project, entry: &str) -> Run {
 /// `uf`.
 ///
 /// The preload's whole contract with `uf` is the newline-delimited JSON in
-/// `packages/host/transform.js`, so a program that honours it is a compiler as
+/// `npm/host/transform.js`, so a program that honours it is a compiler as
 /// far as the preload can tell — which is what lets a test see whether a
 /// compile happened at all.
 fn run_on_bun_with(project: &Project, entry: &str, compiler: &Path) -> Run {
-    let preload = repo_root().join("packages/host/bun-preload.js");
+    let preload = repo_root().join("npm/host/bun-preload.js");
     let out_path = project.path().join("bun.stdout");
     let err_path = project.path().join("bun.stderr");
     let mut child = Command::new("bun")
@@ -294,7 +294,7 @@ fn a_second_run_on_bun_is_served_from_the_cache_node_reads_too() {
     // And Node serves what Bun wrote.
     let node = Command::new("node")
         .arg("--import")
-        .arg(repo_root().join("packages/host/register.js"))
+        .arg(repo_root().join("npm/host/register.js"))
         .arg(project.path().join("main.js"))
         .current_dir(project.path())
         .env("UF_BINARY", &compiler)
@@ -587,7 +587,7 @@ fn version_at_least(version: &str, major: u64, minor: u64, patch: u64) -> bool {
 /// nothing had ever started Bun and asked, so "Bun raises a useful error" was
 /// as unchecked as every other Bun claim in ubugeeei-prod/uf#418.
 ///
-/// It is a real error rather than a stub. `packages/host/module-mocks.js`
+/// It is a real error rather than a stub. `npm/host/module-mocks.js`
 /// records what a Bun 1.1 plugin does with each of the three places a stand-in
 /// could be given an identity of its own, and none of them survives an `import`
 /// declaration — which is the case the feature is for. A mock that only a
@@ -850,7 +850,7 @@ fn module_mocking_on_bun_can_materialize_a_stand_in_for_static_imports() {
 /// under the name the documentation gives.
 #[test]
 fn the_preload_is_where_the_documentation_says_it_is() {
-    let preload: &Path = &repo_root().join("packages/host/bun-preload.js");
+    let preload: &Path = &repo_root().join("npm/host/bun-preload.js");
     assert!(
         preload.is_file(),
         "`bun --preload @uniflowed/host/bun-preload` names {}",

@@ -20,7 +20,7 @@
 //! # The shape a rule has
 //!
 //! ESLint's, over the subset rules are written against — see
-//! `packages/host/internal/lint-rules.js` and the formatting and linting guide.
+//! `npm/host/internal/lint-rules.js` and the formatting and linting guide.
 //! A plugin module's default export is `{ name, rules }`, and `name/rule` is the
 //! id `lint.rules` enables. The object is also a valid Vite plugin, since Vite
 //! ignores a key it does not know, so one module can be both.

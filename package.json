@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Development workspace for the Unified Toolchain for Flow (React). Not published.",
   "workspaces": [
-    "packages/*",
+    "npm/*",
     "docs"
   ],
   "devDependencies": {

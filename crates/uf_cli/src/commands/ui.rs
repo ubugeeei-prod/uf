@@ -673,7 +673,7 @@ fn render_unified(renderer: &Renderer, out: &mut String, unified: &str) {
 /// Where a released uf's registry is read from, with `{version}` and `{name}`
 /// to fill in. The tag is `uf@<version>`, `@` escaped for the path.
 const RELEASED_REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/ubugeeei-prod/uf/uf%40{version}/registry/ui/{name}.js";
+    "https://raw.githubusercontent.com/ubugeeei-prod/uf/uf%40{version}/npm/ui/registry/{name}.js";
 
 /// The variable that replaces [`RELEASED_REGISTRY_URL`].
 const REGISTRY_URL_VARIABLE: &str = "UF_UI_REGISTRY_URL";

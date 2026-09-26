@@ -214,7 +214,7 @@ fn deno_with_hooks() -> bool {
 /// The preload, in this checkout.
 fn preload() -> String {
     repo_root()
-        .join("packages/host/deno-preload.js")
+        .join("npm/host/deno-preload.js")
         .to_string_lossy()
         .into_owned()
 }
@@ -296,7 +296,7 @@ const RELATIVE_ONLY: &str = "// @flow\nimport { double } from \"./double.js\";\n
 
 /// The obstacle that is not one.
 ///
-/// `packages/host/transform.js` — the module every host reaches the Flow
+/// `npm/host/transform.js` — the module every host reaches the Flow
 /// transform through — imports `node:child_process`, `node:fs`, `node:path` and
 /// `node:readline`, and Deno's loader calls its `spawnSync`. If Deno could not
 /// load those, a Deno host would need a second transform client rather than a
@@ -331,7 +331,7 @@ fn deno_loads_the_node_builtins_the_transform_client_imports() {
 /// Without the loader, a uf package does not load on Deno.
 ///
 /// Deno resolves `@uniflowed/test` from `node_modules` and reaches
-/// `packages/test/index.js`, which is Flow. Deno 1.31, the line
+/// `npm/test/index.js`, which is Flow. Deno 1.31, the line
 /// ubugeeei-prod/uf#246 was filed against, stopped a step earlier and resolved
 /// no bare specifier at all; the disjunction is asserted so the test measures
 /// the obstacle rather than one version's spelling of it.
@@ -507,7 +507,7 @@ fn a_module_already_compiled_is_read_rather_than_compiled_again() {
 
 /// Node and Deno share one transform cache, and agree on what is in it.
 ///
-/// `packages/host/internal/flow-cache.js` is one key and one framing for
+/// `npm/host/internal/flow-cache.js` is one key and one framing for
 /// both loaders. So a module the *Node* loader compiled is one Deno reads
 /// without compiling — which it has to, because this Deno run may not start
 /// the compiler. Two copies of the key that had drifted would fail here as a
@@ -1326,7 +1326,7 @@ reproduction steps and the stack trace URL below in your report.
 
 Platform: linux x86_64
 Version: 2.9.6
-Args: [\"deno\", \"run\", \"--preload\", \"packages/host/deno-preload.js\", \"entry.js\"]
+Args: [\"deno\", \"run\", \"--preload\", \"npm/host/deno-preload.js\", \"entry.js\"]
 
 View stack trace at:
 https://panic.deno.com/v2.9.6/x86_64-unknown-linux-gnu/k4m4xF-l2j1D071j1Di01j1Dwz1j1Dqgm70Dyljk1DoktsxCmp98-B

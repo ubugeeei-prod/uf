@@ -119,11 +119,9 @@ handles application files.
 | Package | What it is | Released |
 | --- | --- | --- |
 | `@uniflowed/test` | `describe`, `it`, `expect`, the hooks, and the worker `uf test` spawns | On npm |
-| `@uniflowed/testing` | The same API under its other name | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 | `@uniflowed/react-testing` | React Testing Library's surface, over a happy-dom window it installs on the first render | On npm |
 | `@uniflowed/react-native-testing` | React Native test-tree queries. Rendering still waits for the native host config | On npm |
 | `@uniflowed/mock` | Request mocking at the level MSW works at | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
-| `@uniflowed/browser` | Browser automation | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 | `@uniflowed/story` | Stories | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 | `@uniflowed/vrt` | Visual regression | Not yet — [#1314](https://github.com/ubugeeei-prod/uf/issues/1314) |
 
@@ -173,7 +171,7 @@ not claim is left to the page — `ArrowDown` in a horizontal set scrolls, as it
 does everywhere else. `aria-orientation` says which pair is live, so a reader is
 told rather than left to guess. This is a deliberate narrowing of the WAI-ARIA
 practices for `RadioGroup`, which list both pairs; the reasoning is in
-`packages/ui/radio-group.js`.
+`npm/ui/radio-group.js`.
 
 **A closed section is hidden, not removed.** `Collapsible` and `Accordion` leave
 their panels in the document and mark them `hidden="until-found"`, so the

@@ -35,8 +35,8 @@ function listed(file: string): Set<string> {
 /** Every package in the repository: its name, directory and `private` flag. */
 function packages(): Array<{| name: string, dir: string, private: boolean |}> {
   const found = [];
-  for (const dir of fs.readdirSync(path.join(REPO, "packages")).map(String).sort()) {
-    const manifest = path.join(REPO, "packages", dir, "package.json");
+  for (const dir of fs.readdirSync(path.join(REPO, "npm")).map(String).sort()) {
+    const manifest = path.join(REPO, "npm", dir, "package.json");
     if (!fs.existsSync(manifest)) {
       continue;
     }

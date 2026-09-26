@@ -49,7 +49,7 @@ export type ApiPackage = {|
   readonly modules: $ReadOnlyArray<Module>,
 |};
 
-const SOURCE = "https://github.com/ubugeeei-prod/uf/blob/main/packages/";
+const SOURCE = "https://github.com/ubugeeei-prod/uf/blob/main/npm/";
 
 const FILES = import.meta.glob<{ readonly default: ApiPackage, ... }>(
   "../../.generated/api/*.json",
@@ -145,7 +145,7 @@ export component ApiReference(item: ApiPackage) {
           {bare > 0 ? `, ${bare} without a doc comment` : ""}
         </span>
         <a href={`${SOURCE}${dir}`}>
-          <code>packages/{dir}</code>
+          <code>npm/{dir}</code>
         </a>
       </p>
       <p className="api-note">

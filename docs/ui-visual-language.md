@@ -1,8 +1,8 @@
 # The default UI's visual language
 
-`uf ui add` copies components from `registry/ui/` into a project, styled with
-the tokens in `packages/stylex/tokens.stylex.js` and the themes in
-`packages/stylex/theme.js`. This note records what those defaults look like
+`uf ui add` copies components from `npm/ui/registry/` into a project, styled with
+the tokens in `npm/stylex/tokens.stylex.js` and the themes in
+`npm/stylex/theme.js`. This note records what those defaults look like
 and why, so a change to them starts from the idea rather than from a guess.
 
 Only rules the tests enforce are listed. Where a test enforces a rule, it is
@@ -59,7 +59,7 @@ gradients and large radii.
 
 ## Calendars
 
-`registry/ui/calendar.js` is shared by the calendar, the range calendar and
+`npm/ui/registry/calendar.js` is shared by the calendar, the range calendar and
 both date pickers.
 
 - **A grid that lines up.** Every day cell is 36px square, so the hit target

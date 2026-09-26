@@ -28,11 +28,11 @@
 // `uf check` builds its module map out of the files it is asked to check, and a
 // relative import that leaves that set resolves to an any-typed value — after
 // which every type below is `any`, every line passes, and the test would prove
-// nothing. So the test runs `uf check tests/type-tests packages/state`, with
-// both in one set. `anchoring.js` is the same arrangement for `packages/ui`,
+// nothing. So the test runs `uf check tests/type-tests npm/state`, with
+// both in one set. `anchoring.js` is the same arrangement for `npm/ui`,
 // and its header says why neither file lives inside the package it checks.
 
-import type { Loadable } from "../../packages/state/index.js";
+import type { Loadable } from "../../npm/state/index.js";
 import {
   RESET,
   atom,
@@ -43,7 +43,7 @@ import {
   read,
   selectAtom,
   write,
-} from "../../packages/state/index.js";
+} from "../../npm/state/index.js";
 
 type User = { readonly name: string, readonly avatar: string };
 

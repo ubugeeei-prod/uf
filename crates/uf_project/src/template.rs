@@ -70,10 +70,10 @@ pub(crate) fn monorepo_files(name: &str) -> Vec<(&'static str, String)> {
         ("apps/web/app.js", app_entry()),
         ("apps/web/app/$layout.js", app_layout()),
         ("apps/web/app/$page.js", named(WEB_PAGE)),
-        ("packages/ui/package.json", named(&ui_package_json())),
-        ("packages/ui/uf.config.js", lib_config()),
-        ("packages/ui/index.js", UI_INDEX.to_string()),
-        ("packages/ui/index.test.js", UI_TEST.to_string()),
+        ("npm/ui/package.json", named(&ui_package_json())),
+        ("npm/ui/uf.config.js", lib_config()),
+        ("npm/ui/index.js", UI_INDEX.to_string()),
+        ("npm/ui/index.test.js", UI_TEST.to_string()),
     ]
 }
 
@@ -86,7 +86,7 @@ fn monorepo_package_json(name: &str) -> String {
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "npm/*"
   ],
   "devDependencies": {{
     "@uniflowed/config": "{uf}",
@@ -104,9 +104,9 @@ import { defineConfig } from "@uniflowed/config";
 // The repository's configuration. `uf fmt`, `uf lint`, `uf check` and `uf test`
 // run here cover every package with it, so formatting and lint levels are
 // written down once. Each package's own `uf.config.js` holds what is only that
-// package's: `apps/web` is an application and `packages/ui` a library.
+// package's: `apps/web` is an application and `npm/ui` a library.
 //
-// `uf build#packages/ui` runs `uf build` in that package, which is how a task
+// `uf build#npm/ui` runs `uf build` in that package, which is how a task
 // here reaches one package. `uf run bundle` verifies the repository, builds
 // the library, then builds the application that consumes it.
 export default defineConfig({
@@ -115,7 +115,7 @@ export default defineConfig({
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
     verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
-    "bundle:ui": { command: "uf build#packages/ui", dependsOn: ["verify"] },
+    "bundle:ui": { command: "uf build#npm/ui", dependsOn: ["verify"] },
     bundle: { command: "uf build#apps/web", dependsOn: ["bundle:ui"] },
   },
 });
@@ -165,7 +165,7 @@ export component Page() {
   return (
     <main>
       <h1>{greeting("web")}</h1>
-      <p>Edit packages/ui/index.js and this page follows.</p>
+      <p>Edit npm/ui/index.js and this page follows.</p>
     </main>
   );
 }
@@ -311,7 +311,7 @@ fn app_package_json(name: &str) -> String {
 ///   every runtime can evaluate. Publishing Flow source as `default` — which
 ///   is what the previous `"exports": { ".": "./index.js" }` did — is a
 ///   package that is a syntax error everywhere except inside uf. uf's own
-///   `packages/*` get away with it because `@uniflowed/host`'s `isFlowModule`
+///   `npm/*` get away with it because `@uniflowed/host`'s `isFlowModule`
 ///   names that scope, and a user's library does not get that deal.
 /// * **`files` names `dist`, and it has to.** npm falls back to `.gitignore`
 ///   when a package has no `.npmignore`, and the `.gitignore` this same
@@ -431,7 +431,7 @@ export default routerView("./app");
 /// every page is worse than none: a page that suspends under it renders as an
 /// empty document instead of failing the way React says it should, and nothing
 /// says so. That is the argument `RouteView` already makes for not inserting
-/// one — `packages/router/streaming.test.js` — and a scaffold should not ship
+/// one — `npm/router/streaming.test.js` — and a scaffold should not ship
 /// the shape the router refuses. A route that wants a boundary declares one.
 ///
 /// And `children` is **`mixed`, not `React.Node`**, which is a scaffold

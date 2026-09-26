@@ -122,9 +122,9 @@ it needs a fixture and a budget that go red when the path drifts.
 | --- | --- | --- |
 | `uf check` | Flow inference, module resolution and closure walks cannot allocate in proportion to the same work being rediscovered | `crates/uf_check/tests/allocation_budget.rs`, `crates/uf_check/tests/cache_hit_allocations.rs` |
 | `uf lint` | Framework rules run on the shared parse and route knowledge, not on another private pass over the same project | `crates/uf_lint/tests/allocation_budget.rs` |
-| `uf test` | Rust owns discovery, scheduling, timeouts and reports; hosts execute test bodies and unsupported hosts say why they skipped | [Testing](/guide/testing) and `packages/test` |
+| `uf test` | Rust owns discovery, scheduling, timeouts and reports; hosts execute test bodies and unsupported hosts say why they skipped | [Testing](/guide/testing) and `npm/test` |
 | Framework | Router, RSC, server actions and middleware are tested as one application graph instead of isolated helpers | [Routing](/guide/routing), [Server Components](/guide/server-components), [Server Actions](/guide/server-actions) |
-| UI | The public API is behavior, accessibility and styling freedom; render escape hatches keep ids, handlers, refs and Flow constraints intact | [UI components](/guide/ui) and `packages/ui/ui.test.js` |
+| UI | The public API is behavior, accessibility and styling freedom; render escape hatches keep ids, handlers, refs and Flow constraints intact | [UI components](/guide/ui) and `npm/ui/ui.test.js` |
 
 That is why performance work often lands in two small pieces. The first piece
 adds or tightens the guard around the user-visible command, so the repository

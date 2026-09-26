@@ -1,7 +1,7 @@
 //! The reserved-name grammar, against the router that actually runs.
 //!
 //! `crates/uf_router/src/reserved.rs` calls itself the single source of truth
-//! for `$<role>[.<variant>]`, and `packages/vite/internal/routes.js` is the
+//! for `$<role>[.<variant>]`, and `npm/vite/internal/routes.js` is the
 //! file-system router the build runs, with a `RESERVED` table of its own and a
 //! comment saying the two "cannot be allowed to disagree". Nothing compared
 //! them, and they disagreed: `$not-found` was in the JavaScript table and
@@ -40,7 +40,7 @@ use uf_router::{LAYOUT_PROP_NAMES, ReservedRole, RouteSegment, classify_route_se
 /// forgetting.
 const NOT_THE_ROUTERS: &[ReservedRole] = &[ReservedRole::Story];
 
-/// The `$*` names `packages/vite/internal/routes.js` reserves.
+/// The `$*` names `npm/vite/internal/routes.js` reserves.
 ///
 /// Read out of the source rather than duplicated, because a copy here would be
 /// a fourth spelling of the grammar and this file exists to stop the third.
@@ -50,7 +50,7 @@ const NOT_THE_ROUTERS: &[ReservedRole] = &[ReservedRole::Story];
 /// quietly matching nothing.
 fn build_router_source() -> String {
     std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/vite/internal/routes.js"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm/vite/internal/routes.js"),
     )
     .expect("the build router is in this repository")
 }
@@ -87,7 +87,7 @@ fn every_name_the_build_router_reserves_is_a_role() {
     for name in build_router_names() {
         assert!(
             roles.contains(name.as_str()),
-            "`packages/vite/internal/routes.js` reserves `${name}` and `ReservedRole` has no \
+            "`npm/vite/internal/routes.js` reserves `${name}` and `ReservedRole` has no \
              such role, so `uf lint` rejects a file the router resolves"
         );
     }
@@ -111,7 +111,7 @@ fn every_role_the_router_resolves_is_in_the_build_router() {
             names.contains(role.as_str()),
             "`ReservedRole::{role:?}` is a reserved name the build router does not scan for, so \
              `uf lint` accepts a file name nothing resolves. Add it to `RESERVED` in \
-             `packages/vite/internal/routes.js`, or to `NOT_THE_ROUTERS` here with a reason"
+             `npm/vite/internal/routes.js`, or to `NOT_THE_ROUTERS` here with a reason"
         );
     }
 }
@@ -157,7 +157,7 @@ fn both_routers_refuse_the_same_directory_spellings() {
     assert_eq!(
         grammar, build_router,
         "`RouteSegment::UNSUPPORTED_EXAMPLES` and `UNSUPPORTED_SEGMENTS` in \
-         `packages/vite/internal/routes.js` name different directory spellings, so one router \
+         `npm/vite/internal/routes.js` name different directory spellings, so one router \
          refuses a directory the other serves as a URL"
     );
 }
@@ -195,7 +195,7 @@ fn both_routers_reserve_the_same_layout_prop_names() {
     assert_eq!(
         grammar, build_router,
         "`uf_router::LAYOUT_PROP_NAMES` and `LAYOUT_PROP_NAMES` in \
-         `packages/vite/internal/routes.js` name different props, so one router refuses a slot \
+         `npm/vite/internal/routes.js` name different props, so one router refuses a slot \
          the other scans into a prop that overwrites something"
     );
 }
@@ -206,7 +206,7 @@ fn every_spelling_the_build_router_refuses_is_unsupported_here() {
         // In a slot as well as outside one: these are refused everywhere.
         assert!(
             !classify_route_segment(&segment).is_supported(true),
-            "`packages/vite/internal/routes.js` refuses `{segment}` and \
+            "`npm/vite/internal/routes.js` refuses `{segment}` and \
              `uf_router::classify_route_segment` calls it a route, so `uf build` would generate a \
              `RoutePath` for a directory the build router will not serve"
         );
@@ -248,7 +248,7 @@ fn both_routers_serve_the_same_interception_spellings() {
     assert_eq!(
         grammar, build_router,
         "`RouteSegment::SLOT_ONLY_EXAMPLES` and `INTERCEPTION_SEGMENTS` in \
-         `packages/vite/internal/routes.js` name different interception spellings, so one router \
+         `npm/vite/internal/routes.js` name different interception spellings, so one router \
          serves an intercepting route the other refuses"
     );
     for segment in &grammar {

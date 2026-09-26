@@ -56,7 +56,7 @@
 //! `mixed` — printed as `unknown` — where `P extends [infer K] ? K : empty`
 //! bound the element. So a recursion over a tuple, which is what a path type
 //! or a "at most one `FormData`" constraint is made of, walked over a list of
-//! `unknown`s and answered `true` for every tuple. `packages/router/action.js`
+//! `unknown`s and answered `true` for every tuple. `npm/router/action.js`
 //! records that as the reason `ActionArguments` cannot hold a call to one
 //! form.
 //!
@@ -348,7 +348,7 @@ fn the_elements_before_a_spread_keep_the_order_they_were_written_in() {
 /// 0002 — the recursion the issue is really about, answering rather than
 /// falling through.
 ///
-/// `NoForm` is the walk `packages/router/action.js` says it cannot write:
+/// `NoForm` is the walk `npm/router/action.js` says it cannot write:
 /// at most one `FormData` in an argument list. It did not fail, it answered
 /// `true` for `[string, FormData]` — every tuple walked over a head of
 /// `unknown`, no head was ever a `FormData`, and the recursion ran out on the

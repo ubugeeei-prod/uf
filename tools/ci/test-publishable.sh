@@ -1,5 +1,5 @@
 #!/bin/sh
-# `publishable.sh` against a `packages/` it can safely make wrong.
+# `publishable.sh` against a `npm/` it can safely make wrong.
 #
 # The check exists because ten implemented packages — about 22,000 lines of
 # Flow, `@uniflowed/state` and `@uniflowed/effect` among them — were in no
@@ -29,27 +29,27 @@ pass() {
   echo "  ok  $*"
 }
 
-# A `packages/` with one of each: a library, a declaration, and a library that
+# A `npm/` with one of each: a library, a declaration, and a library that
 # is implemented but not yet bound on npm.
 scratch() {
   root="$work/$1"
   rm -rf "$root"
   mkdir -p "$root/tools/ci" "$root/tools/release" \
-    "$root/packages/core" "$root/packages/native-stub" "$root/packages/state"
+    "$root/npm/core" "$root/npm/native-stub" "$root/npm/state"
   cp "$script" "$root/tools/ci/publishable.sh"
   printf '// @flow\nexport const add = (a: number, b: number): number => a + b;\n' \
-    > "$root/packages/core/index.js"
+    > "$root/npm/core/index.js"
   printf '// @flow\nimport { nativeRuntimeRequired } from "@uniflowed/core";\nexport const open = (): empty => nativeRuntimeRequired("native-stub");\n' \
-    > "$root/packages/native-stub/index.js"
+    > "$root/npm/native-stub/index.js"
   printf '// @flow\nexport const atom = <T>(value: T): { value: T } => ({ value });\n' \
-    > "$root/packages/state/index.js"
+    > "$root/npm/state/index.js"
   for name in core state; do
-    printf '{ "name": "@uniflowed/%s", "version": "0.0.0" }\n' "$name" > "$root/packages/$name/package.json"
+    printf '{ "name": "@uniflowed/%s", "version": "0.0.0" }\n' "$name" > "$root/npm/$name/package.json"
   done
   # `native-stub` is the declaration in neither list, so a correct tree says so in the
   # manifest — that is the third rule this script now checks, and this fixture is
   # what a repository looks like once it holds.
-  printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0", "private": true }\n' > "$root/packages/native-stub/package.json"
+  printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0", "private": true }\n' > "$root/npm/native-stub/package.json"
   printf '# published\ncore\n' > "$root/tools/release/published-packages.txt"
   printf '# pending\nstate\n' > "$root/tools/release/pending-packages.txt"
 }
@@ -84,7 +84,7 @@ pass "a library published, a library waiting, and a declaration in neither list"
 scratch forgotten
 printf '# published\ncore\n' > "$work/forgotten/tools/release/pending-packages.txt"
 run forgotten
-refuses "an implemented package in neither list" "packages/state"
+refuses "an implemented package in neither list" "npm/state"
 
 # --- and it has to say it is not for the registry ---------------------------
 # The rule the third check adds. A declaration in neither list is never
@@ -92,23 +92,23 @@ refuses "an implemented package in neither list" "packages/state"
 # refuses is `npm install`, with `ETARGET` and no explanation. Taking the field
 # back out is exactly the state all twenty of these packages were in.
 scratch unmarked
-printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0" }\n' > "$work/unmarked/packages/native-stub/package.json"
+printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0" }\n' > "$work/unmarked/npm/native-stub/package.json"
 run unmarked
-refuses "a declaration in neither list with no private" "packages/native-stub"
+refuses "a declaration in neither list with no private" "npm/native-stub"
 
 # --- unless a list claims it -------------------------------------------------
 # Membership outranks the scan, which is what keeps `core` and `stylex`
 # publishable: both look like declarations to `isDeclaration` and both are
 # published on purpose. A package a list names is never asked to be private.
 scratch claimed
-printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0" }\n' > "$work/claimed/packages/native-stub/package.json"
+printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0" }\n' > "$work/claimed/npm/native-stub/package.json"
 printf '# pending\nstate\nnative-stub\n' > "$work/claimed/tools/release/pending-packages.txt"
 run claimed
 [ "$status" -eq 0 ] || fail "a declaration a list claims was refused: $out"
 pass "a list claiming a declaration outranks the scan"
 
 # --- a declaration is not required to be anywhere ---------------------------
-# The other direction of the same judgement: `packages/native-stub` is in no list and
+# The other direction of the same judgement: `npm/native-stub` is in no list and
 # must stay that way, because a name with `nativeRuntimeRequired` behind it
 # squats the name and cannot run.
 scratch declaration
@@ -122,17 +122,17 @@ pass "a declaration is not required to be published"
 # would have excused the largest package in the pending list.
 scratch prose
 printf '// @flow\n//\n// It used to call nativeRuntimeRequired(name) and does not any more.\nexport const play = (): number => 1;\n' \
-  > "$work/prose/packages/state/index.js"
+  > "$work/prose/npm/state/index.js"
 printf '# pending\n' > "$work/prose/tools/release/pending-packages.txt"
 run prose
-refuses "a package that only mentions the runtime in a comment" "packages/state"
+refuses "a package that only mentions the runtime in a comment" "npm/state"
 
 # --- a nested module counts too ---------------------------------------------
 scratch nested
-mkdir -p "$work/nested/packages/native-stub/internal"
+mkdir -p "$work/nested/npm/native-stub/internal"
 printf '// @flow\nexport const open = (): empty => nativeRuntimeRequired("native-stub");\n' \
-  > "$work/nested/packages/native-stub/internal/driver.js"
-printf '// @flow\nexport { open } from "./internal/driver.js";\n' > "$work/nested/packages/native-stub/index.js"
+  > "$work/nested/npm/native-stub/internal/driver.js"
+printf '// @flow\nexport { open } from "./internal/driver.js";\n' > "$work/nested/npm/native-stub/index.js"
 run nested
 [ "$status" -eq 0 ] || fail "a declaration whose call is one directory down was refused: $out"
 pass "a declaration is recognized from any module in it, not only its index"
@@ -146,12 +146,12 @@ refuses "a package in both lists" "take it out of the pending one"
 scratch ghost
 printf '# published\ncore\nkoru\n' > "$work/ghost/tools/release/published-packages.txt"
 run ghost
-refuses "a published name with no package behind it" "packages/koru does not exist"
+refuses "a published name with no package behind it" "npm/koru does not exist"
 
 scratch ghost-pending
 printf '# pending\nkoru\n' > "$work/ghost-pending/tools/release/pending-packages.txt"
 run ghost-pending
-refuses "a pending name with no package behind it" "packages/koru does not exist"
+refuses "a pending name with no package behind it" "npm/koru does not exist"
 
 # --- a published package may not need an unpublished one --------------------
 # The failure that started the check, reached from the other direction: the
@@ -160,14 +160,14 @@ refuses "a pending name with no package behind it" "packages/koru does not exist
 # person who finds out is a user typing `npm install`.
 scratch depends-on-pending
 printf '{ "name": "@uniflowed/core", "version": "0.0.0", "dependencies": { "@uniflowed/state": "0.0.0" } }\n' \
-  > "$work/depends-on-pending/packages/core/package.json"
+  > "$work/depends-on-pending/npm/core/package.json"
 run depends-on-pending
 refuses "a published package depending on a pending one" "would answer ETARGET"
 
 # A peer dependency reaches the same registry and counts the same way.
 scratch peer-on-pending
 printf '{ "name": "@uniflowed/core", "version": "0.0.0", "peerDependencies": { "@uniflowed/state": "0.0.0" } }\n' \
-  > "$work/peer-on-pending/packages/core/package.json"
+  > "$work/peer-on-pending/npm/core/package.json"
 run peer-on-pending
 refuses "a published package peer-depending on a pending one" "would answer ETARGET"
 
@@ -177,7 +177,7 @@ refuses "a published package peer-depending on a pending one" "would answer ETAR
 # this one entirely.
 scratch depends-on-declaration
 printf '{ "name": "@uniflowed/core", "version": "0.0.0", "dependencies": { "@uniflowed/native-stub": "0.0.0" } }\n' \
-  > "$work/depends-on-declaration/packages/core/package.json"
+  > "$work/depends-on-declaration/npm/core/package.json"
 run depends-on-declaration
 refuses "a published package depending on a declaration" "is not in either release manifest"
 
@@ -186,9 +186,9 @@ refuses "a published package depending on a declaration" "is not in either relea
 # direction — and a dev dependency is not installed for a consumer at all.
 scratch allowed-edges
 printf '{ "name": "@uniflowed/state", "version": "0.0.0", "dependencies": { "@uniflowed/core": "0.0.0" } }\n' \
-  > "$work/allowed-edges/packages/state/package.json"
+  > "$work/allowed-edges/npm/state/package.json"
 printf '{ "name": "@uniflowed/core", "version": "0.0.0", "devDependencies": { "@uniflowed/state": "0.0.0" } }\n' \
-  > "$work/allowed-edges/packages/core/package.json"
+  > "$work/allowed-edges/npm/core/package.json"
 run allowed-edges
 [ "$status" -eq 0 ] || fail "an ordinary dependency direction was refused: $out"
 pass "pending may depend on published, and a devDependency is not a consumer's"

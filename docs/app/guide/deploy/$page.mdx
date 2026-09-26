@@ -203,7 +203,7 @@ in the run that passed, not that a deployment to the cloud does — that is the
 5. Cloudflare's asset server sends a prerendered `__uf.flight` with no content type. The router accepts an untyped `200` for the payload URL whose first line is a Flight row (#1508), so navigation stays on the client; the check asserts that shape. The deploy guide gives the `_headers` rule that types it.
 6. Kumo 0.30.0's HTTP API event carries no `host` header and no `requestContext.domainName`, so uf's same-origin check refuses every action (as it should for a request that names no host). Real API Gateway sends both. The check runs and is expected to fail until Kumo does.
 7. Kumo 0.30.0 drops the `cookies` array of a payload format 2.0 response, which is where `@uniflowed/server/lambda` puts every `Set-Cookie` (as API Gateway requires). The check runs and is expected to fail until Kumo does.
-8. The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `packages/server/image.test.js`, not on these hosts yet.
+8. The remote image optimiser needs an image origin the target may fetch and, on `edge`, Cloudflare's Images binding; it is covered in process by `npm/server/image.test.js`, not on these hosts yet.
 
 | Target | Adapter | Run as |
 | --- | --- | --- |
@@ -334,7 +334,7 @@ the `rsc-split-app` fixture three times and asks `uf start` what a tab on the
 first build would ask: build N's chunks answer `200`, build N's action call is
 refused with a `409` naming build N+1 without running, the prerendered payload
 names build N+1, and build N's chunks are gone after build N+2.
-`packages/router/deployment.test.js` drives the browser's half.
+`npm/router/deployment.test.js` drives the browser's half.
 
 ## The adapter contract
 

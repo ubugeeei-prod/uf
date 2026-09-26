@@ -32,7 +32,7 @@
 //! It would also break the sourcemap: `dist/index.js.map` names `../index.js`,
 //! and a tarball without it is a map to a file nobody has.
 //!
-//! **Source only** is what uf's own `packages/*` do, and it works there for a
+//! **Source only** is what uf's own `npm/*` do, and it works there for a
 //! reason a user's library cannot borrow. `isFlowModule` in
 //! `@uniflowed/host/transform` transforms `.js` under `node_modules` only for
 //! `@uniflowed/*`, and `@uniflowed/vite` names the same prefix in

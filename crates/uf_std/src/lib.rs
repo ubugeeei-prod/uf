@@ -7,7 +7,7 @@
 //! families back.
 //!
 //! Read [`StdStatus`] before reading anything else in that table. Six of the
-//! specifiers are code in `packages/std`, one is a declaration surface, and the
+//! specifiers are code in `npm/std`, one is a declaration surface, and the
 //! rest are a plan or a decision not to have one — and until
 //! ubugeeei-prod/uf#710 nothing in the entry said which, so `uf inspect`
 //! reported forty-five modules that did not exist.

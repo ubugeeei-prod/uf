@@ -60,7 +60,7 @@ export type ApiPackage = {|
   readonly name: string,
   /** The URL segment: the name without its scope. */
   readonly slug: string,
-  /** Its directory under `packages/`. */
+  /** Its directory under `npm/`. */
   readonly dir: string,
   readonly version: string,
   readonly description: string,
@@ -377,8 +377,8 @@ function main(): void {
   fs.mkdirSync(OUT, { recursive: true });
   let written = 0;
   let declarations = 0;
-  for (const dir of fs.readdirSync(path.join(REPO, "packages")).sort()) {
-    const root = path.join(REPO, "packages", dir);
+  for (const dir of fs.readdirSync(path.join(REPO, "npm")).sort()) {
+    const root = path.join(REPO, "npm", dir);
     const manifestFile = path.join(root, "package.json");
     if (!fs.existsSync(manifestFile)) {
       continue;

@@ -1,0 +1,831 @@
+// @flow
+//
+// `@uniflowed/server/fetch`: a built uf application as `Request` → `Response`.
+//
+// This is the seam every deploy adapter is written against, and it is one
+// function: give it the module `uf build` wrote and the asset URLs from the
+// client manifest, and it answers a request. It touches no filesystem, holds
+// no Node types, and imports nothing from `@uniflowed/vite` — so the same
+// handler runs inside `uf start`'s `node:http` loop, inside the `server.js`
+// that `uf build --adapter node` writes, and inside a worker's `fetch` export.
+//
+// # Why it lives here and not where it was written
+//
+// It was `createApplicationHandler` in `@uniflowed/vite/internal/serve.js`,
+// and `npm/server/serve.test.js` said what was wrong with that: "not a
+// package export, deliberately — `internal/serve.js` is the seam a deploy
+// adapter will need, and naming it in `exports` before one exists would be
+// promising an interface nothing has used yet". An adapter exists now, and it
+// may not import the package named after the bundler: the whole claim of
+// deployable output is that the host needs neither Vite nor the toolchain that
+// produced the build. So the seam moved to the package a deployment already
+// links — `@uniflowed/server` — and `internal/serve.js` calls into it, which
+// keeps `uf preview`, `uf start` and every adapter answering out of one
+// function rather than out of copies that agree until they do not.
+//
+// `./standalone.js` is the one front door that does not come through here, and
+// its own header says why: a compiled binary answers from bytes it carries
+// rather than from a directory, and it writes into a Node response directly so
+// that a document is not converted through a `Response` on its way out.
+//
+// # The route cache
+//
+// One `GET` at a time, and only where three things line up: the host passed a
+// `cache` whose `route` is on (`rendering.cache.route` in `uf.config.js`), the
+// render stated a lifetime with `cacheLife`, and the render did not read the
+// request. All three are argued in `./cache.js`; what belongs here is the one
+// cost that is this function's rather than the store's.
+//
+// **A cached route is buffered, and an uncached one is streamed.** The body has
+// to be whole before it can be an entry, so the fill reads the document to its
+// last byte before answering — which gives up the thing the streaming path
+// exists for, on the fill. It buys two things back. The hit is the whole
+// document at once with no render at all, which is faster than streaming a
+// render; and the read of `requestStateReads` is only trustworthy *after* the
+// last byte, because a component inside a `<Suspense>` boundary renders long
+// after the shell resolved and `cookies()` in one of those is exactly the read
+// that must stop the entry being stored. A cache that decided at the shell
+// would cache a document whose tail was about one person.
+//
+// So the trade is per route and stated by the route: say nothing and stream as
+// before, call `cacheLife` and buffer once per lifetime. `HEAD` never
+// participates in either direction — it neither fills an entry nor reads one —
+// because a `HEAD` is a request for a status and a length, and letting it fill
+// a document cache would let a request that wants no body pay for one.
+//
+// # And what the host can do, which is not the same for all four
+//
+// `capabilities` is the other thing an adapter passes, and it exists because
+// three of the four front doors can hold a connection open and one cannot. A
+// route handler that returns an event stream or takes a WebSocket is correct
+// on `uf start` and on a worker, and on a Lambda is a response buffered until
+// the invocation times out — the same code, the same build, and a failure that
+// appears only in the deployment nobody checked. So a host says what it is,
+// once, where it is wired, and `./internal/capabilities.js` turns that into a
+// refusal at the point somebody asks rather than a dropped connection later.
+//
+// A handler asks through `./socket.js`, `./events.js` and `./queue.js`; this
+// function's only part in it is putting the answer on the request, beside the
+// cache and for the same reason.
+//
+// # What it deliberately does not do
+//
+// Static files. A build's assets and its prerendered documents are the *host's*
+// half — on a CDN-backed target they are not the application's job at all, and
+// on a Node host they are a directory read, which is why `./node.js` has that
+// half and this module has none of it. That split is the whole reason an
+// adapter can be written for a worker: what is left after the files is exactly
+// this function.
+
+import { noStore } from "./cache.js";
+import type {
+  Application,
+  DocumentAssets,
+  PrerenderedShell,
+  RenderedDocument,
+} from "./internal/application.js";
+import type {
+  CacheEntry,
+  CacheOptions,
+  CacheOutcome,
+  CacheResult,
+} from "./internal/cache-store.js";
+import { END_OF_TIME, currentScope, newScope, runInScope } from "./internal/cache-store.js";
+import type { ServerCapabilities } from "./internal/capabilities.js";
+import type { RequestContext } from "./internal/context.js";
+import { currentContext } from "./internal/context.js";
+import { refuseOtherDeployment } from "./internal/deployment.js";
+import { flightResponse } from "./internal/flight.js";
+import { admit, headersFor, rewriteFor, wasAdmitted, withHeaders } from "./internal/routing.js";
+
+export type {
+  Application,
+  DocumentAssets,
+  PrerenderedShell,
+  RenderedDocument,
+} from "./internal/application.js";
+export { DEPLOYMENT_HEADER } from "./internal/deployment.js";
+
+export type {
+  CapabilityDefaults,
+  CapabilityOptions,
+  JobRecord,
+  QueueBackend,
+  ServerCapabilities,
+  WebSocketUpgrade,
+  WebSocketUpgrader,
+} from "./internal/capabilities.js";
+
+export {
+  CapabilityRefusedError,
+  CapabilityUnavailableError,
+  assertCapable,
+  capabilitiesFor,
+} from "./internal/capabilities.js";
+
+/** Everything the application half needs to answer a request. */
+export type FetchHandlerOptions = {|
+  /** The server bundle, as imported. */
+  readonly app: Application,
+  /** The script, stylesheet and preload URLs a rendered document references. */
+  readonly document: DocumentAssets,
+  /**
+   * The cache this host installed, from `rendering.cache` in `uf.config.js`.
+   *
+   * Absent is the default and means no cache at all — every request renders,
+   * exactly as before this option existed. A host that passes one is saying
+   * two separate things with it, `route` and `fetch`, because the two switches
+   * in the configuration are two switches.
+   */
+  readonly cache?: CacheOptions,
+  /**
+   * What this host can do, from the adapter that built it.
+   *
+   * Absent means nothing was said, which is what every request looked like
+   * before this option existed and is treated as such: an event stream is
+   * allowed, because a `Response` streams by default everywhere except where
+   * somebody said otherwise, and an upgrade and a queue are refused, because
+   * both are objects and there is no such object. `./internal/capabilities.js`
+   * argues that asymmetry.
+   */
+  readonly capabilities?: ServerCapabilities,
+  /**
+   * The pages this build regenerates, from what `uf build` recorded.
+   *
+   * Absent for a build that regenerates nothing, which is every build whose
+   * prerendered pages stated no lifetime and no tag. See [`Regeneration`].
+   */
+  readonly regeneration?: Regeneration,
+  /**
+   * `/__uf/image`, from `@uniflowed/server/image`'s `createImageEndpoint`.
+   *
+   * Absent unless `app.builtins.images.remotePatterns` lists something, and
+   * absent is no endpoint: the path is an ordinary 404 like any other. Asked
+   * before the middleware, for the reason given where it is asked.
+   */
+  readonly images?: (request: Request) => Promise<Response | null>,
+  /**
+   * The pages this build prerendered partially, from what `uf build` recorded.
+   *
+   * Absent for a build that wrote no static shell. See [`PartialPrerenders`].
+   */
+  readonly partial?: PartialPrerenders,
+|};
+
+/**
+ * Every page `uf build` prerendered as a static shell with holes, by the
+ * pathname it was prerendered for.
+ *
+ * A page is one of these when `app.rendering.modes` allows `ppr`, the build
+ * left a server behind, and the page read `cookies()`, `headers()` or
+ * `draftMode()` inside a `<Suspense>` boundary. The build writes no document at
+ * the page's URL — a shell on its own is a page whose holes never fill — so
+ * every request for it reaches this handler, which sends the shell before it
+ * renders anything and then streams the holes. See `@uniflowed/router`'s
+ * `internal/stream.js` for the shell and `resumeDocument`.
+ */
+export type PartialPrerenders = {|
+  readonly pages: { readonly [pathname: string]: PrerenderedShell },
+|};
+
+/**
+ * One page `uf build` prerendered and a server regenerates.
+ *
+ * A page is one of these when its prerender stated a lifetime with `cacheLife`,
+ * called `noStore` nowhere, answered 200, and the project allows `isr` with
+ * `rendering.cache.route` on. The build then writes its document where no
+ * static half answers the page's own URL, so every request for it reaches this
+ * handler — and this handler answers it from that document until the page's
+ * lifetime has passed.
+ *
+ * A tag alone does not make a page one of these. The route cache keeps nothing
+ * without a lifetime, and the reason holds here with more force: a regenerated
+ * page with no end is one another process could keep serving from its memory
+ * long after `revalidateTag` took it out of the shared store.
+ */
+export type RegeneratedPage = {|
+  /** Where the build's copy is: a URL path the host's static half answers. */
+  readonly document: string,
+  /** When the prerender rendered it, in milliseconds since the epoch. */
+  readonly renderedAt: number,
+  /** `cacheLife`'s `revalidate`, in seconds. */
+  readonly revalidate: number,
+  /** `cacheLife`'s `expire`, in seconds, or `null` when it stated none. */
+  readonly expire: number | null,
+  /** What `cacheTag` named during the prerender. */
+  readonly tags: $ReadOnlyArray<string>,
+|};
+
+/** Every page a build regenerates, by the pathname it was prerendered for. */
+export type Regeneration = {|
+  readonly pages: { readonly [pathname: string]: RegeneratedPage },
+|};
+
+/** A whole document, as an entry: what a hit answers with without rendering. */
+type CachedDocument = {|
+  readonly status: number,
+  readonly headers: { readonly [string]: string },
+  readonly body: Uint8Array,
+|};
+
+/**
+ * The application half: middleware, then route handlers, then rendering.
+ *
+ * Returns `null` for nothing, ever — a request that matches no handler and no
+ * route is a rendered 404, because the renderer is what knows what the
+ * project's `$not-found` page says.
+ *
+ * The order is the dev server's, and has to stay the dev server's: middleware
+ * first, then server actions, then handlers for every method, because a
+ * handler is the only thing that can answer a `POST` and it may also answer a
+ * `GET` for a path that has no page. A page cannot answer a `POST`, so a
+ * non-navigation that no handler claimed is a 404 rather than a rendered page
+ * with a 200.
+ *
+ * `app.callAction` is between the two, and this is the function that puts it
+ * on all four deploy targets at once: `handler.js` is byte-for-byte the same
+ * file in the node, container, edge and serverless artefacts, so an action
+ * endpoint that works here works in each of them or in none. It declines every
+ * request that carries no action id and answers every request that carries
+ * one, refusals included — so a `POST` naming an action never reaches a route
+ * handler that happens to sit at the same path, and a request naming none
+ * pays one header lookup. Called rather than tested for, for the reason
+ * `app.runMiddleware` is: a server bundle without it is a `TypeError` on the
+ * first request rather than an application whose actions quietly answer 404.
+ *
+ * Middleware above both, and not inside either: it guards a path, so it has to
+ * run for a page, for a route handler, and for a path under it that matches
+ * neither — `/dashboard/typo` is a 404 that the guard on `/dashboard` still
+ * answers. `app.runMiddleware` is called rather than tested for, so a server
+ * bundle without it is a `TypeError` on the first request instead of an
+ * application whose auth check quietly stopped running once it was built.
+ * That is the whole of ubugeeei-prod/uf#260, and every host that reaches this
+ * function is one more place it could have happened.
+ *
+ * # It must be called inside a request, and does not begin one
+ *
+ * `after()` says "once the response has been sent", and this function has a
+ * `Response` in hand rather than a response on the wire — for a streamed body
+ * those are a document apart. So the host begins the request with
+ * `app.beginRequest`, runs this inside `run`, and settles it after the bytes:
+ * `./node.js`'s `nodeListener` does that for `uf start` and for the `server.js`
+ * an adapter writes, and `@uniflowed/vite`'s `withRequest` does it for `uf dev`
+ * and `uf preview`.
+ *
+ * A worker-shaped host is the one uf does not write, and it has the same two
+ * halves to place. `settle` is what to hand `ctx.waitUntil` where there is one;
+ * without one, the honest moment is when the response body stream closes — and
+ * a runtime that tears the isolate down at that moment drops the callback,
+ * which is worth saying out loud rather than leaving to be discovered.
+ *
+ * A caller that forgets is not left to discover *that*, at least:
+ * `app.runMiddleware` refuses outside a request and names what establishes one.
+ * See ubugeeei-prod/uf#389.
+ *
+ * # And the cache, if the host installed one
+ *
+ * `cache` is `rendering.cache` from `uf.config.js`, and it does two separate
+ * things here. It is put on the request before the guard runs, so that a route
+ * handler or a server action calling `revalidateTag()` reaches the store that
+ * is answering this request; and, when `route` is on, a `GET` goes through
+ * [`cachedDocument`] instead of the streaming path. Both halves are argued in
+ * the module header and in `./cache.js`. With no `cache` at all this function
+ * is what it has always been, one `AsyncLocalStorage.run` aside.
+ */
+export function createFetchHandler(
+  options: FetchHandlerOptions,
+): (request: Request) => Promise<Response> {
+  const { app, cache, capabilities, document, images } = options;
+
+  async function answer(arrived: Request): Promise<Response> {
+    // A browser on another build, before anything of this one runs. The files
+    // are the host's and were answered in front of this function, which is
+    // what keeps that browser's chunks loading; what it asks of the
+    // application — an action, a payload — is refused, and the router turns
+    // the refusal into a hard navigation. See `./internal/deployment.js`.
+    const stale = refuseOtherDeployment(arrived, document.deployment);
+    if (stale != null) return stale;
+
+    // Before the guard, not after it. A route handler and a server action both
+    // run inside `dispatch`, and `revalidateTag()` in one of them has to reach
+    // the store that is answering this request — a mutation that invalidates
+    // nothing is the failure this whole seam exists to prevent, and it would
+    // be a silent one.
+    const context = currentContext();
+    if (context != null && cache != null) {
+      context.cache = cache;
+      // And, in the same breath, the durable half of whatever this request
+      // does to that cache. A store with a provider starts its writes and does
+      // not await them — a reader must not wait on a disk for a document it is
+      // already holding — so something has to, or a host that stops the process
+      // when the response is written drops them. That host is every serverless
+      // one, and a shared cache is worth most exactly there. `settled()`
+      // resolves immediately when nothing is outstanding, which is every
+      // request on a memory-only store.
+      context.deferred.push(() => cache.store.settled());
+    }
+    // And beside it, for the same reason and at the same moment: a handler
+    // that upgrades a connection or queues work is inside `dispatch` too, and
+    // what it can do is a fact about the host rather than about the route.
+    if (context != null && capabilities != null) {
+      context.capabilities = capabilities;
+    }
+
+    // The image endpoint, before anything of the application's. It is uf's,
+    // like the action endpoint, and it reads nothing from the request but its
+    // query and its `Accept`; a project's middleware guarding `/` would
+    // otherwise refuse every image on a signed-out page, and a rewrite could
+    // move the one path uf reserves. It declines every other path.
+    if (images != null) {
+      const imaged = await images(arrived);
+      if (imaged != null) return imaged;
+    }
+
+    // `app.router.rewrites` first, where the application begins: after the
+    // host's static files, which is why a catch-all rewrite never swallows a
+    // chunk, and before the guard, which is why the guard that runs is the one
+    // on the route the rewrite reached. See `./internal/routing.js`.
+    let request = rewriteFor(app.routing, arrived) ?? arrived;
+
+    // A `Request` back is a middleware's `rewrite()`, already past the
+    // destination's own middleware.
+    const guarded = await app.runMiddleware(request);
+    if (guarded instanceof Request) {
+      request = guarded;
+    } else if (guarded != null) {
+      return guarded;
+    }
+
+    // A form posted before its page hydrated is answered with the page itself,
+    // rendered with the action's result as the submitting `useActionState`'s
+    // state: `postback` is that render, outside every cache because it is one
+    // person's answer. See `npm/router/internal/action-endpoint.js`.
+    const posted = request;
+    const acted = await app.callAction(request, {
+      postback: async (formState) => {
+        const at = new URL(posted.url);
+        const result = await runInScope(newScope({ key: [] }), () =>
+          app.render(at.pathname + at.search, document, {
+            onError: (error: mixed) => {
+              console.error(error);
+            },
+            formState,
+          }),
+        );
+        return streamedResponse(result, "GET");
+      },
+    });
+    if (acted != null) return acted;
+
+    // A browser that is navigating, asking for the next route's payload rather
+    // than its document. After the guard and before the handlers, for the
+    // reasons `./internal/flight.js` gives; every other request is declined.
+    // Inside a cache scope, for the reason a document is rendered inside one.
+    const flight = await flightResponse(app, request, {
+      onError: (error: mixed) => {
+        console.error(error);
+      },
+      within: (body) => runInScope(newScope({ key: [] }), body),
+    });
+    if (flight != null) return flight;
+
+    const handled = await app.dispatch(request);
+    if (handled != null) return handled;
+
+    const method = request.method.toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      return new Response(null, { status: 404 });
+    }
+
+    const url = new URL(request.url);
+    const target = url.pathname + url.search;
+    // Nothing better than the console here: this function is what a worker or
+    // a serverless invocation wraps, and it has no terminal of its own. Losing
+    // a boundary's exception entirely would be worse — it is the only trace a
+    // page that failed after its first byte leaves anywhere.
+    const onError = (error: mixed) => {
+      console.error(error);
+    };
+
+    // A draft request goes down the streaming path whatever the cache says, and
+    // it is a *bypass* rather than a refusal to store. The store already
+    // refuses to keep a render that read `draftMode()`, which stops one
+    // person's draft becoming everybody's page; this is the other direction,
+    // and it is the one that makes draft mode mean anything: a cached entry is
+    // an answer from before the draft existed, so serving it to an editor who
+    // came to look at the draft answers a different question from the one they
+    // asked. See ubugeeei-prod/uf#282.
+    //
+    // A page the build prerendered partially comes first. Its own URL has no
+    // file behind it, and it read the request, so neither cache below would
+    // keep it. A draft request is rendered whole, because the shell is an
+    // answer from before the draft existed.
+    const shell =
+      app.resume != null && context?.draft !== true
+        ? builtShell(options.partial, url.pathname)
+        : null;
+    const resume = app.resume;
+    if (shell != null && resume != null) {
+      const result = await runInScope(newScope({ key: [] }), () =>
+        resume(target, document, shell, { onError }),
+      );
+      return streamedResponse(result, method);
+    }
+
+    // A page the build regenerates is next. Its own URL has no file behind
+    // it — the build wrote the document somewhere no static half answers — so
+    // this is the only thing that can answer it, and the build recorded it only
+    // because `rendering.cache.route` was on.
+    const regenerated =
+      method === "GET" && cache != null && context?.draft !== true
+        ? regeneratedPage(options.regeneration, url.pathname)
+        : null;
+    if (cache != null && regenerated != null) {
+      return regeneratedDocument(app, cache, context, regenerated, document, onError);
+    }
+    if (method === "GET" && cache != null && cache.route === true && context?.draft !== true) {
+      return cachedDocument(app, cache, context, url, target, document, onError);
+    }
+
+    // Rendered inside a scope even with no cache in sight, so that a component
+    // calling `cacheLife` is a component that states a lifetime nobody is
+    // honouring rather than a component that throws. Turning the route cache
+    // off must not change what an application is allowed to say.
+    const result = await runInScope(newScope({ key: [] }), () =>
+      app.render(target, document, { onError }),
+    );
+    return streamedResponse(result, method);
+  }
+
+  // `app.router.redirects` before anything else and its headers on whatever
+  // answers — here as well as in front of every host's static half. A host
+  // that serves files first has already answered a redirect by the time this
+  // runs, and setting a header twice is setting it once; a host that hands
+  // every request to `handler.js`'s `fetch` — Deno Deploy, a Worker with no
+  // assets — has only this, and the rules have to hold there too. See
+  // `./internal/routing.js`.
+  return async function handle(arrived: Request): Promise<Response> {
+    // Admitted already by a host with a static half in front of this one,
+    // which has taken the base path off and puts the headers on itself.
+    if (wasAdmitted(arrived)) {
+      return await answer(arrived);
+    }
+    const admitted = admit(app.routing, arrived);
+    // Before the response rather than after it, which is a change of order and
+    // not only of line. A rule whose value names `{uf.nonce}` *mints* this
+    // request's nonce when it is read, and the document that has to carry that
+    // nonce is written inside `answer`. Asking afterwards would put a nonce in
+    // the header that no script in the body had — a policy that blocks the
+    // page it is protecting. The pairs are pure once read, so holding them
+    // across the render costs nothing.
+    const pairs = headersFor(app.routing, arrived);
+    const response =
+      admitted.kind === "answer" ? admitted.response : await answer(admitted.request);
+    return withHeaders(response, pairs);
+  };
+}
+
+/**
+ * Answer a `GET` from the route cache, filling it if it has to.
+ *
+ * The fill is the interesting half, and everything it refuses is refused for a
+ * reason it can name:
+ *
+ * * **The render read the request.** `requestStateReads` is compared across the
+ *   whole document rather than across the shell; see the module header.
+ * * **The render did not answer 200.** A 404 or a 500 is a fact about this
+ *   moment far more often than it is a fact about the URL, and a cached 500 is
+ *   an outage that outlives its cause.
+ * * **The render set a cookie.** A `Set-Cookie` in a shared entry is one
+ *   person's session handed to the next reader. This is belt and braces — a
+ *   render that set a cookie almost certainly read one first — and it is here
+ *   because the cost of being wrong is not symmetric.
+ *
+ * A render that states no lifetime is refused by the store itself, which is
+ * where "no lifetime, no entry" belongs: it is a property of the cache, not of
+ * documents.
+ *
+ * # The request that fills streams
+ *
+ * The store needs the whole document before it can decide and keep it, and
+ * until ubugeeei-prod/uf#1493 this request waited for that too: with
+ * `route` on — which `isr` needs — every page rendered per request arrived in
+ * one piece, a `$loading.js` fallback together with the page it stood in
+ * for, whether or not the page was ever going to be kept. So the render is
+ * teed. The request that owns the fill answers with one branch as it is
+ * produced; the other is drained into the entry the store decides about when
+ * the document ends, exactly as before. A request that joins an in-flight
+ * fill, or finds an entry, is answered from the entry as it always was.
+ *
+ * The fill outlives the response it streamed, so it is handed to the request's
+ * deferred work: `settle()` — after the body on Node, `waitUntil` on a
+ * Worker, before the invocation returns on a Lambda — waits for the entry to
+ * be kept, and for its durable write.
+ */
+async function cachedDocument(
+  app: Application,
+  cache: CacheOptions,
+  context: RequestContext | null,
+  url: URL,
+  target: string,
+  document: DocumentAssets,
+  onError: (error: mixed) => void,
+): Promise<Response> {
+  let streamFill: (response: Response) => void = () => {};
+  const filling: Promise<Response> = new Promise((resolve) => {
+    streamFill = resolve;
+  });
+  const resolving = cache.store.resolve(
+    { key: ["route", "GET", url.pathname, url.search], path: url.pathname },
+    () => renderForCache(app, context, target, document, onError, streamFill),
+  );
+  // Whichever comes first: this request's own fill has a stream to answer
+  // with, or the store answered without one (a hit, a stale entry, a join, a
+  // durable read — or a render that failed before its shell).
+  const first = await Promise.race([
+    filling.then((response) => ({ streamed: response, result: null })),
+    resolving.then((result) => ({ streamed: null, result })),
+  ]);
+  if (first.streamed == null) {
+    return cachedResponse(first.result ?? (await resolving));
+  }
+  const kept = resolving.then(
+    () => cache.store.settled(),
+    // The render failed after its shell went out. The stream the reader holds
+    // fails with it; the error was reported through `onError` by the render,
+    // and there is no entry to keep.
+    () => undefined,
+  );
+  if (context != null) {
+    context.deferred.push(() => kept);
+  } else {
+    void kept;
+  }
+  return first.streamed;
+}
+
+/**
+ * Answer a page the build regenerates.
+ *
+ * The route cache, with three differences, and each is what makes a
+ * prerendered page a regenerated one rather than a cached render:
+ *
+ * * **It starts from the build.** The first request for the page in a process
+ *   is answered with the document `uf build` wrote, read through the front
+ *   door's `buildFile` and dated when the prerender rendered it, so it is
+ *   `HIT` while that is inside the page's lifetime and `STALE` once it is not —
+ *   exactly as if this process had rendered it then. A durable store is asked
+ *   before the build, because a copy another process regenerated is newer.
+ * * **A clock never makes it unservable.** Once its lifetime has passed, a
+ *   reader is answered with the document there is and one refresh starts
+ *   behind it. When the refresh succeeds, the new document replaces the old in
+ *   one step, in memory and in the durable store. Only an `expire` the page
+ *   stated, or `revalidateTag` and `revalidatePath`, make a reader wait on a
+ *   render, the last two because an invalidated page is known to be wrong.
+ * * **It is keyed by pathname alone.** A query string never reached a
+ *   prerendered page, which is rendered once for its path, and keying
+ *   `/posts?ref=x` apart from `/posts` would render one document twice.
+ */
+async function regeneratedDocument(
+  app: Application,
+  cache: CacheOptions,
+  context: RequestContext | null,
+  regenerated: {| readonly pathname: string, readonly page: RegeneratedPage |},
+  document: DocumentAssets,
+  onError: (error: mixed) => void,
+): Promise<Response> {
+  const { pathname, page } = regenerated;
+  const result = await cache.store.resolve(
+    {
+      key: ["route", "GET", pathname, ""],
+      path: pathname,
+      tags: page.tags,
+      staleUntilReplaced: true,
+      seed: () => buildCopy(context, pathname, page),
+    },
+    () => renderForCache(app, context, pathname, document, onError),
+  );
+  return cachedResponse(result);
+}
+
+/** A document rendered for this request, as the response that streams it. */
+async function streamedResponse(result: RenderedDocument, method: string): Promise<Response> {
+  const headers = new Headers(result.headers ?? {});
+  headers.set("content-type", "text/html; charset=utf-8");
+  // A `HEAD` gets the status and the headers and no body, which is what the
+  // renderer cannot know to do for itself. The stream is cancelled rather
+  // than dropped, so the render behind it stops instead of filling its queue
+  // and waiting for a reader that is never coming.
+  if (method === "HEAD") {
+    await result.stream().cancel();
+    return new Response(null, { status: result.status ?? 200, headers });
+  }
+  // The body is a stream, so the layouts and any `<Suspense>` fallback reach
+  // the browser while the page they surround is still resolving.
+  return new Response(result.stream(), { status: result.status ?? 200, headers });
+}
+
+/**
+ * The static shell `partial` records for `pathname`, or `null`.
+ *
+ * Named the way [`regeneratedPage`] names a page, for the same reason.
+ */
+function builtShell(partial: PartialPrerenders | void, pathname: string): PrerenderedShell | null {
+  if (partial == null) return null;
+  const name = pageName(pathname);
+  if (name == null || !Object.hasOwn(partial.pages, name)) return null;
+  return partial.pages[name];
+}
+
+/** `pathname`, decoded and without a trailing slash; `null` if it does not decode. */
+function pageName(pathname: string): string | null {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  return decoded.length > 1 && decoded.endsWith("/") ? decoded.slice(0, -1) : decoded;
+}
+
+/**
+ * The page `pathname` names in `regeneration`, or `null`.
+ *
+ * Decoded and without a trailing slash, because that is how the build named
+ * it: the prerender renders `/guide`, and `/guide/` and `/gu%69de` are the same
+ * page to every static half that has ever answered it.
+ */
+function regeneratedPage(
+  regeneration: Regeneration | void,
+  pathname: string,
+): {| readonly pathname: string, readonly page: RegeneratedPage |} | null {
+  if (regeneration == null) return null;
+  const name = pageName(pathname);
+  if (name == null || !Object.hasOwn(regeneration.pages, name)) return null;
+  return { pathname: name, page: regeneration.pages[name] };
+}
+
+/**
+ * The document the build wrote for `page`, as the entry it would have been.
+ *
+ * `null` when the front door offered no way to read the build's files, or its
+ * static half has nothing at `page.document`. Either way the store renders the
+ * page instead, which is slower on the first request and right on every one.
+ */
+async function buildCopy(
+  context: RequestContext | null,
+  pathname: string,
+  page: RegeneratedPage,
+): Promise<CacheEntry<mixed> | null> {
+  const read = context?.buildFile;
+  if (read == null) return null;
+  const response = await read(page.document);
+  if (response == null) return null;
+  if (response.status !== 200) {
+    await response.body?.cancel();
+    return null;
+  }
+  const value: CachedDocument = {
+    status: 200,
+    headers: {},
+    body: new Uint8Array(await response.arrayBuffer()),
+  };
+  const at = page.renderedAt;
+  return {
+    value,
+    storedAt: at,
+    revalidateAt:
+      page.revalidate == null ? END_OF_TIME : Math.min(at + page.revalidate * 1000, END_OF_TIME),
+    expiresAt: page.expire == null ? END_OF_TIME : Math.min(at + page.expire * 1000, END_OF_TIME),
+    tags: page.tags,
+    path: pathname,
+  };
+}
+
+/** Render `target` whole, refusing to keep it for every reason it can name. */
+async function renderForCache(
+  app: Application,
+  context: RequestContext | null,
+  target: string,
+  document: DocumentAssets,
+  onError: (error: mixed) => void,
+  stream?: (response: Response) => void,
+): Promise<CachedDocument> {
+  const before = context?.requestStateReads ?? 0;
+  const rendered = await app.render(target, document, { onError });
+  const status = rendered.status ?? 200;
+  const headers: { [string]: string } = { ...(rendered.headers ?? {}) };
+  let source = rendered.stream();
+  if (stream != null) {
+    const [reader, keep] = source.tee();
+    source = keep;
+    stream(streamedFill(reader, status, headers, context, before));
+  }
+  const body = await drain(source);
+
+  if (status !== 200) {
+    noStore(`the render answered ${status}`);
+  } else if (Object.keys(headers).some((name) => name.toLowerCase() === "set-cookie")) {
+    noStore("the render set a cookie");
+  } else if ((context?.requestStateReads ?? 0) > before) {
+    noStore("the render read cookies(), headers() or draftMode()");
+  } else if (context?.nonce != null) {
+    // A nonce is valid for exactly one response. A stored document carrying
+    // one would hand every later visitor a nonce minted for somebody else,
+    // and a nonce two responses share has stopped being a nonce — which is
+    // the promise `docs/security.md` makes in the row this exists for.
+    //
+    // Checked on its own rather than left to the counter above, because the
+    // two ways a request gets a nonce do not both go through it: `nonce()`
+    // counts as a read of request state, and `app.router.headers` substituting
+    // `{uf.nonce}` does not — it is uf reading the project's configuration,
+    // not the application reading its request.
+    noStore("the render carried a CSP nonce");
+  }
+  return { status, headers, body };
+}
+
+/**
+ * The response a filling request answers with while its document is drained
+ * into the store behind it.
+ *
+ * `x-uf-cache` has to be written before the document ends, so it says what is
+ * known when the shell is ready: `BYPASS` when the render has already ruled
+ * itself out — a status other than 200, a cookie set, the request read, a
+ * nonce, a `noStore`, or no lifetime stated yet — and `MISS` otherwise. For a
+ * page that does not suspend that is the final answer, because the shell is
+ * the document. For one that does, a boundary that resolves later can still
+ * state a lifetime or read the request; the store decides on the whole
+ * document either way, and the header is what the shell said.
+ */
+function streamedFill(
+  body: ReadableStream<Uint8Array>,
+  status: number,
+  rendered: { readonly [string]: string },
+  context: RequestContext | null,
+  before: number,
+): Response {
+  const scope = currentScope();
+  const ruledOut =
+    status !== 200 ||
+    Object.keys(rendered).some((name) => name.toLowerCase() === "set-cookie") ||
+    (context?.requestStateReads ?? 0) > before ||
+    context?.nonce != null ||
+    scope?.denied != null ||
+    scope?.lifetime == null;
+  const headers = new Headers(rendered);
+  headers.set("content-type", "text/html; charset=utf-8");
+  headers.set("x-uf-cache", ruledOut ? "BYPASS" : "MISS");
+  return new Response(body, { status, headers });
+}
+
+/** A document the cache answered with, as a response that says how. */
+function cachedResponse(result: CacheResult<CachedDocument>): Response {
+  const headers = new Headers(result.value.headers);
+  headers.set("content-type", "text/html; charset=utf-8");
+  // What this request did to the cache, in one word. It is the only way to see
+  // a cache working from outside the process — a benchmark reads it, and so
+  // does anybody wondering why a page is fast.
+  headers.set("x-uf-cache", label(result.outcome));
+  return new Response(result.value.body, { status: result.value.status, headers });
+}
+
+/** The header word for an outcome. */
+function label(outcome: CacheOutcome): string {
+  return match (outcome) {
+    "hit" => "HIT",
+    "stale" => "STALE",
+    "coalesced" => "COALESCED",
+    "miss" => "MISS",
+    "uncacheable" => "BYPASS",
+  };
+}
+
+/**
+ * Every byte of `stream`, as one array.
+ *
+ * The chunks are collected and joined once rather than concatenated as they
+ * arrive: a document is a few hundred chunks, and growing an array per chunk
+ * copies the whole document per chunk.
+ */
+async function drain(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Array<Uint8Array> = [];
+  let total = 0;
+  for (;;) {
+    const step = await reader.read();
+    if (step.done === true) break;
+    const chunk = step.value;
+    if (chunk != null) {
+      chunks.push(chunk);
+      total += chunk.byteLength;
+    }
+  }
+  const body = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return body;
+}

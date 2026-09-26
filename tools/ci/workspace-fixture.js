@@ -11,8 +11,8 @@ const manifestPath = path.join(app, "package.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const fields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 const packages = new Map();
-for (const entry of fs.readdirSync(path.join(root, "packages"))) {
-  const directory = path.join(root, "packages", entry);
+for (const entry of fs.readdirSync(path.join(root, "npm"))) {
+  const directory = path.join(root, "npm", entry);
   const file = path.join(directory, "package.json");
   if (fs.existsSync(file)) {
     const pkg = JSON.parse(fs.readFileSync(file, "utf8"));

@@ -148,7 +148,7 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
 
         let Some(name) = extract_first_string_arg(&source[args_from..]) else {
             // Nor is a call to a function this file declares under the
-            // same name: `packages/router/internal/hydration.js` calls its own
+            // same name: `npm/router/internal/hydration.js` calls its own
             // `describe(node, index)`.
             //
             // One argument that is not a name is not a registration at all:

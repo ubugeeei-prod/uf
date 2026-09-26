@@ -127,7 +127,7 @@ fn a_name_imported_from_the_ui_barrel_is_written_as_its_module() {
     assert_eq!(manifest.client_bundle_roots, [switch]);
 }
 
-/// The manifest `packages/vite/rsc-split.test.js` reads, as `uf build` writes
+/// The manifest `npm/vite/rsc-split.test.js` reads, as `uf build` writes
 /// it: a layout, a page importing `{ Switch }` from the barrel, and a page
 /// importing only `Alert`, a Server Component's namespace.
 ///

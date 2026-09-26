@@ -1,0 +1,24 @@
+{
+  "name": "@uniflowed/react",
+  "version": "0.10.0",
+  "description": "React, re-exported by name with its Flow types, for the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "npm/react"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "!*.test.js"
+  ],
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

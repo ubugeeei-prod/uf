@@ -139,7 +139,7 @@ pub(crate) fn unreadable_lines(unreadable: &[uf_project::UnreadableFile]) -> Vec
 /// Whether `path` is one of the files the patterns asked for.
 ///
 /// Substring rather than glob, and the same rule `uf test` uses for its own
-/// path arguments: `uf lint packages/ui` is the ordinary way to ask, and a
+/// path arguments: `uf lint npm/ui` is the ordinary way to ask, and a
 /// reader who writes it should not have to learn a second matching language
 /// to find out why it read nothing.
 pub(crate) fn selects(patterns: &[String], path: &str) -> bool {

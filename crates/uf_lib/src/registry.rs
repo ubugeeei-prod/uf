@@ -102,32 +102,6 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             ],
         ),
         NativeModule::new(
-            "@uniflowed/testing",
-            NativeModuleKind::Testing,
-            Stability::Experimental,
-            &[
-                "AssertionError",
-                "act",
-                "afterAll",
-                "afterEach",
-                "beforeAll",
-                "beforeEach",
-                "bench",
-                "cleanup",
-                "describe",
-                "expect",
-                "fireEvent",
-                "fn",
-                "it",
-                "render",
-                "screen",
-                "test",
-                "userEvent",
-                "waitFor",
-                "within",
-            ],
-        ),
-        NativeModule::new(
             "@uniflowed/test",
             NativeModuleKind::Testing,
             Stability::Experimental,
@@ -765,12 +739,6 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             ],
         ),
         NativeModule::new(
-            "@uniflowed/browser",
-            NativeModuleKind::Testing,
-            Stability::Experimental,
-            &["browser", "viewport", "visit", "screenshot"],
-        ),
-        NativeModule::new(
             "@uniflowed/story",
             NativeModuleKind::Testing,
             Stability::Experimental,
@@ -1065,7 +1033,7 @@ pub fn tui_contract() -> TuiFrameworkContract {
 /// rather than care does. First it named `useEvent`,
 /// `useLocalStorage` and `useServerValue`, none of which the package has ever
 /// exported. Then it fell six behind — `useEventSource`, and the five of
-/// `packages/hooks/render.js` — because a hook added to the package and to the
+/// `npm/hooks/render.js` — because a hook added to the package and to the
 /// export list above is complete as far as an editor is concerned, and this
 /// table is a second place with the same name in it.
 ///
@@ -1310,7 +1278,7 @@ const BARREL_EXPORT_MODULES: &[(&str, &[&str])] = &[
 /// `Alert`, fits no client module and reaches none. [`BARREL_EXPORT_MODULES`]
 /// holds the names the rule does not fit, and
 /// `the_barrel_names_the_client_modules_each_export_comes_from` in `uf_rsc` holds
-/// the rule to `packages/ui/index.js`.
+/// the rule to `npm/ui/index.js`.
 #[must_use]
 pub fn client_modules_exporting(name: &str) -> Vec<&'static str> {
     if let Some((_, modules)) = BARREL_EXPORT_MODULES

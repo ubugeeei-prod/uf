@@ -120,8 +120,8 @@ impl Default for PreparePlan {
 /// The error half cannot be generated at all. `@uniflowed/form` keys errors by
 /// the dotted field path `register` was given, and Flow has no
 /// template-literal types, so "the error for `items.0.name`" is not a type any
-/// generator could emit — `packages/form/resolver.js` and
-/// `packages/validator/infer.js` both say so at length. A generated
+/// generator could emit — `npm/form/resolver.js` and
+/// `npm/validator/infer.js` both say so at length. A generated
 /// `FormErrors` that was really `{ [string]: FieldError }` would look like it
 /// checked something and would not.
 ///
@@ -317,7 +317,7 @@ impl StagedFiles {
     ///
     /// Exact equality rather than the substring match `uf lint PATH` uses.
     /// The two are answering different questions: a person who types
-    /// `uf lint packages/ui` means "everything under there", and git names
+    /// `uf lint npm/ui` means "everything under there", and git names
     /// one file. Substring matching a git path would pull in `src/app.js`
     /// because `app.js` was staged.
     #[must_use]
@@ -782,11 +782,11 @@ mod tests {
     #[test]
     fn a_project_below_the_repository_root_sees_only_its_own_files() {
         let (_dir, root) = staged_repository();
-        std::fs::create_dir_all(root.join("packages/inner/src")).expect("a nested project");
-        std::fs::write(root.join("packages/inner/src/c.js"), "// @flow\n").expect("a file");
-        run_git(&root, &["add", "packages/inner/src/c.js"]);
+        std::fs::create_dir_all(root.join("npm/inner/src")).expect("a nested project");
+        std::fs::write(root.join("npm/inner/src/c.js"), "// @flow\n").expect("a file");
+        run_git(&root, &["add", "npm/inner/src/c.js"]);
 
-        let inner = discover_staged_files(&root.join("packages/inner")).expect("an answer");
+        let inner = discover_staged_files(&root.join("npm/inner")).expect("an answer");
 
         assert_eq!(
             inner,

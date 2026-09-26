@@ -58,7 +58,7 @@ if [ "$all" = true ] && [ -n "$version" ]; then
   exit 2
 fi
 if [ "$all" = false ] && [ -z "$version" ]; then
-  version="$(node -p "require('./packages/core/package.json').version")"
+  version="$(node -p "require('./npm/core/package.json').version")"
 fi
 
 # With a template: BSD `mktemp -d` ignores `TMPDIR` without one.

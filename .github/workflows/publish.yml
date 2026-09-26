@@ -71,7 +71,7 @@ jobs:
         run: |
           set -eu
           publish() {
-            directory="packages/$1"
+            directory="npm/$1"
             name="$(node -p "require('./${directory}/package.json').name")"
             version="$(node -p "require('./${directory}/package.json').version")"
             if npm view "${name}@${version}" version >/dev/null 2>&1; then

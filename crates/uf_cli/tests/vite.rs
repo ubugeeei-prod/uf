@@ -6,7 +6,7 @@
 //! Two fixtures, because they answer different questions.
 //!
 //! The first is this repository's own docs site: a uf project whose
-//! `@uniflowed/*` dependencies resolve to `packages/` through the npm
+//! `@uniflowed/*` dependencies resolve to `npm/` through the npm
 //! workspace. Building it exercises everything a user's build does — Flow
 //! through `uf transform`, the route table, the client and server bundles,
 //! prerendering — with no mocks anywhere.
@@ -374,7 +374,7 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
 /// server: the whole chain — the directory scan, the generated table, the
 /// bundle, the runner — is exercised either way, and this way the test needs
 /// no socket, so it runs in the sandboxes where `TcpListener::bind` is
-/// refused. `packages/router/middleware.test.js` owns the runner's own rules.
+/// refused. `npm/router/middleware.test.js` owns the runner's own rules.
 ///
 /// The probe is a host, so it owns the request the way the four real ones do:
 /// `beginRequest` from the bundle, `run` around the guard, `settle` after the
@@ -1900,7 +1900,7 @@ fn dev_pre_bundles_the_flight_client_an_installed_router_imports() {
         "{\n  \"name\": \"uf-installed-router\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
     );
     copy_tree(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/router"),
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm/router"),
         &project.path().join("node_modules/@uniflowed/router"),
     );
 
@@ -2038,7 +2038,7 @@ export component InstalledPackages() {
 }
 
 fn install_uniflowed_packages(project: &Project, packages: &[&str]) {
-    let workspace_packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages");
+    let workspace_packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm");
     for package in packages {
         copy_tree(
             &workspace_packages.join(package),
@@ -2474,7 +2474,7 @@ fn a_page_importing_one_component_from_the_ui_barrel_ships_that_module_alone() {
         .expect("`chunkUrls` is a list of [file, url] pairs")
         .iter()
         .filter_map(|pair| pair[0].as_str())
-        .filter_map(|file| file.split("/packages/ui/").nth(1))
+        .filter_map(|file| file.split("/npm/ui/").nth(1))
         .collect();
     ui_modules.sort_unstable();
     assert_eq!(
@@ -2522,7 +2522,7 @@ fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
     }
     let project = Project::new(&ui_barrel_app());
     copy_tree(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/ui"),
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm/ui"),
         &project.path().join("node_modules/@uniflowed/ui"),
     );
 
@@ -3579,7 +3579,7 @@ fn the_render_envelope_is_read_off_a_document_and_tells_two_renders_apart() {
 }
 
 /// Any value: the doors read the cookie's *name* and never its signature,
-/// which `packages/server/internal/draft.js` argues at `carriesDraftCookie` —
+/// which `npm/server/internal/draft.js` argues at `carriesDraftCookie` —
 /// they run before any application code and cannot reach the verified answer.
 const DRAFT_COOKIE: &str = "__Host-uf.draft=1.whatever";
 
@@ -3810,7 +3810,7 @@ const dialable = {
 const formDialable = { ...dialable, "uf-action": formActionId };
 // What `useActionState` sends: the state it is holding, then the form. The
 // form is beside the values under its own key, and the slot it names is
-// `null` — see `packages/router/internal/action-wire.js`.
+// `null` — see `npm/router/internal/action-wire.js`.
 const submit = (entries) =>
   JSON.stringify({ args: [{ saved: null, problem: null }, null], form: { at: 1, entries } });
 
@@ -4270,7 +4270,7 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
         "bun" => {
             assert!(deployed.join("server.js").is_file());
             // The floor, read out of the artefact and compared against the one
-            // `uf_runtime` declares, so the number in `packages/vite/driver.js`
+            // `uf_runtime` declares, so the number in `npm/vite/driver.js`
             // and the number in Rust cannot drift apart. See
             // ubugeeei-prod/uf#1048.
             let server = fs::read_to_string(deployed.join("server.js")).unwrap();
@@ -4464,7 +4464,7 @@ fn assert_worker_shape(deployed: &Path) {
 ///
 /// The blocker recorded in that issue — that the server bundle keeps
 /// `@uniflowed/router/server` external, so serving it needs `uf transform`
-/// alive — was not one. `packages/vite/index.js` has set
+/// alive — was not one. `npm/vite/index.js` has set
 /// `ssr.noExternal: [/^@uniflowed\//]` since the plugin was written, because
 /// Node cannot import Flow; the dependencies the ordinary server build leaves
 /// external are `react` and `react-dom`, which are ordinary JavaScript. What
@@ -5651,7 +5651,7 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
 
     // 2b. The same route, asked for by somebody carrying the draft cookie. It
     //     has to be *rendered* — a file in `dist/` is what the site said before
-    //     the draft existed, and `packages/server/internal/draft.js`'s
+    //     the draft existed, and `npm/server/internal/draft.js`'s
     //     `prerenderedMayAnswer` is where that is argued for every front door.
     //
     //     Asked of both servers because they used to disagree: `uf start` owns
@@ -6328,7 +6328,7 @@ fn try_http_request(
 /// refuses `bind` cannot host the request half — but it can still host the
 /// half that matters most for a *binary*, which is whether the file carries
 /// the site at all, and that half runs unconditionally. What the requests add
-/// on top is covered without a socket by `packages/server/standalone.test.js`,
+/// on top is covered without a socket by `npm/server/standalone.test.js`,
 /// which drives the same handler directly.
 #[test]
 fn compile_writes_one_file_that_serves_the_site_from_an_empty_directory() {
@@ -7507,7 +7507,7 @@ fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
 
 /// Nothing `uf build` writes installs the React DevTools hook.
 ///
-/// `uf dev` installs it deliberately — `packages/vite/internal/devtools.js`,
+/// `uf dev` installs it deliberately — `npm/vite/internal/devtools.js`,
 /// injected by `transformIndexHtml` — and that installer does exactly two
 /// things in a deployment: it is dead weight in every document, and it is a
 /// page saying out loud which framework and which build it is. See
@@ -7535,7 +7535,7 @@ fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
 ///
 /// Asserted over `dist/` rather than over the plugin, because the plugin's
 /// answer is already covered without a build by
-/// `packages/vite/devtools.test.js`. What only a real build can say is that
+/// `npm/vite/devtools.test.js`. What only a real build can say is that
 /// nothing *else* in the pipeline put it back: the prerendered documents go
 /// through `transformIndexHtml` too.
 ///
@@ -8249,7 +8249,7 @@ fn every_adapter_answers_the_same_server_action_call() {
 ///   with a `409` that names build N+1 — and the action does not run, which is
 ///   the half that matters: an id from build N must not be looked up in build
 ///   N+1's table. The router turns that answer into a hard navigation, and
-///   `packages/router/deployment.test.js` is where that half is driven.
+///   `npm/router/deployment.test.js` is where that half is driven.
 ///
 /// The counter's payload is the case a server cannot refuse: it was
 /// prerendered, so it is a file, answered before any application code runs.
@@ -10065,7 +10065,7 @@ fn component(url: &str) -> String {
 /// The fixture ubugeeei-prod/uf#958's "done when" names. A project lists one
 /// remote host — a server this test starts, on loopback, which is why it also
 /// sets `dangerouslyAllowPrivateAddresses`: the refusal of a loopback address
-/// is the default, and `packages/server/image.test.js` holds it — and its page
+/// is the default, and `npm/server/image.test.js` holds it — and its page
 /// renders an `Image` whose `src` is on that host. So the same run proves
 /// `Image` writes the endpoint's URLs for a remote `src` into the document the
 /// build prerendered, and that `uf start` and `uf preview` answer them: the

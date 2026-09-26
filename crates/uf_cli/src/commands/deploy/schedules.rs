@@ -25,7 +25,7 @@
 //! # What is checked here, and what is not
 //!
 //! Five fields, and nothing about what they contain. The meaning of a field
-//! lives in `packages/server/internal/cron.js` and belongs in one place: a
+//! lives in `npm/server/internal/cron.js` and belongs in one place: a
 //! second matcher here would be two implementations of one rule, drifting the
 //! first time either learned something. So `99 * * * *` passes this and is
 //! refused by `defineSchedule` when the deployment starts, loudly, rather than

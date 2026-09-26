@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Allocation guards for `uf lint` over `packages/router/internal/runtime.js`.
+//! Allocation guards for `uf lint` over `npm/router/internal/runtime.js`.
 //!
 //! ubugeeei-prod/uf#668 was filed from this module, which used to make
 //! `uf lint` build enough Babel-shaped tree data to allocate hundreds of
@@ -89,7 +89,7 @@ impl Measured {
             "linting {} bytes of router runtime took {} allocations and {} bytes, against \
              ceilings of {allocation_ceiling} allocations ({allocations_per_kib} per KiB) and \
              {byte_ceiling} bytes ({bytes_per_byte} per source byte). {hint} Run `cargo run \
-             --release --example alloc_report -p uf_lint -- packages/router/internal/runtime.js \
+             --release --example alloc_report -p uf_lint -- npm/router/internal/runtime.js \
              --phases` to find the phase.",
             self.source_bytes, self.allocations, self.bytes_allocated,
         );
@@ -101,7 +101,7 @@ impl Measured {
 fn measure(config: &UniflowedConfig) -> Measured {
     let source = std::fs::read_to_string(runtime_fixture()).expect("read router runtime fixture");
     let file = SourceFile {
-        path: "packages/router/internal/runtime.js".to_owned(),
+        path: "npm/router/internal/runtime.js".to_owned(),
         source,
     };
 
@@ -111,7 +111,7 @@ fn measure(config: &UniflowedConfig) -> Measured {
     // by path and text: a measured run answered from that would measure none of
     // what the React Compiler rules cost.
     let warm_file = SourceFile {
-        path: "packages/router/internal/runtime-warm.js".to_owned(),
+        path: "npm/router/internal/runtime-warm.js".to_owned(),
         source: file.source.clone(),
     };
     let warm = uf_lint::lint_source(&warm_file, config).expect("warm lint");
@@ -157,8 +157,7 @@ fn measure(config: &UniflowedConfig) -> Measured {
 }
 
 fn runtime_fixture() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../packages/router/internal/runtime.js")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm/router/internal/runtime.js")
 }
 
 /// What `uf_flow::parse` of `source` allocates by itself, counted on a thread
