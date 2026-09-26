@@ -185,10 +185,24 @@ function quietStdin() {
   };
 }
 
+/**
+ * The part of Ink's `react/jsx-runtime` this file calls: an element from a
+ * type, its props with `children` among them, and its key.
+ */
+type InkJsxRuntime = {
+  readonly jsx: (type: mixed, props: { readonly [string]: mixed }, key?: string) => mixed,
+  ...
+};
+
 /** React Ink, at the two settings that draw the same picture differently. */
 async function inkDriver(incremental: boolean): Promise<Driver> {
   const ink = await import("ink");
   const React = await import("react");
+  // Elements are made by Ink's own `jsx`, the function JSX compiles to, and not
+  // by `React.createElement`, which React 19 keeps only for compatibility and
+  // Flow's library definition refuses to call. JSX itself would not do, for the
+  // reason below: uf compiles it to an import of the repository's React.
+  const { jsx }: InkJsxRuntime = await import("react/jsx-runtime");
 
   // Deliberately not Flow's `component` syntax, which is what the rule below
   // asks for and what the uf application above uses. uf compiles a `component`
@@ -201,19 +215,18 @@ async function inkDriver(incremental: boolean): Promise<Driver> {
   // uf-lint-disable-next-line react/component-syntax
   const InkApp = ({ store }: { store: Store }) => {
     const frame = React.useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
-    return React.createElement(
-      ink.Box,
-      { flexDirection: "column" },
-      ...lines(frame).map((line, index) =>
-        React.createElement(ink.Text, { key: String(index), wrap: "truncate" }, line),
+    return jsx(ink.Box, {
+      flexDirection: "column",
+      children: lines(frame).map((line, index) =>
+        jsx(ink.Text, { wrap: "truncate", children: line }, String(index)),
       ),
-    );
+    });
   };
 
   return {
     name: incremental ? "ink (incrementalRendering)" : "ink (default)",
     async start(sink: Sink, store: Store) {
-      const instance = ink.render(React.createElement(InkApp, { store }), {
+      const instance = ink.render(jsx(InkApp, { store }), {
         stdout: sink,
         stderr: sink,
         stdin: quietStdin(),

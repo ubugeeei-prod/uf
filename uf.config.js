@@ -381,6 +381,19 @@ export default defineConfig({
       dependsOn: ["build"],
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },
+    // The repository's own scripts and the SNS example, also cleared under
+    // #1451. The trailing slashes matter: a path selects every file whose path
+    // contains it, and `examples/simple-sns` alone would also select
+    // `examples/simple-sns-graphql`, which is its own npm project, installs
+    // its own Relay beside the one `@uniflowed/relay` resolves from the
+    // repository root, and is checked inside itself by `example:sns:graphql`.
+    // `tools/release` has a task of its own, `check:release`.
+    "check:tools": {
+      command:
+        "./target/release/uf check tools/aria/ tools/bench/ tools/ci/ tools/deploy-matrix/ tools/docs/ examples/simple-sns/",
+      dependsOn: ["build"],
+      inputs: ["**", "!upstream/**", "target/release/uf"],
+    },
 
     // The formatter, over the same. `--check` rather than a write, because CI
     // reporting a diff is useful and CI committing one is not.
@@ -1152,6 +1165,7 @@ export default defineConfig({
         "check:web",
         "check:contracts",
         "check:release",
+        "check:tools",
         "test:lib",
         "test:lib:deno",
         "edge:smoke",

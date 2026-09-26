@@ -2,7 +2,7 @@
 //
 // The deploy-matrix fixture as `--adapter serverless` can take it.
 //
-// The same application as `../fixture/uf.config.js` with two differences, each
+// The same application as `../../fixture/uf.config.js` with two differences, each
 // the answer to a refusal the matrix asserts on the whole application first:
 //
 // * `app/ppr` is removed from the copy (a Lambda buffers its response, so a

@@ -60,7 +60,7 @@ import path from "node:path";
 import type { FixtureFile, Preset } from "./fixture.js";
 
 /** Where the pinned npm tools are installed, relative to the repository. */
-export const RIVALS_DIR = path.join("tools", "bench", "toolchain", "rivals");
+export const RIVALS_DIR: string = path.join("tools", "bench", "toolchain", "rivals");
 
 /** The component the HMR stage edits in the Vite copy, and its URL. */
 export const VITE_HOT_FILE = "src/components/HotCounter.tsx";

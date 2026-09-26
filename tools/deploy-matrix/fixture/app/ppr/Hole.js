@@ -11,7 +11,7 @@ import { cookies } from "@uniflowed/server";
 const SLOW = 1200;
 
 /** The per-request part of `/ppr`: who the `who` cookie says is asking. */
-export async function Hole(): Promise<React.Node> {
+export async function Hole(): Promise<React.MixedElement> {
   const who = cookies().get("who") ?? "nobody";
   await new Promise((resolve) => {
     setTimeout(resolve, SLOW);

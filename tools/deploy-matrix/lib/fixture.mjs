@@ -86,7 +86,7 @@ export function makeCopy(name, { features, config }) {
   const configFile =
     config === "full"
       ? path.join(FIXTURE_DIR, "uf.config.js")
-      : path.join(MATRIX_DIR, "variants", `${config}.uf.config.js`);
+      : path.join(MATRIX_DIR, "variants", config, "uf.config.js");
   cpSync(configFile, path.join(dir, "uf.config.js"));
   // Git ignores `.work/`, and a copy says why it is there to whoever finds one.
   writeFileSync(
