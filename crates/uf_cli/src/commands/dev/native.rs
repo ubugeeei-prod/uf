@@ -145,7 +145,7 @@ impl NativeServer {
         let versions = match self {
             Self::Expo { version, .. } => version
                 .as_deref()
-                .map(|version| uf_infra::cstr!("expo {version}").into_string())
+                .map(|version| uf_infra::into_string(uf_infra::cstr!("expo {version}")))
                 .into_iter()
                 .collect::<Vec<_>>(),
             Self::ReactNativeCli {
@@ -154,11 +154,11 @@ impl NativeServer {
                 ..
             } => [
                 cli_version.as_deref().map(|version| {
-                    uf_infra::cstr!("@react-native-community/cli {version}").into_string()
+                    uf_infra::into_string(uf_infra::cstr!("@react-native-community/cli {version}"))
                 }),
-                react_native_version
-                    .as_deref()
-                    .map(|version| uf_infra::cstr!("react-native {version}").into_string()),
+                react_native_version.as_deref().map(|version| {
+                    uf_infra::into_string(uf_infra::cstr!("react-native {version}"))
+                }),
             ]
             .into_iter()
             .flatten()
@@ -167,7 +167,11 @@ impl NativeServer {
         if versions.is_empty() {
             self.command().to_string()
         } else {
-            uf_infra::cstr!("{} ({})", self.command(), versions.join(", ")).into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "{} ({})",
+                self.command(),
+                versions.join(", ")
+            ))
         }
     }
 
@@ -204,19 +208,19 @@ impl NativeServer {
         let host = address.map_or_else(|| "127.0.0.1".to_string(), |address| address.to_string());
         match (self, address) {
             (Self::Expo { .. }, Some(_)) => (
-                uf_infra::cstr!("exp://{host}:{port}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("exp://{host}:{port}")),
                 "Expo Go, or a development build, on the same network opens this; Expo prints its \
                  QR code below"
                     .to_string(),
             ),
             (Self::Expo { .. }, None) => (
-                uf_infra::cstr!("exp://{host}:{port}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("exp://{host}:{port}")),
                 "no network address was found, so only a simulator or emulator on this machine \
                  can open this"
                     .to_string(),
             ),
             (Self::ReactNativeCli { .. }, Some(_)) => (
-                uf_infra::cstr!("{host}:{port}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("{host}:{port}")),
                 uf_infra::cstr!(
                     "a phone on the same network connects here from the Dev Menu (Configure \
                      Bundler); a simulator or emulator uses localhost:{port}"
@@ -224,7 +228,7 @@ impl NativeServer {
                 .into_string(),
             ),
             (Self::ReactNativeCli { .. }, None) => (
-                uf_infra::cstr!("localhost:{port}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("localhost:{port}")),
                 "no network address was found, so only a simulator or emulator on this machine \
                  can connect"
                     .to_string(),
@@ -292,7 +296,7 @@ pub(crate) fn dev(
     let env_files = env_file_list(root, &env);
     let port = args.port.or(metro.port).unwrap_or(METRO_DEFAULT_PORT);
     let (device, hint) = server.device(lan_address(), port);
-    let engine = uf_infra::cstr!("metro, run by {}", server.label()).into_string();
+    let engine = uf_infra::into_string(uf_infra::cstr!("metro, run by {}", server.label()));
     let transform = metro.upstream.as_deref().map_or_else(
         || "uf transform, then the project's Babel transformer".to_string(),
         |upstream| {
@@ -554,7 +558,7 @@ fn composed(
              which keeps the transformer it names running after uf's:\n\n{}",
             loaded.babel_transformer_path.as_deref().map_or_else(
                 || "unset".to_string(),
-                |path| uf_infra::cstr!("`{path}`").into_string()
+                |path| uf_infra::into_string(uf_infra::cstr!("`{path}`"))
             ),
             server.metro_config_example()
         ));
@@ -583,14 +587,16 @@ fn probe_metro(root: &Utf8Path) -> Result<MetroProbe> {
         .env_remove("UF_METRO_CONFIGURED_UPSTREAM")
         .output()
         .with_context(|| {
-            uf_infra::cstr!("failed to run {node} to load the Metro config").into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "failed to run {node} to load the Metro config"
+            ))
         })?;
     read_probe_reply(&String::from_utf8_lossy(&output.stdout)).with_context(|| {
-        uf_infra::cstr!(
+        uf_infra::into_string(uf_infra::cstr!(
             "loading the Metro config in {root} gave no answer uf can read (node exited with {}):\n{}",
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
-        ).into_string()
+        ))
     })
 }
 
@@ -604,7 +610,9 @@ fn read_probe_reply(stdout: &str) -> Result<MetroProbe> {
         .find_map(|line| line.strip_prefix(METRO_PROBE_MARKER))
         .ok_or_else(|| anyhow!(uf_infra::cstr!("the Metro config check printed no reply")))?;
     let value: Value = serde_json::from_str(reply).with_context(|| {
-        uf_infra::cstr!("the Metro config check replied with invalid JSON: {reply}").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "the Metro config check replied with invalid JSON: {reply}"
+        ))
     })?;
     let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
     match value.get("status").and_then(Value::as_str) {

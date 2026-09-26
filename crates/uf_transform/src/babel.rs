@@ -539,7 +539,9 @@ fn lift_directives(node: &mut Value) {
                 .and_then(|extra| extra.get("raw"))
                 .cloned()
                 .or_else(|| statement["expression"].get("raw").cloned())
-                .unwrap_or_else(|| Value::String(uf_infra::cstr!("\"{text}\"").into_string()));
+                .unwrap_or_else(|| {
+                    Value::String(uf_infra::into_string(uf_infra::cstr!("\"{text}\"")))
+                });
             let mut literal = base(&statement["expression"], "DirectiveLiteral");
             literal.insert("value".to_owned(), Value::String(text.to_owned()));
             literal.insert("extra".to_owned(), node! { "rawValue": text, "raw": raw });

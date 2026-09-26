@@ -58,7 +58,7 @@ fn main() {
     let copies: Vec<SourceFile> = (0..=2 * RUNS)
         .map(|run| SourceFile {
             path: path.clone(),
-            source: uf_infra::cstr!("{source}\n// alloc_report run {run}\n").into_string(),
+            source: uf_infra::into_string(uf_infra::cstr!("{source}\n// alloc_report run {run}\n")),
         })
         .collect();
     let (warm, rest) = copies.split_first().expect("a copy to warm up with");

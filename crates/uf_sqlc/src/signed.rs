@@ -16,7 +16,7 @@ pub fn sign(contents: &str) -> String {
     let digest = md5(contents.as_bytes());
     let hex: String = digest
         .iter()
-        .map(|byte| uf_infra::cstr!("{byte:02x}").into_string())
+        .map(|byte| uf_infra::into_string(uf_infra::cstr!("{byte:02x}")))
         .collect();
     contents.replacen(TOKEN, uf_infra::cstr!("SignedSource<<{hex}>>").as_str(), 1)
 }
@@ -89,7 +89,7 @@ mod tests {
     fn hex(bytes: [u8; 16]) -> String {
         bytes
             .iter()
-            .map(|byte| uf_infra::cstr!("{byte:02x}").into_string())
+            .map(|byte| uf_infra::into_string(uf_infra::cstr!("{byte:02x}")))
             .collect()
     }
 

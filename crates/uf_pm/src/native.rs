@@ -82,9 +82,9 @@ fn compare(warnings: &mut Vec<String>, package: &str, version: &str, range: &str
         .collect();
     match (parsed, alternatives) {
         (Some(version), Some(alternatives)) if alternatives.iter().any(|range| range.allows(&version)) => {}
-        (Some(_), Some(_)) => warnings.push(compact_str::format_compact!("{owner} requires {package}@{range}, but {version} is installed; use `uf add {package}@'{range}'`").into_string()),
+        (Some(_), Some(_)) => warnings.push(uf_infra::into_string(compact_str::format_compact!("{owner} requires {package}@{range}, but {version} is installed; use `uf add {package}@'{range}'`"))),
         _ if range == "*" => {}
-        _ => warnings.push(compact_str::format_compact!("native compatibility: {owner} requires {package}@{range}; uf cannot compare this range with {version}. Check the peer range or run `expo install --check` before bundling").into_string()),
+        _ => warnings.push(uf_infra::into_string(compact_str::format_compact!("native compatibility: {owner} requires {package}@{range}; uf cannot compare this range with {version}. Check the peer range or run `expo install --check` before bundling"))),
     }
 }
 

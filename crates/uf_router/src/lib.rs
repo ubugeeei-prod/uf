@@ -144,10 +144,10 @@ fn find_module_for_target(
     for variant in target.variants() {
         for extension in extensions {
             let file = match variant.as_str() {
-                Some(variant) => {
-                    compact_str::format_compact!("{stem}.{variant}{extension}").into_string()
-                }
-                None => compact_str::format_compact!("{stem}{extension}").into_string(),
+                Some(variant) => uf_infra::into_string(compact_str::format_compact!(
+                    "{stem}.{variant}{extension}"
+                )),
+                None => uf_infra::into_string(compact_str::format_compact!("{stem}{extension}")),
             };
             let candidate = directory.join(file);
             if candidate.is_file() {
@@ -764,7 +764,10 @@ fn refuse_optional_catch_all_collisions(routes: &[Route]) -> Result<(), RouterEr
         {
             return Err(RouterError::OptionalCatchAllBesidePage {
                 page: route.page.clone(),
-                catch_all: compact_str::format_compact!("[[...{}]]", param.name).into_string(),
+                catch_all: uf_infra::into_string(compact_str::format_compact!(
+                    "[[...{}]]",
+                    param.name
+                )),
                 path: parent.to_string(),
                 other: other.page.clone(),
                 parameter: param.name.to_string(),
@@ -1086,15 +1089,15 @@ fn directory_spelling(segment: &PathSegment) -> String {
         Some(RouteParam {
             name,
             kind: RouteParamKind::OptionalCatchAll,
-        }) => compact_str::format_compact!("[[...{name}]]").into_string(),
+        }) => uf_infra::into_string(compact_str::format_compact!("[[...{name}]]")),
         Some(RouteParam {
             name,
             kind: RouteParamKind::CatchAll,
-        }) => compact_str::format_compact!("[...{name}]").into_string(),
+        }) => uf_infra::into_string(compact_str::format_compact!("[...{name}]")),
         Some(RouteParam {
             name,
             kind: RouteParamKind::Single,
-        }) => compact_str::format_compact!("[{name}]").into_string(),
+        }) => uf_infra::into_string(compact_str::format_compact!("[{name}]")),
         None => segment.spelling.clone(),
     }
 }
@@ -1511,7 +1514,9 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
         output.push_str(
             &routes
                 .iter()
-                .map(|route| compact_str::format_compact!("\"{}\"", route.path).into_string())
+                .map(|route| {
+                    uf_infra::into_string(compact_str::format_compact!("\"{}\"", route.path))
+                })
                 .collect::<Vec<_>>()
                 .join(" | "),
         );
@@ -1696,21 +1701,21 @@ fn path_segments(relative: &Utf8Path) -> Option<Vec<PathSegment>> {
         };
         match named {
             RouteSegment::OptionalCatchAll(name) => segments.push(PathSegment {
-                spelling: compact_str::format_compact!(":{name}*?").into_string(),
+                spelling: uf_infra::into_string(compact_str::format_compact!(":{name}*?")),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::OptionalCatchAll,
                 }),
             }),
             RouteSegment::CatchAll(name) => segments.push(PathSegment {
-                spelling: compact_str::format_compact!(":{name}*").into_string(),
+                spelling: uf_infra::into_string(compact_str::format_compact!(":{name}*")),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::CatchAll,
                 }),
             }),
             RouteSegment::Param(name) => segments.push(PathSegment {
-                spelling: compact_str::format_compact!(":{name}").into_string(),
+                spelling: uf_infra::into_string(compact_str::format_compact!(":{name}")),
                 param: Some(RouteParam {
                     name: name.to_compact_string(),
                     kind: RouteParamKind::Single,
@@ -1764,7 +1769,10 @@ fn route_args_type(params: &[RouteParam]) -> String {
     if params.is_empty() {
         return "[]".to_string();
     }
-    compact_str::format_compact!("[{}]", route_params_type(params)).into_string()
+    uf_infra::into_string(compact_str::format_compact!(
+        "[{}]",
+        route_params_type(params)
+    ))
 }
 
 fn route_params_type(params: &[RouteParam]) -> String {
@@ -1789,13 +1797,13 @@ fn route_params_type(params: &[RouteParam]) -> String {
                     "$ReadOnlyArray<string>"
                 }
             };
-            compact_str::format_compact!("{}: {}", param.name, ty).into_string()
+            uf_infra::into_string(compact_str::format_compact!("{}: {}", param.name, ty))
         })
         .collect::<Vec<_>>()
         .join(", ");
     // Exact for the same reason: a route's parameters are exactly the segments
     // in its path.
-    compact_str::format_compact!("{{ {fields} }}").into_string()
+    uf_infra::into_string(compact_str::format_compact!("{{ {fields} }}"))
 }
 
 #[cfg(test)]

@@ -893,8 +893,9 @@ fn windows_program_in_path(program: &str, path: &OsStr, pathext: &OsStr) -> Opti
             {
                 continue;
             }
-            let candidate =
-                directory.join(compact_str::format_compact!("{program}{extension}").into_string());
+            let candidate = directory.join(uf_infra::into_string(compact_str::format_compact!(
+                "{program}{extension}"
+            )));
             if candidate.is_file() {
                 return Some(candidate.into_os_string());
             }
@@ -923,9 +924,9 @@ pub fn installable(detection: &Detection) -> (PackageManager, bool) {
 fn missing_hint(manager: PackageManager) -> String {
     match manager {
         PackageManager::Npm => "npm comes with Node.js; install Node.js and try again".to_owned(),
-        other => compact_str::format_compact!(
+        other => uf_infra::into_string(compact_str::format_compact!(
             "this project is pinned to {other}; install it, or change the lockfile and `packageManager` field to a manager you have"
-        ).into_string(),
+        )),
     }
 }
 

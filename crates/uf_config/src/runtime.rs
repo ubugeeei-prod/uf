@@ -185,7 +185,7 @@ fn host_names() -> String {
     RuntimeEngine::ALL
         .iter()
         .filter(|engine| engine.is_a_host())
-        .map(|engine| compact_str::format_compact!("`{}`", engine.as_str()).into_string())
+        .map(|engine| uf_infra::into_string(compact_str::format_compact!("`{}`", engine.as_str())))
         .collect::<Vec<_>>()
         .join(", ")
 }

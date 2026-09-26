@@ -1902,7 +1902,7 @@ fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), Con
     for (index, pattern) in images.remote_patterns.iter().enumerate() {
         uf_assets::check_remote_pattern(pattern).map_err(|reason| {
             refuse(
-                compact_str::format_compact!("remotePatterns[{index}]").into_string(),
+                uf_infra::into_string(compact_str::format_compact!("remotePatterns[{index}]")),
                 reason,
             )
         })?;
@@ -1910,7 +1910,7 @@ fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), Con
     for (index, quality) in images.qualities.iter().enumerate() {
         if !(1..=100).contains(quality) {
             return Err(refuse(
-                compact_str::format_compact!("qualities[{index}]").into_string(),
+                uf_infra::into_string(compact_str::format_compact!("qualities[{index}]")),
                 compact_str::format_compact!("is {quality}, and a quality is 1 to 100")
                     .into_string(),
             ));

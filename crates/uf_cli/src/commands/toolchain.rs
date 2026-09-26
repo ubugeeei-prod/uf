@@ -218,7 +218,7 @@ impl Store {
     /// Where `uf@<version>` is unpacked, whoever unpacked it.
     fn version_dir(&self, version: &str) -> Utf8PathBuf {
         self.runtimes
-            .join(uf_infra::cstr!("uf@{version}").into_string())
+            .join(uf_infra::into_string(uf_infra::cstr!("uf@{version}")))
     }
 
     /// The `uf` binary of an installed version.
@@ -323,7 +323,7 @@ pub(crate) fn use_runtime(ui: &mut Ui, runtime: &str) -> Result<()> {
     });
     let report = activate(&store, &version, origin)?;
 
-    let runtime_label = uf_infra::cstr!("uf@{version}").into_string();
+    let runtime_label = uf_infra::into_string(uf_infra::cstr!("uf@{version}"));
     let shim = report.shim.to_string();
     let state = report.active_runtime.to_string();
     let manifest = report.runtime_manifest.to_string();
@@ -333,10 +333,10 @@ pub(crate) fn use_runtime(ui: &mut Ui, runtime: &str) -> Result<()> {
     let steps = plan
         .steps
         .iter()
-        .map(|step| uf_infra::cstr!("{step:?}").into_string())
+        .map(|step| uf_infra::into_string(uf_infra::cstr!("{step:?}")))
         .collect::<Vec<_>>();
     let step_labels = steps.iter().map(String::as_str).collect::<Vec<_>>();
-    let summary = uf_infra::cstr!("now using {runtime_label}").into_string();
+    let summary = uf_infra::into_string(uf_infra::cstr!("now using {runtime_label}"));
 
     let mut rows = vec![
         KeyValue::new("source", source),
@@ -407,7 +407,7 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
              or uf@0.0.0-alpha.35"
         ));
     }
-    let runtime_label = uf_infra::cstr!("uf@{version}").into_string();
+    let runtime_label = uf_infra::into_string(uf_infra::cstr!("uf@{version}"));
     let active = active_version(store);
 
     if active.as_deref() == Some(version.as_str())
@@ -447,7 +447,7 @@ fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
     let report = activate(store, &version, origin)?;
 
     let from = match &active {
-        Some(active) => uf_infra::cstr!("uf@{active}").into_string(),
+        Some(active) => uf_infra::into_string(uf_infra::cstr!("uf@{active}")),
         None => {
             uf_infra::cstr!("uf@{OWN_VERSION}, this binary; no runtime in the store was active")
                 .into_string()
@@ -500,12 +500,14 @@ fn check(ui: &mut Ui, store: &Store) -> Result<()> {
                 .into_string(),
         ),
     };
-    let newest_label = uf_infra::cstr!("uf@{newest}").into_string();
+    let newest_label = uf_infra::into_string(uf_infra::cstr!("uf@{newest}"));
 
     let (status, summary) = match order(&newest, &current) {
         Some(Ordering::Greater) => (
             Status::Info,
-            uf_infra::cstr!("{newest_label} is newer; `uf self-update` installs it").into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{newest_label} is newer; `uf self-update` installs it"
+            )),
         ),
         Some(Ordering::Less) => (
             Status::Info,
@@ -514,11 +516,11 @@ fn check(ui: &mut Ui, store: &Store) -> Result<()> {
         ),
         Some(Ordering::Equal) => (
             Status::Success,
-            uf_infra::cstr!("uf@{current} is the newest release").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("uf@{current} is the newest release")),
         ),
         None if newest == current => (
             Status::Success,
-            uf_infra::cstr!("uf@{current} is the newest release").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("uf@{current} is the newest release")),
         ),
         None => (
             Status::Info,
@@ -579,10 +581,10 @@ fn roll_back(ui: &mut Ui, store: &Store) -> Result<()> {
     }
 
     let report = activate(store, &previous, Origin::AlreadyInstalled)?;
-    let runtime_label = uf_infra::cstr!("uf@{previous}").into_string();
+    let runtime_label = uf_infra::into_string(uf_infra::cstr!("uf@{previous}"));
     let from = active.map_or_else(
         || "no runtime in the store".to_owned(),
-        |active| uf_infra::cstr!("uf@{active}").into_string(),
+        |active| uf_infra::into_string(uf_infra::cstr!("uf@{active}")),
     );
     let shim = report.shim.to_string();
     let binary = report.runtime_binary.to_string();
@@ -612,7 +614,9 @@ fn roll_back(ui: &mut Ui, store: &Store) -> Result<()> {
 /// The line saying which version a switch kept for `--rollback`, if any.
 fn kept(report: &Switched) -> Option<String> {
     report.replaced.as_ref().map(|replaced| {
-        uf_infra::cstr!("uf@{replaced}, which `uf self-update --rollback` returns to").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "uf@{replaced}, which `uf self-update --rollback` returns to"
+        ))
     })
 }
 

@@ -286,14 +286,14 @@ impl FileStatus {
     pub fn describe(&self) -> String {
         match self {
             Self::Completed => "completed".to_string(),
-            Self::TimedOut { budget_micros } => {
-                uf_infra::cstr!("exceeded the per-file budget of {budget_micros}us").into_string()
-            }
+            Self::TimedOut { budget_micros } => uf_infra::into_string(uf_infra::cstr!(
+                "exceeded the per-file budget of {budget_micros}us"
+            )),
             Self::LoadFailed { message, .. } => {
-                uf_infra::cstr!("failed to load: {message}").into_string()
+                uf_infra::into_string(uf_infra::cstr!("failed to load: {message}"))
             }
             Self::HostFailed { message } => {
-                uf_infra::cstr!("the host failed: {message}").into_string()
+                uf_infra::into_string(uf_infra::cstr!("the host failed: {message}"))
             }
             Self::RegisteredNothing { declared } => uf_infra::cstr!(
                 "registered nothing with `@uniflowed/test`, though discovery found {declared} \

@@ -935,7 +935,7 @@ impl<'a> Printer<'a> {
         } else {
             content.replace('\'', "&apos;")
         };
-        let text = uf_infra::cstr!("{quote}{escaped}{quote}").into_string();
+        let text = uf_infra::into_string(uf_infra::cstr!("{quote}{escaped}{quote}"));
         let doc = self.text(&text);
         if text.contains('\n')
             && let DocKind::Text(owned) = doc.kind

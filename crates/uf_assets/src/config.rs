@@ -126,9 +126,9 @@ pub fn check_remote_pattern(pattern: &RemotePattern) -> Result<(), String> {
         && protocol != "https"
         && protocol != "http"
     {
-        return Err(uf_infra::cstr!(
+        return Err(uf_infra::into_string(uf_infra::cstr!(
             "protocol {protocol:?} is not `\"https\"` or `\"http\"`; the endpoint fetches nothing else"
-        ).into_string());
+        )));
     }
     let hostname = pattern.hostname.as_str();
     if hostname.is_empty() {
@@ -167,7 +167,9 @@ pub fn check_remote_pattern(pattern: &RemotePattern) -> Result<(), String> {
     if let Some(port) = pattern.port.as_deref()
         && (port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()))
     {
-        return Err(uf_infra::cstr!("port {port:?} is not a port number").into_string());
+        return Err(uf_infra::into_string(uf_infra::cstr!(
+            "port {port:?} is not a port number"
+        )));
     }
     if let Some(pathname) = pattern.pathname.as_deref() {
         if !pathname.starts_with('/') {

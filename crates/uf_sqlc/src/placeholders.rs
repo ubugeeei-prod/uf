@@ -178,7 +178,9 @@ pub fn bind_order(found: &[Found], params: &[Parameter]) -> Result<Vec<usize>, S
                 .iter()
                 .position(|param| param.number == *number)
                 .ok_or_else(|| {
-                    uf_infra::cstr!("the placeholder ?{number} names no parameter").into_string()
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "the placeholder ?{number} names no parameter"
+                    ))
                 })?,
             Mark::Slice(name) => params
                 .iter()
@@ -189,7 +191,7 @@ pub fn bind_order(found: &[Found], params: &[Parameter]) -> Result<Vec<usize>, S
                         .is_some_and(|column| column.is_sqlc_slice && column.name == *name)
                 })
                 .ok_or_else(|| {
-                    uf_infra::cstr!("sqlc.slice('{name}') has no parameter").into_string()
+                    uf_infra::into_string(uf_infra::cstr!("sqlc.slice('{name}') has no parameter"))
                 })?,
             Mark::Bare => used
                 .iter()

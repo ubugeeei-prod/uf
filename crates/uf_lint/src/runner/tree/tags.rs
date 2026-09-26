@@ -505,11 +505,11 @@ fn noninteractive_element_interactions(
 fn spelled_list(spellings: &[String]) -> String {
     match spellings {
         [] => String::new(),
-        [only] => uf_infra::cstr!("`{only}`").into_string(),
+        [only] => uf_infra::into_string(uf_infra::cstr!("`{only}`")),
         [rest @ .., last] => uf_infra::cstr!(
             "{} or `{last}`",
             rest.iter()
-                .map(|spelled| uf_infra::cstr!("`{spelled}`").into_string())
+                .map(|spelled| uf_infra::into_string(uf_infra::cstr!("`{spelled}`")))
                 .collect::<Vec<_>>()
                 .join(", ")
         )

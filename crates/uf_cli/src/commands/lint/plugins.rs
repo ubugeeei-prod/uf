@@ -336,10 +336,10 @@ impl Session {
     fn restart(&mut self) -> bool {
         if self.starts == MAX_HOST_STARTS {
             self.gave_up = true;
-            self.outcome.problems.push(uf_infra::cstr!(
+            self.outcome.problems.push(uf_infra::into_string(uf_infra::cstr!(
                 "project rules stopped after the rule host was started {MAX_HOST_STARTS} times, \
                  so the files after that went unlinted by them"
-            ).into_string());
+            )));
             return false;
         }
         self.starts += 1;
@@ -349,7 +349,7 @@ impl Session {
                 self.gave_up = true;
                 self.outcome
                     .problems
-                    .push(uf_infra::cstr!("{error:#}").into_string());
+                    .push(uf_infra::into_string(uf_infra::cstr!("{error:#}")));
                 return false;
             }
         };
@@ -474,7 +474,9 @@ pub(crate) fn render(ui: &mut Ui, outcome: &ProjectRules) {
         .timings
         .iter()
         .take(3)
-        .map(|(rule, micros)| uf_infra::cstr!("{rule} {:.1} ms", micros / 1000.0).into_string())
+        .map(|(rule, micros)| {
+            uf_infra::into_string(uf_infra::cstr!("{rule} {:.1} ms", micros / 1000.0))
+        })
         .collect::<Vec<_>>()
         .join(", ");
     let total = Duration::from_micros(outcome.micros).as_secs_f64() * 1000.0;

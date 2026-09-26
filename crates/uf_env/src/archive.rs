@@ -337,7 +337,9 @@ fn lift_wrapper(into: &Utf8Path) -> Result<(), EnvError> {
 fn require(program: &'static str) -> Result<(), EnvError> {
     let found = Command::new("sh")
         .arg("-c")
-        .arg(uf_infra::cstr!("command -v {program}").into_string())
+        .arg(uf_infra::into_string(uf_infra::cstr!(
+            "command -v {program}"
+        )))
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false);

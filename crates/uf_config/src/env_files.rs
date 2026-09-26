@@ -462,8 +462,8 @@ fn file_names(config: &UniflowedConfig, mode: &str) -> Result<Vec<String>, EnvFi
     Ok(vec![
         String::from(".env"),
         String::from(".env.local"),
-        compact_str::format_compact!(".env.{mode}").into_string(),
-        compact_str::format_compact!(".env.{mode}.local").into_string(),
+        uf_infra::into_string(compact_str::format_compact!(".env.{mode}")),
+        uf_infra::into_string(compact_str::format_compact!(".env.{mode}.local")),
     ])
 }
 
@@ -998,12 +998,12 @@ impl Scanner<'_> {
                     "`{}` is not defined; define it earlier, set it in the environment, or write \
                      `\\${}` for a literal dollar",
                     if braced {
-                        compact_str::format_compact!("${{{wanted}}}").into_string()
+                        uf_infra::into_string(compact_str::format_compact!("${{{wanted}}}"))
                     } else {
-                        compact_str::format_compact!("${wanted}").into_string()
+                        uf_infra::into_string(compact_str::format_compact!("${wanted}"))
                     },
                     if braced {
-                        compact_str::format_compact!("{{{wanted}}}").into_string()
+                        uf_infra::into_string(compact_str::format_compact!("{{{wanted}}}"))
                     } else {
                         wanted.clone()
                     }
@@ -1046,7 +1046,7 @@ fn unescape(character: char) -> String {
         // A backslash before anything else is a backslash, so a value that
         // holds a Windows path or a regular expression survives being quoted.
         '\\' | '"' | '\'' | '$' => character.to_string(),
-        other => compact_str::format_compact!("\\{other}").into_string(),
+        other => uf_infra::into_string(compact_str::format_compact!("\\{other}")),
     }
 }
 

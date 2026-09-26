@@ -423,7 +423,9 @@ pub fn save_timings(root: &Utf8Path, timings: &TestTimings) -> Result<(), Timing
         source,
     })?;
 
-    let temporary = directory.join(uf_infra::cstr!("{TIMINGS_FILE_NAME}.tmp").into_string());
+    let temporary = directory.join(uf_infra::into_string(uf_infra::cstr!(
+        "{TIMINGS_FILE_NAME}.tmp"
+    )));
     fs::write(&temporary, timings.to_json()).map_err(|source| TimingsError::Write {
         path: temporary.clone(),
         source,

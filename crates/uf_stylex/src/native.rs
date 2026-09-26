@@ -88,7 +88,7 @@ fn validate(declaration: &Declaration) -> Result<(), NativeStyleError> {
     } = declaration;
     if *condition != StyleCondition::Base {
         return Err(unsupported(
-            uf_infra::cstr!("selector {} for {key}", condition.as_str()).into_string(),
+            uf_infra::into_string(uf_infra::cstr!("selector {} for {key}", condition.as_str())),
             *at,
         ));
     }
@@ -136,7 +136,7 @@ fn validate(declaration: &Declaration) -> Result<(), NativeStyleError> {
         _ if numeric(key) || dimension(key) => &[],
         _ => {
             return Err(unsupported(
-                uf_infra::cstr!("property {key}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("property {key}")),
                 *at,
             ));
         }
@@ -167,7 +167,7 @@ fn validate(declaration: &Declaration) -> Result<(), NativeStyleError> {
     };
     if !valid {
         return Err(unsupported(
-            uf_infra::cstr!("value {} for {key}", value.to_css_raw()).into_string(),
+            uf_infra::into_string(uf_infra::cstr!("value {} for {key}", value.to_css_raw())),
             *at,
         ));
     }

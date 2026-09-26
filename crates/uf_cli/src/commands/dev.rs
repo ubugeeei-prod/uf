@@ -1099,7 +1099,7 @@ fn code_actions(
                     && fix.column == diagnostic.column
             }) {
                 actions.push(json!({
-                    "title": uf_infra::cstr!("Fix `{}` the way the rule suggests", fix.rule).into_string(),
+                    "title": uf_infra::into_string(uf_infra::cstr!("Fix `{}` the way the rule suggests", fix.rule)),
                     "kind": QUICK_FIX,
                     "diagnostics": [encode_diagnostic(&lines, diagnostic)],
                     "isPreferred": fix.safety == Safety::Safe,
@@ -1416,7 +1416,7 @@ fn completion_item(index: &LineIndex<'_>, item: &config_file::Item) -> Value {
 fn position_params(message: &Value, method: &str) -> Result<(String, usize, usize), String> {
     let params = message
         .get("params")
-        .ok_or_else(|| uf_infra::cstr!("`{method}` needs `params`").into_string())?;
+        .ok_or_else(|| uf_infra::into_string(uf_infra::cstr!("`{method}` needs `params`")))?;
     let uri = document_uri(message)
         .ok_or_else(|| String::from("`params.textDocument.uri` is required"))?;
     let (line, character) = params
@@ -1914,10 +1914,10 @@ mod tests {
     #[test]
     fn other_headers_are_skipped() {
         let body = r#"{"id":1}"#;
-        let stream = uf_infra::cstr!(
+        let stream = uf_infra::into_string(uf_infra::cstr!(
             "Content-Type: application/vscode-jsonrpc; charset=utf-8\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
-        ).into_string();
+        ));
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         assert_eq!(body_of(read_message(&mut reader).unwrap())["id"], json!(1));
@@ -1948,8 +1948,10 @@ mod tests {
     /// document is refused before it is allocated.
     #[test]
     fn an_absurd_content_length_is_refused_rather_than_allocated() {
-        let stream =
-            uf_infra::cstr!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1).into_string();
+        let stream = uf_infra::into_string(uf_infra::cstr!(
+            "Content-Length: {}\r\n\r\n",
+            MAX_MESSAGE_BYTES + 1
+        ));
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
         let error = read_message(&mut reader).expect_err("a refusal");

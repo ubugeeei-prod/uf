@@ -145,10 +145,10 @@ fn render_diagnostics(ui: &mut Ui, report: &DocReport) {
 fn diagnostic_label(diagnostic: &DocDiagnostic) -> String {
     let location = match (diagnostic.line, diagnostic.column) {
         (Some(line), Some(column)) => {
-            uf_infra::cstr!("{}:{line}:{column}", diagnostic.path).into_string()
+            uf_infra::into_string(uf_infra::cstr!("{}:{line}:{column}", diagnostic.path))
         }
-        (Some(line), None) => uf_infra::cstr!("{}:{line}", diagnostic.path).into_string(),
+        (Some(line), None) => uf_infra::into_string(uf_infra::cstr!("{}:{line}", diagnostic.path)),
         _ => diagnostic.path.clone(),
     };
-    uf_infra::cstr!("{location}: {}", diagnostic.message).into_string()
+    uf_infra::into_string(uf_infra::cstr!("{location}: {}", diagnostic.message))
 }

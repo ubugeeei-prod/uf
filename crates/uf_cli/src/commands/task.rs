@@ -507,7 +507,7 @@ fn execute(
     // whose output the reader has just watched go past.
     let mut message = match &failures[0].status {
         uf_task::Status::Failed(said) => said.clone(),
-        _ => uf_infra::cstr!("task {script:?} failed").into_string(),
+        _ => uf_infra::into_string(uf_infra::cstr!("task {script:?} failed")),
     };
     if failures.len() > 1 {
         message.push('\n');
@@ -659,8 +659,11 @@ pub(crate) fn workspace_summary(resolved: &ResolvedConfig) -> Option<String> {
         .map(|(member, depends_on)| {
             let defined =
                 load_config(root.join(&member.path)).map_or(0, |member| member.config.tasks.len());
-            let mut part =
-                uf_infra::cstr!("{} ({})", member.name, plural(defined, "task")).into_string();
+            let mut part = uf_infra::into_string(uf_infra::cstr!(
+                "{} ({})",
+                member.name,
+                plural(defined, "task")
+            ));
             if !depends_on.is_empty() {
                 let after = depends_on
                     .iter()
@@ -740,9 +743,10 @@ struct TaskSpawner<'a> {
 impl uf_task::Spawn for TaskSpawner<'_> {
     fn command(&self, scheduled: &ScheduledTask) -> std::io::Result<ProcessCommand> {
         let package = self.packages.get(scheduled.package).ok_or_else(|| {
-            std::io::Error::other(
-                uf_infra::cstr!("task {:?} belongs to no package", scheduled.label).into_string(),
-            )
+            std::io::Error::other(uf_infra::into_string(uf_infra::cstr!(
+                "task {:?} belongs to no package",
+                scheduled.label
+            )))
         })?;
         let env = self.envs.get(&scheduled.package).ok_or_else(|| {
             std::io::Error::other(
@@ -756,9 +760,10 @@ impl uf_task::Spawn for TaskSpawner<'_> {
             .tasks
             .get(scheduled.name.as_str())
             .ok_or_else(|| {
-                std::io::Error::other(
-                    uf_infra::cstr!("task {:?} is not defined", scheduled.label).into_string(),
-                )
+                std::io::Error::other(uf_infra::into_string(uf_infra::cstr!(
+                    "task {:?} is not defined",
+                    scheduled.label
+                )))
             })?;
 
         // A task that names a command is run by uf, because `uf.config.js` is
@@ -1014,7 +1019,7 @@ impl uf_task::Observe for Reporter {
         };
         let took = match &outcome.decision {
             uf_task::Decision::Replayed { saved_micros } => {
-                uf_infra::cstr!("saved {}", seconds(*saved_micros)).into_string()
+                uf_infra::into_string(uf_infra::cstr!("saved {}", seconds(*saved_micros)))
             }
             _ => seconds(outcome.duration_micros),
         };
@@ -1046,9 +1051,9 @@ impl uf_task::Observe for Reporter {
 fn seconds(micros: u64) -> String {
     let seconds = micros as f64 / 1_000_000.0;
     if seconds < 10.0 {
-        uf_infra::cstr!("{seconds:.2}s").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{seconds:.2}s"))
     } else {
-        uf_infra::cstr!("{seconds:.1}s").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{seconds:.1}s"))
     }
 }
 
@@ -1238,7 +1243,9 @@ fn unknown_task(
             "task {label:?} is not defined in uf.config.js, and {asker:?} depends on it"
         )
         .into_string(),
-        None => uf_infra::cstr!("task {label:?} is not defined in uf.config.js").into_string(),
+        None => uf_infra::into_string(uf_infra::cstr!(
+            "task {label:?} is not defined in uf.config.js"
+        )),
     };
     if names.is_empty() {
         message.push_str("\n\n  this project defines no tasks");
@@ -1419,8 +1426,9 @@ pub(crate) fn exec_package(
     // On stderr, so the fetched binary still owns stdout. Printed rather than
     // silent because "uf downloaded and ran something" is not a thing a person
     // should have to infer from a network light.
-    let announcement =
-        uf_infra::cstr!("fetching and running {package} with `{invocation}`").into_string();
+    let announcement = uf_infra::into_string(uf_infra::cstr!(
+        "fetching and running {package} with `{invocation}`"
+    ));
     ui.render_err(|renderer, out| {
         renderer.status(out, Status::Info, &announcement);
     });
@@ -1431,7 +1439,7 @@ pub(crate) fn exec_package(
         .args(invocation.args.iter().map(AsRef::as_ref))
         .current_dir(resolved.root.as_std_path())
         .status()
-        .with_context(|| uf_infra::cstr!("failed to run `{invocation}`").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to run `{invocation}`"))?;
     if !status.success() {
         adopt_exit_status(ui, status, package);
     }
@@ -1499,7 +1507,7 @@ fn bin_candidates(name: &str, platform: BinPlatform) -> Vec<String> {
         BinPlatform::Unix => vec![name.to_owned()],
         BinPlatform::Windows => WINDOWS_BIN_EXTENSIONS
             .iter()
-            .map(|extension| uf_infra::cstr!("{name}{extension}").into_string())
+            .map(|extension| uf_infra::into_string(uf_infra::cstr!("{name}{extension}")))
             .collect(),
     }
 }
@@ -1573,7 +1581,7 @@ fn spawn_executable(
         .args(args)
         .current_dir(root.as_std_path())
         .status()
-        .with_context(|| uf_infra::cstr!("failed to execute {executable}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to execute {executable}"))?;
     if !status.success() {
         adopt_exit_status(ui, status, package);
     }

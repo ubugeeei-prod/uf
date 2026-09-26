@@ -358,7 +358,11 @@ pub(crate) struct Runtime {
 impl Runtime {
     /// The runtime and its version, as the build summary prints them.
     pub(crate) fn label(&self) -> String {
-        uf_infra::cstr!("{} {}", self.backend.name(), self.release_label()).into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{} {}",
+            self.backend.name(),
+            self.release_label()
+        ))
     }
 
     /// The release a summary should print.
@@ -543,8 +547,10 @@ pub(crate) fn runtimes(
                     // reasons rather than ending the walk. A project that
                     // pinned one host still gets that sentence as its refusal,
                     // because there is nothing else in the list.
-                    Err(refusal) => refusals
-                        .push(uf_infra::cstr!("{}: {refusal}", backend.name()).into_string()),
+                    Err(refusal) => refusals.push(uf_infra::into_string(uf_infra::cstr!(
+                        "{}: {refusal}",
+                        backend.name()
+                    ))),
                 },
             },
             Err(refusal) => refusals.push(refusal),
@@ -559,7 +565,7 @@ pub(crate) fn runtimes(
     // over, which is the difference between "uf will not do this" and "uf
     // cannot do this here".
     let what = match target {
-        Some(target) => uf_infra::cstr!("a binary for {}", target.triple).into_string(),
+        Some(target) => uf_infra::into_string(uf_infra::cstr!("a binary for {}", target.triple)),
         None => String::from("a binary"),
     };
     let advice = match target {
@@ -578,7 +584,7 @@ pub(crate) fn runtimes(
         "`uf build --compile` found no runtime it can build {what} with.\n{}\n  {advice}",
         refusals
             .iter()
-            .map(|refusal| uf_infra::cstr!("  {refusal}").into_string())
+            .map(|refusal| uf_infra::into_string(uf_infra::cstr!("  {refusal}")))
             .collect::<Vec<_>>()
             .join("\n")
     ))
@@ -590,7 +596,7 @@ fn declared_runtime_refusal(
 ) -> anyhow::Error {
     let declared = source.map_or_else(
         || "`runtime` resolved no declaration".to_owned(),
-        |source| uf_infra::cstr!("{} is `{}`", source.key, source.spec).into_string(),
+        |source| uf_infra::into_string(uf_infra::cstr!("{} is `{}`", source.key, source.spec)),
     );
     anyhow::anyhow!(uf_infra::cstr!(
         "`uf build --compile` embeds the application runtime; {declared}, and that runtime \
@@ -634,9 +640,9 @@ fn backend_for_program(
         }
         CapabilityJsHost::Node => {
             let Some(version) = program_version(&program, "--version") else {
-                return Err(
-                    uf_infra::cstr!("node: {program} did not answer `--version`").into_string(),
-                );
+                return Err(uf_infra::into_string(uf_infra::cstr!(
+                    "node: {program} did not answer `--version`"
+                )));
             };
             match Version::parse(&version) {
                 Some(parsed) if parsed >= NODE_SEA_FLOOR => {
@@ -774,7 +780,7 @@ fn artefact_permissions(
              a binary that looks sandboxed and is not.",
             permissions
                 .granted()
-                .map(|permission| uf_infra::cstr!("`{permission}`").into_string())
+                .map(|permission| uf_infra::into_string(uf_infra::cstr!("`{permission}`")))
                 .collect::<Vec<_>>()
                 .join(", ")
         )),
@@ -789,7 +795,7 @@ fn artefact_permissions(
 /// whether this build has to reach the network, and a cache holding some other
 /// Bun's copy means it does.
 fn cached_runtime(cache: &Utf8Path, target: Target) -> Option<(Utf8PathBuf, u64)> {
-    let prefix = uf_infra::cstr!("{}-v", target.runtime).into_string();
+    let prefix = uf_infra::into_string(uf_infra::cstr!("{}-v", target.runtime));
     for entry in fs::read_dir(cache.as_std_path()).ok()?.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -815,7 +821,7 @@ pub(crate) fn binary_name(root: &Utf8Path, target: Option<Target>) -> String {
     let name = project_label(root);
     let windows = target.map_or(cfg!(windows), |target| target.windows);
     if windows {
-        uf_infra::cstr!("{name}.exe").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{name}.exe"))
     } else {
         name.to_owned()
     }
@@ -832,7 +838,10 @@ pub(crate) fn binary_name(root: &Utf8Path, target: Option<Target>) -> String {
 /// case a single spelling gets wrong.
 pub(crate) fn binary_names(root: &Utf8Path) -> Vec<String> {
     let name = project_label(root);
-    vec![name.to_owned(), uf_infra::cstr!("{name}.exe").into_string()]
+    vec![
+        name.to_owned(),
+        uf_infra::into_string(uf_infra::cstr!("{name}.exe")),
+    ]
 }
 
 /// Link the application and wrap the runtime around it.
@@ -1040,11 +1049,16 @@ fn wrap_with_bun(
         .arg(binary.as_str())
         .current_dir(root.as_std_path());
     if let Some(target) = runtime.target {
-        command.arg(uf_infra::cstr!("--target={}", target.bun).into_string());
+        command.arg(uf_infra::into_string(uf_infra::cstr!(
+            "--target={}",
+            target.bun
+        )));
     }
     if let Some(cache) = &runtime.cache {
         fs::create_dir_all(cache.as_std_path()).with_context(|| {
-            uf_infra::cstr!("failed to create the runtime cache at {cache}").into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "failed to create the runtime cache at {cache}"
+            ))
         })?;
         command.env(BUN_CACHE_ENV, cache.as_str());
     }

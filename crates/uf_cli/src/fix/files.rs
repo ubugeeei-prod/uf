@@ -231,7 +231,10 @@ fn fix_file_with(
             report,
             project_fixes,
         } = lint(&source).with_context(|| {
-            uf_infra::cstr!("failed to lint {} while fixing it", file.relative_path).into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "failed to lint {} while fixing it",
+                file.relative_path
+            ))
         })?;
         leftover = Leftover::count(&report.diagnostics, &text, mode);
         if !mode.allows_unsafe() {
@@ -261,9 +264,10 @@ fn fix_file_with(
         let settled = match settle(candidate, was_formatted, &resolved.config.fmt) {
             Ok(settled) => settled,
             Err(reason) => {
-                summary
-                    .refused
-                    .push(uf_infra::cstr!("{}: {reason}", file.relative_path).into_string());
+                summary.refused.push(uf_infra::into_string(uf_infra::cstr!(
+                    "{}: {reason}",
+                    file.relative_path
+                )));
                 break;
             }
         };
@@ -275,7 +279,7 @@ fn fix_file_with(
     summary.needs_fmt += leftover.needs_fmt;
     if text != file.source {
         std::fs::write(&file.absolute_path, &text).with_context(|| {
-            uf_infra::cstr!("failed to write {}", file.absolute_path).into_string()
+            uf_infra::into_string(uf_infra::cstr!("failed to write {}", file.absolute_path))
         })?;
         summary.applied += applied;
         summary.changed.push(file.relative_path.clone());

@@ -109,8 +109,8 @@ impl Profile {
                 "  {:<28}{:>8}{:>12}{:>12}",
                 span.name,
                 span.hits,
-                uf_infra::cstr!("{:.2?}", span.self_time).into_string(),
-                uf_infra::cstr!("{:.2?}", span.inclusive).into_string(),
+                uf_infra::into_string(uf_infra::cstr!("{:.2?}", span.self_time)),
+                uf_infra::into_string(uf_infra::cstr!("{:.2?}", span.inclusive)),
             );
         }
     }
@@ -788,7 +788,7 @@ fn render_type_group(ui: &mut Ui, sources: &[SourceFile], group: &[TypeDiagnosti
             diagnostic
                 .related
                 .iter()
-                .map(|related| uf_infra::cstr!("[{}] is here", related.id).into_string())
+                .map(|related| uf_infra::into_string(uf_infra::cstr!("[{}] is here", related.id)))
                 .collect()
         })
         .collect();
@@ -885,7 +885,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                 batch.requested + batch.imported
             )
             .into_string();
-            let inference = uf_infra::cstr!("{:.1?}", report.elapsed).into_string();
+            let inference = uf_infra::into_string(uf_infra::cstr!("{:.1?}", report.elapsed));
             let builtins_timing = batch.builtins.unwrap_or(report.builtins);
             let builtins = if builtins_timing.needed {
                 uf_infra::cstr!(
@@ -904,7 +904,8 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             let libdefs = batch.libdefs.to_string();
             // Only shown when the cache answered something: a project being
             // checked for the first time should not have to read a zero.
-            let cached = uf_infra::cstr!("{} of {files}", report.files_from_cache).into_string();
+            let cached =
+                uf_infra::into_string(uf_infra::cstr!("{} of {files}", report.files_from_cache));
             let mut rows = vec![
                 KeyValue::toned("types checked", &files, Tone::Number),
                 KeyValue::toned("inference", &inference, Tone::Muted),
@@ -1039,24 +1040,25 @@ fn translated_package_list(packages: &[declarations::TranslatedPackage]) -> Vec<
         .iter()
         .map(|package| {
             let name = match (&package.types_package, &package.version) {
-                (Some(types), Some(version)) => {
-                    uf_infra::cstr!("{}, from {types}@{version}", package.name).into_string()
-                }
+                (Some(types), Some(version)) => uf_infra::into_string(uf_infra::cstr!(
+                    "{}, from {types}@{version}",
+                    package.name
+                )),
                 (Some(types), None) => {
-                    uf_infra::cstr!("{}, from {types}", package.name).into_string()
+                    uf_infra::into_string(uf_infra::cstr!("{}, from {types}", package.name))
                 }
                 (None, Some(version)) => {
-                    uf_infra::cstr!("{}@{version}", package.name).into_string()
+                    uf_infra::into_string(uf_infra::cstr!("{}@{version}", package.name))
                 }
                 (None, None) => package.name.clone(),
             };
             let holes = match package.holes {
                 0 => "no holes".to_owned(),
                 1 => "1 hole typed as any".to_owned(),
-                holes => uf_infra::cstr!("{holes} holes typed as any").into_string(),
+                holes => uf_infra::into_string(uf_infra::cstr!("{holes} holes typed as any")),
             };
             match package.findings {
-                0 => uf_infra::cstr!("{name}: {holes}").into_string(),
+                0 => uf_infra::into_string(uf_infra::cstr!("{name}: {holes}")),
                 1 => uf_infra::cstr!("{name}: {holes}, 1 Flow error inside its translation")
                     .into_string(),
                 findings => uf_infra::cstr!(
@@ -1091,7 +1093,9 @@ fn limited_module_list<T: std::fmt::Display>(modules: &[T]) -> Vec<String> {
         .collect();
     let overflow = modules.len().saturating_sub(UNTYPED_MODULES_SHOWN);
     if overflow > 0 {
-        named.push(uf_infra::cstr!("and {overflow} more").into_string());
+        named.push(uf_infra::into_string(uf_infra::cstr!(
+            "and {overflow} more"
+        )));
     }
     named
 }

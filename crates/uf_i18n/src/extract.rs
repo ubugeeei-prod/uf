@@ -590,7 +590,11 @@ impl Module {
 
     /// `path:line`, the way every problem and every entry spells a location.
     fn at(&self, loc: &Loc) -> String {
-        compact_str::format_compact!("{}:{}", self.path, loc.start.line).into_string()
+        uf_infra::into_string(compact_str::format_compact!(
+            "{}:{}",
+            self.path,
+            loc.start.line
+        ))
     }
 }
 

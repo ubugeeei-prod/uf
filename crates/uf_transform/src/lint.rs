@@ -259,9 +259,9 @@ pub fn lint(
         // Serialized so the location is read by the code `uf build` reads it
         // with, rather than by a second copy of the same rule.
         let event = serde_json::to_value(event).map_err(|error| {
-            TransformError::Internal(
-                uf_infra::cstr!("compiler event could not be serialized: {error}").into_string(),
-            )
+            TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+                "compiler event could not be serialized: {error}"
+            )))
         })?;
         let Some(detail) = event.get("detail") else {
             continue;
@@ -637,9 +637,9 @@ mod tests {
     #[test]
     fn a_ref_from_the_react_facade_is_a_ref() {
         let source = |from: &str| {
-            uf_infra::cstr!(
+            uf_infra::into_string(uf_infra::cstr!(
                 "import {{useRef}} from '{from}';\nexport component Count() {{\n  const box = useRef(0);\n  return <p>{{box.current}}</p>;\n}}\n"
-            ).into_string()
+            ))
         };
         let refs = |from: &str| {
             found(&source(from))

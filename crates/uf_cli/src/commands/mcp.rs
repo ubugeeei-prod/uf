@@ -448,7 +448,7 @@ pub(crate) fn tools() -> Vec<Value> {
         .map(|spec| {
             json!({
                 "name": spec.name,
-                "description": uf_infra::cstr!("{} {}", spec.description, spec.effect.note()).into_string(),
+                "description": uf_infra::into_string(uf_infra::cstr!("{} {}", spec.description, spec.effect.note())),
                 "inputSchema": (spec.schema)(),
             })
         })
@@ -469,12 +469,16 @@ pub(crate) fn tools() -> Vec<Value> {
 /// raises before the model sees anything.
 fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
     let Some(spec) = SPECS.iter().find(|spec| spec.name == name) else {
-        return tool_error(uf_infra::cstr!("no tool named {name:?}").into_string());
+        return tool_error(uf_infra::into_string(uf_infra::cstr!(
+            "no tool named {name:?}"
+        )));
     };
     // Before anything runs. Guessing what a call that does not fit meant is
     // how a misspelled `pathz` became a lint of the whole project.
     if let Some(why) = misfit(&(spec.schema)(), arguments) {
-        return tool_error(uf_infra::cstr!("{name} did not run: {why}").into_string());
+        return tool_error(uf_infra::into_string(uf_infra::cstr!(
+            "{name} did not run: {why}"
+        )));
     }
 
     let paths: Vec<String> = arguments
@@ -488,7 +492,9 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
         })
         .unwrap_or_default();
     if let Some(why) = outside_the_project(&uf_config::discover_root(cwd), &paths) {
-        return tool_error(uf_infra::cstr!("{name} did not run: {why}").into_string());
+        return tool_error(uf_infra::into_string(uf_infra::cstr!(
+            "{name} did not run: {why}"
+        )));
     }
     let json = spec.speaks == Speaks::Json;
 
@@ -547,7 +553,11 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
         // Unreachable while the contract test passes: `SPECS` is what was
         // searched above, so a name that resolved to a spec and has no arm
         // here is a tool added to the table and nowhere else.
-        other => return tool_error(uf_infra::cstr!("no tool named {other:?}").into_string()),
+        other => {
+            return tool_error(uf_infra::into_string(uf_infra::cstr!(
+                "no tool named {other:?}"
+            )));
+        }
     };
 
     // What the command wrote is one block, whole. A command that failed adds
@@ -563,7 +573,7 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
         Ok(()) => false,
         Err(error) => {
             content.push(
-                json!({ "type": "text", "text": uf_infra::cstr!("{error:#}").into_string() }),
+                json!({ "type": "text", "text": uf_infra::into_string(uf_infra::cstr!("{error:#}")) }),
             );
             true
         }
@@ -618,14 +628,14 @@ fn outside_the_project(root: &Utf8Path, paths: &[String]) -> Option<String> {
         for component in named.components() {
             match component {
                 Utf8Component::Prefix(_) | Utf8Component::RootDir => {
-                    return Some(uf_infra::cstr!(
+                    return Some(uf_infra::into_string(uf_infra::cstr!(
                         "`{entry}` is an absolute path; `paths` are relative to the project root"
-                    ).into_string());
+                    )));
                 }
                 Utf8Component::ParentDir if depth == 0 => {
-                    return Some(
-                        uf_infra::cstr!("`{entry}` climbs out of the project root").into_string(),
-                    );
+                    return Some(uf_infra::into_string(uf_infra::cstr!(
+                        "`{entry}` climbs out of the project root"
+                    )));
                 }
                 Utf8Component::ParentDir => depth -= 1,
                 Utf8Component::Normal(_) => depth += 1,
@@ -675,7 +685,7 @@ fn misfit(schema: &Value, arguments: &Value) -> Option<String> {
 /// argument, or is [`None`] for the arguments object itself.
 fn fit(schema: &Value, value: &Value, at: Option<&str>) -> Result<(), String> {
     let named = |key: &str| match at {
-        Some(at) => uf_infra::cstr!("{at}.{key}").into_string(),
+        Some(at) => uf_infra::into_string(uf_infra::cstr!("{at}.{key}")),
         None => key.to_owned(),
     };
     if let Some(expected) = schema.get("type").and_then(Value::as_str)
@@ -698,7 +708,7 @@ fn fit(schema: &Value, value: &Value, at: Option<&str>) -> Result<(), String> {
             let names: Vec<String> = properties
                 .into_iter()
                 .flatten()
-                .map(|(key, _)| uf_infra::cstr!("`{}`", named(key)).into_string())
+                .map(|(key, _)| uf_infra::into_string(uf_infra::cstr!("`{}`", named(key))))
                 .collect();
             return Err(if names.is_empty() {
                 uf_infra::cstr!("`{}` is not an argument, and it takes none", named(unknown))
@@ -715,7 +725,10 @@ fn fit(schema: &Value, value: &Value, at: Option<&str>) -> Result<(), String> {
         let required = schema.get("required").and_then(Value::as_array);
         for key in required.into_iter().flatten().filter_map(Value::as_str) {
             if !object.contains_key(key) {
-                return Err(uf_infra::cstr!("`{}` is required", named(key)).into_string());
+                return Err(uf_infra::into_string(uf_infra::cstr!(
+                    "`{}` is required",
+                    named(key)
+                )));
             }
         }
         for (key, property) in properties.into_iter().flatten() {

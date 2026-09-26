@@ -299,7 +299,7 @@ mod tests {
 
         let limits = CheckLimits::default().without_timeout();
         let paths: Vec<String> = (0..MODULES)
-            .map(|index| uf_infra::cstr!("module{index}.js").into_string())
+            .map(|index| uf_infra::into_string(uf_infra::cstr!("module{index}.js")))
             .collect();
         let texts: Vec<String> = (0..MODULES).map(|_| "// @flow\n".to_owned()).collect();
         let sources: Vec<Source<'_>> = paths

@@ -59,7 +59,12 @@ pub(super) fn render_list(
             continue;
         }
         rows.push((
-            uf_infra::cstr!("{}:{}:{}", case.file, case.line, case.column).into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{}:{}:{}",
+                case.file,
+                case.line,
+                case.column
+            )),
             name,
             selection_label(resolution.selection(index)),
         ));
@@ -70,7 +75,12 @@ pub(super) fn render_list(
         .iter()
         .map(|entry| {
             (
-                uf_infra::cstr!("{}:{}:{}", entry.file, entry.line, entry.column).into_string(),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "{}:{}:{}",
+                    entry.file,
+                    entry.line,
+                    entry.column
+                )),
                 entry.describe(),
             )
         })
@@ -95,8 +105,8 @@ pub(super) fn render_list(
         }))?;
         return Ok(());
     }
-    let runtime = uf_infra::cstr!("{:?}", runner.runtime).into_string();
-    let target = uf_infra::cstr!("{:?}", runner.performance_target).into_string();
+    let runtime = uf_infra::into_string(uf_infra::cstr!("{:?}", runner.runtime));
+    let target = uf_infra::into_string(uf_infra::cstr!("{:?}", runner.performance_target));
     let label = project_label(root).to_string();
 
     ui.render(|renderer, out| {
@@ -187,9 +197,10 @@ pub(super) fn render_report(
     // reproduce from the report.
     let runtime = match host {
         Some(host) => match host.browser.as_ref() {
-            Some(browser) => {
-                uf_infra::cstr!("{browser} (driven from {})", host.kind.program()).into_string()
-            }
+            Some(browser) => uf_infra::into_string(uf_infra::cstr!(
+                "{browser} (driven from {})",
+                host.kind.program()
+            )),
             None => host.kind.program().to_string(),
         },
         // `uf test --merge-shards` started no host: each shard ran on its own.
@@ -574,7 +585,12 @@ fn failed_tests(report: &TestRunReport) -> Vec<String> {
     report
         .failures()
         .map(|record| {
-            uf_infra::cstr!("{}:{}  {}", record.file, record.line, record.name).into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "{}:{}  {}",
+                record.file,
+                record.line,
+                record.name
+            ))
         })
         .collect()
 }
@@ -704,7 +720,7 @@ fn other_output(report: &TestRunReport) -> (Vec<OutputGroup>, usize) {
                 continue;
             }
             take(
-                uf_infra::cstr!("{}  {}", record.file, record.name).into_string(),
+                uf_infra::into_string(uf_infra::cstr!("{}  {}", record.file, record.name)),
                 &record.output,
             );
         }
@@ -802,8 +818,11 @@ fn counts(report: &TestRunReport) -> Counts {
 
 fn summary_line(report: &TestRunReport, duration: Duration) -> String {
     let summary = &report.summary;
-    let mut line =
-        uf_infra::cstr!("{} passed, {} failed", summary.passed, summary.failed).into_string();
+    let mut line = uf_infra::into_string(uf_infra::cstr!(
+        "{} passed, {} failed",
+        summary.passed,
+        summary.failed
+    ));
     if summary.skipped > 0 {
         uf_infra::append!(line, ", {} skipped", summary.skipped);
     }
@@ -844,7 +863,9 @@ fn file_problems(report: &TestRunReport) -> Vec<String> {
         .files
         .iter()
         .filter(|file| file.status != FileStatus::Completed)
-        .map(|file| uf_infra::cstr!("{} {}", file.file, file.status.describe()).into_string())
+        .map(|file| {
+            uf_infra::into_string(uf_infra::cstr!("{} {}", file.file, file.status.describe()))
+        })
         .collect()
 }
 
@@ -948,7 +969,7 @@ fn coverage_block(section: &CoverageSection) -> CoverageBlock {
         );
     }
     for path in &section.written {
-        notes.push(uf_infra::cstr!("wrote {path}").into_string());
+        notes.push(uf_infra::into_string(uf_infra::cstr!("wrote {path}")));
     }
 
     CoverageBlock {
@@ -977,7 +998,7 @@ fn preview(paths: &[String]) -> String {
         .join(", ");
     match paths.len().saturating_sub(SHOWN) {
         0 => head,
-        more => uf_infra::cstr!("{head}, and {more} more").into_string(),
+        more => uf_infra::into_string(uf_infra::cstr!("{head}, and {more} more")),
     }
 }
 

@@ -387,10 +387,10 @@ fn findings(work: &ReactWork, answer: ReactAnswer) -> Vec<TreeFinding> {
             kind: FindingKind::RedundantMemo,
             line: memo.line,
             column: memo.column,
-            message: uf_infra::cstr!(
+            message: uf_infra::into_string(uf_infra::cstr!(
                 "the React Compiler memoizes this already; `{}` here is a second dependency array to keep correct",
                 memo.hook
-            ).into_string(),
+            )),
         }));
     }
     if let Some(compiler) = &work.compiler {

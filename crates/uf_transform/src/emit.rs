@@ -75,9 +75,9 @@ pub fn emit(
         // No down-levelling: the host runs modern JavaScript, and Vite applies
         // its own targets to the bundle.
         env: EnvOptions::from_target("esnext").map_err(|error| {
-            TransformError::Internal(
-                uf_infra::cstr!("oxc rejected the esnext target: {error}").into_string(),
-            )
+            TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+                "oxc rejected the esnext target: {error}"
+            )))
         })?,
         jsx,
         ..TransformOptions::default()

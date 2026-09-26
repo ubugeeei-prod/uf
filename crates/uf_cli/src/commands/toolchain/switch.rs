@@ -132,13 +132,13 @@ pub(super) fn switch_to(
     if let Some(replaced) = &replaced {
         write_atomically(
             &store.previous_record(),
-            uf_infra::cstr!("{replaced}\n").into_string().as_bytes(),
+            uf_infra::into_string(uf_infra::cstr!("{replaced}\n")).as_bytes(),
         )?;
     }
     checkpoint(Step::Previous)?;
 
     fs::create_dir_all(&store.bin_dir)
-        .with_context(|| uf_infra::cstr!("failed to create {}", store.bin_dir).into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {}", store.bin_dir))?;
     for name in SWITCH_ORDER {
         link_atomically(
             &runtime_dir.join("bin").join(name),
@@ -227,14 +227,13 @@ pub(super) fn recorded_previous(store: &Store) -> Option<String> {
 pub(super) fn place(staged: &Utf8Path, runtime_dir: &Utf8Path) -> Result<()> {
     if !runtime_dir.is_dir() {
         return fs::rename(staged, runtime_dir).with_context(|| {
-            uf_infra::cstr!("failed to move {staged} to {runtime_dir}").into_string()
+            uf_infra::into_string(uf_infra::cstr!("failed to move {staged} to {runtime_dir}"))
         });
     }
 
     let mut files = Vec::new();
     for entry in walkdir::WalkDir::new(staged).min_depth(1) {
-        let entry =
-            entry.with_context(|| uf_infra::cstr!("failed to read {staged}").into_string())?;
+        let entry = entry.with_context(|| uf_infra::cstr!("failed to read {staged}"))?;
         if entry.file_type().is_dir() {
             continue;
         }
@@ -253,13 +252,12 @@ pub(super) fn place(staged: &Utf8Path, runtime_dir: &Utf8Path) -> Result<()> {
         let destination = runtime_dir.join(file);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
+                .with_context(|| uf_infra::cstr!("failed to create {parent}"))?;
         }
         fs::rename(staged.join(file), &destination)
-            .with_context(|| uf_infra::cstr!("failed to replace {destination}").into_string())?;
+            .with_context(|| uf_infra::cstr!("failed to replace {destination}"))?;
     }
-    fs::remove_dir_all(staged)
-        .with_context(|| uf_infra::cstr!("failed to remove {staged}").into_string())
+    fs::remove_dir_all(staged).with_context(|| uf_infra::cstr!("failed to remove {staged}"))
 }
 
 /// Install the running binary as its own version.
@@ -270,20 +268,19 @@ pub(super) fn place(staged: &Utf8Path, runtime_dir: &Utf8Path) -> Result<()> {
 /// directory first, because a copy killed half way through is exactly the
 /// half-written binary a switch must never point at.
 pub(super) fn install_running_binary(store: &Store, version: &str) -> Result<()> {
-    let staged = store
-        .runtimes
-        .join(uf_infra::cstr!(".uf@{version}.incoming.{}", std::process::id()).into_string());
+    let staged = store.runtimes.join(uf_infra::into_string(uf_infra::cstr!(
+        ".uf@{version}.incoming.{}",
+        std::process::id()
+    )));
     match fs::remove_dir_all(&staged) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => {
-            return Err(error)
-                .with_context(|| uf_infra::cstr!("failed to remove {staged}").into_string());
+            return Err(error).with_context(|| uf_infra::cstr!("failed to remove {staged}"));
         }
     }
     let bin = staged.join("bin");
-    fs::create_dir_all(&bin)
-        .with_context(|| uf_infra::cstr!("failed to create {bin}").into_string())?;
+    fs::create_dir_all(&bin).with_context(|| uf_infra::cstr!("failed to create {bin}"))?;
 
     let current_exe = std::env::current_exe().with_context(|| "failed to locate current uf")?;
     for name in BINARIES {
@@ -303,7 +300,7 @@ pub(super) fn install_running_binary(store: &Store, version: &str) -> Result<()>
 /// A binary's file name on this platform.
 pub(super) fn binary_file(name: &str) -> String {
     if cfg!(windows) {
-        uf_infra::cstr!("{name}.exe").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{name}.exe"))
     } else {
         name.to_owned()
     }
@@ -327,8 +324,7 @@ pub(super) fn is_executable_file(path: &Utf8Path) -> bool {
 /// one, never part of either.
 pub(super) fn write_atomically(path: &Utf8Path, contents: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
+        fs::create_dir_all(parent).with_context(|| uf_infra::cstr!("failed to create {parent}"))?;
     }
     let incoming = incoming(path);
     let written = fs::File::create(&incoming)
@@ -339,7 +335,7 @@ pub(super) fn write_atomically(path: &Utf8Path, contents: &[u8]) -> Result<()> {
         .and_then(|()| fs::rename(&incoming, path));
     if let Err(error) = written {
         let _ = fs::remove_file(&incoming);
-        return Err(error).with_context(|| uf_infra::cstr!("failed to write {path}").into_string());
+        return Err(error).with_context(|| uf_infra::cstr!("failed to write {path}"));
     }
     Ok(())
 }
@@ -368,16 +364,14 @@ pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> 
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => {
-            return Err(error)
-                .with_context(|| uf_infra::cstr!("failed to remove {incoming}").into_string());
+            return Err(error).with_context(|| uf_infra::cstr!("failed to remove {incoming}"));
         }
     }
     std::os::unix::fs::symlink(target, &incoming)
-        .with_context(|| uf_infra::cstr!("failed to link {incoming} to {target}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to link {incoming} to {target}"))?;
     if let Err(error) = fs::rename(&incoming, path) {
         let _ = fs::remove_file(&incoming);
-        return Err(error)
-            .with_context(|| uf_infra::cstr!("failed to point {path} at {target}").into_string());
+        return Err(error).with_context(|| uf_infra::cstr!("failed to point {path} at {target}"));
     }
     Ok(())
 }
@@ -405,7 +399,10 @@ pub(super) fn link_atomically(target: &Utf8Path, path: &Utf8Path) -> Result<()> 
 /// each recognises what the other left behind.
 fn incoming(path: &Utf8Path) -> Utf8PathBuf {
     let name = path.file_name().unwrap_or("uf");
-    path.with_file_name(uf_infra::cstr!(".{name}.incoming.{}", std::process::id()).into_string())
+    path.with_file_name(uf_infra::into_string(uf_infra::cstr!(
+        ".{name}.incoming.{}",
+        std::process::id()
+    )))
 }
 
 #[cfg(unix)]
@@ -413,11 +410,11 @@ fn mark_executable(path: &Utf8Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let mut permissions = fs::metadata(path)
-        .with_context(|| uf_infra::cstr!("failed to read permissions for {path}").into_string())?
+        .with_context(|| uf_infra::cstr!("failed to read permissions for {path}"))?
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(path, permissions)
-        .with_context(|| uf_infra::cstr!("failed to update permissions for {path}").into_string())
+        .with_context(|| uf_infra::cstr!("failed to update permissions for {path}"))
 }
 
 #[cfg(not(unix))]

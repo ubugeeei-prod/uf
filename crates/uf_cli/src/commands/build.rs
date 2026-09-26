@@ -157,7 +157,7 @@ struct ViteBuild {
 fn split_summary(split: Option<(u64, u64)>) -> Option<String> {
     split
         .filter(|(pages, routes)| pages < routes)
-        .map(|(pages, routes)| uf_infra::cstr!("{pages} of {routes}").into_string())
+        .map(|(pages, routes)| uf_infra::into_string(uf_infra::cstr!("{pages} of {routes}")))
 }
 
 /// What `uf build` writes about the bundles, beyond the bundles themselves.
@@ -269,8 +269,7 @@ pub(crate) fn build(
     })?;
 
     let out_dir = resolved.root.join(resolved.config.build.out_dir.as_str());
-    fs::create_dir_all(&out_dir)
-        .with_context(|| uf_infra::cstr!("failed to create {out_dir}").into_string())?;
+    fs::create_dir_all(&out_dir).with_context(|| uf_infra::cstr!("failed to create {out_dir}"))?;
 
     progress.tick("analysing server components");
     let rsc = timer.measure("rsc analysis", || {
@@ -469,8 +468,7 @@ pub(crate) fn build(
         if let Err(error) = fs::remove_file(&path)
             && error.kind() != std::io::ErrorKind::NotFound
         {
-            return Err(error)
-                .with_context(|| uf_infra::cstr!("failed to remove {path}").into_string());
+            return Err(error).with_context(|| uf_infra::cstr!("failed to remove {path}"));
         }
     }
 
@@ -567,7 +565,7 @@ pub(crate) fn build(
     progress.tick("writing manifests");
     let meta_dir = resolved.root.join(BUILD_META_DIR);
     fs::create_dir_all(&meta_dir)
-        .with_context(|| uf_infra::cstr!("failed to create {meta_dir}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {meta_dir}"))?;
     let build_manifest = meta_dir.join("uf-build-manifest.json");
     let openapi_document = meta_dir.join("openapi.json");
     let association_files =
@@ -774,8 +772,12 @@ pub(crate) fn build(
     // any of this existed — every page went to the browser.
     let split_count = split_summary(vite.split);
     let action_count = rsc.callable_action_count().to_string();
-    let kept = (carried > 0)
-        .then(|| uf_infra::cstr!("{} (for one build)", plural(carried, "file")).into_string());
+    let kept = (carried > 0).then(|| {
+        uf_infra::into_string(uf_infra::cstr!(
+            "{} (for one build)",
+            plural(carried, "file")
+        ))
+    });
     // What the build decided, in the words a reader can act on. Named in the
     // summary rather than left to be inferred from a page count, because "the
     // build wrote no document for /posts/:slug" and "the build is broken" look
@@ -836,7 +838,10 @@ pub(crate) fn build(
     let output_paths = outputs.iter().map(String::as_str).collect::<Vec<_>>();
     let project = project_label(&resolved.root).to_string();
     let phases = timer.phases().to_vec();
-    let summary = uf_infra::cstr!("build succeeded in {}", format_duration(total)).into_string();
+    let summary = uf_infra::into_string(uf_infra::cstr!(
+        "build succeeded in {}",
+        format_duration(total)
+    ));
 
     let asset_count = size.assets.len().to_string();
     let raw = size.total.raw.to_string();
@@ -1179,7 +1184,9 @@ fn refuse_unanswerable_actions(
     let mut listed = rsc
         .registry
         .callable_actions()
-        .map(|action| uf_infra::cstr!("  {} — {}", action.module, action.export).into_string())
+        .map(|action| {
+            uf_infra::into_string(uf_infra::cstr!("  {} — {}", action.module, action.export))
+        })
         .collect::<Vec<_>>();
     if listed.is_empty() {
         return Ok(());

@@ -419,9 +419,9 @@ fn lint_file(
                     severity,
                     named.line,
                     named.column,
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`{rule}` reports nothing here, so this suppression silences nothing; remove it"
-                    ).into_string(),
+                    )),
                 );
             }
         }

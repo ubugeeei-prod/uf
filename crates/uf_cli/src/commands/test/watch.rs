@@ -582,7 +582,7 @@ fn announce(
             uf_term::format_duration(interval)
         )
         .into_string(),
-        _ => uf_infra::cstr!("watching {}", plural(files, "file")).into_string(),
+        _ => uf_infra::into_string(uf_infra::cstr!("watching {}", plural(files, "file"))),
     };
     if let Some(reason) = unavailable {
         uf_infra::append!(
@@ -597,8 +597,10 @@ fn announce(
 }
 
 fn report_no_op(ui: &mut Ui, moved: &[String]) {
-    let message =
-        uf_infra::cstr!("{} changed, nothing to re-run", plural(moved.len(), "file")).into_string();
+    let message = uf_infra::into_string(uf_infra::cstr!(
+        "{} changed, nothing to re-run",
+        plural(moved.len(), "file")
+    ));
     ui.render(|renderer, out| {
         renderer.blank(out);
         renderer.status(out, Status::Skip, &message);

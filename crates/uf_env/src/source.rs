@@ -141,11 +141,11 @@ impl Source {
             }
         )
         .into_string();
-        let file = uf_infra::cstr!("{name}.tar.gz").into_string();
+        let file = uf_infra::into_string(uf_infra::cstr!("{name}.tar.gz"));
         Self {
-            archive: uf_infra::cstr!("{base}/v{version}/{file}").into_string(),
+            archive: uf_infra::into_string(uf_infra::cstr!("{base}/v{version}/{file}")),
             checksum: Checksum::Sha256File {
-                url: uf_infra::cstr!("{base}/v{version}/SHASUMS256.txt").into_string(),
+                url: uf_infra::into_string(uf_infra::cstr!("{base}/v{version}/SHASUMS256.txt")),
                 file,
             },
             format: Format::TarGz,
@@ -164,11 +164,11 @@ impl Source {
             (Os::Linux, Arch::Arm64) => "linux-aarch64",
             (Os::Linux, Arch::X64) => "linux-x64",
         };
-        let file = uf_infra::cstr!("bun-{target}.zip").into_string();
+        let file = uf_infra::into_string(uf_infra::cstr!("bun-{target}.zip"));
         Some(Self {
-            archive: uf_infra::cstr!("{base}/bun-v{version}/{file}").into_string(),
+            archive: uf_infra::into_string(uf_infra::cstr!("{base}/bun-v{version}/{file}")),
             checksum: Checksum::Sha256File {
-                url: uf_infra::cstr!("{base}/bun-v{version}/SHASUMS256.txt").into_string(),
+                url: uf_infra::into_string(uf_infra::cstr!("{base}/bun-v{version}/SHASUMS256.txt")),
                 file,
             },
             format: Format::Zip,
@@ -192,11 +192,11 @@ impl Source {
             (Os::Linux, Arch::Arm64) => "aarch64-unknown-linux-gnu",
             (Os::Linux, Arch::X64) => "x86_64-unknown-linux-gnu",
         };
-        let file = uf_infra::cstr!("deno-{triple}.zip").into_string();
+        let file = uf_infra::into_string(uf_infra::cstr!("deno-{triple}.zip"));
         Some(Self {
-            archive: uf_infra::cstr!("{base}/v{version}/{file}").into_string(),
+            archive: uf_infra::into_string(uf_infra::cstr!("{base}/v{version}/{file}")),
             checksum: Checksum::Sha256Sidecar {
-                url: uf_infra::cstr!("{base}/v{version}/{file}.sha256sum").into_string(),
+                url: uf_infra::into_string(uf_infra::cstr!("{base}/v{version}/{file}.sha256sum")),
             },
             format: Format::Zip,
             // The zip holds `deno` at its root.
@@ -211,9 +211,11 @@ impl Source {
         let version = &pin.version;
         let (package, file) = npm_package_for(pin.tool, version);
         Self {
-            archive: uf_infra::cstr!("{base}/{package}/-/{file}-{version}.tgz").into_string(),
+            archive: uf_infra::into_string(uf_infra::cstr!(
+                "{base}/{package}/-/{file}-{version}.tgz"
+            )),
             checksum: Checksum::NpmIntegrity {
-                url: uf_infra::cstr!("{base}/{package}/{version}").into_string(),
+                url: uf_infra::into_string(uf_infra::cstr!("{base}/{package}/{version}")),
             },
             format: Format::TarGz,
             // Every npm tarball wraps its contents in `package/`.

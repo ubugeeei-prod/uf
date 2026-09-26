@@ -127,9 +127,9 @@ fn transform_post_at(
     depth: usize,
 ) -> Result<Edit, TransformError> {
     if depth > MAX_DEPTH {
-        return Err(TransformError::Internal(
-            uf_infra::cstr!("syntax tree deeper than {MAX_DEPTH} levels").into_string(),
-        ));
+        return Err(TransformError::Internal(uf_infra::into_string(
+            uf_infra::cstr!("syntax tree deeper than {MAX_DEPTH} levels"),
+        )));
     }
     let Some(object) = node.as_object_mut() else {
         return Ok(Edit::Keep);

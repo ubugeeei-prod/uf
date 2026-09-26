@@ -318,7 +318,7 @@ pub(crate) fn deploy(
     // referenced.
     fs::remove_dir_all(deployment.as_std_path()).or_else(ignore_missing)?;
     fs::create_dir_all(directory.as_std_path())
-        .with_context(|| uf_infra::cstr!("failed to create {directory}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {directory}"))?;
 
     // What the project declared, for the entry that has to answer it. A JSON
     // argument rather than a file: the driver is spawned with these three
@@ -399,7 +399,7 @@ pub(crate) fn deploy(
     let compiled = binary_names(root);
     let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
     copy_tree(out_dir, &directory.join("static"), &compiled, &mut copied)
-        .with_context(|| uf_infra::cstr!("copying {out_dir} into {directory}").into_string())?;
+        .with_context(|| uf_infra::cstr!("copying {out_dir} into {directory}"))?;
 
     // A `package.json` with nothing in it but `type`, and it is not optional:
     // Node reads `.js` as CommonJS unless something says otherwise, and the
@@ -421,7 +421,7 @@ pub(crate) fn deploy(
     ));
     for (file, contents) in &files {
         fs::write(file.as_std_path(), contents)
-            .with_context(|| uf_infra::cstr!("failed to write {file}").into_string())?;
+            .with_context(|| uf_infra::cstr!("failed to write {file}"))?;
         copied.count(fs::metadata(file.as_std_path())?.len());
     }
     for entry in entry_files(adapter) {
@@ -508,13 +508,13 @@ pub(crate) fn deploy_static(
     let directory = root.join(OUTPUT_DIR).join(DeployAdapter::Static.as_str());
     fs::remove_dir_all(directory.as_std_path()).or_else(ignore_missing)?;
     fs::create_dir_all(directory.as_std_path())
-        .with_context(|| uf_infra::cstr!("failed to create {directory}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {directory}"))?;
 
     let mut copied = Copied::default();
     let compiled = binary_names(root);
     let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
     copy_tree(out_dir, &directory, &compiled, &mut copied)
-        .with_context(|| uf_infra::cstr!("copying {out_dir} into {directory}").into_string())?;
+        .with_context(|| uf_infra::cstr!("copying {out_dir} into {directory}"))?;
     // The one shape check this target has. The other five are checked by
     // `entry_files`, which asks whether the link step wrote the entry it
     // promised; nothing links here, so what is left to be wrong is an empty
@@ -835,33 +835,37 @@ const VERCEL_ROUTES: &str = r#"{
 /// two targets that are uploaded rather than started, it is the upload.
 pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &str) -> String {
     match adapter {
-        DeployAdapter::Node => uf_infra::cstr!("cd {directory} && node server.js").into_string(),
-        DeployAdapter::Bun => uf_infra::cstr!("cd {directory} && bun server.js").into_string(),
+        DeployAdapter::Node => {
+            uf_infra::into_string(uf_infra::cstr!("cd {directory} && node server.js"))
+        }
+        DeployAdapter::Bun => {
+            uf_infra::into_string(uf_infra::cstr!("cd {directory} && bun server.js"))
+        }
         DeployAdapter::Container => {
             let name = worker_name(root);
             uf_infra::cstr!("docker build -t {name} {directory} && docker run -p 3000:3000 {name}")
                 .into_string()
         }
         DeployAdapter::Edge => {
-            uf_infra::cstr!("cd {directory} && npx wrangler deploy").into_string()
+            uf_infra::into_string(uf_infra::cstr!("cd {directory} && npx wrangler deploy"))
         }
-        DeployAdapter::Serverless => {
-            uf_infra::cstr!("cd {directory} && zip -r ../function.zip .").into_string()
-        }
+        DeployAdapter::Serverless => uf_infra::into_string(uf_infra::cstr!(
+            "cd {directory} && zip -r ../function.zip ."
+        )),
         // `--prebuilt` uploads `.vercel/output` as it is, without building
         // again; the directory has to be linked to a project first
         // (`vercel link`), which is the reader's account and not uf's.
-        DeployAdapter::Vercel => {
-            uf_infra::cstr!("cd {directory} && vercel deploy --prebuilt").into_string()
-        }
+        DeployAdapter::Vercel => uf_infra::into_string(uf_infra::cstr!(
+            "cd {directory} && vercel deploy --prebuilt"
+        )),
         // No command, because there is nothing to start: the directory is the
         // site, and what happens next is an upload to a host uf knows nothing
         // about. Naming one — `npx wrangler pages deploy`, say — would be uf
         // choosing a hosting company on the reader's behalf, which is the one
         // thing `ubugeeei-redundancy.md` says a deployment must never require.
-        DeployAdapter::Static => {
-            uf_infra::cstr!("upload the contents of {directory} to a static host").into_string()
-        }
+        DeployAdapter::Static => uf_infra::into_string(uf_infra::cstr!(
+            "upload the contents of {directory} to a static host"
+        )),
         // `--allow-write` scoped to `.uf`, the directory uf keeps its own state
         // in: the route cache's filesystem store is `.uf/cache` in the working
         // directory, and a build with `isr` creates it at start-up. Without it
@@ -900,9 +904,9 @@ impl Copied {
 /// linked asset in `public/` arrive as its bytes.
 fn copy_tree(from: &Utf8Path, to: &Utf8Path, skip: &[&str], copied: &mut Copied) -> Result<()> {
     fs::create_dir_all(to.as_std_path())
-        .with_context(|| uf_infra::cstr!("failed to create {to}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {to}"))?;
     for entry in fs::read_dir(from.as_std_path())
-        .with_context(|| uf_infra::cstr!("failed to read {from}").into_string())?
+        .with_context(|| uf_infra::cstr!("failed to read {from}"))?
         .collect::<Result<Vec<_>, _>>()?
     {
         let name = entry.file_name();
@@ -921,7 +925,7 @@ fn copy_tree(from: &Utf8Path, to: &Utf8Path, skip: &[&str], copied: &mut Copied)
             continue;
         }
         let bytes = fs::copy(source.as_std_path(), target.as_std_path()).with_context(|| {
-            uf_infra::cstr!("failed to copy {source} to {target}").into_string()
+            uf_infra::into_string(uf_infra::cstr!("failed to copy {source} to {target}"))
         })?;
         copied.count(bytes);
     }

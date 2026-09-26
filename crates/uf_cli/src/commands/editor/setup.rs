@@ -265,7 +265,7 @@ pub(crate) fn plan(target: &Target, existing: Option<&str>) -> Result<FilePlan> 
                 });
             }
             Ok(FilePlan::Append {
-                text: uf_infra::cstr!("\n{contents}").into_string(),
+                text: uf_infra::into_string(uf_infra::cstr!("\n{contents}")),
             })
         }
     }

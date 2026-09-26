@@ -1071,8 +1071,10 @@ const y = (x: any) as const;
         // Five hundred siblings are not a chain of five hundred: `,` and `;`
         // end a run, which is what keeps a wide array from measuring deep.
         // Three is the `=`, the `[` and the `+` that any one element needs.
-        let wide =
-            compact_str::format_compact!("x = [{}];", vec!["a + b"; 500].join(", ")).into_string();
+        let wide = uf_infra::into_string(compact_str::format_compact!(
+            "x = [{}];",
+            vec!["a + b"; 500].join(", ")
+        ));
         assert_eq!(chain_depth(&wide), 3);
         let statements = "x = a + b;\n".repeat(500);
         assert_eq!(chain_depth(&statements), 2);
@@ -1087,14 +1089,26 @@ const y = (x: any) as const;
     fn a_chain_past_the_ceiling_is_refused_rather_than_overflowing() {
         let deep = MAX_CHAIN_DEPTH + 2;
         for source in [
-            compact_str::format_compact!("x = {};", vec!["1"; deep].join(" + ")).into_string(),
-            compact_str::format_compact!("x = a{};", ".f()".repeat(deep)).into_string(),
+            uf_infra::into_string(compact_str::format_compact!(
+                "x = {};",
+                vec!["1"; deep].join(" + ")
+            )),
+            uf_infra::into_string(compact_str::format_compact!(
+                "x = a{};",
+                ".f()".repeat(deep)
+            )),
             // Each of these keeps the bracket depth at one, or opens no
             // bracket at all, and each was reaching the parser.
-            compact_str::format_compact!("x = f{};", "()".repeat(deep)).into_string(),
-            compact_str::format_compact!("x = a{};", "[0]".repeat(deep)).into_string(),
-            compact_str::format_compact!("x = {}y;", "typeof ".repeat(deep)).into_string(),
-            compact_str::format_compact!("x = {}Foo;", "new ".repeat(deep)).into_string(),
+            uf_infra::into_string(compact_str::format_compact!("x = f{};", "()".repeat(deep))),
+            uf_infra::into_string(compact_str::format_compact!("x = a{};", "[0]".repeat(deep))),
+            uf_infra::into_string(compact_str::format_compact!(
+                "x = {}y;",
+                "typeof ".repeat(deep)
+            )),
+            uf_infra::into_string(compact_str::format_compact!(
+                "x = {}Foo;",
+                "new ".repeat(deep)
+            )),
         ] {
             // Refused before the tree exists, so nothing deep is built and
             // nothing deep is freed: this one needs no stack of its own.

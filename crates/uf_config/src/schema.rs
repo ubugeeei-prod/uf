@@ -268,7 +268,7 @@ fn collect_paths(shape: &Shape, prefix: &str, out: &mut BTreeSet<String>) {
             let path = if prefix.is_empty() {
                 key.name.to_string()
             } else {
-                compact_str::format_compact!("{prefix}.{}", key.name).into_string()
+                uf_infra::into_string(compact_str::format_compact!("{prefix}.{}", key.name))
             };
             collect_paths(&key.shape, &path, out);
             out.insert(path);
@@ -641,12 +641,12 @@ impl<'a> Reader<'a> {
                     .collect::<Vec<_>>()
                     .join(" | ")
             }
-            types::TypeInner::Nullable { inner, .. } => {
-                compact_str::format_compact!("?{}", self.grouped(&inner.argument)).into_string()
-            }
-            types::TypeInner::Array { inner, .. } => {
-                compact_str::format_compact!("{}[]", self.grouped(&inner.argument)).into_string()
-            }
+            types::TypeInner::Nullable { inner, .. } => uf_infra::into_string(
+                compact_str::format_compact!("?{}", self.grouped(&inner.argument)),
+            ),
+            types::TypeInner::Array { inner, .. } => uf_infra::into_string(
+                compact_str::format_compact!("{}[]", self.grouped(&inner.argument)),
+            ),
             types::TypeInner::Generic { inner, .. } => {
                 let name = match &inner.id {
                     types::generic::Identifier::Unqualified(id) => id.name.to_string(),
@@ -686,7 +686,7 @@ impl<'a> Reader<'a> {
         let text = self.render(ty);
         match &**ty {
             types::TypeInner::Union { .. } | types::TypeInner::Intersection { .. } => {
-                compact_str::format_compact!("({text})").into_string()
+                uf_infra::into_string(compact_str::format_compact!("({text})"))
             }
             _ => text,
         }
@@ -847,9 +847,9 @@ fn is_directive(text: &str) -> bool {
 fn join(first: Option<String>, second: Option<String>) -> Option<String> {
     match (first, second) {
         (Some(first), Some(second)) if first.contains(&second) => Some(first),
-        (Some(first), Some(second)) => {
-            Some(compact_str::format_compact!("{first}\n\n{second}").into_string())
-        }
+        (Some(first), Some(second)) => Some(uf_infra::into_string(compact_str::format_compact!(
+            "{first}\n\n{second}"
+        ))),
         (first, second) => first.or(second),
     }
 }

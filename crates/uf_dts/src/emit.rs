@@ -1687,7 +1687,7 @@ impl<'e> Emitter<'e> {
             Err((reason, at)) => {
                 self.hole(
                     Construct::EnumMember,
-                    uf_infra::cstr!("{reason}; `{name}` is declared `any`").into_string(),
+                    uf_infra::into_string(uf_infra::cstr!("{reason}; `{name}` is declared `any`")),
                     at,
                 );
                 self.printer.text(if exported {

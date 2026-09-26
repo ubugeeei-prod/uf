@@ -78,10 +78,12 @@ impl Unanswerable {
     /// The line a refusal prints for this finding.
     fn line(&self) -> String {
         match &self.route {
-            Some(route) => {
-                uf_infra::cstr!("  {route} ({}) — {}", self.file, self.because).into_string()
-            }
-            None => uf_infra::cstr!("  {} — {}", self.file, self.because).into_string(),
+            Some(route) => uf_infra::into_string(uf_infra::cstr!(
+                "  {route} ({}) — {}",
+                self.file,
+                self.because
+            )),
+            None => uf_infra::into_string(uf_infra::cstr!("  {} — {}", self.file, self.because)),
         }
     }
 }

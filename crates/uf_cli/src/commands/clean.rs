@@ -154,7 +154,7 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
 
     for target in &removed {
         std::fs::remove_dir_all(&target.path)
-            .with_context(|| uf_infra::cstr!("could not remove {}", target.label).into_string())?;
+            .with_context(|| uf_infra::cstr!("could not remove {}", target.label))?;
     }
 
     ui.render(|renderer, out| {

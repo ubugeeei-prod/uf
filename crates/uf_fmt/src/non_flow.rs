@@ -134,7 +134,7 @@ fn files_were(count: usize) -> String {
     if count == 1 {
         "1 non-Flow file was".to_string()
     } else {
-        uf_infra::cstr!("{count} non-Flow files were").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{count} non-Flow files were"))
     }
 }
 
@@ -424,5 +424,5 @@ fn detail_of(stderr: &[u8], stdout: &[u8]) -> CompactString {
         .take_while(|at| *at <= MAX_DETAIL_BYTES)
         .last()
         .unwrap_or(0);
-    uf_infra::cstr!("{}…", &trimmed[..cut]).into_string().into()
+    uf_infra::into_string(uf_infra::cstr!("{}…", &trimmed[..cut])).into()
 }

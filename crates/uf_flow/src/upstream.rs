@@ -188,8 +188,10 @@ mod tests {
         // formatter that cannot parse a file must not rewrite it and stops; a
         // linter has something to say about the file and thirty thousand more
         // to get through.
-        let source =
-            compact_str::format_compact!("x = a{};", ".f()".repeat(MAX_CHAIN_DEPTH)).into_string();
+        let source = uf_infra::into_string(compact_str::format_compact!(
+            "x = a{};",
+            ".f()".repeat(MAX_CHAIN_DEPTH)
+        ));
         let outcome = validate_source(&source).expect("a refusal is not a backend error");
         assert!(!outcome.is_ok());
         assert!(outcome.diagnostics[0].message.contains("ceiling"));

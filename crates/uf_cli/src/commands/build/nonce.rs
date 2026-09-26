@@ -196,7 +196,10 @@ pub(crate) fn message(findings: &[NoncedPage], config_file: &str) -> String {
         })
         .collect();
     if findings.len() > SHOWN {
-        rows.push(uf_infra::cstr!("  … and {} more", findings.len() - SHOWN).into_string());
+        rows.push(uf_infra::into_string(uf_infra::cstr!(
+            "  … and {} more",
+            findings.len() - SHOWN
+        )));
     }
     uf_infra::cstr!(
         "{} written without a nonce and served under an `app.router.headers` rule whose value \

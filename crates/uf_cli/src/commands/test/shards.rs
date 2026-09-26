@@ -112,11 +112,10 @@ pub(crate) fn write_record(
     };
     let directory = root.join(RECORDS_DIRECTORY);
     std::fs::create_dir_all(&directory)
-        .with_context(|| uf_infra::cstr!("could not create {directory}").into_string())?;
+        .with_context(|| uf_infra::cstr!("could not create {directory}"))?;
     let path = directory.join(record_name(cut.shard));
     let body = serde_json::to_vec(&record).context("could not serialise the shard record")?;
-    std::fs::write(&path, body)
-        .with_context(|| uf_infra::cstr!("could not write {path}").into_string())?;
+    std::fs::write(&path, body).with_context(|| uf_infra::cstr!("could not write {path}"))?;
     Ok(path
         .strip_prefix(root)
         .map_or_else(|_| path.to_string(), ToString::to_string))
@@ -131,7 +130,11 @@ pub(crate) fn announce(ui: &mut Ui, shown: &str) {
 
 /// The file a shard's record is written to: `2-of-3.json`.
 fn record_name(shard: Shard) -> String {
-    uf_infra::cstr!("{}-of-{}.json", shard.index(), shard.count()).into_string()
+    uf_infra::into_string(uf_infra::cstr!(
+        "{}-of-{}.json",
+        shard.index(),
+        shard.count()
+    ))
 }
 
 /// Whether `name` is a name [`record_name`] writes.
@@ -271,7 +274,9 @@ fn read_records(root: &Utf8Path, directory: &str) -> Result<Vec<ShardRecord>> {
     };
     let mut paths = Vec::new();
     record_paths(&directory, 0, &mut paths).with_context(|| {
-        uf_infra::cstr!("could not read the shard records in {directory}").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not read the shard records in {directory}"
+        ))
     })?;
     if paths.is_empty() {
         bail!(uf_infra::cstr!(
@@ -312,19 +317,19 @@ fn record_paths(
 
 /// One record, read no further than [`MAX_RECORD_BYTES`].
 fn read_record(path: &Utf8Path) -> Result<ShardRecord> {
-    let file = std::fs::File::open(path)
-        .with_context(|| uf_infra::cstr!("could not open {path}").into_string())?;
+    let file =
+        std::fs::File::open(path).with_context(|| uf_infra::cstr!("could not open {path}"))?;
     let mut bytes = Vec::new();
     file.take(MAX_RECORD_BYTES.saturating_add(1))
         .read_to_end(&mut bytes)
-        .with_context(|| uf_infra::cstr!("could not read {path}").into_string())?;
+        .with_context(|| uf_infra::cstr!("could not read {path}"))?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_RECORD_BYTES {
         bail!(uf_infra::cstr!(
             "{path} is larger than the {MAX_RECORD_BYTES} bytes a shard record can be"
         ));
     }
     serde_json::from_slice(&bytes)
-        .with_context(|| uf_infra::cstr!("{path} is not a shard record uf reads").into_string())
+        .with_context(|| uf_infra::cstr!("{path} is not a shard record uf reads"))
 }
 
 #[cfg(test)]

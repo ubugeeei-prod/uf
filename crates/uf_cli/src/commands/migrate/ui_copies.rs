@@ -480,7 +480,7 @@ pub(super) fn old_part(component: &str, name: &str) -> Option<&'static str> {
 fn local_name(component: &str, old: &str) -> String {
     let namespace = namespace_name(component);
     if old == namespace {
-        uf_infra::cstr!("{namespace}Root").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{namespace}Root"))
     } else {
         old.to_owned()
     }
@@ -640,12 +640,12 @@ fn local_of<'a>(renames: &'a [(&str, String)], name: &'a str) -> &'a str {
 /// registry's text agree byte for byte once both are formatted.
 pub(super) fn export_block(component: &str, parts: &[(String, &str)]) -> String {
     let namespace = namespace_name(component);
-    let file = uf_infra::cstr!("{component}.js").into_string();
+    let file = uf_infra::into_string(uf_infra::cstr!("{component}.js"));
     let (first_local, first) = (&parts[0].0, parts[0].1);
     let second = parts.get(1).map_or(first, |(_, part)| *part);
-    let mut out = uf_infra::cstr!(
+    let mut out = uf_infra::into_string(uf_infra::cstr!(
         "\n/**\n * The parts, under the names `import * as {namespace} from \"./{file}\"` gives them.\n *\n * One name per component (ubugeeei-prod/uf#1453): a page writes `<{namespace}.{first}>`\n * and `<{namespace}.{second}>`, the way it writes `@uniflowed/ui`'s own parts. Each\n * is declared under its full name, so React DevTools and an error say\n * `{first_local}` rather than `{first}`.\n */\nexport {{\n"
-    ).into_string();
+    ));
     for (local, part) in parts {
         uf_infra::append!(out, "  {local} as {part},\n");
     }
@@ -731,7 +731,7 @@ fn name_headless_imports(source: &str) -> Result<String, String> {
         .collect();
     let alias = |name: &str| {
         if declared.contains(&name) {
-            uf_infra::cstr!("Headless{name}").into_string()
+            uf_infra::into_string(uf_infra::cstr!("Headless{name}"))
         } else {
             name.to_owned()
         }
@@ -765,7 +765,7 @@ fn name_headless_imports(source: &str) -> Result<String, String> {
         let (imported, replacement) = if let Some((namespace, member)) = part(name_text) {
             (
                 namespace.to_owned(),
-                uf_infra::cstr!("{}.{member}", alias(namespace)).into_string(),
+                uf_infra::into_string(uf_infra::cstr!("{}.{member}", alias(namespace))),
             )
         } else if super::ui_namespaces::is_namespace(name_text)
             || HEADLESS_SINGLE.contains(&name_text)
@@ -783,7 +783,7 @@ fn name_headless_imports(source: &str) -> Result<String, String> {
         let spelled = if alias(&imported) == imported {
             imported.clone()
         } else {
-            uf_infra::cstr!("{imported} as {}", alias(&imported)).into_string()
+            uf_infra::into_string(uf_infra::cstr!("{imported} as {}", alias(&imported)))
         };
         if !values.contains(&spelled) {
             values.push(spelled);
@@ -797,7 +797,7 @@ fn name_headless_imports(source: &str) -> Result<String, String> {
         .chain(
             types
                 .into_iter()
-                .map(|name| uf_infra::cstr!("type {name}").into_string()),
+                .map(|name| uf_infra::into_string(uf_infra::cstr!("type {name}"))),
         )
         .collect();
     edits[0].1 = uf_infra::cstr!(
@@ -843,9 +843,9 @@ fn rehand_menu_parts(text: &mut String, component: &str, namespace: &str) -> boo
     } else {
         "menubar"
     };
-    let mut replacement = uf_infra::cstr!(
+    let mut replacement = uf_infra::into_string(uf_infra::cstr!(
         "\n/**\n * The menu parts, which are `menu.js`'s own: a {what} is a menu opened another\n * way, so `<{namespace}.Item>` is the styled `Menu.Item` and a change to it there\n * reaches both.\n */\nexport {{\n"
-    ).into_string();
+    ));
     for name in &names {
         uf_infra::append!(replacement, "  {name},\n");
     }
@@ -948,7 +948,7 @@ mod tests {
         std::fs::create_dir_all(&ui).unwrap();
         for (name, old, _) in OLD_COPIES {
             std::fs::write(
-                ui.join(uf_infra::cstr!("{name}.js").into_string()),
+                ui.join(uf_infra::into_string(uf_infra::cstr!("{name}.js"))),
                 uf_ui::stamp::stamped(name, old),
             )
             .unwrap();
@@ -983,7 +983,7 @@ mod tests {
         assert!(plan.unmapped.is_empty(), "{:?}", plan.unmapped);
 
         for (name, _, now) in OLD_COPIES {
-            let path = uf_infra::cstr!("app/components/ui/{name}.js").into_string();
+            let path = uf_infra::into_string(uf_infra::cstr!("app/components/ui/{name}.js"));
             let written = plan
                 .changes
                 .iter()

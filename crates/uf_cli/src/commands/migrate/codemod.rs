@@ -138,7 +138,7 @@ pub(super) fn plan_for(
                 Ok(()) => after = candidate,
                 Err(error) => plan
                     .unmapped
-                    .push(uf_infra::cstr!("{name}: {error}").into_string()),
+                    .push(uf_infra::into_string(uf_infra::cstr!("{name}: {error}"))),
             }
         }
         plan.migrations.push(TOOL_DECLARATIONS.to_owned());
@@ -266,9 +266,10 @@ fn unread_keys(source: &mut String, unmapped: &mut Vec<String>) {
                 }
             }
             Ok(false) => {}
-            Err(error) => {
-                unmapped.push(uf_infra::cstr!("{}: {error}", path.join(".")).into_string())
-            }
+            Err(error) => unmapped.push(uf_infra::into_string(uf_infra::cstr!(
+                "{}: {error}",
+                path.join(".")
+            ))),
         }
     };
     for path in UNREAD_KEYS_REMOVED {
@@ -317,10 +318,10 @@ fn toolchain(source: &mut String) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!(uf_infra::cstr!("{name} version is not a string")))?;
         match name.as_str() {
             "node" | "bun" | "deno" => {
-                runtime.push(uf_infra::cstr!("{name}@{version}").into_string())
+                runtime.push(uf_infra::into_string(uf_infra::cstr!("{name}@{version}")))
             }
             "npm" | "pnpm" | "yarn" => {
-                managers.push(uf_infra::cstr!("{name}@{version}").into_string())
+                managers.push(uf_infra::into_string(uf_infra::cstr!("{name}@{version}")))
             }
             _ => anyhow::bail!(uf_infra::cstr!("unknown tool {name}")),
         }

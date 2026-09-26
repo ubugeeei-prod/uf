@@ -45,13 +45,15 @@ const REPOSITORY: &str = "ubugeeei-prod/uf";
 
 /// The name of the packaged VS Code extension on a release.
 pub(crate) fn vsix_asset(version: &str) -> String {
-    uf_infra::cstr!("uf-vscode-{version}.vsix").into_string()
+    uf_infra::into_string(uf_infra::cstr!("uf-vscode-{version}.vsix"))
 }
 
 /// Where a release asset is downloaded from.
 pub(crate) fn asset_url(base: Option<&str>, version: &str, asset: &str) -> String {
     match base.map(|base| base.trim_end_matches('/')) {
-        Some(base) if !base.is_empty() => uf_infra::cstr!("{base}/{version}/{asset}").into_string(),
+        Some(base) if !base.is_empty() => {
+            uf_infra::into_string(uf_infra::cstr!("{base}/{version}/{asset}"))
+        }
         _ => uf_infra::cstr!(
             "https://github.com/{REPOSITORY}/releases/download/uf@{version}/{asset}"
         )
@@ -81,8 +83,8 @@ pub(crate) fn find_on_path(name: &str, path: Option<&std::ffi::OsStr>) -> Option
     let path = path?;
     let names: Vec<String> = if cfg!(windows) {
         vec![
-            uf_infra::cstr!("{name}.cmd").into_string(),
-            uf_infra::cstr!("{name}.exe").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("{name}.cmd")),
+            uf_infra::into_string(uf_infra::cstr!("{name}.exe")),
             name.to_owned(),
         ]
     } else {
@@ -159,7 +161,7 @@ pub(crate) fn fetch_verified(
 ) -> Result<(Utf8PathBuf, String)> {
     let url = asset_url(base, version, asset);
     let file = into.join(asset);
-    let listing_file = into.join(uf_infra::cstr!("{asset}.sha256").into_string());
+    let listing_file = into.join(uf_infra::into_string(uf_infra::cstr!("{asset}.sha256")));
     download(uf_infra::cstr!("{url}.sha256").as_str(), &listing_file).with_context(|| {
         uf_infra::cstr!(
             "the uf@{version} release has no {asset}.sha256. Releases before the one that \
@@ -170,14 +172,13 @@ pub(crate) fn fetch_verified(
     })?;
     download(&url, &file)?;
     let listing = std::fs::read_to_string(&listing_file)
-        .with_context(|| uf_infra::cstr!("could not read {listing_file}").into_string())?;
+        .with_context(|| uf_infra::cstr!("could not read {listing_file}"))?;
     let expected = stated_digest(&listing).ok_or_else(|| {
         anyhow!(uf_infra::cstr!(
             "{url}.sha256 does not state a SHA-256 digest"
         ))
     })?;
-    let bytes = std::fs::read(&file)
-        .with_context(|| uf_infra::cstr!("could not read {file}").into_string())?;
+    let bytes = std::fs::read(&file).with_context(|| uf_infra::cstr!("could not read {file}"))?;
     let actual = sha256_hex(&bytes);
     if actual != expected {
         bail!(uf_infra::cstr!(
@@ -247,10 +248,9 @@ pub(crate) fn place(path: &Utf8Path, contents: &str, force: bool) -> Result<Plac
     };
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| uf_infra::cstr!("could not create {parent}").into_string())?;
+            .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
     }
-    std::fs::write(path, contents)
-        .with_context(|| uf_infra::cstr!("could not write {path}").into_string())?;
+    std::fs::write(path, contents).with_context(|| uf_infra::cstr!("could not write {path}"))?;
     Ok(placed)
 }
 
@@ -274,10 +274,10 @@ pub(crate) fn write_owned_dir(root: &Utf8Path, files: &[Asset]) -> Result<()> {
         let path = root.join(file.path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| uf_infra::cstr!("could not create {parent}").into_string())?;
+                .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
         }
         std::fs::write(&path, file.contents)
-            .with_context(|| uf_infra::cstr!("could not write {path}").into_string())?;
+            .with_context(|| uf_infra::cstr!("could not write {path}"))?;
     }
     Ok(())
 }
@@ -376,10 +376,10 @@ pub(crate) fn install_files(
             )?;
             Ok((
                 FileInstall {
-                    next: vec![uf_infra::cstr!(
+                    next: vec![uf_infra::into_string(uf_infra::cstr!(
                         "add to your init file: (add-to-list 'load-path \"{dir}\") (require 'uf) \
                          (add-hook 'js-mode-hook #'uf-eglot-ensure)"
-                    ).into_string()],
+                    ))],
                     path: dir,
                 },
                 Placed::Written,

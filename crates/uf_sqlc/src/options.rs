@@ -140,7 +140,9 @@ pub fn parse(bytes: &[u8]) -> Result<Options, String> {
         return Ok(Options::default());
     }
     let options: Options = serde_json::from_slice(bytes).map_err(|error| {
-        compact_str::format_compact!("invalid plugin options: {error}").into_string()
+        uf_infra::into_string(compact_str::format_compact!(
+            "invalid plugin options: {error}"
+        ))
     })?;
     for entry in &options.overrides {
         match (&entry.column, &entry.db_type) {

@@ -2,6 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use index_vec::IndexVec;
 use rustc_hash::FxBuildHasher;
 use string_interner::{StringInterner, backend::StringBackend, symbol::SymbolU32};
 use thin_vec::ThinVec;
@@ -323,7 +324,10 @@ pub(crate) fn run_import_no_useless_path_segments(
                 rule,
                 severity,
                 import.source_at,
-                uf_infra::cstr!("`{}` can be written as `{shorter}`", import.source).into_string(),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "`{}` can be written as `{shorter}`",
+                    import.source
+                )),
             );
         }
     }
@@ -837,9 +841,9 @@ fn is_router_manifest_file(file: &str, manifest: &str) -> bool {
     let (stem, extension) = name.rsplit_once('.').unwrap_or((name, "js"));
     ["native", "ios", "android"].iter().any(|platform| {
         let native = if directory.is_empty() {
-            uf_infra::cstr!("{stem}.{platform}.{extension}").into_string()
+            uf_infra::into_string(uf_infra::cstr!("{stem}.{platform}.{extension}"))
         } else {
-            uf_infra::cstr!("{directory}/{stem}.{platform}.{extension}").into_string()
+            uf_infra::into_string(uf_infra::cstr!("{directory}/{stem}.{platform}.{extension}"))
         };
         file == native
     })
@@ -1247,28 +1251,32 @@ impl Default for ExportSymbols {
     }
 }
 
+index_vec::define_index_type! {
+    struct ModuleId = u32;
+}
+
 /// Relative import graph over the source batch available to lint rules.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ImportGraph {
-    paths: Vec<String>,
-    edges: Vec<ThinVec<ImportEdge>>,
-    by_path: FxHashMap<String, usize>,
+    paths: IndexVec<ModuleId, String>,
+    edges: IndexVec<ModuleId, ThinVec<ImportEdge>>,
+    by_path: FxHashMap<String, ModuleId>,
     symbols: ExportSymbols,
-    named_exports: Vec<FxHashSet<SymbolU32>>,
-    default_exports: Vec<bool>,
-    deprecated_named_exports: Vec<FxHashSet<SymbolU32>>,
-    deprecated_default_exports: Vec<bool>,
-    used_named_exports: Vec<FxHashSet<SymbolU32>>,
-    used_default_exports: Vec<bool>,
-    used_namespace_exports: Vec<bool>,
-    used_all_named_exports: Vec<bool>,
+    named_exports: IndexVec<ModuleId, FxHashSet<SymbolU32>>,
+    default_exports: IndexVec<ModuleId, bool>,
+    deprecated_named_exports: IndexVec<ModuleId, FxHashSet<SymbolU32>>,
+    deprecated_default_exports: IndexVec<ModuleId, bool>,
+    used_named_exports: IndexVec<ModuleId, FxHashSet<SymbolU32>>,
+    used_default_exports: IndexVec<ModuleId, bool>,
+    used_namespace_exports: IndexVec<ModuleId, bool>,
+    used_all_named_exports: IndexVec<ModuleId, bool>,
 }
 
 /// One relative import from a module to another in the batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ImportEdge {
     /// The imported module.
-    to: usize,
+    to: ModuleId,
     /// Byte offset of the specifier in the importer, where a finding points.
     source_at: usize,
     /// Whether the import survives to run time.
@@ -1298,14 +1306,14 @@ impl ImportGraph {
         }
         files.extend(candidates);
 
-        let mut paths = Vec::new();
+        let mut paths = IndexVec::new();
         let mut by_path = FxHashMap::default();
         for file in &files {
             let path = normalize_graph_path(&file.path);
             if by_path.contains_key(&path) {
                 continue;
             }
-            let index = paths.len();
+            let index = ModuleId::new(paths.len());
             by_path.insert(path.clone(), index);
             paths.push(path);
         }
@@ -1314,13 +1322,13 @@ impl ImportGraph {
             symbols: ExportSymbols::default(),
             edges: (0..paths.len()).map(|_| ThinVec::new()).collect(),
             named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
-            default_exports: vec![false; paths.len()],
+            default_exports: IndexVec::from_vec(vec![false; paths.len()]),
             deprecated_named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
-            deprecated_default_exports: vec![false; paths.len()],
+            deprecated_default_exports: IndexVec::from_vec(vec![false; paths.len()]),
             used_named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
-            used_default_exports: vec![false; paths.len()],
-            used_namespace_exports: vec![false; paths.len()],
-            used_all_named_exports: vec![false; paths.len()],
+            used_default_exports: IndexVec::from_vec(vec![false; paths.len()]),
+            used_namespace_exports: IndexVec::from_vec(vec![false; paths.len()]),
+            used_all_named_exports: IndexVec::from_vec(vec![false; paths.len()]),
             paths,
             by_path,
         };
@@ -1441,21 +1449,21 @@ impl ImportGraph {
             })
     }
 
-    fn reaches(&self, current: usize, target: usize, seen: &mut [bool]) -> bool {
+    fn reaches(&self, current: ModuleId, target: ModuleId, seen: &mut [bool]) -> bool {
         if current == target {
             return true;
         }
-        if seen[current] {
+        if seen[current.index()] {
             return false;
         }
-        seen[current] = true;
+        seen[current.index()] = true;
         self.edges[current]
             .iter()
             .filter(|edge| edge.runtime)
             .any(|edge| self.reaches(edge.to, target, seen))
     }
 
-    fn resolve(&self, specifier: &str, importer: &str) -> Option<usize> {
+    fn resolve(&self, specifier: &str, importer: &str) -> Option<ModuleId> {
         if !is_relative_import(specifier) {
             return None;
         }
@@ -1473,7 +1481,7 @@ impl ImportGraph {
         })
     }
 
-    fn lookup(&self, path: &str) -> Option<usize> {
+    fn lookup(&self, path: &str) -> Option<ModuleId> {
         self.by_path
             .get(path)
             .or_else(|| self.by_path.get(uf_infra::cstr!("{path}.flow").as_str()))
@@ -1605,7 +1613,7 @@ impl ImportGraph {
         })
     }
 
-    fn has_importer(&self, module: usize) -> bool {
+    fn has_importer(&self, module: ModuleId) -> bool {
         self.edges
             .iter()
             .flat_map(|edges| edges.iter())
@@ -1631,10 +1639,13 @@ fn unused_export_message(unused: &UnusedModule) -> String {
         unused
             .named_exports
             .iter()
-            .map(|name| uf_infra::cstr!("`{name}`").into_string()),
+            .map(|name| uf_infra::into_string(uf_infra::cstr!("`{name}`"))),
     );
     let plural = if names.len() == 1 { "" } else { "s" };
-    uf_infra::cstr!("unused export{plural}: {}", names.join(", ")).into_string()
+    uf_infra::into_string(uf_infra::cstr!(
+        "unused export{plural}: {}",
+        names.join(", ")
+    ))
 }
 
 fn is_likely_entry_module(path: &str) -> bool {
@@ -1819,7 +1830,7 @@ fn shorter_import_path(source: &str) -> Option<String> {
     }
 
     let normalized = normalize_relative_specifier(path);
-    (normalized != path).then(|| uf_infra::cstr!("{normalized}{suffix}").into_string())
+    (normalized != path).then(|| uf_infra::into_string(uf_infra::cstr!("{normalized}{suffix}")))
 }
 
 fn split_import_suffix(source: &str) -> (&str, &str) {
@@ -1851,7 +1862,7 @@ fn format_relative_segments(segments: &[&str]) -> String {
     if segments[0] == ".." {
         return segments.join("/");
     }
-    uf_infra::cstr!("./{}", segments.join("/")).into_string()
+    uf_infra::into_string(uf_infra::cstr!("./{}", segments.join("/")))
 }
 
 fn normalize_path(path: &Path) -> PathBuf {

@@ -91,8 +91,10 @@ pub(crate) fn sqlc(cwd: &Utf8Path, ui: &mut Ui, command: SqlcCommand) -> Result<
                  (https://docs.sqlc.dev/en/latest/overview/install.html) or point `SQLC` at it"
             ))
         } else {
-            anyhow::Error::new(error)
-                .context(uf_infra::cstr!("could not run {}", sqlc.to_string_lossy()).into_string())
+            anyhow::Error::new(error).context(uf_infra::into_string(uf_infra::cstr!(
+                "could not run {}",
+                sqlc.to_string_lossy()
+            )))
         }
     })?;
     if !status.success() {

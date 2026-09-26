@@ -196,9 +196,9 @@ pub fn compile_with_options(
     let renamer = BindingRenamer::new(&scope);
     teach_facade_provenance(&mut scope);
     let mut ast = File::deserialize(file).map_err(|error| {
-        TransformError::Internal(
-            uf_infra::cstr!("Babel AST rejected by the React Compiler: {error}").into_string(),
-        )
+        TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+            "Babel AST rejected by the React Compiler: {error}"
+        )))
     })?;
     stamp_source_filename(&mut ast, source_filename);
     Ok(match compile_program(ast, scope, options) {
@@ -227,9 +227,9 @@ pub(crate) fn compile_events_with_options(
 ) -> Result<Vec<LoggerEvent>, TransformError> {
     teach_facade_provenance(&mut scope);
     let mut ast = File::deserialize(file).map_err(|error| {
-        TransformError::Internal(
-            uf_infra::cstr!("Babel AST rejected by the React Compiler: {error}").into_string(),
-        )
+        TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+            "Babel AST rejected by the React Compiler: {error}"
+        )))
     })?;
     stamp_source_filename(&mut ast, source_filename);
     Ok(match compile_program(ast, scope, options) {
@@ -246,9 +246,9 @@ fn rewritten_ast(
     match ast {
         Some(ast) => {
             let mut ast = serde_json::to_value(ast).map_err(|error| {
-                TransformError::Internal(
-                    uf_infra::cstr!("compiled AST could not be serialized: {error}").into_string(),
-                )
+                TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+                    "compiled AST could not be serialized: {error}"
+                )))
             })?;
             renamer.apply(&mut ast, renames);
             Ok(Some(ast))
@@ -578,9 +578,9 @@ fn options_for(
         options.extend(specific);
     }
     serde_json::from_value(options).map_err(|error| {
-        TransformError::Internal(
-            uf_infra::cstr!("React Compiler options rejected: {error}").into_string(),
-        )
+        TransformError::Internal(uf_infra::into_string(uf_infra::cstr!(
+            "React Compiler options rejected: {error}"
+        )))
     })
 }
 
@@ -946,9 +946,9 @@ function outer(value) {
             ("import React from '@uniflowed/react';", "React."),
             ("import * as React from '@uniflowed/react';", "React."),
         ] {
-            let source = uf_infra::cstr!(
+            let source = uf_infra::into_string(uf_infra::cstr!(
                 "{import} component App(value: string) {{ const ref = {prefix}useRef(null); const pinned = {prefix}useRef(true); {prefix}useEffect(() => {{ if (ref.current && pinned.current) ref.current.scrollTop = ref.current.scrollHeight; }}, [value]); return <div ref={{ref}} onScroll={{() => {{ pinned.current = false; }}}}>{{value}}</div>; }}"
-            ).into_string();
+            ));
             let (file, diagnostics, count) = compiled(&source, ReactCompilerMode::Syntax);
             assert!(diagnostics.is_empty(), "{source}\n{diagnostics:?}");
             assert_eq!(count, 1);

@@ -540,7 +540,7 @@ impl Event {
     fn describe(&self) -> String {
         match self {
             Self::Test(event) => {
-                uf_infra::cstr!("the case \"{}\"", excerpt(&event.name)).into_string()
+                uf_infra::into_string(uf_infra::cstr!("the case \"{}\"", excerpt(&event.name)))
             }
             Self::File(event) => match &event.message {
                 Some(message) => uf_infra::cstr!(
@@ -549,12 +549,13 @@ impl Event {
                     excerpt(message)
                 )
                 .into_string(),
-                None => {
-                    uf_infra::cstr!("the file result \"{}\"", excerpt(&event.status)).into_string()
-                }
+                None => uf_infra::into_string(uf_infra::cstr!(
+                    "the file result \"{}\"",
+                    excerpt(&event.status)
+                )),
             },
             Self::Output(event) => {
-                uf_infra::cstr!("output \"{}\"", excerpt(&event.text)).into_string()
+                uf_infra::into_string(uf_infra::cstr!("output \"{}\"", excerpt(&event.text)))
             }
             Self::Invalidated(_) => String::from("an answer about changed files"),
         }
@@ -758,25 +759,25 @@ impl StaleEvents {
                         uf_infra::cstr!("a request this worker never served ({generation})")
                             .into_string()
                     },
-                    |file| uf_infra::cstr!("`{file}`").into_string(),
+                    |file| uf_infra::into_string(uf_infra::cstr!("`{file}`")),
                 );
             // "That run of it" rather than "that file": a retry re-runs the
             // same path, so the file a straggler came from can be the file
             // being reported, one attempt earlier.
-            let text =
-                if tally.count == 1 {
-                    uf_infra::cstr!(
+            let text = if tally.count == 1 {
+                uf_infra::into_string(uf_infra::cstr!(
                     "[uf] one event arrived from {origin} after that run of it had finished, and \
                      was dropped rather than reported here: {}\n",
                     tally.first
-                ).into_string()
-                } else {
-                    uf_infra::cstr!(
+                ))
+            } else {
+                uf_infra::into_string(uf_infra::cstr!(
                     "[uf] {} events arrived from {origin} after that run of it had finished, and \
                      were dropped rather than reported here; the first was {}\n",
-                    tally.count, tally.first
-                ).into_string()
-                };
+                    tally.count,
+                    tally.first
+                ))
+            };
             notes.push(OutputChunk {
                 stream: OutputStream::Stderr,
                 text,
@@ -1190,7 +1191,7 @@ impl Worker {
             Err(error) => {
                 return Self::host_failed(
                     relative,
-                    uf_infra::cstr!("unencodable request: {error}").into_string(),
+                    uf_infra::into_string(uf_infra::cstr!("unencodable request: {error}")),
                 );
             }
         };
@@ -1207,7 +1208,7 @@ impl Worker {
         {
             return Self::host_failed(
                 relative,
-                uf_infra::cstr!("could not reach the worker: {error}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("could not reach the worker: {error}")),
             );
         }
 
@@ -1282,7 +1283,7 @@ impl Worker {
                 Err(RecvTimeoutError::Disconnected) => {
                     let how = match self.child.try_wait() {
                         Ok(Some(status)) => {
-                            uf_infra::cstr!("the worker exited ({status})").into_string()
+                            uf_infra::into_string(uf_infra::cstr!("the worker exited ({status})"))
                         }
                         _ => String::from("the worker stopped writing"),
                     };
@@ -1542,9 +1543,9 @@ fn file_status(event: FileEvent) -> FileStatus {
             stack: event.stack,
         },
         other => FileStatus::HostFailed {
-            message: event
-                .message
-                .unwrap_or_else(|| uf_infra::cstr!("the worker reported {other}").into_string()),
+            message: event.message.unwrap_or_else(|| {
+                uf_infra::into_string(uf_infra::cstr!("the worker reported {other}"))
+            }),
         },
     }
 }
@@ -1859,7 +1860,7 @@ mod tests {
             "event": "output",
             "stream": "stdout",
             "test": test,
-            "text": uf_infra::cstr!("{text}\n").into_string(),
+            "text": uf_infra::into_string(uf_infra::cstr!("{text}\n")),
         })
         .to_string()
     }
@@ -1928,12 +1929,18 @@ mod tests {
         let Ok(Event::Output(event)) = serde_json::from_str::<Event>(&line) else {
             panic!("a printed protocol line must stay an output event");
         };
-        assert_eq!(event.text, uf_infra::cstr!("{printed}\n").into_string());
+        assert_eq!(
+            event.text,
+            uf_infra::into_string(uf_infra::cstr!("{printed}\n"))
+        );
 
         let mut pending = PendingOutput::default();
         pending.push(event);
         let taken = pending.take("a > b");
-        assert_eq!(taken[0].text, uf_infra::cstr!("{printed}\n").into_string());
+        assert_eq!(
+            taken[0].text,
+            uf_infra::into_string(uf_infra::cstr!("{printed}\n"))
+        );
     }
 
     #[test]

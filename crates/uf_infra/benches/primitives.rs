@@ -59,6 +59,26 @@ fn primitives(c: &mut Criterion) {
     group.bench_function("line-index/after", |b| {
         b.iter(|| LineIndex::new(black_box("one\ntwo\n日本語\nfour\n")))
     });
+    let long_source = "let value = 1;\n".repeat(2048);
+    group.bench_function("line-index/long-before", |b| {
+        b.iter(|| {
+            let source = black_box(long_source.as_str());
+            let mut starts =
+                Vec::with_capacity(source.as_bytes().iter().filter(|&&b| b == b'\n').count() + 1);
+            starts.push(0);
+            starts.extend(uf_infra::memchr_iter(b'\n', source.as_bytes()).map(|i| i + 1));
+            black_box(starts)
+        })
+    });
+    group.bench_function("line-index/long-after", |b| {
+        b.iter(|| LineIndex::new(black_box(long_source.as_str())))
+    });
+    group.bench_function("float/before", |b| {
+        b.iter(|| black_box("-123.456789e-12").parse::<f32>().unwrap())
+    });
+    group.bench_function("float/after", |b| {
+        b.iter(|| uf_infra::parse_float::<f32, _>(black_box("-123.456789e-12")).unwrap())
+    });
     group.finish();
 }
 criterion_group!(benches, primitives);

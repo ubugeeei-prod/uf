@@ -399,7 +399,7 @@ pub(super) fn plan_project(root: &Utf8Path, plan: &mut Plan, steps: Steps) -> Re
         })();
         if let Err(reason) = outcome {
             plan.unmapped
-                .push(uf_infra::cstr!("{path}: {reason}").into_string());
+                .push(uf_infra::into_string(uf_infra::cstr!("{path}: {reason}")));
             continue;
         }
         if text == before {
@@ -520,9 +520,9 @@ pub(super) fn rewrite_with(
         while bound.contains(local.as_str()) || taken.contains(&local) {
             let prefix = origin.alias_prefix();
             local = if attempt == 1 {
-                uf_infra::cstr!("{prefix}{namespace}").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{prefix}{namespace}"))
             } else {
-                uf_infra::cstr!("{prefix}{namespace}{attempt}").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{prefix}{namespace}{attempt}"))
             };
             attempt += 1;
         }
@@ -531,7 +531,7 @@ pub(super) fn rewrite_with(
             added.push(if local == *namespace {
                 local.clone()
             } else {
-                uf_infra::cstr!("{namespace} as {local}").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{namespace} as {local}"))
             });
         }
         locals.insert(key, local);
@@ -608,7 +608,9 @@ pub(super) fn rewrite_with(
                 // The package's namespace is a level below it; a copy's is the
                 // module the star already binds.
                 let replacement = match origin {
-                    Origin::Package => uf_infra::cstr!("{namespace}.{member}").into_string(),
+                    Origin::Package => {
+                        uf_infra::into_string(uf_infra::cstr!("{namespace}.{member}"))
+                    }
                     Origin::Copy(_) => member.to_owned(),
                 };
                 edits.push((token.start..token.end, replacement));
@@ -632,15 +634,15 @@ pub(super) fn rewrite_with(
             // shorthand property, a pattern or a local export otherwise; only
             // the first is a plain reference.
             if !is_jsx_container(source, &tokens, index) {
-                return Err(uf_infra::cstr!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "`{text}` is written as a shorthand property or a local export; write `{text}: {namespace}.{member}` or rename the export by hand"
-                ).into_string());
+                )));
             }
         }
         let local = &locals[&(*origin, namespace.clone())];
         edits.push((
             token.start..token.end,
-            uf_infra::cstr!("{local}.{member}").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("{local}.{member}")),
         ));
     }
 
@@ -709,7 +711,7 @@ impl Import<'_> {
 /// A specifier list, on one line while it fits in the hundred columns uf's
 /// formatter wraps at and one per line after that.
 fn braces(specifiers: &[String], indent: &str) -> String {
-    let line = uf_infra::cstr!("{{ {} }}", specifiers.join(", ")).into_string();
+    let line = uf_infra::into_string(uf_infra::cstr!("{{ {} }}", specifiers.join(", ")));
     if line.len() + indent.len() + 30 <= 100 {
         return line;
     }
@@ -798,10 +800,10 @@ fn package_imports<'a>(
         };
         if keyword == "export" {
             if let Some(found) = named.iter().find(|s| origin.lookup(s.imported).is_some()) {
-                return Err(uf_infra::cstr!(
+                return Err(uf_infra::into_string(uf_infra::cstr!(
                     "re-exports `{}` from {specifier}; a re-export is this file's own surface, so rename it by hand",
                     found.imported
-                ).into_string());
+                )));
             }
             continue;
         }

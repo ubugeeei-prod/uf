@@ -99,8 +99,10 @@ pub(super) fn put_raw(source: &mut String, path: &[&str], value: &str) -> Result
             .value
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!(uf_infra::cstr!("shorthand config key {key}")))?;
-        let replacement =
-            uf_infra::cstr!("{}{value}", comments(&source[old.start()..old.end()])).into_string();
+        let replacement = uf_infra::into_string(uf_infra::cstr!(
+            "{}{value}",
+            comments(&source[old.start()..old.end()])
+        ));
         source.replace_range(old.start()..old.end(), &replacement);
     } else {
         let indent_start = source[..parent.open].rfind('\n').map_or(0, |n| n + 1);

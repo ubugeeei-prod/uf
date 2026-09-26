@@ -99,7 +99,10 @@ impl Selection {
     /// test files run.
     pub(crate) fn describe(&self, running: usize, tests: usize) -> String {
         let base = self.base.get(..12).unwrap_or(&self.base);
-        let since = uf_infra::cstr!("since {} (merge base {base})", self.reference).into_string();
+        let since = uf_infra::into_string(uf_infra::cstr!(
+            "since {} (merge base {base})",
+            self.reference
+        ));
         match &self.whole_suite {
             Some(file) => uf_infra::cstr!(
                 "{file} {since}, and every test depends on it · running all {}",

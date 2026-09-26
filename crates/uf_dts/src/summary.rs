@@ -235,7 +235,7 @@ fn reference_specifier(path: &str) -> Cow<'_, str> {
     if path.starts_with("./") || path.starts_with("../") {
         Cow::Borrowed(path)
     } else {
-        Cow::Owned(uf_infra::cstr!("./{path}").into_string())
+        Cow::Owned(uf_infra::into_string(uf_infra::cstr!("./{path}")))
     }
 }
 

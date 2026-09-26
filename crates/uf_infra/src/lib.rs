@@ -14,6 +14,7 @@
 pub mod cache;
 pub mod parallel;
 mod string_builder;
+pub use string_builder::into_string;
 
 pub use bumpalo::{Bump, collections::Vec as ArenaVec};
 pub use compact_str::{CompactString, format_compact};
@@ -52,7 +53,14 @@ pub struct LineIndex {
 
 impl LineIndex {
     pub fn new(source: &str) -> Self {
-        let mut starts = InlineVec::new();
+        // Short modules stay inline. Large inputs get one exact allocation;
+        // SIMD newline counting avoids the old scalar pre-scan and repeated
+        // SmallVec growth when thousands of lines spill.
+        let mut starts = if source.len() > 1024 {
+            InlineVec::with_capacity(memchr_iter(b'\n', source.as_bytes()).count() + 1)
+        } else {
+            InlineVec::new()
+        };
         starts.push(0);
         starts.extend(memchr_iter(b'\n', source.as_bytes()).map(|offset| offset + 1));
         Self { starts }
@@ -84,19 +92,21 @@ pub fn is_flow_keyword(value: &str) -> bool {
 }
 
 pub fn normalize_slashes(path: &str) -> CompactString {
-    let Some(first) = memchr(b'\\', path.as_bytes()) else {
-        return CompactString::new(path);
-    };
-    let mut normalized = CompactString::with_capacity(path.len());
-    normalized.push_str(&path[..first]);
-    let mut start = first;
-    for offset in memchr_iter(b'\\', &path.as_bytes()[first..]) {
-        let offset = first + offset;
-        normalized.push_str(&path[start..offset]);
-        normalized.push('/');
-        start = offset + 1;
+    // For heap-sized strings, replace's allocation becomes the CompactString's
+    // backing buffer directly. It was faster than rebuilding chunk by chunk.
+    if path.len() > std::mem::size_of::<CompactString>() {
+        return CompactString::from(path.replace('\\', "/"));
     }
-    normalized.push_str(&path[start..]);
+    let mut normalized = CompactString::new(path);
+    // SAFETY: every byte starts as valid UTF-8. Only ASCII backslash becomes
+    // ASCII slash, preserving length and every multibyte sequence. The result
+    // remains valid UTF-8 throughout; the borrow cannot escape this function.
+    let bytes = unsafe { normalized.as_mut_bytes() };
+    for byte in bytes {
+        if *byte == b'\\' {
+            *byte = b'/';
+        }
+    }
     normalized
 }
 

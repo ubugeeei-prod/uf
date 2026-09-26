@@ -137,7 +137,7 @@ impl GenId {
 
     fn id(&mut self) -> Value {
         loop {
-            let candidate = uf_infra::cstr!("$$gen$m{}", self.next).into_string();
+            let candidate = uf_infra::into_string(uf_infra::cstr!("$$gen$m{}", self.next));
             self.next += 1;
             if !self.used.contains(&candidate) {
                 self.used.insert(candidate.clone());
@@ -519,7 +519,10 @@ fn analyze_pattern(
         }
         other => Err(refuse(
             pattern,
-            uf_infra::cstr!("unknown match pattern {:?}", other.unwrap_or("node")).into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "unknown match pattern {:?}",
+                other.unwrap_or("node")
+            )),
         )),
     }
 }

@@ -193,9 +193,9 @@ fn plan(store: &Store) -> Result<Plan> {
                 )
                 .into_string(),
             ),
-            Err(_) => plan
-                .left_alone
-                .push(uf_infra::cstr!("{path}, which is not a link uf made").into_string()),
+            Err(_) => plan.left_alone.push(uf_infra::into_string(uf_infra::cstr!(
+                "{path}, which is not a link uf made"
+            ))),
         }
     }
     // What a killed switch left beside them.
@@ -398,7 +398,7 @@ fn remove(store: &Store, removals: &[Removal]) -> Result<()> {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => {
                 return Err(error).with_context(|| {
-                    uf_infra::cstr!("failed to remove {}", removal.path).into_string()
+                    uf_infra::into_string(uf_infra::cstr!("failed to remove {}", removal.path))
                 });
             }
         }

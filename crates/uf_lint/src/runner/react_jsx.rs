@@ -951,11 +951,11 @@ impl<'ast> Walk<'ast> {
                     self.report(
                         loc,
                         JSX_KEY,
-                        uf_infra::cstr!(
+                        uf_infra::into_string(uf_infra::cstr!(
                             "`key=\"{key}\"` is used twice in this array, and React tells elements \
                              apart by key, so it may drop one of them or give it the other's state; \
                              give each element a key of its own"
-                        ).into_string(),
+                        )),
                     );
                 } else if !slot.contains(&key) {
                     slot.push(key);
@@ -993,11 +993,11 @@ impl<'ast> Walk<'ast> {
                     self.report(
                         loc,
                         JSX_KEY,
-                        uf_infra::cstr!(
+                        uf_infra::into_string(uf_infra::cstr!(
                             "this `key` reaches `<{name}>` inside a spread object, which React warns \
                              about because a key has to be written on the element; write `key={{…}}` \
                              on `<{name}>` itself"
-                        ).into_string(),
+                        )),
                     );
                     return;
                 }
@@ -1006,15 +1006,15 @@ impl<'ast> Walk<'ast> {
                     return;
                 }
                 let message = match list {
-                    List::Array => uf_infra::cstr!(
+                    List::Array => uf_infra::into_string(uf_infra::cstr!(
                         "`<{name}>` sits in an array with no `key`, so React matches it to the next \
                          render by position; give it a `key` that says which item it is"
-                    ).into_string(),
-                    List::Callback(method) => uf_infra::cstr!(
+                    )),
+                    List::Callback(method) => uf_infra::into_string(uf_infra::cstr!(
                         "`<{name}>` is returned from `{method}` with no `key`, so React matches the \
                          items by position and hands one item's state to another when the list is \
                          reordered or filtered; give it `key={{…}}` with the item's id"
-                    ).into_string(),
+                    )),
                 };
                 self.report(&opening.loc, JSX_KEY, message);
             }
@@ -1022,7 +1022,7 @@ impl<'ast> Walk<'ast> {
                 let place = match list {
                     List::Array => String::from("in an array"),
                     List::Callback(method) => {
-                        uf_infra::cstr!("returned from `{method}`").into_string()
+                        uf_infra::into_string(uf_infra::cstr!("returned from `{method}`"))
                     }
                 };
                 self.report(
@@ -1160,10 +1160,10 @@ impl<'ast> Walk<'ast> {
                 self.report(
                     &attribute.loc,
                     DUPLICATE_PROPS,
-                    uf_infra::cstr!(
+                    uf_infra::into_string(uf_infra::cstr!(
                         "`{name}` is given twice on `<{element}>`, and only the last one reaches it; \
                          remove the one that was not meant"
-                    ).into_string(),
+                    )),
                 );
             } else {
                 seen.push(name);
@@ -1180,19 +1180,18 @@ impl<'ast> Walk<'ast> {
             return;
         };
         let name = element_name(&opening.name);
-        let message =
-            if element.children.1.iter().any(renders_something) {
-                uf_infra::cstr!(
+        let message = if element.children.1.iter().any(renders_something) {
+            uf_infra::into_string(uf_infra::cstr!(
                 "`children` is passed to `<{name}>` as a prop and also written between its tags, \
                  and the ones between the tags replace the prop, so it never renders; remove the \
                  prop"
-            ).into_string()
-            } else {
-                uf_infra::cstr!(
+            ))
+        } else {
+            uf_infra::into_string(uf_infra::cstr!(
                 "pass `children` to `<{name}>` between its tags rather than as a prop, which is \
                  where a reader of JSX looks for them"
-            ).into_string()
-            };
+            ))
+        };
         self.report(&prop.loc, CHILDREN_PROP, message);
     }
 
@@ -1787,7 +1786,7 @@ fn member_name(member: &jsx::MemberExpression<Loc, Loc>) -> String {
         jsx::member_expression::Object::Identifier(identifier) => String::from(&*identifier.name),
         jsx::member_expression::Object::MemberExpression(inner) => member_name(inner),
     };
-    uf_infra::cstr!("{object}.{}", &*member.property.name).into_string()
+    uf_infra::into_string(uf_infra::cstr!("{object}.{}", &*member.property.name))
 }
 
 /// The props a `component` declares, each with the binding its body reads it
@@ -1839,7 +1838,7 @@ fn unused_message(component: &str, prop: &PropParam<'_>) -> String {
     let read_as = if prop.written == prop.local {
         String::new()
     } else {
-        uf_infra::cstr!(", bound as `{}`,", prop.local).into_string()
+        uf_infra::into_string(uf_infra::cstr!(", bound as `{}`,", prop.local))
     };
     uf_infra::cstr!(
         "`<{component}>` declares the prop `{}`{read_as} and never reads it, so every caller is \
@@ -1859,10 +1858,10 @@ fn index_message(index: &str) -> String {
 }
 
 fn void_message(name: &str, held: &str) -> String {
-    uf_infra::cstr!(
+    uf_infra::into_string(uf_infra::cstr!(
         "`<{name}>` is a void element and cannot hold {held}: React throws when it renders one that \
          does; put the content next to it instead"
-    ).into_string()
+    ))
 }
 
 /// Byte offset of the first line of `text` that starts, after whitespace, with

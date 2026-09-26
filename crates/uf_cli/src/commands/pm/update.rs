@@ -149,8 +149,10 @@ pub(crate) fn update(
         match published.get(&declaration.name) {
             None | Some(Err(_)) => {
                 if let Some(Err(error)) = published.get(&declaration.name) {
-                    unreachable
-                        .push(uf_infra::cstr!("{}: {error}", declaration.name).into_string());
+                    unreachable.push(uf_infra::into_string(uf_infra::cstr!(
+                        "{}: {error}",
+                        declaration.name
+                    )));
                 }
                 continue;
             }
@@ -230,7 +232,10 @@ pub(crate) fn update(
     // dependency graph half moved to versions nobody chose, and the install
     // below would then install it. See `uf_pm::manifests::apply_all`.
     let written = uf_pm::manifests::apply_all(&changes).with_context(|| {
-        uf_infra::cstr!("could not rewrite {}", project_label(&root)).into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not rewrite {}",
+            project_label(&root)
+        ))
     })?;
     let summary = uf_infra::cstr!(
         "{} in {}",
@@ -308,7 +313,7 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
             }
             None => "every dependency's newest version is inside its declared range".to_owned(),
             Some(level) => {
-                uf_infra::cstr!("no range would move at the {level} level").into_string()
+                uf_infra::into_string(uf_infra::cstr!("no range would move at the {level} level"))
             }
         };
         renderer.status(out, Status::Success, &line);

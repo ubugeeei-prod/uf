@@ -335,7 +335,7 @@ fn report_with_uf_help(error: &clap::Error, root: &mut clap::Command) -> Option<
                 uf_infra::cstr!("`{typed}` is not a `{command}` command").as_str(),
                 &suggestions
                     .iter()
-                    .map(|name| uf_infra::cstr!("`{command} {name}`").into_string())
+                    .map(|name| uf_infra::into_string(uf_infra::cstr!("`{command} {name}`")))
                     .collect::<Vec<_>>(),
                 uf_infra::cstr!("`{command} --help` lists them").as_str(),
             );
@@ -929,7 +929,8 @@ fn enter_workspace(cwd: &Utf8PathBuf, target: &str) -> Result<Utf8PathBuf> {
         Err(available) => {
             let names = available.iter().map(compact_str::CompactString::as_str);
             let suggestions = crate::suggest::closest(target, names.clone());
-            let mut message = uf_infra::cstr!("no workspace named {target:?}").into_string();
+            let mut message =
+                uf_infra::into_string(uf_infra::cstr!("no workspace named {target:?}"));
             if !suggestions.is_empty() {
                 message.push_str("\n\n  did you mean: ");
                 message.push_str(&suggestions.join(", "));
@@ -1095,7 +1096,10 @@ mod tests {
                 // argument, and this test has nothing to say about it.
                 None if current.get_subcommands().next().is_some() => {
                     path.push(name);
-                    return Some(uf_infra::cstr!("`uf {}`", path.join(" ")).into_string());
+                    return Some(uf_infra::into_string(uf_infra::cstr!(
+                        "`uf {}`",
+                        path.join(" ")
+                    )));
                 }
                 None => break,
             }

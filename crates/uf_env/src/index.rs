@@ -350,13 +350,13 @@ impl Bases {
         const PACKUMENT: &str = "application/vnd.npm.install-v1+json";
         let packument = |name: &str| {
             (
-                compact_str::format_compact!("{}/{name}", self.registry).into_string(),
+                uf_infra::into_string(compact_str::format_compact!("{}/{name}", self.registry)),
                 PACKUMENT,
             )
         };
         match tool {
             Tool::Node => vec![(
-                compact_str::format_compact!("{}/index.json", self.nodejs).into_string(),
+                uf_infra::into_string(compact_str::format_compact!("{}/index.json", self.nodejs)),
                 JSON,
             )],
             Tool::Bun => vec![packument("bun")],
@@ -443,7 +443,10 @@ pub fn refresh_in(dir: &Utf8Path, tool: Tool, bases: &Bases) -> Result<Index, En
 
 /// `<dir>/<tool>.json`.
 fn cache_path(dir: &Utf8Path, tool: Tool) -> Utf8PathBuf {
-    dir.join(compact_str::format_compact!("{}.json", tool.name()).into_string())
+    dir.join(uf_infra::into_string(compact_str::format_compact!(
+        "{}.json",
+        tool.name()
+    )))
 }
 
 /// Write the cache under a temporary name and rename it into place.
@@ -492,7 +495,9 @@ fn fetch(url: &str, accept: &str) -> Result<String, EnvError> {
             "=https",
             "-H",
         ])
-        .arg(compact_str::format_compact!("Accept: {accept}").into_string())
+        .arg(uf_infra::into_string(compact_str::format_compact!(
+            "Accept: {accept}"
+        )))
         .arg("--")
         .arg(url)
         .output()

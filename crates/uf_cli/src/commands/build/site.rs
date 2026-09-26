@@ -153,12 +153,16 @@ impl SiteUrl {
             // authority has a path. Under a base path the root is the base,
             // with the slash only where the policy writes one.
             if self.application.is_empty() || matches!(self.slash, TrailingSlash::Always) {
-                uf_infra::cstr!("{}{}/", self.base, self.application).into_string()
+                uf_infra::into_string(uf_infra::cstr!("{}{}/", self.base, self.application))
             } else {
-                uf_infra::cstr!("{}{}", self.base, self.application).into_string()
+                uf_infra::into_string(uf_infra::cstr!("{}{}", self.base, self.application))
             }
         } else {
-            uf_infra::cstr!("{}{}{encoded}", self.base, self.application).into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "{}{}{encoded}",
+                self.base,
+                self.application
+            ))
         }
     }
 }
@@ -355,7 +359,7 @@ pub(crate) fn write(
         // empty one is not the same as having one.
         if !urls.is_empty() {
             fs::write(&sitemap_path, sitemap(&site, &urls)?)
-                .with_context(|| uf_infra::cstr!("failed to write {sitemap_path}").into_string())?;
+                .with_context(|| uf_infra::cstr!("failed to write {sitemap_path}"))?;
             written.files.push(sitemap_path);
             sitemap_exists = true;
         }
@@ -370,7 +374,7 @@ pub(crate) fn write(
         }
     } else if let Some(text) = robots(&site, &config.robots, sitemap_exists)? {
         fs::write(&robots_path, text)
-            .with_context(|| uf_infra::cstr!("failed to write {robots_path}").into_string())?;
+            .with_context(|| uf_infra::cstr!("failed to write {robots_path}"))?;
         written.files.push(robots_path);
     }
 

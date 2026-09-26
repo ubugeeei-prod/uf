@@ -56,13 +56,18 @@ impl RawCoverage {
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_nanos());
-        let directory = root
-            .join(".uf")
-            .join("cache")
-            .join("coverage")
-            .join(uf_infra::cstr!("{}-{stamp}", std::process::id()).into_string());
+        let directory =
+            root.join(".uf")
+                .join("cache")
+                .join("coverage")
+                .join(uf_infra::into_string(uf_infra::cstr!(
+                    "{}-{stamp}",
+                    std::process::id()
+                )));
         std::fs::create_dir_all(&directory).with_context(|| {
-            uf_infra::cstr!("could not create the coverage directory {directory}").into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "could not create the coverage directory {directory}"
+            ))
         })?;
         Ok(Self { directory })
     }
@@ -205,7 +210,7 @@ pub(super) fn report(
         .any(|reporter| !matches!(reporter, CoverageReporterConfig::Text))
     {
         std::fs::create_dir_all(directory)
-            .with_context(|| uf_infra::cstr!("could not create {directory}").into_string())?;
+            .with_context(|| uf_infra::cstr!("could not create {directory}"))?;
     }
     for reporter in &chosen {
         let (name, body) = match reporter {
@@ -214,8 +219,7 @@ pub(super) fn report(
             CoverageReporterConfig::Cobertura => (COBERTURA_FILE, cobertura(coverage)),
         };
         let path = directory.join(name);
-        std::fs::write(&path, body)
-            .with_context(|| uf_infra::cstr!("could not write {path}").into_string())?;
+        std::fs::write(&path, body).with_context(|| uf_infra::cstr!("could not write {path}"))?;
         written.push(path);
     }
 
@@ -289,6 +293,6 @@ fn ratio_payload(ratio: uf_test::Ratio) -> serde_json::Value {
         // Two decimals, so the document is a function of the suite alone: a
         // full-precision float would put the last bits of a division in a
         // file two runs are supposed to be able to compare byte for byte.
-        "percent": uf_infra::cstr!("{:.2}", ratio.percent()).into_string(),
+        "percent": uf_infra::into_string(uf_infra::cstr!("{:.2}", ratio.percent())),
     })
 }

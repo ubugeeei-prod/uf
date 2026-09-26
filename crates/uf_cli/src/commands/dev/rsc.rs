@@ -100,11 +100,11 @@ impl BundleMove {
     /// The move as the sentence the terminal prints.
     fn line(&self) -> String {
         match self {
-            Self::Entered { module, reason } => {
-                uf_infra::cstr!("{module} is now in the client bundle — {reason}").into_string()
-            }
+            Self::Entered { module, reason } => uf_infra::into_string(uf_infra::cstr!(
+                "{module} is now in the client bundle — {reason}"
+            )),
             Self::Left { module } => {
-                uf_infra::cstr!("{module} is out of the client bundle").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{module} is out of the client bundle"))
             }
         }
     }

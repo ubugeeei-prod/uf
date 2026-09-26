@@ -76,7 +76,7 @@ pub(crate) fn discover_schedules(
             continue;
         }
         let source = std::fs::read_to_string(module.file.as_std_path())
-            .with_context(|| uf_infra::cstr!("reading {}", module.file).into_string())?;
+            .with_context(|| uf_infra::cstr!("reading {}", module.file))?;
         // The cheap gate first: a module that does not contain the word cannot
         // declare one, and most modules do not. Textual on purpose, and only
         // ever a *skip* — the parse below is what decides.
@@ -110,7 +110,9 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
     // nobody about what this module is, and a lexer here would be the third
     // opinion.
     let (program, _) = uf_transform::lowered_ast(source).with_context(|| {
-        uf_infra::cstr!("parsing {file} to read its `{EXPORT}` export").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "parsing {file} to read its `{EXPORT}` export"
+        ))
     })?;
     let empty = Vec::new();
     let body = program
@@ -486,7 +488,7 @@ fn assert_process_entry(
     schedules: &[DeclaredSchedule],
 ) -> Result<()> {
     let source = std::fs::read_to_string(entry.as_std_path())
-        .with_context(|| uf_infra::cstr!("reading {entry}").into_string())?;
+        .with_context(|| uf_infra::cstr!("reading {entry}"))?;
 
     // Deliberately no "and carries nothing else". `serve` reaches
     // `@uniflowed/server/schedule` whether or not a project declared anything,
@@ -518,12 +520,12 @@ fn assert_worker(directory: &Utf8Path, schedules: &[DeclaredSchedule]) -> Result
     let worker_file = directory.join("worker.js");
     let config_file = directory.join("wrangler.json");
     let worker = std::fs::read_to_string(worker_file.as_std_path())
-        .with_context(|| uf_infra::cstr!("reading {worker_file}").into_string())?;
+        .with_context(|| uf_infra::cstr!("reading {worker_file}"))?;
     let config: Value = serde_json::from_str(
         &std::fs::read_to_string(config_file.as_std_path())
-            .with_context(|| uf_infra::cstr!("reading {config_file}").into_string())?,
+            .with_context(|| uf_infra::cstr!("reading {config_file}"))?,
     )
-    .with_context(|| uf_infra::cstr!("parsing {config_file}").into_string())?;
+    .with_context(|| uf_infra::cstr!("parsing {config_file}"))?;
 
     // `wrangler.json` is uf's own file rather than a bundler's, so this half is
     // an exact comparison and not a search.
@@ -660,7 +662,7 @@ fn shown(file: &Utf8Path, source: &str) -> String {
         Some((at, _)) => (&source[..at], "\n… (truncated)"),
         None => (source, ""),
     };
-    uf_infra::cstr!("\n\n{file}:\n{text}{elided}").into_string()
+    uf_infra::into_string(uf_infra::cstr!("\n\n{file}:\n{text}{elided}"))
 }
 
 /// The sentence every one of these failures ends with.
@@ -681,7 +683,8 @@ fn pairing_note(adapter: DeployAdapter) -> String {
 
 /// One string, quoted the way JavaScript quotes it.
 fn json_string(value: &str) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| uf_infra::cstr!("\"{value}\"").into_string())
+    serde_json::to_string(value)
+        .unwrap_or_else(|_| uf_infra::into_string(uf_infra::cstr!("\"{value}\"")))
 }
 
 #[cfg(test)]

@@ -44,7 +44,7 @@ use crate::ui::Ui;
 /// `i18n/ja-JP.json` back, `i18n/ja-JP.js` merged — and that is what the
 /// `() => import("./ja-JP.js")` in `defineLocales` already points at.
 fn default_catalogue_path(locale: &str) -> Utf8PathBuf {
-    Utf8PathBuf::from("i18n").join(uf_infra::cstr!("{locale}.json").into_string())
+    Utf8PathBuf::from("i18n").join(uf_infra::into_string(uf_infra::cstr!("{locale}.json")))
 }
 
 pub(crate) fn i18n(cwd: &Utf8Path, ui: &mut Ui, command: I18nCommand) -> Result<()> {

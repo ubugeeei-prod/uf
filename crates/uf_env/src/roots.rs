@@ -109,7 +109,7 @@ impl Roots {
         let body = serde_json::to_string_pretty(&root).map_err(EnvError::Encode)?;
         fs::write(
             &file,
-            compact_str::format_compact!("{body}\n").into_string(),
+            uf_infra::into_string(compact_str::format_compact!("{body}\n")),
         )
         .map_err(|source| EnvError::Write { path: file, source })
     }
@@ -219,6 +219,8 @@ impl Roots {
             uf_infra::append!(name, "{byte:02x}");
         }
         self.root
-            .join(compact_str::format_compact!("{name}.json").into_string())
+            .join(uf_infra::into_string(compact_str::format_compact!(
+                "{name}.json"
+            )))
     }
 }

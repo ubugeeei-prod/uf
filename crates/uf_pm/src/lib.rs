@@ -575,7 +575,8 @@ fn lock_manifest(
         .unwrap_or(package_dir.as_str());
     let path = if relative.is_empty() { "." } else { relative };
     let integrity = stable_manifest_integrity(source.as_bytes());
-    let store_path = compact_str::format_compact!("packages/{integrity}.json").into_string();
+    let store_path =
+        uf_infra::into_string(compact_str::format_compact!("packages/{integrity}.json"));
 
     Ok(LockedPackage {
         name: name.to_compact_string(),
@@ -598,7 +599,7 @@ fn stable_manifest_integrity(bytes: &[u8]) -> String {
         hash = hash.wrapping_mul(PRIME);
     }
 
-    compact_str::format_compact!("uf-fnv1a64-{hash:016x}").into_string()
+    uf_infra::into_string(compact_str::format_compact!("uf-fnv1a64-{hash:016x}"))
 }
 
 fn read_dependency_map(value: &Value, field: &str) -> BTreeMap<CompactString, CompactString> {

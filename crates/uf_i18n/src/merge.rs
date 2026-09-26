@@ -228,7 +228,7 @@ fn list(parameters: &BTreeMap<String, ParamKind>) -> String {
     }
     parameters
         .iter()
-        .map(|(name, kind)| compact_str::format_compact!("{name}: {kind}").into_string())
+        .map(|(name, kind)| uf_infra::into_string(compact_str::format_compact!("{name}: {kind}")))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -284,7 +284,7 @@ fn encode(text: &str) -> String {
         // `to_string` of a `&str` fails only if the writer does, and the
         // writer is a `String`. A quoted, obviously wrong value beats a panic
         // in a command that is writing a file.
-        compact_str::format_compact!("{text:?}").into_string()
+        uf_infra::into_string(compact_str::format_compact!("{text:?}"))
     })
 }
 
@@ -319,5 +319,7 @@ pub fn write_module(path: &Utf8Path, module: &str) -> Result<(), I18nError> {
 #[must_use]
 pub fn default_module_path(file: &Utf8Path, locale: &str) -> Utf8PathBuf {
     let directory = file.parent().unwrap_or(Utf8Path::new("."));
-    directory.join(compact_str::format_compact!("{locale}.js").into_string())
+    directory.join(uf_infra::into_string(compact_str::format_compact!(
+        "{locale}.js"
+    )))
 }

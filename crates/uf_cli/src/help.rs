@@ -629,10 +629,10 @@ fn option_row(renderer: &Renderer, arg: &Arg, long: bool, align: bool, width: us
             .get_num_args()
             .is_some_and(|range| range.max_values() > 1);
         let text = match (arg.is_required_set(), multiple) {
-            (true, false) => uf_infra::cstr!("<{name}>").into_string(),
-            (true, true) => uf_infra::cstr!("<{name}>...").into_string(),
-            (false, false) => uf_infra::cstr!("[{name}]").into_string(),
-            (false, true) => uf_infra::cstr!("[{name}]...").into_string(),
+            (true, false) => uf_infra::into_string(uf_infra::cstr!("<{name}>")),
+            (true, true) => uf_infra::into_string(uf_infra::cstr!("<{name}>...")),
+            (false, false) => uf_infra::into_string(uf_infra::cstr!("[{name}]")),
+            (false, true) => uf_infra::into_string(uf_infra::cstr!("[{name}]...")),
         };
         theme.accent.paint(level, &text, &mut term);
     } else {

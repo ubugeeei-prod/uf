@@ -113,7 +113,7 @@ fn render_rules(ui: &mut Ui, listed: &[ListedRule]) {
         .map(|rule| {
             let word = level_word(rule.level);
             if rule.skipped() {
-                uf_infra::cstr!("{word} *").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{word} *"))
             } else {
                 word.to_owned()
             }

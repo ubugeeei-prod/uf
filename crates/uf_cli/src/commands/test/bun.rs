@@ -157,7 +157,7 @@ pub(crate) fn arguments(
     files: &[&str],
 ) -> Vec<String> {
     let mut out = vec![
-        uf_infra::cstr!("--conditions={CONDITION}").into_string(),
+        uf_infra::into_string(uf_infra::cstr!("--conditions={CONDITION}")),
         String::from("test"),
         String::from("--preload"),
         preload.to_string(),
@@ -166,7 +166,10 @@ pub(crate) fn arguments(
         // uf's `-t` is a substring of the full name; Bun's is a regular
         // expression. Escaping makes every character literal, so the pattern
         // means what it meant to uf.
-        out.push(uf_infra::cstr!("--test-name-pattern={}", escape_pattern(pattern)).into_string());
+        out.push(uf_infra::into_string(uf_infra::cstr!(
+            "--test-name-pattern={}",
+            escape_pattern(pattern)
+        )));
     }
     if args.watch {
         out.push(String::from("--watch"));
@@ -182,25 +185,34 @@ pub(crate) fn arguments(
         }
     }
     if let Some(directory) = args.coverage_dir.as_deref() {
-        out.push(uf_infra::cstr!("--coverage-dir={directory}").into_string());
+        out.push(uf_infra::into_string(uf_infra::cstr!(
+            "--coverage-dir={directory}"
+        )));
     }
     if let Some(failures) = args.bail {
-        out.push(uf_infra::cstr!("--bail={failures}").into_string());
+        out.push(uf_infra::into_string(uf_infra::cstr!("--bail={failures}")));
     }
     if args.retry > 0 {
-        out.push(uf_infra::cstr!("--retry={}", args.retry).into_string());
+        out.push(uf_infra::into_string(uf_infra::cstr!(
+            "--retry={}",
+            args.retry
+        )));
     }
     if let Some(threads) = args.threads {
-        out.push(uf_infra::cstr!("--parallel={threads}").into_string());
+        out.push(uf_infra::into_string(uf_infra::cstr!(
+            "--parallel={threads}"
+        )));
     }
     out.push(String::from("--reporter=junit"));
-    out.push(uf_infra::cstr!("--reporter-outfile={report}").into_string());
+    out.push(uf_infra::into_string(uf_infra::cstr!(
+        "--reporter-outfile={report}"
+    )));
     // As paths rather than filters: `./` is what makes Bun run a file by name
     // whatever its filename patterns say.
     out.extend(
         files
             .iter()
-            .map(|file| uf_infra::cstr!("./{file}").into_string()),
+            .map(|file| uf_infra::into_string(uf_infra::cstr!("./{file}"))),
     );
     out
 }
@@ -326,7 +338,7 @@ pub(crate) fn run(
     let report = report_path(root, args);
     if let Some(parent) = report.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| uf_infra::cstr!("could not create {parent}").into_string())?;
+            .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
     }
     // A report an earlier run left must not be read back as this run's.
     let _ = std::fs::remove_file(&report);
@@ -340,7 +352,7 @@ pub(crate) fn run(
         // different `uf` on PATH — the same promise uf's own runner makes.
         .env("UF_BINARY", super::uf_binary()?.as_str())
         .status()
-        .with_context(|| uf_infra::cstr!("could not start `{program}`").into_string())?;
+        .with_context(|| uf_infra::cstr!("could not start `{program}`"))?;
 
     if args.watch {
         // `bun test --watch` reports as it goes and ends when the person ends
@@ -360,7 +372,9 @@ pub(crate) fn run(
         .into_string()
     })?;
     let document = read_report(file, junit::MAX_JUNIT_BYTES).with_context(|| {
-        uf_infra::cstr!("could not read the report `bun test` wrote to {report}").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not read the report `bun test` wrote to {report}"
+        ))
     })?;
     let cases =
         junit::read_cases(&document).map_err(|error| anyhow!(uf_infra::cstr!("{error}")))?;

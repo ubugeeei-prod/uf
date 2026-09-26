@@ -336,8 +336,10 @@ impl ReservedFile {
     #[must_use]
     pub fn file_name(self) -> String {
         match self.variant.as_str() {
-            Some(variant) => uf_infra::cstr!("${}.{variant}.js", self.role.as_str()).into_string(),
-            None => uf_infra::cstr!("${}.js", self.role.as_str()).into_string(),
+            Some(variant) => {
+                uf_infra::into_string(uf_infra::cstr!("${}.{variant}.js", self.role.as_str()))
+            }
+            None => uf_infra::into_string(uf_infra::cstr!("${}.js", self.role.as_str())),
         }
     }
 }
@@ -621,19 +623,19 @@ impl<'a> RouteSegment<'a> {
         let climbs = if levels == 1 {
             "one level".to_owned()
         } else {
-            uf_infra::cstr!("{levels} levels").into_string()
+            uf_infra::into_string(uf_infra::cstr!("{levels} levels"))
         };
         let sits = match depth {
             0 => "at the router root".to_owned(),
             1 => "one level below it".to_owned(),
-            _ => uf_infra::cstr!("{depth} levels below it").into_string(),
+            _ => uf_infra::into_string(uf_infra::cstr!("{depth} levels below it")),
         };
-        Some(uf_infra::cstr!(
+        Some(uf_infra::into_string(uf_infra::cstr!(
             "`{segment}` climbs {climbs} from the directory it is in, which is {sits}, so the URL \
              it intercepts would be above the router root, and there is no such URL. It is \
              refused rather than read as a climb to the root. Remove a `(..)`, or write `(...)` \
              to intercept from the router root. https://github.com/ubugeeei-prod/uf/issues/267"
-        ).into_string())
+        )))
     }
 
     /// The slot this segment names, if it names one.
@@ -677,7 +679,7 @@ impl<'a> RouteSegment<'a> {
             return None;
         };
         if interception_climb(marker).is_none() {
-            return Some(uf_infra::cstr!(
+            return Some(uf_infra::into_string(uf_infra::cstr!(
                 "`{segment}` is spelled like an intercepting route and `{marker}` is not a marker \
                  uf reads. The markers are `(.)` for the level the directory is at, `(..)` for one \
                  above it — repeated for each further level — and `(...)` for the router root. \
@@ -685,17 +687,17 @@ impl<'a> RouteSegment<'a> {
                  it used to become. Spell the marker as one of those and put the directory inside \
                  a `@slot`, or rename it to the literal segment `{route}`. \
                  https://github.com/ubugeeei-prod/uf/issues/267"
-            ).into_string());
+            )));
         }
         if !names_a_url_segment(route) {
-            return Some(uf_infra::cstr!(
+            return Some(uf_infra::into_string(uf_infra::cstr!(
                 "`{segment}` is spelled like an intercepting route, and `{route}` after the marker \
                  is not a URL segment, so there is no path for it to intercept: an interception \
                  names the segment it stands in for, the way `{marker}photo` and `{marker}[id]` \
                  do. It is refused rather than served as the URL segment `/{segment}`, which is \
                  what it used to become. Put a segment name after the marker, or rename the \
                  directory. https://github.com/ubugeeei-prod/uf/issues/267"
-            ).into_string());
+            )));
         }
         None
     }

@@ -768,7 +768,7 @@ mod tests {
         for (name, task) in &resolved.config.tasks {
             match parse(task.command()) {
                 Command::Direct(_) => {}
-                other => shells.push(uf_infra::cstr!("{name}: {other:?}").into_string()),
+                other => shells.push(uf_infra::into_string(uf_infra::cstr!("{name}: {other:?}"))),
             }
         }
         assert!(shells.is_empty(), "tasks that need a shell: {shells:#?}");

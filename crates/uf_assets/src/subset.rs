@@ -239,8 +239,9 @@ pub fn plan(sfnt: &[u8], mode: &SubsetMode) -> Result<SubsetPlan, String> {
     if *mode == SubsetMode::Off {
         return Err(String::from("subsetting is off"));
     }
-    let font = FontRef::new(sfnt)
-        .map_err(|error| uf_infra::cstr!("uf could not read the font: {error}").into_string())?;
+    let font = FontRef::new(sfnt).map_err(|error| {
+        uf_infra::into_string(uf_infra::cstr!("uf could not read the font: {error}"))
+    })?;
     if font.table_data(Tag::new(b"glyf")).is_none() {
         return Err(String::from(
             "the font's outlines are in a CFF table, which uf's subsetter (skera) does not \
@@ -250,7 +251,9 @@ pub fn plan(sfnt: &[u8], mode: &SubsetMode) -> Result<SubsetPlan, String> {
     }
 
     let readable = ab_glyph::FontRef::try_from_slice(sfnt).map_err(|error| {
-        uf_infra::cstr!("uf could not read the font's character map: {error}").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "uf could not read the font's character map: {error}"
+        ))
     })?;
     // `codepoint_ids` is documented as unordered, and everything below wants
     // it sorted: the buckets are emitted as `unicode-range` runs, and a
@@ -378,7 +381,7 @@ fn cut(font: &FontRef<'_>, codepoints: &[u32]) -> Result<Vec<u8>, String> {
         &name_languages,
     );
     skera::subset_font(font, &plan)
-        .map_err(|error| uf_infra::cstr!("the subsetter failed: {error}").into_string())
+        .map_err(|error| uf_infra::into_string(uf_infra::cstr!("the subsetter failed: {error}")))
 }
 
 /// The CSS `unicode-range` for one sorted, deduplicated code-point set.
@@ -400,9 +403,11 @@ pub fn unicode_range(codepoints: &[u32]) -> String {
             end = sorted[index];
         }
         if start == end {
-            parts.push(uf_infra::cstr!("U+{start:X}").into_string());
+            parts.push(uf_infra::into_string(uf_infra::cstr!("U+{start:X}")));
         } else {
-            parts.push(uf_infra::cstr!("U+{start:X}-{end:X}").into_string());
+            parts.push(uf_infra::into_string(uf_infra::cstr!(
+                "U+{start:X}-{end:X}"
+            )));
         }
         index += 1;
     }

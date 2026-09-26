@@ -248,9 +248,10 @@ mod tests {
                 if colon { " with colon" } else { "" },
             )
             .into_string(),
-            Site::Value { word } => {
-                uf_infra::cstr!("value {:?}", word.map(|word| word.text(&source))).into_string()
-            }
+            Site::Value { word } => uf_infra::into_string(uf_infra::cstr!(
+                "value {:?}",
+                word.map(|word| word.text(&source))
+            )),
         };
         Some((super::super::dotted(&cursor.path), site))
     }

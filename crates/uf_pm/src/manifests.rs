@@ -363,8 +363,8 @@ fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
 /// `None` when there is none or more than one — which is the answer, not a
 /// failure: the caller re-serialises instead.
 fn splice(source: &str, name: &str, from: &str, to: &str) -> Option<String> {
-    let key = compact_str::format_compact!("\"{name}\"").into_string();
-    let value = compact_str::format_compact!("\"{from}\"").into_string();
+    let key = uf_infra::into_string(compact_str::format_compact!("\"{name}\""));
+    let value = uf_infra::into_string(compact_str::format_compact!("\"{from}\""));
     let mut found = None;
 
     let mut search = 0;

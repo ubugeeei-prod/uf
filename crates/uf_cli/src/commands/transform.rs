@@ -293,7 +293,9 @@ fn serve(input: impl Read, out: &mut impl Write, project: &ProjectTransform) -> 
         let reply = match serde_json::from_str::<Request>(&line) {
             Ok(request) => handle(&request, project, &mut cache),
             Err(error) => Reply {
-                error: Some(uf_infra::cstr!("malformed request: {error}").into_string()),
+                error: Some(uf_infra::into_string(uf_infra::cstr!(
+                    "malformed request: {error}"
+                ))),
                 ..Reply::default()
             },
         };
@@ -552,7 +554,7 @@ mod tests {
         for (index, reply) in replies.iter().enumerate() {
             assert_eq!(
                 reply["id"],
-                uf_infra::cstr!("/app/m{index}.js").into_string()
+                uf_infra::into_string(uf_infra::cstr!("/app/m{index}.js"))
             );
             assert!(
                 reply["code"]

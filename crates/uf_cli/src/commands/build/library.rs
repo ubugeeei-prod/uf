@@ -122,8 +122,7 @@ pub(crate) fn build(
     let mut progress = ui.progress();
     let root = resolved.root.clone();
     let out_dir = root.join(resolved.config.build.out_dir.as_str());
-    fs::create_dir_all(&out_dir)
-        .with_context(|| uf_infra::cstr!("failed to create {out_dir}").into_string())?;
+    fs::create_dir_all(&out_dir).with_context(|| uf_infra::cstr!("failed to create {out_dir}"))?;
 
     progress.tick("resolving the JavaScript host");
     // A library builds on `build.runtime` exactly as an application does.
@@ -195,7 +194,7 @@ pub(crate) fn build(
     progress.tick("measuring the published modules");
     let meta_dir = root.join(BUILD_META_DIR);
     fs::create_dir_all(&meta_dir)
-        .with_context(|| uf_infra::cstr!("failed to create {meta_dir}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {meta_dir}"))?;
     let (size, size_report_path) = timer.measure("bundle size", || -> Result<_> {
         let assets = collect_assets(&out_dir, &ReportOptions::default())?;
         // No routes: a library has none, and the per-route half of the report
@@ -273,7 +272,10 @@ pub(crate) fn build(
     let total = timer.total();
     let phases = timer.phases().to_vec();
     let project = project_label(&root).to_string();
-    let summary = uf_infra::cstr!("build succeeded in {}", format_duration(total)).into_string();
+    let summary = uf_infra::into_string(uf_infra::cstr!(
+        "build succeeded in {}",
+        format_duration(total)
+    ));
     let host_name = host.name();
     let because = plan.because();
     let entries = plan
@@ -304,9 +306,11 @@ pub(crate) fn build(
         relative_to(&root, &size_report_path),
     ];
     for asset in &size.assets {
-        outputs.push(
-            uf_infra::cstr!("{}/{}", resolved.config.build.out_dir, asset.path).into_string(),
-        );
+        outputs.push(uf_infra::into_string(uf_infra::cstr!(
+            "{}/{}",
+            resolved.config.build.out_dir,
+            asset.path
+        )));
     }
     for written in &declarations.files {
         outputs.push(relative_to(&root, written));
@@ -819,10 +823,9 @@ fn write_declarations(
         let path = out_dir.join(module.declaration.as_str());
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
+                .with_context(|| uf_infra::cstr!("failed to create {parent}"))?;
         }
-        fs::write(&path, text)
-            .with_context(|| uf_infra::cstr!("failed to write {path}").into_string())?;
+        fs::write(&path, text).with_context(|| uf_infra::cstr!("failed to write {path}"))?;
         declarations.files.push(path);
     }
     Ok(declarations)
@@ -836,7 +839,7 @@ fn gap_rows(declarations: &Declarations) -> Vec<(String, String, String)> {
         .take(GAPS_SHOWN)
         .map(|(module, gap)| {
             (
-                uf_infra::cstr!("{module}:{}", gap.line).into_string(),
+                uf_infra::into_string(uf_infra::cstr!("{module}:{}", gap.line)),
                 gap.declaration.to_string(),
                 gap.construct.as_str().to_string(),
             )

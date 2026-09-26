@@ -115,10 +115,12 @@ fn parameters(route: &Route) -> String {
         .params
         .iter()
         .map(|param| match param.kind {
-            RouteParamKind::Single => uf_infra::cstr!("[{}]", param.name).into_string(),
-            RouteParamKind::CatchAll => uf_infra::cstr!("[...{}]", param.name).into_string(),
+            RouteParamKind::Single => uf_infra::into_string(uf_infra::cstr!("[{}]", param.name)),
+            RouteParamKind::CatchAll => {
+                uf_infra::into_string(uf_infra::cstr!("[...{}]", param.name))
+            }
             RouteParamKind::OptionalCatchAll => {
-                uf_infra::cstr!("[[...{}]]", param.name).into_string()
+                uf_infra::into_string(uf_infra::cstr!("[[...{}]]", param.name))
             }
         })
         .collect::<Vec<_>>()

@@ -179,12 +179,12 @@ fn aria_role(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
 
     let written_text = text.trim();
     let suggestion = aria::nearest_role(written_text)
-        .map(|near| uf_infra::cstr!("; did you mean `{near}`?").into_string())
+        .map(|near| uf_infra::into_string(uf_infra::cstr!("; did you mean `{near}`?")))
         .unwrap_or_default();
     let subject = if written_text.is_empty() {
         String::from("an empty `role`")
     } else {
-        uf_infra::cstr!("`{written_text}`").into_string()
+        uf_infra::into_string(uf_infra::cstr!("`{written_text}`"))
     };
     tree.report(
         &written.loc,
@@ -225,11 +225,11 @@ fn aria_proptypes(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
         }
         let written = match value {
             Value::Text(text) if text.trim().is_empty() => String::from("an empty value"),
-            Value::Text(text) => uf_infra::cstr!("`{text}`").into_string(),
-            Value::Bool(_) => {
-                uf_infra::cstr!("`{name}` on its own, which renders the word `true`").into_string()
-            }
-            Value::Number(number) => uf_infra::cstr!("`{number}`").into_string(),
+            Value::Text(text) => uf_infra::into_string(uf_infra::cstr!("`{text}`")),
+            Value::Bool(_) => uf_infra::into_string(uf_infra::cstr!(
+                "`{name}` on its own, which renders the word `true`"
+            )),
+            Value::Number(number) => uf_infra::into_string(uf_infra::cstr!("`{number}`")),
             Value::Nullish | Value::Unknown => continue,
         };
         tree.report(
@@ -276,7 +276,7 @@ fn role_has_required_aria_props(tree: &mut Tree<'_>, host: &str, opening: &jsx::
 
     let names = missing
         .iter()
-        .map(|name| uf_infra::cstr!("`{name}`").into_string())
+        .map(|name| uf_infra::into_string(uf_infra::cstr!("`{name}`")))
         .collect::<Vec<_>>()
         .join(" and ");
     let is = if missing.len() == 1 { "is" } else { "are" };
@@ -405,9 +405,12 @@ fn role_supports_aria_props(tree: &mut Tree<'_>, host: &str, opening: &jsx::Open
             continue;
         }
         let of = if implicit {
-            uf_infra::cstr!("a `<{host}>` is a `{role}`", role = role.name).into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "a `<{host}>` is a `{role}`",
+                role = role.name
+            ))
         } else {
-            uf_infra::cstr!("`role=\"{role}\"`", role = role.name).into_string()
+            uf_infra::into_string(uf_infra::cstr!("`role=\"{role}\"`", role = role.name))
         };
         tree.report(
             &attribute.loc,
@@ -436,9 +439,9 @@ fn prohibited_message(host: &str, role: &str, name: &str, implicit: bool) -> Str
         .into_string();
     }
     let of = if implicit {
-        uf_infra::cstr!("a `<{host}>` is a `{role}`").into_string()
+        uf_infra::into_string(uf_infra::cstr!("a `<{host}>` is a `{role}`"))
     } else {
-        uf_infra::cstr!("`role=\"{role}\"`").into_string()
+        uf_infra::into_string(uf_infra::cstr!("`role=\"{role}\"`"))
     };
     uf_infra::cstr!(
         "{of}, and WAI-ARIA forbids `{name}` on a `{role}`: it is discarded rather than announced \

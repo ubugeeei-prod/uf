@@ -12,6 +12,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+uf_infra = { path = "../uf_infra" }
 compact_str.workspace = true
 flow_parser.workspace = true
 thiserror.workspace = true

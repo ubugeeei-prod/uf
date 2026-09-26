@@ -581,7 +581,7 @@ mod tests {
             let json = serde_json::to_string(&step).expect("a step serializes");
             assert_eq!(
                 json,
-                compact_str::format_compact!("\"{}\"", step.name()).into_string()
+                uf_infra::into_string(compact_str::format_compact!("\"{}\"", step.name()))
             );
         }
         assert_eq!(PrepareCacheMode::OptIn.name(), "opt-in");

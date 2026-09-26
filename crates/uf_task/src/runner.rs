@@ -448,9 +448,11 @@ impl Executor<'_> {
         let presentation = if alone {
             Presentation::Plain
         } else {
-            Presentation::Prefixed(
-                uf_infra::cstr!("{:width$} | ", task.label, width = self.label_width).into_string(),
-            )
+            Presentation::Prefixed(uf_infra::into_string(uf_infra::cstr!(
+                "{:width$} | ",
+                task.label,
+                width = self.label_width
+            )))
         };
 
         let (reason, keyed) = match self.decide(task) {
@@ -753,9 +755,10 @@ impl Executor<'_> {
 
         let status = match child.wait() {
             Ok(status) if status.success() => Status::Succeeded,
-            Ok(status) => Status::Failed(
-                uf_infra::cstr!("task {:?} exited with {status}", task.label).into_string(),
-            ),
+            Ok(status) => Status::Failed(uf_infra::into_string(uf_infra::cstr!(
+                "task {:?} exited with {status}",
+                task.label
+            ))),
             Err(error) => Status::Failed(
                 uf_infra::cstr!("task {:?} could not be waited on: {error}", task.label)
                     .into_string(),

@@ -225,8 +225,11 @@ pub(super) fn hover(
     let mut path = cursor.path;
     path.push(Step::Key(word.text(source)));
     let key = schema.key(&path)?;
-    let mut markdown =
-        uf_infra::cstr!("**`{}`** · `{}`", dotted(&path), key.type_text()).into_string();
+    let mut markdown = uf_infra::into_string(uf_infra::cstr!(
+        "**`{}`** · `{}`",
+        dotted(&path),
+        key.type_text()
+    ));
     if let Some(documentation) = key.documentation() {
         markdown.push_str("\n\n");
         markdown.push_str(documentation);
@@ -418,7 +421,7 @@ fn offer(
     if items.iter().any(|item| item.new_text == new_text) {
         return;
     }
-    let sort_text = Some(uf_infra::cstr!("{:04}", items.len()).into_string());
+    let sort_text = Some(uf_infra::into_string(uf_infra::cstr!("{:04}", items.len())));
     items.push(Item {
         label,
         kind,

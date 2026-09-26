@@ -1632,9 +1632,9 @@ fn contains_call(node: &Value) -> bool {
 /// that reads back to the same value.
 fn format_number(value: f64) -> String {
     if value.is_finite() && value.fract() == 0.0 && value.abs() < 1e16 {
-        return uf_infra::cstr!("{}", value as i64).into_string();
+        return uf_infra::into_string(uf_infra::cstr!("{}", value as i64));
     }
-    let text = uf_infra::cstr!("{value}").into_string();
+    let text = uf_infra::into_string(uf_infra::cstr!("{value}"));
     if value.is_finite() && value.abs() >= 1e21 {
         return uf_infra::cstr!("{value:e}")
             .into_string()

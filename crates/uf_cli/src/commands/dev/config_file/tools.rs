@@ -129,7 +129,7 @@ pub(super) fn complete(request: Request<'_, '_>, completion: &mut Completion) {
         // A version goes inside the quotes, after the name.
         let quote = char::from(quote_byte(quotes));
         for (name, _) in role.names() {
-            let written = uf_infra::cstr!("{quote}{name}{quote}").into_string();
+            let written = uf_infra::into_string(uf_infra::cstr!("{quote}{name}{quote}"));
             offer(
                 &mut completion.items,
                 described,
@@ -261,7 +261,9 @@ impl Versions<'_> {
             .filter(|(major, _)| major.starts_with(self.typed))
         {
             let detail = match &newest.lts {
-                Some(line) => uf_infra::cstr!("{} · LTS {line}", newest.version).into_string(),
+                Some(line) => {
+                    uf_infra::into_string(uf_infra::cstr!("{} · LTS {line}", newest.version))
+                }
                 None => newest.version.clone(),
             };
             let documentation = uf_infra::cstr!(
@@ -285,7 +287,7 @@ impl Versions<'_> {
                 release
                     .lts
                     .as_ref()
-                    .map(|line| uf_infra::cstr!("LTS {line}").into_string()),
+                    .map(|line| uf_infra::into_string(uf_infra::cstr!("LTS {line}"))),
             ]
             .into_iter()
             .flatten()
@@ -320,7 +322,7 @@ impl Versions<'_> {
             replace: self.replace,
             new_text: written,
             filter_text: None,
-            sort_text: Some(uf_infra::cstr!("{:05}", items.len()).into_string()),
+            sort_text: Some(uf_infra::into_string(uf_infra::cstr!("{:05}", items.len()))),
         });
     }
 }
@@ -350,7 +352,7 @@ fn fetched(index: &Index) -> String {
     match index.age().map(|age| age.as_secs() / (24 * 60 * 60)) {
         Some(0) => String::from("today"),
         Some(1) => String::from("yesterday"),
-        Some(days) => uf_infra::cstr!("{days} days ago").into_string(),
+        Some(days) => uf_infra::into_string(uf_infra::cstr!("{days} days ago")),
         None => String::from("by uf"),
     }
 }

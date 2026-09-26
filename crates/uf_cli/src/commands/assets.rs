@@ -243,7 +243,9 @@ fn serve(input: impl Read, out: &mut impl Write, project: &ProjectAssets) -> Res
         let reply = match serde_json::from_str::<Request>(&line) {
             Ok(request) => handle(&request, project),
             Err(error) => Reply {
-                error: Some(uf_infra::cstr!("malformed request: {error}").into_string()),
+                error: Some(uf_infra::into_string(uf_infra::cstr!(
+                    "malformed request: {error}"
+                ))),
                 ..Reply::default()
             },
         };
@@ -264,7 +266,7 @@ fn serve(input: impl Read, out: &mut impl Write, project: &ProjectAssets) -> Res
 /// one decode.
 fn source_digest(path: &Utf8Path) -> Result<Vec<u8>, String> {
     std::fs::read(path)
-        .map_err(|error| uf_infra::cstr!("failed to read {path}: {error}").into_string())
+        .map_err(|error| uf_infra::into_string(uf_infra::cstr!("failed to read {path}: {error}")))
 }
 
 fn failed(id: &str, error: impl std::fmt::Display) -> Reply {
@@ -307,7 +309,7 @@ fn variant(request: &Request, source: &Utf8Path) -> Reply {
         Err(error) => {
             return failed(
                 &request.id,
-                uf_infra::cstr!("failed to read {source}: {error}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("failed to read {source}: {error}")),
             );
         }
     }
@@ -456,7 +458,7 @@ fn font(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply 
     let mode_key = match &subset {
         SubsetMode::Off => String::from("none"),
         SubsetMode::Ranges => String::from("ranges"),
-        SubsetMode::Text(text) => uf_infra::cstr!("text:{text}").into_string(),
+        SubsetMode::Text(text) => uf_infra::into_string(uf_infra::cstr!("text:{text}")),
     };
     let key = uf_assets::cache_key(
         "font",
@@ -561,7 +563,9 @@ fn og(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply {
         Err(error) => {
             return failed(
                 &request.id,
-                uf_infra::cstr!("{source} is not a template uf can draw: {error}").into_string(),
+                uf_infra::into_string(uf_infra::cstr!(
+                    "{source} is not a template uf can draw: {error}"
+                )),
             );
         }
     };
@@ -873,7 +877,7 @@ mod tests {
         let out = dir.join("out");
         let mut input = String::new();
         for index in 0..6 {
-            let source = dir.join(uf_infra::cstr!("i{index}.png").into_string());
+            let source = dir.join(uf_infra::into_string(uf_infra::cstr!("i{index}.png")));
             graphic(&source, 32 + index * 8, 32);
             let request = serde_json::json!({
                 "kind": "image", "id": source, "outDir": out, "widths": [16],
@@ -1024,7 +1028,7 @@ mod tests {
         let mut input = String::new();
         for name in ["star", "dot"] {
             let request = serde_json::json!({
-                "kind": "icon", "id": dir.join(uf_infra::cstr!("{name}.svg").into_string()), "outDir": out, "name": name,
+                "kind": "icon", "id": dir.join(uf_infra::into_string(uf_infra::cstr!("{name}.svg"))), "outDir": out, "name": name,
             });
             uf_infra::append!(input, "{request}\n");
         }

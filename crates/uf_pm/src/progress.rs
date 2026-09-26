@@ -199,7 +199,7 @@ fn tarball_label(name: &str, archive: &str) -> String {
     let file = archive.strip_suffix(".tgz").unwrap_or(archive);
     match file.strip_prefix(compact_str::format_compact!("{last}-").as_str()) {
         Some(version) if !version.is_empty() => {
-            compact_str::format_compact!("{name}@{version}").into_string()
+            uf_infra::into_string(compact_str::format_compact!("{name}@{version}"))
         }
         _ => name,
     }

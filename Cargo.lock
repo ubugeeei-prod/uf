@@ -2253,6 +2253,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e44b0a4eaa4c82f441d50a963f2d5f05a787240aeee097597033e72accfd22f"
 
 [[package]]
+name = "index_vec"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44faf5bb8861a9c72e20d3fb0fdbd59233e43056e2b80475ab0aacdc2e781355"
+
+[[package]]
 name = "indexmap"
 version = "2.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4534,6 +4540,7 @@ dependencies = [
  "uf_assets",
  "uf_bundle",
  "uf_flow",
+ "uf_infra",
  "uf_runtime",
 ]
 
@@ -4607,6 +4614,7 @@ dependencies = [
  "compact_str",
  "flow_parser",
  "thiserror",
+ "uf_infra",
 ]
 
 [[package]]
@@ -4639,6 +4647,7 @@ dependencies = [
  "thiserror",
  "uf_config",
  "uf_flow",
+ "uf_infra",
  "uf_project",
 ]
 
@@ -4679,6 +4688,7 @@ name = "uf_lint"
 version = "0.9.0"
 dependencies = [
  "criterion",
+ "index_vec",
  "nonmax",
  "phf",
  "rustc-hash",
@@ -4728,6 +4738,7 @@ dependencies = [
  "thiserror",
  "uf_config",
  "uf_env",
+ "uf_infra",
 ]
 
 [[package]]
@@ -4742,6 +4753,7 @@ dependencies = [
  "smallvec",
  "tempfile",
  "thiserror",
+ "uf_infra",
 ]
 
 [[package]]
@@ -4824,6 +4836,7 @@ dependencies = [
  "compact_str",
  "serde",
  "smallvec",
+ "uf_infra",
 ]
 
 [[package]]
@@ -4966,6 +4979,7 @@ dependencies = [
  "similar",
  "tempfile",
  "thiserror",
+ "uf_infra",
  "uf_lib",
 ]
 

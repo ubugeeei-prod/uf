@@ -405,7 +405,7 @@ impl TaskCache {
 
     fn entry_path(&self, key: &str) -> PathBuf {
         self.directory
-            .join(uf_infra::cstr!("{key}.json").into_string())
+            .join(uf_infra::into_string(uf_infra::cstr!("{key}.json")))
     }
 
     /// A task's note, filed under a digest of its name.
@@ -418,7 +418,10 @@ impl TaskCache {
         fields.push(task);
         self.directory
             .join("notes")
-            .join(uf_infra::cstr!("{}.json", hex(&fields.finish())).into_string())
+            .join(uf_infra::into_string(uf_infra::cstr!(
+                "{}.json",
+                hex(&fields.finish())
+            )))
     }
 }
 
@@ -446,7 +449,10 @@ fn write_document<T: Serialize>(path: &Path, document: &T) {
     }
     // Written beside the entry and renamed onto it: both are in one directory,
     // so the rename is within one filesystem and is atomic.
-    let staging = path.with_extension(uf_infra::cstr!("{}.tmp", std::process::id()).into_string());
+    let staging = path.with_extension(uf_infra::into_string(uf_infra::cstr!(
+        "{}.tmp",
+        std::process::id()
+    )));
     if fs::write(&staging, &bytes).is_ok() && fs::rename(&staging, path).is_err() {
         let _ = fs::remove_file(&staging);
     }

@@ -138,7 +138,7 @@ where
 {
     let entry = out_dir
         .join(MANIFESTS)
-        .join(uf_infra::cstr!("{key}.json").into_string());
+        .join(uf_infra::into_string(uf_infra::cstr!("{key}.json")));
     if let Ok(raw) = std::fs::read(&entry)
         && let Ok(value) = serde_json::from_slice::<T>(&raw)
         && files(&value).iter().all(|file| out_dir.join(file).exists())

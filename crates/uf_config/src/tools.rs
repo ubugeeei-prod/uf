@@ -604,9 +604,9 @@ impl<'de> Deserialize<'de> for TestRunnerConfig {
             object @ serde_json::Value::Object(_) => serde_json::from_value(object)
                 .map(Self::Object)
                 .map_err(|error| {
-                    serde::de::Error::custom(
-                        compact_str::format_compact!("test.runner: {error}").into_string(),
-                    )
+                    serde::de::Error::custom(uf_infra::into_string(compact_str::format_compact!(
+                        "test.runner: {error}"
+                    )))
                 }),
             other => Ok(Self::Spec(Written::not_a_string(
                 other.to_string(),
@@ -767,12 +767,12 @@ impl std::error::Error for SpecError {}
 fn name_list<N: ToolName>() -> String {
     let names: Vec<String> = N::ALL
         .iter()
-        .map(|tool| compact_str::format_compact!("`{}`", tool.name()).into_string())
+        .map(|tool| uf_infra::into_string(compact_str::format_compact!("`{}`", tool.name())))
         .collect();
     match names.split_last() {
-        Some((last, rest)) if !rest.is_empty() => {
-            compact_str::format_compact!("{} or {last}", rest.join(", ")).into_string()
-        }
+        Some((last, rest)) if !rest.is_empty() => uf_infra::into_string(
+            compact_str::format_compact!("{} or {last}", rest.join(", ")),
+        ),
         Some((last, _)) => last.clone(),
         None => String::new(),
     }
@@ -1068,15 +1068,15 @@ impl ToolDeclaration {
         match (&self.spec, self.key) {
             (Some(spec), Some(key)) => match self.via {
                 "implied" => {
-                    compact_str::format_compact!("{spec} (implied by {key})").into_string()
+                    uf_infra::into_string(compact_str::format_compact!("{spec} (implied by {key})"))
                 }
-                "deprecated" => {
-                    compact_str::format_compact!("{spec} ({key}, deprecated)").into_string()
-                }
-                _ => compact_str::format_compact!("{spec} ({key})").into_string(),
+                "deprecated" => uf_infra::into_string(compact_str::format_compact!(
+                    "{spec} ({key}, deprecated)"
+                )),
+                _ => uf_infra::into_string(compact_str::format_compact!("{spec} ({key})")),
             },
             (Some(spec), None) => {
-                compact_str::format_compact!("{spec} (uf's default)").into_string()
+                uf_infra::into_string(compact_str::format_compact!("{spec} (uf's default)"))
             }
             (None, _) => compact_str::format_compact!(
                 "not declared — {}",
@@ -1239,7 +1239,7 @@ impl UniflowedConfig {
         }
         let spec = |name: &str| -> Option<String> {
             toolchain.get(name).map(|version| {
-                compact_str::format_compact!("{name}@{}", version.trim()).into_string()
+                uf_infra::into_string(compact_str::format_compact!("{name}@{}", version.trim()))
             })
         };
         let runtimes: Vec<String> = ["node", "bun", "deno"]
@@ -1253,17 +1253,18 @@ impl UniflowedConfig {
         let mut instead = Vec::new();
         match runtimes.as_slice() {
             [] => {}
-            [one] => {
-                instead.push(compact_str::format_compact!("`runtime: \"{one}\"`").into_string())
-            }
+            [one] => instead.push(uf_infra::into_string(compact_str::format_compact!(
+                "`runtime: \"{one}\"`"
+            ))),
             _ => instead.push(
                 "`runtime`, `build.runtime` and `test.runtime`, each as `name@version`".to_owned(),
             ),
         }
         match managers.as_slice() {
             [] => {}
-            [one] => instead
-                .push(compact_str::format_compact!("`packageManager: \"{one}\"`").into_string()),
+            [one] => instead.push(uf_infra::into_string(compact_str::format_compact!(
+                "`packageManager: \"{one}\"`"
+            ))),
             _ => instead.push("`packageManager`, as `name@version`".to_owned()),
         }
         let instead = if instead.is_empty() {
@@ -1315,10 +1316,10 @@ impl UniflowedConfig {
             PackageManagerPreference::Pnpm => "pnpm",
             PackageManagerPreference::Bun => "bun",
         };
-        Some(compact_str::format_compact!(
+        Some(uf_infra::into_string(compact_str::format_compact!(
             "pm.packageManager is the top-level `packageManager` now, which can pin a release as \
              well — write `packageManager: \"{spec}\"`"
-        ).into_string())
+        )))
     }
 
     /// The sentence for a project still writing `test.runner` as an object.
@@ -1347,13 +1348,13 @@ impl UniflowedConfig {
                     .to_owned(),
             );
         }
-        Some(compact_str::format_compact!(
+        Some(uf_infra::into_string(compact_str::format_compact!(
             "test.runner as an object is deprecated in favour of `runner: \"uf\"`, and this one \
              sets `applicationTarget: \"{}\"` — write `test.target: \"{}\"` beside `runner: \"uf\"` \
              to keep that override",
             target_name(target),
             target_name(target)
-        ).into_string())
+        )))
     }
 
     /// Every tool deprecation this project would be told about, for
@@ -1549,14 +1550,16 @@ fn check_toolchain(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Conf
             continue;
         }
         let written = match version.as_str() {
-            Some(version) => compact_str::format_compact!("{name}@{version}").into_string(),
+            Some(version) => {
+                uf_infra::into_string(compact_str::format_compact!("{name}@{version}"))
+            }
             None => name.to_owned(),
         };
         return Err(ConfigError::ToolKeysDisagree {
             path: path.to_path_buf(),
             key,
             written,
-            legacy_key: compact_str::format_compact!("env.toolchain.{name}").into_string(),
+            legacy_key: uf_infra::into_string(compact_str::format_compact!("env.toolchain.{name}")),
             legacy_written: pinned.to_owned(),
         });
     }

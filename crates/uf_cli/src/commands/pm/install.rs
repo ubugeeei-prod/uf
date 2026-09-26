@@ -347,9 +347,9 @@ fn unrun_scripts_line(
         })
         .collect::<Vec<_>>()
         .join("; ");
-    Some(uf_infra::cstr!(
+    Some(uf_infra::into_string(uf_infra::cstr!(
         "{declared}; uf does not run package.json scripts, so project tasks belong in uf.config.js"
-    ).into_string())
+    )))
 }
 
 /// Record what the workspace resolved to, in `.uf/install.json`.
@@ -381,7 +381,7 @@ fn write_plan(
     let runtime = uf_rm::RuntimeManagerPlan::infer_from_config(&resolved.config)?;
     let state_dir = resolved.root.join(".uf");
     std::fs::create_dir_all(&state_dir)
-        .with_context(|| uf_infra::cstr!("failed to create {state_dir}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {state_dir}"))?;
     let path = state_dir.join("install.json");
     let lockfile = workspace
         .map(|workspace| workspace.lockfile.clone())
@@ -468,10 +468,10 @@ impl UfLockGuard {
         }
         match before {
             Some(bytes) => std::fs::write(&self.path, bytes).with_context(|| {
-                uf_infra::cstr!("failed to restore {}", self.path).into_string()
+                uf_infra::into_string(uf_infra::cstr!("failed to restore {}", self.path))
             })?,
             None => std::fs::remove_file(&self.path)
-                .with_context(|| uf_infra::cstr!("failed to remove {}", self.path).into_string())?,
+                .with_context(|| uf_infra::cstr!("failed to remove {}", self.path))?,
         }
         let name = self.path.file_name().unwrap_or("uf.lock");
         Err(anyhow!(uf_infra::cstr!(
@@ -870,7 +870,7 @@ pub(super) fn render_change_table(renderer: &Renderer, out: &mut String, delta: 
             ChangeKind::Added => change.after.to_string(),
             ChangeKind::Removed => change.before.to_string(),
             ChangeKind::Updated => {
-                uf_infra::cstr!("{}{arrow}{}", change.before, change.after).into_string()
+                uf_infra::into_string(uf_infra::cstr!("{}{arrow}{}", change.before, change.after))
             }
             ChangeKind::Moved => change.after.to_string(),
         })
@@ -968,12 +968,12 @@ pub(crate) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
         // with it; the deprecation line above this summary names the one to
         // move.
         DetectionSource::ConfigOverride => "packageManager in uf.config.js".to_owned(),
-        DetectionSource::PackageManagerField { spec, .. } => {
-            uf_infra::cstr!("packageManager field: {}@{}", spec.manager, spec.version).into_string()
-        }
+        DetectionSource::PackageManagerField { spec, .. } => uf_infra::into_string(
+            uf_infra::cstr!("packageManager field: {}@{}", spec.manager, spec.version),
+        ),
         DetectionSource::Lockfile { lockfile, .. } => lockfile.file_name().to_owned(),
         DetectionSource::WorkspaceRoot { root, .. } => {
-            uf_infra::cstr!("workspace root {root}").into_string()
+            uf_infra::into_string(uf_infra::cstr!("workspace root {root}"))
         }
         DetectionSource::Default => "uf's default".to_owned(),
     }
@@ -986,7 +986,11 @@ pub(crate) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
 /// several of those take.
 fn runtime_label(config: &uf_config::UniflowedConfig) -> Option<String> {
     let host = resolve_host(config).ok()?;
-    Some(uf_infra::cstr!("{} · {}", host.name(), host.program).into_string())
+    Some(uf_infra::into_string(uf_infra::cstr!(
+        "{} · {}",
+        host.name(),
+        host.program
+    )))
 }
 
 /// The lockfile, its size, and how many packages it pins.
@@ -997,14 +1001,15 @@ pub(super) fn lockfile_label(root: &Utf8Path, snapshot: &LockfileSnapshot) -> St
         .unwrap_or(&snapshot.path)
         .to_string();
     if !snapshot.present {
-        return uf_infra::cstr!("{name} · not written").into_string();
+        return uf_infra::into_string(uf_infra::cstr!("{name} · not written"));
     }
     let size = ByteSize::from_bytes(snapshot.bytes);
     match snapshot.package_count() {
-        Some(count) => {
-            uf_infra::cstr!("{name} · {} · {size}", plural(count, "package")).into_string()
-        }
-        None => uf_infra::cstr!("{name} · {size}").into_string(),
+        Some(count) => uf_infra::into_string(uf_infra::cstr!(
+            "{name} · {} · {size}",
+            plural(count, "package")
+        )),
+        None => uf_infra::into_string(uf_infra::cstr!("{name} · {size}")),
     }
 }
 
@@ -1037,7 +1042,7 @@ impl<'a> Screen<'a> {
             live,
             renderer,
             started: Instant::now(),
-            header: uf_infra::cstr!("uf install · {project}").into_string(),
+            header: uf_infra::into_string(uf_infra::cstr!("uf install · {project}")),
             manager: manager.to_owned(),
             rows: Vec::new(),
             echoed: false,
@@ -1115,8 +1120,11 @@ fn frame(
 /// because a title and a manager name run together read as one string. The
 /// title itself is cut last, and only when it alone is wider than the window.
 fn header_line(row: &mut String, renderer: &Renderer, header: &FrameHeader<'_>, width: usize) {
-    let right =
-        uf_infra::cstr!("{} · {}", header.manager, format_duration(header.elapsed)).into_string();
+    let right = uf_infra::into_string(uf_infra::cstr!(
+        "{} · {}",
+        header.manager,
+        format_duration(header.elapsed)
+    ));
     let indent = INDENT.min(width);
     let title = truncate_to_width(header.title, width - indent);
     let title_width = display_width(title);
@@ -1137,7 +1145,7 @@ impl InstallObserver for Screen<'_> {
         // be redrawn is a line the redraw erases.
         self.live.clear();
         self.echoed = true;
-        let text = uf_infra::cstr!("{text}\n").into_string();
+        let text = uf_infra::into_string(uf_infra::cstr!("{text}\n"));
         match stream {
             ManagerStream::Stdout => self.ui.plain(&text),
             ManagerStream::Stderr => self.ui.plain_err(&text),

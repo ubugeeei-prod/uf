@@ -89,7 +89,7 @@ impl Builder {
     /// The name and version, as `uf explain build` prints them.
     pub(crate) fn label(&self) -> String {
         match &self.version {
-            Some(version) => uf_infra::cstr!("{} {version}", self.module).into_string(),
+            Some(version) => uf_infra::into_string(uf_infra::cstr!("{} {version}", self.module)),
             None => self.module.clone(),
         }
     }

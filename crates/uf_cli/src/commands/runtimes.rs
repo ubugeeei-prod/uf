@@ -320,7 +320,7 @@ fn store_tool(
     }
 
     let resolution = uf_env::toolchain::release(&resolved.root, config, tool, version, releases)
-        .with_context(|| uf_infra::cstr!("{key} is `{spec}`").into_string())?;
+        .with_context(|| uf_infra::cstr!("{key} is `{spec}`"))?;
     let Some(release) = resolution.version() else {
         // `release` answers a versioned spec with a release or an error.
         return Err(anyhow!(uf_infra::cstr!(
@@ -346,12 +346,16 @@ fn store_tool(
             .into_string(),
         );
         uf_env::archive::ensure(&store, &pin).with_context(|| {
-            uf_infra::cstr!("{key} is `{spec}`, and {pin} could not be installed").into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "{key} is `{spec}`, and {pin} could not be installed"
+            ))
         })?;
     }
     let envs = uf_env::project::Envs::discover()?;
     let bin = uf_env::project::link_pin(&envs, &store, &pin).with_context(|| {
-        uf_infra::cstr!("{key} is `{spec}`, and {pin} could not be linked").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{key} is `{spec}`, and {pin} could not be linked"
+        ))
     })?;
     // Held for this project, so `uf env gc` does not collect a tool a command
     // is using just because `uf env install` was never run here.
@@ -430,7 +434,7 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
     let (release, named) = match version {
         ToolVersion::OnPath => {
             return Described {
-                provider: uf_infra::cstr!("{name} (on PATH)").into_string(),
+                provider: uf_infra::into_string(uf_infra::cstr!("{name} (on PATH)")),
                 detail: uf_infra::cstr!(
                     "{purpose}; `{key}` names no version, so whichever `{name}` is on PATH runs, \
                      and a machine without one is told so rather than handed another"
@@ -440,7 +444,7 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
         }
         ToolVersion::Exact(version) => (
             Some(version.to_string()),
-            uf_infra::cstr!("`{key}` names exactly {version}").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("`{key}` names exactly {version}")),
         ),
         ToolVersion::Prefix(prefix) => {
             let locked = uf_env::lock::read(&resolved.root.join(lockfile))
@@ -482,7 +486,7 @@ fn describe_wanted(resolved: &ResolvedConfig, wanted: &Wanted<'_>, purpose: &str
     };
     Described {
         provider: match &release {
-            Some(version) => uf_infra::cstr!("{name} {version}").into_string(),
+            Some(version) => uf_infra::into_string(uf_infra::cstr!("{name} {version}")),
             None => spec.to_owned(),
         },
         detail: uf_infra::cstr!(

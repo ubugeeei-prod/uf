@@ -227,22 +227,23 @@ fn install_extension(
     install::install_vsix(&cli, &vsix)?;
 
     let source = match &options.vsix {
-        Some(file) => {
-            uf_infra::cstr!("{file} (a local file; not checked against a release)").into_string()
-        }
-        None => uf_infra::cstr!("{asset} from uf@{version}").into_string(),
+        Some(file) => uf_infra::into_string(uf_infra::cstr!(
+            "{file} (a local file; not checked against a release)"
+        )),
+        None => uf_infra::into_string(uf_infra::cstr!("{asset} from uf@{version}")),
     };
-    let digest = checked.map(|digest| uf_infra::cstr!("sha256 {}", &digest[..12]).into_string());
+    let digest =
+        checked.map(|digest| uf_infra::into_string(uf_infra::cstr!("sha256 {}", &digest[..12])));
     let cli = cli.to_string();
     let guide = editor.guide();
-    let setup_hint = uf_infra::cstr!(
+    let setup_hint = uf_infra::into_string(uf_infra::cstr!(
         "`uf editor setup {}` in a project turns the editor's own JavaScript checking off for its Flow files",
         if editor == Editor::Cursor {
             "cursor"
         } else {
             "vscode"
         }
-    ).into_string();
+    ));
     ui.render(|renderer, out| {
         renderer.banner(out, "uf editor install", Some(editor.name()));
         let mut rows = vec![
@@ -292,7 +293,7 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
         ))
     })?;
     let project = project_label(&root).to_owned();
-    let subtitle = uf_infra::cstr!("{} · {project}", editor.name()).into_string();
+    let subtitle = uf_infra::into_string(uf_infra::cstr!("{} · {project}", editor.name()));
     let targets = setup::targets(editor);
 
     if targets.is_empty() {
@@ -361,10 +362,10 @@ pub(crate) fn setup(cwd: &Utf8Path, ui: &mut Ui, editor: Editor, check: bool) ->
         }
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| uf_infra::cstr!("could not create {parent}").into_string())?;
+                .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
         }
         fs::write(path, text)
-            .with_context(|| uf_infra::cstr!("could not write {}", target.path).into_string())?;
+            .with_context(|| uf_infra::cstr!("could not write {}", target.path))?;
     }
 
     let guide = editor.guide();

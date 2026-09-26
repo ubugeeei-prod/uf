@@ -522,7 +522,7 @@ fn fix_count(count: usize) -> String {
     if count == 1 {
         String::from("1 fix")
     } else {
-        uf_infra::cstr!("{count} fixes").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{count} fixes"))
     }
 }
 
@@ -674,7 +674,10 @@ pub(crate) fn render_verdict(
         fixed,
     } = verdict;
     let headline = problem_summary(errors, warnings);
-    let files = uf_infra::cstr!("{} checked", plural(report.files_checked, "file")).into_string();
+    let files = uf_infra::into_string(uf_infra::cstr!(
+        "{} checked",
+        plural(report.files_checked, "file")
+    ));
     let took = format_duration(elapsed);
     let fixable = if fixed {
         None
@@ -732,13 +735,19 @@ fn fixable_hint(command: LintCommand, diagnostics: &[Diagnostic]) -> Option<Stri
         .iter()
         .filter(|(_, count)| *count > 0)
         .map(|(tier, count)| {
-            uf_infra::cstr!("{count} with `{}`", command.fix_command(*tier)).into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "{count} with `{}`",
+                command.fix_command(*tier)
+            ))
         })
         .collect();
     if parts.is_empty() {
         return None;
     }
-    Some(uf_infra::cstr!("fixable: {}", parts.join("; ")).into_string())
+    Some(uf_infra::into_string(uf_infra::cstr!(
+        "fixable: {}",
+        parts.join("; ")
+    )))
 }
 
 mod rules;

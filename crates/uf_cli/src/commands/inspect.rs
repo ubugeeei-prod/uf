@@ -36,9 +36,11 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
         .unwrap_or_else(|| "zero-config defaults".to_string());
     let root = resolved.root.as_str().to_string();
     let router_root = resolved.config.app.router.root.to_string();
-    let style = uf_infra::cstr!("{:?}", resolved.config.app.builtins.style).into_string();
-    let compiler =
-        uf_infra::cstr!("{:?}", resolved.config.app.builtins.react_compiler.mode).into_string();
+    let style = uf_infra::into_string(uf_infra::cstr!("{:?}", resolved.config.app.builtins.style));
+    let compiler = uf_infra::into_string(uf_infra::cstr!(
+        "{:?}",
+        resolved.config.app.builtins.react_compiler.mode
+    ));
     let pm_lockfile = resolved.config.pm.lockfile.to_string();
     let detected = detection.package_manager.to_string();
     let detected_source = detection.source.kind().to_string();
@@ -176,9 +178,10 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             .iter()
             .map(
                 |tool| match crate::commands::runtimes::locked(&resolved, tool.role) {
-                    Some(version) => {
-                        uf_infra::cstr!("{} · locked at {version}", tool.summary()).into_string()
-                    }
+                    Some(version) => uf_infra::into_string(uf_infra::cstr!(
+                        "{} · locked at {version}",
+                        tool.summary()
+                    )),
                     None => tool.summary(),
                 },
             )
@@ -294,7 +297,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
                 "params": route.params.into_iter().map(|param| {
                     json!({
                         "name": param.name,
-                        "kind": uf_infra::cstr!("{:?}", param.kind).into_string(),
+                        "kind": uf_infra::into_string(uf_infra::cstr!("{:?}", param.kind)),
                     })
                 }).collect::<Vec<_>>(),
                 "hasLayout": route.has_layout,

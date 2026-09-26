@@ -190,7 +190,7 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
 
     let host_name = host.name();
     let project = project_label(&root).to_string();
-    let banner = uf_infra::cstr!("uf {}", which.command()).into_string();
+    let banner = uf_infra::into_string(uf_infra::cstr!("uf {}", which.command()));
     let serves = match (which, plan.emits_a_server()) {
         // Said in the banner rather than left to be noticed from a route count
         // of zero: this preview answers with files and nothing else, which is

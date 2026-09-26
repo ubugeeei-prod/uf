@@ -312,7 +312,7 @@ impl Types {
                     })?;
                 Some(json!({
                     "location": self.span_location(documents, &related.span)?,
-                    "message": uf_infra::cstr!("[{}] {label}", related.id).into_string(),
+                    "message": uf_infra::into_string(uf_infra::cstr!("[{}] {label}", related.id)),
                 }))
             })
             .collect();
@@ -405,7 +405,7 @@ impl Types {
         Some(json!({
             "contents": {
                 "kind": "markdown",
-                "value": uf_infra::cstr!("```flow\n{}\n```", found.printed).into_string(),
+                "value": uf_infra::into_string(uf_infra::cstr!("```flow\n{}\n```", found.printed)),
             },
             "range": range_in(text, &found.span),
         }))
@@ -591,7 +591,9 @@ impl Types {
         new_name: &str,
     ) -> Result<Value, String> {
         if !is_identifier(new_name) {
-            return Err(uf_infra::cstr!("`{new_name}` is not an identifier").into_string());
+            return Err(uf_infra::into_string(uf_infra::cstr!(
+                "`{new_name}` is not an identifier"
+            )));
         }
         let Some((path, position, _)) = self.locate(documents, uri, line, requested) else {
             return Ok(Value::Null);
@@ -614,7 +616,10 @@ impl Types {
         let mut changes = serde_json::Map::new();
         for edit in &edits {
             let Some((uri, text)) = self.file_text(documents, edit.span.path.as_str()) else {
-                return Err(uf_infra::cstr!("{} could not be read", edit.span.path).into_string());
+                return Err(uf_infra::into_string(uf_infra::cstr!(
+                    "{} could not be read",
+                    edit.span.path
+                )));
             };
             let entry = changes
                 .entry(uri)

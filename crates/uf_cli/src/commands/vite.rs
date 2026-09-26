@@ -113,8 +113,9 @@ pub(crate) fn find_program(program: &str) -> Option<Utf8PathBuf> {
         }
         if cfg!(windows) {
             for extension in ["exe", "cmd", "bat"] {
-                let candidate =
-                    directory.join(uf_infra::cstr!("{program}.{extension}").into_string());
+                let candidate = directory.join(uf_infra::into_string(uf_infra::cstr!(
+                    "{program}.{extension}"
+                )));
                 if candidate.is_file() {
                     return Utf8PathBuf::from_path_buf(candidate).ok();
                 }
@@ -603,7 +604,10 @@ impl Driver {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
         let mut child = process.spawn().with_context(|| {
-            uf_infra::cstr!("failed to start {} for `uf {command}`", host.name()).into_string()
+            uf_infra::into_string(uf_infra::cstr!(
+                "failed to start {} for `uf {command}`",
+                host.name()
+            ))
         })?;
         let stdin = child
             .stdin

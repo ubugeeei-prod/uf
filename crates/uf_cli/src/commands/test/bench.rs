@@ -185,7 +185,9 @@ pub(crate) fn compare(
                         .iter()
                         .any(|row| row.file == entry.file && row.name == entry.name)
                 })
-                .map(|entry| uf_infra::cstr!("{} > {}", entry.file, entry.name).into_string())
+                .map(|entry| {
+                    uf_infra::into_string(uf_infra::cstr!("{} > {}", entry.file, entry.name))
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -261,7 +263,7 @@ pub(crate) fn render(ui: &mut Ui, comparison: &Comparison) {
         .iter()
         .map(|row| {
             [
-                uf_infra::cstr!("{} > {}", row.file, row.name).into_string(),
+                uf_infra::into_string(uf_infra::cstr!("{} > {}", row.file, row.name)),
                 duration(row.stats.median_micros),
                 duration(row.stats.p75_micros),
                 duration(row.stats.min_micros),
@@ -273,7 +275,7 @@ pub(crate) fn render(ui: &mut Ui, comparison: &Comparison) {
         })
         .collect();
     let against = match (comparison.found, comparison.saved) {
-        (_, true) => uf_infra::cstr!("saved to {}", comparison.baseline).into_string(),
+        (_, true) => uf_infra::into_string(uf_infra::cstr!("saved to {}", comparison.baseline)),
         (true, false) => uf_infra::cstr!(
             "{} · a median more than {}% over it fails the run",
             comparison.baseline,
@@ -370,11 +372,19 @@ fn judge(median: u64, baseline: Option<u64>, threshold: u32) -> (Verdict, Option
 /// A duration in microseconds, in the unit that keeps it short.
 fn duration(micros: u64) -> String {
     if micros < 1_000 {
-        uf_infra::cstr!("{micros}µs").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{micros}µs"))
     } else if micros < 1_000_000 {
-        uf_infra::cstr!("{}.{:02}ms", micros / 1_000, micros % 1_000 / 10).into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{}.{:02}ms",
+            micros / 1_000,
+            micros % 1_000 / 10
+        ))
     } else {
-        uf_infra::cstr!("{}.{:02}s", micros / 1_000_000, micros % 1_000_000 / 10_000).into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{}.{:02}s",
+            micros / 1_000_000,
+            micros % 1_000_000 / 10_000
+        ))
     }
 }
 
@@ -382,7 +392,11 @@ fn duration(micros: u64) -> String {
 fn change(basis_points: i64) -> String {
     let sign = if basis_points < 0 { '-' } else { '+' };
     let magnitude = basis_points.unsigned_abs();
-    uf_infra::cstr!("{sign}{}.{:02}%", magnitude / 100, magnitude % 100).into_string()
+    uf_infra::into_string(uf_infra::cstr!(
+        "{sign}{}.{:02}%",
+        magnitude / 100,
+        magnitude % 100
+    ))
 }
 
 /// The baseline at `path`, or `None` when there is no file there.
@@ -391,21 +405,22 @@ fn read_baseline(path: &Utf8Path) -> Result<Option<Baseline>> {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            return Err(error)
-                .with_context(|| uf_infra::cstr!("could not open {path}").into_string());
+            return Err(error).with_context(|| uf_infra::cstr!("could not open {path}"));
         }
     };
     let mut bytes = Vec::new();
     file.take(MAX_BASELINE_BYTES.saturating_add(1))
         .read_to_end(&mut bytes)
-        .with_context(|| uf_infra::cstr!("could not read {path}").into_string())?;
+        .with_context(|| uf_infra::cstr!("could not read {path}"))?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_BASELINE_BYTES {
         bail!(uf_infra::cstr!(
             "{path} is larger than the {MAX_BASELINE_BYTES} bytes a benchmark baseline can be"
         ));
     }
     let baseline: Baseline = serde_json::from_slice(&bytes).with_context(|| {
-        uf_infra::cstr!("{path} is not a benchmark baseline uf reads").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{path} is not a benchmark baseline uf reads"
+        ))
     })?;
     if baseline.version != BASELINE_VERSION {
         bail!(uf_infra::cstr!(
@@ -437,13 +452,12 @@ fn write_baseline(path: &Utf8Path, rows: &[Row]) -> Result<()> {
         && !parent.as_str().is_empty()
     {
         std::fs::create_dir_all(parent)
-            .with_context(|| uf_infra::cstr!("could not create {parent}").into_string())?;
+            .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
     }
     let mut text =
         serde_json::to_string_pretty(&baseline).context("could not serialise the baseline")?;
     text.push('\n');
-    std::fs::write(path, text)
-        .with_context(|| uf_infra::cstr!("could not write {path}").into_string())
+    std::fs::write(path, text).with_context(|| uf_infra::cstr!("could not write {path}"))
 }
 
 #[cfg(test)]

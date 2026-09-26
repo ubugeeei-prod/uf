@@ -43,10 +43,10 @@ pub(crate) fn run_package_no_npm_scripts(
                 severity,
                 position,
                 at,
-                uf_infra::cstr!(
+                uf_infra::into_string(uf_infra::cstr!(
                     "install-time lifecycle scripts ({}) are disabled; move the automation to uf tasks or explicitly allow lifecycle scripts",
                     forbidden.join(", ")
-                ).into_string(),
+                )),
             );
         }
     }

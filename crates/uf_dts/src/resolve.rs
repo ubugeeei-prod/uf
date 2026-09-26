@@ -197,13 +197,17 @@ fn declarations_with(base: &str, flavor: Flavor) -> SmallVec<[String; 4]> {
             _ => None,
         };
         if let Some(substituted) = substituted {
-            found.push(uf_infra::cstr!("{stem}{substituted}").into_string());
+            found.push(uf_infra::into_string(uf_infra::cstr!(
+                "{stem}{substituted}"
+            )));
             return found;
         }
     }
     for extension in flavor.extensions() {
-        found.push(uf_infra::cstr!("{base}{extension}").into_string());
-        found.push(uf_infra::cstr!("{base}/index{extension}").into_string());
+        found.push(uf_infra::into_string(uf_infra::cstr!("{base}{extension}")));
+        found.push(uf_infra::into_string(uf_infra::cstr!(
+            "{base}/index{extension}"
+        )));
     }
     found
 }

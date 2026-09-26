@@ -23,3 +23,10 @@ macro_rules! append {
         write!($buffer, $($arg)*).expect("formatting into a string failed")
     }};
 }
+
+/// Preserve an existing String API without duplicating the compact-to-String
+/// conversion at each compatibility boundary. Inline values still allocate.
+#[inline(never)]
+pub fn into_string(value: crate::CompactString) -> String {
+    value.into_string()
+}

@@ -158,7 +158,7 @@ fn new_file(wants: &[Want]) -> Edit {
     for want in wants {
         merge_at(&mut root, &want.path, want.fresh());
     }
-    let text = uf_infra::cstr!("{}\n", pretty(&root, "")).into_string();
+    let text = uf_infra::into_string(uf_infra::cstr!("{}\n", pretty(&root, "")));
     Edit {
         inserted: vec![text.trim_end().to_owned()],
         text,
@@ -320,7 +320,7 @@ struct Rendered {
 impl Splice {
     fn render(&self, source: &str) -> Rendered {
         let outer = line_indent(source, self.at - 1);
-        let inner = uf_infra::cstr!("{outer}  ").into_string();
+        let inner = uf_infra::into_string(uf_infra::cstr!("{outer}  "));
         let empty = match self.container {
             Container::Object { empty } | Container::Array { empty } => empty,
         };
@@ -330,9 +330,10 @@ impl Splice {
             .map(|(key, value)| {
                 let value = pretty(value, &inner);
                 match key {
-                    Some(key) => {
-                        uf_infra::cstr!("{}: {value}", Value::String(key.clone())).into_string()
-                    }
+                    Some(key) => uf_infra::into_string(uf_infra::cstr!(
+                        "{}: {value}",
+                        Value::String(key.clone())
+                    )),
                     None => value,
                 }
             })
@@ -344,7 +345,7 @@ impl Splice {
             let text = if empty {
                 joined.clone()
             } else {
-                uf_infra::cstr!("{joined}, ").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{joined}, "))
             };
             return Rendered {
                 text,

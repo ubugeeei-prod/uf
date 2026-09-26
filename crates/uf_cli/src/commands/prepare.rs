@@ -231,7 +231,7 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<
 
     let state_dir = resolved.root.join(".uf");
     fs::create_dir_all(&state_dir)
-        .with_context(|| uf_infra::cstr!("failed to create {state_dir}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {state_dir}"))?;
     let manifest = state_dir.join("prepare.json");
     let failed: Vec<PrepareStep> = reports
         .iter()
@@ -290,7 +290,7 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<
             "uf prepare failed at {}{}{}{}",
             first.name(),
             if failed.len() > 1 {
-                uf_infra::cstr!(" ({} steps failed)", failed.len()).into_string()
+                uf_infra::into_string(uf_infra::cstr!(" ({} steps failed)", failed.len()))
             } else {
                 String::new()
             },
@@ -317,7 +317,7 @@ impl Run<'_> {
         let report = match &staged {
             StagedFiles::Unavailable(reason) => StepReport::ok(
                 PrepareStep::DiscoverStagedFiles,
-                uf_infra::cstr!("checking every file: {}", reason.reason()).into_string(),
+                uf_infra::into_string(uf_infra::cstr!("checking every file: {}", reason.reason())),
             ),
             StagedFiles::Staged(files) if files.is_empty() => StepReport::ok(
                 PrepareStep::DiscoverStagedFiles,
@@ -489,7 +489,9 @@ impl Run<'_> {
             if failures.is_empty() {
                 match stage(&root, &wholly) {
                     Ok(()) => lines.extend(wholly.iter().map(|path| {
-                        uf_infra::cstr!("{path}: rewritten, and the rewrite staged").into_string()
+                        uf_infra::into_string(uf_infra::cstr!(
+                            "{path}: rewritten, and the rewrite staged"
+                        ))
                     })),
                     Err(error) => failures.push(error.to_string()),
                 }
@@ -541,7 +543,7 @@ impl Run<'_> {
                 });
                 StepReport::ok(
                     PrepareStep::GenerateRouterTypes,
-                    uf_infra::cstr!("wrote {relative}").into_string(),
+                    uf_infra::into_string(uf_infra::cstr!("wrote {relative}")),
                 )
             }
             // `write_router_manifest` answers `None` for a disabled router,
@@ -661,8 +663,10 @@ impl Run<'_> {
         )
         .into_string();
         if !fixed.is_empty() {
-            detail =
-                uf_infra::cstr!("{detail}, fixed {}", plural(fixed.len(), "file")).into_string();
+            detail = uf_infra::into_string(uf_infra::cstr!(
+                "{detail}, fixed {}",
+                plural(fixed.len(), "file")
+            ));
         }
         // Kept for the report to draw with their code frames, exactly as
         // `uf lint` draws them: a pre-commit hook that says "2 errors" and
@@ -711,8 +715,10 @@ impl Run<'_> {
                     // unformatted, and here is why", which is what the step
                     // has to say either way.
                     if fix && let Err(error) = fs::write(&file.absolute_path, &result.output) {
-                        unprintable
-                            .push(uf_infra::cstr!("{}: {error}", file.relative_path).into_string());
+                        unprintable.push(uf_infra::into_string(uf_infra::cstr!(
+                            "{}: {error}",
+                            file.relative_path
+                        )));
                         continue;
                     }
                     unformatted.push(file.relative_path.clone());
@@ -721,8 +727,10 @@ impl Run<'_> {
                 // The formatter prints from a syntax tree and there is no tree
                 // to print when the source does not parse. `uf fmt` reports
                 // that and leaves the file alone; so does this.
-                Err(error) => unprintable
-                    .push(uf_infra::cstr!("{}: {error}", file.relative_path).into_string()),
+                Err(error) => unprintable.push(uf_infra::into_string(uf_infra::cstr!(
+                    "{}: {error}",
+                    file.relative_path
+                ))),
             }
         }
         self.rewrote |= fix && !unformatted.is_empty();
@@ -859,7 +867,7 @@ impl Run<'_> {
         if self.staged.is_empty_index() {
             String::from("nothing is staged for commit")
         } else {
-            uf_infra::cstr!("no staged file is one uf {verb}").into_string()
+            uf_infra::into_string(uf_infra::cstr!("no staged file is one uf {verb}"))
         }
     }
 
@@ -954,9 +962,9 @@ pub(crate) fn install_hooks(cwd: &camino::Utf8Path, ui: &mut Ui) -> Result<()> {
         configured,
     } = uf_prepare::install_hooks(&resolved.root)?;
     let file = if wrote {
-        uf_infra::cstr!("wrote {hook}").into_string()
+        uf_infra::into_string(uf_infra::cstr!("wrote {hook}"))
     } else {
-        uf_infra::cstr!("{hook} is already uf's dispatcher").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{hook} is already uf's dispatcher"))
     };
     let setting = if configured {
         uf_infra::cstr!(
@@ -990,7 +998,7 @@ fn shell_word(path: &str) -> String {
     if plain && !path.is_empty() {
         return path.to_owned();
     }
-    uf_infra::cstr!("'{}'", path.replace('\'', r"'\''")).into_string()
+    uf_infra::into_string(uf_infra::cstr!("'{}'", path.replace('\'', r"'\''")))
 }
 
 /// The `staged` object of `prepare.json`.
@@ -1011,7 +1019,10 @@ fn staged_lines(files: &[compact_str::CompactString]) -> Vec<String> {
         .map(|file| file.to_string())
         .collect();
     if files.len() > STAGED_PATHS_SHOWN {
-        lines.push(uf_infra::cstr!("and {} more", files.len() - STAGED_PATHS_SHOWN).into_string());
+        lines.push(uf_infra::into_string(uf_infra::cstr!(
+            "and {} more",
+            files.len() - STAGED_PATHS_SHOWN
+        )));
     }
     lines
 }
@@ -1040,7 +1051,7 @@ fn render(
     let staged_summary = match staged {
         StagedFiles::Staged(files) => plural(files.len(), "file"),
         StagedFiles::Unavailable(reason) => {
-            uf_infra::cstr!("every file ({})", reason.reason()).into_string()
+            uf_infra::into_string(uf_infra::cstr!("every file ({})", reason.reason()))
         }
     };
     let steps: Vec<(Status, String, Vec<&str>)> = reports
@@ -1065,8 +1076,8 @@ fn render(
         .collect();
     let summary = match failures.as_slice() {
         [] => String::from("prepare passed"),
-        [only] => uf_infra::cstr!("prepare failed at {only}").into_string(),
-        many => uf_infra::cstr!("prepare failed at {}", many.join(" and ")).into_string(),
+        [only] => uf_infra::into_string(uf_infra::cstr!("prepare failed at {only}")),
+        many => uf_infra::into_string(uf_infra::cstr!("prepare failed at {}", many.join(" and "))),
     };
 
     ui.render(|renderer, out| {

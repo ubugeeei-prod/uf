@@ -477,9 +477,9 @@ fn render_origins(
         .iter()
         .zip(attested)
         .filter_map(|(package, state)| match state {
-            Attested::Yes(origin) if !origin.is_empty() => {
-                Some(uf_infra::cstr!("{} built by {origin}", package.name).into_string())
-            }
+            Attested::Yes(origin) if !origin.is_empty() => Some(uf_infra::into_string(
+                uf_infra::cstr!("{} built by {origin}", package.name),
+            )),
             Attested::Mismatch => Some(
                 uf_infra::cstr!(
                     "{} publishes an attestation that is not about this version",

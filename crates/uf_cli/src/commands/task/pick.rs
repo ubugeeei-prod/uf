@@ -69,10 +69,11 @@ impl Ask for Terminal {
 /// for.
 fn title(task: &str, argument: &TaskArgument) -> String {
     match &argument.description {
-        Some(description) => {
-            uf_infra::cstr!("{task} · {} — {description}", argument.name).into_string()
-        }
-        None => uf_infra::cstr!("{task} · {}", argument.name).into_string(),
+        Some(description) => uf_infra::into_string(uf_infra::cstr!(
+            "{task} · {} — {description}",
+            argument.name
+        )),
+        None => uf_infra::into_string(uf_infra::cstr!("{task} · {}", argument.name)),
     }
 }
 
@@ -155,7 +156,7 @@ pub(crate) fn undeclared(
 
 /// An argument error as `uf run` reports it: whose, and how to pass one.
 fn explain(task: &str, declared: &[TaskArgument], error: &ArgumentError) -> anyhow::Error {
-    let mut message = uf_infra::cstr!("task {task:?}: {error}").into_string();
+    let mut message = uf_infra::into_string(uf_infra::cstr!("task {task:?}: {error}"));
     if let ArgumentError::Missing(missing) = error
         && let Some(first) = missing.first()
     {
@@ -196,10 +197,10 @@ pub(crate) fn signature(declared: &[TaskArgument]) -> String {
         .map(
             |argument| match (&argument.default, argument.is_required()) {
                 (Some(default), _) => {
-                    uf_infra::cstr!("[{}={default}]", argument.name).into_string()
+                    uf_infra::into_string(uf_infra::cstr!("[{}={default}]", argument.name))
                 }
-                (None, true) => uf_infra::cstr!("<{}>", argument.name).into_string(),
-                (None, false) => uf_infra::cstr!("[{}]", argument.name).into_string(),
+                (None, true) => uf_infra::into_string(uf_infra::cstr!("<{}>", argument.name)),
+                (None, false) => uf_infra::into_string(uf_infra::cstr!("[{}]", argument.name)),
             },
         )
         .collect::<Vec<_>>()
@@ -212,7 +213,7 @@ pub(crate) fn signature(declared: &[TaskArgument]) -> String {
 /// Past a `--` when anything in it would otherwise be read as one of `uf run`'s
 /// own options: a declared `--mode` is the task's only after one.
 pub(crate) fn replay(task: &str, resolved: &Resolved) -> String {
-    let mut line = uf_infra::cstr!("uf run {task}").into_string();
+    let mut line = uf_infra::into_string(uf_infra::cstr!("uf run {task}"));
     let shadowed = resolved
         .values
         .iter()

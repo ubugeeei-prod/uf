@@ -92,7 +92,7 @@ impl RemoteTemplate {
                 ));
             }
             Some((
-                uf_infra::cstr!("https://github.com/{repository}.git").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("https://github.com/{repository}.git")),
                 reference,
                 template,
             ))
@@ -146,9 +146,11 @@ impl RemoteTemplate {
     /// The source, as the summary names it.
     pub(crate) fn label(&self) -> String {
         match self {
-            Self::Git { url, commit } => uf_infra::cstr!("{url} at {commit}").into_string(),
+            Self::Git { url, commit } => {
+                uf_infra::into_string(uf_infra::cstr!("{url} at {commit}"))
+            }
             Self::Tarball { url, integrity } => {
-                uf_infra::cstr!("{url} ({integrity})").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{url} ({integrity})"))
             }
         }
     }
@@ -241,9 +243,11 @@ impl Staging {
                     path.display()
                 ))
             })?
-            .join(uf_infra::cstr!("uf-template-{}-{nanos}", std::process::id()).into_string());
-        fs::create_dir_all(&path)
-            .with_context(|| uf_infra::cstr!("failed to create {path}").into_string())?;
+            .join(uf_infra::into_string(uf_infra::cstr!(
+                "uf-template-{}-{nanos}",
+                std::process::id()
+            )));
+        fs::create_dir_all(&path).with_context(|| uf_infra::cstr!("failed to create {path}"))?;
         Ok(Self { path })
     }
 
@@ -357,12 +361,11 @@ fn git(dir: &Utf8Path, args: &[&str]) -> Result<String> {
 /// The one directory `dir` holds when it holds nothing else: the wrapper a
 /// tarball of a repository puts everything in.
 fn single_directory(dir: &Utf8Path) -> Result<Option<Utf8PathBuf>> {
-    let mut entries =
-        fs::read_dir(dir).with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?;
+    let mut entries = fs::read_dir(dir).with_context(|| uf_infra::cstr!("failed to read {dir}"))?;
     let (Some(first), None) = (entries.next(), entries.next()) else {
         return Ok(None);
     };
-    let first = first.with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?;
+    let first = first.with_context(|| uf_infra::cstr!("failed to read {dir}"))?;
     if !first.file_type().is_ok_and(|kind| kind.is_dir()) {
         return Ok(None);
     }
@@ -379,11 +382,8 @@ pub(crate) fn copy_into(from: &Utf8Path, to: &Utf8Path, force: bool) -> Result<V
     let mut files = Vec::new();
     let mut stack = vec![from.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir)
-            .with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?
-        {
-            let entry =
-                entry.with_context(|| uf_infra::cstr!("failed to read {dir}").into_string())?;
+        for entry in fs::read_dir(&dir).with_context(|| uf_infra::cstr!("failed to read {dir}"))? {
+            let entry = entry.with_context(|| uf_infra::cstr!("failed to read {dir}"))?;
             let path = Utf8PathBuf::from_path_buf(entry.path()).map_err(|path| {
                 anyhow!(uf_infra::cstr!(
                     "the template holds a non-UTF-8 path: {}",
@@ -392,7 +392,7 @@ pub(crate) fn copy_into(from: &Utf8Path, to: &Utf8Path, force: bool) -> Result<V
             })?;
             let kind = entry
                 .file_type()
-                .with_context(|| uf_infra::cstr!("failed to read {path}").into_string())?;
+                .with_context(|| uf_infra::cstr!("failed to read {path}"))?;
             let relative = path.strip_prefix(from).unwrap_or(&path).to_path_buf();
             if kind.is_symlink() {
                 bail!(uf_infra::cstr!(
@@ -425,10 +425,10 @@ pub(crate) fn copy_into(from: &Utf8Path, to: &Utf8Path, force: bool) -> Result<V
         let target = to.join(&relative);
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| uf_infra::cstr!("failed to create {parent}").into_string())?;
+                .with_context(|| uf_infra::cstr!("failed to create {parent}"))?;
         }
         fs::copy(from.join(&relative), &target)
-            .with_context(|| uf_infra::cstr!("failed to write {target}").into_string())?;
+            .with_context(|| uf_infra::cstr!("failed to write {target}"))?;
         written.push(target);
     }
     Ok(written)

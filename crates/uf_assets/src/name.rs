@@ -72,7 +72,10 @@ pub fn hashed_name_with_suffix(
     for byte in &digest[..NAME_DIGITS / 2] {
         uf_infra::append!(hex, "{byte:02x}");
     }
-    uf_infra::cstr!("{}.{hex}{suffix}.{extension}", sanitise(stem)).into_string()
+    uf_infra::into_string(uf_infra::cstr!(
+        "{}.{hex}{suffix}.{extension}",
+        sanitise(stem)
+    ))
 }
 
 /// The name for one emitted file, with nothing between the digest and the

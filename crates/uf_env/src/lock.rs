@@ -83,7 +83,7 @@ pub fn guard_path(lockfile: &Utf8Path) -> Utf8PathBuf {
         .parent()
         .unwrap_or_else(|| Utf8Path::new(""))
         .join(".uf")
-        .join(uf_infra::cstr!("{name}.guard").into_string())
+        .join(uf_infra::into_string(uf_infra::cstr!("{name}.guard")))
 }
 
 /// Wait for, and take, the guard on the lockfile at `lockfile`.
@@ -159,7 +159,7 @@ impl ToolchainLock {
 
 /// `node@26`.
 fn spec(tool: Tool, prefix: &str) -> String {
-    uf_infra::cstr!("{}@{prefix}", tool.name()).into_string()
+    uf_infra::into_string(uf_infra::cstr!("{}@{prefix}", tool.name()))
 }
 
 /// Read the record out of the `uf.lock` at `path`.

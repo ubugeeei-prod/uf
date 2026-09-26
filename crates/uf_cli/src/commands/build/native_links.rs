@@ -68,7 +68,7 @@ pub(crate) fn write(
     }]);
     let directory = out.join(".well-known");
     std::fs::create_dir_all(&directory)
-        .with_context(|| uf_infra::cstr!("failed to create {directory}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to create {directory}"))?;
     let mut files = Vec::new();
     for (name, value) in [
         ("apple-app-site-association", apple),
@@ -82,7 +82,10 @@ pub(crate) fn write(
         }
         std::fs::write(
             &file,
-            uf_infra::cstr!("{}\n", serde_json::to_string_pretty(&value)?).into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{}\n",
+                serde_json::to_string_pretty(&value)?
+            )),
         )?;
         files.push(file);
     }

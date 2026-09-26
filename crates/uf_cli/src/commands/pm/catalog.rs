@@ -192,7 +192,10 @@ pub(crate) fn set(
     // this command exists to prevent — some manifests on the new range and some
     // on the old — and then install it. See `uf_pm::manifests::apply_all`.
     uf_pm::manifests::apply_all(&changes).with_context(|| {
-        uf_infra::cstr!("could not rewrite {}", project_label(&resolved.root)).into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "could not rewrite {}",
+            project_label(&resolved.root)
+        ))
     })?;
     ui.render(|renderer, out| {
         renderer.status(

@@ -117,7 +117,7 @@ pub struct Component {
 impl Component {
     /// The file this component is written to.
     pub fn file_name(&self) -> String {
-        compact_str::format_compact!("{}.js", self.name).into_string()
+        uf_infra::into_string(compact_str::format_compact!("{}.js", self.name))
     }
 
     /// The components this file exports, by the names a page imports: every
@@ -140,9 +140,9 @@ impl Component {
     /// it, which the caller knows and this crate does not.
     pub fn import_statement(&self, from: &str) -> String {
         match self.components().as_slice() {
-            [one] => {
-                compact_str::format_compact!("import {{ {one} }} from \"{from}\";").into_string()
-            }
+            [one] => uf_infra::into_string(compact_str::format_compact!(
+                "import {{ {one} }} from \"{from}\";"
+            )),
             _ => compact_str::format_compact!(
                 "import * as {} from \"{from}\";",
                 namespace_name(self.name)

@@ -724,9 +724,9 @@ fn blur_placeholder(
 
     use base64::Engine as _;
     let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(Some(
-        uf_infra::cstr!("data:{mime};base64,{encoded}").into_string(),
-    ))
+    Ok(Some(uf_infra::into_string(uf_infra::cstr!(
+        "data:{mime};base64,{encoded}"
+    ))))
 }
 
 /// The format uf will decode these bytes as, if it has a decoder for them.

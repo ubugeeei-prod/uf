@@ -79,14 +79,17 @@ fn chain_suffix(chain: &[Utf8PathBuf]) -> String {
     if chain.len() < 2 {
         return String::new();
     }
-    uf_infra::cstr!(", reached from a client boundary through {}", arrows(chain)).into_string()
+    uf_infra::into_string(uf_infra::cstr!(
+        ", reached from a client boundary through {}",
+        arrows(chain)
+    ))
 }
 
 /// A chain of modules as the report prints it: each in backticks, `→` between.
 fn arrows(chain: &[Utf8PathBuf]) -> String {
     let steps: Vec<String> = chain
         .iter()
-        .map(|module| uf_infra::cstr!("`{module}`").into_string())
+        .map(|module| uf_infra::into_string(uf_infra::cstr!("`{module}`")))
         .collect();
     steps.join(" → ")
 }
@@ -106,12 +109,12 @@ fn request_state_message(
 ) -> String {
     let named: Vec<String> = routes
         .iter()
-        .map(|route| uf_infra::cstr!("`{route}`").into_string())
+        .map(|route| uf_infra::into_string(uf_infra::cstr!("`{route}`")))
         .collect();
     let (subject, their) = match named.as_slice() {
-        [one] => (uf_infra::cstr!("route {one}").into_string(), "its"),
+        [one] => (uf_infra::into_string(uf_infra::cstr!("route {one}")), "its"),
         _ => (
-            uf_infra::cstr!("routes {}", named.join(", ")).into_string(),
+            uf_infra::into_string(uf_infra::cstr!("routes {}", named.join(", "))),
             "their",
         ),
     };

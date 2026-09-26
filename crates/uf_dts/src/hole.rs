@@ -140,7 +140,7 @@ mod tests {
             let json = serde_json::to_string(&construct).expect("serializes");
             assert_eq!(
                 json,
-                uf_infra::cstr!("\"{}\"", construct.as_str()).into_string()
+                uf_infra::into_string(uf_infra::cstr!("\"{}\"", construct.as_str()))
             );
         }
     }

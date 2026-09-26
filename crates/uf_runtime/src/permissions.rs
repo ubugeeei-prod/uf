@@ -232,7 +232,9 @@ impl fmt::Display for PermissionError {
             Self::Unenforceable { host, permissions } => {
                 let names = permissions
                     .iter()
-                    .map(|permission| compact_str::format_compact!("`{permission}`").into_string())
+                    .map(|permission| {
+                        uf_infra::into_string(compact_str::format_compact!("`{permission}`"))
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 match host {
@@ -336,10 +338,14 @@ fn node_arguments(
     // right spelling. Deno has no such choice, which is what
     // `PermissionError::Unexpressible` is about.
     for path in toolchain.read.iter().chain(&permissions.read) {
-        arguments.push(compact_str::format_compact!("--allow-fs-read={path}").into_string());
+        arguments.push(uf_infra::into_string(compact_str::format_compact!(
+            "--allow-fs-read={path}"
+        )));
     }
     for path in toolchain.write.iter().chain(&permissions.write) {
-        arguments.push(compact_str::format_compact!("--allow-fs-write={path}").into_string());
+        arguments.push(uf_infra::into_string(compact_str::format_compact!(
+            "--allow-fs-write={path}"
+        )));
     }
     // Both of these Node itself warns about at startup —
     // "must be used with extreme caution. It could invalidate the permission
@@ -400,7 +406,9 @@ fn deno_arguments(
             .map(|entry| entry.as_str())
             .collect::<Vec<_>>()
             .join(",");
-        arguments.push(compact_str::format_compact!("--allow-{permission}={joined}").into_string());
+        arguments.push(uf_infra::into_string(compact_str::format_compact!(
+            "--allow-{permission}={joined}"
+        )));
     }
     Ok(arguments)
 }
@@ -454,9 +462,9 @@ pub fn explain(
             (true, RuntimeHost::Node, Permission::Write) => {
                 "`node --permission --allow-fs-write`".to_string()
             }
-            (true, _, _) => {
-                compact_str::format_compact!("`deno run --allow-{permission}`").into_string()
-            }
+            (true, _, _) => uf_infra::into_string(compact_str::format_compact!(
+                "`deno run --allow-{permission}`"
+            )),
         };
         lines.push(
             compact_str::format_compact!(

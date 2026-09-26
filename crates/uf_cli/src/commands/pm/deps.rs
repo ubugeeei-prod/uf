@@ -345,7 +345,7 @@ fn dedupe_check(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let (status, headline) = match &found {
         WouldCollapse::Nothing => (
             Status::Success,
-            uf_infra::cstr!("nothing to collapse: checked in {elapsed}").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("nothing to collapse: checked in {elapsed}")),
         ),
         WouldCollapse::These(named) => (
             Status::Warn,
@@ -419,7 +419,7 @@ fn would_collapse(manager: uf_pm::PackageManager, run: &uf_pm::run::CapturedRun)
     if run.succeeded {
         return WouldCollapse::Nothing;
     }
-    let said = uf_infra::cstr!("{}\n{}", run.stdout, run.stderr).into_string();
+    let said = uf_infra::into_string(uf_infra::cstr!("{}\n{}", run.stdout, run.stderr));
     if manager == uf_pm::PackageManager::Pnpm {
         // pnpm exits non-zero when it fails, too, and names this answer.
         if !said.contains("ERR_PNPM_DEDUPE_CHECK_ISSUES") {
@@ -488,13 +488,15 @@ fn npm_entry(entry: &Value) -> Option<String> {
     if let (Some(from), Some(to)) = (entry.get("from"), entry.get("to")) {
         let name = named(from).or_else(|| named(to))?;
         return Some(match (version(from), version(to)) {
-            (Some(was), Some(becomes)) => uf_infra::cstr!("{name} {was} → {becomes}").into_string(),
+            (Some(was), Some(becomes)) => {
+                uf_infra::into_string(uf_infra::cstr!("{name} {was} → {becomes}"))
+            }
             _ => name,
         });
     }
     let name = named(entry)?;
     Some(match version(entry) {
-        Some(version) => uf_infra::cstr!("{name} {version}").into_string(),
+        Some(version) => uf_infra::into_string(uf_infra::cstr!("{name} {version}")),
         None => name,
     })
 }
@@ -559,7 +561,7 @@ pub(crate) fn link(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Result<
             heading: "uf link",
             operation,
             operands: &operands,
-            retry: uf_infra::cstr!("uf link {target}").into_string(),
+            retry: uf_infra::into_string(uf_infra::cstr!("uf link {target}")),
             announced: false,
             scope: &Scope::Project,
         },
@@ -729,11 +731,13 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
         }
         None => {
             uf_pm::links::remove_link(&root, name).with_context(|| {
-                uf_infra::cstr!("could not remove the link at node_modules/{name}").into_string()
+                uf_infra::into_string(uf_infra::cstr!(
+                    "could not remove the link at node_modules/{name}"
+                ))
             })?;
             report.rows.push((
                 "removed",
-                uf_infra::cstr!("node_modules/{name}, a link").into_string(),
+                uf_infra::into_string(uf_infra::cstr!("node_modules/{name}, a link")),
             ));
         }
     }
@@ -761,7 +765,9 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
     {
         report.rows.push((
             "override",
-            uf_infra::cstr!("{name}: {value}, taken out of pnpm-workspace.yaml").into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{name}: {value}, taken out of pnpm-workspace.yaml"
+            )),
         ));
         reinstall = true;
     }
@@ -793,7 +799,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
             report
                 .commands
                 .iter()
-                .map(|command| uf_infra::cstr!("`{command}`").into_string())
+                .map(|command| uf_infra::into_string(uf_infra::cstr!("`{command}`")))
                 .collect::<Vec<_>>()
                 .join(" and ")
         };
@@ -968,9 +974,9 @@ fn unregister_plan(
             "{entry} is {name} installed from a registry, not a link to this package"
         )
         .into_string()),
-        Registration::Absent => {
-            Err(uf_infra::cstr!("{name} is not registered with {manager}").into_string())
-        }
+        Registration::Absent => Err(uf_infra::into_string(uf_infra::cstr!(
+            "{name} is not registered with {manager}"
+        ))),
     }
 }
 
@@ -1007,7 +1013,9 @@ fn unlink_plan(
                 target: resolution_target(root, resolution),
             })
             .ok_or_else(|| {
-                uf_infra::cstr!("package.json has no resolution linking {name}").into_string()
+                uf_infra::into_string(uf_infra::cstr!(
+                    "package.json has no resolution linking {name}"
+                ))
             });
     }
     match before {
@@ -1047,9 +1055,9 @@ fn unlink_plan(
             "node_modules/{name} is an installed package, not a link"
         )
         .into_string()),
-        Some(LinkState::Absent) | None => {
-            Err(uf_infra::cstr!("there is no node_modules/{name}").into_string())
-        }
+        Some(LinkState::Absent) | None => Err(uf_infra::into_string(uf_infra::cstr!(
+            "there is no node_modules/{name}"
+        ))),
     }
 }
 
@@ -1105,9 +1113,9 @@ fn unlink_outcome(
     declared: Option<&str>,
 ) -> Result<Unlinked, String> {
     if let Some(resolution) = &afterwards.resolution {
-        return Err(
-            uf_infra::cstr!("package.json still resolves {name} to {resolution}").into_string(),
-        );
+        return Err(uf_infra::into_string(uf_infra::cstr!(
+            "package.json still resolves {name} to {resolution}"
+        )));
     }
     let version = || {
         afterwards
@@ -1270,7 +1278,7 @@ fn render_unlink(renderer: &Renderer, out: &mut String, report: &UnlinkReport) {
 /// Say there is nothing to unlink, and why, and succeed.
 fn nothing_to_unlink(ui: &mut Ui, mut report: UnlinkReport, why: &str) -> Result<()> {
     report.status = Status::Success;
-    report.headline = uf_infra::cstr!("nothing to unlink: {why}").into_string();
+    report.headline = uf_infra::into_string(uf_infra::cstr!("nothing to unlink: {why}"));
     ui.render(|renderer, out| render_unlink(renderer, out, &report));
     Ok(())
 }
@@ -1413,7 +1421,7 @@ pub(crate) fn patch(cwd: &Utf8Path, ui: &mut Ui, target: &str, commit: bool) -> 
                 heading: "uf patch --commit",
                 operation: Operation::PatchCommit,
                 operands: &operands,
-                retry: uf_infra::cstr!("uf patch --commit {target}").into_string(),
+                retry: uf_infra::into_string(uf_infra::cstr!("uf patch --commit {target}")),
                 announced: false,
                 scope: &Scope::Project,
             },
@@ -1590,26 +1598,27 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
             let place = target
                 .label
                 .as_ref()
-                .map(|label| uf_infra::cstr!(" in {label}").into_string())
+                .map(|label| uf_infra::into_string(uf_infra::cstr!(" in {label}")))
                 .unwrap_or_default();
             // A hint says what to run instead, so the command that failed is
             // not offered again beside it: on pnpm 12, `uf link <name>` is
             // the refused form itself.
-            let what_to_do = if let Some(hint) =
-                uf_pm::run::failure_hint(manager, request.operation)
-            {
-                uf_infra::cstr!("the manager printed why above{place}\n\n  {hint}").into_string()
-            } else {
-                uf_infra::cstr!(
-                    "the manager printed why above{place}; fix that and run `{}` again",
-                    request.retry
-                )
-                .into_string()
-            };
+            let what_to_do =
+                if let Some(hint) = uf_pm::run::failure_hint(manager, request.operation) {
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "the manager printed why above{place}\n\n  {hint}"
+                    ))
+                } else {
+                    uf_infra::cstr!(
+                        "the manager printed why above{place}; fix that and run `{}` again",
+                        request.retry
+                    )
+                    .into_string()
+                };
             failed_hint(error, &what_to_do)
         })?;
         commands.push(match &target.label {
-            Some(label) => uf_infra::cstr!("{}  ({label})", run.invocation).into_string(),
+            Some(label) => uf_infra::into_string(uf_infra::cstr!("{}  ({label})", run.invocation)),
             None => run.invocation.to_string(),
         });
         outcome = Some(run);
@@ -1875,7 +1884,9 @@ fn link_report(
             "node_modules/{name} is an installed package, not a link: nothing was linked"
         )
         .into_string(),
-        _ => uf_infra::cstr!("there is no node_modules/{name}: nothing was linked").into_string(),
+        _ => uf_infra::into_string(uf_infra::cstr!(
+            "there is no node_modules/{name}: nothing was linked"
+        )),
     })
 }
 
@@ -1891,7 +1902,7 @@ fn shown_path(base: &Utf8Path, path: &Utf8Path) -> String {
     if let Some(parent) = base.parent()
         && let Ok(beside) = path.strip_prefix(parent)
     {
-        return uf_infra::cstr!("../{beside}").into_string();
+        return uf_infra::into_string(uf_infra::cstr!("../{beside}"));
     }
     path.to_string()
 }
@@ -2106,7 +2117,7 @@ fn retry_line(command: &str, operands: &[String]) -> String {
     if operands.is_empty() {
         return command.to_owned();
     }
-    uf_infra::cstr!("{command} {}", operands.join(" ")).into_string()
+    uf_infra::into_string(uf_infra::cstr!("{command} {}", operands.join(" ")))
 }
 
 /// A manager that ran and failed, with the sentence it did not print.

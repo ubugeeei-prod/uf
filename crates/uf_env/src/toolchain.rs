@@ -149,7 +149,9 @@ impl Declared {
     #[must_use]
     pub fn spec(&self) -> String {
         match self.resolution.written() {
-            Some(version) => uf_infra::cstr!("{}@{version}", self.tool.name()).into_string(),
+            Some(version) => {
+                uf_infra::into_string(uf_infra::cstr!("{}@{version}", self.tool.name()))
+            }
             None => self.tool.name().to_owned(),
         }
     }
@@ -432,7 +434,7 @@ impl Session<'_> {
             (Lookup::Missing | Lookup::Latest, _) => {}
         }
 
-        let spec = uf_infra::cstr!("{}@{prefix}", tool.name()).into_string();
+        let spec = uf_infra::into_string(uf_infra::cstr!("{}@{prefix}", tool.name()));
         // Copied out first: the list is borrowed from `self` for as long as it
         // is read, and the refusal needs these two while it is.
         let (lookup, lock_path) = (self.lookup, self.lock_path);
@@ -558,7 +560,7 @@ fn declarations(
             tool,
             ToolVersion::Exact(version.into()),
             "env.toolchain",
-            uf_infra::cstr!("env.toolchain.{name}").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("env.toolchain.{name}")),
         );
     }
     for (name, version) in project::engines(&root.join("package.json"))? {
@@ -573,7 +575,7 @@ fn declarations(
             tool,
             ToolVersion::Exact(version),
             "package.json engines",
-            uf_infra::cstr!("package.json#engines.{name}").into_string(),
+            uf_infra::into_string(uf_infra::cstr!("package.json#engines.{name}")),
         );
     }
     Ok(found)

@@ -144,8 +144,8 @@ pub(crate) fn explain(
         ))
     };
     let invocation = target.map_or_else(
-        || uf_infra::cstr!("uf {command}").into_string(),
-        |target| uf_infra::cstr!("uf {command} --target {target}").into_string(),
+        || uf_infra::into_string(uf_infra::cstr!("uf {command}")),
+        |target| uf_infra::into_string(uf_infra::cstr!("uf {command} --target {target}")),
     );
 
     let sources = config_sources(&resolved);
@@ -192,7 +192,7 @@ pub(crate) fn explain(
         .iter()
         .map(|tool| match runtimes::locked(&resolved, tool.role) {
             Some(version) => {
-                uf_infra::cstr!("{} · locked at {version}", tool.summary()).into_string()
+                uf_infra::into_string(uf_infra::cstr!("{} · locked at {version}", tool.summary()))
             }
             None => tool.summary(),
         })
@@ -206,7 +206,7 @@ pub(crate) fn explain(
         renderer.blank(out);
 
         for (index, stage) in stages.iter().enumerate() {
-            let step = uf_infra::cstr!("{}. {}", index + 1, stage.name).into_string();
+            let step = uf_infra::into_string(uf_infra::cstr!("{}. {}", index + 1, stage.name));
             renderer.heading(out, 4, &step);
             renderer.key_values(
                 out,
@@ -362,7 +362,10 @@ fn ui_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
         Stage {
             name: "registry",
-            provider: uf_infra::cstr!("uf {} (embedded)", uf_ui::REGISTRY_VERSION).into_string(),
+            provider: uf_infra::into_string(uf_infra::cstr!(
+                "uf {} (embedded)",
+                uf_ui::REGISTRY_VERSION
+            )),
             detail: uf_infra::cstr!(
                 "{components} components, read out of this binary: no network, and every one \
                  matches this uf's packages and compiler"
@@ -542,18 +545,18 @@ fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         Stage {
             name: "installed binaries",
             provider: "the project".to_string(),
-            detail: uf_infra::cstr!(
+            detail: uf_infra::into_string(uf_infra::cstr!(
                 "anything in {}, run directly with your arguments and its exit status",
                 resolved.root.join("node_modules/.bin")
-            ).into_string(),
+            )),
         },
         Stage {
             name: "an explicit path",
             provider: "the project".to_string(),
-            detail: uf_infra::cstr!(
+            detail: uf_infra::into_string(uf_infra::cstr!(
                 "a name that is a file — `ufx ./scripts/codegen.js` — is executed as written from {}, with no --yes asked for",
                 resolved.root
-            ).into_string(),
+            )),
         },
         Stage {
             name: "everything else",
@@ -561,10 +564,10 @@ fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                 fetchable(detected(resolved).package_manager),
                 Operation::DlxExec,
             ),
-            detail: uf_infra::cstr!(
+            detail: uf_infra::into_string(uf_infra::cstr!(
                 "a package that is not installed: refused unless --yes, because fetching a name {} does not pin runs code the project never asked for",
                 resolved.config.pm.lockfile
-            ).into_string(),
+            )),
         },
     ]
 }
@@ -653,7 +656,12 @@ fn dependency_stages(
 /// command some other manager would have run.
 fn provider_for(manager: uf_pm::PackageManager, operation: Operation<'_>) -> String {
     command_for(manager, operation).map_or_else(
-        || uf_infra::cstr!("none — {manager} has no `{}`", operation.name()).into_string(),
+        || {
+            uf_infra::into_string(uf_infra::cstr!(
+                "none — {manager} has no `{}`",
+                operation.name()
+            ))
+        },
         |invocation| invocation.to_string(),
     )
 }
@@ -679,10 +687,10 @@ fn why_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     let stages = vec![Stage {
         name: "the answer",
         provider: provider_for(manager, Operation::Why),
-        detail: uf_infra::cstr!(
+        detail: uf_infra::into_string(uf_infra::cstr!(
             "the manager reads its own lockfile and prints the chain; uf writes nothing, not even {}",
             resolved.config.pm.lockfile
-        ).into_string(),
+        )),
     }];
     after_manager(resolved, stages)
 }
@@ -780,7 +788,7 @@ fn prepare_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                     .map(compact_str::CompactString::as_str)
                     .collect::<Vec<_>>()
                     .join(", ");
-                uf_infra::cstr!("{glob} → {names}").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{glob} → {names}"))
             })
             .collect::<Vec<_>>()
             .join("; ")
@@ -971,7 +979,7 @@ fn mcp_stages() -> Vec<Stage> {
 fn sqlc_stages() -> Vec<Stage> {
     let sqlc = std::env::var("SQLC").map_or_else(
         |_| "sqlc (on PATH)".to_string(),
-        |path| uf_infra::cstr!("sqlc ($SQLC = {path})").into_string(),
+        |path| uf_infra::into_string(uf_infra::cstr!("sqlc ($SQLC = {path})")),
     );
     vec![
         Stage {
@@ -1097,7 +1105,9 @@ fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
             Err(error) => (default_mode.to_owned(), Some(error.to_string())),
         };
     let files = if resolved.config.env.files.is_empty() {
-        uf_infra::cstr!(".env, .env.local, .env.{mode}, .env.{mode}.local").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            ".env, .env.local, .env.{mode}, .env.{mode}.local"
+        ))
     } else {
         resolved
             .config
@@ -1121,12 +1131,12 @@ fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
     match unresolved {
         None => Stage {
             name: "environment",
-            provider: uf_infra::cstr!("uf (mode {mode})").into_string(),
+            provider: uf_infra::into_string(uf_infra::cstr!("uf (mode {mode})")),
             detail: cascade,
         },
         Some(reason) => Stage {
             name: "environment",
-            provider: uf_infra::cstr!("uf (mode {mode}, the fallback)").into_string(),
+            provider: uf_infra::into_string(uf_infra::cstr!("uf (mode {mode}, the fallback)")),
             detail: uf_infra::cstr!(
                 "this project's mode could not be resolved — {reason}; {cascade}"
             )
@@ -1353,7 +1363,7 @@ fn native_build_stages(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<St
         Stage { name: "configuration", provider: "uf".into(), detail: "uf.config.js and the project's composed metro.config.js".into() },
         Stage { name: "routes", provider: "uf".into(), detail: "typed routes and router.ios.js, router.android.js, router.native.js".into() },
         Stage { name: "transform", provider: "uf transform".into(), detail: "Flow and React Compiler, then the project's Metro Babel transformer".into() },
-        Stage { name: "bundle", provider, detail: uf_infra::cstr!("{}: expo export:embed or react-native bundle; bundle, source map and density assets in dist/native", target.as_str()).into_string() },
+        Stage { name: "bundle", provider, detail: uf_infra::into_string(uf_infra::cstr!("{}: expo export:embed or react-native bundle; bundle, source map and density assets in dist/native", target.as_str())) },
         Stage { name: "manifest", provider: "uf".into(), detail: "uf-build-manifest.json names every emitted bundle and asset".into() },
         Stage { name: "native application", provider: "Expo/EAS, Xcode or Gradle".into(), detail: "prebuild, config plugins, native compilation, signing, submission and updates remain with the project's platform tools".into() },
     ]
@@ -1446,7 +1456,7 @@ fn library_build_stages(resolved: &ResolvedConfig, plan: &LibraryPlan) -> Vec<St
         Stage {
             name: "build",
             provider: "uf".to_string(),
-            detail: uf_infra::cstr!("library: {}", plan.because()).into_string(),
+            detail: uf_infra::into_string(uf_infra::cstr!("library: {}", plan.because())),
         },
         runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, PRODUCTION),
@@ -1525,7 +1535,7 @@ fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
     Stage {
         name: "prerender",
         provider: match plan.source().key() {
-            Some(key) => uf_infra::cstr!("@uniflowed/router ({key})").into_string(),
+            Some(key) => uf_infra::into_string(uf_infra::cstr!("@uniflowed/router ({key})")),
             None => "@uniflowed/router".to_string(),
         },
         detail,
@@ -1615,7 +1625,7 @@ fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
         },
         Some(adapter) => Stage {
             name: "adapter",
-            provider: uf_infra::cstr!("uf ({})", adapter.as_str()).into_string(),
+            provider: uf_infra::into_string(uf_infra::cstr!("uf ({})", adapter.as_str())),
             // The entry that is actually written, not `server.js` for all of
             // them: `uf explain` describing a file the build does not produce
             // is the thing this stage exists to stop.
@@ -1673,7 +1683,10 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
-            provider: uf_infra::cstr!("{} (preview)", builder_provider(resolved)).into_string(),
+            provider: uf_infra::into_string(uf_infra::cstr!(
+                "{} (preview)",
+                builder_provider(resolved)
+            )),
             detail: uf_infra::cstr!(
                 "serves {} directly, with `vite.preview` in effect",
                 resolved.config.build.out_dir
@@ -1840,7 +1853,7 @@ fn bun_test_stages(
     source: uf_config::ToolSource,
 ) -> Vec<Stage> {
     let from = source.key().map_or_else(String::new, |key| {
-        uf_infra::cstr!(", from `{key}`").into_string()
+        uf_infra::into_string(uf_infra::cstr!(", from `{key}`"))
     });
     vec![
         env_stage(resolved, TEST),
@@ -1854,7 +1867,7 @@ fn bun_test_stages(
         runtime_stage(resolved, runtimes::Role::Test),
         Stage {
             name: "runner",
-            provider: uf_infra::cstr!("bun test ({spec}{from})").into_string(),
+            provider: uf_infra::into_string(uf_infra::cstr!("bun test ({spec}{from})")),
             detail: uf_infra::cstr!(
                 "the Bun above runs `bun --conditions={condition} test --preload \
                  <node_modules>/@uniflowed/host/bun-preload.js --reporter=junit \

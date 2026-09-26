@@ -62,14 +62,17 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
         let result = match format_source(&file.source, &resolved.config.fmt) {
             Ok(result) => result,
             Err(error) => {
-                skipped.push(uf_infra::cstr!("{}: {error}", file.relative_path).into_string());
+                skipped.push(uf_infra::into_string(uf_infra::cstr!(
+                    "{}: {error}",
+                    file.relative_path
+                )));
                 continue;
             }
         };
         if result.changed {
             if !check {
                 fs::write(&file.absolute_path, result.output).with_context(|| {
-                    uf_infra::cstr!("failed to write {}", file.absolute_path).into_string()
+                    uf_infra::into_string(uf_infra::cstr!("failed to write {}", file.absolute_path))
                 })?;
             }
             changed.push(file.relative_path);
@@ -128,7 +131,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
         )
         .into_string()
     } else {
-        uf_infra::cstr!("formatted {} of {}", plural(changed.len(), "file"), scanned).into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "formatted {} of {}",
+            plural(changed.len(), "file"),
+            scanned
+        ))
     };
 
     let took = format_duration(started.elapsed());

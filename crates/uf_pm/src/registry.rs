@@ -449,7 +449,9 @@ pub(crate) fn get(url: &str, accept: &str) -> Result<Vec<u8>, HttpFailure> {
             "=https",
             "-H",
         ])
-        .arg(compact_str::format_compact!("Accept: {accept}").into_string())
+        .arg(uf_infra::into_string(compact_str::format_compact!(
+            "Accept: {accept}"
+        )))
         .arg("--")
         .arg(url)
         .output();
@@ -482,9 +484,9 @@ fn classify(exit: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Result<Vec<u8>, 
         .ok()
         .and_then(|status| status.trim().parse::<u16>().ok());
     match status {
-        Some(status @ 400..=599) => Err(HttpFailure::Answered(
-            compact_str::format_compact!("the registry answered {status}").into_string(),
-        )),
+        Some(status @ 400..=599) => Err(HttpFailure::Answered(uf_infra::into_string(
+            compact_str::format_compact!("the registry answered {status}"),
+        ))),
         // A success status alone is not a whole answer: curl reports the status
         // of a response it then failed to finish reading — a timeout part way
         // through — and half a packument is not a packument.

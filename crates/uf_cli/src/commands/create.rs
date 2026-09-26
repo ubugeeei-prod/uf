@@ -241,7 +241,7 @@ fn render_remote(
     let source = template.label();
     let mut notes = vec![(
         Status::Info,
-        uf_infra::cstr!("copied from {source}").into_string(),
+        uf_infra::into_string(uf_infra::cstr!("copied from {source}")),
     )];
     let scripts = remote::declared_install_scripts(&target);
     if !scripts.is_empty() {
@@ -303,7 +303,7 @@ fn render(cwd: &Utf8Path, ui: &mut Ui, created: &Created<'_>) -> Result<()> {
     .into_string();
 
     let change_directory = (created.root != cwd)
-        .then(|| uf_infra::cstr!("cd {}", project_label(&created.root)).into_string());
+        .then(|| uf_infra::into_string(uf_infra::cstr!("cd {}", project_label(&created.root))));
     let mut steps = Vec::new();
     if let Some(step) = &change_directory {
         steps.push(step.as_str());

@@ -181,7 +181,9 @@ pub fn icon(request: &IconRequest<'_>) -> Result<IconAsset, IconError> {
     })?;
     let (width, height) = dimensions(&view_box).ok_or_else(|| IconError::Malformed {
         path: request.source.to_owned(),
-        reason: uf_infra::cstr!("its viewBox {view_box:?} is not four numbers").into_string(),
+        reason: uf_infra::into_string(uf_infra::cstr!(
+            "its viewBox {view_box:?} is not four numbers"
+        )),
     })?;
 
     // The digest covers the file's bytes and the name it was imported under,
@@ -400,7 +402,11 @@ fn view_box(attributes: &str) -> Option<String> {
     let width = attribute(attributes, "width")?;
     let height = attribute(attributes, "height")?;
     let number = |value: &str| value.trim_end_matches("px").trim().to_owned();
-    Some(uf_infra::cstr!("0 0 {} {}", number(&width), number(&height)).into_string())
+    Some(uf_infra::into_string(uf_infra::cstr!(
+        "0 0 {} {}",
+        number(&width),
+        number(&height)
+    )))
 }
 
 /// One attribute's value out of a tag's attribute text.

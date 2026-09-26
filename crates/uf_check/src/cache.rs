@@ -470,8 +470,10 @@ impl CheckCache {
         // half a document. Both are in one directory, so the rename is within
         // one filesystem and is atomic.
         let entry = self.entry_path(key);
-        let staging =
-            entry.with_extension(uf_infra::cstr!("{}.tmp", std::process::id()).into_string());
+        let staging = entry.with_extension(uf_infra::into_string(uf_infra::cstr!(
+            "{}.tmp",
+            std::process::id()
+        )));
         if fs::write(&staging, &document).is_ok() && fs::rename(&staging, &entry).is_err() {
             let _ = fs::remove_file(&staging);
         }

@@ -258,7 +258,8 @@ impl Declarations {
         }
         // By where the package was found, because two copies of one name are
         // two packages; by name when it was not found at all.
-        let key = uf_infra::cstr!("{}\0{subpath}", installed.unwrap_or(name)).into_string();
+        let key =
+            uf_infra::into_string(uf_infra::cstr!("{}\0{subpath}", installed.unwrap_or(name)));
         if self.unanswered.contains(&key) {
             return;
         }
@@ -442,8 +443,11 @@ impl Declarations {
         let mut declaration_files: FxHashMap<String, String> = FxHashMap::default();
         for (package, translation) in &translated {
             for module in &translation.modules {
-                let path =
-                    uf_infra::cstr!("{}/{}", package.declarations, module.path).into_string();
+                let path = uf_infra::into_string(uf_infra::cstr!(
+                    "{}/{}",
+                    package.declarations,
+                    module.path
+                ));
                 declaration_files.insert(
                     uf_infra::cstr!("{}/{}", package.declarations, flow_path(&module.path))
                         .into_string(),
@@ -550,7 +554,7 @@ impl Package {
         };
         let mut sources = Vec::with_capacity(translation.modules.len() + 1);
         sources.push(SourceFile {
-            path: uf_infra::cstr!("{}/package.json", self.directory).into_string(),
+            path: uf_infra::into_string(uf_infra::cstr!("{}/package.json", self.directory)),
             source: self.batch_manifest(),
         });
         for module in &translation.modules {
@@ -617,7 +621,7 @@ fn translate_package(base: &Path, entries: &[&str]) -> Option<(Translation, Vec<
 /// `@types` package, as `node_modules/<name>`.
 fn beside_types(types: &str, name: &str) -> Option<String> {
     let base = types.strip_suffix(&uf_dts::types_package(name))?;
-    Some(uf_infra::cstr!("{base}{name}").into_string())
+    Some(uf_infra::into_string(uf_infra::cstr!("{base}{name}")))
 }
 
 /// The directory's real path, project-relative, when it resolves inside the
@@ -725,8 +729,10 @@ impl Cache {
             hasher.update(part.as_bytes());
             hasher.update([0]);
         }
-        self.directory
-            .join(uf_infra::cstr!("{}.json", hex(&hasher.finalize())).into_string())
+        self.directory.join(uf_infra::into_string(uf_infra::cstr!(
+            "{}.json",
+            hex(&hasher.finalize())
+        )))
     }
 
     /// The translation kept in `record`, when every file it read still reads
@@ -764,8 +770,10 @@ impl Cache {
         }
         // Written aside and renamed, so a run that reads while another writes
         // sees the old record or the new one and never half of one.
-        let aside =
-            record.with_extension(uf_infra::cstr!("json.{}", std::process::id()).into_string());
+        let aside = record.with_extension(uf_infra::into_string(uf_infra::cstr!(
+            "json.{}",
+            std::process::id()
+        )));
         if fs::write(&aside, bytes).is_ok() && fs::rename(&aside, record).is_err() {
             let _ = fs::remove_file(&aside);
         }

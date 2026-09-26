@@ -116,7 +116,11 @@ fn function_names(file: &FileCoverage) -> Vec<String> {
         .zip(&base)
         .map(|(function, name)| {
             if seen.get(name).copied().unwrap_or(0) > 1 {
-                uf_infra::cstr!("{name}:{}:{}", function.at.line, function.at.column).into_string()
+                uf_infra::into_string(uf_infra::cstr!(
+                    "{name}:{}:{}",
+                    function.at.line,
+                    function.at.column
+                ))
             } else {
                 name.clone()
             }
@@ -234,7 +238,7 @@ fn branches_by_line(file: &FileCoverage) -> BTreeMap<u32, Ratio> {
 
 /// A Cobertura rate: a fraction between zero and one, four decimals.
 fn rate(ratio: Ratio) -> String {
-    uf_infra::cstr!("{:.4}", ratio.percent() / 100.0).into_string()
+    uf_infra::into_string(uf_infra::cstr!("{:.4}", ratio.percent() / 100.0))
 }
 
 /// The run's results as JUnit XML.
@@ -368,7 +372,7 @@ fn seconds(micros: u64) -> String {
         reason = "a run long enough to lose microsecond precision here has already timed out"
     )]
     let seconds = micros as f64 / 1_000_000.0;
-    uf_infra::cstr!("{seconds:.3}").into_string()
+    uf_infra::into_string(uf_infra::cstr!("{seconds:.3}"))
 }
 
 /// XML text, with everything XML cannot carry taken out.
@@ -473,7 +477,7 @@ fn uncovered_lines(file: &FileCoverage) -> String {
             if from == to {
                 from.to_string()
             } else {
-                uf_infra::cstr!("{from}-{to}").into_string()
+                uf_infra::into_string(uf_infra::cstr!("{from}-{to}"))
             }
         })
         .collect::<Vec<_>>()

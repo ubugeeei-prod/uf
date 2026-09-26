@@ -115,7 +115,7 @@ pub(super) fn doctor(cwd: &Utf8Path, ui: &mut Ui, json: bool, verbose: bool) -> 
                 status: Health::Error,
                 found: "could not be read".to_owned(),
                 reason: None,
-                fix: Some(uf_infra::cstr!("{error:#}").into_string()),
+                fix: Some(uf_infra::into_string(uf_infra::cstr!("{error:#}"))),
                 declared_by: Vec::new(),
                 location: None,
             }],
@@ -217,10 +217,10 @@ fn declared_finding(
         (_, None) => {
             finding.status = Health::Error;
             finding.found = "no build for this machine".to_owned();
-            finding.fix = Some(uf_infra::cstr!(
+            finding.fix = Some(uf_infra::into_string(uf_infra::cstr!(
                 "uf installs tools for macOS and Linux on arm64 and x64; install {name} yourself \
                  and write `{name}` without a version to use the one on PATH"
-            ).into_string());
+            )));
         }
         (resolution, Some(platform)) => {
             let version = resolution.version().unwrap_or_default().to_owned();
@@ -236,7 +236,8 @@ fn declared_finding(
                 }
                 None => {
                     finding.status = Health::Warn;
-                    finding.found = uf_infra::cstr!("{version} not installed").into_string();
+                    finding.found =
+                        uf_infra::into_string(uf_infra::cstr!("{version} not installed"));
                     finding.fix = Some(INSTALL_FIX.to_owned());
                 }
             }
@@ -290,9 +291,9 @@ fn default_runtime(resolved: &ResolvedConfig) -> Finding {
             finding.name = "node".to_owned();
             finding.status = Health::Error;
             finding.found = "not on PATH".to_owned();
-            finding.fix = Some(uf_infra::cstr!(
+            finding.fix = Some(uf_infra::into_string(uf_infra::cstr!(
                 "{error}; or write `runtime: \"node@<major>\"` in uf.config.js and uf installs it"
-            ).into_string());
+            )));
         }
     }
     finding
@@ -348,9 +349,9 @@ fn detected_manager(resolved: &ResolvedConfig) -> Finding {
 /// it, what was missing — "chosen by no lockfile" reads as a typo.
 fn manager_reason(chosen_by: &str) -> String {
     if chosen_by.starts_with("no ") {
-        uf_infra::cstr!("uf's default: {chosen_by}").into_string()
+        uf_infra::into_string(uf_infra::cstr!("uf's default: {chosen_by}"))
     } else {
-        uf_infra::cstr!("chosen by {chosen_by}").into_string()
+        uf_infra::into_string(uf_infra::cstr!("chosen by {chosen_by}"))
     }
 }
 
@@ -403,7 +404,7 @@ fn render(ui: &mut Ui, root: &Utf8Path, findings: &[Finding], places: &Places, v
     let details: Vec<String> = findings
         .iter()
         .map(|finding| match &finding.reason {
-            Some(reason) => uf_infra::cstr!("{} · {reason}", finding.role).into_string(),
+            Some(reason) => uf_infra::into_string(uf_infra::cstr!("{} · {reason}", finding.role)),
             None => finding.role.clone(),
         })
         .collect();
@@ -414,11 +415,14 @@ fn render(ui: &mut Ui, root: &Utf8Path, findings: &[Finding], places: &Places, v
         ),
         (0, warnings) => (
             Status::Warn,
-            uf_infra::cstr!("{} not installed yet", plural(warnings, "tool")).into_string(),
+            uf_infra::into_string(uf_infra::cstr!(
+                "{} not installed yet",
+                plural(warnings, "tool")
+            )),
         ),
         (errors, _) => (
             Status::Error,
-            uf_infra::cstr!("{} to fix", plural(errors, "problem")).into_string(),
+            uf_infra::into_string(uf_infra::cstr!("{} to fix", plural(errors, "problem"))),
         ),
     };
     // Not over a config that could not be read: that row is not a tool, and
@@ -426,7 +430,10 @@ fn render(ui: &mut Ui, root: &Utf8Path, findings: &[Finding], places: &Places, v
     let checked = if findings.iter().any(|finding| finding.role == CONFIG_ROLE) {
         String::new()
     } else {
-        uf_infra::cstr!("{} checked", plural(findings.len(), "tool")).into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{} checked",
+            plural(findings.len(), "tool")
+        ))
     };
     let verbose_rows = verbose.then(|| verbose_lines(findings, places));
     // A fix that several rows share is said once, after them, rather than

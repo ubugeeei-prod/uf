@@ -666,7 +666,7 @@ impl<'ast> Tree<'ast> {
             }
 
             let suggestion = aria::nearest_aria_attribute(name)
-                .map(|near| uf_infra::cstr!("; did you mean `{near}`?").into_string())
+                .map(|near| uf_infra::into_string(uf_infra::cstr!("; did you mean `{near}`?")))
                 .unwrap_or_default();
             self.report(
                 &attribute.loc,
@@ -891,7 +891,7 @@ impl<'ast> Tree<'ast> {
     ) {
         let read = match property {
             ast::expression::member::Property::PropertyIdentifier(identifier) => {
-                uf_infra::cstr!("`import.meta.hot.{}`", &*identifier.name).into_string()
+                uf_infra::into_string(uf_infra::cstr!("`import.meta.hot.{}`", &*identifier.name))
             }
             _ => String::from("`import.meta.hot`"),
         };

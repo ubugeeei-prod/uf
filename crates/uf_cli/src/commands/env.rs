@@ -55,7 +55,7 @@ fn toolchain(
 fn tool_row(declared: &Declared, state: &str) -> String {
     let release = match &declared.resolution {
         Resolution::Locked { version, .. } | Resolution::Resolved { version, .. } => {
-            uf_infra::cstr!(" ({version})").into_string()
+            uf_infra::into_string(uf_infra::cstr!(" ({version})"))
         }
         Resolution::OnPath | Resolution::Exact(_) | Resolution::Unlocked { .. } => String::new(),
     };
@@ -92,7 +92,7 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let mut fetched = Vec::new();
     for pin in &pins {
         if uf_env::archive::ensure(&store, pin)
-            .with_context(|| uf_infra::cstr!("failed to install {pin}").into_string())?
+            .with_context(|| uf_infra::cstr!("failed to install {pin}"))?
         {
             fetched.push(pin.clone());
         }
@@ -126,9 +126,10 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         .tools
         .iter()
         .filter_map(|declared| match &declared.resolution {
-            Resolution::Resolved { version, .. } => {
-                Some(uf_infra::cstr!("{} at {version}", declared.spec()).into_string())
-            }
+            Resolution::Resolved { version, .. } => Some(uf_infra::into_string(uf_infra::cstr!(
+                "{} at {version}",
+                declared.spec()
+            ))),
             _ => None,
         })
         .collect();
@@ -141,8 +142,10 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         .into_string()
     });
     let bin = envs.bin_dir(&resolved.root).to_string();
-    let summary =
-        uf_infra::cstr!("{} linked into {bin}", plural(linked.len(), "executable")).into_string();
+    let summary = uf_infra::into_string(uf_infra::cstr!(
+        "{} linked into {bin}",
+        plural(linked.len(), "executable")
+    ));
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf env install", Some(project_label(&resolved.root)));
@@ -245,13 +248,20 @@ fn update(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
                 version,
                 was: Some(was),
                 ..
-            } => Some(uf_infra::cstr!("{}  {was} → {version}", declared.spec()).into_string()),
+            } => Some(uf_infra::into_string(uf_infra::cstr!(
+                "{}  {was} → {version}",
+                declared.spec()
+            ))),
             Resolution::Resolved {
                 version, was: None, ..
-            } => Some(uf_infra::cstr!("{}  locked at {version}", declared.spec()).into_string()),
-            Resolution::Locked { version, .. } => Some(
-                uf_infra::cstr!("{}  {version}, already the newest", declared.spec()).into_string(),
-            ),
+            } => Some(uf_infra::into_string(uf_infra::cstr!(
+                "{}  locked at {version}",
+                declared.spec()
+            ))),
+            Resolution::Locked { version, .. } => Some(uf_infra::into_string(uf_infra::cstr!(
+                "{}  {version}, already the newest",
+                declared.spec()
+            ))),
             Resolution::OnPath | Resolution::Exact(_) | Resolution::Unlocked { .. } => None,
         })
         .collect();
@@ -262,9 +272,13 @@ fn update(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
          move"
             .to_owned()
     } else if toolchain.lock_changed {
-        uf_infra::cstr!("{lock} updated; `uf env install` installs what moved").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{lock} updated; `uf env install` installs what moved"
+        ))
     } else {
-        uf_infra::cstr!("{lock} already locks the newest release of every prefix").into_string()
+        uf_infra::into_string(uf_infra::cstr!(
+            "{lock} already locks the newest release of every prefix"
+        ))
     };
 
     ui.render(|renderer, out| {
@@ -307,7 +321,7 @@ fn exec(cwd: &Utf8Path, command: &[String]) -> Result<()> {
         .env("PATH", path)
         .current_dir(&resolved.root)
         .status()
-        .with_context(|| uf_infra::cstr!("failed to run {program}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to run {program}"))?;
     if status.success() {
         return Ok(());
     }
@@ -321,7 +335,7 @@ fn entries_word(count: usize) -> String {
     if count == 1 {
         "1 entry".to_owned()
     } else {
-        uf_infra::cstr!("{count} entries").into_string()
+        uf_infra::into_string(uf_infra::cstr!("{count} entries"))
     }
 }
 
@@ -335,13 +349,13 @@ fn gc(ui: &mut Ui, dry_run: bool) -> Result<()> {
     let dead: Vec<String> = plan
         .dead_roots
         .iter()
-        .map(|(_, repository)| uf_infra::cstr!("{repository} (gone)").into_string())
+        .map(|(_, repository)| uf_infra::into_string(uf_infra::cstr!("{repository} (gone)")))
         .collect();
     let dead: Vec<&str> = dead.iter().map(String::as_str).collect();
     let kept = entries_word(plan.kept);
 
     let summary = if plan.is_empty() {
-        uf_infra::cstr!("nothing to collect; {kept} in use").into_string()
+        uf_infra::into_string(uf_infra::cstr!("nothing to collect; {kept} in use"))
     } else if dry_run {
         uf_infra::cstr!(
             "{} would be removed; {kept} in use",
@@ -395,10 +409,9 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
 
     let path = root.join(PROFILE_FILE);
     let dir = path.parent().unwrap_or(&root).to_path_buf();
-    fs::create_dir_all(&dir)
-        .with_context(|| uf_infra::cstr!("failed to create {dir}").into_string())?;
-    fs::write(&path, uf_infra::cstr!("{name}\n").into_string())
-        .with_context(|| uf_infra::cstr!("failed to write {path}").into_string())?;
+    fs::create_dir_all(&dir).with_context(|| uf_infra::cstr!("failed to create {dir}"))?;
+    fs::write(&path, uf_infra::into_string(uf_infra::cstr!("{name}\n")))
+        .with_context(|| uf_infra::cstr!("failed to write {path}"))?;
 
     // What it selects, not only what was recorded: "active environment:
     // staging" was true of a file nothing read, and the reader's next question

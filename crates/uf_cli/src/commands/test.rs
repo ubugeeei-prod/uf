@@ -338,7 +338,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, mut args: TestArgs) -> Result<()
             let reasons: Vec<String> = refused
                 .iter()
                 .map(|refusal| {
-                    uf_infra::cstr!("{} — {}", refusal.flag, refusal.reason).into_string()
+                    uf_infra::into_string(uf_infra::cstr!("{} — {}", refusal.flag, refusal.reason))
                 })
                 .collect();
             bail!(uf_infra::cstr!(
@@ -632,10 +632,10 @@ fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport
         && !parent.as_str().is_empty()
     {
         std::fs::create_dir_all(parent)
-            .with_context(|| uf_infra::cstr!("could not create {parent}").into_string())?;
+            .with_context(|| uf_infra::cstr!("could not create {parent}"))?;
     }
     std::fs::write(&path, uf_test::junit(report))
-        .with_context(|| uf_infra::cstr!("could not write {path}").into_string())?;
+        .with_context(|| uf_infra::cstr!("could not write {path}"))?;
     Ok(())
 }
 
@@ -1301,7 +1301,9 @@ pub(crate) fn read_timings(root: &Utf8Path) -> (TestTimings, Option<String>) {
         ),
         Err(error) => (
             TestTimings::new(),
-            Some(uf_infra::cstr!("scheduling cold: {error}").into_string()),
+            Some(uf_infra::into_string(uf_infra::cstr!(
+                "scheduling cold: {error}"
+            ))),
         ),
     }
 }
@@ -1352,7 +1354,7 @@ pub(crate) fn record_timings(
 
     save_timings(root, &timings)
         .err()
-        .map(|error| uf_infra::cstr!("could not record timings: {error}").into_string())
+        .map(|error| uf_infra::into_string(uf_infra::cstr!("could not record timings: {error}")))
 }
 
 /// The path recorded timings live at, for the summary block.
@@ -1671,8 +1673,10 @@ mod tests {
         let running = std::env::current_exe().expect("this test process has a path");
         let running = Utf8PathBuf::from_path_buf(running).expect("and it is UTF-8");
         let directory = running.parent().expect("with a parent");
-        let relative =
-            uf_infra::cstr!("./{}", running.file_name().expect("and a file name")).into_string();
+        let relative = uf_infra::into_string(uf_infra::cstr!(
+            "./{}",
+            running.file_name().expect("and a file name")
+        ));
         let by_path = resolve_uf_binary(
             None,
             None,

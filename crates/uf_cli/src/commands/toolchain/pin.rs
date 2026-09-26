@@ -272,7 +272,7 @@ fn run(target: &Utf8Path, args: &[OsString], version: &str) -> Result<ExitCode> 
         .args(args)
         .env(FOLLOWED, version)
         .exec();
-    Err(error).with_context(|| uf_infra::cstr!("failed to run {target}").into_string())
+    Err(error).with_context(|| uf_infra::cstr!("failed to run {target}"))
 }
 
 /// Run `target` with `args`, and answer with its exit code.
@@ -282,7 +282,7 @@ fn run(target: &Utf8Path, args: &[OsString], version: &str) -> Result<ExitCode> 
         .args(args)
         .env(FOLLOWED, version)
         .status()
-        .with_context(|| uf_infra::cstr!("failed to run {target}").into_string())?;
+        .with_context(|| uf_infra::cstr!("failed to run {target}"))?;
     Ok(status
         .code()
         .and_then(|code| u8::try_from(code).ok())

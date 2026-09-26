@@ -12,6 +12,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+index_vec.workspace = true
 nonmax.workspace = true
 thin-vec.workspace = true
 string-interner.workspace = true

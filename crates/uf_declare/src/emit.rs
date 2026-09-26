@@ -1207,7 +1207,7 @@ impl Emitter {
     }
 
     fn next_anonymous(&mut self) -> CompactString {
-        let name = uf_infra::cstr!("arg{}", self.anonymous).into_string();
+        let name = uf_infra::into_string(uf_infra::cstr!("arg{}", self.anonymous));
         self.anonymous += 1;
         name.into()
     }

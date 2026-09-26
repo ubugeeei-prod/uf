@@ -84,8 +84,8 @@ fn snapshot(root: &Utf8Path, output: &Utf8Path) -> Result<BTreeMap<Utf8PathBuf, 
                 path.display()
             ))
         })?;
-        let bytes = std::fs::read(&path)
-            .with_context(|| uf_infra::cstr!("failed to read {path}").into_string())?;
+        let bytes =
+            std::fs::read(&path).with_context(|| uf_infra::cstr!("failed to read {path}"))?;
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);
         files.insert(path, hasher.finish());
