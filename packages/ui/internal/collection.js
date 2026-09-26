@@ -31,7 +31,7 @@
 // inside a popover still lets the popover close on the Escape that follows.
 
 import * as React from "@uniflowed/react";
-import { useId, useRef, useState } from "@uniflowed/react";
+import { useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useDragAndDrop } from "../drag-drop.js";
 import { useControlled } from "./controlled-state.js";
@@ -177,6 +177,30 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
     defaultExpandedKeys,
     onExpandedChange,
   );
+  // The expansion as the last keystroke left it, which can be ahead of the
+  // `expanded` this render read: two tree keys can land before React renders the
+  // first, and `keydown` is a `useStableCallback`, so it runs with the values of
+  // the render that installed it. Adding to the render's array meant the second
+  // write dropped what the first had opened — `*` then `ArrowRight` collapsed the
+  // sibling `*` had just expanded (#1621). #1611 and #1620 hold a ref for the same
+  // window. It is cleared after every commit, so it only ever spans a batch React
+  // has not rendered, and a controlled parent still wins the next keystroke.
+  const proposedExpanded = useRef<$ReadOnlyArray<string> | null>(null);
+  useEffect(() => {
+    proposedExpanded.current = null;
+  });
+  const latestExpanded = useStableCallback(
+    (): $ReadOnlyArray<string> => proposedExpanded.current ?? expanded,
+  );
+  // Only the array written back comes from the latest keystroke. Every *decision*
+  // in `keydown` — which branch to take, where focus lands — keeps reading this
+  // render's `expandedSet`, `rows` and `enabled`, because those describe the tree
+  // the reader is looking at rather than one that has not been rendered yet.
+  const expand = useStableCallback((next: $ReadOnlyArray<string>) => {
+    const unique = [...new Set(next)];
+    proposedExpanded.current = unique;
+    setExpanded(unique);
+  });
   const [active, setActive] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [announcement, announce] = useState("");
@@ -325,7 +349,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
         (row) => row.parent === focused.parent && (row.item.children?.length ?? 0) > 0,
       );
       const missing = siblings.map((row) => row.item.key).filter((key) => !expandedSet.has(key));
-      if (missing.length > 0) setExpanded([...expanded, ...missing]);
+      if (missing.length > 0) expand([...latestExpanded(), ...missing]);
     } else if (
       kind === "tree" &&
       focused != null &&
@@ -334,10 +358,10 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
       const open = event.key === (rtl ? "ArrowLeft" : "ArrowRight");
       const key = focused.item.key;
       if (open && (focused.item.children?.length ?? 0) > 0) {
-        if (!expandedSet.has(key)) setExpanded([...expanded, key]);
+        if (!expandedSet.has(key)) expand([...latestExpanded(), key]);
         else next = enabled[at + 1];
       } else if (!open && expandedSet.has(key))
-        setExpanded(expanded.filter((each) => each !== key));
+        expand(latestExpanded().filter((each) => each !== key));
       else if (!open) next = enabled.find((row) => row.item.key === focused.parent);
     } else if (modifier && event.key.toLowerCase() === "a" && !event.altKey) {
       if (mode !== "multiple") return;
