@@ -42,6 +42,11 @@ async function run() {
   assert.equal(settings["files.associations"]["*.json"], "jsonc", "existing association preserved on disk even when window-scoped settings are ignored in multi-root mode");
   const ts = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, "plain.ts")));
   assert.equal(ts.languageId, "typescript", "TypeScript keeps its language id");
+  const generated = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, "generated", "plain.js")));
+  await vscode.window.showTextDocument(generated);
+  // Let onDidOpen's async language selection finish before checking.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(generated.languageId, "javascript", "explicit path association keeps its language id");
   const external = await vscode.workspace.openTextDocument(vscode.Uri.file(process.env.UF_EDITOR_EXTERNAL_JS));
   assert.equal(external.languageId, "javascript", "JavaScript outside the uf folder stays JavaScript");
   console.log("Real VS Code: one typed Flow hover, completion, formatter, preserved settings, and JS/TS isolation passed");

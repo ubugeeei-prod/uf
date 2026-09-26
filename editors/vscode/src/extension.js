@@ -464,10 +464,19 @@ async function selectFlowLanguage(document /*: vscode.TextDocument */) /*: Promi
   const inspection = vscode.workspace
     .getConfiguration("files", document.uri)
     .inspect("associations");
-  const selected = inspection?.workspaceFolderValue ?? inspection?.workspaceValue;
-  if (selected != null && typeof selected === "object" && !Array.isArray(selected)) {
-    const pattern = `*${document.uri.fsPath.slice(document.uri.fsPath.lastIndexOf("."))}`;
-    if (Object.hasOwn(selected, pattern) && selected[pattern] !== "flow") return;
+  for (const selected of [
+    inspection?.globalValue,
+    inspection?.workspaceValue,
+    inspection?.workspaceFolderValue,
+  ]) {
+    if (selected == null || typeof selected !== "object" || Array.isArray(selected)) continue;
+    for (const pattern of Object.keys(selected)) {
+      if (selected[pattern] === "flow") continue;
+      // Associations without a slash match a basename. Reuse the editor's
+      // selector matcher for path globs, including braces and character sets.
+      const glob = pattern.includes("/") ? pattern : `**/${pattern}`;
+      if (vscode.languages.match({ pattern: glob }, document) > 0) return;
+    }
   }
   try {
     await vscode.languages.setTextDocumentLanguage(document, "flow");
@@ -708,11 +717,11 @@ async function activate(context /*: vscode.ExtensionContext */) /*: Promise<void
     }),
   );
 
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    await start(folder);
-  }
   for (const document of vscode.workspace.textDocuments) {
     await selectFlowLanguage(document);
+  }
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    await start(folder);
   }
 }
 

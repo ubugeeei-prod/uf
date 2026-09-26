@@ -9,6 +9,8 @@ async function main() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-editor-host-"));
   const project = path.join(root, "project");
   fs.mkdirSync(path.join(project, "app"), { recursive: true });
+  fs.mkdirSync(path.join(project, "generated"));
+  fs.writeFileSync(path.join(project, "generated", "plain.js"), "const generated = 1;\n");
   fs.mkdirSync(path.join(project, ".vscode"));
   fs.writeFileSync(path.join(project, "uf.config.js"), "export default {};\n");
   fs.writeFileSync(path.join(project, "app", "useCounter.js"), "// @flow\nexport hook useCounter(initial: number): [number, () => void] { return [initial, () => {}]; }\n");
@@ -26,7 +28,7 @@ async function main() {
   fs.writeFileSync(path.join(project, ".vscode", "settings.json"), JSON.stringify({
     "uf.server.path": path.resolve(process.env.UF_BINARY),
     "javascript.validate.enable": false,
-    "files.associations": { "*.json": "jsonc" },
+    "files.associations": { "*.json": "jsonc", "**/generated/*.js": "javascript" },
   }));
   fs.writeFileSync(path.join(project, "plain.ts"), "const typed: number = 1;\n");
   const external = path.join(root, "external.js");
@@ -36,7 +38,7 @@ async function main() {
   const other = path.join(plainFolder, "external.js");
   fs.writeFileSync(other, "const plain = 1;\n");
   const workspace = path.join(root, "multi.code-workspace");
-  fs.writeFileSync(workspace, JSON.stringify({ folders: [{ path: project }, { path: plainFolder }] }));
+  fs.writeFileSync(workspace, JSON.stringify({ folders: [{ path: project }, { path: plainFolder }], settings: { "files.associations": { "**/generated/*.js": "javascript" } } }));
   const executable = process.env.VSCODE_EXECUTABLE_PATH ?? await downloadAndUnzipVSCode({ version: "stable" });
   const appRoot = process.platform === "darwin"
     ? path.resolve(executable, "..", "..", "Resources", "app")

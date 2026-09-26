@@ -56,6 +56,7 @@ declare module "vscode" {
   }
 
   declare export var languages: {
+    match(selector: { readonly pattern: string }, document: TextDocument): number,
     setTextDocumentLanguage(document: TextDocument, languageId: string): Promise<TextDocument>,
   };
 
