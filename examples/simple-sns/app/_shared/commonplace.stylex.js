@@ -1,11 +1,47 @@
 // @flow
 
-import { props, stylex, type StyleArgument, type StyleProps } from "@uniflowed/stylex";
+import {
+  props,
+  stylex,
+  type CompiledStyle,
+  type StyleArgument,
+  type StyleProps,
+} from "@uniflowed/stylex";
 
 // Values come directly from Commonplace's original CSS. Resets, descendant
 // selectors, responsive layout and media state remain in base.css.
 
-export const styles = stylex.create({
+export const styles: {|
+  readonly srOnly: CompiledStyle,
+  readonly appShell: CompiledStyle,
+  readonly workspaceLabel: CompiledStyle,
+  readonly onlineDot: CompiledStyle,
+  readonly discoveryFooter: CompiledStyle,
+  readonly emptyIcon: CompiledStyle,
+  readonly feedToolbar: CompiledStyle,
+  readonly resultLabel: CompiledStyle,
+  readonly postContent: CompiledStyle,
+  readonly postFooter: CompiledStyle,
+  readonly postError: CompiledStyle,
+  readonly conversationPrivate: CompiledStyle,
+  readonly authIntro: CompiledStyle,
+  readonly authNote: CompiledStyle,
+  readonly composeRegion: CompiledStyle,
+  readonly skeletonInk: CompiledStyle,
+  readonly skeletonAuthor: CompiledStyle,
+  readonly skeletonHandle: CompiledStyle,
+  readonly skeletonTime: CompiledStyle,
+  readonly skeletonTag: CompiledStyle,
+  readonly skeletonReaction: CompiledStyle,
+  readonly skeletonFieldLabel: CompiledStyle,
+  readonly skeletonSectionTitle: CompiledStyle,
+  readonly skeletonSectionCopy: CompiledStyle,
+  readonly skeletonButton: CompiledStyle,
+  readonly avatarPhoto: CompiledStyle,
+  readonly avatarFallback: CompiledStyle,
+  readonly clipsPlayer: CompiledStyle,
+  readonly clipSlide: CompiledStyle,
+|} = stylex.create({
   srOnly: {
     position: "absolute",
     width: "1px",

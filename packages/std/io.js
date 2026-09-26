@@ -23,14 +23,14 @@ export type ReadResult =
 export interface Reader {
   /** Read at most `maxBytes` when a positive bound is supplied. */
   read(maxBytes?: number): Promise<ReadResult>;
-  cancel?(reason?: mixed): Promise<void> | void;
+  readonly cancel?: (reason?: mixed) => Promise<void> | void;
 }
 
 /** A sink for byte chunks. */
 export interface Writer {
   write(chunk: Uint8Array): Promise<number> | number;
-  close?(): Promise<void> | void;
-  abort?(reason?: mixed): Promise<void> | void;
+  readonly close?: () => Promise<void> | void;
+  readonly abort?: (reason?: mixed) => Promise<void> | void;
 }
 
 /** Options for a reader over an in-memory byte buffer. */
@@ -172,9 +172,9 @@ export class LimitedReader {
     return { done: false, value };
   }
 
-  async cancel(reason?: mixed): Promise<void> {
+  cancel: (reason?: mixed) => Promise<void> = async (reason) => {
     await cancelReader(this._reader, reason);
-  }
+  };
 }
 
 /** Create a byte reader over a `Uint8Array`. */

@@ -51,7 +51,7 @@
 // actually pairs, and `crates/uf_stylex/src/tests/preset.rs` computes those
 // ratios from the compiled stylesheet.
 
-import { stylex } from "@uniflowed/stylex";
+import { stylex, type CompiledStyle } from "@uniflowed/stylex";
 
 import { ufTokens } from "./tokens.stylex.js";
 
@@ -61,7 +61,7 @@ import { ufTokens } from "./tokens.stylex.js";
  * Every entry is conditional, so this theme is inert in light mode and costs
  * exactly one `@media (prefers-color-scheme: dark)` block.
  */
-export const ufAutoTheme = stylex.createTheme(ufTokens, {
+export const ufAutoTheme: CompiledStyle = stylex.createTheme(ufTokens, {
   canvas: { "@media (prefers-color-scheme: dark)": "#141413" },
   sunken: { "@media (prefers-color-scheme: dark)": "#0f0f0e" },
   surface: { "@media (prefers-color-scheme: dark)": "#1c1c1a" },
@@ -87,7 +87,7 @@ export const ufAutoTheme = stylex.createTheme(ufTokens, {
  * For a subtree that is dark whatever the system says, and for the stored
  * preference a reader chose.
  */
-export const ufDarkTheme = stylex.createTheme(ufTokens, {
+export const ufDarkTheme: CompiledStyle = stylex.createTheme(ufTokens, {
   canvas: "#141413",
   sunken: "#0f0f0e",
   surface: "#1c1c1a",

@@ -1,0 +1,72 @@
+Issue: ubugeeei-prod/uf#1599
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+Keep directory entry names as strings unless buffer encoding is requested, in callback and synchronous APIs. Remove after equivalent upstream overloads land.
+
+--- a/evals/flow-typed/environment/node.js
++++ b/evals/flow-typed/environment/node.js
+@@ -952,8 +952,8 @@
+     bytesWritten: number;
+   }
+ 
+-  declare class Dirent {
+-    name: string | Buffer;
++  declare class Dirent<Name = string> {
++    name: Name;
+ 
+     isBlockDevice(): boolean;
+     isCharacterDevice(): boolean;
+@@ -1088,13 +1088,23 @@
+   declare function mkdtempSync(prefix: string): string;
+   declare function readdir(
+     path: string,
+-    options: string | { encoding?: string, withFileTypes?: false, ... },
+-    callback: (err: ?ErrnoError, files: Array<string>) => void
++    options: { encoding: 'buffer', withFileTypes: true, ... },
++    callback: (err: ?ErrnoError, files: Array<Dirent<Buffer>>) => void
+   ): void;
+   declare function readdir(
+     path: string,
+-    options: { encoding?: string, withFileTypes: true, ... },
+-    callback: (err: ?ErrnoError, files: Array<Dirent>) => void
++    options: { encoding?: buffer$NonBufferEncoding, withFileTypes: true, ... },
++    callback: (err: ?ErrnoError, files: Array<Dirent<string>>) => void
++  ): void;
++  declare function readdir(
++    path: string,
++    options: 'buffer' | { encoding: 'buffer', withFileTypes?: false, ... },
++    callback: (err: ?ErrnoError, files: Array<Buffer>) => void
++  ): void;
++  declare function readdir(
++    path: string,
++    options: buffer$NonBufferEncoding | { encoding?: buffer$NonBufferEncoding, withFileTypes?: false, ... },
++    callback: (err: ?ErrnoError, files: Array<string>) => void
+   ): void;
+   declare function readdir(
+     path: string,
+@@ -1102,12 +1112,20 @@
+   ): void;
+   declare function readdirSync(
+     path: string,
+-    options?: string | { encoding?: string, withFileTypes?: false, ... }
+-  ): Array<string>;
++    options: { encoding: 'buffer', withFileTypes: true, ... }
++  ): Array<Dirent<Buffer>>;
+   declare function readdirSync(
+     path: string,
+-    options?: string | { encoding?: string, withFileTypes: true, ... }
+-  ): Array<Dirent>;
++    options: { encoding?: buffer$NonBufferEncoding, withFileTypes: true, ... }
++  ): Array<Dirent<string>>;
++  declare function readdirSync(
++    path: string,
++    options: 'buffer' | { encoding: 'buffer', withFileTypes?: false, ... }
++  ): Array<Buffer>;
++  declare function readdirSync(
++    path: string,
++    options?: buffer$NonBufferEncoding | { encoding?: buffer$NonBufferEncoding, withFileTypes?: false, ... }
++  ): Array<string>;
+   declare function close(fd: number, callback: (err: ?ErrnoError) => void): void;
+   declare function closeSync(fd: number): void;
+   declare function open(

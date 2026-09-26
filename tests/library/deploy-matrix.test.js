@@ -22,9 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "@uniflowed/test";
 
-// $FlowFixMe[untyped-import] -- Node scripts under tools/, deliberately not Flow.
 import { CHECKS } from "../../tools/deploy-matrix/lib/checks.mjs";
-// $FlowFixMe[untyped-import]
 import {
   cellsOf,
   docsSection,
@@ -57,7 +55,7 @@ describe("the deployment compatibility matrix", () => {
     const unbacked = [];
     for (const target of matrix.targets) {
       for (const [mode, cell] of Object.entries(cellsOf(matrix, target))) {
-        const status = (cell: $FlowFixMe).status;
+        const status = cell.status;
         if ((status === "verified" || status === "not-emulated") && !checks.has(mode)) {
           unbacked.push(`${target.id} × ${mode}`);
         }

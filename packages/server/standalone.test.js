@@ -167,8 +167,8 @@ function recorder(options?: {| readonly full?: boolean |}) {
     statusMessage: "",
     headersSent: false,
     headers: {} as { [string]: string },
-    setHeader(name: string, value: string) {
-      response.headers[name.toLowerCase()] = value;
+    setHeader(name: string, value: string | $ReadOnlyArray<string>) {
+      response.headers[name.toLowerCase()] = typeof value === "string" ? value : value.join(", ");
     },
     on(event: string, listener: () => mixed): mixed {
       listeners.set(event, [...(listeners.get(event) ?? []), listener]);
