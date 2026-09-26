@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn validates_shipped_uniflowed_package_sources() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm");
         let mut modules = Vec::new();
         collect_js_modules(&root, &mut modules);
         modules.sort();

@@ -78,10 +78,11 @@ function world(patch = {}) {
   };
   const git = (...args) => {
     const [command, spec] = args;
+    if (command === "ls-tree") return "packages/core/package.json";
     assert.equal(command, "show");
     if (spec === `${commit}:.github/release.json`) return JSON.stringify(facts.request);
     if (spec === `${commit}^:.github/release.json`) return JSON.stringify(facts.previousRequest);
-    if (spec === `${commit}:npm/core/package.json`)
+    if (spec === `${commit}:packages/core/package.json`)
       return JSON.stringify({ version: facts.coreVersion });
     throw new Error(`fatal: path does not exist: ${spec}`);
   };

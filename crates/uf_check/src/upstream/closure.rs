@@ -461,11 +461,7 @@ mod tests {
 
         assert_eq!(
             reached(&["app.js"], &available),
-            [
-                "app.js",
-                "npm/form/index.js",
-                "npm/form/package.json"
-            ]
+            ["app.js", "npm/form/index.js", "npm/form/package.json"]
         );
     }
 
@@ -480,11 +476,7 @@ mod tests {
 
         assert_eq!(
             reached(&["app.js"], &available),
-            [
-                "app.js",
-                "npm/form/package.json",
-                "npm/form/watch.js"
-            ]
+            ["app.js", "npm/form/package.json", "npm/form/watch.js"]
         );
     }
 
@@ -504,11 +496,7 @@ mod tests {
 
         assert_eq!(
             reached(&["app.js"], &available),
-            [
-                "app.js",
-                "npm/form/index.js",
-                "npm/form/package.json"
-            ]
+            ["app.js", "npm/form/index.js", "npm/form/package.json"]
         );
     }
 

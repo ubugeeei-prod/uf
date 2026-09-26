@@ -789,10 +789,7 @@ mod tests {
     fn a_package_root_resolves_through_its_exports_map() {
         let packages = packages(&[Source::new("npm/cell/package.json", CELL)]);
 
-        assert_eq!(
-            exact(&packages, "@uniflowed/cell"),
-            "npm/cell/index.js"
-        );
+        assert_eq!(exact(&packages, "@uniflowed/cell"), "npm/cell/index.js");
     }
 
     #[test]
@@ -1146,10 +1143,7 @@ mod tests {
         ]);
 
         assert!(packages.resolve("app.js", "broken").is_none());
-        assert_eq!(
-            exact(&packages, "@uniflowed/cell"),
-            "npm/cell/index.js"
-        );
+        assert_eq!(exact(&packages, "@uniflowed/cell"), "npm/cell/index.js");
     }
 
     #[test]
@@ -1162,10 +1156,7 @@ mod tests {
             ),
         ]);
 
-        assert_eq!(
-            exact(&packages, "@uniflowed/cell"),
-            "npm/cell/index.js"
-        );
+        assert_eq!(exact(&packages, "@uniflowed/cell"), "npm/cell/index.js");
     }
 
     const HOISTED: &str = r#"{ "name": "bar", "version": "2.0.0", "exports": { ".": "./v2.js" } }"#;

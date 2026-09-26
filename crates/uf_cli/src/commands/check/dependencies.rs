@@ -428,11 +428,11 @@ mod tests {
 
         // outside/            — no manifest: the wall
         //   repo/             — manifest: the workspace root
-        //     npm/       — manifest
+        //     npm/            — manifest
         //       app/          — manifest: where `uf check` runs
         let app = outside.join("repo/npm/app");
         fs::create_dir_all(&app).unwrap();
-        for directory in ["repo", "repo/packages", "repo/npm/app"] {
+        for directory in ["repo", "repo/npm", "repo/npm/app"] {
             fs::write(outside.join(directory).join(MANIFEST), "{}").unwrap();
         }
 

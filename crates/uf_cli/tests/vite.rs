@@ -2038,7 +2038,7 @@ export component InstalledPackages() {
 }
 
 fn install_uniflowed_packages(project: &Project, packages: &[&str]) {
-    let workspace_packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages");
+    let workspace_packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm");
     for package in packages {
         copy_tree(
             &workspace_packages.join(package),

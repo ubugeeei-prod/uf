@@ -143,10 +143,7 @@ fn workspace() -> Vec<SourceFile> {
             "npm/ids/package.json",
             "{ \"name\": \"@uniflowed/ids\", \"exports\": { \".\": \"./index.js\" } }",
         ),
-        file(
-            "npm/ids/index.js",
-            "// @flow\nexport type Id = string;\n",
-        ),
+        file("npm/ids/index.js", "// @flow\nexport type Id = string;\n"),
         file(
             "unrelated.js",
             "// @flow\nexport const n: number = \"not a number\";\n",

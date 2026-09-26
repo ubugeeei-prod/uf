@@ -157,8 +157,7 @@ fn measure(config: &UniflowedConfig) -> Measured {
 }
 
 fn runtime_fixture() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../npm/router/internal/runtime.js")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm/router/internal/runtime.js")
 }
 
 /// What `uf_flow::parse` of `source` allocates by itself, counted on a thread
