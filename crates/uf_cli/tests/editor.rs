@@ -469,3 +469,131 @@ fn setup_helix_and_the_manual_editors() {
         stdout(&jetbrains)
     );
 }
+
+#[test]
+fn new_sets_up_multiple_selected_editors_and_installs_the_release_extension() {
+    let machine = Machine::new();
+    let log = machine.launcher("code", 0);
+    machine.publish(env!("CARGO_PKG_VERSION"), b"new project vsix", None);
+    let output = machine
+        .uf(machine.root.path())
+        .args([
+            "new",
+            "board",
+            "--package-manager",
+            "pnpm",
+            "--editors",
+            "vscode,helix",
+            "--yes",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let settings: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(machine.path("board/.vscode/settings.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(settings["javascript.validate.enable"], false);
+    assert_eq!(settings["javascript.suggest.enabled"], false);
+    assert_eq!(settings["[javascript]"]["js/ts.suggest.enabled"], false);
+    assert!(machine.path("board/.helix/languages.toml").is_file());
+    assert!(!machine.path("board/.zed").exists());
+    assert!(
+        fs::read_to_string(machine.path("board/uf.config.js"))
+            .unwrap()
+            .contains("packageManager: \"pnpm\"")
+    );
+    assert!(
+        fs::read_to_string(log)
+            .unwrap()
+            .contains("--install-extension")
+    );
+}
+
+#[test]
+fn new_keeps_the_project_and_reports_failed_ide_installation() {
+    let machine = Machine::new();
+    let output = machine
+        .uf(machine.root.path())
+        .args(["new", "board", "--editors", "vscode,helix", "--yes"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(machine.path("board/package.json").is_file());
+    assert!(machine.path("board/.helix/languages.toml").is_file());
+    assert!(stderr(&output).contains("project created"));
+    assert!(stderr(&output).contains("VS Code"));
+}
+
+#[test]
+fn new_accepts_each_manager_and_rejects_invalid_specs_before_writing() {
+    let machine = Machine::new();
+    for (index, manager) in ["uf", "npm", "pnpm@12", "yarn@4", "bun@1.4"]
+        .iter()
+        .enumerate()
+    {
+        let name = format!("project-{index}");
+        let output = machine
+            .uf(machine.root.path())
+            .args([
+                "new",
+                &name,
+                "--package-manager",
+                manager,
+                "--no-editors",
+                "--yes",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{manager}: {}{}",
+            stdout(&output),
+            stderr(&output)
+        );
+        let config = fs::read_to_string(machine.path(&format!("{name}/uf.config.js"))).unwrap();
+        assert!(config.contains(&format!("\"{manager}\"")), "{config}");
+        assert!(!machine.path(&format!("{name}/.vscode")).exists());
+    }
+    let output = machine
+        .uf(machine.root.path())
+        .args([
+            "new",
+            "invalid",
+            "--package-manager",
+            "pnpm@latest",
+            "--yes",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(!machine.path("invalid").exists());
+    let output = machine
+        .uf(machine.root.path())
+        .args([
+            "new",
+            "workspace",
+            "monorepo",
+            "--package-manager",
+            "pnpm",
+            "--yes",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        fs::read_to_string(machine.path("workspace/pnpm-workspace.yaml"))
+            .unwrap()
+            .contains("linkWorkspacePackages: true")
+    );
+}

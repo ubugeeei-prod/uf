@@ -30,13 +30,34 @@ before the subcommand; a subcommand's own flags come after it.
 ### uf new PATH [TEMPLATE]
 
 Scaffolds an application into a new directory: `uf.config.js`, `app.js`, a
-layout, a page and a `package.json`. Writes files and nothing else — no
-install, no git.
+layout, a page and a `package.json`. In a terminal, select a package manager
+and optionally select multiple IDEs with Space, then confirm with Enter. An
+empty IDE selection skips setup. Escape cancels before writing the project.
+
+The selected IDEs get Flow settings and their uf integration installed through
+`uf editor setup` and `uf editor install`. VS Code and Cursor use the checksummed
+release extension; editors needing a manual activation step print that step.
+Dependency installation remains a separate `uf install`.
 
 `react` is the default template, so `uf new my-site` is the usual form, and
 `monorepo` is the other. A word in the template's place that is not a template
 is refused rather than read as a directory: `uf new my-site raect` says so, and
 scaffolding into `raect/` would be the worse answer.
+
+For scripts, choose explicitly and skip prompts:
+
+```sh
+uf new my-site --package-manager pnpm --editors vscode,zed --yes
+uf new my-lib --lib --package-manager npm@11 --no-editors
+uf new my-site --yes
+```
+
+`--package-manager` accepts `uf`, `npm`, `pnpm`, `yarn` or `bun`; the external
+managers may have a version prefix or exact version. The choice is written to
+`uf.config.js`, so `uf install` uses it. `--editors` accepts comma-separated or
+repeated IDE names. `--no-editors` skips that picker. `--yes` skips both prompts
+and keeps any explicit choices. Without a terminal, omitted choices preserve
+the existing scaffold defaults. These setup options apply to built-in templates.
 
 ### uf new PATH monorepo
 
@@ -48,8 +69,8 @@ repository of several packages needs and one package does not:
 - a `package.json` whose `workspaces` field lists `apps/*` and `npm/*` —
   the field npm, Yarn and Bun read. The application depends on the library as
   `"@NAME/ui": "*"`, which a workspace install links rather than fetches. pnpm
-  reads `pnpm-workspace.yaml` and the `workspace:` protocol instead, and needs
-  both added by hand.
+  reads `pnpm-workspace.yaml`; selecting pnpm creates it with local workspace
+  linking enabled. Selecting Yarn writes a `node-modules` linker configuration.
 - a `uf.config.js` that `uf fmt`, `uf lint`, `uf check` and `uf test` run at the
   root read for every package, so formatting and lint levels are written once.
   Each package keeps its own config for its router or its library build.
@@ -105,7 +126,7 @@ spellings.
 
 `uf create` is still accepted and is no longer listed.
 
-It takes `uf new`'s flags, with the same meaning:
+It takes the template, library, name and force flags with the same meaning:
 
 | Flag | Meaning |
 | --- | --- |

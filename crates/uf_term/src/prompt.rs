@@ -39,6 +39,7 @@ mod draw;
 mod input;
 mod key;
 mod menu;
+mod multi;
 mod raw;
 
 #[cfg(test)]
@@ -51,6 +52,7 @@ use crate::theme::Theme;
 
 pub use input::{Answer, Question, input};
 pub use menu::{Choice, VISIBLE};
+pub use multi::{ManyOutcome, select_many};
 
 use key::{Key, read_key};
 use menu::Menu;
