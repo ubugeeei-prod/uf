@@ -1294,7 +1294,10 @@ mod tests {
         assert_eq!(names, [("Shape", 5, 1), ("make", 12, 0)]);
         let area = &found[0].children[0];
         assert_eq!(area.name, "area");
-        assert_eq!(places(std::slice::from_ref(&area.selection)), [("shapes.js", 3, 3, 7)]);
+        assert_eq!(
+            places(std::slice::from_ref(&area.selection)),
+            [("shapes.js", 3, 3, 7)]
+        );
         assert!(worker.symbols("missing.js").is_none());
         worker.release();
     }
