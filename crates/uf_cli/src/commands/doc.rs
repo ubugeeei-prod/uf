@@ -75,7 +75,7 @@ pub(crate) fn doc(
 
     let output_dir = resolved.root.join(out_dir);
     let output = match format {
-        DocFormat::Html => write_site(&report, &output_dir, &project_label(&resolved.root))?,
+        DocFormat::Html => write_site(&report, &output_dir, project_label(&resolved.root))?,
         DocFormat::Markdown => write_markdown(&report, &output_dir)?,
     };
     render_success(ui, &resolved.root, out_dir, &output, &report);
