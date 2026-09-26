@@ -4564,7 +4564,6 @@ name = "uf_doc"
 version = "0.9.0"
 dependencies = [
  "camino",
- "compact_str",
  "serde",
  "similar-asserts",
  "tempfile",
@@ -4612,7 +4611,6 @@ dependencies = [
 name = "uf_flow"
 version = "0.9.0"
 dependencies = [
- "compact_str",
  "flow_parser",
  "thiserror",
  "uf_infra",
@@ -4641,7 +4639,6 @@ name = "uf_i18n"
 version = "0.9.0"
 dependencies = [
  "camino",
- "compact_str",
  "serde",
  "serde_json",
  "sha2",
@@ -4834,7 +4831,6 @@ dependencies = [
 name = "uf_runtime"
 version = "0.9.0"
 dependencies = [
- "compact_str",
  "serde",
  "smallvec",
  "uf_infra",
@@ -4845,7 +4841,6 @@ name = "uf_sqlc"
 version = "0.9.0"
 dependencies = [
  "base64",
- "compact_str",
  "serde",
  "serde_json",
  "similar-asserts",
@@ -4906,7 +4901,6 @@ dependencies = [
 name = "uf_term"
 version = "0.9.0"
 dependencies = [
- "compact_str",
  "criterion",
  "uf_infra",
 ]

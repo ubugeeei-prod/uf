@@ -13,7 +13,6 @@ workspace = true
 
 [dependencies]
 uf_infra = { path = "../uf_infra" }
-compact_str.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
