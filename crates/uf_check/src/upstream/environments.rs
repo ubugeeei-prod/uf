@@ -54,6 +54,17 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
     environment!("webassembly.js"),
     environment!("intl.js"),
     environment!("node.js"),
+    // Node's async_hooks is absent from the vendored environment.
+    (
+        "node-async-hooks.js",
+        include_str!("../../libdefs/node-async-hooks.js"),
+    ),
+    // The installed Flight package has CommonJS runtime wrappers and no
+    // declarations. Its browser and server graphs share the wire types.
+    (
+        "react-server-dom-parcel.js",
+        include_str!("../../libdefs/react-server-dom-parcel.js"),
+    ),
     // TypeScript declarations name Intl's option dictionaries through the
     // `Intl` namespace, while Flow's libdefs expose the older `$` aliases.
     // This bridges those spellings for packages translated from `.d.ts`. See

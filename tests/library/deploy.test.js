@@ -79,7 +79,12 @@ import { createFetchHandler } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 import { createLambdaHandler } from "@uniflowed/server/lambda";
 import { installLogger, processLogger, recordingLogger } from "@uniflowed/server/log";
-import { type RoutingRules, createServeHandler, createStaticHandler } from "@uniflowed/server/node";
+import {
+  type NodeResponse,
+  type RoutingRules,
+  createServeHandler,
+  createStaticHandler,
+} from "@uniflowed/server/node";
 import { createHandler as createStandaloneHandler } from "@uniflowed/server/standalone";
 import type { Application } from "@uniflowed/server/fetch";
 import { createVercelHandler, vercelCapabilities } from "@uniflowed/server/vercel";
@@ -118,11 +123,9 @@ function directoryWith(files: { [string]: string }): string {
  * module `uf build` writes are held to one idea of what that module is: an
  * extra export here would be a property no door reads, and a missing one an
  * error at this line rather than an `undefined is not a function` in a case.
- * (The binary's door types its bundle as `StandaloneApp`, which is not yet the
- * same type; ubugeeei-prod/uf#1451 tracks the three calls that disagree.)
  */
 function appWith(options: {
-  guard?: (request: Request) => Promise<Response | null> | Response | null,
+  guard?: (request: Request) => Promise<Response | Request | null> | Response | Request | null,
   handler?: (request: Request) => Promise<Response | null> | Response | null,
   render?: (url: string) => { status: number, html: string },
 }): Application {
@@ -638,34 +641,39 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
  */
 function nodeExchange(url: string) {
   const incoming = { method: "GET", url, headers: { host: "uf.test", accept: "text/html" } };
-  const outgoing = {
+  const outgoing: NodeResponse & {
+    headers: Map<string, mixed>,
+    written: Array<string>,
+    ended: boolean,
+    ...
+  } = {
     statusCode: 200,
     statusMessage: "",
     headersSent: false,
-    headers: (new Map(): Map<string, mixed>),
-    written: ([]: Array<string>),
+    headers: new Map<string, mixed>(),
+    written: [] as Array<string>,
     ended: false,
-    setHeader(name: string, value: mixed) {
-      this.headers.set(name.toLowerCase(), value);
+    setHeader(name: string, value: mixed): void {
+      outgoing.headers.set(name.toLowerCase(), value);
     },
     write(chunk: Uint8Array | string): boolean {
-      this.headersSent = true;
-      this.written.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+      outgoing.headersSent = true;
+      outgoing.written.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
       return true;
     },
-    end(chunk?: Uint8Array | string) {
-      if (chunk != null) this.write(chunk);
-      this.ended = true;
+    end(chunk?: Uint8Array | string): void {
+      if (chunk != null) outgoing.write(chunk);
+      outgoing.ended = true;
     },
-    destroy() {},
-    on() {
-      return this;
+    destroy(): void {},
+    on(): mixed {
+      return outgoing;
     },
-    once() {
-      return this;
+    once(): mixed {
+      return outgoing;
     },
-    off() {
-      return this;
+    off(): mixed {
+      return outgoing;
     },
   };
   return { incoming, outgoing };
@@ -684,14 +692,14 @@ describe("the Vercel front door an adapter's index.js runs", () => {
     });
 
     const file = nodeExchange("/assets/client.js");
-    await handler((file.incoming: $FlowFixMe), (file.outgoing: $FlowFixMe));
+    await handler(file.incoming, file.outgoing);
     expect(file.outgoing.statusCode).toBe(200);
     expect(file.outgoing.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
     expect(file.outgoing.written.join("")).toBe("console.log(1);");
     expect(file.outgoing.ended).toBe(true);
 
     const page = nodeExchange("/posts/hello");
-    await handler((page.incoming: $FlowFixMe), (page.outgoing: $FlowFixMe));
+    await handler(page.incoming, page.outgoing);
     expect(page.outgoing.statusCode).toBe(200);
     expect(page.outgoing.written.join("")).toContain("/posts/hello");
   });
@@ -702,8 +710,10 @@ describe("the Vercel front door an adapter's index.js runs", () => {
     // where under this symbol (what `@vercel/functions`' own `waitUntil` reads).
     const handed: Array<Promise<mixed>> = [];
     const key = Symbol.for("@vercel/request-context");
-    const holder: $FlowFixMe = globalThis;
-    holder[key] = { get: () => ({ waitUntil: (promise: Promise<mixed>) => handed.push(promise) }) };
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      value: { get: () => ({ waitUntil: (promise: Promise<mixed>) => handed.push(promise) }) },
+    });
     try {
       const handler = createVercelHandler({
         handle: createFetchHandler({ app: appWith({}), document: assets }),
@@ -711,12 +721,12 @@ describe("the Vercel front door an adapter's index.js runs", () => {
         staticDir: directoryWith({}),
       });
       const exchange = nodeExchange("/posts/hello");
-      const answered = handler((exchange.incoming: $FlowFixMe), (exchange.outgoing: $FlowFixMe));
+      const answered = handler(exchange.incoming, exchange.outgoing);
       expect(handed.length).toBe(1);
       await answered;
       await handed[0];
     } finally {
-      delete holder[key];
+      Reflect.deleteProperty(globalThis, key);
     }
   });
 
@@ -996,7 +1006,10 @@ describe("the front doors", () => {
         guard: (request: Request) => {
           const { pathname } = new URL(request.url);
           return pathname.startsWith("/shop/")
-            ? new Request(new URL(pathname.replace("/shop/", "/posts/"), request.url), request)
+            ? new Request(new URL(pathname.replace("/shop/", "/posts/"), request.url), {
+                method: request.method,
+                headers: request.headers,
+              })
             : null;
         },
       }),
@@ -1286,8 +1299,8 @@ function nodeResponse() {
     statusMessage: "",
     headersSent: false,
     headers,
-    setHeader(name: string, value: string) {
-      headers[name.toLowerCase()] = value;
+    setHeader(name: string, value: string | $ReadOnlyArray<string>) {
+      headers[name.toLowerCase()] = typeof value === "string" ? value : value.join(", ");
     },
     // The handler attaches `drain` and `close` listeners to pace a body. This
     // comparison never fills a socket, so there is nothing to pace and nothing

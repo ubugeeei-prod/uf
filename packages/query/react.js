@@ -115,7 +115,16 @@ export function useQueryClient(): QueryClient {
  * in flight; `isPending` says there is nothing to show yet — conflating those
  * is why applications flash a spinner over data they already have.
  */
-export function useQuery<TData, TSelected = TData>(
+// With no selector, the data is exactly what queryFn resolves to. Keeping
+// this as a separate overload prevents an unconstrained TSelected becoming
+// unknown merely because an optional selector was omitted.
+export const useQuery: {
+  <TData>(options: {| ...QueryOptions<TData, TData>, readonly select?: void |}): QueryResult<TData>,
+  <TData, TSelected>(options: QueryOptions<TData, TSelected>): QueryResult<TSelected>,
+  ...
+} = useQueryImpl;
+
+function useQueryImpl<TData, TSelected = TData>(
   options: QueryOptions<TData, TSelected>,
 ): QueryResult<TSelected> {
   const client = useQueryClient();
@@ -150,7 +159,18 @@ export function useQuery<TData, TSelected = TData>(
  * and collected as the single thing the reader sees. See `infinite.js` for why
  * the alternative — a query per page — cannot stay coherent.
  */
-export function useInfiniteQuery<TPage, TParam, TSelected = InfiniteData<TPage, TParam>>(
+export const useInfiniteQuery: {
+  <TPage, TParam>(options: {|
+    ...InfiniteQueryOptions<TPage, TParam, InfiniteData<TPage, TParam>>,
+    readonly select?: void,
+  |}): InfiniteQueryResult<InfiniteData<TPage, TParam>>,
+  <TPage, TParam, TSelected>(
+    options: InfiniteQueryOptions<TPage, TParam, TSelected>,
+  ): InfiniteQueryResult<TSelected>,
+  ...
+} = useInfiniteQueryImpl;
+
+function useInfiniteQueryImpl<TPage, TParam, TSelected = InfiniteData<TPage, TParam>>(
   options: InfiniteQueryOptions<TPage, TParam, TSelected>,
 ): InfiniteQueryResult<TSelected> {
   const client = useQueryClient();

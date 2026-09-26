@@ -319,6 +319,7 @@ jobs:
       - run: ./target/release/uf run check:lib
       - run: ./target/release/uf run check:ui
       - run: ./target/release/uf run check:web
+      - run: ./target/release/uf run check:contracts
 
   docs:
     name: Docs build

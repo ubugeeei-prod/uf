@@ -1,0 +1,16 @@
+Issue: ubugeeei-prod/uf#1601
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+Declare the string arguments accepted by the ECMAScript Function constructor. Keep non-string arguments rejected. Remove after the upstream constructor is declared.
+
+--- a/lib/core.js
++++ b/lib/core.js
+@@ -382,6 +382,7 @@
+ 
+ // TODO: instance, static
+ declare class Function {
++    constructor(...parametersAndBody: Array<string>): void;
+     proto apply: (<T, R, A extends $ArrayLike<unknown> = []>(this: (this: T, ...args: A) => R, thisArg: T, args?: A) => R);
+     proto bind: Function$Prototype$Bind; // (thisArg: any, ...argArray: Array<any>) => any;
+     proto call: <T, R, A extends $ArrayLike<unknown> = []>(this: (this: T, ...args: A) => R, thisArg: T, ...args: A) => R;

@@ -29,6 +29,9 @@ import os from "node:os";
 import nodePath from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { createFetch } from "@uniflowed/fetch";
+import type { CacheableClient } from "@uniflowed/server/cache";
+
 import { describe, expect, it } from "@uniflowed/test";
 
 import {
@@ -1172,15 +1175,17 @@ describe("the route cache", () => {
 
 describe("the fetch cache", () => {
   /** A client that counts what it was asked for. */
-  function clientWith(): {| calls: Array<string>, request: (path: string) => Promise<string> |} {
-    const calls = [];
-    return {
-      calls,
-      request: async (path: string) => {
-        calls.push(path);
-        return `body ${calls.length}`;
+  function clientWith(): CacheableClient & { calls: Array<string>, ... } {
+    const calls: Array<string> = [];
+    const client = createFetch({
+      baseURL: "http://uf.test",
+      fetch: async (input: RequestInfo): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+        calls.push(new URL(url).pathname);
+        return Response.json(`body ${calls.length}`);
       },
-    };
+    });
+    return { calls, request: <T>(path: string): Promise<T> => client.request<T>(path) };
   }
 
   it("passes a request with no cache option straight through", async () => {
@@ -1399,16 +1404,19 @@ describe("a durable store", () => {
   });
 
   it("refuses a provider that cannot answer the whole seam", () => {
-    const provider: $FlowFixMe = fakeProvider();
-    delete provider.invalidateTag;
+    const { invalidateTag: _invalidateTag, ...provider } = fakeProvider();
 
     // Checked where it is wired rather than at the first call, because the
     // symptom otherwise is a cache that answers every request perfectly and
     // silently stops invalidating.
-    expect(() => createCacheStore({ provider, build: "b" })).toThrow(/invalidateTag/);
-    expect(() => createCacheStore({ provider: { name: "half", read() {} }, build: "b" })).toThrow(
-      /read|write/,
+    expect(() => Reflect.apply(createCacheStore, undefined, [{ provider, build: "b" }])).toThrow(
+      /invalidateTag/,
     );
+    expect(() =>
+      Reflect.apply(createCacheStore, undefined, [
+        { provider: { name: "half", read() {} }, build: "b" },
+      ]),
+    ).toThrow(/read|write/);
   });
 
   it("keeps an entry across a restart", async () => {
@@ -2015,9 +2023,7 @@ describe("a second copy of this package", () => {
   // `server.test.js` asks the same question of the request, and
   // `internal/process-state.js` is the answer to both.
   it("declares into the scope the other copy opened", async () => {
-    const copy = await import(
-      new URL("./internal/cache-store.js?a-second-copy", import.meta.url).href
-    );
+    const copy = await import("./internal/cache-store.js?a-second-copy");
     expect(copy.runInScope).not.toBe(runInScope);
     const scope = copy.newScope({ key: ["a-second-copy"] });
 

@@ -140,21 +140,6 @@ export type LambdaHandlerOptions = {|
 |};
 
 /**
- * The `getSetCookie` half of `Headers`.
- *
- * Declared rather than called straight off the value because iterating
- * `Headers` joins repeated fields with a comma, and `Set-Cookie` is the one
- * field where that is a corruption rather than a spelling: two cookies become
- * one header nothing can parse back apart. `getSetCookie` is the standard
- * answer and every runtime that can run this has it — but a runtime that does
- * not would throw here rather than at the point the cookies were set, so the
- * absence is checked.
- */
-interface SetCookieReader {
-  readonly getSetCookie?: () => $ReadOnlyArray<string>;
-}
-
-/**
  * Media types whose bodies are text, and therefore not base64.
  *
  * The same shape of decision `./node.js` makes with `CONTENT_TYPES`, and the
@@ -235,12 +220,15 @@ export function toRequest(event: LambdaHttpEvent): Request {
 export async function toResult(response: Response): Promise<LambdaHttpResult> {
   const headers: { [string]: string } = {};
   for (const [name, value] of response.headers) {
-    // Skipped here and carried in `cookies` below: see [`SetCookieReader`].
+    // Skipped here and carried in `cookies` below: the guarded `getSetCookie` read below.
     if (name.toLowerCase() === "set-cookie") continue;
     headers[name] = value;
   }
-  const reader: SetCookieReader = response.headers;
-  const cookies = typeof reader.getSetCookie === "function" ? [...reader.getSetCookie()] : [];
+  const reader = response.headers;
+  // Reflect checks availability without detaching the Headers method. The
+  // call retains its receiver and its declared string-array result.
+  const cookies =
+    typeof Reflect.get(reader, "getSetCookie") === "function" ? [...reader.getSetCookie()] : [];
 
   const body = Buffer.from(await response.arrayBuffer());
   const text = isText(response.headers.get("content-type"));

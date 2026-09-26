@@ -17,6 +17,41 @@ fn the_scaffolded_tokens_module_compiles() {
 }
 
 #[test]
+fn a_flow_annotation_preserves_the_variables_namespace() {
+    for annotation in [
+        "Tokens",
+        "{| readonly canvas: string, readonly ink: string |}",
+        "TokenMap<{ readonly canvas: string, readonly ink: string }>",
+        "TokenMap<(value: string) => string>",
+    ] {
+        let typed =
+            TOKENS_MODULE.replace("const tokens =", &format!("const tokens: {annotation} ="));
+        let compiled = compile(&typed);
+        assert_eq!(
+            compiled.sheet.to_css(),
+            compile(TOKENS_MODULE).sheet.to_css()
+        );
+        assert!(!compiled.code.contains("stylex.defineVars"));
+        assert!(
+            compiled
+                .code
+                .contains(&format!("const tokens: {annotation} ="))
+        );
+    }
+}
+
+#[test]
+fn an_outer_typed_initializer_does_not_name_a_nested_assignment() {
+    let source = r##"import { stylex } from "@uniflowed/stylex";
+const outer: Tokens = function () { nested = stylex.defineVars({ ink: "#000" }); };
+"##;
+    assert!(matches!(
+        parse_module(source),
+        Err(StyleXError::MalformedEntry { .. })
+    ));
+}
+
+#[test]
 fn each_entry_becomes_a_custom_property() {
     let compiled = compile(TOKENS_MODULE);
     let css = compiled.sheet.to_css();

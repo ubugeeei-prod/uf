@@ -116,14 +116,14 @@ export class BufferedReader {
     return byte;
   }
 
-  async cancel(reason?: mixed): Promise<void> {
+  cancel: (reason?: mixed) => Promise<void> = async (reason) => {
     const cancel = this._reader.cancel;
     if (cancel != null) {
       await cancel.call(this._reader, reason);
     }
     this._atEof = true;
     this._buffer = EMPTY;
-  }
+  };
 
   async _fill(minBytes: number): Promise<void> {
     while (!this._atEof && this._buffer.length < minBytes) {

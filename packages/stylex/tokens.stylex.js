@@ -59,10 +59,59 @@
 
 import { stylex } from "@uniflowed/stylex";
 
-// Deliberately unannotated: `defineVars` hands back exactly what it was given,
-// so the inferred type is the token set itself — which is what makes
-// `ThemeOverrides<typeof ufTokens>` reject a token this module does not declare.
-export const ufTokens = stylex.defineVars({
+// The explicit key set is also the module interface downstream themes read.
+export type UFTokens = {|
+  readonly canvas: string,
+  readonly sunken: string,
+  readonly surface: string,
+  readonly surfaceHover: string,
+  readonly border: string,
+  readonly ink: string,
+  readonly muted: string,
+  readonly accent: string,
+  readonly accentHover: string,
+  readonly accentInk: string,
+  readonly accentSoft: string,
+  readonly danger: string,
+  readonly dangerHover: string,
+  readonly dangerInk: string,
+  readonly dangerSoft: string,
+  readonly focus: string,
+  readonly scrim: string,
+  readonly fontSans: string,
+  readonly fontMono: string,
+  readonly textXs: string,
+  readonly textSm: string,
+  readonly textMd: string,
+  readonly textLg: string,
+  readonly textXl: string,
+  readonly text2Xl: string,
+  readonly leadingTight: string,
+  readonly leadingBase: string,
+  readonly weightRegular: string,
+  readonly weightMedium: string,
+  readonly weightBold: string,
+  readonly space1: string,
+  readonly space2: string,
+  readonly space3: string,
+  readonly space4: string,
+  readonly space6: string,
+  readonly space8: string,
+  readonly space12: string,
+  readonly radiusSm: string,
+  readonly radiusMd: string,
+  readonly radiusLg: string,
+  readonly radiusPill: string,
+  readonly sizeControl: string,
+  readonly durationFast: string,
+  readonly durationBase: string,
+  readonly durationSlow: string,
+  readonly easing: string,
+  readonly easingEnter: string,
+  readonly easingExit: string,
+|};
+
+export const ufTokens: UFTokens = stylex.defineVars({
   // Surfaces, from furthest back to nearest front.
   canvas: "#f6f6f4",
   sunken: "#eeeeeb",

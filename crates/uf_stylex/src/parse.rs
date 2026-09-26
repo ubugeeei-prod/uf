@@ -276,16 +276,63 @@ fn member_call(cursor: Cursor<'_>, index: usize) -> Option<(CallKind, usize)> {
     Some((kind, index + 3))
 }
 
-/// The `const NAME =` a call is assigned to, when it is assigned to one.
+/// The variable a call initializes, including a Flow type annotation.
 fn assigned_binding(cursor: Cursor<'_>, callee: usize) -> Option<CompactString> {
-    let equals = cursor.tokens.get(callee.checked_sub(1)?)?;
-    let name = cursor.tokens.get(callee.checked_sub(2)?)?;
-    let keyword = cursor.tokens.get(callee.checked_sub(3)?)?;
-    if !equals.is_punct(b'=') || name.kind != TokenKind::Ident || keyword.kind != TokenKind::Ident {
+    let equals = callee.checked_sub(1)?;
+    if !cursor.tokens.get(equals)?.is_punct(b'=') {
         return None;
     }
-    matches!(keyword.text(cursor.source), "const" | "let" | "var")
-        .then(|| CompactString::new(name.text(cursor.source)))
+    let declared = |name: usize| {
+        let identifier = cursor.tokens.get(name)?;
+        let keyword = cursor.tokens.get(name.checked_sub(1)?)?;
+        (identifier.kind == TokenKind::Ident
+            && keyword.kind == TokenKind::Ident
+            && matches!(keyword.text(cursor.source), "const" | "let" | "var"))
+        .then(|| CompactString::new(identifier.text(cursor.source)))
+    };
+    if let Some(name) = declared(equals.checked_sub(1)?) {
+        return Some(name);
+    }
+
+    // Walk only the annotation, skipping balanced records, tuples, generic
+    // arguments and function parameters. An earlier initializer or statement
+    // cannot own this call. A function-type arrow is not an initializer.
+    let mut delimiters = Vec::new();
+    for index in (0..equals).rev() {
+        let token = &cursor.tokens[index];
+        let arrow_end =
+            token.is_punct(b'>') && index > 0 && cursor.tokens[index - 1].is_punct(b'=');
+        let arrow_start = token.is_punct(b'=')
+            && cursor
+                .tokens
+                .get(index + 1)
+                .is_some_and(|next| next.is_punct(b'>'));
+        if arrow_end || arrow_start {
+            continue;
+        }
+        match token.kind {
+            TokenKind::Punct(close @ (b')' | b']' | b'}' | b'>')) => delimiters.push(close),
+            TokenKind::Punct(open @ (b'(' | b'[' | b'{' | b'<')) => {
+                let expected = match open {
+                    b'(' => b')',
+                    b'[' => b']',
+                    b'{' => b'}',
+                    _ => b'>',
+                };
+                if delimiters.pop() != Some(expected) {
+                    return None;
+                }
+            }
+            TokenKind::Punct(b':') if delimiters.is_empty() => {
+                if let Some(name) = index.checked_sub(1).and_then(declared) {
+                    return Some(name);
+                }
+            }
+            TokenKind::Punct(b'=' | b';' | b',') if delimiters.is_empty() => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The object literal a call was handed, as `(open brace, close paren)`.

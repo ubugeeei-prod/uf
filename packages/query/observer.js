@@ -88,28 +88,19 @@ import type { QueryClient } from "./client.js";
  * an application sets `staleTime` once instead of at every call site.
  */
 /**
- * `T`, unless `T` is itself a function.
- *
- * `placeholderData` tells its two forms apart at run time by `typeof` alone:
- * a function is always the producer form. So a placeholder *value* can never
- * be a function, and this is how the type says so. Without it, Flow could not
- * call the producer after the `typeof` check, because the value side may be
- * a function too.
- */
-type NonFunction<T> = T extends (...args: $ReadOnlyArray<empty>) => mixed ? empty : T;
-
-/**
  * What `placeholderData` accepts: data of the query's own type, shown before
  * the first answer, or a function that makes that data from the previous
  * answer and may return `undefined` for "no placeholder".
  *
  * Typed as the query's `TData` and not `mixed`, because the placeholder goes
  * through `select` exactly like fetched data: a placeholder of another type
- * reached `select` unchecked.
+ * reached `select` unchecked. A function always means a producer, so data
+ * that is itself a function must be wrapped in a producer.
  */
 export type PlaceholderData<TData> =
-  | NonFunction<TData>
-  | ((previous: TData | void) => TData | void);
+  TData extends (...args: $ReadOnlyArray<empty>) => mixed
+    ? (previous: TData | void) => TData | void
+    : TData | ((previous: TData | void) => TData | void);
 
 export type QueryOptions<TData, TSelected = TData> = {|
   readonly queryKey: QueryKey,

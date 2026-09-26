@@ -1,0 +1,46 @@
+Issue: ubugeeei-prod/uf#1597
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+Accept readonly initialization dictionaries; declare the Fetch body, keepalive and cookie APIs. Remove once upstream declares these platform contracts.
+
+--- a/evals/flow-typed/environment/bom.js
++++ b/evals/flow-typed/environment/bom.js
+@@ -1492,7 +1492,7 @@
+ 
+ // this part of spec is not finished yet, apparently
+ // https://stackoverflow.com/questions/35296664/can-fetch-get-object-as-headers
+-type HeadersInit = Headers | Array<[string, string]> | { [key: string]: string, ... };
++type HeadersInit = Headers | $ReadOnlyArray<[string, string]> | { readonly [key: string]: string, ... };
+ 
+ 
+ // TODO Heades and URLSearchParams are almost the same thing.
+@@ -1505,6 +1505,7 @@
+     entries(): Iterator<[string, string]>;
+     forEach<This>(callback: (this : This, value: string, name: string, headers: Headers) => mixed, thisArg: This): void;
+     get(name: string): null | string;
++    getSetCookie(): Array<string>;
+     has(name: string): boolean;
+     keys(): Iterator<string>;
+     set(name: string, value: string): void;
+@@ -1516,7 +1517,7 @@
+ 
+     size: number;
+ 
+-    constructor(init?: string | URLSearchParams | Array<[string, string]> | { [string]: string, ... } ): void;
++    constructor(init?: string | URLSearchParams | $ReadOnlyArray<[string, string]> | { readonly [string]: string, ... } ): void;
+     append(name: string, value: string): void;
+     delete(name: string, value?: string): void;
+     entries(): Iterator<[string, string]>;
+@@ -1612,9 +1613,11 @@
+     referrer: string;
+     referrerPolicy: ReferrerPolicyType;
+     readonly signal: AbortSignal;
++    readonly keepalive: boolean;
+ 
+     // Body methods and attributes
+     bodyUsed: boolean;
++    readonly body: ?ReadableStream<Uint8Array>;
+ 
+     arrayBuffer(): Promise<ArrayBuffer>;
+     blob(): Promise<Blob>;
