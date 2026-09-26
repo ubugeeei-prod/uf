@@ -9023,6 +9023,43 @@ fn allowing_only_csr_writes_one_empty_shell() {
     );
 }
 
+/// The copyable SPA example must build as the single shell its README promises.
+#[test]
+fn spa_example_builds_without_a_server_bundle() {
+    if !fixture_ready() {
+        return;
+    }
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/spa");
+    let project = Project::new(&[]);
+    for entry in walkdir::WalkDir::new(&source) {
+        let entry = entry.unwrap();
+        if entry.file_type().is_file() {
+            let path = entry.path();
+            project.write(
+                path.strip_prefix(&source).unwrap().to_str().unwrap(),
+                &fs::read_to_string(path).unwrap(),
+            );
+        }
+    }
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    let index = fs::read_to_string(project.path().join("dist/index.html")).unwrap();
+    assert!(index.contains("id=\"uf-root\""), "{index}");
+    assert!(
+        !index.contains("Write a Flow component"),
+        "a task was prerendered: {index}"
+    );
+    assert_eq!(
+        index,
+        fs::read_to_string(project.path().join("dist/404.html")).unwrap()
+    );
+    assert!(!project.path().join(".uf/build/server/server.js").exists());
+    assert_eq!(
+        fs::read_to_string(project.path().join("dist/_redirects")).unwrap(),
+        "/* /index.html 200\n"
+    );
+}
+
 /// The refusal a single-page build has to make for itself.
 ///
 /// Every other plan prerenders something, so a page that reads a request is
