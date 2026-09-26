@@ -16,6 +16,10 @@ uf_infra = { path = "../uf_infra" }
 camino.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+ox_content_allocator = "=3.2.11"
+ox_content_ast = "=3.2.11"
+ox_content_parser = "=3.2.11"
+ox_content_renderer = "=3.2.11"
 uf_config = { path = "../uf_config" }
 uf_flow = { path = "../uf_flow" }
 uf_project = { path = "../uf_project" }

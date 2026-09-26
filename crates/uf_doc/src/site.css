@@ -1,0 +1,80 @@
+/* uf's technical manual: a paper surface, a continuous seam and brand type. */
+:root {
+  color-scheme: light;
+  --doc-paper: #fbfaf8;
+  --doc-paper-sunk: #f4f2ee;
+  --doc-ink: #16171a;
+  --doc-ink-muted: #5b6068;
+  --doc-rule: #e0ddd6;
+  --doc-link: #1a56d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --doc-paper: #0c0d0f;
+    --doc-paper-sunk: #141619;
+    --doc-ink: #e8e6e1;
+    --doc-ink-muted: #9aa0a8;
+    --doc-rule: #24272c;
+    --doc-link: #7fb0ff;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 2rem; }
+body {
+  margin: 0;
+  background: var(--doc-paper);
+  color: var(--doc-ink);
+  font: 16px/1.65 var(--uf-font-body);
+  overflow-wrap: anywhere;
+}
+a { color: var(--doc-link); text-underline-offset: 0.2em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--doc-link); outline-offset: 4px; }
+.skip { position: absolute; left: 1rem; top: -6rem; padding: 0.75rem; background: var(--doc-paper); }
+.skip:focus { top: 1rem; z-index: 2; }
+.shell { max-width: 1280px; margin: 0 auto; padding: 0 clamp(1.25rem, 4vw, 3rem); }
+.masthead { display: flex; align-items: center; justify-content: space-between; gap: 2rem; min-height: 88px; border-bottom: 1px solid var(--doc-rule); }
+.brand { display: flex; align-items: center; gap: 0.7rem; color: var(--doc-ink); text-decoration: none; font: 700 24px var(--uf-font-display); }
+.brand span, .project { color: var(--doc-ink-muted); font: 14px/1.5 var(--uf-font-body); }
+.brand span { margin-left: 0.5rem; }
+.manual { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); min-height: 65vh; }
+.sidebar { padding: 2.5rem 1.5rem 2rem 0; }
+.sidebar h2 { margin: 0 0 1rem; font: 600 12px var(--uf-font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.sidebar ul { margin: 0; padding: 0; list-style: none; }
+.sidebar li { margin-bottom: 0.65rem; }
+.sidebar a { color: var(--doc-ink-muted); font: 13px/1.5 var(--uf-font-mono); text-decoration: none; }
+.sidebar a:hover { color: var(--doc-link); }
+.prose { position: relative; min-width: 0; padding: 2.5rem clamp(1.25rem, 4vw, 3rem); border-left: 1px solid var(--doc-rule); }
+.prose::before { content: ""; position: absolute; top: 0; left: -1px; width: 2px; height: 96px; background: linear-gradient(var(--uf-color-cyan-500), var(--uf-color-blue-500), var(--uf-color-violet-500), transparent); }
+h1, h2, h3 { font-family: var(--uf-font-display); line-height: 1.25; letter-spacing: -0.025em; }
+h1 { margin-top: 0; font-size: clamp(2rem, 4vw, 2.5rem); }
+.prose h2 { margin: 3rem 0 1.5rem; padding-top: 2rem; border-top: 1px solid var(--doc-rule); font-size: 1.5rem; }
+.prose h3 { margin: 2rem 0 1rem; font-size: 1.15rem; }
+p, ul, ol { max-width: 68ch; }
+code, pre { font-family: var(--uf-font-mono); font-size: 0.85em; }
+code { color: inherit; }
+pre { max-width: 100%; overflow-x: auto; padding: 1rem 1.25rem; border-left: 2px solid var(--doc-rule); background: var(--doc-paper-sunk); line-height: 1.6; white-space: pre; overflow-wrap: normal; }
+pre code { font-size: inherit; }
+blockquote { margin-left: 0; padding-left: 1.25rem; border-left: 2px solid var(--doc-rule); color: var(--doc-ink-muted); }
+table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.9rem; }
+th, td { padding: 0.65rem 1rem; border-bottom: 1px solid var(--doc-rule); text-align: left; }
+th { font-weight: 600; }
+img { max-width: 100%; }
+footer { padding: 1.5rem 0; border-top: 1px solid var(--doc-rule); color: var(--doc-ink-muted); font-size: 12px; }
+@media (max-width: 720px) {
+  .masthead { flex-wrap: wrap; gap: 0.5rem; padding: 1.5rem 0; }
+  .project { width: 100%; }
+  .manual { grid-template-columns: 1fr; }
+  .sidebar { padding: 1.5rem 0; }
+  .sidebar ul { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+  .sidebar li { margin: 0; }
+  .prose { padding-right: 0; }
+}
+@media print {
+  .sidebar, .masthead, .skip, footer { display: none; }
+  .manual { display: block; }
+  .prose { border: 0; padding: 0; }
+  .prose::before { display: none; }
+  pre { white-space: pre-wrap; }
+}

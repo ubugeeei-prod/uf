@@ -2796,6 +2796,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "ox_content_allocator"
+version = "3.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c8f478ccd3f3fa40e5194ee8d8c18262e1dab638beb74aff5084d91e7f519c9"
+dependencies = [
+ "bumpalo",
+]
+
+[[package]]
+name = "ox_content_ast"
+version = "3.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "747f1a9bd4e92440636ec3295f402944a6be9ab89c17e450e883ab90bf14656c"
+dependencies = [
+ "ox_content_allocator",
+]
+
+[[package]]
+name = "ox_content_parser"
+version = "3.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9bc6c7891fdb48f8b771164de498f218098a2e662f8e546f8fc1e5d078a4876"
+dependencies = [
+ "compact_str",
+ "memchr",
+ "ox_content_allocator",
+ "ox_content_ast",
+ "rustc-hash",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "ox_content_renderer"
+version = "3.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41e70c33bf128b20d74acb506e676e7c59639df0adaf1c6fb8e90ad954e34972"
+dependencies = [
+ "compact_str",
+ "memchr",
+ "ox_content_allocator",
+ "ox_content_ast",
+ "rustc-hash",
+ "serde_json",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "oxc-browserslist"
 version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4540,6 +4589,10 @@ name = "uf_doc"
 version = "0.9.0"
 dependencies = [
  "camino",
+ "ox_content_allocator",
+ "ox_content_ast",
+ "ox_content_parser",
+ "ox_content_renderer",
  "serde",
  "similar-asserts",
  "tempfile",
