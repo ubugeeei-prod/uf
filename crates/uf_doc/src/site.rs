@@ -79,7 +79,7 @@ fn render_page(
     let mut out = String::with_capacity(body.len() + 2048 + report.modules.len() * 96);
     out.push_str("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>");
     escape(&mut out, title);
-    out.push_str(" — API · uf</title><link rel=\"icon\" href=\"uf-mark.svg\"><link rel=\"stylesheet\" href=\"uf-tokens.css\"><link rel=\"stylesheet\" href=\"uf-doc.css\"></head><body><a class=\"skip\" href=\"#content\">Skip to content</a><div class=\"shell\"><header class=\"masthead\"><a class=\"brand\" href=\"#content\"><img src=\"uf-mark.svg\" width=\"24\" height=\"24\" alt=\"\">uf<span>API reference</span></a><span class=\"project\">");
+    out.push_str(" — API · uf</title><link rel=\"stylesheet\" href=\"uf-tokens.css\"><link rel=\"stylesheet\" href=\"uf-doc.css\"></head><body><a class=\"skip\" href=\"#content\">Skip to content</a><div class=\"shell\"><header class=\"masthead\"><a class=\"brand\" href=\"#content\">uf<span>API reference</span></a><span class=\"project\">");
     escape(&mut out, title);
     out.push_str("</span></header><div class=\"manual\"><nav class=\"sidebar\" aria-label=\"Modules\"><h2>Modules</h2><ul>");
     for (index, module) in report.modules.iter().enumerate() {
@@ -113,10 +113,6 @@ pub fn write_site(
         ("index.html", html.as_str()),
         ("uf-doc.css", include_str!("site.css")),
         ("uf-tokens.css", include_str!("../../../brand/tokens.css")),
-        (
-            "uf-mark.svg",
-            include_str!("../../../brand/favicon.svg"),
-        ),
     ] {
         let path = out_dir.join(name);
         fs::write(&path, content).map_err(|source| DocError::Write { path, source })?;
@@ -175,7 +171,7 @@ mod tests {
         assert!(html.contains("&lt;script&gt;"));
         assert!(html.contains("href=\"#uf:module:0\""));
         assert!(html.contains("id=\"uf:module:0\""));
-        for asset in ["api.md", "uf-doc.css", "uf-tokens.css", "uf-mark.svg"] {
+        for asset in ["api.md", "uf-doc.css", "uf-tokens.css"] {
             assert!(root.join(asset).is_file(), "missing {asset}");
         }
         assert_eq!(
