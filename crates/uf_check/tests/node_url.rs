@@ -27,3 +27,24 @@ export const wrong: number = url.href;
         .collect();
     assert_eq!(actual, [(6, Some("incompatible-type"))]);
 }
+
+#[test]
+fn file_url_to_path_accepts_the_global_url() {
+    let source = r#"// @flow
+import { fileURLToPath } from "node:url";
+export const here: string = fileURLToPath(new URL("./x.js", "file:///tmp/"));
+export const wrong: string = fileURLToPath(42);
+"#;
+    let report = check_sources(
+        &[Source::new("node_url.js", source)],
+        &[],
+        &CheckLimits::default().without_timeout(),
+    )
+    .expect("the checker runs");
+    let actual: Vec<_> = report
+        .diagnostics
+        .iter()
+        .map(|diagnostic| (diagnostic.primary.start.line, diagnostic.code))
+        .collect();
+    assert_eq!(actual, [(4, Some("incompatible-type"))]);
+}

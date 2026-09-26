@@ -19,6 +19,7 @@
 //   which is the one place the two matchers differ besides prototypes.
 
 import { isAsymmetric, matchesAsymmetric } from "./asymmetric.js";
+import { callable } from "./callable.js";
 
 /** How strictly two values are compared. */
 export type Strictness = "loose" | "strict";
@@ -39,8 +40,16 @@ function isObject(value: mixed): value is interface {} {
   return typeof value === "object" && value !== null;
 }
 
+/**
+ * `Object.prototype.toString`, read through its descriptor: Flow refuses the
+ * method as a value, and `call` needs it as one to read any value's tag.
+ */
+const objectToString = callable(
+  Reflect.getOwnPropertyDescriptor(Object.prototype, "toString")?.value,
+);
+
 function tag(value: mixed): string {
-  return Object.prototype.toString.call(value);
+  return String(objectToString?.call(value));
 }
 
 /**

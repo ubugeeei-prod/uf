@@ -52,6 +52,8 @@ async function rewritten(code: string, context: $FlowFixMe = contextFor()): Prom
 
 /** A module's namespace object, imported by absolute path. */
 async function load(file: string): Promise<$FlowFixMe> {
+  // A module the test wrote to a scratch directory, by its run-time path.
+  // $FlowFixMe[unsupported-syntax]
   return import(pathToFileURL(file).href);
 }
 

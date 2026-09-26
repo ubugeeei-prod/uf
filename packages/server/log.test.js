@@ -315,7 +315,7 @@ describe("the process logger", () => {
     // module graph that renders React Server Components holds a second copy of
     // this package. A logger installed through one copy has to be the logger
     // the other one writes through. See `internal/process-state.js`.
-    const copy = await import(new URL("./log.js?a-second-copy", import.meta.url).href);
+    const copy = await import("./log.js?a-second-copy");
     expect(copy.installLogger).not.toBe(installLogger);
     const { logger: log, records } = recordingLogger();
 

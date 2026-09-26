@@ -73,7 +73,10 @@ describe("browser substitutions", () => {
         }
         const file = path.join(here, target);
         expect(fs.existsSync(file)).toBe(true);
-        const exports = await import(pathToFileURL(file).href);
+        // The substitute named by package.json, known only once it is read;
+        // Flow types only a literal specifier, and the names are checked below.
+        // $FlowFixMe[unsupported-syntax]
+        const exports: { readonly [string]: mixed } = await import(pathToFileURL(file).href);
         const missing = (named.get(specifier) ?? []).filter((name) => !(name in exports));
         // As a sentence, so a failure names the import of the module the
         // substitute lacks rather than reporting that `false` was not `true`.
@@ -85,7 +88,7 @@ describe("browser substitutions", () => {
   });
 
   it("keeps the node:url browser shim compatible with imported helper names", async () => {
-    const shim = await import(pathToFileURL(path.join(here, "./internal/browser-module.js")).href);
+    const shim = await import("./internal/browser-module.js");
     const url = shim.pathToFileURL("/tmp/uf module#one.js");
     expect(url.href).toBe("file:///tmp/uf%20module%23one.js");
     expect(shim.fileURLToPath(url)).toBe("/tmp/uf module#one.js");

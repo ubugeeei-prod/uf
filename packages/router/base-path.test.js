@@ -74,7 +74,7 @@ const POLICIES: $ReadOnlyArray<TrailingSlash> = ["never", "always"];
  * document it asked for (the failure in `action-outcomes.test.js` that only a
  * shared worker showed).
  */
-let hydrated: { unmount(): void } | null = null;
+let hydrated: { readonly unmount: () => void, ... } | null = null;
 
 afterEach(async () => {
   const root = hydrated;

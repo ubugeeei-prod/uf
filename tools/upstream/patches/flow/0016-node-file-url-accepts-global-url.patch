@@ -1,0 +1,32 @@
+Issue: ubugeeei-prod/uf#1451
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+Node's `url.URL` is the global WHATWG `URL`, so `fileURLToPath(new URL("./x.js",
+import.meta.url))` is the documented way to find a file next to a module. Inside
+`declare module "url"`, `URL` names the module's own class, so a global `new URL(...)`
+was refused. Name the global before the module and accept it as well. Remove after
+the upstream declaration accepts the global URL.
+
+--- a/evals/flow-typed/environment/node.js
++++ b/evals/flow-typed/environment/node.js
+@@ -2571,6 +2571,10 @@
+   readonly hash?: string | null,
+   ...
+ };
++
++// The global WHATWG URL, named before `url` declares a class of the same name:
++// Node's `url.URL` is that global, so a `new URL(...)` is a Node URL too.
++type url$GlobalURL = URL;
+ 
+ declare module "url" {
+   declare type Url = {|
+@@ -2606,7 +2610,7 @@
+   declare function domainToASCII(domain: string): string;
+   declare function domainToUnicode(domain: string): string;
+   declare function pathToFileURL(path: string): URL;
+-  declare function fileURLToPath(path: URL | url$urlObject | string): string;
++  declare function fileURLToPath(path: URL | url$GlobalURL | url$urlObject | string): string;
+   declare class URLSearchParams {
+     @@iterator(): Iterator<[string, string]>;
+ 

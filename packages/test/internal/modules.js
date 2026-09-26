@@ -287,6 +287,9 @@ function isPathSpecifier(specifier: string): boolean {
 
 /** `import()`, in one place, so the marker parameter is never spelled twice. */
 function importURL<Module>(url: string): Promise<Module> {
+  // The URL is a module the test asked to mock or load, known only at run
+  // time; Flow types only a literal specifier.
+  // $FlowFixMe[unsupported-syntax]
   return import(url) as $FlowFixMe;
 }
 
@@ -419,10 +422,16 @@ function copyProperties(
  * not — replacing their methods with spies would produce something that claims
  * to be a `Date` and cannot tell the time.
  */
-function isPlainish(value: mixed): boolean {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === null || prototype === Object.prototype || isNamespace(value);
+function isPlainish(value: interface {}): boolean {
+  const prototype: mixed = Object.getPrototypeOf(value);
+  return prototype === null || prototype === OBJECT_PROTOTYPE || isNamespace(value);
 }
+
+/**
+ * `Object.prototype`, read off a literal: Flow's library declares no static
+ * `prototype` on `Object`, and a literal's prototype is exactly that object.
+ */
+const OBJECT_PROTOTYPE: mixed = Object.getPrototypeOf({});
 
 /** Whether `value` is a module namespace object. */
 function isNamespace(value: mixed): boolean {
