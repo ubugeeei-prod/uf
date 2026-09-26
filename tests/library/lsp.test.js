@@ -76,6 +76,10 @@ type Entry = {
   textEdit?: Entry,
   filterText?: string,
   sortText?: string,
+  // A `DocumentSymbol`.
+  name?: string,
+  selectionRange?: Range,
+  children?: Array<Entry>,
 };
 
 // A `result` that is not a list: `initialize`'s, and `hover`'s.
@@ -88,13 +92,23 @@ type Answer = {
     codeActionProvider?: { codeActionKinds: Array<string> },
     definitionProvider?: boolean,
     typeDefinitionProvider?: boolean,
-    renameProvider?: boolean,
+    renameProvider?: { prepareProvider: boolean },
     completionProvider?: { triggerCharacters: Array<string> },
     referencesProvider?: boolean,
+    documentHighlightProvider?: boolean,
     documentSymbolProvider?: boolean,
+    // Not advertised; named so a test can say so.
+    signatureHelpProvider?: mixed,
+    workspaceSymbolProvider?: mixed,
+    inlayHintProvider?: mixed,
   },
   contents?: { kind: string, value: string },
   range?: Range,
+  // A `Range` itself, which is what `prepareRename` answers with.
+  start?: Position,
+  end?: Position,
+  // A `WorkspaceEdit`, which is what `rename` answers with.
+  changes?: { [uri: string]: Array<Entry> },
   // A `CompletionList`, which completion sends instead of a bare list when
   // the list is not finished.
   isIncomplete?: boolean,
@@ -282,24 +296,28 @@ describe("what uf lsp tells an editor it can do", () => {
     // separates a tool from its version; `.` is a member access, whose members
     // Flow's inference knows.
     expect(capabilities.completionProvider?.triggerCharacters).toEqual(['"', "@", "."]);
-    // Both answered by the checker; see "types" below.
+    // All answered by the checker and Flow's services; see "types" below.
     expect(capabilities.definitionProvider).toBe(true);
     expect(capabilities.typeDefinitionProvider).toBe(true);
+    expect(capabilities.referencesProvider).toBe(true);
+    expect(capabilities.documentHighlightProvider).toBe(true);
+    expect(capabilities.renameProvider).toEqual({ prepareProvider: true });
+    expect(capabilities.documentSymbolProvider).toBe(true);
   });
 
   it("does not advertise what it cannot do", () => {
     // The READMEs are written from this list. `source.organizeImports` is
-    // absent because uf has no import-order opinion, and rename, references
-    // and symbols are absent because nothing serves them.
+    // absent because uf has no import-order opinion; signature help and
+    // workspace symbols because nothing serves them yet.
     const messages = session([
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } },
       EXIT,
     ]);
     const capabilities = answered(messages, 1).capabilities ?? {};
 
-    expect(capabilities.renameProvider).toBe(undefined);
-    expect(capabilities.referencesProvider).toBe(undefined);
-    expect(capabilities.documentSymbolProvider).toBe(undefined);
+    expect(capabilities.signatureHelpProvider).toBe(undefined);
+    expect(capabilities.workspaceSymbolProvider).toBe(undefined);
+    expect(capabilities.inlayHintProvider).toBe(undefined);
     expect(
       present(capabilities.codeActionProvider, "codeActionProvider").codeActionKinds,
     ).not.toContain("source.organizeImports");
@@ -307,7 +325,7 @@ describe("what uf lsp tells an editor it can do", () => {
 
   it("answers a request it does not serve instead of leaving the editor waiting", () => {
     const messages = session([
-      { jsonrpc: "2.0", id: 2, method: "textDocument/references", params: {} },
+      { jsonrpc: "2.0", id: 2, method: "textDocument/signatureHelp", params: {} },
       EXIT,
     ]);
 
@@ -818,6 +836,148 @@ describe("types", () => {
       expect(offered).toContainEqual(["name", "string"]);
       // `user.` offers what `User` has, and nothing that is merely in scope.
       expect(offered.map(([label]) => label)).not.toContain("greeting");
+    });
+  });
+
+  it("finds every reference to a name, across the files that import it", () => {
+    withProject((root, uri) => {
+      const references = (id: number, includeDeclaration: boolean): Message => ({
+        jsonrpc: "2.0",
+        id,
+        method: "textDocument/references",
+        params: {
+          textDocument: { uri: uri("src/app.js") },
+          // `greet`, where `src/app.js` calls it.
+          position: { line: 4, character: 18 },
+          context: { includeDeclaration },
+        },
+      });
+      const messages = session(
+        [open(uri("src/app.js"), app), references(1, true), references(2, false), EXIT],
+        root,
+      );
+      const where = (id: number): Array<[string, number, number, number]> =>
+        locations(messages, id).map(({ uri: file, range }) => [
+          path.relative(root, file.replace("file://", "")),
+          range.start.line,
+          range.start.character,
+          range.end.character,
+        ]);
+
+      expect(where(1)).toEqual([
+        ["src/app.js", 1, 9, 14],
+        ["src/app.js", 4, 17, 22],
+        ["src/user.js", 2, 16, 21],
+      ]);
+      // Without the declaration, which is the one in `src/user.js`.
+      expect(where(2)).toEqual([
+        ["src/app.js", 1, 9, 14],
+        ["src/app.js", 4, 17, 22],
+      ]);
+    });
+  });
+
+  it("highlights every use of a name in the document", () => {
+    withProject((root, uri) => {
+      const messages = session(
+        // `user`, where it is declared.
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/documentHighlight", uri("src/app.js"), 3, 7),
+          EXIT,
+        ],
+        root,
+      );
+
+      expect(listed(messages, 1)).toEqual([
+        { range: { start: { line: 3, character: 6 }, end: { line: 3, character: 10 } }, kind: 1 },
+        { range: { start: { line: 4, character: 23 }, end: { line: 4, character: 27 } }, kind: 1 },
+      ]);
+    });
+  });
+
+  it("renames a name in every file that writes it", () => {
+    withProject((root, uri) => {
+      const rename = (id: number, newName: string, line: number, character: number): Message => ({
+        jsonrpc: "2.0",
+        id,
+        method: "textDocument/rename",
+        params: {
+          textDocument: { uri: uri("src/app.js") },
+          position: { line, character },
+          newName,
+        },
+      });
+      const messages = session(
+        [
+          open(uri("src/app.js"), app),
+          at(1, "textDocument/prepareRename", uri("src/app.js"), 4, 18),
+          rename(2, "welcome", 4, 18),
+          // Not an identifier.
+          rename(3, "class", 4, 18),
+          // `tick`, which a package under `node_modules` declares.
+          rename(4, "tock", 5, 13),
+          EXIT,
+        ],
+        root,
+      );
+
+      const prepared = answered(messages, 1);
+      expect([prepared.start, prepared.end]).toEqual([
+        { line: 4, character: 17 },
+        { line: 4, character: 22 },
+      ]);
+
+      const changes = present(answered(messages, 2).changes, "changes");
+      expect(Object.keys(changes).sort()).toEqual([uri("src/app.js"), uri("src/user.js")]);
+      const renamedApp = apply(app, changes[uri("src/app.js")]);
+      expect(renamedApp).toContain("import { welcome, type User } from './user.js';");
+      expect(renamedApp).toContain("const greeting = welcome(user);");
+      expect(apply(FILES["src/user.js"], changes[uri("src/user.js")])).toContain(
+        "export function welcome(user: User): string {",
+      );
+
+      expect(answer(messages, 3).error?.code).toBe(-32602);
+      expect(answer(messages, 4).error?.message).toContain("node_modules/clock");
+    });
+  });
+
+  it("outlines a document, nested as it is written", () => {
+    withProject((root, uri) => {
+      const source = [
+        "// @flow",
+        "export class Greeter {",
+        "  greet(): string { return 'hi'; }",
+        "}",
+        "export function make(): Greeter { return new Greeter(); }",
+        "",
+      ].join("\n");
+      const messages = session(
+        [
+          open(uri("src/greeter.js"), source),
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "textDocument/documentSymbol",
+            params: { textDocument: { uri: uri("src/greeter.js") } },
+          },
+          EXIT,
+        ],
+        root,
+      );
+      const outline = listed(messages, 1);
+
+      // `SymbolKind`: 5 is a class, 6 a method, 12 a function.
+      expect(outline.map((symbol) => [symbol.name, symbol.kind])).toEqual([
+        ["Greeter", 5],
+        ["make", 12],
+      ]);
+      const members = present(outline[0].children, "the class's members");
+      expect(members.map((symbol) => [symbol.name, symbol.kind])).toEqual([["greet", 6]]);
+      expect(members[0].selectionRange).toEqual({
+        start: { line: 2, character: 2 },
+        end: { line: 2, character: 7 },
+      });
     });
   });
 

@@ -139,8 +139,10 @@ server and asserts each one:
   tool spec's names and, after `@`, its versions; in any other Flow file, after
   `.` the members of the value's type with their types, and elsewhere the names
   in scope.
+* **References, rename and the outline**, from Flow's services, across the
+  project's files.
 
-Not rename, references or signature help. `uf lsp` advertises none of them.
+Not signature help. `uf lsp` does not advertise it.
 
 ## What is tested, and what is not
 

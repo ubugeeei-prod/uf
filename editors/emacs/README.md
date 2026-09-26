@@ -79,10 +79,10 @@ Format on save is off unless `uf-format-on-save` is set.
 
 ## What you do not get
 
-`eglot-rename` and `xref-find-references` have nothing behind them: `uf lsp`
-advertises no rename or references provider, and Eglot reports that the server
-does not support the request. ElDoc and `M-.` say nothing while the file does
-not parse, since there is no inference to ask.
+Signature help has nothing behind it: `uf lsp` advertises no provider for it.
+`eglot-rename`, `xref-find-references` and Imenu's outline are the server's,
+and need the file to parse, as ElDoc and `M-.` do, since there is no inference
+to ask otherwise.
 
 ## Working directory
 

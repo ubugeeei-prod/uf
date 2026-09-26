@@ -76,6 +76,7 @@ flow_data_structure_wrapper = { path = "upstream/flow/rust_port/crates/flow_data
 flow_flowlib = { path = "upstream/flow/rust_port/crates/flow_flowlib" }
 flow_lazy = { path = "upstream/flow/rust_port/crates/flow_lazy" }
 flow_lint_settings = { path = "upstream/flow/rust_port/crates/flow_lint_settings" }
+flow_lsp_server = { path = "upstream/flow/rust_port/crates/flow_lsp_server", default-features = false }
 flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
 oxc_allocator = "0.149.0"
 # The TypeScript syntax tree `uf_dts` reads declaration files into, and the
@@ -96,6 +97,7 @@ flow_parser_utils_output = { path = "upstream/flow/rust_port/crates/flow_parser_
 flow_services_autocomplete = { path = "upstream/flow/rust_port/crates/flow_services_autocomplete" }
 flow_services_export = { path = "upstream/flow/rust_port/crates/flow_services_export" }
 flow_services_get_def = { path = "upstream/flow/rust_port/crates/flow_services_get_def" }
+flow_services_references = { path = "upstream/flow/rust_port/crates/flow_services_references", default-features = false }
 flow_type_sig = { path = "upstream/flow/rust_port/crates/flow_type_sig" }
 flow_typing = { path = "upstream/flow/rust_port/crates/flow_typing" }
 flow_typing_builtins = { path = "upstream/flow/rust_port/crates/flow_typing_builtins" }
@@ -125,6 +127,9 @@ json5 = "1.3.1"
 # signal a child and not a group, which is the entire reason this is here.
 # Already in the graph through `cpufeatures`, so it costs no build time.
 libc = "0.2.189"
+# The protocol types `flow_lsp_server`'s document-symbol provider answers in,
+# already in the graph under the Flow port's `flow_lsp`.
+lsp-types = "0.97"
 memchr = "2.7.6"
 mimalloc = "0.1.52"
 # Kernel file-change events for `uf test --watch` (FSEvents on macOS, inotify

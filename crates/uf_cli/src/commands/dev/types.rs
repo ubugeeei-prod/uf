@@ -1,5 +1,6 @@
 //! Types in the editor: type errors, hover, go to definition, go to type
-//! definition and completion, answered by Flow's own inference.
+//! definition, completion, find references, document highlights, rename and
+//! the document outline, answered by Flow's own inference and services.
 //!
 //! Every answer here comes from a [`uf_check::Session`] — the project checked
 //! the way `uf check` checks it, kept warm for the life of the server. The
@@ -42,14 +43,20 @@
 //!   open, so a definition that lands only there is `null`.
 //! * **A package installed after the batch was assembled.** The batch is read
 //!   once; a restart picks the new package up.
+//! * **References inside `node_modules`.** A search covers the project's own
+//!   files; a package's uses of a project name are not the project's to find
+//!   or rename. A rename of a name a package or a library definition declares
+//!   is refused rather than half made.
+//! * **A property reached only through an object literal** checked against an
+//!   annotated type: see [`uf_check::Session::references`].
 
 use std::sync::mpsc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{Value, json};
 use uf_check::{
-    CheckLimits, Definition, MessageSegment, Origin, OwnedSource, Position, Session, Severity,
-    Span, TypeDiagnostic,
+    CheckLimits, Definition, MessageSegment, Origin, OwnedSource, Position, Rename, Session,
+    Severity, Span, Symbol, TypeDiagnostic,
 };
 use uf_config::UniflowedConfig;
 use uf_infra::FxHashMap;
@@ -458,19 +465,194 @@ impl Types {
     /// holds, or one on disk. A name the checker gave one of its own library
     /// definitions is neither.
     fn span_location(&self, documents: &FxHashMap<String, Document>, span: &Span) -> Option<Value> {
-        let path = Utf8Path::new(span.path.as_str());
+        let (uri, text) = self.file_text(documents, span.path.as_str())?;
+        Some(json!({ "uri": uri, "range": range_in(&text, span) }))
+    }
+
+    /// The URI of the batch path `path`, and the text positions in it are
+    /// counted in: what the editor holds when it has the file open, and the
+    /// file on disk otherwise.
+    fn file_text(
+        &self,
+        documents: &FxHashMap<String, Document>,
+        path: &str,
+    ) -> Option<(String, String)> {
+        let path = Utf8Path::new(path);
         let absolute = match path.is_absolute() {
             true => path.to_path_buf(),
             false => self.root.join(path),
         };
-        let uri = file_uri(&absolute);
-        // The text the editor holds when it has the file open, because that is
-        // what the position is counted in; the file on disk otherwise.
         let open = documents.iter().find_map(|(open, document)| {
             (document_path(open) == absolute.as_str()).then_some(document.text.clone())
         });
         let text = open.or_else(|| std::fs::read_to_string(&absolute).ok())?;
-        Some(json!({ "uri": uri, "range": range_in(&text, span) }))
+        Some((file_uri(&absolute), text))
+    }
+
+    /// `textDocument/references`: `Location`s across the project, or `null`
+    /// when nothing under the cursor has a definition.
+    pub(super) fn references(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        line: usize,
+        requested: usize,
+        include_declaration: bool,
+    ) -> Value {
+        let Some((path, position, _)) = self.locate(documents, uri, line, requested) else {
+            return Value::Null;
+        };
+        let Some(session) = self.session(documents) else {
+            return Value::Null;
+        };
+        let found = match session.references(&path, position) {
+            Ok(Some(found)) => found,
+            Ok(None) => return Value::Null,
+            Err(error) => {
+                eprintln!("uf lsp: references: {error}");
+                return Value::Null;
+            }
+        };
+        Value::Array(
+            found
+                .spans
+                .iter()
+                .filter(|span| include_declaration || !found.declarations.contains(span))
+                .filter_map(|span| self.span_location(documents, span))
+                .collect(),
+        )
+    }
+
+    /// `textDocument/documentHighlight`: every place in this document the
+    /// name under the cursor is written.
+    pub(super) fn highlights(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        line: usize,
+        requested: usize,
+    ) -> Value {
+        let Some((path, position, text)) = self.locate(documents, uri, line, requested) else {
+            return Value::Null;
+        };
+        let Some(session) = self.session(documents) else {
+            return Value::Null;
+        };
+        match session.highlights(&path, position) {
+            // `kind: 1` is `Text`: Flow's service does not tell a read from a
+            // write, and saying which would be a guess.
+            Ok(found) => Value::Array(
+                found
+                    .iter()
+                    .map(|span| json!({ "range": range_in(text, span), "kind": 1 }))
+                    .collect(),
+            ),
+            Err(error) => {
+                eprintln!("uf lsp: document highlight: {error}");
+                Value::Null
+            }
+        }
+    }
+
+    /// `textDocument/prepareRename`: the identifier a rename would replace,
+    /// or `null` when the cursor is not on one.
+    pub(super) fn prepare_rename(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        line: usize,
+        requested: usize,
+    ) -> Value {
+        let Some((path, position, text)) = self.locate(documents, uri, line, requested) else {
+            return Value::Null;
+        };
+        let Some(session) = self.session(documents) else {
+            return Value::Null;
+        };
+        match session.rename_range(&path, position) {
+            Ok(Some(span)) => range_in(text, &span),
+            Ok(None) => Value::Null,
+            Err(error) => {
+                eprintln!("uf lsp: prepare rename: {error}");
+                Value::Null
+            }
+        }
+    }
+
+    /// `textDocument/rename`: a `WorkspaceEdit` over every file that writes
+    /// the name, `null` when there is nothing to rename, or the reason the
+    /// rename is refused.
+    pub(super) fn rename(
+        &mut self,
+        documents: &FxHashMap<String, Document>,
+        uri: &str,
+        line: usize,
+        requested: usize,
+        new_name: &str,
+    ) -> Result<Value, String> {
+        if !is_identifier(new_name) {
+            return Err(format!("`{new_name}` is not an identifier"));
+        }
+        let Some((path, position, _)) = self.locate(documents, uri, line, requested) else {
+            return Ok(Value::Null);
+        };
+        let Some(session) = self.session(documents) else {
+            return Ok(Value::Null);
+        };
+        let edits = match session.rename(&path, position, new_name) {
+            Ok(Rename::Edits(edits)) => edits,
+            Ok(Rename::Nothing) => return Ok(Value::Null),
+            Ok(Rename::Outside(span)) => {
+                return Err(format!(
+                    "the name is written in {}, which a rename does not edit",
+                    span.path,
+                ));
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        let mut changes = serde_json::Map::new();
+        for edit in &edits {
+            let Some((uri, text)) = self.file_text(documents, edit.span.path.as_str()) else {
+                return Err(format!("{} could not be read", edit.span.path));
+            };
+            let entry = changes
+                .entry(uri)
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Value::Array(list) = entry {
+                list.push(json!({
+                    "range": range_in(&text, &edit.span),
+                    "newText": edit.new_text,
+                }));
+            }
+        }
+        Ok(json!({ "changes": changes }))
+    }
+
+    /// `textDocument/documentSymbol`: the document's outline, nested as it is
+    /// written, or `null` for a document that is not Flow.
+    pub(super) fn symbols(&mut self, documents: &FxHashMap<String, Document>, uri: &str) -> Value {
+        let Some(document) = documents.get(uri) else {
+            return Value::Null;
+        };
+        let Some(path) = self.path_of(uri) else {
+            return Value::Null;
+        };
+        let Some(session) = self.session(documents) else {
+            return Value::Null;
+        };
+        match session.symbols(&path) {
+            Ok(Some(found)) => Value::Array(
+                found
+                    .iter()
+                    .map(|symbol| encode_symbol(&document.text, symbol))
+                    .collect(),
+            ),
+            Ok(None) => Value::Null,
+            Err(error) => {
+                eprintln!("uf lsp: document symbols: {error}");
+                Value::Null
+            }
+        }
     }
 
     /// `textDocument/completion` in a Flow document: after `value.`, the
@@ -548,6 +730,84 @@ fn assemble(root: &Utf8Path, config: &UniflowedConfig) -> Result<Prepared, Strin
     Ok(Prepared { session, batch })
 }
 
+/// One outline entry as the protocol's `DocumentSymbol`.
+fn encode_symbol(text: &str, symbol: &Symbol) -> Value {
+    let mut encoded = json!({
+        "name": symbol.name,
+        "kind": symbol.kind,
+        "range": range_in(text, &symbol.span),
+        "selectionRange": range_in(text, &symbol.selection),
+    });
+    if let Some(detail) = &symbol.detail {
+        encoded["detail"] = json!(detail);
+    }
+    if !symbol.children.is_empty() {
+        encoded["children"] = symbol
+            .children
+            .iter()
+            .map(|child| encode_symbol(text, child))
+            .collect();
+    }
+    encoded
+}
+
+/// Whether `name` can be written where a binding's name is: an identifier,
+/// and not a word the language reserves.
+///
+/// Asked before the rename is, because the service renames to whatever it is
+/// handed, and `const class = 1` is a syntax error in every file it touches.
+fn is_identifier(name: &str) -> bool {
+    const RESERVED: [&str; 38] = [
+        "await",
+        "break",
+        "case",
+        "catch",
+        "class",
+        "const",
+        "continue",
+        "debugger",
+        "default",
+        "delete",
+        "do",
+        "else",
+        "enum",
+        "export",
+        "extends",
+        "false",
+        "finally",
+        "for",
+        "function",
+        "if",
+        "import",
+        "in",
+        "instanceof",
+        "new",
+        "null",
+        "return",
+        "super",
+        "switch",
+        "this",
+        "throw",
+        "true",
+        "try",
+        "typeof",
+        "var",
+        "void",
+        "while",
+        "with",
+        "yield",
+    ];
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_alphabetic() || first == '$' || first == '_')
+        && chars.all(|next| {
+            next.is_alphanumeric() || matches!(next, '$' | '_' | '\u{200c}' | '\u{200d}')
+        })
+        && !RESERVED.contains(&name)
+}
+
 /// A span as a protocol range over `text`: one-based byte columns become
 /// zero-based UTF-16 characters.
 fn range_in(text: &str, span: &Span) -> Value {
@@ -618,6 +878,16 @@ mod tests {
                 "end": { "line": 1, "character": 23 },
             })
         );
+    }
+
+    #[test]
+    fn a_rename_is_to_an_identifier_and_not_to_a_reserved_word() {
+        for name in ["count", "_private", "$el", "π", "camelCase2"] {
+            assert!(is_identifier(name), "{name}");
+        }
+        for name in ["", "2fast", "class", "a-b", "a b", "#x"] {
+            assert!(!is_identifier(name), "{name}");
+        }
     }
 
     #[test]

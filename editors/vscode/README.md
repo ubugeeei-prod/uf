@@ -102,10 +102,12 @@ hierarchical, and asking for the parent selects uf's child kind.
 
 ## What does not work, and will not until the server serves it
 
-`uf lsp` advertises no rename, references, document symbol or signature help
-provider, so **rename and find references do nothing** for Flow files. This
-extension does not add them; a language client cannot invent what the server
-does not answer.
+Rename, find references, document highlights and the outline are the server's
+(Flow's own services), across the project's files. **Signature help** is not:
+`uf lsp` advertises no provider for it, and this extension does not add one; a
+language client cannot invent what the server does not answer. A rename of a
+name declared under `node_modules` or in a library definition is refused
+rather than half made.
 
 **Types need the file to parse.** Hover and go to definition answer nothing
 while the file has a syntax error, because there is no inference to ask;

@@ -50,9 +50,15 @@ to eighty lines long, or an editor plugin configured to start `uf lsp`.
   and refreshes in the background, never on a request's time. In any other
   Flow file, Flow's completion service: after `value.` the members of
   `value`'s type with their types, and elsewhere the names in scope.
+* **Find references**, **document highlights** and **rename** (with
+  `prepareRename`) — Flow's references service, in the file and in every
+  project file that reaches the definition through its imports, properties
+  included. A rename edits every one of those files, and is refused for a name
+  a package under `node_modules` or a library definition declares.
+* **Document symbols** — the file's outline, nested, from Flow's own provider.
 
-Not rename, references, document symbols, signature help, inlay hints,
-organize imports or auto-imports. The server advertises none of them;
+Not signature help, workspace symbols, inlay hints, organize imports or
+auto-imports. The server advertises none of them;
 `tests/library/lsp.test.js` asserts that it does not, so a README here cannot
 quietly start over-claiming.
 

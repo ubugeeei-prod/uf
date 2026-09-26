@@ -5,7 +5,7 @@
 //! [`crate::session`] for what is kept and why.
 
 use std::cell::LazyCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 use std::sync::{Arc, mpsc};
@@ -18,13 +18,20 @@ use flow_common::options::Options;
 use flow_common_ty::ty_printer::{self, PrinterOptions, TypeAtPosPrint};
 use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser::loc::Loc;
+use flow_parser_utils::flow_ast_differ;
+use flow_parser_utils_output::{js_layout_generator, replacement_printer};
 use flow_services_autocomplete::autocomplete_service_js::{
     self, AcOptions, AutocompleteServiceResultGeneric, ac_completion,
 };
 use flow_services_autocomplete::module_system_info::LspModuleSystemInfo;
 use flow_services_autocomplete::{autocomplete_js, autocomplete_sigil};
+use flow_services_get_def::find_refs_utils::AstInfo;
 use flow_services_get_def::get_def_js::{self, GetDefResult};
-use flow_services_get_def::get_def_types::Purpose;
+use flow_services_get_def::get_def_types::{DefInfo, PropertyDefInfo, Purpose};
+use flow_services_get_def::get_def_utils;
+use flow_services_references::find_refs_js;
+use flow_services_references::find_refs_types::{FindRefsOk, Kind, RefKind, Request, SingleRef};
+use flow_services_references::{prepare_rename_searcher, rename_mapper};
 use flow_typing::{query_types, type_inference};
 use flow_typing_context::Context;
 use flow_typing_utils::typed_ast_utils::AvailableAst;
@@ -37,7 +44,8 @@ use super::{
 };
 use crate::limits::CHECK_STACK_BYTES;
 use crate::session::{
-    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, TypeAt,
+    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, References, Rename,
+    Symbol, TextEdit, TypeAt,
 };
 use crate::{CheckError, CheckLimits, Position, Source, Span, TypeDiagnostic};
 
@@ -116,6 +124,14 @@ pub(crate) struct Worker {
     /// be inferred again just because hovering elsewhere pushed its typed AST
     /// out. A list of diagnostics is small next to the AST it came from.
     diagnosed: HashMap<usize, Rc<[TypeDiagnostic]>>,
+    /// What each searched file imports, by batch index: the graph find
+    /// references walks backwards from a definition.
+    ///
+    /// Read from each file's own imports rather than from what inference has
+    /// resolved so far, because the files a search has to reach are exactly
+    /// the ones nobody has asked about yet. Parsed once per file and dropped
+    /// when that file is edited.
+    imports: HashMap<usize, Rc<[usize]>>,
 }
 
 impl Worker {
@@ -129,6 +145,7 @@ impl Worker {
             modules: None,
             checked: Vec::new(),
             diagnosed: HashMap::new(),
+            imports: HashMap::new(),
         }
     }
 
@@ -136,6 +153,7 @@ impl Worker {
     fn release(&mut self) {
         self.checked.clear();
         self.diagnosed.clear();
+        self.imports.clear();
         if let Some(modules) = self.modules.take() {
             modules.release();
         }
@@ -225,6 +243,8 @@ impl Worker {
         self.checked
             .retain(|checked| !stale.contains(&checked.index));
         self.diagnosed.retain(|index, _| !stale.contains(index));
+        // Only the edited file's own imports can have changed.
+        self.imports.remove(&index);
         Ok(true)
     }
 
@@ -547,6 +567,341 @@ impl Worker {
         autocomplete_js::autocomplete_unset_hooks();
         answer
     }
+
+    /// Find references from `at` in `path`: the definition the name leads to,
+    /// and every reference to it in `path` and in the files that can see it.
+    ///
+    /// Flow's own server does this in two steps as well — the file asked
+    /// about, then a check of every dependent of the definition's file with
+    /// the same request — and the second step is the same call here, over the
+    /// batch instead of Flow's heap.
+    fn find_references(
+        &mut self,
+        path: &str,
+        at: Position,
+        kind: Kind,
+        global: bool,
+    ) -> Result<Option<(DefInfo, Vec<SingleRef>)>, CheckError> {
+        let Some(checked) = self.checked(path)?.filter(|found| within(&found.text, at)) else {
+            return Ok(None);
+        };
+        let loc_of_aloc = self.loc_of_aloc();
+        // Only a property through an object literal needs this map, and
+        // filling it takes a hook inside inference; see `Session::references`.
+        let object_literals = BTreeMap::new();
+        let found = find_refs_js::find_local_refs(
+            &loc_of_aloc,
+            &checked.parsed.file_key,
+            &ast_info(&checked.parsed),
+            &checked.inferred.cx,
+            &checked.inferred.typed_ast,
+            &object_literals,
+            kind,
+            at.line,
+            at.column.saturating_sub(1),
+        )
+        .map_err(|error| job_error(path, error))?;
+        let (def_info, local) = match found {
+            // A cursor the service cannot place, or a definition it cannot
+            // follow: there is nothing to report, as there is for hover.
+            Err(_) | Ok((DefInfo::NoDefinition(_), _)) => return Ok(None),
+            Ok((def_info, FindRefsOk::FoundReferences(refs))) => (def_info, refs),
+            Ok((def_info, FindRefsOk::NoDefinition(_))) => (def_info, Vec::new()),
+        };
+        let mut refs = local;
+        // A private name cannot be written outside its class, so the file
+        // asked about has all of them; Flow's server stops here too.
+        let private = matches!(
+            def_info,
+            DefInfo::PropertyDefinition(PropertyDefInfo::PrivateNameProperty { .. })
+        );
+        if global && !private {
+            let request = Request {
+                def_info: def_info.clone(),
+                kind,
+            };
+            for other in self.dependents_of(&def_info, checked.index) {
+                refs.extend(self.references_in(other, &request)?);
+            }
+        }
+        Ok(Some((def_info, find_refs_js::sort_and_dedup(refs))))
+    }
+
+    /// `request` asked of the batch's `index`th file, which is not the one
+    /// the cursor is in.
+    fn references_in(
+        &mut self,
+        index: usize,
+        request: &Request,
+    ) -> Result<Vec<SingleRef>, CheckError> {
+        let Some(modules) = self.modules.clone() else {
+            return Ok(Vec::new());
+        };
+        let (path, _) = modules.source(index);
+        let Some(checked) = self.checked(&path)? else {
+            return Ok(Vec::new());
+        };
+        let loc_of_aloc = self.loc_of_aloc();
+        let found = find_refs_js::local_refs_of_find_ref_request(
+            &loc_of_aloc,
+            &ast_info(&checked.parsed),
+            &checked.inferred.cx,
+            &checked.inferred.typed_ast,
+            &BTreeMap::new(),
+            &checked.parsed.file_key,
+            request,
+        )
+        .map_err(|error| job_error(&path, error))?;
+        Ok(match found {
+            Ok(FindRefsOk::FoundReferences(refs)) => refs,
+            Ok(FindRefsOk::NoDefinition(_)) | Err(_) => Vec::new(),
+        })
+    }
+
+    /// The files a definition can be referenced from, other than `asked`:
+    /// the searched files it is declared in, and every searched file that
+    /// reaches one of those through its imports, transitively.
+    fn dependents_of(&mut self, def_info: &DefInfo, asked: usize) -> BTreeSet<usize> {
+        let Some(modules) = self.modules.clone() else {
+            return BTreeSet::new();
+        };
+        let declared: BTreeSet<usize> = get_def_utils::all_locs_of_def_info(def_info)
+            .iter()
+            .filter_map(|loc| modules.index_of(loc.source.as_ref()?.as_str()))
+            .collect();
+        let mut importers: HashMap<usize, Vec<usize>> = HashMap::new();
+        for index in 0..modules.len() {
+            if !searched(&modules.source(index).0) {
+                continue;
+            }
+            for &target in self.imports_of(&modules, index).iter() {
+                importers.entry(target).or_default().push(index);
+            }
+        }
+        let mut found: BTreeSet<usize> = declared.iter().copied().collect();
+        let mut frontier: Vec<usize> = declared.into_iter().collect();
+        while let Some(target) = frontier.pop() {
+            for &importer in importers.get(&target).into_iter().flatten() {
+                if found.insert(importer) {
+                    frontier.push(importer);
+                }
+            }
+        }
+        found.remove(&asked);
+        found.retain(|&index| searched(&modules.source(index).0));
+        found
+    }
+
+    /// The batch files the `index`th one imports, from its own file
+    /// signature.
+    fn imports_of(&mut self, modules: &Rc<ProjectModules>, index: usize) -> Rc<[usize]> {
+        if let Some(found) = self.imports.get(&index) {
+            return Rc::clone(found);
+        }
+        let (path, text) = modules.source(index);
+        let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_string()));
+        let parsed = parse::parse_file(file_key, &text, &self.options, false);
+        let found: Rc<[usize]> = parsed
+            .file_sig
+            .require_loc_map()
+            .keys()
+            .filter_map(|specifier| {
+                let flow_common::flow_import_specifier::FlowImportSpecifier::Userland(userland) =
+                    specifier;
+                modules.locate(&path, userland.as_str())
+            })
+            .collect();
+        self.imports.insert(index, Rc::clone(&found));
+        found
+    }
+
+    pub(crate) fn references(
+        &mut self,
+        path: &str,
+        at: Position,
+    ) -> Result<Option<References>, CheckError> {
+        let Some((def_info, refs)) = self.find_references(path, at, Kind::FindReferences, true)?
+        else {
+            return Ok(None);
+        };
+        let declarations = get_def_utils::all_locs_of_def_info(&def_info);
+        Ok(Some(References {
+            spans: refs
+                .iter()
+                .filter_map(|(_, loc)| span_of(loc, path))
+                .collect(),
+            declarations: declarations
+                .iter()
+                .filter(|loc| refs.iter().any(|(_, found)| found == *loc))
+                .filter_map(|loc| span_of(loc, path))
+                .collect(),
+        }))
+    }
+
+    pub(crate) fn highlights(&mut self, path: &str, at: Position) -> Result<Vec<Span>, CheckError> {
+        let Some((_, refs)) = self.find_references(path, at, Kind::FindReferences, false)? else {
+            return Ok(Vec::new());
+        };
+        Ok(refs
+            .iter()
+            .filter(|(_, loc)| loc.source.as_ref().is_some_and(|key| key.as_str() == path))
+            .filter_map(|(_, loc)| span_of(loc, path))
+            .collect())
+    }
+
+    /// The batch's `index`th file, parsed as it stands now.
+    fn parsed(&self, path: &str) -> Option<parse::Parsed> {
+        let modules = self.modules.as_ref()?;
+        let index = modules.index_of(path)?;
+        let (source_path, text) = modules.source(index);
+        let file_key = FileKey::new(FileKeyInner::SourceFile(source_path.to_string()));
+        Some(parse::parse_file(file_key, &text, &self.options, false))
+    }
+
+    pub(crate) fn rename_range(
+        &mut self,
+        path: &str,
+        at: Position,
+    ) -> Result<Option<Span>, CheckError> {
+        let Some(parsed) = self.parsed(path) else {
+            return Ok(None);
+        };
+        Ok(
+            prepare_rename_searcher::search_rename_loc(&parsed.ast, &cursor(&parsed.file_key, at))
+                .and_then(|loc| span_of(&loc, path)),
+        )
+    }
+
+    pub(crate) fn rename(
+        &mut self,
+        path: &str,
+        at: Position,
+        new_name: &str,
+    ) -> Result<Rename, CheckError> {
+        let Some((def_info, refs)) = self.find_references(path, at, Kind::Rename, true)? else {
+            return Ok(Rename::Nothing);
+        };
+        let Some(modules) = self.modules.clone() else {
+            return Ok(Rename::Nothing);
+        };
+        // Every declaration and every use has to be somewhere the rename may
+        // edit, or the edits would leave the project half-renamed.
+        let outside = get_def_utils::all_locs_of_def_info(&def_info)
+            .into_iter()
+            .chain(refs.iter().map(|(_, loc)| loc.dupe()))
+            .find(|loc| {
+                !loc.source.as_ref().is_some_and(|key| {
+                    matches!(key.inner(), FileKeyInner::SourceFile(_))
+                        && modules.index_of(key.as_str()).is_some()
+                        && searched(key.as_str())
+                })
+            });
+        if let Some(loc) = outside {
+            return Ok(match span_of(&loc, path) {
+                Some(span) => Rename::Outside(span),
+                None => Rename::Nothing,
+            });
+        }
+        let mut by_file: BTreeMap<String, BTreeMap<Loc, RefKind>> = BTreeMap::new();
+        for (kind, loc) in &refs {
+            if let Some(key) = &loc.source {
+                by_file
+                    .entry(key.as_str().to_owned())
+                    .or_default()
+                    .insert(loc.dupe(), *kind);
+            }
+        }
+        let mut changes = Vec::new();
+        for (file, targets) in &by_file {
+            let Some(parsed) = self.parsed(file) else {
+                continue;
+            };
+            let renamed = rename_mapper::rename(true, targets, new_name, &parsed.ast);
+            changes.extend(flow_ast_differ::program(&parsed.ast, &renamed));
+        }
+        let patches = replacement_printer::mk_loc_patch_ast_differ(
+            &js_layout_generator::default_opts(),
+            &changes,
+        );
+        Ok(Rename::Edits(
+            patches
+                .into_iter()
+                .filter_map(|(loc, new_text)| {
+                    Some(TextEdit {
+                        span: span_of(&loc, path)?,
+                        new_text,
+                    })
+                })
+                .collect(),
+        ))
+    }
+
+    pub(crate) fn symbols(&mut self, path: &str) -> Option<Vec<Symbol>> {
+        let parsed = self.parsed(path)?;
+        Some(
+            flow_lsp_server::document_symbol_provider::provide_document_symbols(&parsed.ast)
+                .iter()
+                .filter_map(|found| symbol(found, path))
+                .collect(),
+        )
+    }
+}
+
+/// The parse artifacts the references service reads.
+fn ast_info(parsed: &parse::Parsed) -> AstInfo {
+    (
+        parsed.ast.dupe(),
+        parsed.file_sig.dupe(),
+        Arc::new(parsed.docblock.clone()),
+    )
+}
+
+/// Whether find references searches the batch file at `path`, and a rename
+/// may edit it: a module of the project's own, not a package under
+/// `node_modules` or a manifest.
+fn searched(path: &str) -> bool {
+    const FLOW_EXTENSIONS: [&str; 5] = [".js", ".jsx", ".mjs", ".cjs", ".flow"];
+    FLOW_EXTENSIONS
+        .iter()
+        .any(|extension| path.ends_with(extension))
+        && !path.split('/').any(|segment| segment == "node_modules")
+}
+
+/// One of the provider's outline entries, in uf's words.
+///
+/// The provider answers in the protocol's ranges, which it made from Flow
+/// locations by taking one off the line and keeping the column, so the way
+/// back is one onto each.
+fn symbol(found: &lsp_types::DocumentSymbol, path: &str) -> Option<Symbol> {
+    let span = |range: &lsp_types::Range| -> Option<Span> {
+        let position = |at: &lsp_types::Position| -> Option<Position> {
+            Some(Position {
+                line: at.line.checked_add(1)?,
+                column: at.character.checked_add(1)?,
+            })
+        };
+        Some(Span {
+            path: CompactString::new(path),
+            start: position(&range.start)?,
+            end: position(&range.end)?,
+        })
+    };
+    Some(Symbol {
+        name: found.name.clone(),
+        detail: found.detail.clone(),
+        kind: serde_json::to_value(found.kind)
+            .ok()?
+            .as_u64()
+            .and_then(|kind| u32::try_from(kind).ok())?,
+        span: span(&found.range)?,
+        selection: span(&found.selection_range)?,
+        children: found
+            .children
+            .iter()
+            .flatten()
+            .filter_map(|child| symbol(child, path))
+            .collect(),
+    })
 }
 
 /// `type_at_pos_type` at `at`, when it found something it could normalize.
@@ -721,6 +1076,226 @@ mod tests {
         worker.type_at("app.js", at).expect("runs");
 
         assert!(Rc::ptr_eq(&first, &worker.checked[0]));
+        worker.release();
+    }
+
+    /// A worker over `model.js`, which declares `n`, and `app.js`, which
+    /// imports it and uses it twice — once in a shorthand property.
+    fn project() -> Worker {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default());
+        worker
+            .load(vec![
+                OwnedSource::new(
+                    "app.js",
+                    "// @flow\nimport { n } from './model.js';\nconst m = n + 1;\nconst o = { n };\n",
+                ),
+                OwnedSource::new(
+                    "model.js",
+                    "// @flow\nexport const n: number = 1;\nexport const twice: number = n * 2;\n",
+                ),
+                OwnedSource::new("other.js", "// @flow\nconst n = 'unrelated';\n"),
+                OwnedSource::new(
+                    "node_modules/pkg/package.json",
+                    r#"{ "name": "pkg", "main": "index.js" }"#,
+                ),
+                OwnedSource::new(
+                    "node_modules/pkg/index.js",
+                    "// @flow\nexport const p: number = 1;\n",
+                ),
+                OwnedSource::new(
+                    "uses_pkg.js",
+                    "// @flow\nimport { p } from 'pkg';\nconst q = p;\n",
+                ),
+            ])
+            .expect("the batch loads");
+        worker
+    }
+
+    fn at(line: u32, column: u32) -> Position {
+        Position { line, column }
+    }
+
+    fn places(spans: &[Span]) -> Vec<(&str, u32, u32, u32)> {
+        spans
+            .iter()
+            .map(|span| {
+                (
+                    span.path.as_str(),
+                    span.start.line,
+                    span.start.column,
+                    span.end.column,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn references_cross_into_the_file_that_declares_the_name_and_back() {
+        super::super::on_check_thread("app.js", cross_file_references).expect("runs");
+    }
+
+    fn cross_file_references() {
+        let mut worker = project();
+        // From the use in `app.js`, and from the declaration in `model.js`:
+        // the same set either way, and nothing from `other.js`'s own `n`.
+        let expected = vec![
+            ("app.js", 2, 10, 11),
+            ("app.js", 3, 11, 12),
+            ("app.js", 4, 13, 14),
+            ("model.js", 2, 14, 15),
+            ("model.js", 3, 30, 31),
+        ];
+        for (path, cursor) in [("app.js", at(3, 11)), ("model.js", at(2, 14))] {
+            let found = worker
+                .references(path, cursor)
+                .expect("runs")
+                .expect("a definition");
+            assert_eq!(places(&found.spans), expected, "from {path}");
+            assert_eq!(places(&found.declarations), [("model.js", 2, 14, 15)]);
+        }
+        worker.release();
+    }
+
+    #[test]
+    fn references_to_a_property_follow_the_type_across_files() {
+        super::super::on_check_thread("app.js", property_references).expect("runs");
+    }
+
+    fn property_references() {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default());
+        worker
+            .load(vec![
+                OwnedSource::new(
+                    "user.js",
+                    "// @flow\nexport type User = { name: string };\nexport const nameOf = (user: User): string => user.name;\n",
+                ),
+                OwnedSource::new(
+                    "app.js",
+                    "// @flow\nimport type { User } from './user.js';\nconst shout = (user: User): string => user.name.toUpperCase();\n",
+                ),
+            ])
+            .expect("the batch loads");
+        // `name`, in `user.name` in `app.js`.
+        let found = worker
+            .references("app.js", at(3, 44))
+            .expect("runs")
+            .expect("a definition");
+        assert_eq!(
+            places(&found.spans),
+            [
+                ("app.js", 3, 44, 48),
+                ("user.js", 2, 22, 26),
+                ("user.js", 3, 52, 56),
+            ]
+        );
+        worker.release();
+    }
+
+    #[test]
+    fn highlights_stay_in_the_file_asked_about() {
+        super::super::on_check_thread("app.js", local_highlights).expect("runs");
+    }
+
+    fn local_highlights() {
+        let mut worker = project();
+        let found = worker.highlights("app.js", at(3, 11)).expect("runs");
+        assert_eq!(
+            places(&found),
+            [
+                ("app.js", 2, 10, 11),
+                ("app.js", 3, 11, 12),
+                ("app.js", 4, 13, 14)
+            ]
+        );
+        assert!(
+            worker
+                .highlights("app.js", at(1, 3))
+                .expect("runs")
+                .is_empty()
+        );
+        worker.release();
+    }
+
+    #[test]
+    fn a_rename_edits_every_file_and_keeps_a_shorthand_property_named() {
+        super::super::on_check_thread("app.js", rename_across_files).expect("runs");
+    }
+
+    fn rename_across_files() {
+        let mut worker = project();
+        let range = worker
+            .rename_range("app.js", at(3, 11))
+            .expect("runs")
+            .expect("on an identifier");
+        assert_eq!(places(&[range]), [("app.js", 3, 11, 12)]);
+        let Rename::Edits(edits) = worker.rename("app.js", at(3, 11), "count").expect("runs")
+        else {
+            panic!("a rename");
+        };
+        let mut written: Vec<(&str, u32, u32, &str)> = edits
+            .iter()
+            .map(|edit| {
+                (
+                    edit.span.path.as_str(),
+                    edit.span.start.line,
+                    edit.span.start.column,
+                    edit.new_text.as_str(),
+                )
+            })
+            .collect();
+        written.sort_unstable();
+        assert_eq!(
+            written,
+            [
+                ("app.js", 2, 10, "count"),
+                ("app.js", 3, 11, "count"),
+                ("app.js", 4, 13, "n: count"),
+                ("model.js", 2, 14, "count"),
+                ("model.js", 3, 30, "count"),
+            ]
+        );
+        worker.release();
+    }
+
+    #[test]
+    fn a_name_declared_in_a_package_is_not_renamed() {
+        super::super::on_check_thread("uses_pkg.js", rename_into_a_package).expect("runs");
+    }
+
+    fn rename_into_a_package() {
+        let mut worker = project();
+        let refused = worker.rename("uses_pkg.js", at(3, 11), "r").expect("runs");
+        assert!(
+            matches!(&refused, Rename::Outside(span) if span.path == "node_modules/pkg/index.js"),
+            "{refused:?}"
+        );
+        worker.release();
+    }
+
+    #[test]
+    fn symbols_outline_the_file_as_it_is_written() {
+        super::super::on_check_thread("shapes.js", outline).expect("runs");
+    }
+
+    fn outline() {
+        let mut worker = Worker::new(Vec::new(), CheckLimits::default());
+        worker
+            .load(vec![OwnedSource::new(
+                "shapes.js",
+                "// @noflow\nexport class Shape {\n  area() { return 0; }\n}\nfunction make() {}\n",
+            )])
+            .expect("the batch loads");
+        let found = worker.symbols("shapes.js").expect("in the batch");
+        let names: Vec<(&str, u32, usize)> = found
+            .iter()
+            .map(|symbol| (symbol.name.as_str(), symbol.kind, symbol.children.len()))
+            .collect();
+        // `SymbolKind`: 5 is a class, 12 a function.
+        assert_eq!(names, [("Shape", 5, 1), ("make", 12, 0)]);
+        let area = &found[0].children[0];
+        assert_eq!(area.name, "area");
+        assert_eq!(places(std::slice::from_ref(&area.selection)), [("shapes.js", 3, 3, 7)]);
+        assert!(worker.symbols("missing.js").is_none());
         worker.release();
     }
 }

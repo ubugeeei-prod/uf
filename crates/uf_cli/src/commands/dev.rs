@@ -94,6 +94,56 @@ mod types {
         ) -> Value {
             Value::Null
         }
+
+        pub(super) fn references(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+            _include_declaration: bool,
+        ) -> Value {
+            Value::Null
+        }
+
+        pub(super) fn highlights(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Value {
+            Value::Null
+        }
+
+        pub(super) fn prepare_rename(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+        ) -> Value {
+            Value::Null
+        }
+
+        pub(super) fn rename(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+            _line: usize,
+            _requested: usize,
+            _new_name: &str,
+        ) -> Result<Value, String> {
+            Ok(Value::Null)
+        }
+
+        pub(super) fn symbols(
+            &mut self,
+            _documents: &FxHashMap<String, Document>,
+            _uri: &str,
+        ) -> Value {
+            Value::Null
+        }
     }
 }
 
@@ -646,6 +696,48 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 });
                 answer_request(&mut stdout, id, answer)?;
             }
+            "textDocument/references" if cfg!(feature = "upstream-typecheck") => {
+                // The protocol requires `context`; a client that leaves it out
+                // gets what the editors all ask for, the declaration included.
+                let include_declaration = message
+                    .pointer("/params/context/includeDeclaration")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
+                let answer = position_params(&message, method).map(|(uri, line, requested)| {
+                    types.references(&documents, &uri, line, requested, include_declaration)
+                });
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/documentHighlight" if cfg!(feature = "upstream-typecheck") => {
+                let answer = position_params(&message, method).map(|(uri, line, requested)| {
+                    types.highlights(&documents, &uri, line, requested)
+                });
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/prepareRename" if cfg!(feature = "upstream-typecheck") => {
+                let answer = position_params(&message, method).map(|(uri, line, requested)| {
+                    types.prepare_rename(&documents, &uri, line, requested)
+                });
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/rename" if cfg!(feature = "upstream-typecheck") => {
+                let answer =
+                    position_params(&message, method).and_then(|(uri, line, requested)| {
+                        let new_name =
+                            message
+                                .pointer("/params/newName")
+                                .and_then(Value::as_str)
+                                .ok_or_else(|| String::from("`params.newName` is required"))?;
+                        types.rename(&documents, &uri, line, requested, new_name)
+                    });
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/documentSymbol" if cfg!(feature = "upstream-typecheck") => {
+                let answer = document_uri(&message)
+                    .map(|uri| types.symbols(&documents, &uri))
+                    .ok_or_else(|| String::from("`params.textDocument.uri` is required"));
+                answer_request(&mut stdout, id, answer)?;
+            }
             // A request uf does not serve is answered as one, not ignored: an
             // editor waiting on an id it never gets back is a hang. A
             // *notification* uf does not serve is dropped, because answering
@@ -669,9 +761,9 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
 /// What the server tells `initialize` it can do.
 ///
 /// `typed` is whether the checker is compiled in, which decides the
-/// definition requests and completion's `.`: a build without it serves
-/// neither, and a capability it could not serve would be a promise to the
-/// editor that the server then breaks.
+/// definition, reference, rename and symbol requests and completion's `.`: a
+/// build without it serves none of them, and a capability it could not serve
+/// would be a promise to the editor that the server then breaks.
 fn capabilities(typed: bool) -> Value {
     // `"` opens a value, and a key written as a string. `@` separates a tool
     // from its version in a spec like `node@26`, where what comes next is a
@@ -692,6 +784,10 @@ fn capabilities(typed: bool) -> Value {
     if typed {
         capabilities["definitionProvider"] = json!(true);
         capabilities["typeDefinitionProvider"] = json!(true);
+        capabilities["referencesProvider"] = json!(true);
+        capabilities["documentHighlightProvider"] = json!(true);
+        capabilities["renameProvider"] = json!({ "prepareProvider": true });
+        capabilities["documentSymbolProvider"] = json!(true);
     }
     capabilities
 }

@@ -91,8 +91,8 @@ inference. `tests/library/lsp.test.js` drives the real server and asserts each
 of them, including that `--cwd` is the directory the configuration is read
 from.
 
-What does not work is the same too: rename, references, document symbols and
-signature help are not advertised by `uf lsp`.
+What does not work is the same too: signature help is not advertised by
+`uf lsp`. Rename, find usages, highlighting and the structure view are.
 
 ## What no test here covers
 
