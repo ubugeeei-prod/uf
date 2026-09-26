@@ -447,6 +447,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 lib,
                 name,
                 force,
+                setup: None,
             },
         ),
         Commands::New {
@@ -456,6 +457,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             lib,
             name,
             force,
+            package_manager,
+            editors,
+            no_editors,
+            yes,
         } => commands::create::scaffold(
             &cwd,
             ui,
@@ -466,6 +471,12 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 lib,
                 name,
                 force,
+                setup: Some(commands::create::setup::Options {
+                    package_manager,
+                    editors,
+                    no_editors,
+                    yes,
+                }),
             },
         ),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),

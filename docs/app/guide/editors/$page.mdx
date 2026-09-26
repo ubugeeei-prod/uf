@@ -17,6 +17,20 @@ editor below; all integrations use the same language server and project settings
 **What you need first:** uf [installed](/guide/install), and a project with a
 `uf.config.js` — [Your first project](/guide/project) makes one.
 
+During project creation, `uf new my-app` offers an optional IDE checkbox picker.
+Use Space to select several editors and Enter to continue; choose none to skip.
+The same setup can be requested without prompts:
+
+```sh
+uf new my-app --package-manager pnpm --editors vscode,zed --yes
+```
+
+VS Code and Cursor receive Flow validation, completion and formatting settings
+and the release extension. The other integrations use the existing `uf editor`
+commands and report any activation or editor-plugin step that must be completed.
+If an install fails, the generated project is kept and the command names the IDE
+to retry. No setup is performed for an IDE that was not selected.
+
 ## Choose your editor
 
 | Editor | Install the integration | Configure the project |

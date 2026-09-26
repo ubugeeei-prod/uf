@@ -162,10 +162,17 @@ pub(crate) fn targets(editor: Editor) -> Vec<Target> {
 /// own block. Cursor's extension API predates 1.110, so for Cursor the new
 /// name is left out rather than written as an unknown key.
 fn vscode_settings(unified_name: bool) -> Vec<Want> {
-    let mut wants = vec![Want::value(&["javascript.validate.enable"], json!(false))];
+    let mut wants = vec![
+        Want::value(&["javascript.validate.enable"], json!(false)),
+        Want::value(&["javascript.suggest.enabled"], json!(false)),
+    ];
     if unified_name {
         wants.push(Want::value(
             &["[javascript]", "js/ts.validate.enabled"],
+            json!(false),
+        ));
+        wants.push(Want::value(
+            &["[javascript]", "js/ts.suggest.enabled"],
             json!(false),
         ));
     }

@@ -2,6 +2,7 @@
 //! next.
 
 mod remote;
+pub(crate) mod setup;
 
 use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -66,6 +67,8 @@ pub(crate) struct Scaffold {
     pub(crate) name: Option<String>,
     /// `--force`.
     pub(crate) force: bool,
+    /// Interactive choices for `uf new`; absent for legacy scaffolding.
+    pub(crate) setup: Option<setup::Options>,
 }
 
 /// `uf init` and `uf new`: one function, because they differ in one argument.
@@ -82,6 +85,7 @@ pub(crate) fn scaffold(cwd: &Utf8Path, ui: &mut Ui, request: Scaffold) -> Result
         lib,
         name,
         force,
+        setup,
     } = request;
     // The banner names the command the reader typed. A run of `uf new` headed
     // `uf create` sends them to the help for a command they did not use.
@@ -96,6 +100,14 @@ pub(crate) fn scaffold(cwd: &Utf8Path, ui: &mut Ui, request: Scaffold) -> Result
         None => None,
     };
     if let Some(remote) = remote {
+        if setup
+            .as_ref()
+            .is_some_and(|options| options.package_manager.is_some() || !options.editors.is_empty())
+        {
+            bail!(
+                "package manager and IDE scaffold options apply to built-in templates; configure a remote template with `uf editor setup` and `uf editor install` after copying it"
+            );
+        }
         if lib {
             bail!(uf_infra::cstr!(
                 "`--lib` takes no template: a library is one shape, and `uf new --lib` writes it"
@@ -142,7 +154,15 @@ pub(crate) fn scaffold(cwd: &Utf8Path, ui: &mut Ui, request: Scaffold) -> Result
         CreateKind::Monorepo => "uniflowed-monorepo",
     };
     let name = name.unwrap_or_else(|| project_name(&target, fallback));
-    render_created(cwd, ui, spelling, kind, target, name, force)
+    let setup = setup.map(setup::Options::choose).transpose()?;
+    render_created(
+        cwd,
+        ui,
+        spelling,
+        target,
+        CreateOptions { name, kind, force },
+        setup.as_ref(),
+    )
 }
 
 pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Result<()> {
@@ -169,7 +189,14 @@ pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Res
         }
     };
 
-    render_created(cwd, ui, "uf create", kind, target, name, force)
+    render_created(
+        cwd,
+        ui,
+        "uf create",
+        target,
+        CreateOptions { name, kind, force },
+        None,
+    )
 }
 
 /// A built-in template's scaffold, and the tree and next steps printed from
@@ -178,15 +205,21 @@ fn render_created(
     cwd: &Utf8Path,
     ui: &mut Ui,
     spelling: &str,
-    kind: CreateKind,
     target: Utf8PathBuf,
-    name: String,
-    force: bool,
+    options: CreateOptions,
+    setup: Option<&setup::Options>,
 ) -> Result<()> {
-    let label = name.clone();
-    let mut report = create_project(&target, &CreateOptions { name, kind, force })?;
+    let label = options.name.clone();
+    let kind = options.kind;
+    let mut report = create_project(&target, &options)?;
     super::agents::update(&report.root)?;
     report.files.push(report.root.join("AGENTS.md"));
+    if let Some(setup) = setup {
+        report
+            .files
+            .extend(setup.configure(&report.root, kind == CreateKind::Monorepo)?);
+    }
+    let root = report.root.clone();
     render(
         cwd,
         ui,
@@ -206,7 +239,11 @@ fn render_created(
             }),
             notes: Vec::new(),
         },
-    )
+    )?;
+    if let Some(setup) = setup {
+        setup.install_editors(&root, ui)?;
+    }
+    Ok(())
 }
 
 /// A remote template, fetched, checked and copied, and the same tree.

@@ -10,7 +10,7 @@ use crate::style::Style;
 use crate::text::display_width;
 use crate::theme::Theme;
 
-use super::menu::Menu;
+use super::menu::{Choice, Menu};
 
 /// The end of every line in a frame.
 ///
@@ -62,6 +62,20 @@ impl Frame<'_> {
 /// before drawing, so a row that shrinks — a long description replaced by a
 /// short one — leaves nothing of the old row behind.
 pub fn frame(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
+    render(menu, frame, out, None);
+}
+
+pub(super) fn multi_frame(
+    menu: &Menu<'_>,
+    frame: &Frame<'_>,
+    out: &mut String,
+    checked: &dyn Fn(&Choice<'_>) -> bool,
+) {
+    render(menu, frame, out, Some(checked));
+}
+
+type Checked<'a> = Option<&'a dyn Fn(&Choice<'_>) -> bool>;
+fn render(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String, checked: Checked<'_>) {
     let level = frame.capabilities.color();
     let theme = frame.theme;
     let (pointer, caret) = frame.marks();
@@ -104,8 +118,8 @@ pub fn frame(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
         }
         push_row(
             out,
-            choice.name,
-            choice.about,
+            checked.map(|is_checked| is_checked(choice)),
+            choice,
             width,
             highlighted,
             pointer,
@@ -113,31 +127,39 @@ pub fn frame(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
         );
     }
 
-    footer(menu, frame, out);
+    footer(menu, frame, out, checked.is_some());
 }
 
 /// One row: the pointer, the name padded to a column, and the description.
 fn push_row(
     out: &mut String,
-    name: &str,
-    about: &str,
+    checked: Option<bool>,
+    choice: &Choice<'_>,
     width: usize,
     highlighted: bool,
     pointer: &str,
     frame: &Frame<'_>,
 ) {
+    let name = choice.name;
+    let about = choice.about;
     let level = frame.capabilities.color();
     let theme = frame.theme;
     push_line(out, |out| {
         if highlighted {
             theme.accent.paint(level, pointer, out);
             out.push(' ');
+            if let Some(checked) = checked {
+                out.push_str(if checked { "[x] " } else { "[ ] " });
+            }
             // Bold rather than a reversed background: a reversed row is the
             // width of the terminal and repaints as a bar every keystroke,
             // which flickers on a slow connection.
             Style::new().bold().paint(level, name, out);
         } else {
             out.push_str("  ");
+            if let Some(checked) = checked {
+                out.push_str(if checked { "[x] " } else { "[ ] " });
+            }
             theme.value.paint(level, name, out);
         }
         pad(out, width.saturating_sub(display_width(name)) + 2);
@@ -146,7 +168,7 @@ fn push_row(
 }
 
 /// The line under the list: what is off screen, and which keys do what.
-fn footer(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
+fn footer(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String, multiple: bool) {
     let level = frame.capabilities.color();
     let theme = frame.theme;
     let unicode = frame.marks().0 == POINTER;
@@ -159,7 +181,9 @@ fn footer(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
                 .muted
                 .paint(level, uf_infra::cstr!("{hidden} more · ").as_str(), out);
         }
-        let keys = if unicode {
+        let keys = if multiple {
+            "up/down move · space toggle · enter confirm (empty skips) · esc cancel"
+        } else if unicode {
             "↑↓ move · ⏎ run · esc cancel"
         } else {
             "up/down move · enter run · esc cancel"

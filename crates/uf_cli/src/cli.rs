@@ -370,7 +370,20 @@ pub(crate) enum Commands {
         /// Write into a directory that already holds files.
         #[arg(long)]
         force: bool,
+        /// Package manager: uf, npm, pnpm, yarn or bun, optionally at a version.
+        #[arg(long, value_name = "MANAGER", value_parser = crate::commands::create::setup::parse_manager)]
+        package_manager: Option<String>,
+        /// Set up and install integrations for one or more IDEs.
+        #[arg(long, value_enum, value_delimiter = ',', num_args = 1..)]
+        editors: Vec<Editor>,
+        /// Skip the optional IDE picker.
+        #[arg(long, conflicts_with = "editors")]
+        no_editors: bool,
+        /// Skip prompts; use explicit choices or the existing scaffold defaults.
+        #[arg(long, short = 'y')]
+        yes: bool,
     },
+
     /// The older spelling of `uf init` and `uf new`.
     ///
     /// Hidden rather than removed: it is in every published document and in
