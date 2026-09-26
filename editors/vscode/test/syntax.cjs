@@ -82,6 +82,11 @@ async function verifySyntax(appRoot) {
     const tokens = tokenize(signature)[0];
     has(tokens, signature.includes("void") ? "void" : "number", "support.type");
   }
+  // Flow's printer uses parenthesized kinds for declarations without a JS
+  // keyword. Treating them as JavaScript expressions leaves the type plain.
+  for (const signature of ["(parameter) initial: number", "(property) User.age: number", "(method) Counter.reset(): void"]) {
+    has(tokenize(signature)[0], signature.includes("void") ? "void" : "number", "support.type");
+  }
   const plain = tokenize("const text = 'component Fake(x: number)'; // hook useFake(x: any)");
   assert.ok(plain[0].every((token) => !token.scopes.includes("meta.function.flow")));
   function themeRules(file) {
@@ -108,6 +113,8 @@ async function verifySyntax(appRoot) {
     assert.notEqual(color(signature, "number"), color(signature, "initial"), `${name}: type versus parameter`);
     const hover = "const count: number";
     assert.notEqual(color(hover, "count"), color(hover, "number"), `${name}: hover binding versus type`);
+    const parameter = "(parameter) initial: number";
+    assert.notEqual(color(parameter, "initial"), color(parameter, "number"), `${name}: parameter hover versus type`);
   }
   registry.dispose();
   console.log("Flow source, JSX, exact types, generics, and hover signatures passed TextMate tokenization");
