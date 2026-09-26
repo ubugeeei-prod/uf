@@ -127,6 +127,7 @@ import {
   useTypeahead,
 } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 import {
   ITEM_SELECTOR,
   MENU_SELECTOR,
@@ -310,6 +311,11 @@ component MenuBody(
   // be a parameter default because it is not a constant: it is the answer to
   // "is this the outermost menu", which only this component knows.
   const placement = side ?? (isRoot ? "bottom" : "inline-end");
+  // On the page while its exit runs; focus and the outside press stay keyed on
+  // `open`. A submenu has its own, so a tree that closes at once leaves at once.
+  // `open` is menu-tree metadata; no ref value is read during render.
+  // uf-lint-disable-next-line react-compiler/refs
+  const presence = usePresence(menu.open, bodyRef);
   // useAnchor accepts ref objects and reads them from layout/effects.
   // uf-lint-disable-next-line react-compiler/refs
   const anchored = useAnchor({
@@ -320,9 +326,7 @@ component MenuBody(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    // `open` is menu-tree metadata; no ref value is read during render.
-    // uf-lint-disable-next-line react-compiler/refs
-    open: menu.open,
+    open: presence.present,
     overlayRef: bodyRef,
     side: placement,
     sideOffset,
@@ -385,13 +389,12 @@ component MenuBody(
 
   const list = useMemo(() => ({ activeId, setActiveId }), [activeId]);
 
-  // `open` is menu-tree metadata; no ref value is read during render.
-  // uf-lint-disable-next-line react-compiler/refs
-  if (!menu.open) {
+  if (!presence.present) {
     return null;
   }
 
   const props = withProps(withoutComposed(rest, ["onKeyDown", "ref"]), {
+    ...presenceProps(presence),
     // `triggered` and `base` are menu-tree metadata, not ref values.
     // uf-lint-disable-next-line react-compiler/refs
     "aria-labelledby": menu.triggered ? `${menu.base}-trigger` : undefined,

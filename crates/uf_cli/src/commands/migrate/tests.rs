@@ -317,3 +317,88 @@ fn catalogued_ui_fixture_moves_every_prefixed_part_onto_its_namespace() {
     assert!(!later.migrations.iter().any(|id| id == "ui-namespaces-1453"));
     assert!(codemod::plan_for(root, Some("0.2.0"), "0.3.0", "0.2.0").is_err());
 }
+
+/// `unread-config-keys-1387`: every key ubugeeei-prod/uf#1387 removed comes
+/// out, a section it empties goes with it, and what is still read stays with
+/// its comments.
+///
+/// Planned as the 0.10.0 binary would plan it, for the reason the UI fixture
+/// above is.
+#[test]
+fn keys_nothing_read_are_removed_and_the_sections_they_empty_with_them() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(temp.path()).unwrap();
+    let before = r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: {
+    componentDefault: "server",
+    orm: { enabled: true },
+    builtins: {
+      relay: false,
+      tui: { beatReactInk: true },
+      markdown: {
+        module: "@uniflowed/markdown",
+        mdx: { jsxImportSource: "@uniflowed/jsx-runtime" },
+      },
+    },
+    rendering: { cache: { actions: false, route: true } },
+  },
+  // Kept: `uf clean` reads it.
+  docs: { enabled: true, outDir: "dist/docs" },
+  std: { modules: ["fs"] },
+  taskRunner: { engine: "vite-task" },
+  test: { runner: { applicationTarget: "web", jsHosts: ["node"] } },
+});
+"#;
+    fs::write(root.join("uf.config.js"), before).unwrap();
+
+    let plan = codemod::plan_for(root, Some("0.9.0"), "0.10.0", "0.10.0").unwrap();
+    assert!(plan.unmapped.is_empty(), "{:?}", plan.unmapped);
+    assert!(plan.migrations.iter().any(|id| id == codemod::UNREAD_KEYS));
+    let after = plan.changes[0].after.clone().unwrap();
+    let get = |path: &[&str]| source::get(&after, path).unwrap();
+    assert_eq!(
+        get(&["app"]),
+        Some(json!({
+            "builtins": { "relay": false },
+            "rendering": { "cache": { "route": true } },
+        }))
+    );
+    assert_eq!(get(&["docs"]), Some(json!({ "outDir": "dist/docs" })));
+    assert_eq!(get(&["std"]), None);
+    assert_eq!(get(&["taskRunner"]), None);
+    assert_eq!(
+        get(&["test"]),
+        Some(json!({ "runner": { "applicationTarget": "web" } }))
+    );
+    assert!(after.contains("// Kept: `uf clean` reads it."), "{after}");
+
+    plan.apply(root).unwrap();
+    uf_config::load_config_file(&root.join("uf.config.js")).unwrap();
+    let again = codemod::plan_for(root, Some("0.9.0"), "0.10.0", "0.10.0").unwrap();
+    assert!(again.changes.is_empty());
+    let later = codemod::plan_for(root, Some("0.10.0"), "0.10.0", "0.10.0").unwrap();
+    assert!(!later.migrations.iter().any(|id| id == codemod::UNREAD_KEYS));
+}
+
+/// The two keys whose value decides: a JSX runtime MDX can import is kept,
+/// and `allowPackageScripts: false`, enforced from this release, is kept and
+/// reported rather than silently changing what `uf run` does.
+#[test]
+fn keys_that_are_read_now_are_kept_and_the_one_that_changes_behaviour_is_reported() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(temp.path()).unwrap();
+    let before = r#"export default {
+  app: { builtins: { markdown: { mdx: { jsxImportSource: "preact" } } } },
+  taskRunner: { allowPackageScripts: false },
+};
+"#;
+    fs::write(root.join("uf.config.js"), before).unwrap();
+
+    let plan = codemod::plan_for(root, Some("0.9.0"), "0.10.0", "0.10.0").unwrap();
+    assert!(plan.changes.is_empty());
+    assert_eq!(plan.unmapped.len(), 1, "{:?}", plan.unmapped);
+    assert!(plan.unmapped[0].contains("allowPackageScripts"));
+}

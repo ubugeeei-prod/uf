@@ -50,7 +50,6 @@ export type RuntimeManagerPlan = {
 export type RuntimeUsePlan = {
   readonly requested: RuntimeReference,
   readonly layout: XdgLayout,
-  readonly autoSwitch: boolean,
   readonly steps: $ReadOnlyArray<
     | "resolve-version"
     | "download-runtime"

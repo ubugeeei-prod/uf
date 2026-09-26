@@ -1,0 +1,156 @@
+Subject: build the references service and the document-symbol provider without Flow's server
+
+Issue: ubugeeei-prod/uf#1381
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+`uf lsp` answers find references, rename, document highlights and document
+symbols with the port's own services: `flow_services_references` and
+`flow_lsp_server::document_symbol_provider`. Both crates also carry code that
+only Flow's own server uses, and it drags that server's whole stack — the
+shared heap, the monitor RPC, and a tokio runtime — into anything that links
+them:
+
+- `flow_services_references::rename_module` (renaming a *file* and rewriting
+  its importers) reads Flow's parsing heap through `flow_server_env`. It goes
+  behind a default `rename_module` feature, with the two dependencies only it
+  uses.
+- `flow_lsp_server` is the server itself; `document_symbol_provider` is a plain
+  AST visitor that only needed `loc_to_lsp_range`, which `flow_server_env`
+  re-exports from `flow_lsp`. It now takes it from `flow_lsp` directly, and
+  every other module and dependency goes behind a default `server` feature.
+
+Both features are on by default, so the port's own crates build exactly as
+before; uf asks for the crates with `default-features = false`. Nothing any
+function does changes.
+
+Delete this when upstream splits the services from the server, or when uf
+links the server anyway.
+
+diff --git a/rust_port/crates/flow_lsp_server/Cargo.toml b/rust_port/crates/flow_lsp_server/Cargo.toml
+index 4ba07502..13d37d46 100644
+--- a/rust_port/crates/flow_lsp_server/Cargo.toml
++++ b/rust_port/crates/flow_lsp_server/Cargo.toml
+@@ -6,26 +6,30 @@ version = "0.0.0"
+ edition = "2024"
+ 
+ [dependencies]
+-crossbeam = "0.8"
++crossbeam = { version = "0.8", optional = true }
+ dupe = "0.9.1"
+-flow_command_utils = { path = "../flow_command_utils" }
+-flow_commands_connect = { path = "../flow_commands_connect" }
+-flow_common = { path = "../flow_common" }
+-flow_common_exit_status = { path = "../flow_common_exit_status" }
+-flow_common_semver = { path = "../flow_common_semver" }
+-flow_common_socket = { path = "../flow_common_socket" }
+-flow_config = { path = "../flow_config" }
+-flow_event_logger = { path = "../flow_event_logger" }
+-flow_event_logger_lwt = { path = "../flow_event_logger_lwt" }
+-flow_flowlib = { path = "../flow_flowlib" }
+-flow_interaction_logger = { path = "../flow_interaction_logger" }
++flow_command_utils = { path = "../flow_command_utils", optional = true }
++flow_commands_connect = { path = "../flow_commands_connect", optional = true }
++flow_common = { path = "../flow_common", optional = true }
++flow_common_exit_status = { path = "../flow_common_exit_status", optional = true }
++flow_common_semver = { path = "../flow_common_semver", optional = true }
++flow_common_socket = { path = "../flow_common_socket", optional = true }
++flow_config = { path = "../flow_config", optional = true }
++flow_event_logger = { path = "../flow_event_logger", optional = true }
++flow_event_logger_lwt = { path = "../flow_event_logger_lwt", optional = true }
++flow_flowlib = { path = "../flow_flowlib", optional = true }
++flow_interaction_logger = { path = "../flow_interaction_logger", optional = true }
+ flow_lsp = { path = "../flow_lsp" }
+ flow_parser = { path = "../flow_parser" }
+-flow_server_env = { path = "../flow_server_env" }
+-flow_server_files = { path = "../flow_server_files" }
+-flow_server_utils = { path = "../flow_server_utils" }
+-flow_tokio_runtime = { path = "../flow_tokio_runtime" }
++flow_server_env = { path = "../flow_server_env", optional = true }
++flow_server_files = { path = "../flow_server_files", optional = true }
++flow_server_utils = { path = "../flow_server_utils", optional = true }
++flow_tokio_runtime = { path = "../flow_tokio_runtime", optional = true }
+ lsp-types = "0.97"
+-serde = { version = "1.0.229", features = ["derive", "rc"] }
+-serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+-tokio = { version = "1.53.1", features = ["full", "test-util", "tracing"] }
++serde = { version = "1.0.229", features = ["derive", "rc"], optional = true }
++serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"], optional = true }
++tokio = { version = "1.53.1", features = ["full", "test-util", "tracing"], optional = true }
++
++[features]
++default = ["server"]
++server = ["dep:crossbeam", "dep:flow_command_utils", "dep:flow_commands_connect", "dep:flow_common", "dep:flow_common_exit_status", "dep:flow_common_semver", "dep:flow_common_socket", "dep:flow_config", "dep:flow_event_logger", "dep:flow_event_logger_lwt", "dep:flow_flowlib", "dep:flow_interaction_logger", "dep:flow_server_env", "dep:flow_server_files", "dep:flow_server_utils", "dep:flow_tokio_runtime", "dep:serde", "dep:serde_json", "dep:tokio"]
+diff --git a/rust_port/crates/flow_lsp_server/src/document_symbol_provider.rs b/rust_port/crates/flow_lsp_server/src/document_symbol_provider.rs
+index 419d1fc7..76d72cb8 100644
+--- a/rust_port/crates/flow_lsp_server/src/document_symbol_provider.rs
++++ b/rust_port/crates/flow_lsp_server/src/document_symbol_provider.rs
+@@ -19,7 +19,7 @@ use flow_parser::ast::types;
+ use flow_parser::ast_visitor;
+ use flow_parser::ast_visitor::AstVisitor;
+ use flow_parser::loc::Loc;
+-use flow_server_env::lsp::loc_to_lsp_range;
++use flow_lsp::lsp::loc_to_lsp_range;
+ use lsp_types::DocumentSymbol;
+ use lsp_types::Location;
+ use lsp_types::SymbolInformation;
+diff --git a/rust_port/crates/flow_lsp_server/src/lib.rs b/rust_port/crates/flow_lsp_server/src/lib.rs
+index b7f90be0..6ff7b79c 100644
+--- a/rust_port/crates/flow_lsp_server/src/lib.rs
++++ b/rust_port/crates/flow_lsp_server/src/lib.rs
+@@ -9,10 +9,17 @@
+ #![feature(unwrap_infallible)]
+ 
+ pub mod document_symbol_provider;
++#[cfg(feature = "server")]
+ pub mod flow_lsp;
++#[cfg(feature = "server")]
+ pub mod jsonrpc;
++#[cfg(feature = "server")]
+ pub mod lsp_errors;
++#[cfg(feature = "server")]
+ pub mod lsp_interaction;
++#[cfg(feature = "server")]
+ pub mod lsp_writers;
++#[cfg(feature = "server")]
+ pub mod rage_print;
++#[cfg(feature = "server")]
+ pub mod selection_range_provider;
+diff --git a/rust_port/crates/flow_services_references/Cargo.toml b/rust_port/crates/flow_services_references/Cargo.toml
+index 60ed5adc..52e2842c 100644
+--- a/rust_port/crates/flow_services_references/Cargo.toml
++++ b/rust_port/crates/flow_services_references/Cargo.toml
+@@ -11,12 +11,12 @@ flow_aloc = { path = "../flow_aloc" }
+ flow_analysis = { path = "../flow_analysis" }
+ flow_common = { path = "../flow_common" }
+ flow_data_structure_wrapper = { path = "../flow_data_structure_wrapper" }
+-flow_heap = { path = "../flow_heap" }
++flow_heap = { path = "../flow_heap", optional = true }
+ flow_lsp = { path = "../flow_lsp" }
+ flow_parser = { path = "../flow_parser" }
+ flow_parser_utils = { path = "../flow_parser_utils" }
+ flow_parser_utils_output = { path = "../flow_parser_utils_output" }
+-flow_server_env = { path = "../flow_server_env" }
++flow_server_env = { path = "../flow_server_env", optional = true }
+ flow_services_get_def = { path = "../flow_services_get_def" }
+ flow_typing_context = { path = "../flow_typing_context" }
+ flow_typing_flow_js = { path = "../flow_typing_flow_js" }
+@@ -26,3 +26,7 @@ flow_typing_utils = { path = "../flow_typing_utils" }
+ flow_utils_concurrency = { path = "../flow_utils_concurrency" }
+ lsp-types = "0.97"
+ vec1 = { version = "1.12.1", features = ["serde"] }
++
++[features]
++default = ["rename_module"]
++rename_module = ["dep:flow_heap", "dep:flow_server_env"]
+diff --git a/rust_port/crates/flow_services_references/src/lib.rs b/rust_port/crates/flow_services_references/src/lib.rs
+index c091442c..7172b212 100644
+--- a/rust_port/crates/flow_services_references/src/lib.rs
++++ b/rust_port/crates/flow_services_references/src/lib.rs
+@@ -13,5 +13,6 @@ pub mod local_import_ref_searcher;
+ pub mod prepare_rename_searcher;
+ pub mod property_find_refs;
+ pub mod rename_mapper;
++#[cfg(feature = "rename_module")]
+ pub mod rename_module;
+ pub mod variable_find_refs;

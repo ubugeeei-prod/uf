@@ -156,6 +156,7 @@ import type { Movement } from "./internal/roving-focus.js";
 import { isTypeaheadKey, itemsOf, moveTo, useTypeahead } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { FormValue } from "./internal/form-value.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -642,6 +643,9 @@ component SelectList(
     select.setOpen(false);
     select.setActiveId(null);
   });
+  // On the page while its exit runs. The trigger's `aria-controls` and
+  // `aria-activedescendant`, and the outside press, stay keyed on `open`.
+  const presence = usePresence(select.open, listRef);
 
   // The popup a select opens is the one case where the trigger's *width* is
   // part of the design rather than a detail: a list narrower than the button it
@@ -654,7 +658,7 @@ component SelectList(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    open: select.open,
+    open: presence.present,
     overlayRef: listRef,
     side,
     sideOffset,
@@ -713,7 +717,7 @@ component SelectList(
     refs: [listRef, triggerRef],
   });
 
-  if (!select.open) {
+  if (!presence.present) {
     return null;
   }
 
@@ -722,6 +726,7 @@ component SelectList(
   return (
     <div
       {...passed}
+      {...presenceProps(presence)}
       aria-labelledby={select.labelled ? `${select.base}-label` : undefined}
       data-align={anchored.align}
       data-side={anchored.side}

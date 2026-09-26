@@ -2,7 +2,7 @@
 import * as React from "@uniflowed/react";
 import { StrictMode, useState } from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it } from "@uniflowed/test";
-import { cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
+import { act, cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 import { GridList, I18nProvider, ListBox, TagGroup, Tree } from "./index.js";
 import {
   clearAll,
@@ -91,6 +91,63 @@ it("expands and collapses a tree with Arabic arrow direction", async () => {
   );
   await userEvent.keyboard("{ArrowRight}{ArrowRight}");
   expect(screen.queryByRole("treeitem", { name: "Child" })).toBe(null);
+});
+
+// Both keys below land before React renders the first: an outer `act` holds each
+// inner one open. `*` opens every sibling that has children, and `ArrowRight` then
+// reads the expansion its own render saw — still empty — and writes only its own
+// key, dropping what `*` had just opened. An expansion has to be added to what the
+// last keystroke left, not to what the last render read (#1621, the window #1609
+// and #1614 share).
+it("keeps sibling expansions when tree keys arrive before a render", () => {
+  render(
+    <Tree
+      aria-label="Files"
+      items={[
+        { key: "p", textValue: "Parent", children: [{ key: "c", textValue: "Child" }] },
+        { key: "q", textValue: "Other", children: [{ key: "d", textValue: "Second" }] },
+      ]}
+    />,
+  );
+  const tree = screen.getByRole("tree");
+  focusOn(tree);
+  act(() => {
+    fireEvent.keyDown(tree, { key: "*" });
+    fireEvent.keyDown(tree, { key: "ArrowRight" });
+  });
+  expect(screen.getByRole("treeitem", { name: "Parent" }).getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+  expect(screen.getByRole("treeitem", { name: "Other" }).getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+  expect(screen.queryByRole("treeitem", { name: "Second" })).not.toBe(null);
+});
+
+// Ctrl+A then Ctrl+Space, both landing before React renders the first. `selectAll`
+// commits every enabled key, and the toggle after it recomputes from the selection
+// its own render saw — still empty — so it *selects* the row it meant to deselect
+// and drops everything else. A gesture has to act on what the last one left; this
+// is the selection half of #1621's window (#1624).
+it("toggles against the latest selection when gestures arrive before a render", () => {
+  const change = fn();
+  render(
+    <ListBox
+      items={items}
+      aria-label="Fruit"
+      selectionMode="multiple"
+      onSelectionChange={change}
+    />,
+  );
+  const list = screen.getByRole("listbox");
+  focusOn(list);
+  act(() => {
+    fireEvent.keyDown(list, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(list, { key: " ", ctrlKey: true });
+  });
+  expect(change).toHaveBeenLastCalledWith(["c"]);
+  expect(screen.getByRole("option", { name: "Cherry" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("option", { name: "Apple" }).getAttribute("aria-selected")).toBe("false");
 });
 
 component Tags() {

@@ -85,6 +85,18 @@ describe("Tabs", () => {
     expect(screen.getByRole("tab", { name: "Billing" })).toHaveFocus();
   });
 
+  it("draws one sliding bar in the row, once the part has placed it", () => {
+    render(<Example />);
+    const list = screen.getByRole("tablist");
+    // Decoration: hidden from a reader, who is told `aria-selected` instead.
+    const bars = Array.from(list.children).filter((each) => each.getAttribute("role") !== "tab");
+    expect(bars.length).toBe(1);
+    expect(bars[0]).toHaveAttribute("aria-hidden", "true");
+    // And the part has said where it goes before it is drawn, so it does not
+    // slide in from the corner.
+    expect(list.style.getPropertyValue("--uf-tabs-indicator-width")).not.toBe("");
+  });
+
   it("dresses the row, the tabs and the panel", () => {
     render(<Example />);
     expect(screen.getByRole("tablist").getAttribute("class")).not.toBeNull();

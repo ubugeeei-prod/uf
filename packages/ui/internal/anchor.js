@@ -202,7 +202,16 @@ export type AnchorRequest = {|
    */
   readonly anchorRect?: Rect | null,
   readonly overlayRef: { current: HTMLElement | null },
-  /** Nothing is measured while it is closed: there is nothing to measure. */
+  /**
+   * Whether the overlay is on the page. Nothing is measured while it is not:
+   * there is nothing to measure.
+   *
+   * A part that plays an exit passes its presence here (`usePresence`'s
+   * `present`) rather than its open state, so a closing overlay keeps its place
+   * against the trigger, and keeps its `data-side`, until it has gone. An exit
+   * that slid towards the side it was asked for rather than the side it
+   * flipped to would leave in the wrong direction.
+   */
   readonly open: boolean,
   /** Resolved against the trigger's writing direction; see `LogicalSide`. */
   readonly side: LogicalSide,

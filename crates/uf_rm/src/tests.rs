@@ -75,7 +75,7 @@ fn refuses_a_host_without_a_loader_before_it_reaches_the_manifest() {
 #[test]
 fn parses_use_request_and_keeps_xdg_paths() {
     let requested = RuntimeReference::parse("uf@0.1.0").unwrap();
-    let plan = RuntimeUsePlan::new(requested, XdgLayout::from_home("/home/uf"), true);
+    let plan = RuntimeUsePlan::new(requested, XdgLayout::from_home("/home/uf"));
 
     assert_eq!(plan.requested.name, "uf");
     assert_eq!(plan.requested.version, "0.1.0");
@@ -84,7 +84,6 @@ fn parses_use_request_and_keeps_xdg_paths() {
     assert_eq!(plan.layout.cache_dir, "/home/uf/.cache/uniflowed");
     assert_eq!(plan.layout.state_dir, "/home/uf/.local/state/uniflowed");
     assert_eq!(plan.layout.shim_path, "/home/uf/.local/bin/uf");
-    assert!(plan.auto_switch);
     assert!(plan.steps.contains(&RuntimeUseStep::WriteShim));
     assert!(plan.steps.contains(&RuntimeUseStep::ActivateVersion));
     assert!(plan.steps.contains(&RuntimeUseStep::VerifyChecksum));

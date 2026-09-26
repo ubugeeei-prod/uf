@@ -200,7 +200,11 @@ describe("the manual's navigation", () => {
       const frontmatter = fs.readFileSync(file, "utf8").split("\n---\n", 1)[0];
       const declared = frontmatter.match(/^readiness:\s*"(.*)"\s*$/m)?.[1] ?? null;
       const shown = readinessFor(page.href);
-      if (!["Implemented", "Experimental", "Planned"].includes(declared) || declared !== shown) {
+      if (
+        declared == null ||
+        !["Implemented", "Experimental", "Planned"].includes(declared) ||
+        declared !== shown
+      ) {
         wrong.push({ href: page.href, declared, shown });
       }
     }

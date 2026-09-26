@@ -31,7 +31,7 @@
 // inside a popover still lets the popover close on the Escape that follows.
 
 import * as React from "@uniflowed/react";
-import { useId, useRef, useState } from "@uniflowed/react";
+import { useEffect, useId, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useDragAndDrop } from "../drag-drop.js";
 import { useControlled } from "./controlled-state.js";
@@ -177,6 +177,36 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
     defaultExpandedKeys,
     onExpandedChange,
   );
+  // The expansion as the last keystroke left it, which can be ahead of the
+  // `expanded` this render read: two tree keys can land before React renders the
+  // first, and `keydown` is a `useStableCallback`, so it runs with the values of
+  // the render that installed it. Adding to the render's array meant the second
+  // write dropped what the first had opened — `*` then `ArrowRight` collapsed the
+  // sibling `*` had just expanded (#1621). #1611 and #1620 hold a ref for the same
+  // window. It is cleared after every commit, so it only ever spans a batch React
+  // has not rendered, and a controlled parent still wins the next keystroke.
+  const proposedExpanded = useRef<$ReadOnlyArray<string> | null>(null);
+  // The selection as the last gesture left it, for the same reason and with the same
+  // lifetime: `Ctrl+A` followed by a toggle in one batch recomputed the toggle from
+  // the empty selection its own render saw, so it *selected* the row it meant to
+  // deselect and dropped everything else (#1624).
+  const proposedSelected = useRef<$ReadOnlySet<string> | null>(null);
+  useEffect(() => {
+    proposedExpanded.current = null;
+    proposedSelected.current = null;
+  });
+  const latestExpanded = useStableCallback(
+    (): $ReadOnlyArray<string> => proposedExpanded.current ?? expanded,
+  );
+  // Only the array written back comes from the latest keystroke. Every *decision*
+  // in `keydown` — which branch to take, where focus lands — keeps reading this
+  // render's `expandedSet`, `rows` and `enabled`, because those describe the tree
+  // the reader is looking at rather than one that has not been rendered yet.
+  const expand = useStableCallback((next: $ReadOnlyArray<string>) => {
+    const unique = [...new Set(next)];
+    proposedExpanded.current = unique;
+    setExpanded(unique);
+  });
   const [active, setActive] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [announcement, announce] = useState("");
@@ -210,20 +240,30 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
     enabled[0];
   const activeKey = focused?.item.key;
 
+  // What the selection helpers are given, and what "nothing changed" is measured
+  // against. They return their own input when a gesture is a no-op, so the comparison
+  // has to be with the set that went in: measuring against this render's `selectedSet`
+  // instead would let a no-op Escape look like a change, claim the key, and stop an
+  // enclosing popover from closing.
+  const latestSelected = useStableCallback(
+    (): $ReadOnlySet<string> => proposedSelected.current ?? selectedSet,
+  );
   /** Report a selection, unless the gesture changed nothing. */
   const commit = (next: $ReadOnlySet<string>) => {
-    if (next === selectedSet) return;
+    if (next === latestSelected()) return;
     const keys = orderedKeys(next, order);
+    proposedSelected.current = next;
     setSelected(keys);
     announce(`${keys.length} selected`);
   };
   /** A plain or Ctrl/Cmd gesture on one row: toggle or replace, and move the anchor. */
   const selectOne = (key: string, toggle: boolean) => {
     if (mode === "none") return;
+    const previous = latestSelected();
     commit(
       toggle || selectionBehavior === "toggle"
-        ? toggleKey(policy, selectedSet, key)
-        : replaceWith(policy, selectedSet, key),
+        ? toggleKey(policy, previous, key)
+        : replaceWith(policy, previous, key),
     );
     anchor.current = key;
     lead.current = key;
@@ -231,7 +271,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
   /** A Shift gesture: grow from the anchor, which is the active row if nothing set one. */
   const extend = (key: string, from: string | void) => {
     if (anchor.current == null || !order.includes(anchor.current)) anchor.current = from ?? key;
-    commit(extendTo(policy, selectedSet, order, anchor.current, lead.current, key));
+    commit(extendTo(policy, latestSelected(), order, anchor.current, lead.current, key));
     lead.current = key;
   };
   const scrollTo = (row: Entry) => {
@@ -325,7 +365,7 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
         (row) => row.parent === focused.parent && (row.item.children?.length ?? 0) > 0,
       );
       const missing = siblings.map((row) => row.item.key).filter((key) => !expandedSet.has(key));
-      if (missing.length > 0) setExpanded([...expanded, ...missing]);
+      if (missing.length > 0) expand([...latestExpanded(), ...missing]);
     } else if (
       kind === "tree" &&
       focused != null &&
@@ -334,19 +374,20 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
       const open = event.key === (rtl ? "ArrowLeft" : "ArrowRight");
       const key = focused.item.key;
       if (open && (focused.item.children?.length ?? 0) > 0) {
-        if (!expandedSet.has(key)) setExpanded([...expanded, key]);
+        if (!expandedSet.has(key)) expand([...latestExpanded(), key]);
         else next = enabled[at + 1];
       } else if (!open && expandedSet.has(key))
-        setExpanded(expanded.filter((each) => each !== key));
+        expand(latestExpanded().filter((each) => each !== key));
       else if (!open) next = enabled.find((row) => row.item.key === focused.parent);
     } else if (modifier && event.key.toLowerCase() === "a" && !event.altKey) {
       if (mode !== "multiple") return;
-      commit(selectAll(policy, selectedSet, order));
+      commit(selectAll(policy, latestSelected(), order));
     } else if (event.key === "Escape") {
       if (escapeKeyBehavior !== "clearSelection") return;
-      const cleared = clearAll(policy, selectedSet);
+      const previous = latestSelected();
+      const cleared = clearAll(policy, previous);
       // Unclaimed when nothing changed, so an enclosing popover still closes.
-      if (cleared === selectedSet) return;
+      if (cleared === previous) return;
       commit(cleared);
     } else if (event.key === "Enter" && activeKey != null && onAction != null) {
       onAction(activeKey);

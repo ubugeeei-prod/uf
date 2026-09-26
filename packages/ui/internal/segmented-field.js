@@ -1,7 +1,7 @@
 // @flow
 "use client";
 import * as React from "@uniflowed/react";
-import { useMemo, useState } from "@uniflowed/react";
+import { useMemo, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { Temporal } from "@uniflowed/core/temporal";
 import { useControlled } from "./controlled-state.js";
@@ -104,22 +104,31 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
   const seconds = granularity === "second";
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
   const [draft, setDraft] = useState<Fields | null>(null);
+  // The draft as the last event handler left it, which can be ahead of the
+  // `draft` this render read: two keystrokes can land before React renders
+  // the first (#1609). Every handler reads and writes the fields through this,
+  // so none of them acts on — or commits — a render's stale copy.
+  const pending = useRef<Fields | null>(null);
   const [announcement, announce] = useState("");
-  const fields = draft ?? fieldsFor(current, time, seconds);
-  const empty = names(time, seconds).every((part) => !fields[part]);
-  const serialized = serialize(fields, time, seconds);
   const minimum =
     minValue == null ? null : serialize(fieldsFor(minValue, time, seconds), time, seconds);
   const maximumValue =
     maxValue == null ? null : serialize(fieldsFor(maxValue, time, seconds), time, seconds);
   if (minimum != null && maximumValue != null && minimum > maximumValue)
     throw new RangeError("DateField minimum exceeds maximum");
-  const invalid =
-    (empty ? required : serialized == null) ||
-    (serialized != null &&
-      ((minimum != null && serialized < minimum) ||
-        (maximumValue != null && serialized > maximumValue) ||
-        isDateUnavailable?.(serialized) === true));
+  const assess = (fields: Fields) => {
+    const empty = names(time, seconds).every((part) => !fields[part]);
+    const serialized = serialize(fields, time, seconds);
+    const invalid =
+      (empty ? required : serialized == null) ||
+      (serialized != null &&
+        ((minimum != null && serialized < minimum) ||
+          (maximumValue != null && serialized > maximumValue) ||
+          isDateUnavailable?.(serialized) === true));
+    return { empty, serialized, invalid };
+  };
+  const fields = draft ?? fieldsFor(current, time, seconds);
+  const { invalid } = assess(fields);
   const digits = useMemo(() => new Intl.NumberFormat(locale, { useGrouping: false }), [locale]);
   const labels: $FlowFixMe = useMemo(
     () => new (Intl as $FlowFixMe).DisplayNames(locale, { type: "dateTimeField" }),
@@ -170,22 +179,34 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
       result = result.split(digits.format(digit)).join(String(digit));
     return result.replace(/[^0-9]/g, "");
   };
+  const latest = useStableCallback(
+    (): Fields => pending.current ?? fieldsFor(current, time, seconds),
+  );
+  const propose = useStableCallback((next: Fields) => {
+    pending.current = next;
+    setDraft(next);
+  });
   const commit = useStableCallback(() => {
     if (disabled || readOnly) return;
+    const { empty, serialized, invalid } = assess(latest());
     onValidationChange?.(invalid);
     if (invalid) {
       announce("Enter a valid value within the allowed range");
       return;
     }
     setCurrent(empty ? null : serialized);
+    pending.current = null;
     setDraft(null);
     announce(serialized ?? "Cleared");
   });
-  const edit = useStableCallback((part: Segment, text: string) => {
-    if (!disabled && !readOnly) setDraft({ ...fields, [part]: text });
+  const edit = useStableCallback((part: Segment, change: (fields: Fields) => string) => {
+    if (disabled || readOnly) return;
+    const fields = latest();
+    propose({ ...fields, [part]: change(fields) });
   });
   const keyboard = useStableCallback((event: $FlowFixMe, part: Segment) => {
     if (disabled || readOnly) return;
+    const fields = latest();
     const key = event.key;
     if (key === "Enter") {
       event.preventDefault();
@@ -221,12 +242,16 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
     const nextFields = { ...fields, [part]: String(adjusted) };
     if (!time && (part === "month" || part === "year") && nextFields.day)
       nextFields.day = String(Math.min(Number(nextFields.day), maximum("day", nextFields)));
-    setDraft(nextFields);
+    propose(nextFields);
   });
   const segments = parts.map((part, index) => {
     if (part.type === "dayPeriod") {
       const pm = Number(fields.hour) >= 12;
-      const toggle = () => edit("hour", String((Number(fields.hour) || 0) + (pm ? -12 : 12)));
+      const toggle = () =>
+        edit("hour", (fields) => {
+          const hour = Number(fields.hour) || 0;
+          return String(hour + (hour >= 12 ? -12 : 12));
+        });
       return (
         <span
           key="period"
@@ -286,8 +311,7 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
         value={text ? encode(text) : ""}
         onChange={(event) => {
           const text = decode(event.currentTarget.value);
-          edit(
-            name,
+          edit(name, (fields) =>
             name === "hour" && hour12 && text && Number(text) <= 12
               ? String((Number(text) % 12) + (Number(fields.hour) >= 12 ? 12 : 0))
               : text,

@@ -42,7 +42,8 @@ export default {
 };
 ```
 
-All three default to `false`. `actions` remains unimplemented and is refused by name.
+All three default to `false`. There is no `actions` cache: the key was removed in
+uf 0.10, and `actions: true` is still refused by name.
 
 Turning `route` on does not start caching anything. It makes a *stated* lifetime
 take effect, and a page states one from inside its own render:
@@ -264,7 +265,7 @@ the same store is [regeneration](#regenerating-prerendered-pages).
 
 Persistence is a second opt-in on top of the first, and nothing about the first
 changes. A route still has to state a lifetime; a render that read the request
-is still never stored; `actions` is still refused.
+is still never stored; `actions: true` is still refused.
 
 ### Entries are keyed by the build
 
@@ -462,8 +463,8 @@ times without exposing loader values. A component inside a `Link` can use
 
 ## What is not here
 
-- **The action cache.** `rendering.cache.actions` is refused rather than
-  ignored: writes are not cached implicitly. `rendering.cache.data` is the
+- **The action cache.** `rendering.cache.actions` is gone, and `true` is
+  refused rather than ignored: writes are not cached implicitly. `rendering.cache.data` is the
   function cache above.
 - **`uf build --compile`.** A compiled binary answers from bytes it carries
   rather than from a directory, so it has its own copy of the resolution order

@@ -10,12 +10,19 @@ export type ScreenshotOptions = {|
   readonly threshold?: number,
 |};
 
+/** A screenshot that matched its baseline, or was recorded as the new one. */
+export type ScreenshotResult = {|
+  readonly baseline: string,
+  readonly updated: boolean,
+  readonly differentPixels: number,
+|};
+
 /** Baselines stay under the project's configured directory, including through symlinks. */
 export async function compareScreenshot(
   data: string,
   name: string,
   options: ScreenshotOptions = {},
-) {
+): Promise<ScreenshotResult> {
   if (
     typeof name !== "string" ||
     !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/.test(name) ||
@@ -23,9 +30,9 @@ export async function compareScreenshot(
     /\.(actual|diff)$/.test(name)
   )
     throw new Error("screenshot name must be a simple file name without traversal");
-  const config = JSON.parse(process.env.UF_VRT_CONFIG ?? "{}");
+  const vrt = JSON.parse(process.env.UF_VRT_CONFIG ?? "{}");
   const root = await realpath(options.root ?? process.env.UF_PROJECT_ROOT ?? process.cwd());
-  const directory = path.resolve(root, options.baselines ?? config.baselines ?? "__uf_vrt__");
+  const directory = path.resolve(root, options.baselines ?? vrt.baselines ?? "__uf_vrt__");
   if (!directory.startsWith(root + path.sep))
     throw new Error("vrt.baselines must stay inside the test project");
   // Check each existing ancestor before creating anything through it.
@@ -49,7 +56,7 @@ export async function compareScreenshot(
   }
   const bytes = Buffer.from(data, "base64");
   const actual = PNG.sync.read(bytes);
-  const threshold = options.threshold ?? config.threshold ?? 0;
+  const threshold = options.threshold ?? vrt.threshold ?? 0;
   if (!Number.isInteger(threshold) || threshold < 0)
     throw new Error("vrt.threshold is the maximum number of different pixels");
   if (process.env.UF_UPDATE_SNAPSHOTS === "1") {

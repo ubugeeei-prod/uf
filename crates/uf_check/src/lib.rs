@@ -54,7 +54,8 @@ pub use crate::limits::{CHECK_STACK_BYTES, CheckLimits};
 pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source, UnresolvedImport};
 pub use crate::resolution::{EXPORT_CONDITIONS, MAIN_FIELDS};
 pub use crate::session::{
-    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, Session, TypeAt,
+    Completion, CompletionEdit, Completions, Definition, Origin, OwnedSource, References, Rename,
+    Session, Symbol, TextEdit, TypeAt,
 };
 
 /// Which type checker a build compiled in.

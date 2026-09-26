@@ -375,6 +375,11 @@ An object without `command` delegates to Vite Task. uf starts `vp run <name>`,
 or the program set by `UF_VITE_TASK_BIN`, in the project root.
 The command must be installed. uf's scheduling and cache do not apply to it.
 
+`vp run <name>` runs the `package.json` script of that name, which is not a
+command anybody wrote in `uf.config.js`. A project that wants every task it
+runs spelled out there says `taskRunner: { allowPackageScripts: false }`, and a
+task with no command then stops the run with an error naming it.
+
 ## Run a package binary
 
 `uf exec`, or `ufx`, runs from the project root with its environment values and

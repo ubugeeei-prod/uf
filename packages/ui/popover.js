@@ -71,7 +71,8 @@ import {
 import { focusable } from "./internal/focus.js";
 import { useAnchor } from "./internal/anchor.js";
 import { useControlled } from "./internal/controlled-state.js";
-import { usePresence } from "./internal/disclosure.js";
+import { useRegistered } from "./internal/disclosure.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -155,7 +156,7 @@ component PopoverRoot(
 component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const popover = usePopover("Popover.Trigger");
   const passed = withoutComposed(rest, ["onClick", "ref"]);
-  usePresence(popover.registerTrigger);
+  useRegistered(popover.registerTrigger);
   const props = withProps(passed, {
     // Only while it is open: an `aria-controls` naming an element that is not
     // in the document tells a reader there is somewhere to go and then has
@@ -221,6 +222,9 @@ component PopoverBody(
   // trigger would undo the thing they just did.
   const left = useRef(false);
   const triggerRef = popover.triggerRef;
+  // On the page while its exit runs; everything else stays keyed on `open`.
+  // uf-lint-disable-next-line react-compiler/refs
+  const presence = usePresence(popover.open, bodyRef);
 
   // useAnchor accepts ref objects and reads them from layout/effects.
   // uf-lint-disable-next-line react-compiler/refs
@@ -231,9 +235,8 @@ component PopoverBody(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    // `open` is popover metadata; no ref value is read during render.
-    // uf-lint-disable-next-line react-compiler/refs
-    open: popover.open,
+    // Placed for as long as it is on the page, so it leaves from where it was.
+    open: presence.present,
     overlayRef: bodyRef,
     side,
     sideOffset,
@@ -313,9 +316,7 @@ component PopoverBody(
     refs: [bodyRef, triggerRef],
   });
 
-  // `open` is popover metadata; no ref value is read during render.
-  // uf-lint-disable-next-line react-compiler/refs
-  if (!popover.open) {
+  if (!presence.present) {
     return null;
   }
 
@@ -332,7 +333,7 @@ component PopoverBody(
     children,
     "data-align": anchored.align,
     "data-side": anchored.side,
-    "data-state": "open",
+    ...presenceProps(presence),
     // `base` is popover metadata, not a ref value.
     // uf-lint-disable-next-line react-compiler/refs
     id: `${popover.base}-body`,

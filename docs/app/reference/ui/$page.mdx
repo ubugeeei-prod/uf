@@ -190,13 +190,20 @@ but they are not primitives with a behaviour contract of their own here.
 | --- | --- | --- |
 | `Button` | a real `<button>` plus a style preset, or `uf ui add button` | The behaviour is already in HTML; the design decision is visual |
 | `Card`, `Badge`, `Label`, `Input`, `Textarea` | plain elements plus presets, or `uf ui add card badge label input textarea` | With no styles they are wrappers around one element, and wrappers lose props |
+| `Kbd`, `Typography`, `Empty`, `Item` | `<kbd>`, headings, `<p>`, `<ul>` and `textStyles`, or `uf ui add kbd typography empty item` | Each part is a platform element; the only decision is which element, and that is the caller's |
+| `ButtonGroup`, `InputGroup` | `role="group"` or `:focus-within` around your own controls, or `uf ui add button-group input-group` | The buttons and the input keep the platform's keys; a group that moves focus with arrows is a toolbar, which is a different contract |
+| `NativeSelect` | a real `<select>`, or `uf ui add native-select` | The platform's select already is the component. `Select` is the custom one, for options that need more than text |
+| `Spinner` | `Progress` with no `value`, or `uf ui add spinner` | "Amount unknown" is already `Progress`'s decision: it omits `aria-valuenow` rather than announcing zero |
 | `Command` | `Dialog` + `Combobox` + grouped options + `useKeyCombo` | The composition is the feature; a module would duplicate two finished contracts |
 | `DataTable` | `Table` plus your table state and fetching layer | Sorting, selection and row counts are here; query/state orchestration is app-specific |
 | `FormField` | `Field` plus the control you render | The field owns ids and errors; the form library owns values and validation |
 
 The styled half is different. A styled button, card or badge that the whole
 application agrees on is a decision about that application, so the
-[registry](#registry-components) carries one of each. `uf ui add` writes it into
+[registry](#registry-components) carries one of each. So it does for the eight
+rows after them: a keycap, a type scale, an empty state, a row, a joined button
+bar, an input with addons, a native select with its chevron, and a spinner that
+fades rather than turns under reduced motion. `uf ui add` writes it into
 the project as a file the project owns, and that file passes every attribute
 through to the element. The headless package declines these names, and the
 registry does not: they sit on opposite sides of the same line.
@@ -558,7 +565,7 @@ moving a cursor a screen reader is told about.
 | `Select.Label` | `label` | Names the field. Without it the trigger has no accessible name at all |
 | `Select.Trigger` | `button role="combobox"` | `aria-haspopup="listbox"`, `aria-expanded`, `aria-activedescendant` |
 | `Select.Value` | `span` | What the trigger shows for the current value |
-| `Select.List` | `div role="listbox"` | In the document only while open |
+| `Select.List` | `div role="listbox"` | In the document only while open, and while its exit plays (`data-state="closed"`, `inert`) |
 | `Select.Option` | `div role="option"` | `value`, optional `label`, `disabled` |
 | `Select.Group` | `div role="group"` | Named by its `Select.GroupLabel`, and only when one is rendered. Takes options and that label, and nothing else |
 | `Select.GroupLabel` | `div role="presentation"` | Names a group of options |
@@ -808,7 +815,7 @@ the arrow keys do the movement inside it.
 | Part | Renders | Notes |
 | --- | --- | --- |
 | `Tabs.Root` | `div` | `defaultValue` is required. Controlled the moment `value` is given |
-| `Tabs.List` | `div role="tablist"` | `renders* Tabs.Tab`; owns the arrow-key handler |
+| `Tabs.List` | `div role="tablist"` | `renders* Tabs.Tab`; owns the arrow-key handler, and writes where the selected tab is for a sliding indicator |
 | `Tabs.Tab` | `button role="tab"` | `value`, optional `disabled`; exactly one tab has `tabIndex={0}` |
 | `Tabs.Panel` | `div role="tabpanel"` | Rendered only while its value is selected, and labelled by its tab |
 
@@ -1757,7 +1764,7 @@ to someone who cannot see the dim.
 | --- | --- | --- |
 | `Dialog.Root` | No element | `open`, `defaultOpen`, `onOpenChange`; owns the ids and open state |
 | `Dialog.Trigger` | `button` | Opens the dialog, carries `aria-haspopup="dialog"`, and receives focus back |
-| `Dialog.Overlay` | `div aria-hidden` | Rendered only while open; decoration, not the dismissal logic |
+| `Dialog.Overlay` | `div aria-hidden` | Rendered while open and while its exit plays; decoration, not the dismissal logic |
 | `Dialog.Body` | `div role="dialog"` | `aria-modal="true"`, focus trap, outside press, `Escape`, scroll lock |
 | `Dialog.Title` | `h2` | The accessible name when present |
 | `Dialog.Description` | `p` | The announced description when present |
@@ -2154,6 +2161,32 @@ move between the menus, mirrored in a right-to-left page, and — with a menu op
 — close it and open the adjacent one, so File → Edit → View needs no `Escape`
 between them. `Escape` closes the open menu and leaves focus on its trigger.
 
+## Exits
+
+Every overlay part — `Dialog.Body` and `Dialog.Overlay` (and so the sheet,
+drawer and alert dialog built on them), `Popover.Body`, `Menu.Body`,
+`Select.List`, `Combobox.List`, `Tooltip.Body`, `HoverCard.Body`,
+`NavigationMenu.Body` and a `Toast.Root` — writes `data-state="open"` while it
+is open. When it closes it stays in the document, with `data-state="closed"`
+and `inert`, until the transitions and animations on it have finished
+(`getAnimations()`), and is then removed. So an exit is a stylesheet rule:
+
+```css
+.menu { transition: opacity 200ms, transform 200ms }
+@starting-style { .menu { opacity: 0; transform: translateY(-4px) } }
+.menu[data-state=closed] { opacity: 0; transform: translateY(-4px); transition-duration: 120ms }
+```
+
+With nothing animating — no stylesheet, or `0s` under reduced motion — the part
+is removed in the commit that closed it, as if exits did not exist. What a
+reader acts on does not wait for the exit: focus goes back to the trigger, the
+scroll lock lifts and a modal gives the page back at the moment of closing,
+and `inert` keeps the fading part out of the tab order, the accessibility tree
+and the pointer's way. A part reopened while it is closing is the same element,
+so its transition turns round from where it had got to. A dismissed toast stays
+in its place in the stack while it leaves. Animations that would never end on
+their own — one that repeats for ever, or a paused one — are not waited for.
+
 ## Animating a disclosure
 
 `Collapsible` and `Accordion` can carry the height their content *would* have,
@@ -2170,9 +2203,39 @@ still closed, and a closed panel has no box for `ResizeObserver`,
 ```
 
 ```css
-.panel { overflow: hidden; transition: height 150ms; height: 0 }
-.panel:not([hidden]) { height: var(--uf-collapsible-height) }
+.panel { overflow: clip; height: var(--uf-collapsible-height); transition: height 200ms }
+@starting-style { .panel { height: 0 } }
+.panel[data-state=closed] { height: 0; transition-duration: 120ms }
 ```
+
+The panel opens from the `@starting-style` and closes on `data-state="closed"`,
+and it becomes `hidden` — `until-found`, so find-in-page still reaches it —
+only when the closing transition has finished. It is `inert` while it closes.
+The height is measured again whenever the panel renders or its content changes
+size, but never while it is moving, so a measurement cannot cut a transition
+short.
+
+## A sliding tabs indicator
+
+`Tabs.List` writes where the selected tab is on itself, relative to the list's
+padding box: `--uf-tabs-indicator-left`, `--uf-tabs-indicator-top`,
+`--uf-tabs-indicator-width` and `--uf-tabs-indicator-height`, in CSS pixels and
+**without a unit**, so one property serves as a length and as a scale. A
+one-pixel bar positioned in the list follows them with `transform` alone:
+
+```css
+.list { position: relative }
+.bar {
+  position: absolute; left: 0; bottom: 0; width: 1px; height: 2px;
+  transform-origin: 0 0;
+  transform: translateX(calc(var(--uf-tabs-indicator-left) * 1px)) scaleX(var(--uf-tabs-indicator-width));
+  transition: transform 200ms;
+}
+```
+
+They are measured whenever the list renders and whenever the list or a tab
+changes size, and removed when no tab is selected. The registry's `tabs` draws
+exactly this, and before hydration lets the selected tab underline itself.
 
 `measure` is opt-in, and on `Accordion.Root` it covers every panel. It is a prop
 rather than a default because whether a stylesheet reads the property is not

@@ -123,6 +123,9 @@ async function runFile(request: PageRequest): Promise<void> {
   const uninstall = installInSourceTests(url);
   try {
     try {
+      // The test file the runner found, served by the dev server; Flow types
+      // only a literal specifier, and nothing is read from its namespace.
+      // $FlowFixMe[unsupported-syntax]
       await import(url);
     } catch (thrown) {
       const error = asError(thrown);

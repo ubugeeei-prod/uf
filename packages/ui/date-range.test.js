@@ -1,7 +1,15 @@
 // @flow
 import * as React from "@uniflowed/react";
 import { afterEach, expect, fn, it } from "@uniflowed/test";
-import { cleanup, render, screen, userEvent, within } from "@uniflowed/react-testing";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  within,
+} from "@uniflowed/react-testing";
 import { DateField, TimeField, RangeCalendar, DateRangePicker, I18nProvider } from "./index.js";
 
 afterEach(cleanup);
@@ -58,6 +66,47 @@ it("edits and announces time segments", async () => {
   minute.focus();
   await userEvent.keyboard("{ArrowUp}{Enter}");
   expect(change).toHaveBeenLastCalledWith("12:00:00");
+});
+// Every keystroke below lands before React renders the one before it: an
+// outer `act` holds each inner one open, so no update flushes until the last
+// key. That is the window #1609's registry test fell into — Enter ran a commit
+// that still saw the value from before ArrowUp, stored it, and threw the
+// ArrowUp draft away. A commit has to read the fields the last keystroke left,
+// not the ones the last render saw.
+it("commits the latest segments when keystrokes arrive before a render", () => {
+  const change = fn();
+  render(
+    <TimeField aria-label="Alarm" defaultValue="14:30" hourCycle="h23" onValueChange={change} />,
+  );
+  const hour = screen.getByRole("spinbutton", { name: "hour" });
+  act(() => {
+    fireEvent.keyDown(hour, { key: "ArrowUp" });
+    fireEvent.keyDown(hour, { key: "ArrowUp" });
+    fireEvent.keyDown(hour, { key: "Enter" });
+  });
+  expect(change).toHaveBeenLastCalledWith("16:30");
+  expect(hour).toHaveValue("16");
+  expect(screen.getByRole("status").textContent).toBe("16:30");
+});
+it("validates the latest segments when keystrokes arrive before a render", () => {
+  const change = fn();
+  render(
+    <DateField
+      aria-label="Start"
+      defaultValue="2026-02-11"
+      minValue="2026-02-10"
+      onValueChange={change}
+    />,
+  );
+  const day = screen.getByRole("spinbutton", { name: "day" });
+  act(() => {
+    fireEvent.keyDown(day, { key: "ArrowDown" });
+    fireEvent.keyDown(day, { key: "ArrowDown" });
+    fireEvent.keyDown(day, { key: "Enter" });
+  });
+  expect(change).not.toHaveBeenCalled();
+  expect(day).toHaveValue("9");
+  expect(screen.getByRole("group").getAttribute("aria-invalid")).toBe("true");
 });
 it("chooses an inclusive range by keyboard and refuses unavailable dates inside it", async () => {
   const change = fn();

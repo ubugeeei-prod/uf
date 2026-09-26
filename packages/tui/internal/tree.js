@@ -49,6 +49,8 @@ import type {
 import type { Color, Style } from "../cells.js";
 import { Attributes, INHERIT, PLAIN, parseColor } from "../cells.js";
 import type { BorderStyle } from "../capability.js";
+import type { MouseProps } from "../components.js";
+import type { KeyEvent } from "../keys.js";
 
 /**
  * What kind of node this is.
@@ -68,8 +70,17 @@ export type TuiNodeType = "root" | "box" | "text" | "chars";
  */
 export type Widget = "select" | "tab-select" | "textarea";
 
-/** Anything a component put on a node. Read by `paint.js`, not by layout. */
-export type TuiProps = { readonly [string]: mixed };
+/**
+ * Anything a component put on a node. Read by `paint.js`, not by layout.
+ *
+ * The event handlers are named so the renderer can call them with the event
+ * `Box` declares for them; everything else is read and checked by name.
+ */
+export type TuiProps = {
+  ...MouseProps,
+  readonly onKeyDown?: (key: KeyEvent) => mixed,
+  readonly [string]: mixed,
+};
 
 /** One node of the tree. Mutable: React owns its shape, layout owns its geometry. */
 export type TuiNode = {
@@ -224,7 +235,7 @@ const JUSTIFY_CONTENTS: $ReadOnlyArray<JustifyContent> = [
 const ALIGN_ITEMS: $ReadOnlyArray<AlignItems> = ["flex-start", "center", "flex-end", "stretch"];
 const ALIGN_SELVES: $ReadOnlyArray<AlignSelf> = ["auto", ...ALIGN_ITEMS];
 const OVERFLOWS: $ReadOnlyArray<Overflow> = ["visible", "hidden", "scroll"];
-const POSITIONS: $ReadOnlyArray<Position> = ["relative", "absolute"];
+const POSITIONS: $ReadOnlyArray<Position> = ["static", "relative", "absolute"];
 const FLEX_WRAPS: $ReadOnlyArray<FlexWrap> = ["no-wrap", "wrap", "wrap-reverse"];
 const ALIGN_CONTENTS: $ReadOnlyArray<AlignContent> = [
   "flex-start",

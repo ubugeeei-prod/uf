@@ -30,6 +30,27 @@
 // component that swallows it has taken scrolling away from every reader who
 // uses the keyboard to read.
 //
+// # Where the selected tab is, for an indicator that slides
+//
+// An underline that moves from one tab to the next, rather than one that goes
+// out under the old tab and comes on under the new, needs one number no
+// stylesheet can work out: where the selected tab is inside the list. So
+// `Tabs.List` measures it and writes four custom properties on itself:
+//
+//   --uf-tabs-indicator-left     --uf-tabs-indicator-top
+//   --uf-tabs-indicator-width    --uf-tabs-indicator-height
+//
+// The selected tab's box, relative to the list's padding box — the box an
+// absolutely positioned child of the list is placed in — in CSS pixels. They
+// are **numbers without a unit**, which is the one form a stylesheet can use
+// both ways: `calc(var(--uf-tabs-indicator-left) * 1px)` is a length, and
+// `scaleX(var(--uf-tabs-indicator-width))` stretches a one-pixel bar to the
+// tab's width, which moves the indicator with `transform` alone and lays
+// nothing out while it travels. They are measured again whenever the list
+// renders and whenever the list or a tab changes size, and removed when no tab
+// is selected. As everywhere in this package, the numbers are the component's
+// and the look is the stylesheet's: nothing is drawn here.
+//
 // # Composition is type-checked
 //
 // `Tabs.List` takes `renders* TabsTab`, so putting a `<button>` in the list is
@@ -47,12 +68,18 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "@uniflowed/react";
 
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
-import { moveOnKey } from "./internal/roving-focus.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
+import { itemsOf, moveOnKey } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Orientation } from "./internal/roving-focus.js";
 
@@ -147,7 +174,45 @@ component TabsRoot(
  */
 component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Rest) {
   const tabs = useTabs("Tabs.List");
-  const props = withProps(withoutComposed(rest, ["onKeyDown"]), {
+  const listRef = useRef<HTMLElement | null>(null);
+  const selected = tabs.selected;
+
+  // Every render, with no dependency list, for the reason
+  // `internal/disclosure.js` gives for its height: the tabs a caller renders
+  // can change on any render, and what the indicator follows is where the
+  // selected one ended up. Every write is compared first, so a render that
+  // moved nothing writes nothing.
+  useEffect(() => {
+    const list = listRef.current;
+    if (list != null) {
+      placeIndicator(list);
+    }
+  });
+
+  // A tab can move without anything here rendering: a web font arriving, a
+  // label a sibling component translated, the window narrowing a list that
+  // wraps. Keyed on `selected` so the observer is watching the tabs there are
+  // now, which is when a new one may have arrived.
+  useEffect(() => {
+    const list = listRef.current;
+    const view = list?.ownerDocument?.defaultView;
+    if (list == null || view == null) {
+      return;
+    }
+    // Read off the window, for the reason `internal/anchor.js` gives.
+    const host: $FlowFixMe = view;
+    if (typeof host.ResizeObserver !== "function") {
+      return;
+    }
+    const sizes = new host.ResizeObserver(() => placeIndicator(list));
+    sizes.observe(list);
+    for (const tab of itemsOf(list, TAB, TAB_LIST)) {
+      sizes.observe(tab);
+    }
+    return () => sizes.disconnect();
+  }, [selected]);
+
+  const props = withProps(withoutComposed(rest, ["onKeyDown", "ref"]), {
     // A screen reader announces the axis, and it is also what tells a reader
     // which arrow keys to try.
     "aria-orientation": tabs.orientation,
@@ -159,8 +224,8 @@ component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Res
       // set inside somebody else's `dir="rtl"` walks the right way without
       // the caller having had to know it needed to say so.
       const next = moveOnKey(event, list, {
-        item: '[role="tab"]',
-        owner: '[role="tablist"]',
+        item: TAB,
+        owner: TAB_LIST,
         orientation: tabs.orientation,
         wrap: true,
         skipDisabled: true,
@@ -169,6 +234,11 @@ component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Res
         tabs.select(next.getAttribute("data-value") ?? "");
       }
     }),
+    // React calls callback refs during commit; the indicator effects read it later.
+    // uf-lint-disable-next-line react-compiler/refs
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      listRef.current = element;
+    }),
     role: "tablist",
   });
 
@@ -176,6 +246,57 @@ component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Res
     return render(props);
   }
   return <div {...props} />;
+}
+
+/** A tab, and the list that owns it, as the arrow keys and the indicator find them. */
+const TAB = '[role="tab"]';
+const TAB_LIST = '[role="tablist"]';
+
+/** The four properties the module header describes, in the order they are written. */
+const INDICATOR = [
+  "--uf-tabs-indicator-left",
+  "--uf-tabs-indicator-top",
+  "--uf-tabs-indicator-width",
+  "--uf-tabs-indicator-height",
+];
+
+/**
+ * Write the selected tab's box on `list`, or take it away when none is.
+ *
+ * Measured from the two bounding boxes rather than from `offsetLeft`, which is
+ * relative to the nearest *positioned* ancestor — the list only if a
+ * stylesheet happened to position it. The list's border is taken off and its
+ * scroll added back, so the numbers are in the padding box an absolutely
+ * positioned indicator is placed in, and a tab scrolled into view in a long
+ * list is still underlined where it is.
+ */
+function placeIndicator(list: HTMLElement): void {
+  const tab = itemsOf(list, TAB, TAB_LIST).find(
+    (each) => each.getAttribute("aria-selected") === "true",
+  );
+  const style = list.style;
+  if (tab == null) {
+    for (const name of INDICATOR) {
+      style.removeProperty(name);
+    }
+    return;
+  }
+  const outer = list.getBoundingClientRect();
+  const inner = tab.getBoundingClientRect();
+  const values = [
+    inner.left - outer.left - list.clientLeft + list.scrollLeft,
+    inner.top - outer.top - list.clientTop + list.scrollTop,
+    inner.width,
+    inner.height,
+  ];
+  INDICATOR.forEach((name, index) => {
+    // Two decimal places: enough for a device pixel at any zoom, and a number
+    // that does not change in its fifteenth digit between two renders.
+    const value = String(Math.round(values[index] * 100) / 100);
+    if (style.getPropertyValue(name) !== value) {
+      style.setProperty(name, value);
+    }
+  });
 }
 
 /**

@@ -931,7 +931,8 @@ mod tests {
         );
         // Documented by a `//` comment, not a doc block.
         assert!(
-            documented(schema, &[Step::Key("lint"), Step::Key("files")]).contains("Globs to lint.")
+            documented(schema, &[Step::Key("dev"), Step::Key("allowedHosts")])
+                .contains("`--host` refuses to bind a routable address")
         );
         // No comment of its own; the alias it is typed by has one.
         assert!(

@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useMemo, useState } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import { useControlled } from "./internal/controlled-state.js";
 import type { RenderProp, Rest } from "./internal/merge-props.js";
@@ -119,27 +119,55 @@ component NumberFieldRoot(
   const formatter = useMemo(() => numberFormatter(locale, formatOptions), [locale, formatOptions]);
   const [current, setCurrent] = useControlled(value, defaultValue, onValueChange);
   const [draft, setDraft] = useState<string | null>(null);
+  // The text as the last event handler left it, which can be ahead of the
+  // `draft` and `current` this render read: two keystrokes can land before React
+  // renders the first, and a handler installed by `useStableCallback` sees the
+  // values of the render that installed it. Without this, a second `ArrowUp`
+  // stepped from the same number as the first, and `Enter` committed the value
+  // from before either of them — `internal/segmented-field.js` holds a ref for
+  // the same window (#1609); this is #1614.
+  //
+  // Cleared after every commit rather than only when a value is stored, so a
+  // controlled parent that refuses a change still wins the next keystroke: the
+  // ref only ever spans a batch React has not rendered yet.
+  const proposed = useRef<string | null>(null);
+  useEffect(() => {
+    proposed.current = null;
+  });
+  const assess = (source: string) => {
+    const parsed = parseNumber(source, formatter);
+    const invalid =
+      parsed != null &&
+      (!Number.isFinite(parsed) ||
+        (min != null && parsed < min) ||
+        (max != null && parsed > max) ||
+        Math.abs(
+          (parsed - (min ?? 0)) / increment - Math.round((parsed - (min ?? 0)) / increment),
+        ) > 1e-7);
+    return { parsed, invalid };
+  };
   const text = draft ?? (current == null ? "" : formatter.format(current));
-  const parsed = parseNumber(text, formatter);
-  const invalid =
-    parsed != null &&
-    (!Number.isFinite(parsed) ||
-      (min != null && parsed < min) ||
-      (max != null && parsed > max) ||
-      Math.abs((parsed - (min ?? 0)) / increment - Math.round((parsed - (min ?? 0)) / increment)) >
-        1e-7);
+  const { invalid } = assess(text);
+  // Falls back to `text`, not to `current`: a draft the reader typed and has not
+  // committed is real state, and once the effect above has cleared `proposed` it
+  // is the only record of it. Reading `current` here committed the old value and
+  // threw away an invalid draft the field was meant to keep for correction.
+  const latest = useStableCallback((): string => proposed.current ?? text);
   const assign = useStableCallback((next: number | null) => {
     if (disabled || readOnly) return;
+    proposed.current = next == null ? "" : formatter.format(next);
     setDraft(null);
     setCurrent(next);
     onValidationChange?.(false);
   });
   const commit = useStableCallback(() => {
     if (disabled || readOnly) return;
+    const { parsed, invalid } = assess(latest());
     onValidationChange?.(invalid);
     if (!invalid) assign(parsed);
   });
   const stepBy = useStableCallback((direction: number) => {
+    const { parsed } = assess(latest());
     const start = parsed != null && Number.isFinite(parsed) ? parsed : (current ?? min ?? 0);
     const base = min ?? 0;
     const position = (start - base) / increment;
@@ -164,7 +192,9 @@ component NumberFieldRoot(
     max: upperBound,
     formatter,
     edit: (next: string) => {
-      if (!disabled && !readOnly) setDraft(next);
+      if (disabled || readOnly) return;
+      proposed.current = next;
+      setDraft(next);
     },
     commit,
     stepBy,

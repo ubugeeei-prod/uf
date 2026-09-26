@@ -1,7 +1,7 @@
 // @flow
 import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it } from "@uniflowed/test";
-import { cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
+import { act, cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 import {
   Field,
   I18nProvider,
@@ -164,6 +164,28 @@ describe("NumberField", () => {
     await userEvent.keyboard("{Enter}");
     expect(changed).toHaveBeenLastCalledWith(4);
     expect(input.getAttribute("aria-invalid")).toBe(null);
+  });
+
+  // Every keystroke below lands before React renders the one before it: an outer
+  // `act` holds each inner one open, so nothing flushes until the last key. A
+  // step has to start from what the previous keystroke left, and the commit has
+  // to read that too, rather than the value the last render saw. The same window
+  // as #1609, reached here through `stepBy` and `commit` instead of a draft.
+  it("steps and commits from the latest keystroke, not the render's", () => {
+    const changed = fn();
+    render(
+      <NumberField.Root defaultValue={2} min={0} max={10} step={2} onValueChange={changed}>
+        <NumberField.Input aria-label="Count" />
+      </NumberField.Root>,
+    );
+    const input = screen.getByRole("spinbutton");
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(changed).toHaveBeenLastCalledWith(6);
+    expect(input).toHaveValue("6");
   });
 });
 

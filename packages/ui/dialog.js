@@ -89,6 +89,7 @@ import {
 } from "./internal/merge-props.js";
 import { focusable } from "./internal/focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 
 /**
  * What a screen reader is told the dialog is.
@@ -205,10 +206,22 @@ component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest
  */
 component DialogOverlay(render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Overlay");
-  if (!dialog.open) {
+  const overlayRef = useRef<HTMLElement | null>(null);
+  // It fades out with the panel rather than vanishing under it, and it is
+  // `inert` while it does, so a press on the fading scrim reaches the page.
+  const presence = usePresence(dialog.open, overlayRef);
+  if (!presence.present) {
     return null;
   }
-  const props = withProps(rest, { "aria-hidden": "true", "data-state": "open" });
+  const props = withProps(withoutComposed(rest, ["ref"]), {
+    ...presenceProps(presence),
+    "aria-hidden": "true",
+    // React calls callback refs during commit; the presence hook reads it later.
+    // uf-lint-disable-next-line react-compiler/refs
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      overlayRef.current = element;
+    }),
+  });
   if (render != null) {
     return render(props);
   }
@@ -251,6 +264,10 @@ component DialogBody(
   // shared one is the one that also pads out the scrollbar's width — a page
   // that jumps sideways when a dialog opens is this component's doing.
   useScrollLock(dialog.open);
+  // On the page for as long as its exit runs. Everything above and below is
+  // keyed on `dialog.open` instead, so the lock lifts, the page comes back and
+  // focus returns at the moment of closing, not when the panel has faded.
+  const presence = usePresence(dialog.open, bodyRef);
 
   useEffect(() => {
     const body = bodyRef.current;
@@ -299,7 +316,7 @@ component DialogBody(
     refs: [bodyRef, dialog.triggerRef],
   });
 
-  if (!dialog.open) {
+  if (!presence.present) {
     return null;
   }
 
@@ -314,8 +331,11 @@ component DialogBody(
     // the caller passed instead.
     "aria-describedby": dialog.described ? `${dialog.base}-description` : undefined,
     "aria-labelledby": dialog.titled ? `${dialog.base}-title` : undefined,
-    "aria-modal": "true",
+    // Only while open: a closing panel is `inert`, and a modal a reader cannot
+    // reach must not go on telling them the rest of the page is unavailable.
+    "aria-modal": dialog.open ? "true" : undefined,
     children,
+    ...presenceProps(presence),
     id: `${dialog.base}-body`,
     // Key handling closes the mounted dialog and restores focus after events.
     // uf-lint-disable-next-line react-compiler/refs
@@ -519,7 +539,11 @@ function concealOutside(element: HTMLElement): () => void {
       } else {
         entry.element.setAttribute("aria-hidden", entry.hidden);
       }
-      if (!entry.inert) {
+      // Nor a part that is on its way out. A scrim beside the panel was
+      // concealed with the rest of the page, and is now fading out `inert` of
+      // its own accord (`internal/presence.js`); taking that away would leave
+      // an invisible layer over the page that swallows the next press.
+      if (!entry.inert && entry.element.getAttribute("data-state") !== "closed") {
         entry.element.removeAttribute("inert");
       }
     }

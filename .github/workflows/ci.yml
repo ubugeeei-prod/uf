@@ -320,6 +320,8 @@ jobs:
       - run: ./target/release/uf run check:ui
       - run: ./target/release/uf run check:web
       - run: ./target/release/uf run check:contracts
+      - run: ./target/release/uf run check:release
+      - run: ./target/release/uf run check:tools
 
   docs:
     name: Docs build
@@ -645,7 +647,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           toolchain: nightly-2026-08-01
-          targets: wasm32-wasip1
+          targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         if: needs.changes.outputs.code == 'true'
         with:
@@ -661,7 +663,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           ./node_modules/.bin/vsce package --out "$RUNNER_TEMP/uf.vsix"
-      - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1
+      - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2
         if: needs.changes.outputs.code == 'true'
 
   bench-compile:

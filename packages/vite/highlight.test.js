@@ -456,6 +456,11 @@ describe("the highlighter is configured by uf.config.js", () => {
     expect(options.themes).toEqual({ light: "solarized-light", dark: "nord" });
   });
 
+  it("keeps uf's other theme when a project names only one", () => {
+    const [, options] = highlightPlugin({ themes: { dark: "nord" } });
+    expect(options.themes).toEqual({ light: "github-light", dark: "nord" });
+  });
+
   it("falls back to both GitHub themes when a project configures nothing", () => {
     const [, options] = highlightPlugin(undefined);
     expect(options.themes).toEqual({ light: "github-light", dark: "github-dark-dimmed" });

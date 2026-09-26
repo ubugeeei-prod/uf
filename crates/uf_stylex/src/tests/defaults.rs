@@ -22,8 +22,10 @@
 //!   above 1 — no pop from nothing, no bounce past the end. Under
 //!   `prefers-reduced-motion: reduce` it either stops (`0s`) or only fades and
 //!   changes colour. And the other half, which #1414 lost: every overlay has an
-//!   enter transition from a `@starting-style`, and every control that changes
-//!   state in a way the eye should follow transitions it.
+//!   enter transition from a `@starting-style` and an exit on
+//!   `[data-state=closed]` that is shorter than the entrance and accelerates,
+//!   and every control that changes state in a way the eye should follow
+//!   transitions it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -272,16 +274,31 @@ const LAYOUT: &[&str] = &[
 ];
 
 /// Where a default style animates a layout property on purpose, and why.
-const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[(
-    "registry/ui/drawer.js",
-    "a drawer is a fixed overlay on its own edge, and moving between snap points resizes \
-     it; nothing else on the page moves",
-)];
+const LAYOUT_MOTION_ALLOWED: &[(&str, &str)] = &[
+    (
+        "registry/ui/drawer.js",
+        "a drawer is a fixed overlay on its own edge, and moving between snap points resizes \
+         it; nothing else on the page moves",
+    ),
+    (
+        "registry/ui/accordion.js",
+        "a panel opening is the content below it making room, which is the one thing the \
+         reader has to see happen; it moves to a measured height, not to `auto`, and stops \
+         under reduced motion",
+    ),
+    (
+        "registry/ui/collapsible.js",
+        "the same as an accordion's panel, one section at a time",
+    ),
+];
 
 /// What deserves motion and must have it: `(file, style, property)` where the
-/// style transitions `property`, and — for an overlay, marked `true` — enters:
-/// it fades in from a `@starting-style` opacity, starts `property` from a
-/// `@starting-style` too, and arrives on `easingEnter`.
+/// style transitions `property`, and — for an overlay, marked `true` — enters
+/// and leaves. It fades in from a `@starting-style` opacity, starts `property`
+/// from a `@starting-style` too, and arrives on `easingEnter`; and it has a
+/// value for both under [`CLOSED`], which `@uniflowed/ui` writes on a closing
+/// part while it keeps it on the page, reached in a shorter duration token than
+/// the entrance's on `easingExit`.
 ///
 /// A style is found by its name in the file, so a name listed here has to be
 /// unique there; the preset's recipes name their namespaces for that reason.
@@ -329,6 +346,9 @@ const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
     ),
     ("registry/ui/radio-group.js", "dot", "opacity", false),
     ("registry/ui/tabs.js", "tab", "border-color", false),
+    ("registry/ui/tabs.js", "indicator", "transform", false),
+    ("registry/ui/accordion.js", "content", "height", false),
+    ("registry/ui/collapsible.js", "content", "height", false),
     ("registry/ui/progress.js", "fill", "transform", false),
     ("registry/ui/accordion.js", "chevron", "transform", false),
     ("registry/ui/collapsible.js", "chevron", "transform", false),
@@ -353,6 +373,10 @@ const MUST_MOVE: &[(&str, &str, &str, bool)] = &[
     ("packages/stylex/preset.js", "tab", "border-color", false),
     ("packages/stylex/preset.js", "tab", "outline-width", false),
 ];
+
+/// The attribute `@uniflowed/ui` writes on a part that is closing and still on
+/// the page, which is what an exit transitions from.
+const CLOSED: &str = "[data-state=closed]";
 
 /// The value a token declares.
 fn token(module: &CompiledModule, key: &str) -> String {
@@ -677,12 +701,58 @@ fn what_deserves_motion_has_it() {
                      settles on"
                 ));
             }
+
+            // And it leaves: the same properties have somewhere to go while
+            // `@uniflowed/ui` holds the closing part on the page.
+            let closing = |condition: &StyleCondition| matches!(condition, StyleCondition::PseudoClass(text) if text.contains(CLOSED));
+            for key in ["opacity", "transform"] {
+                if key == "transform" && *moved == "opacity" {
+                    continue;
+                }
+                if !rules(key).iter().any(|(condition, _)| closing(condition)) {
+                    found.push(format!(
+                        "{path} `{name}` has no `{CLOSED}` value for `{key}`, so it vanishes \
+                         rather than leaving"
+                    ));
+                }
+            }
+            let exit = format!("var({})", variable_name(NAMESPACE, "easingExit"));
+            let accelerates = rules("transitionTimingFunction")
+                .iter()
+                .any(|(condition, value)| closing(condition) && *value == exit);
+            if !accelerates {
+                found.push(format!(
+                    "{path} `{name}` does not leave on `easingExit`, the curve that gets out of \
+                     the way"
+                ));
+            }
+            // Shorter than it came: the step down the duration tokens.
+            let step = |value: &str| {
+                DURATIONS
+                    .iter()
+                    .position(|key| value == format!("var({})", variable_name(NAMESPACE, key)))
+            };
+            let durations = rules("transitionDuration");
+            let entering = durations
+                .iter()
+                .find(|(condition, _)| **condition == StyleCondition::Base)
+                .and_then(|(_, value)| step(value));
+            let leaving = durations
+                .iter()
+                .find(|(condition, _)| closing(condition))
+                .and_then(|(_, value)| step(value));
+            if !matches!((entering, leaving), (Some(enters), Some(leaves)) if leaves < enters) {
+                found.push(format!(
+                    "{path} `{name}` does not leave in a shorter duration token than it enters \
+                     in; an exit is quicker than an entrance"
+                ));
+            }
         }
     }
     assert!(
         found.is_empty(),
-        "every overlay enters and every control that changes state moves; quiet is not \
-         absent:\n  {}",
+        "every overlay enters and leaves, and every control that changes state moves; quiet \
+         is not absent:\n  {}",
         found.join("\n  ")
     );
 }

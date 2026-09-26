@@ -1,3 +1,5 @@
+// @flow
+//
 // Production HTTP comparison for #1363. This runs on the same CI runner and
 // generated application as the toolchain benchmark, with three route shapes.
 import fs from "node:fs";
@@ -8,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 import { generateFixture, linkDependencies, presetNamed } from "./fixture.js";
 import { freePort, run, startDevServer, waitForDocument } from "./measure.js";
+import type { DevServer } from "./measure.js";
 import { mirrorInto, rivalFiles, RIVALS_DIR, writeFiles } from "./rivals.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -34,7 +37,30 @@ if (work === repo || work.startsWith(`${repo}${path.sep}`)) {
   throw new Error("the SSR benchmark work directory must be outside this repository");
 }
 
-const routes = [
+/** One page of the request mix, and the text that proves it rendered. */
+type Route = { readonly name: string, readonly path: string, readonly marker: string };
+
+/** One route's numbers for one server. */
+type Row = {
+  readonly route: string,
+  readonly requests: number,
+  readonly elapsedMs: number,
+  readonly requestsPerSecond: number,
+  readonly p50Ms: number,
+  readonly p99Ms: number,
+  readonly peakRssBytes: number | null,
+};
+
+type ToolRow = { ...Row, readonly tool: string };
+
+/** A column of the comparison: which number, and which direction is a win. */
+type Metric = {
+  readonly label: string,
+  readonly value: (row: ToolRow) => number | null,
+  readonly higherIsBetter: boolean,
+};
+
+const routes: $ReadOnlyArray<Route> = [
   { name: "static", path: "/r001", marker: "Route 1" },
   { name: "dynamic", path: "/bench-dynamic", marker: "dynamic benchmark" },
   { name: "streamed", path: "/bench-stream", marker: "streamed benchmark" },
@@ -50,7 +76,7 @@ export default function Page() { return <main>dynamic benchmark</main>; }
 const ufStream = `// @flow
 import * as React from "@uniflowed/react";
 export const dynamic = "force-dynamic";
-async function Slow(): Promise<React.Node> {
+async function Slow(): Promise<React.MixedElement> {
   await new Promise<void>((resolve) => setTimeout(resolve, 5));
   return <p>streamed benchmark</p>;
 }
@@ -69,13 +95,13 @@ export default function Page() {
 }
 `;
 
-function write(dir, name, contents) {
+function write(dir: string, name: string, contents: string): void {
   const file = path.join(dir, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, contents);
 }
 
-function rssTree(pid, seen = new Set()) {
+function rssTree(pid: ?number, seen: Set<number> = new Set()): number {
   if (pid == null || seen.has(pid) || process.platform !== "linux") return 0;
   seen.add(pid);
   let bytes = 0;
@@ -92,11 +118,11 @@ function rssTree(pid, seen = new Set()) {
   return bytes;
 }
 
-function percentile(sorted, fraction) {
+function percentile(sorted: $ReadOnlyArray<number>, fraction: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
 }
 
-async function sample(server, route) {
+async function sample(server: DevServer, route: Route): Promise<number> {
   const started = performance.now();
   const response = await fetch(`http://127.0.0.1:${server.port}${route.path}`, {
     headers: { accept: "text/html" },
@@ -114,14 +140,15 @@ async function sample(server, route) {
   return performance.now() - started;
 }
 
-async function load(server) {
+async function load(server: DevServer): Promise<Array<Row>> {
   // Both servers see the same round-robin request mix at the same concurrency.
   await Promise.all(
     Array.from({ length: concurrency }, (_, index) =>
       sample(server, routes[index % routes.length]),
     ),
   );
-  const latencies = new Map(routes.map((route) => [route.name, []]));
+  // One list per route, in `routes`' order.
+  const latencies: Array<Array<number>> = routes.map(() => []);
   let requestNumber = 0;
   let peakRssBytes = 0;
   const ticker = setInterval(() => {
@@ -133,9 +160,9 @@ async function load(server) {
     await Promise.all(
       Array.from({ length: concurrency }, async () => {
         while (performance.now() < deadline) {
-          const route = routes[requestNumber % routes.length];
+          const index = requestNumber % routes.length;
           requestNumber += 1;
-          latencies.get(route.name).push(await sample(server, route));
+          latencies[index].push(await sample(server, routes[index]));
         }
       }),
     );
@@ -143,9 +170,9 @@ async function load(server) {
     clearInterval(ticker);
   }
   const elapsedMs = performance.now() - started;
-  const all = [...latencies.values()].flat().sort((a, b) => a - b);
-  const rows = routes.map((route) => {
-    const samples = latencies.get(route.name);
+  const all = latencies.flat().sort((a, b) => a - b);
+  const rows = routes.map((route, index): Row => {
+    const samples = latencies[index];
     samples.sort((a, b) => a - b);
     if (samples.length === 0) {
       throw new Error(`${server.label} ${route.path}: no completed requests`);
@@ -172,7 +199,12 @@ async function load(server) {
   return rows;
 }
 
-async function checkedBuild(program, args, dir, label) {
+async function checkedBuild(
+  program: string,
+  args: $ReadOnlyArray<string>,
+  dir: string,
+  label: string,
+): Promise<void> {
   const result = await run(program, args, {
     cwd: dir,
     env: process.env,
@@ -183,7 +215,12 @@ async function checkedBuild(program, args, dir, label) {
   }
 }
 
-async function measure(tool, program, args, dir) {
+async function measure(
+  tool: string,
+  program: string,
+  args: (port: number) => $ReadOnlyArray<string>,
+  dir: string,
+): Promise<Array<ToolRow>> {
   const port = await freePort();
   const server = startDevServer(program, args(port), {
     cwd: dir,
@@ -200,7 +237,7 @@ async function measure(tool, program, args, dir) {
   }
 }
 
-async function main() {
+async function main(): Promise<void> {
   fs.rmSync(work, { recursive: true, force: true });
   fs.mkdirSync(work, { recursive: true });
   const ufDir = path.join(work, "uf");
@@ -268,19 +305,31 @@ async function main() {
       );
     }
   }
-  const differences = [];
+  const metrics: $ReadOnlyArray<Metric> = [
+    { label: "req/s", value: (row) => row.requestsPerSecond, higherIsBetter: true },
+    { label: "p50 ms", value: (row) => row.p50Ms, higherIsBetter: false },
+    { label: "p99 ms", value: (row) => row.p99Ms, higherIsBetter: false },
+  ];
+  // Memory is sampled per server rather than per route, so only the mix has it.
+  const rss: Metric = {
+    label: "peak RSS MiB",
+    value: (row) => row.peakRssBytes,
+    higherIsBetter: false,
+  };
+  const differences: Array<{ route: string, metric: string, improvement: number }> = [];
   for (const routeName of ["mixed", ...routes.map((route) => route.name)]) {
     const ours = rows.find((row) => row.route === routeName && row.tool === "uf");
     const next = rows.find((row) => row.route === routeName && row.tool === "next");
-    for (const [label, key, higherIsBetter] of [
-      ["req/s", "requestsPerSecond", true],
-      ["p50 ms", "p50Ms", false],
-      ["p99 ms", "p99Ms", false],
-      ...(routeName === "mixed" ? [["peak RSS MiB", "peakRssBytes", false]] : []),
-    ]) {
-      if (ours[key] == null || next[key] == null) continue;
-      const improvement =
-        (higherIsBetter ? ours[key] - next[key] : next[key] - ours[key]) / next[key];
+    if (ours == null || next == null) {
+      throw new Error(`${routeName}: both servers must report every route`);
+    }
+    for (const { label, value, higherIsBetter } of routeName === "mixed"
+      ? [...metrics, rss]
+      : metrics) {
+      const mine = value(ours);
+      const theirs = value(next);
+      if (mine == null || theirs == null) continue;
+      const improvement = (higherIsBetter ? mine - theirs : theirs - mine) / theirs;
       differences.push({ route: routeName, metric: label, improvement });
     }
   }

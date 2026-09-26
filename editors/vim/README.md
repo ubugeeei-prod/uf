@@ -56,8 +56,8 @@ That is vim-lsp-settings' documented option, and not checked here.
 
 ## What you do not get
 
-`:LspRename` and `:LspReferences` have no server behind them — `uf lsp`
-advertises neither provider. `:LspHover` and `:LspDefinition` answer nothing
+`:LspSignatureHelp` has no server behind it — `uf lsp` does not advertise it.
+`:LspHover`, `:LspDefinition`, `:LspReferences` and `:LspRename` answer nothing
 while the file does not parse, since there is no inference to ask.
 
 ## Working directory

@@ -109,6 +109,9 @@
 
 import { useEffect } from "@uniflowed/react";
 
+import type { Presence } from "./presence.js";
+import { isAnimating, usePresence } from "./presence.js";
+
 /**
  * Report that this part is in the document, for as long as it is.
  *
@@ -117,7 +120,7 @@ import { useEffect } from "@uniflowed/react";
  * function lets a part be rendered outside the thing that would name it
  * without the caller having to care.
  */
-export hook usePresence(register: ((present: boolean) => void) | void): void {
+export hook useRegistered(register: ((present: boolean) => void) | void): void {
   useEffect(() => {
     if (register == null) {
       return;
@@ -130,22 +133,51 @@ export hook usePresence(register: ((present: boolean) => void) | void): void {
 /**
  * Keep a closed panel hidden the way the platform means it: findable.
  *
- * The element must be rendered with a plain boolean `hidden` as well — see the
- * module header. This only upgrades the attribute React has already committed,
- * so a browser that has never heard of `until-found` sees exactly the `hidden`
- * it would have seen, and one that has can reveal the section for a
- * find-in-page hit.
+ * `shown` is whether the panel is on screen, which for a panel that animates
+ * its height is longer than it is open: see `useDisclosurePanel`. The element
+ * must be rendered with a plain boolean `hidden` whenever `shown` is false —
+ * see the module header. This only upgrades the attribute React has already
+ * committed, so a browser that has never heard of `until-found` sees exactly
+ * the `hidden` it would have seen, and one that has can reveal the section for
+ * a find-in-page hit.
  */
-export hook useUntilFound(ref: { current: HTMLElement | null }, open: boolean): void {
+export hook useUntilFound(ref: { current: HTMLElement | null }, shown: boolean): void {
   useEffect(() => {
     const element = ref.current;
-    // Nothing to do while it is open: React has removed the attribute, and
-    // adding one back would hide a panel the reader just opened.
-    if (element == null || open) {
+    // Nothing to do while it is shown: React has removed the attribute, and
+    // adding one back would hide a panel the reader just opened, or cut short
+    // one that is still closing.
+    if (element == null || shown) {
       return;
     }
     element.setAttribute("hidden", "until-found");
-  }, [ref, open]);
+  }, [ref, shown]);
+}
+
+/**
+ * A disclosure's panel: whether it is shown, and the state it is in.
+ *
+ * `open` is the disclosure's state, which the trigger's `aria-expanded` says.
+ * The panel is shown for longer than that. When it closes it stays on screen,
+ * with `data-state="closed"` and `inert`, for as long as its height transition
+ * runs, and only then becomes `hidden` — so a stylesheet can take it from
+ * `var(--uf-collapsible-height)` down to `0`, which it could not if the panel
+ * were `display: none` at the moment of closing. `internal/presence.js` decides
+ * when the transition has finished, and with nothing animating the panel is
+ * hidden in the same commit, as it always was.
+ *
+ * The caller renders `hidden={!presence.present}` and spreads
+ * `presenceProps(presence)`.
+ */
+export hook useDisclosurePanel(
+  ref: { current: HTMLElement | null },
+  open: boolean,
+  measure: boolean,
+): Presence {
+  const presence = usePresence(open, ref);
+  useUntilFound(ref, presence.present);
+  useMeasuredHeight(ref, measure);
+  return presence;
 }
 
 /** The custom property a stylesheet transitions a disclosure's height to. */
@@ -202,10 +234,20 @@ function widthInFlow(element: HTMLElement): string | null {
  * inline declaration this wrote.
  */
 function heightOf(element: HTMLElement): number {
-  if (!element.hasAttribute("hidden")) {
-    return element.getBoundingClientRect().height;
-  }
   const style = element.style;
+  if (!element.hasAttribute("hidden")) {
+    // Shown, so it has a box, but not necessarily the height of its content:
+    // the stylesheet this property exists for holds an open panel at
+    // `var(--uf-collapsible-height)`, and a panel whose content grew or shrank
+    // would measure the old number for ever. `height: auto` for the one read,
+    // as below. `useMeasuredHeight` only asks while nothing is transitioning,
+    // so this cannot cut a transition short.
+    const height = style.height;
+    style.height = "auto";
+    const measured = element.getBoundingClientRect().height;
+    style.height = height;
+    return measured;
+  }
   const before = {
     boxSizing: style.boxSizing,
     contentVisibility: style.getPropertyValue("content-visibility"),
@@ -267,12 +309,7 @@ export hook useMeasuredHeight(ref: { current: HTMLElement | null }, enabled: boo
     if (!enabled || element == null) {
       return;
     }
-    const measured = `${String(heightOf(element))}px`;
-    // Compared before writing, so a render that changed nothing does not dirty
-    // the element's style and invite another style recalculation.
-    if (element.style.getPropertyValue(HEIGHT_PROPERTY) !== measured) {
-      element.style.setProperty(HEIGHT_PROPERTY, measured);
-    }
+    remeasure(element);
   });
 
   useEffect(() => {
@@ -289,10 +326,35 @@ export hook useMeasuredHeight(ref: { current: HTMLElement | null }, enabled: boo
     if (typeof host.ResizeObserver !== "function") {
       return;
     }
-    const sizes = new host.ResizeObserver(() => {
-      element.style.setProperty(HEIGHT_PROPERTY, `${String(heightOf(element))}px`);
-    });
+    const sizes = new host.ResizeObserver(() => remeasure(element));
     sizes.observe(element);
+    // And what is inside it. An open panel is held at the height it was
+    // measured at, so its own box does not change when an image inside it
+    // loads; the content's does.
+    for (const child of Array.from(element.children)) {
+      sizes.observe(child);
+    }
     return () => sizes.disconnect();
   }, [ref, enabled]);
+}
+
+/**
+ * Write what `element` would measure into `HEIGHT_PROPERTY`, unless it is
+ * moving.
+ *
+ * A panel opening or closing is mid-transition, and asking then reads a frame
+ * of the transition and, for a shown panel, cancels it: `heightOf` sets
+ * `height: auto` for its read. The panel was measured before it started to
+ * move, and it is measured again once it has stopped.
+ */
+function remeasure(element: HTMLElement): void {
+  if (!element.hasAttribute("hidden") && isAnimating(element)) {
+    return;
+  }
+  const measured = `${String(heightOf(element))}px`;
+  // Compared before writing, so a render that changed nothing does not dirty
+  // the element's style and invite another style recalculation.
+  if (element.style.getPropertyValue(HEIGHT_PROPERTY) !== measured) {
+    element.style.setProperty(HEIGHT_PROPERTY, measured);
+  }
 }

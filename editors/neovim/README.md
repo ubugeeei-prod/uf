@@ -89,13 +89,16 @@ asserts each of them.
 | Hover | `K`. The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, or what a key of `uf.config.js` is for; anywhere else in a Flow file, the type under the cursor as Flow infers it. |
 | Definition | `<C-]>`, since Neovim points `tagfunc` at the server, or `:lua vim.lsp.buf.definition()`. Across files, into `node_modules`, and into `flow-typed/`. |
 | Type definition | `:lua vim.lsp.buf.type_definition()`: the declaration of the named types in the type under the cursor. |
+| References | `:lua vim.lsp.buf.references()`, in every project file that reaches the definition; `vim.lsp.buf.document_highlight()` for the uses in this file. |
+| Rename | `:lua vim.lsp.buf.rename()`, across the project's files. Refused for a name a package or a library definition declares. |
+| Symbols | `:lua vim.lsp.buf.document_symbol()`, the file's outline. |
 | Completion | `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. In `uf.config.js`: the keys valid at the cursor, with their documentation and type, after `"` the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file: after `.`, the members of the value's type with their types, and elsewhere the names in scope. |
 
 ## What you do not get
 
-No rename, no references, no document symbols and no signature help — `uf lsp`
-does not advertise any of them, so `vim.lsp.buf.rename()` will tell you the
-server has no handler. Hover and definitions answer nothing while the file does not
+No signature help — `uf lsp` does not advertise it, so
+`vim.lsp.buf.signature_help()` will tell you the server has no handler. Hover,
+definitions, references and rename answer nothing while the file does not
 parse, since there is no inference to ask.
 
 ## Working directory

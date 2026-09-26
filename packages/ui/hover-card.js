@@ -39,7 +39,15 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useEffect, useId, useMemo, useRef } from "@uniflowed/react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "@uniflowed/react";
 import { useEventListener } from "@uniflowed/hooks/dom";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
@@ -56,6 +64,7 @@ import {
 } from "./internal/hover-intent.js";
 import { useAnchor } from "./internal/anchor.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { presenceProps, usePresence } from "./internal/presence.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -218,15 +227,17 @@ component HoverCardBody(
   const bodyRef = useRef<HTMLElement | null>(null);
   // Whether the reader is *in* the card, as opposed to over it. It decides one
   // thing and it cannot be asked afterwards: a card closed while it held focus
-  // has to hand focus back, and by the time the effect below is cleaned up the
-  // element is gone from the document and `activeElement` has already fallen to
-  // `<body>` — so the answer is kept while it is still true.
+  // has to hand focus back, and by the time the card has closed the element is
+  // `inert` or gone and `activeElement` may already have fallen to `<body>` —
+  // so the answer is kept while it is still true.
   const heldRef = useRef(false);
   const close = useStableCallback(() => {
     dismissedRef.current = true;
     intent.cancel();
     card.setOpen(false);
   });
+  // On the page while its exit runs; everything else stays keyed on `open`.
+  const presence = usePresence(open, bodyRef);
 
   const anchored = useAnchor({
     align,
@@ -234,7 +245,7 @@ component HoverCardBody(
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
-    open,
+    open: presence.present,
     overlayRef: bodyRef,
     side,
     sideOffset,
@@ -287,7 +298,13 @@ component HoverCardBody(
   // dependencies change — and `closeDelay` is a caller's prop. A caller
   // changing it while the card was open with focus inside pulled focus off the
   // link the reader was on, and the effect then re-attached with `held` reset.
-  useEffect(() => {
+  //
+  // A layout effect, so it runs in the commit that closed the card. The card
+  // stays on the page, `inert`, while its exit plays, and a browser moves focus
+  // out of an inert element when it next renders. That move fires `focusout`,
+  // which would say the reader had left before this could ask whether they were
+  // inside.
+  useLayoutEffect(() => {
     if (open) {
       return;
     }
@@ -309,7 +326,7 @@ component HoverCardBody(
     [triggerRef],
   );
 
-  if (!open) {
+  if (!presence.present) {
     return null;
   }
 
@@ -317,7 +334,7 @@ component HoverCardBody(
     children,
     "data-align": anchored.align,
     "data-side": anchored.side,
-    "data-state": "open",
+    ...presenceProps(presence),
     id: `${card.base}-body`,
     // React calls callback refs during commit; placement effects read it later.
     // uf-lint-disable-next-line react-compiler/refs

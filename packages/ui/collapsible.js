@@ -35,12 +35,21 @@
 //
 //   [data-collapsible-content] {
 //     overflow: hidden;
-//     transition: height 150ms;
-//     height: 0;
-//   }
-//   [data-collapsible-content]:not([hidden]) {
 //     height: var(--uf-collapsible-height);
+//     transition: height 200ms;
 //   }
+//   @starting-style {
+//     [data-collapsible-content] { height: 0; }
+//   }
+//   [data-collapsible-content][data-state=closed] {
+//     height: 0;
+//     transition-duration: 150ms;
+//   }
+//
+// It opens from the `@starting-style` and closes on `[data-state=closed]`.
+// A closing panel is not `hidden` yet: it stays on screen, closed and `inert`,
+// until that transition has finished, and becomes `hidden` (and findable) only
+// then. With no transition to wait for it is hidden at once.
 //
 // The selector is the caller's — a class, a `data-*` of their own, whatever
 // they already style with. This package emits the number and no styles at all,
@@ -59,7 +68,8 @@ import {
   withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
-import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
+import { useDisclosurePanel, useRegistered } from "./internal/disclosure.js";
+import { presenceProps } from "./internal/presence.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 type CollapsibleState = {|
@@ -144,18 +154,19 @@ component CollapsibleTrigger(
  *
  * It is always rendered and `hidden` while closed, rather than removed — see
  * the module header, and `internal/disclosure.js` for what `hidden` is upgraded
- * to and why that takes an effect.
+ * to and why that takes an effect. `data-state` says whether it is open or
+ * closing, and `hidden` waits for a closing transition to finish.
  */
 component CollapsibleContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const collapsible = useCollapsible("Collapsible.Content");
   const contentRef = useRef<HTMLElement | null>(null);
-  usePresence(collapsible.registerContent);
-  useUntilFound(contentRef, collapsible.open);
-  useMeasuredHeight(contentRef, collapsible.measure);
+  useRegistered(collapsible.registerContent);
+  const presence = useDisclosurePanel(contentRef, collapsible.open, collapsible.measure);
 
   const props = withProps(withoutComposed(rest, ["ref"]), {
+    ...presenceProps(presence),
     children,
-    hidden: !collapsible.open,
+    hidden: !presence.present,
     id: collapsible.contentId,
     // React calls callback refs during commit; this node is only read by effects.
     // uf-lint-disable-next-line react-compiler/refs

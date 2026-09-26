@@ -11,6 +11,81 @@ const TOOL_DECLARATIONS_SINCE: Release = Release::alpha(41);
 /// namespace only, without the prefixed part names (ubugeeei-prod/uf#1453).
 pub(super) const UI_NAMESPACES_SINCE: Release = Release::minor(3);
 
+pub(super) const UNREAD_KEYS: &str = "unread-config-keys-1387";
+/// The release that removed the configuration keys nothing read
+/// (ubugeeei-prod/uf#1387).
+pub(super) const UNREAD_KEYS_SINCE: Release = Release::minor(10);
+
+/// Every key ubugeeei-prod/uf#1387 removed, as a path into `uf.config.js`.
+///
+/// Each was declared by `@uniflowed/config`, accepted by the loader, and read
+/// by nothing — or only printed, or typed with the one value it could hold —
+/// so taking it out changes no behaviour. A whole section is one entry where
+/// every key in it went.
+const UNREAD_KEYS_REMOVED: &[&[&str]] = &[
+    &["app", "componentDefault"],
+    &["app", "orm"],
+    &["app", "react", "version"],
+    &["app", "react", "asyncReact"],
+    &["app", "react", "suspense"],
+    &["app", "react", "useHook"],
+    &["app", "router", "convention"],
+    &["app", "rendering", "cache", "actions"],
+    &["app", "builtins", "cell"],
+    &["app", "builtins", "data"],
+    &["app", "builtins", "effect"],
+    &["app", "builtins", "fetch"],
+    &["app", "builtins", "frameworkLints"],
+    &["app", "builtins", "graphql"],
+    &["app", "builtins", "loader"],
+    &["app", "builtins", "motion"],
+    &["app", "builtins", "nativeTestRunner"],
+    &["app", "builtins", "pwa"],
+    &["app", "builtins", "reactTestingLibrary"],
+    &["app", "builtins", "temporal"],
+    &["app", "builtins", "tui"],
+    &["app", "builtins", "web"],
+    &["app", "builtins", "markdown", "module"],
+    &["app", "builtins", "markdown", "engine"],
+    &["app", "builtins", "markdown", "cache"],
+    &["app", "builtins", "markdown", "mdx", "extensions"],
+    &["app", "builtins", "markdown", "mdx", "pipelinePlugin"],
+    &["app", "builtins", "reactCompiler", "implementation"],
+    &["build", "hooks"],
+    &["dev", "allowedOrigins"],
+    &["docs", "enabled"],
+    &["docs", "app"],
+    &["docs", "source"],
+    &["docs", "staticBuild"],
+    &["docs", "deploy"],
+    &["fmt", "maxBlankLines"],
+    &["fmt", "flow"],
+    &["lint", "engine"],
+    &["lint", "files"],
+    &["lint", "flow"],
+    &["package"],
+    &["pm", "module"],
+    &["pm", "resolver"],
+    &["publish", "dryRun"],
+    &["publish", "firstPublish"],
+    &["publish", "trustedPublish"],
+    &["release", "command"],
+    &["release", "publish"],
+    &["rm"],
+    &["server"],
+    &["std"],
+    &["story"],
+    &["taskRunner", "engine"],
+    &["test", "reactTestingLibraryNative"],
+    &["test", "runner", "runtime"],
+    &["test", "runner", "jsHosts"],
+    &["test", "runner", "scheduler"],
+    &["test", "runner", "performanceTarget"],
+    &["test", "runner", "officialFlowParser"],
+    &["vrt", "enabled"],
+    &["vrt", "module"],
+];
+
 /// Every migration between two releases, planned against the project at
 /// `root`, for the uf binary running it.
 pub(super) fn plan(root: &Utf8Path, from: Option<&str>, to: &str) -> Result<Plan> {
@@ -65,6 +140,10 @@ pub(super) fn plan_for(
             }
         }
         plan.migrations.push(TOOL_DECLARATIONS.to_owned());
+    }
+    if from_number < UNREAD_KEYS_SINCE && to_number >= UNREAD_KEYS_SINCE {
+        unread_keys(&mut after, &mut plan.unmapped);
+        plan.migrations.push(UNREAD_KEYS.to_owned());
     }
     if after != before {
         plan.write("uf.config.js", before, after);
@@ -151,6 +230,71 @@ impl Release {
             }
         };
         Ok(Self { core, stage })
+    }
+}
+
+/// Take out every key ubugeeei-prod/uf#1387 removed, and a section left empty
+/// by it.
+///
+/// A key that is not a static value — a spread, a computed key — is reported
+/// and left for a person, like every other migration here. Two keys it reads
+/// the value of rather than removing blindly:
+///
+/// * `mdx.jsxImportSource` is read now, and `"@uniflowed/jsx-runtime"` — its
+///   old default and the only value the type allowed — is refused, so that
+///   value is removed and any other is kept;
+/// * `taskRunner.allowPackageScripts: false` is enforced now, which is a
+///   change of behaviour for a project that wrote it and relied on a
+///   command-less task, so it is kept and reported.
+fn unread_keys(source: &mut String, unmapped: &mut Vec<String>) {
+    let mut emptied: Vec<Vec<&'static str>> = Vec::new();
+    let mut remove = |source: &mut String, path: &[&'static str], unmapped: &mut Vec<String>| {
+        let mut candidate = source.clone();
+        let removed = source::get(&candidate, path).and_then(|found| {
+            if found.is_some() {
+                source::remove(&mut candidate, path)?;
+            }
+            Ok(found.is_some())
+        });
+        match removed {
+            Ok(true) => {
+                *source = candidate;
+                for depth in 1..path.len() {
+                    emptied.push(path[..depth].to_vec());
+                }
+            }
+            Ok(false) => {}
+            Err(error) => unmapped.push(format!("{}: {error}", path.join("."))),
+        }
+    };
+    for path in UNREAD_KEYS_REMOVED {
+        remove(source, path, unmapped);
+    }
+    let jsx_import_source = ["app", "builtins", "markdown", "mdx", "jsxImportSource"];
+    if matches!(source::get(source, &jsx_import_source), Ok(Some(Value::String(value))) if value == "@uniflowed/jsx-runtime")
+    {
+        remove(source, &jsx_import_source, unmapped);
+    }
+    if matches!(
+        source::get(source, &["taskRunner", "allowPackageScripts"]),
+        Ok(Some(Value::Bool(false)))
+    ) {
+        unmapped.push(
+            "taskRunner.allowPackageScripts: false is enforced from this release — a task \
+             with no `command` is refused rather than handed to `vp run`; delete the key to \
+             keep handing it over"
+                .to_owned(),
+        );
+    }
+    // Deepest first, so `app.builtins` emptied by its last key goes before
+    // `app` is looked at.
+    emptied.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    emptied.dedup();
+    for path in emptied {
+        if matches!(source::get(source, &path), Ok(Some(Value::Object(object))) if object.is_empty())
+        {
+            let _ = source::remove(source, &path);
+        }
     }
 }
 

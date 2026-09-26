@@ -1068,6 +1068,7 @@ describe("resource release under interruption", () => {
     const result = runSyncExit(
       // Deliberately not wrapped in `scoped`. A silent skip is the failure
       // this combinator exists to prevent, so it is a defect.
+      // $FlowExpectedError[incompatible-type] the missing `Scope` is the case under test.
       exit(
         acquireRelease(
           sync(() => "handle"),
@@ -1340,6 +1341,7 @@ describe("what a forked fiber's parent owns", () => {
     // at run time means the type was bypassed, which is a bug rather than a
     // condition — the same line `acquireRelease` draws.
     const result = await runPromiseExit(
+      // $FlowExpectedError[incompatible-type] the missing `Scope` is the case under test.
       effect(function* () {
         yield* forkScoped(succeed(1));
         return "started";

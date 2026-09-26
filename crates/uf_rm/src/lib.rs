@@ -323,19 +323,16 @@ pub struct RuntimeUsePlan {
     pub requested: RuntimeReference,
     /// XDG-compliant layout.
     pub layout: XdgLayout,
-    /// Whether normal `uf` invocations may auto-switch from config.
-    pub auto_switch: bool,
     /// Steps needed to activate the runtime.
     pub steps: SmallVec<[RuntimeUseStep; 8]>,
 }
 
 impl RuntimeUsePlan {
     /// Build a use plan for a runtime reference.
-    pub fn new(requested: RuntimeReference, layout: XdgLayout, auto_switch: bool) -> Self {
+    pub fn new(requested: RuntimeReference, layout: XdgLayout) -> Self {
         Self {
             requested,
             layout,
-            auto_switch,
             steps: smallvec::smallvec![
                 RuntimeUseStep::ResolveVersion,
                 RuntimeUseStep::DownloadRuntime,

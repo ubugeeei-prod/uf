@@ -41,15 +41,18 @@ server and asserts each of these.
 | Fix all | `Space + a` offers "Fix all uf lint problems in this file" as a separate action; Helix has no dedicated fix-all binding. |
 | Hover | `Space + k`, including over a key of `uf.config.js`; over anything else in a Flow file, the type as Flow infers it. |
 | Definition | `gd`, across files, into `node_modules` and into `flow-typed/`. |
+| References | `gr`, in every project file that reaches the definition; the name under the cursor is highlighted in the file. |
+| Rename | `Space + r`, across the project's files. Refused for a name a package or a library definition declares. |
+| Symbols | `Space + s`, the file's outline. |
 | Type definition | `gy`: the declaration of the named types in the type under the cursor. |
 | Completion | As you type, after `"` and after `.`; `Ctrl + x` in insert mode asks for it. In `uf.config.js`, the keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. In any other Flow file, after `.` the members of the value's type with their types, and elsewhere the names in scope. |
 
 ## What you do not get
 
-`gr`, rename and signature help have no server behind them — `uf lsp`
-advertises none of them, and Helix will say the language server does not
-support the request. Hover and `gd` answer nothing while the file does not
-parse, since there is no inference to ask.
+Signature help has no server behind it — `uf lsp` does not advertise it, and
+Helix will say the language server does not support the request. Hover, `gd`,
+`gr` and rename answer nothing while the file does not parse, since there is no
+inference to ask.
 
 The `language-servers = ["uf"]` lines **replace** Helix's defaults for
 JavaScript and JSX, which are `typescript-language-server` alone — the server

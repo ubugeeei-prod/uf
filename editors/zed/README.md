@@ -18,7 +18,7 @@ The crate is its own Cargo workspace (the empty `[workspace]` in
 
 The extension is not in Zed's extension registry yet, so it is installed as a
 dev extension from a uf checkout. Zed compiles it itself; you need Rust
-installed through `rustup`, which is how Zed adds the `wasm32-wasip1` target.
+installed through `rustup`, which is how Zed adds the `wasm32-wasip2` target.
 
 1. In Zed, open the command palette and run **zed: install dev extension**.
 2. Select the `editors/zed` directory.
@@ -139,8 +139,10 @@ server and asserts each one:
   tool spec's names and, after `@`, its versions; in any other Flow file, after
   `.` the members of the value's type with their types, and elsewhere the names
   in scope.
+* **References, rename and the outline**, from Flow's services, across the
+  project's files.
 
-Not rename, references or signature help. `uf lsp` advertises none of them.
+Not signature help. `uf lsp` does not advertise it.
 
 ## What is tested, and what is not
 
@@ -148,8 +150,14 @@ The Editors workflow (`.github/workflows/editors.yml`) runs on every change
 here. It checks formatting, runs `cargo test` on the host — which binary is
 chosen and why, the arguments, the environment, and that the settings key and
 the language name agree with `extension.toml`, and that only a worktree with
-`uf.config.js` is served — runs clippy for the host and
-for `wasm32-wasip1`, and builds the release `.wasm`.
+`uf.config.js` is served — and runs clippy for the host and for
+`wasm32-wasip2`. Then it packages the extension with `zed-extension`, the tool
+Zed's registry runs on every extension it publishes, pinned by commit and
+digest: it loads `extension.toml` the way Zed does, compiles the crate the way
+Zed does, reads the extension API version out of the component, and writes the
+`manifest.json` and archive the registry would publish. The job checks that
+the manifest provides a language server and nothing else, built against the
+`zed_extension_api` version `Cargo.lock` pins, and uploads both as an artifact.
 
 No Zed runs in CI. That Zed loads the extension, starts `uf lsp` for a uf
 project and shows its diagnostics has to be checked by a person with Zed open.

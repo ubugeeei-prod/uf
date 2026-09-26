@@ -207,6 +207,9 @@ export async function findStoryFiles(root: string, options?: FindOptions): Promi
  */
 export async function loadStoryFile(file: string): Promise<Array<StorySet>> {
   const absolute = path.resolve(file);
+  // The user's story file, known only at run time; Flow types only a literal
+  // specifier, and `isStorySet` checks every export before it is kept.
+  // $FlowFixMe[unsupported-syntax]
   const module = await import(pathToFileURL(absolute).href);
   const sets: Array<StorySet> = [];
   for (const name of Object.keys(module)) {

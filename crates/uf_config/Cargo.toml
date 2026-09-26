@@ -30,6 +30,7 @@ uf_flow = { path = "../uf_flow" }
 
 [dev-dependencies]
 criterion.workspace = true
+proc-macro2.workspace = true
 similar-asserts.workspace = true
 tempfile.workspace = true
 

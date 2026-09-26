@@ -637,15 +637,17 @@ function withSetCookie(response: Response, cookie: string): Response {
 /**
  * Parse a `Cookie` header into a plain object.
  *
- * `Object.create(null)` rather than `{}`: a cookie called `__proto__` is a
- * thing an attacker can set, and on an ordinary object it would not be a key
- * at all — it would be the prototype.
+ * No prototype rather than `{}`: a cookie called `__proto__` is a thing an
+ * attacker can set, and on an ordinary object it would not be a key at all —
+ * it would be the prototype. `Object.setPrototypeOf` rather than
+ * `Object.create(null)`, because Flow types the second as an object with no
+ * room for an indexer.
  *
  * A duplicated name keeps the first value, which is what every server-side
  * cookie parser does and what browsers send for a name set at two paths.
  */
 export function parseCookies(header: string | null): { [string]: string } {
-  const out: { [string]: string } = Object.create(null);
+  const out: { [string]: string } = Object.setPrototypeOf({}, null);
   if (header == null || header === "") {
     return out;
   }
