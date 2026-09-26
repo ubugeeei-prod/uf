@@ -317,11 +317,7 @@ jobs:
           path: target/release
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run check:lib
-      - run: ./target/release/uf run check:ui
-      - run: ./target/release/uf run check:web
-      - run: ./target/release/uf run check:contracts
-      - run: ./target/release/uf run check:release
-      - run: ./target/release/uf run check:tools
+      - run: ./target/release/uf run check:root
 
   docs:
     name: Docs build
