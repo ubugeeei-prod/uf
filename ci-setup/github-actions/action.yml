@@ -18,8 +18,8 @@ inputs:
     description: >-
       The release to install: a version such as 0.0.0-alpha.10, the tag it was
       published under (uf@0.0.0-alpha.10), or "latest". Pin it. "latest" is the
-      newest release including prereleases, which is every release uf has
-      published so far, and it changes under a workflow that did not change.
+      newest release including prereleases, and it changes under a workflow
+      that did not change.
     required: false
     default: latest
   cache:
@@ -97,7 +97,7 @@ runs:
       if: runner.os == 'Windows'
       shell: bash
       run: |
-        echo "::error::uf publishes macOS and Linux binaries only. Use a linux or macos runner, or run uf under WSL2."
+        echo "::error::This setup action supports macOS and Linux runners. Install the native Windows release with the PowerShell installer, or run uf under WSL2."
         exit 1
 
     - name: Resolve paths
