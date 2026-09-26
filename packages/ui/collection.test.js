@@ -124,6 +124,32 @@ it("keeps sibling expansions when tree keys arrive before a render", () => {
   expect(screen.queryByRole("treeitem", { name: "Second" })).not.toBe(null);
 });
 
+// Ctrl+A then Ctrl+Space, both landing before React renders the first. `selectAll`
+// commits every enabled key, and the toggle after it recomputes from the selection
+// its own render saw — still empty — so it *selects* the row it meant to deselect
+// and drops everything else. A gesture has to act on what the last one left; this
+// is the selection half of #1621's window (#1624).
+it("toggles against the latest selection when gestures arrive before a render", () => {
+  const change = fn();
+  render(
+    <ListBox
+      items={items}
+      aria-label="Fruit"
+      selectionMode="multiple"
+      onSelectionChange={change}
+    />,
+  );
+  const list = screen.getByRole("listbox");
+  focusOn(list);
+  act(() => {
+    fireEvent.keyDown(list, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(list, { key: " ", ctrlKey: true });
+  });
+  expect(change).toHaveBeenLastCalledWith(["c"]);
+  expect(screen.getByRole("option", { name: "Cherry" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("option", { name: "Apple" }).getAttribute("aria-selected")).toBe("false");
+});
+
 component Tags() {
   const [tags, setTags] = useState(items);
   return (
