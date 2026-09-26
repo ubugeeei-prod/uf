@@ -1,5 +1,29 @@
 # Changelog
 
+## uf@0.10.0
+
+- fix(ci): clarify Windows setup limits (#1633) (df017325)
+- perf(rust): eliminate temporary strings and pool graph symbols (#1632) (ead22790)
+- build(react): compile the official pinned upstream source (#1630) (caea000a)
+- docs(packages): distinguish declarations from runnable libraries (#1631) (7a66bb38)
+- refactor(packages): remove unused ORM declarations (#1629) (845ae0ef)
+- refactor(ci): name shared toolchain setup explicitly (#1628) (b9faaabd)
+- docs(start): consolidate editor guides into IDE setup (#1627) (a5159074)
+- ci(check): gate uf check at the repository root (#1625) (0df4f7f5)
+- fix(ui): compute collection selections from the latest gesture, not the render's (#1626) (a0aff81d)
+- fix(config): remove the keys nothing read, and hold every key to a reader (#1622) (eda4a5e6)
+- fix(ui): add tree expansions to the latest keystroke, not the render's (#1623) (e9c69832)
+- fix(check): type the repository's tools and gate them (#1616) (192ce550)
+- fix(ui): step and commit number fields from the latest keystroke (#1620) (d39ac099)
+- fix(check): type the packages and library tests at the repository root (#1618) (4a222d4b)
+- feat(lsp): find references, rename, highlights and document symbols (#1617) (5027d8f6)
+- feat(ui): overlays leave visibly, disclosures slide and the tabs underline follows (#1619) (06f896c3)
+- feat(ui): kbd, spinner, empty, button group, input group, item, native select and typography in the registry (#1615) (e211ca07)
+- fix(check): type the release tooling's module contracts (#1612) (2b8ee47b)
+- ci(editors): package the Zed extension with zed-extension, and say where each editor installs from (#1613) (d2867dd9)
+- feat(tui): place absolute boxes against the nearest positioned ancestor (#1610) (c284ec05)
+- fix(ui): commit segmented fields from the latest draft, not the render's (#1611) (658b5049)
+
 ## uf@0.9.0
 
 - fix(check): align platform and public package contracts (#1607) (82ad0298)
