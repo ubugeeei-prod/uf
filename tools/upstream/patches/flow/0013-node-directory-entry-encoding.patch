@@ -12,7 +12,7 @@ Keep directory entry names as strings unless buffer encoding is requested, in ca
  
 -  declare class Dirent {
 -    name: string | Buffer;
-+  declare class Dirent<Name = string> {
++  declare class Dirent<Name = string | Buffer> {
 +    name: Name;
  
      isBlockDevice(): boolean;
