@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/pm",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "Flow declarations for @uniflowed/pm, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -19,7 +19,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/config": "0.9.0",
-    "@uniflowed/core": "0.9.0"
+    "@uniflowed/config": "0.10.0",
+    "@uniflowed/core": "0.10.0"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/router",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "The file-system router for Flow React applications: matching, layouts, loaders, navigation, server rendering and hydration.",
   "type": "module",
   "license": "MIT",
@@ -73,8 +73,8 @@
     }
   },
   "dependencies": {
-    "@uniflowed/hooks": "0.9.0",
-    "@uniflowed/server": "0.9.0",
-    "@uniflowed/validator": "0.9.0"
+    "@uniflowed/hooks": "0.10.0",
+    "@uniflowed/server": "0.10.0",
+    "@uniflowed/validator": "0.10.0"
   }
 }
