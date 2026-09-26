@@ -659,6 +659,8 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           ./node_modules/.bin/vsce package --out "$RUNNER_TEMP/uf.vsix"
+      - run: cargo clippy --manifest-path editors/zed/Cargo.toml --locked --all-targets -- -D warnings
+        if: needs.changes.outputs.code == 'true'
       - run: cargo check --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2
         if: needs.changes.outputs.code == 'true'
 
