@@ -59,8 +59,8 @@ fn a_full_analysis_flows_from_sources_to_a_manifest() {
 #[test]
 fn the_client_module_list_names_exactly_the_ui_modules_that_are_client_modules() {
     let package = repository_root().join("npm").join("ui");
-    let barrel = std::fs::read_to_string(package.join("index.js"))
-        .expect("npm/ui/index.js cannot be read");
+    let barrel =
+        std::fs::read_to_string(package.join("index.js")).expect("npm/ui/index.js cannot be read");
 
     let mut client: Vec<String> = Vec::new();
     for import in crate::scan::scan_imports(&barrel).iter() {
@@ -129,8 +129,8 @@ fn the_barrel_names_the_client_modules_each_export_comes_from() {
     use std::collections::{BTreeMap, BTreeSet};
 
     let package = repository_root().join("npm/ui");
-    let source = std::fs::read_to_string(package.join("index.js"))
-        .expect("npm/ui/index.js cannot be read");
+    let source =
+        std::fs::read_to_string(package.join("index.js")).expect("npm/ui/index.js cannot be read");
     let module_of = |specifier: &str| -> Option<String> {
         Some(
             specifier

@@ -895,11 +895,7 @@ fn a_large_project_is_walked_once_and_within_a_bound() {
 fn an_ignored_directory_is_ignored_at_every_depth() {
     let (_dir, root) = project_root();
     write(&root, "npm/ui/src/button.js", "// @flow\n");
-    write(
-        &root,
-        "npm/ui/node_modules/dep/index.js",
-        "// vendored\n",
-    );
+    write(&root, "npm/ui/node_modules/dep/index.js", "// vendored\n");
     write(
         &root,
         "npm/ui/node_modules/dep/node_modules/deeper/index.js",
@@ -907,11 +903,7 @@ fn an_ignored_directory_is_ignored_at_every_depth() {
     );
     write(&root, "npm/ui/dist/button.js", "// built\n");
     write(&root, "npm/ui/target/debug/build.js", "// cargo's\n");
-    write(
-        &root,
-        "npm/ui/.uf/cache/transform/a.js",
-        "// uf's own\n",
-    );
+    write(&root, "npm/ui/.uf/cache/transform/a.js", "// uf's own\n");
     write(&root, ".git/hooks/pre-commit.js", "// git's own\n");
 
     let scan = scan_source_files(&root, &UniflowedConfig::default()).expect("a walk");
