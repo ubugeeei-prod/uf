@@ -80,7 +80,7 @@ export const goals: $ReadOnlyArray<Goal> = [
     steps: [
       { label: "uf fmt, uf lint", href: "/guide/format" },
       { label: "uf check", href: "/guide/check" },
-      { label: "Editor (uf lsp)", href: "/guide/editors" },
+      { label: "IDE setup (uf lsp)", href: "/guide/editors" },
       { label: "Run in CI", href: "/guide/ci" },
     ],
     onHome: true,

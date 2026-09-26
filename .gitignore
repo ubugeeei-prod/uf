@@ -51,7 +51,9 @@ infra/cloudflare/.wrangler/
 /.DS_Store
 *.log
 *.tmp
-/docs/public/
+/docs/public/*
+# Track redirect rules while keeping generated brand assets ignored.
+!/docs/public/_redirects
 # The API reference `tools/docs/api.js` writes before the site is built.
 /docs/.generated/
 
