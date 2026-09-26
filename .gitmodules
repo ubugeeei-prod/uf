@@ -2,3 +2,7 @@
 	path = upstream/flow
 	url = https://github.com/facebook/flow.git
 	shallow = true
+[submodule "react"]
+	path = upstream/react
+	url = https://github.com/react/react.git
+	shallow = true

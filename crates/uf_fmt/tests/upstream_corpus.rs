@@ -68,11 +68,9 @@ fn manifest_path() -> PathBuf {
 /// keeps the second mechanism from growing back: a corpus fixture must never
 /// be a submodule again.
 ///
-/// `upstream/flow` is the one submodule this repository has left, and it has
-/// to stay one for a reason that does not apply to the corpus: it is a cargo
-/// *path dependency*, so nothing in the workspace resolves without it. That
-/// is why this asserts the whole list rather than only that the corpus is
-/// absent from it.
+/// `upstream/flow` and `upstream/react` are build dependencies, so their
+/// sources stay pinned as gitlinks. The formatter's separate corpus pins
+/// remain manifest entries and must never become additional submodules.
 #[test]
 fn the_corpus_is_a_manifest_and_not_a_set_of_submodules() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -86,7 +84,7 @@ fn the_corpus_is_a_manifest_and_not_a_set_of_submodules() {
 
     assert_eq!(
         paths,
-        ["upstream/flow"],
+        ["upstream/flow", "upstream/react"],
         "the corpus belongs in tools/corpus/repos.txt, not in .gitmodules"
     );
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Materialize the upstream sources uf builds against.
 #
-# Without arguments: `upstream/flow`, which every cargo invocation needs.
+# Without arguments: `upstream/flow` and `upstream/react`, required by Cargo.
 # With `--integrations`: also the repositories in `tools/upstream/repos.txt`,
 # which nothing in the cargo graph depends on yet.
 #
@@ -275,13 +275,39 @@ else
     "$(git -C "$submodule_path" rev-parse --short HEAD)" "$patch_count" "$patch_dir"
 fi
 
+# React Compiler is built directly from the official pinned Rust source.
+# Its snapshots come from that same checkout; no Babel or Node front end runs.
+react_path=upstream/react
+react_fixtures=$(awk '$1 == "fixtures" { print $2 }' tools/react-compiler/pin.txt)
+react_commit=$(awk '$1 == "commit" { print $2 }' tools/react-compiler/pin.txt)
+react_gitlink=$(git ls-files --stage "$react_path" | awk '$1 == "160000" { print $2 }')
+if [ -z "$react_commit" ] || [ "$react_gitlink" != "$react_commit" ]; then
+  echo "upstream/react: the gitlink and tools/react-compiler/pin.txt must name the same commit" >&2
+  exit 1
+fi
+if [ ! -e "$react_path/.git" ]; then
+  git submodule update --init --depth 1 --filter=blob:none -- "$react_path"
+fi
+if [ "$(git -C "$react_path" rev-parse HEAD)" != "$react_commit" ]; then
+  # A developer's changes are preserved: submodule update refuses an unsafe checkout.
+  git submodule update --init --depth 1 -- "$react_path"
+fi
+git -C "$react_path" sparse-checkout set compiler/crates compiler/packages/babel-plugin-react-compiler-rust/native "$react_fixtures"
+for required in compiler/Cargo.toml compiler/crates/react_compiler/Cargo.toml "$react_fixtures"; do
+  if [ ! -e "$react_path/$required" ]; then
+    echo "upstream/react: $required is missing" >&2
+    exit 1
+  fi
+done
+printf 'upstream/react ready at %s\n' "$(git -C "$react_path" rev-parse --short HEAD)"
+
 # The rest of `upstream/` is pinned by commit in `tools/upstream/repos.txt`
 # rather than tracked as submodules, for the reason that file gives: nothing in
 # the cargo graph depends on them, and this script runs in every CI job.
 #
 # `--integrations` fetches them. Each is filtered to the subtrees uf actually
-# reads — React's compiler crates, Relay's compiler crates, React Native's
-# codegen and Libraries — because the three repositories together are about a
+# reads — Relay's compiler crates and React Native's
+# codegen and Libraries — because the two repositories together are about a
 # gigabyte and uf reads perhaps eighty megabytes of it.
 [ "${1:-}" = "--integrations" ] || exit 0
 
@@ -295,7 +321,7 @@ while IFS='|' read -r name url commit subtrees; do
   subtrees=$(echo "$subtrees" | sed 's/^ *//; s/ *$//')
 
   dest=upstream/$name
-  git_dir=$repo_root/.git/upstream/$name
+  git_dir=$(git rev-parse --git-path "upstream/$name")
 
   if [ ! -e "$dest/.git" ]; then
     rm -rf "$git_dir"
