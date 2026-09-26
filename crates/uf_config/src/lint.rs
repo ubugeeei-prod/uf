@@ -8,9 +8,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct LintConfig {
-    pub engine: LintEngine,
-    pub files: Vec<CompactString>,
-    pub flow: FlowLintConfig,
     /// The deprecated spelling of the project-wide ignore list.
     ///
     /// It was never `uf lint`'s: `uf fmt`, `uf check`, `uf test` and `uf doc`
@@ -74,44 +71,6 @@ fn default_lint_rules() -> BTreeMap<CompactString, RuleLevel> {
         .into_iter()
         .map(|(rule, level)| (CompactString::const_new(rule), level))
         .collect()
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum LintEngine {
-    #[default]
-    Rust,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct FlowLintConfig {
-    pub builtins: FlowBuiltinLintMode,
-    pub parser: FlowLintParser,
-}
-
-impl Default for FlowLintConfig {
-    fn default() -> Self {
-        Self {
-            builtins: FlowBuiltinLintMode::Mixed,
-            parser: FlowLintParser::OfficialFlowRust,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum FlowBuiltinLintMode {
-    #[default]
-    Mixed,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum FlowLintParser {
-    #[default]
-    OfficialFlowRust,
 }
 
 /// Every lint rule `uf lint` ships, with the level uf applies out of the box.
@@ -575,14 +534,6 @@ impl Default for LintConfig {
         let rules = default_lint_rules();
 
         Self {
-            engine: LintEngine::Rust,
-            files: vec![
-                CompactString::const_new("app"),
-                CompactString::const_new("npm"),
-                CompactString::const_new("server"),
-                CompactString::const_new("tests"),
-            ],
-            flow: FlowLintConfig::default(),
             // Absent, not empty, and the default list is no longer here: it
             // moved to `crate::DEFAULT_IGNORE` with the key. A project that
             // never wrote `lint.ignore` has nothing to be told about, and

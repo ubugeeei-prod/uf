@@ -7,7 +7,6 @@ use crate::runtime::RuntimeConfig;
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct AppConfig {
-    pub component_default: ComponentBoundary,
     pub framework: FrameworkPreset,
     pub react: ReactConfig,
     pub rendering: RenderingConfig,
@@ -15,7 +14,6 @@ pub struct AppConfig {
     pub runtime: RuntimeConfig,
     pub rsc: bool,
     pub server_actions: bool,
-    pub orm: OrmConfig,
     pub builtins: BuiltinConfig,
     pub targets: Vec<RuntimeTarget>,
 }
@@ -23,7 +21,6 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            component_default: ComponentBoundary::Server,
             framework: FrameworkPreset::Uniflowed,
             react: ReactConfig::default(),
             rendering: RenderingConfig::default(),
@@ -31,7 +28,6 @@ impl Default for AppConfig {
             runtime: RuntimeConfig::default(),
             rsc: true,
             server_actions: true,
-            orm: OrmConfig::default(),
             builtins: BuiltinConfig::default(),
             targets: vec![
                 RuntimeTarget::Web,
@@ -58,7 +54,6 @@ pub struct RouterConfig {
     pub entry: CompactString,
     pub manifest: CompactString,
     pub root: CompactString,
-    pub convention: RouterConvention,
     /// `app.router.redirects`: answered before anything else, first match wins.
     pub redirects: Vec<RedirectRule>,
     /// `app.router.rewrites`: another route served at the requested path.
@@ -150,7 +145,6 @@ impl Default for RouterConfig {
             entry: CompactString::const_new("app.js"),
             manifest: CompactString::const_new("router.js"),
             root: CompactString::const_new("app"),
-            convention: RouterConvention::FileSystem,
             redirects: Vec::new(),
             rewrites: Vec::new(),
             headers: Vec::new(),
@@ -204,50 +198,15 @@ pub struct HeaderRule {
     pub headers: std::collections::BTreeMap<CompactString, CompactString>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RouterConvention {
-    FileSystem,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct OrmConfig {
-    pub enabled: bool,
-    pub module: CompactString,
-    pub native: bool,
-    pub generated_flow_types: bool,
-    pub prepared_by_default: bool,
-}
-
-impl Default for OrmConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            module: CompactString::const_new("@uniflowed/orm"),
-            native: true,
-            generated_flow_types: true,
-            prepared_by_default: true,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct BuiltinConfig {
-    pub data: DataEngine,
-    pub effect: EffectEngine,
-    pub fetch: FetchConfig,
-    pub cell: bool,
     /// What the project declares about the fonts it imports.
     ///
     /// Read by `uf assets`, which self-hosts each one and computes the
     /// metric-matched fallback; see `crates/uf_assets`.
     pub fonts: crate::FontsConfig,
-    pub framework_lints: bool,
-    pub graphql: GraphQlConfig,
     /// What the project declares about the icons it imports.
     ///
     /// The directory `uf:icon/…` resolves against. Read by `uf assets`, which
@@ -259,51 +218,29 @@ pub struct BuiltinConfig {
     /// The widths a layout asks for and the quality they are encoded at. Read
     /// by `uf assets`; see `crates/uf_assets`.
     pub images: crate::ImagesConfig,
-    pub loader: LoaderConfig,
     pub markdown: MarkdownConfig,
-    pub motion: MotionConfig,
-    pub native_test_runner: bool,
     /// What the project declares about its Open Graph cards.
     ///
     /// A `*.og.json` template is drawn by `uf assets` from a font this names.
     /// uf embeds no typeface, so a project that draws cards has to point at
     /// one; see `crates/uf_assets/src/og.rs`.
     pub og: crate::OgConfig,
-    pub pwa: PwaConfig,
     pub react_compiler: ReactCompilerConfig,
-    pub react_testing_library: bool,
     pub relay: bool,
     pub style: StyleEngine,
-    pub temporal: TemporalConfig,
-    pub tui: TuiConfig,
-    pub web: WebConfig,
 }
 
 impl Default for BuiltinConfig {
     fn default() -> Self {
         Self {
-            data: DataEngine::UniflowedQuery,
-            effect: EffectEngine::UniflowedEffect,
-            fetch: FetchConfig::default(),
-            cell: true,
             fonts: crate::FontsConfig::default(),
-            framework_lints: true,
-            graphql: GraphQlConfig::default(),
             icons: crate::IconsConfig::default(),
             images: crate::ImagesConfig::default(),
-            loader: LoaderConfig::default(),
             markdown: MarkdownConfig::default(),
-            motion: MotionConfig::default(),
-            native_test_runner: true,
             og: crate::OgConfig::default(),
-            pwa: PwaConfig::default(),
             react_compiler: ReactCompilerConfig::default(),
-            react_testing_library: true,
             relay: true,
             style: StyleEngine::StyleX,
-            temporal: TemporalConfig::default(),
-            tui: TuiConfig::default(),
-            web: WebConfig::default(),
         }
     }
 }
@@ -314,125 +251,11 @@ pub enum StyleEngine {
     StyleX,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DataEngine {
-    UniflowedQuery,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum EffectEngine {
-    UniflowedEffect,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct FetchConfig {
-    pub module: CompactString,
-    pub override_global_fetch: bool,
-}
-
-impl Default for FetchConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/fetch"),
-            override_global_fetch: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct GraphQlConfig {
-    pub module: CompactString,
-    pub relay_base: bool,
-}
-
-impl Default for GraphQlConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/graphql"),
-            relay_base: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct LoaderConfig {
-    pub module: CompactString,
-    pub state_module: CompactString,
-    pub cache: CacheModeConfig,
-}
-
-impl Default for LoaderConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/loader"),
-            state_module: CompactString::const_new("@uniflowed/state"),
-            cache: CacheModeConfig::OptIn,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct WebConfig {
-    pub module: CompactString,
-    pub typed_routes: bool,
-    pub link_prefetch: LinkPrefetchMode,
-    pub cache: CacheModeConfig,
-}
-
-impl Default for WebConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/web"),
-            typed_routes: true,
-            link_prefetch: LinkPrefetchMode::Intent,
-            cache: CacheModeConfig::OptIn,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum LinkPrefetchMode {
-    Off,
-    Intent,
-    Render,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct MarkdownConfig {
-    pub module: CompactString,
-    pub engine: MarkdownEngineConfig,
     pub mdx: MdxConfig,
-    pub cache: CacheModeConfig,
-}
-
-impl Default for MarkdownConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/markdown"),
-            engine: MarkdownEngineConfig::OxContentWasm,
-            mdx: MdxConfig::default(),
-            cache: CacheModeConfig::OptIn,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MarkdownEngineConfig {
-    OxContentWasm,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -440,9 +263,16 @@ pub enum MarkdownEngineConfig {
 #[non_exhaustive]
 pub struct MdxConfig {
     pub enabled: bool,
-    pub extensions: Vec<CompactString>,
+    /// Where MDX's compiled JSX imports its runtime from: `"react"`, whose
+    /// `react/jsx-runtime` every uf application already has, unless a project
+    /// names another package exporting `jsx-runtime`.
+    ///
+    /// Read by `@uniflowed/vite`'s MDX plugin. Until ubugeeei-prod/uf#1387 it
+    /// was read by nothing, and its default named `@uniflowed/jsx-runtime` —
+    /// a package of Flow declarations with no runtime in it — while MDX was
+    /// compiled against React whatever it said. That value is refused where
+    /// the config is read; see [`crate::ConfigError::MdxJsxImportSource`].
     pub jsx_import_source: CompactString,
-    pub pipeline_plugin: MdxPipelinePluginConfig,
     /// Syntax highlighting for fenced code.
     ///
     /// A field here rather than nowhere. `HighlightConfig` was declared,
@@ -458,18 +288,10 @@ impl Default for MdxConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            extensions: vec![CompactString::const_new(".mdx")],
-            jsx_import_source: CompactString::const_new("@uniflowed/jsx-runtime"),
-            pipeline_plugin: MdxPipelinePluginConfig::BuiltIn,
+            jsx_import_source: CompactString::const_new("react"),
             highlight: HighlightConfig::default(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MdxPipelinePluginConfig {
-    BuiltIn,
 }
 
 /// Build-time syntax highlighting for fenced code in Markdown and MDX.
@@ -520,115 +342,8 @@ impl Default for HighlightThemes {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
-pub struct MotionConfig {
-    pub module: CompactString,
-    pub engine: MotionEngineConfig,
-    pub compiler_safe: bool,
-    pub server_component_safe: bool,
-    pub reduced_motion_default: bool,
-}
-
-impl Default for MotionConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/motion"),
-            engine: MotionEngineConfig::UfNative,
-            compiler_safe: true,
-            server_component_safe: true,
-            reduced_motion_default: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MotionEngineConfig {
-    #[default]
-    UfNative,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct TuiConfig {
-    pub module: CompactString,
-    pub std_module: CompactString,
-    pub standard: TuiStandardConfig,
-    pub native_renderer: bool,
-    pub beat_react_ink: bool,
-    pub rich_media: bool,
-    pub in_memory_tests: bool,
-}
-
-impl Default for TuiConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/tui"),
-            std_module: CompactString::const_new("@uniflowed/std/tui"),
-            standard: TuiStandardConfig::OpenTui,
-            native_renderer: true,
-            beat_react_ink: true,
-            rich_media: true,
-            in_memory_tests: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TuiStandardConfig {
-    #[default]
-    OpenTui,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct TemporalConfig {
-    pub module: CompactString,
-    pub lite: bool,
-}
-
-impl Default for TemporalConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/temporal"),
-            lite: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct PwaConfig {
-    pub module: CompactString,
-    pub enabled_by_default: bool,
-    pub cache: CacheModeConfig,
-}
-
-impl Default for PwaConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/pwa"),
-            enabled_by_default: false,
-            cache: CacheModeConfig::OptIn,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum CacheModeConfig {
-    OptIn,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct ReactCompilerConfig {
     pub enabled: bool,
-    pub implementation: ReactCompilerImplementation,
     pub mode: ReactCompilerMode,
 }
 
@@ -636,16 +351,9 @@ impl Default for ReactCompilerConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            implementation: ReactCompilerImplementation::OfficialRust,
             mode: ReactCompilerMode::Syntax,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ReactCompilerImplementation {
-    OfficialRust,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -663,21 +371,10 @@ pub enum RuntimeTarget {
     Hermes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ComponentBoundary {
-    Server,
-    Client,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ReactConfig {
-    pub version: CompactString,
-    pub async_react: bool,
-    pub suspense: bool,
-    pub use_hook: bool,
     /// Whether `uf dev` hydrates the application inside `<StrictMode>`.
     ///
     /// On by default, and a development-only default: `uf build` never emits
@@ -705,13 +402,7 @@ pub struct ReactConfig {
 
 impl Default for ReactConfig {
     fn default() -> Self {
-        Self {
-            version: CompactString::const_new("19"),
-            async_react: true,
-            suspense: true,
-            use_hook: true,
-            strict_mode: true,
-        }
+        Self { strict_mode: true }
     }
 }
 
@@ -943,31 +634,32 @@ impl RenderingMode {
 
 /// Which of uf's caches a project has turned on, and where they keep things.
 ///
-/// Four switches, and for a long time all four of them were read once, copied
-/// into `dist/uf-build-manifest.json` and read by nothing — so setting any of
-/// them to `true` changed one field of one JSON file and no behaviour anywhere.
-/// ubugeeei-prod/uf#277 is about that, and about how a config key that accepts
-/// `true` and means nothing is indistinguishable from a cache that is off.
+/// Three switches, and for a long time all of them — with a fourth,
+/// `actions` — were read once, copied into `dist/uf-build-manifest.json` and
+/// read by nothing, so setting any of them to `true` changed one field of one
+/// JSON file and no behaviour anywhere. ubugeeei-prod/uf#277 is about that,
+/// and about how a config key that accepts `true` and means nothing is
+/// indistinguishable from a cache that is off.
 ///
-/// Two of them mean something now:
+/// All three mean something now:
 ///
 /// * `route` — a rendered document, kept under the URL that produced it. Wired
 ///   through `@uniflowed/vite`'s generated server entry and through
 ///   `uf preview` and `uf start` to `createFetchHandler`'s `cache` option.
 /// * `fetch` — a request's answer, kept under the client's name and the URL.
 ///   The same wiring reaches `@uniflowed/server/cache`'s `createCachedFetch`.
+/// * `data` — a `"use cache"` function's result, through the same store.
 ///
-/// Two of them do not, and are **refused** rather than ignored:
-/// [`crate::ConfigError::UnimplementedCache`] fails the load when `data` or
-/// `actions` is `true`. Being told is the point — a project that asks for a
-/// cache uf does not have should find out at the config file rather than in
-/// production, where the symptom is a mutation that invalidates nothing.
+/// `actions` is gone. uf has no actions cache, `true` was refused where the
+/// config was read and `false` reached the manifest and nothing else, so the
+/// key could say nothing a project could act on; ubugeeei-prod/uf#1387
+/// removed it, and `uf codemod` takes it out of a `uf.config.js`.
 ///
-/// All four still default to `false`. `docs/roadmap.md` says "opt-in-only cache
+/// All three default to `false`. `docs/roadmap.md` says "opt-in-only cache
 /// controls" and that has not changed; what has changed is that opting in now
 /// does something.
 ///
-/// # And a fifth key, which is a name rather than a switch
+/// # And a fourth key, which is a name rather than a switch
 ///
 /// [`CacheConfig::store`] says *where* entries live, and it is what turns the
 /// route cache into incremental static regeneration. Absent — the default —
@@ -993,9 +685,17 @@ impl RenderingMode {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct CacheConfig {
-    /// Not implemented. `true` is refused; see the type's documentation.
-    pub actions: bool,
-    /// Not implemented. `true` is refused; see the type's documentation.
+    /// The key that was `actions`, kept only to refuse `true`.
+    ///
+    /// Not a key a project may write — `@uniflowed/config` does not declare
+    /// it and it is never serialized — and read by one thing:
+    /// [`crate::ConfigError::UnimplementedCache`], because a project asking
+    /// for an actions cache should still be told there is none rather than
+    /// have the request dropped on the floor. `false` means nothing and is
+    /// ignored; `uf codemod` removes either.
+    #[serde(rename = "actions", skip_serializing)]
+    pub retired_actions: Option<bool>,
+    /// A `"use cache"` function's result, through the same store.
     pub data: bool,
     /// A request's answer, through `@uniflowed/server/cache`.
     pub fetch: bool,

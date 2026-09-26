@@ -155,14 +155,19 @@ function flowSyntax() {
  * because a page follows the reader's light or dark preference and a build-time
  * highlighter cannot know it. The stylesheet picks between them.
  *
- * @param {{enabled?: boolean, themes?: {light: string, dark: string}, langs?: string[]}} options
+ * @param {{enabled?: boolean, themes?: {light?: string, dark?: string}, langs?: string[]}} options
  */
 export function highlightPlugin(options) {
   const config = options ?? {};
   if (config.enabled === false) {
     return null;
   }
-  const themes = config.themes ?? { light: "github-light", dark: "github-dark-dimmed" };
+  // Each theme on its own, so a project that names one keeps uf's other
+  // rather than handing Shiki half a pair.
+  const themes = {
+    light: config.themes?.light ?? "github-light",
+    dark: config.themes?.dark ?? "github-dark-dimmed",
+  };
   const langs = [...new Set([...DEFAULT_LANGS, ...(config.langs ?? [])])];
 
   return [

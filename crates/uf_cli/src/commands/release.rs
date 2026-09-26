@@ -13,7 +13,7 @@ use uf_config::load_config;
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::cli::ReleaseBump;
-use crate::support::{write_json_file, yes_no};
+use crate::support::write_json_file;
 use crate::ui::Ui;
 
 pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
@@ -23,26 +23,17 @@ pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let manifest = state_dir.join("publish.json");
     write_json_file(
         &manifest,
+        // The registry and nothing else. `publish.dryRun`, `firstPublish` and
+        // `trustedPublish` used to be written here too, into a file nothing
+        // reads, and printed as though they were decisions; none of them
+        // decided anything, and they were removed (ubugeeei-prod/uf#1387).
         &json!({
             "version": 1,
             "registry": resolved.config.publish.registry.as_str(),
-            "dryRun": resolved.config.publish.dry_run,
-            "firstPublish": {
-                "mode": resolved.config.publish.first_publish.mode,
-                "localBootstrap": resolved.config.publish.first_publish.local_bootstrap,
-            },
-            "trustedPublish": {
-                "provider": resolved.config.publish.trusted_publish.provider,
-                "tokenless": resolved.config.publish.trusted_publish.tokenless,
-                "trigger": resolved.config.publish.trusted_publish.trigger,
-            },
         }),
     )?;
 
     let registry = resolved.config.publish.registry.to_string();
-    let first_publish = format!("{:?}", resolved.config.publish.first_publish.mode);
-    let provider = format!("{:?}", resolved.config.publish.trusted_publish.provider);
-    let trigger = format!("{:?}", resolved.config.publish.trusted_publish.trigger);
     let manifest_path = manifest.to_string();
 
     ui.render(|renderer, out| {
@@ -52,18 +43,6 @@ pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
             2,
             &[
                 KeyValue::toned("registry", &registry, Tone::Accent),
-                KeyValue::new("dry run", yes_no(resolved.config.publish.dry_run)),
-                KeyValue::new("first publish", &first_publish),
-                KeyValue::new(
-                    "local bootstrap",
-                    yes_no(resolved.config.publish.first_publish.local_bootstrap),
-                ),
-                KeyValue::new("trusted provider", &provider),
-                KeyValue::new(
-                    "tokenless",
-                    yes_no(resolved.config.publish.trusted_publish.tokenless),
-                ),
-                KeyValue::new("trigger", &trigger),
                 KeyValue::toned("manifest", &manifest_path, Tone::Path),
             ],
         );
@@ -98,9 +77,6 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
             "currentVersion": current_version,
             "nextVersion": next_version,
             "tag": tag,
-            "command": resolved.config.release.command.as_str(),
-            "publish": resolved.config.release.publish,
-            "trustedTrigger": resolved.config.publish.trusted_publish.trigger,
             "changelog": changelog.as_ref().map(Changelog::path),
             "changes": changelog.as_ref().map_or(0, |written| written.changes),
             "unnumbered": unnumbered,
@@ -108,8 +84,6 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
     )?;
 
     let bump_label = format!("{bump:?}");
-    let command = resolved.config.release.command.to_string();
-    let trigger = format!("{:?}", resolved.config.publish.trusted_publish.trigger);
     let manifest_path = manifest.to_string();
     let changelog_path = changelog.as_ref().map(Changelog::path);
     let changelog_row = changelog_path
@@ -142,9 +116,6 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: boo
                 KeyValue::new("current version", current_version),
                 KeyValue::toned("next version", &next_version, Tone::Accent),
                 KeyValue::toned("tag", &tag, Tone::Accent),
-                KeyValue::new("command", &command),
-                KeyValue::new("publish", yes_no(resolved.config.release.publish)),
-                KeyValue::new("trusted trigger", &trigger),
                 KeyValue::toned("manifest", &manifest_path, Tone::Path),
             ],
         );

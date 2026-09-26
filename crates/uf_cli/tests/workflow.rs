@@ -49,8 +49,13 @@ fn test_list_discovers_native_test_import_shape() {
 // Those tests need the workspace's `node_modules`, so they build their
 // projects inside this repository rather than in a system temp directory.
 
+/// The plans `uf publish` and `uf release` write, and nothing in them that a
+/// project could set and nothing would read: `publish.dryRun`,
+/// `firstPublish`, `trustedPublish`, `release.command` and `release.publish`
+/// were all printed here and written into these files until
+/// ubugeeei-prod/uf#1387 removed them.
 #[test]
-fn publish_and_release_report_trusted_publish_plan() {
+fn publish_and_release_write_their_plans() {
     let dir = tempfile::tempdir().unwrap();
 
     let publish = uf()
@@ -66,13 +71,16 @@ fn publish_and_release_report_trusted_publish_plan() {
         String::from_utf8_lossy(&publish.stderr)
     );
     let stdout = String::from_utf8(publish.stdout).unwrap();
-    assert!(stdout.contains("first publish     Local"));
-    assert!(stdout.contains("local bootstrap   yes"));
-    assert!(stdout.contains("trusted provider  GitHubActionsOidc"));
-    assert!(stdout.contains("tokenless         yes"));
-    assert!(stdout.contains("trigger           TagPush"));
+    assert!(stdout.contains("https://registry.npmjs.org"), "{stdout}");
+    assert!(!stdout.contains("trusted"), "{stdout}");
     assert!(stdout.contains("publish.json"));
-    assert!(dir.path().join(".uf/publish.json").exists());
+    let plan: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dir.path().join(".uf/publish.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        plan,
+        serde_json::json!({ "version": 1, "registry": "https://registry.npmjs.org" })
+    );
 
     let release = uf()
         .arg("--cwd")
@@ -104,10 +112,14 @@ fn publish_and_release_report_trusted_publish_plan() {
     };
     assert!(stdout.contains("bump             Alpha"));
     assert!(stdout.contains(&format!("tag              uf@{expected}")));
-    assert!(stdout.contains("command          uf release alpha"));
-    assert!(stdout.contains("publish          yes"));
+    assert!(!stdout.contains("uf release alpha"), "{stdout}");
     assert!(stdout.contains("release.json"));
-    assert!(dir.path().join(".uf/release.json").exists());
+    let plan: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dir.path().join(".uf/release.json")).unwrap())
+            .unwrap();
+    for gone in ["command", "publish", "trustedTrigger"] {
+        assert!(plan.get(gone).is_none(), "{plan}");
+    }
 }
 
 #[test]

@@ -19,13 +19,16 @@
 // against the paths `uf_config::UniflowedConfig` serializes — in both
 // directions, because a key declared here and read by nothing is an option that
 // silently does nothing, which is the same defect wearing the other face.
+// `tests/unread_keys.rs` beside it goes one step further and holds every key
+// declared here to code that reads it: ubugeeei-prod/uf#1387 removed 110
+// that nothing did.
 //
 // The value *types* are still this file's own judgement, and deliberately so.
 // A test over names cannot say whether `"biome" | "prettier" | "none"` is the
 // right set, and several keys below are narrower than what the loader will
-// parse — `orm.module` is `"@uniflowed/orm"` because there is one
-// implementation, where the loader takes any string. Where this package means
-// to be more opinionated than the parser, that is what these say.
+// parse — `release.tagPrefix` is `"uf@"`, where the loader takes any string.
+// Where this package means to be more opinionated than the parser, that is
+// what these say.
 //
 // # What an editor shows
 //
@@ -358,19 +361,12 @@ export type UniflowedConfig = {
     },
   },
   readonly app?: {
-    // Whether a component with no directive is rendered on the server or
-    // shipped to the browser.
-    readonly componentDefault?: "server" | "client",
     readonly framework?: "uniflowed" | "react" | "react-native",
     readonly react?: {
       // React 19's Strict Mode, on by default in `uf dev`: it double-invokes
       // render and effects so an impurity shows up in development rather
       // than in production. Off has to be a choice a project makes.
       readonly strictMode?: boolean,
-      readonly version?: string,
-      readonly asyncReact?: boolean,
-      readonly suspense?: boolean,
-      readonly useHook?: boolean,
     },
     // Whether the project builds React Server Components at all, and whether
     // a `"use server"` export is wired to an endpoint.
@@ -378,48 +374,20 @@ export type UniflowedConfig = {
     readonly serverActions?: boolean,
     // The runtimes the build must satisfy.
     readonly targets?: $ReadOnlyArray<"web" | "react-native" | "server" | "hermes">,
-    readonly orm?: {
-      readonly enabled?: boolean,
-      readonly module?: "@uniflowed/orm",
-      readonly native?: true,
-      readonly generatedFlowTypes?: true,
-      readonly preparedByDefault?: true,
-    },
     readonly builtins?: {
-      readonly data?: "uniflowed-query",
-      readonly effect?: "uniflowed-effect",
-      readonly fetch?: {
-        readonly module?: "@uniflowed/fetch",
-        readonly overrideGlobalFetch?: false,
-      },
-      readonly cell?: boolean,
-      readonly frameworkLints?: boolean,
-      readonly nativeTestRunner?: boolean,
-      readonly reactTestingLibrary?: boolean,
       readonly relay?: boolean,
       readonly style?: "style-x",
       readonly reactCompiler?: {
         readonly enabled?: boolean,
-        readonly implementation?: "official-rust",
         readonly mode?: "syntax",
       },
-      readonly graphql?: {
-        readonly module?: "@uniflowed/graphql",
-        readonly relayBase?: true,
-      },
-      readonly loader?: {
-        readonly module?: "@uniflowed/loader",
-        readonly stateModule?: "@uniflowed/state",
-        readonly cache?: "opt-in",
-      },
       readonly markdown?: {
-        readonly module?: "@uniflowed/markdown",
-        readonly engine?: "ox-content-wasm",
         readonly mdx?: {
           readonly enabled?: boolean,
-          readonly extensions?: $ReadOnlyArray<".mdx">,
-          readonly jsxImportSource?: "@uniflowed/jsx-runtime",
-          readonly pipelinePlugin?: "built-in",
+          // Where compiled MDX imports its JSX runtime from: `"react"` when
+          // absent. Any package exporting `jsx-runtime` — the specifier MDX
+          // appends `/jsx-runtime` to.
+          readonly jsxImportSource?: string,
           // Colours are computed during the build and written into the HTML,
           // so nothing ships to the browser to do it. Both themes are emitted
           // together as CSS variables, because a build cannot know which the
@@ -434,7 +402,6 @@ export type UniflowedConfig = {
             readonly langs?: $ReadOnlyArray<string>,
           },
         },
-        readonly cache?: "opt-in",
       },
       readonly images?: {
         readonly enabled?: boolean,
@@ -501,37 +468,6 @@ export type UniflowedConfig = {
         // own. uf embeds none, so a project that draws cards points at one.
         readonly font?: string | null,
       },
-      readonly motion?: {
-        readonly module?: "@uniflowed/motion",
-        readonly engine?: "uf-native",
-        readonly compilerSafe?: true,
-        readonly serverComponentSafe?: true,
-        readonly reducedMotionDefault?: true,
-      },
-      readonly tui?: {
-        readonly module?: "@uniflowed/tui",
-        readonly stdModule?: "@uniflowed/std/tui",
-        readonly standard?: "open-tui",
-        readonly nativeRenderer?: true,
-        readonly beatReactInk?: true,
-        readonly richMedia?: true,
-        readonly inMemoryTests?: true,
-      },
-      readonly pwa?: {
-        readonly module?: "@uniflowed/pwa",
-        readonly enabledByDefault?: false,
-        readonly cache?: "opt-in",
-      },
-      readonly temporal?: {
-        readonly module?: "@uniflowed/temporal",
-        readonly lite?: true,
-      },
-      readonly web?: {
-        readonly module?: "@uniflowed/web",
-        readonly typedRoutes?: true,
-        readonly linkPrefetch?: "off" | "intent" | "render",
-        readonly cache?: "opt-in",
-      },
     },
     readonly runtime?: {
       readonly default?: RuntimeEngine,
@@ -556,7 +492,6 @@ export type UniflowedConfig = {
       readonly entry?: string,
       readonly root?: string,
       readonly manifest?: string,
-      readonly convention?: "file-system",
       // Turning the file-system router off is what makes a project a
       // **library** rather than an application, and `uf build` reads it: see
       // `build.lib` below and docs/app/reference/config.
@@ -621,7 +556,6 @@ export type UniflowedConfig = {
       // clear it. See docs/app/guide/routing and docs/app/guide/cache.
       readonly staleTime?: number,
       readonly cache?: {
-        readonly actions?: boolean,
         readonly data?: boolean,
         readonly fetch?: boolean,
         readonly route?: boolean,
@@ -649,8 +583,6 @@ export type UniflowedConfig = {
       readonly perAsset?: SizeBudget,
     },
     readonly entries?: $ReadOnlyArray<string>,
-    // Commands to run around the build, in the same shape as `tasks`.
-    readonly hooks?: { readonly [string]: TaskDefinition },
     readonly outDir?: string,
     // Prerender every route and leave no server bundle behind. Read together
     // with `app.rendering.modes`; see docs/app/reference/config.
@@ -735,15 +667,10 @@ export type UniflowedConfig = {
     // server reachable from the network with no host allow-list is a file
     // server for your source tree.
     readonly allowedHosts?: $ReadOnlyArray<string>,
-    readonly allowedOrigins?: $ReadOnlyArray<string>,
   },
   readonly docs?: {
-    readonly enabled?: boolean,
-    readonly app?: string,
-    readonly source?: string,
+    // Where a documentation build is written; `uf clean` removes it.
     readonly outDir?: string,
-    readonly staticBuild?: boolean,
-    readonly deploy?: "void",
   },
   /**
    * The `.env` cascade and the mode it is read for.
@@ -770,11 +697,6 @@ export type UniflowedConfig = {
   readonly fmt?: {
     readonly indentWidth?: number,
     readonly lineWidth?: number,
-    readonly maxBlankLines?: number,
-    readonly flow?: {
-      readonly parser?: "official-flow-rust",
-      readonly printer?: "uf-rust",
-    },
     readonly nonFlow?: {
       readonly formatter?: "biome" | "prettier" | "none",
       /**
@@ -806,9 +728,6 @@ export type UniflowedConfig = {
    */
   readonly ignore?: $ReadOnlyArray<string>,
   readonly lint?: {
-    readonly engine?: "rust",
-    // Globs to lint.
-    readonly files?: $ReadOnlyArray<string>,
     /**
      * The old spelling of the top-level `ignore`.
      *
@@ -820,20 +739,9 @@ export type UniflowedConfig = {
      * See ubugeeei-prod/uf#575.
      */
     readonly ignore?: $ReadOnlyArray<string>,
-    readonly flow?: {
-      readonly builtins?: "mixed",
-      readonly parser?: "official-flow-rust",
-    },
     // Changes to uf's rule table, not the whole of it: a rule you did not
     // mention keeps the level uf ships. Say `"off"` to switch one off.
     readonly rules?: { readonly [string]: RuleLevel },
-  },
-  readonly package?: {
-    readonly generator?: "napi-rs",
-    readonly targets?: $ReadOnlyArray<
-      "node-napi" | "bun-napi" | "deno-napi" | "edge-wasm" | "serverless-napi",
-    >,
-    readonly typescriptDeclarationsToFlow?: true,
   },
   /**
    * The package manager `uf install`, `uf add`, `uf update` and the rest drive,
@@ -849,8 +757,6 @@ export type UniflowedConfig = {
   // refuses any that reaches outside the project root.
   readonly plugins?: $ReadOnlyArray<PluginEntry>,
   readonly pm?: {
-    readonly module?: "@uniflowed/pm",
-    readonly resolver?: "uf-native",
     readonly lockfile?: "uf.lock",
     readonly storeDir?: string,
     readonly allowLifecycleScripts?: false,
@@ -903,15 +809,6 @@ export type UniflowedConfig = {
      */
     readonly provenance?: "report" | "off",
   },
-  readonly rm?: {
-    readonly module?: "@uniflowed/rm",
-    readonly inferFromConfig?: true,
-    readonly version?: "node@system" | string,
-    readonly autoSwitch?: boolean,
-    readonly acquisition?: "auto",
-    readonly apply?: "config-and-host",
-    readonly doctor?: boolean,
-  },
   /**
    * The runtime every command runs on unless a section names its own, and
    * optionally which release of it: `"node@26"`.
@@ -923,16 +820,6 @@ export type UniflowedConfig = {
    * `RuntimeSpec`.
    */
   readonly runtime?: RuntimeSpec,
-  readonly server?: {
-    readonly engine?: "native-rust",
-    readonly native?: {
-      readonly streaming?: boolean,
-      readonly zeroCopyHttp?: boolean,
-      readonly adapters?: $ReadOnlyArray<
-        "uf" | "node" | "bun" | "deno" | "edge" | "serverless" | "container",
-      >,
-    },
-  },
   // Where the built site is served from, and what `uf build` may therefore
   // write for a crawler. `url` is the switch: without it no `sitemap.xml` and
   // no `robots.txt` are written at all, because a build cannot guess the host
@@ -946,91 +833,19 @@ export type UniflowedConfig = {
       readonly disallow?: $ReadOnlyArray<string>,
     },
   },
-  readonly std?: {
-    readonly module?: "@uniflowed/std",
-    readonly wintertcAligned?: true,
-    readonly nativeBindings?: boolean,
-    readonly modules?: $ReadOnlyArray<
-      | "vfs"
-      | "fs"
-      | "types"
-      | "pipeline"
-      | "effect"
-      | "env"
-      | "format"
-      | "stdio"
-      | "hash"
-      | "debug"
-      | "defs"
-      | "lock"
-      | "colors"
-      | "qs"
-      | "equality"
-      | "http"
-      | "buffer"
-      | "ws"
-      | "sql"
-      | "json"
-      | "yaml"
-      | "toml"
-      | "collections"
-      | "crypto"
-      | "dotenv"
-      | "math"
-      | "os"
-      | "net"
-      | "dns"
-      | "path"
-      | "stream"
-      | "url"
-      | "wasm"
-      | "glob"
-      | "motion"
-      | "tui"
-      | "cron"
-      | "s3"
-      | "sigv4"
-      | "functions"
-      | "uuid"
-      | "zip"
-      | "import-meta"
-      | "defer",
-    >,
-  },
   readonly publish?: {
+    // Where `uf publish` pushes a package; also where uf reads from when
+    // `pm.registry` is absent.
     readonly registry?: string,
-    readonly dryRun?: boolean,
-    readonly firstPublish?: {
-      readonly mode?: "local",
-      readonly localBootstrap?: true,
-    },
-    readonly trustedPublish?: {
-      readonly enabled?: true,
-      readonly provider?: "github-actions-oidc",
-      readonly tokenless?: true,
-      readonly trigger?: "tag-push",
-    },
   },
   readonly release?: {
     readonly tagPrefix?: "uf@",
-    readonly command?: "uf release alpha" | string,
-    readonly publish?: true,
-  },
-  readonly story?: {
-    readonly enabled?: boolean,
-    readonly module?: "@uniflowed/story",
-    readonly mocks?: {
-      readonly module?: "@uniflowed/mock",
-      readonly mswCompatible?: boolean,
-    },
-    readonly browser?: {
-      readonly module?: "@uniflowed/browser",
-      readonly playwrightCompatible?: boolean,
-    },
   },
   readonly taskRunner?: {
-    readonly engine?: "vite-task",
-    readonly allowPackageScripts?: false,
+    // Whether a task with no `command` may be handed to Vite+'s task runner,
+    // `vp run <name>`, which runs the `package.json` script of that name.
+    // `true` when absent; `false` refuses such a task by name.
+    readonly allowPackageScripts?: boolean,
   },
   readonly test?: {
     readonly module?: "@uniflowed/test",
@@ -1056,21 +871,15 @@ export type UniflowedConfig = {
      * What runs the suite: `"uf"`, the default, or `"bun[@version]"`. See
      * `TestRunnerSpec`.
      *
-     * The object is the old description of uf's own runner, field by field,
-     * and is **deprecated**: it still parses, and `applicationTarget` in it is
-     * still read when `target` is absent.
+     * The object is the old description of uf's own runner, and is
+     * **deprecated**: `applicationTarget`, the one field of it anything read,
+     * is still read when `target` is absent.
      */
     readonly runner?:
       | TestRunnerSpec
       | {
           readonly applicationTarget?: "auto" | "web" | "react-native",
-          readonly runtime?: "vite-task" | "capability-js-host" | "uf-self-hosted",
-          readonly jsHosts?: $ReadOnlyArray<CapabilityJsHost>,
-          readonly scheduler?: "vite-task-cache" | "native-work-stealing",
-          readonly performanceTarget?: "vite-task" | "faster-than-bun",
-          readonly officialFlowParser?: true,
         },
-    readonly reactTestingLibraryNative?: true,
     /**
      * Let `uf test` split a long test file into shares that run on several
      * workers at once, each importing the file and running its own contiguous
@@ -1141,8 +950,6 @@ export type UniflowedConfig = {
    */
   readonly vite?: { readonly [string]: mixed },
   readonly vrt?: {
-    readonly enabled?: boolean,
-    readonly module?: "@uniflowed/vrt",
     readonly baselines?: string,
     readonly threshold?: number,
   },

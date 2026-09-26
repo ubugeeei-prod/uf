@@ -4497,6 +4497,7 @@ dependencies = [
  "compact_str",
  "criterion",
  "json5",
+ "proc-macro2",
  "serde",
  "serde_json",
  "similar-asserts",

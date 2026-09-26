@@ -1341,7 +1341,11 @@ function mdxPlugin(markdown) {
   return {
     enforce: "pre",
     ...mdx({
-      jsxImportSource: "react",
+      // `app.builtins.markdown.mdx.jsxImportSource`: React's runtime unless a
+      // project names another. `uf` refuses `@uniflowed/jsx-runtime` — the
+      // key's old default, which has no runtime in it — where the config is
+      // read, so it never arrives here.
+      jsxImportSource: mdxConfig.jsxImportSource ?? "react",
       remarkPlugins: [remarkGfm, remarkFrontmatter, remarkFrontmatterExport],
       rehypePlugins,
     }),
