@@ -241,6 +241,9 @@ function applyModules(
  * response is a reload rather than a retry.
  */
 function importModule(url: string): Promise<mixed> {
+  // The updated module's URL comes from the dev server at run time; Flow types
+  // only a literal specifier, and the namespace leaves here as `mixed`.
+  // $FlowFixMe[unsupported-syntax]
   return import(url).then(
     (namespace: mixed) => namespace,
     () => null,

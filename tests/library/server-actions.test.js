@@ -245,7 +245,7 @@ describe("what may cross to a server action", () => {
   // used to be per argument, so sixteen arguments carried sixteen times it.
   it("bounds the values of a whole call, not of each argument", () => {
     const share = Math.ceil(MAX_ACTION_VALUES / 4);
-    const args = Array.from({ length: 5 }, () => Array.from({ length: share }, () => 0));
+    const args = Array.from({ length: 5 }, () => Array.from({ length: share }, (): number => 0));
     // Each argument alone is inside the bound.
     checkActionValue(args[0], "argument 1");
     expect(() => encodeActionArguments(args)).toThrow(ActionValueError);

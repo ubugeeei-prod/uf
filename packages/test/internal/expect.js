@@ -71,6 +71,7 @@ import type { SpyCall } from "./spy.js";
 import * as asymmetric from "./asymmetric.js";
 import * as snapshot from "./snapshot.js";
 import { auditElement, describeViolations, violationIds } from "./axe.js";
+import { callable } from "./callable.js";
 import { isSpy } from "./spy.js";
 import { equals, matchesObject, render } from "./equality.js";
 
@@ -486,11 +487,10 @@ function verdicts(received: mixed): {
         name,
       );
     },
-    toSatisfy: (predicate: mixed) =>
-      simple(
-        typeof predicate === "function" && predicate(received) === true,
-        "to satisfy the predicate",
-      ),
+    toSatisfy: (predicate: mixed) => {
+      const check = callable(predicate);
+      return simple(check != null && check(received) === true, "to satisfy the predicate");
+    },
     toMatchSnapshot: (hint?: mixed): Verdict => {
       const verdict = snapshot.matchSnapshot(
         received,
@@ -531,13 +531,14 @@ function verdicts(received: mixed): {
     },
     toThrow: (...rest: $ReadOnlyArray<mixed>) => {
       const expected = rest[0];
-      if (typeof received !== "function") {
+      const run = callable(received);
+      if (run == null) {
         return simple(false, "to be a function, so it could be called");
       }
       let thrown: mixed;
       let threw = false;
       try {
-        received();
+        run();
       } catch (error) {
         threw = true;
         thrown = error;

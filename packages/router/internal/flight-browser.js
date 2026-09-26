@@ -99,6 +99,9 @@ export function installBrowserModules(): void {
         ),
       );
     }
+    // A chunk the payload names, known only at run time and checked to be on
+    // this origin above; Flow types only a literal specifier.
+    // $FlowFixMe[unsupported-syntax]
     return import(target.href).then((namespace: ModuleNamespace) => {
       loaded.set(url, namespace);
     });

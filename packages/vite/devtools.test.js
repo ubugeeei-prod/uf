@@ -66,8 +66,10 @@ function emptyWindow(): $FlowFixMe {
  * of the coverage.
  */
 function runPreamble(win: $FlowFixMe): void {
+  // Through `Reflect.apply`: Flow types a constructed function as taking no
+  // arguments, since its parameters are only strings to the constructor.
   // uf-lint-disable-next-line security/no-eval
-  new Function("window", devtoolsPreamble())(win);
+  Reflect.apply(new Function("window", devtoolsPreamble()), undefined, [win]);
 }
 
 /** The vendored Fast Refresh runtime, once there is a window to import it. */

@@ -761,7 +761,7 @@ async function renderForCache(
 function streamedFill(
   body: ReadableStream<Uint8Array>,
   status: number,
-  rendered: { +[string]: string },
+  rendered: { readonly [string]: string },
   context: RequestContext | null,
   before: number,
 ): Response {

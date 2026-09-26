@@ -36,6 +36,8 @@
 // Every spy is registered, so `uft.clearAllMocks` and its siblings can reach the
 // ones a test never held a reference to.
 
+import { callable } from "./callable.js";
+
 /** One call's arguments, as Vitest's `mock.calls` holds them. */
 export type SpyCall = $ReadOnlyArray<mixed>;
 
@@ -118,7 +120,8 @@ function makeSpy(implementation: mixed, restore: Restore, name: string): $FlowFi
             ? Reflect.construct(body as $FlowFixMe, [...args], new.target)
             : this;
       } else {
-        returned = typeof body === "function" ? body.apply(this, args) : undefined;
+        const run = callable(body);
+        returned = run != null ? run.apply(this, args) : undefined;
       }
     } catch (thrown) {
       result.type = "throw";

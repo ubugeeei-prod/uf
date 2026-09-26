@@ -10,12 +10,19 @@ export type ScreenshotOptions = {|
   readonly threshold?: number,
 |};
 
+/** A screenshot that matched its baseline, or was recorded as the new one. */
+export type ScreenshotResult = {|
+  readonly baseline: string,
+  readonly updated: boolean,
+  readonly differentPixels: number,
+|};
+
 /** Baselines stay under the project's configured directory, including through symlinks. */
 export async function compareScreenshot(
   data: string,
   name: string,
   options: ScreenshotOptions = {},
-) {
+): Promise<ScreenshotResult> {
   if (
     typeof name !== "string" ||
     !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/.test(name) ||

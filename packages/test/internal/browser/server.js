@@ -124,7 +124,7 @@ export type PageRequest = {|
 /** How `create` is configured. */
 export type ServerOptions = {|
   readonly browserCommand?: (
-    id: mixed,
+    id: string | null,
     method: string,
     args: $ReadOnlyArray<mixed>,
   ) => Promise<mixed>,
@@ -226,6 +226,7 @@ export async function create(options: ServerOptions): Promise<ModuleServer> {
           try {
             const { id, method, args } = JSON.parse(body);
             if (
+              (id !== null && typeof id !== "string") ||
               typeof method !== "string" ||
               !Array.isArray(args) ||
               options.browserCommand == null
@@ -279,7 +280,7 @@ export async function create(options: ServerOptions): Promise<ModuleServer> {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  const port = address != null && typeof address === "object" ? address.port : 0;
+  const port: number = address != null && typeof address === "object" ? address.port : 0;
 
   return {
     url: `http://127.0.0.1:${String(port)}${PAGE_PATH}`,

@@ -48,7 +48,7 @@ import path from "node:path";
 import { inSourceTests, sharedService } from "@uniflowed/host/transform";
 
 import { create } from "./internal/browser/server.js";
-import { connectPipe } from "./internal/browser/cdp.js";
+import { type PipeController, connectPipe } from "./internal/browser/cdp.js";
 
 /** What `uf` sends for one file. */
 type Request = {|
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
   const browser = process.env.UF_BROWSER;
   const service = sharedService(root);
 
-  let controller = null;
+  let controller: PipeController | null = null;
   const server = await create({
     root,
     browserCommand: async (id, method, args) => {

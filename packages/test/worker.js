@@ -242,6 +242,9 @@ async function runImportedFile(
       const { loadNativeFile } = await import("./internal/native-host.js");
       closeNative = await loadNativeFile(request.file);
     } else {
+      // The test file the runner found; Flow types only a literal specifier,
+      // and nothing is read from its namespace.
+      // $FlowFixMe[unsupported-syntax]
       await import(`${url}?uf-run=${generation}`);
     }
   } catch (thrown) {

@@ -21,6 +21,7 @@
 // the time any matcher runs, both modules have finished evaluating — and the
 // alternative was wiring the comparison in at load, which is an import-time side
 // effect and the one thing every shipped module here is forbidden.
+import { callable } from "./callable.js";
 import { equals } from "./equality.js";
 
 /** The brand every matcher carries, so `equals` can recognise one. */
@@ -91,8 +92,10 @@ export function any(constructor: mixed): AsymmetricMatcher {
         // one means — not "has Object.prototype in its chain", which a
         // null-prototype object would fail and a test would find baffling.
         return received != null && (typeof received === "object" || typeof received === "function");
-      default:
-        return typeof constructor === "function" && received instanceof constructor;
+      default: {
+        const type = callable(constructor);
+        return type != null && received instanceof type;
+      }
     }
   });
 }

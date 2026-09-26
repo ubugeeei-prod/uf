@@ -95,6 +95,8 @@ function project(
 
 /** A module of the router copy in `root`, imported by its path. */
 function routerModule(root: string, file: string): Promise<$FlowFixMe> {
+  // A copy of the router in a scratch directory, by its run-time path.
+  // $FlowFixMe[unsupported-syntax]
   return import(pathToFileURL(path.join(root, "node_modules", "@uniflowed", "router", file)).href);
 }
 

@@ -24,6 +24,15 @@ export type BrowserTransport = {|
   ) => Promise<WireValue>,
   readonly close: () => Promise<void>,
 |};
+/** The page commands `connectPipe` answers over one browser connection. */
+export type PipeController = {|
+  readonly command: (
+    id: string | null,
+    method: string,
+    args?: $ReadOnlyArray<WireValue>,
+  ) => Promise<WireValue>,
+  readonly closePages: () => Promise<void>,
+|};
 type Pending = {|
   timer: TimeoutID,
   resolve: (value: WireValue) => void,
@@ -31,7 +40,7 @@ type Pending = {|
 |};
 
 /** CDP over the private pipe: closing the test worker also closes Chromium. */
-export function connectPipe(child: $FlowFixMe, options: ControlOptions = {}) {
+export function connectPipe(child: $FlowFixMe, options: ControlOptions = {}): PipeController {
   let sequence = 0;
   let buffered = "";
   let closed = false;

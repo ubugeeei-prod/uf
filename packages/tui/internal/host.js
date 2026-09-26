@@ -68,7 +68,7 @@ import type { Update } from "../diff.js";
 import { diffFrames } from "../diff.js";
 import type { KeyEvent } from "../keys.js";
 import { layout } from "../layout.js";
-import type { MouseEvent } from "../mouse.js";
+import type { MouseEvent, MouseEventType } from "../mouse.js";
 import { MouseButton, derive } from "../mouse.js";
 import type { Selection, SelectionPoint } from "../selection.js";
 import { selectionBetween } from "../selection.js";
@@ -373,16 +373,18 @@ export function dispatchKey(renderer: Renderer, key: KeyEvent): void {
  * page finds its handler called here. `onMouse` is not in this table because
  * it is called for every type, after the specific one.
  */
-const MOUSE_HANDLERS: { readonly [string]: string } = {
-  down: "onMouseDown",
-  up: "onMouseUp",
-  move: "onMouseMove",
-  drag: "onMouseDrag",
-  "drag-end": "onMouseDragEnd",
-  drop: "onMouseDrop",
-  over: "onMouseOver",
-  out: "onMouseOut",
-  scroll: "onMouseScroll",
+const MOUSE_HANDLERS: {
+  readonly [MouseEventType]: (props: TuiProps) => ?(event: MouseEvent) => mixed,
+} = {
+  down: (props) => props.onMouseDown,
+  up: (props) => props.onMouseUp,
+  move: (props) => props.onMouseMove,
+  drag: (props) => props.onMouseDrag,
+  "drag-end": (props) => props.onMouseDragEnd,
+  drop: (props) => props.onMouseDrop,
+  over: (props) => props.onMouseOver,
+  out: (props) => props.onMouseOut,
+  scroll: (props) => props.onMouseScroll,
 };
 
 /** The `id` a box was given, which is the only name an event can carry. */
@@ -439,7 +441,7 @@ function bubble(
   while (current != null) {
     if (current.type === "box") {
       event.currentTarget = nodeId(current);
-      const specific = current.props[MOUSE_HANDLERS[event.type]];
+      const specific = MOUSE_HANDLERS[event.type](current.props);
       if (typeof specific === "function") {
         specific(event);
       }

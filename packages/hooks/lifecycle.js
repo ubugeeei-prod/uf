@@ -28,6 +28,7 @@ import {
   useEffect,
   useInsertionEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "@uniflowed/react";
@@ -61,7 +62,14 @@ export hook useStableCallback<TArgs extends $ReadOnlyArray<mixed>, TReturn>(
     latest.current = callback;
   }, [callback]);
 
-  return useCallback((...args: TArgs) => latest.current(...args), []);
+  // `useMemo` over a function rather than `useCallback`: the same cache, and
+  // `useCallback`'s bound cannot hold a function generic in its arguments.
+  return useMemo(
+    () =>
+      (...args: TArgs) =>
+        latest.current(...args),
+    [],
+  );
 }
 
 /** The value from the previous render, or `undefined` on the first. */
@@ -72,8 +80,10 @@ export hook usePrevious<T>(value: T): T | void {
   }, [value]);
   // This hook's public value is the last committed render; reading the ref
   // during render is the contract rather than hidden reactive input.
-  // uf-lint-disable-next-line react-compiler/refs
+  // uf-lint-disable react-compiler/refs
+  // $FlowExpectedError[react-rule-unsafe-ref] the same deliberate read, as Flow's React rules see it.
   return previous.current;
+  // uf-lint-enable react-compiler/refs
 }
 
 /**

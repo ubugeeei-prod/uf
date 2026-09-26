@@ -83,6 +83,8 @@ describe("resolving `@uniflowed/react`", () => {
 describe("the React Compiler's cache in the rsc graph", () => {
   it("is every slot the sentinel compiled code tests for, fresh each call", async () => {
     const url = `data:text/javascript,${encodeURIComponent(compilerRuntimeSource())}`;
+    // The generated runtime, as a `data:` URL; Flow types only a literal specifier.
+    // $FlowFixMe[unsupported-syntax]
     const runtime = await import(url);
     const first = runtime.c(3);
     expect(first).toEqual([

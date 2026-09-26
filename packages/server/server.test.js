@@ -284,7 +284,7 @@ describe("a second copy of this package", () => {
   // request store of its own unless the store is the process's. See
   // `internal/process-state.js`.
   async function secondCopy() {
-    return import(new URL("./internal/context.js?a-second-copy", import.meta.url).href);
+    return import("./internal/context.js?a-second-copy");
   }
 
   it("is a second instance, which is what makes the cases below mean anything", async () => {
