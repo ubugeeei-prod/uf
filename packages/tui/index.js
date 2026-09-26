@@ -67,7 +67,8 @@
 // # What is here, and what is not
 //
 // Implemented, tested, and true: a component tree, flexbox layout in whole
-// cells — wrapping, absolute positioning and `zIndex` included — a cell buffer with correct wide-grapheme handling, a diff that emits
+// cells — wrapping, `auto` margins, absolute positioning against the nearest
+// positioned ancestor and `zIndex` included — a cell buffer with correct wide-grapheme handling, a diff that emits
 // only changed cells, keyboard input with OpenTUI's key names, propagation
 // rules and Kitty press/repeat/release event types, bracketed paste,
 // declarative focus, mouse input — press, release, hover, drag with capture,

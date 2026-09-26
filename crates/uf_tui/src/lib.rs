@@ -193,7 +193,18 @@ pub enum TuiRuntimeBinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiFeature {
-    /// Flexbox layout.
+    /// Flexbox layout, in whole cells, with OpenTUI's defaults.
+    ///
+    /// Direction, growth and shrinking, `justifyContent`, `alignItems`,
+    /// `alignSelf`, gaps, percentages, `min*`/`max*`, `flexWrap` with
+    /// `alignContent`, `auto` margins on both axes, and `position` in all
+    /// three of Yoga 3's values: an absolute box is placed by its offsets
+    /// against the padding box of its nearest ancestor that is not `static`,
+    /// or the screen. What is not behind the word: `aspectRatio`, and
+    /// wrapping or positioning inside a scrolling box, whose children are one
+    /// column. An absolute box is also still drawn, clipped and hit with its
+    /// parent in the tree, as it is in OpenTUI — not lifted out to its
+    /// containing block the way a browser would.
     Flexbox,
     /// Cell-diff renderer updates.
     CellDiff,

@@ -224,7 +224,7 @@ const JUSTIFY_CONTENTS: $ReadOnlyArray<JustifyContent> = [
 const ALIGN_ITEMS: $ReadOnlyArray<AlignItems> = ["flex-start", "center", "flex-end", "stretch"];
 const ALIGN_SELVES: $ReadOnlyArray<AlignSelf> = ["auto", ...ALIGN_ITEMS];
 const OVERFLOWS: $ReadOnlyArray<Overflow> = ["visible", "hidden", "scroll"];
-const POSITIONS: $ReadOnlyArray<Position> = ["relative", "absolute"];
+const POSITIONS: $ReadOnlyArray<Position> = ["static", "relative", "absolute"];
 const FLEX_WRAPS: $ReadOnlyArray<FlexWrap> = ["no-wrap", "wrap", "wrap-reverse"];
 const ALIGN_CONTENTS: $ReadOnlyArray<AlignContent> = [
   "flex-start",

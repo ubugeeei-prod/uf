@@ -624,6 +624,156 @@ describe("a box out of the line", () => {
   });
 });
 
+describe("a containing block further up", () => {
+  it("places an absolute box against the nearest ancestor that is not static", () => {
+    const handle = testRender(
+      <Box border={true} width={12} height={5}>
+        <Box position="static" padding={1} width={6}>
+          <Text>ab</Text>
+          <Text position="absolute" bottom={0} right={0}>
+            Z
+          </Text>
+        </Box>
+      </Box>,
+      { width: 12, height: 5 },
+    );
+    // The static box is six columns wide; the corner `Z` is in is the
+    // bordered one's, which is the first box up the tree that is positioned.
+    expect(rows(handle.frame())).toEqual([
+      "┌──────────┐",
+      "│          │",
+      "│ ab       │",
+      "│         Z│",
+      "└──────────┘",
+    ]);
+    handle.stop();
+  });
+
+  it("stops at the first positioned ancestor, not the outermost", () => {
+    const handle = testRender(
+      <Box width={10} height={3}>
+        <Box width={6} height={3}>
+          <Box position="static" width={2} height={1}>
+            <Text position="absolute" bottom={0} right={0}>
+              Z
+            </Text>
+          </Box>
+        </Box>
+      </Box>,
+      { width: 10, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["          ", "          ", "     Z    "]);
+    handle.stop();
+  });
+
+  it("resolves the box's percentages against that ancestor too", () => {
+    const handle = testRender(
+      <Box width={10} height={2}>
+        <Box position="static" width={4} height={1}>
+          <Box
+            position="absolute"
+            top={1}
+            left="50%"
+            width="50%"
+            height={1}
+            backgroundColor="#333333"
+          />
+        </Box>
+      </Box>,
+      { width: 10, height: 2 },
+    );
+    const frame = handle.frame();
+    const painted = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((x) =>
+      cell(frame, x, 1).bg === 0x333333 ? "#" : ".",
+    );
+    expect(painted.join("")).toBe(".....#####");
+    handle.stop();
+  });
+
+  it("is the screen when no ancestor is positioned", () => {
+    const handle = testRender(
+      <Box position="static" marginLeft={2} width={4}>
+        <Text position="absolute" bottom={0} right={0}>
+          x
+        </Text>
+      </Box>,
+      { width: 8, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["        ", "       x"]);
+    handle.stop();
+  });
+
+  it("keeps its parent's alignment on an axis with no offset", () => {
+    // The static position is about the line the box was taken out of, so it
+    // is the parent's even when the offsets are measured from further up.
+    const handle = testRender(
+      <Box width={10} height={3}>
+        <Box position="static" width={6} height={3} alignItems="center">
+          <Text position="absolute" top={0}>
+            hi
+          </Text>
+        </Box>
+      </Box>,
+      { width: 10, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["  hi      ", "          ", "          "]);
+    handle.stop();
+  });
+
+  it("ignores offsets on a static box, which stays where its line put it", () => {
+    const handle = testRender(
+      <Box>
+        <Text position="static" top={1} left={2}>
+          a
+        </Text>
+        <Text>b</Text>
+      </Box>,
+      { width: 4, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["a   ", "b   "]);
+    handle.stop();
+  });
+
+  it("is hit where it is drawn, not where its parent is", () => {
+    const clicked = [];
+    const handle = testRender(
+      <Box width={10} height={2}>
+        <Box
+          id="row"
+          position="static"
+          width={4}
+          height={1}
+          onMouseDown={(event) => {
+            clicked.push(event.target);
+          }}
+        >
+          <Box
+            id="tip"
+            position="absolute"
+            right={0}
+            bottom={0}
+            width={3}
+            height={1}
+            onMouseDown={(event) => {
+              clicked.push(event.target);
+            }}
+          />
+        </Box>
+      </Box>,
+      { width: 10, height: 2 },
+    );
+    // `tip` is columns 7–9 of the second row, against the outer box; the
+    // `row` it belongs to is columns 0–3 of the first. A press on `tip`
+    // still bubbles to `row`, because bubbling follows the tree, and a press
+    // under where `row` would have put it reaches neither.
+    handle.press("\u001b[<0;9;2M\u001b[<0;9;2m");
+    handle.press("\u001b[<0;2;1M\u001b[<0;2;1m");
+    handle.press("\u001b[<0;3;2M\u001b[<0;3;2m");
+    expect(clicked).toEqual(["tip", "tip", "row"]);
+    handle.stop();
+  });
+});
+
 describe("a window onto more than fits", () => {
   /** `count` numbered lines, which is what a log looks like to a renderer. */
   const log = (count: number) =>
