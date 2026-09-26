@@ -713,7 +713,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 &commands::pm::Scope::from_flags(workspace.filter, workspace.workspace_root),
             )
         }
-        Commands::Use { runtime } => commands::toolchain::use_runtime(&cwd, ui, &runtime),
+        Commands::Use { runtime } => commands::toolchain::use_runtime(ui, &runtime),
         Commands::SelfUpdate {
             version,
             check,

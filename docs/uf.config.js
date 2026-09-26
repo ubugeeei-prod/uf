@@ -13,15 +13,9 @@ export default defineConfig({
     },
     builtins: {
       markdown: {
-        module: "@uniflowed/markdown",
-        engine: "ox-content-wasm",
         mdx: {
           enabled: true,
-          extensions: [".mdx"],
-          jsxImportSource: "@uniflowed/jsx-runtime",
-          pipelinePlugin: "built-in",
         },
-        cache: "opt-in",
       },
     },
     router: {
@@ -31,7 +25,6 @@ export default defineConfig({
     rendering: {
       modes: ["ssg"],
       cache: {
-        actions: false,
         data: false,
         fetch: false,
         route: false,
@@ -58,33 +51,11 @@ export default defineConfig({
     url: "https://docs.uniflowed.dev",
   },
   docs: {
-    enabled: true,
-    app: "app.js",
-    source: ".",
     outDir: "dist/docs",
-    staticBuild: true,
-    deploy: "void",
   },
   fmt: {
-    flow: {
-      parser: "official-flow-rust",
-      printer: "uf-rust",
-    },
     nonFlow: {
       formatter: "biome",
-    },
-  },
-  lint: {
-    engine: "rust",
-    flow: {
-      builtins: "mixed",
-      parser: "official-flow-rust",
-    },
-  },
-  test: {
-    runner: {
-      runtime: "capability-js-host",
-      jsHosts: ["node", "deno", "bun"],
     },
   },
 });

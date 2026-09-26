@@ -7,11 +7,6 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(config.app.router.enabled);
     assert_eq!(config.app.router.entry, "app.js");
     assert_eq!(config.app.router.root, "app");
-    assert_eq!(config.app.component_default, ComponentBoundary::Server);
-    assert_eq!(config.app.react.version, "19");
-    assert!(config.app.react.async_react);
-    assert!(config.app.react.suspense);
-    assert!(config.app.react.use_hook);
     // Strict Mode is on unless a project turns it off, and `uf dev` is the only
     // command that acts on it. ubugeeei-prod/uf#516.
     assert!(config.app.react.strict_mode);
@@ -100,15 +95,8 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(!config.app.rendering.cache.route);
     assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));
     assert!(config.app.rendering.modes.contains(&RenderingMode::Isr));
-    assert!(config.app.builtins.cell);
-    assert!(config.app.builtins.react_testing_library);
     assert!(config.app.builtins.relay);
-    assert!(config.app.orm.native);
-    assert!(config.app.orm.generated_flow_types);
-    assert!(config.app.orm.prepared_by_default);
     assert_eq!(config.app.builtins.style, StyleEngine::StyleX);
-    assert_eq!(config.fmt.flow.parser, FlowFormatParser::OfficialFlowRust);
-    assert_eq!(config.fmt.flow.printer, FlowFormatPrinter::UfRust);
     assert_eq!(config.fmt.non_flow.formatter, NonFlowFormatter::Biome);
     assert!(
         !config.fmt.non_flow.chosen_by_project,
@@ -116,70 +104,11 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     );
     assert_eq!(config.fmt.quotes, QuoteStyle::Double);
     assert!(config.fmt.semicolons);
-    assert_eq!(config.server.engine, ServerEngine::NativeRust);
-    assert!(config.server.native.streaming);
-    assert!(config.server.native.zero_copy_http);
-    assert!(
-        config
-            .server
-            .native
-            .adapters
-            .contains(&NativeServerAdapter::Deno)
-    );
-    assert_eq!(config.package.generator, PackageGenerator::NapiRs);
-    assert!(config.package.typescript_declarations_to_flow);
-    assert!(config.package.targets.contains(&PackageTarget::NodeNapi));
-    assert_eq!(config.pm.module, "@uniflowed/pm");
-    assert_eq!(config.pm.resolver, PackageManagerResolver::UfNative);
     assert_eq!(config.pm.lockfile, "uf.lock");
     assert_eq!(config.pm.store_dir, ".uf/store");
     assert!(!config.pm.allow_lifecycle_scripts);
     assert_eq!(config.pm.package_manager, PackageManagerPreference::Auto);
-    assert_eq!(config.rm.module, "@uniflowed/rm");
-    assert!(config.rm.infer_from_config);
-    assert_eq!(config.rm.version, "node@system");
-    assert!(config.rm.auto_switch);
-    assert_eq!(config.rm.acquisition, RuntimeManagerAcquisition::Auto);
-    assert_eq!(config.rm.apply, RuntimeManagerApply::ConfigAndHost);
-    assert!(config.rm.doctor);
-    assert_eq!(config.std.module, "@uniflowed/std");
-    assert!(config.std.wintertc_aligned);
-    assert!(config.std.native_bindings);
-    assert!(config.std.modules.contains(&StdModuleConfig::Vfs));
-    assert!(config.std.modules.contains(&StdModuleConfig::Crypto));
-    assert!(config.std.modules.contains(&StdModuleConfig::Os));
-    assert!(config.std.modules.contains(&StdModuleConfig::Net));
-    assert!(config.std.modules.contains(&StdModuleConfig::Dns));
-    assert!(config.std.modules.contains(&StdModuleConfig::Path));
-    assert!(config.std.modules.contains(&StdModuleConfig::Stream));
-    assert!(config.std.modules.contains(&StdModuleConfig::Url));
-    assert!(config.std.modules.contains(&StdModuleConfig::Wasm));
-    assert!(config.std.modules.contains(&StdModuleConfig::Glob));
-    assert!(config.std.modules.contains(&StdModuleConfig::Motion));
-    assert!(config.std.modules.contains(&StdModuleConfig::Tui));
-    assert!(config.std.modules.contains(&StdModuleConfig::Cron));
-    assert!(config.std.modules.contains(&StdModuleConfig::S3));
-    assert!(config.std.modules.contains(&StdModuleConfig::Sigv4));
-    assert!(config.std.modules.contains(&StdModuleConfig::Functions));
-    assert!(config.std.modules.contains(&StdModuleConfig::ImportMeta));
-    assert!(config.std.modules.contains(&StdModuleConfig::Defer));
-    assert_eq!(config.publish.first_publish.mode, FirstPublishMode::Local);
-    assert!(config.publish.first_publish.local_bootstrap);
-    assert!(config.publish.trusted_publish.enabled);
-    assert_eq!(
-        config.publish.trusted_publish.provider,
-        TrustedPublishProvider::GitHubActionsOidc
-    );
-    assert!(config.publish.trusted_publish.tokenless);
-    assert_eq!(
-        config.publish.trusted_publish.trigger,
-        TrustedPublishTrigger::TagPush
-    );
     assert_eq!(config.release.tag_prefix, "uf@");
-    assert_eq!(config.release.command, "uf release alpha");
-    assert!(config.release.publish);
-    assert_eq!(config.task_runner.engine, TaskRunnerEngine::ViteTask);
-    assert!(!config.task_runner.allow_package_scripts);
     assert_eq!(config.test.module, "@uniflowed/test");
     assert_eq!(config.test.target, None);
     assert_eq!(config.test.runner, None);
@@ -187,100 +116,21 @@ fn zero_config_defaults_to_flow_react_app_stack() {
         config.test.native_runner().application_target,
         NativeTestApplicationTarget::Auto
     );
-    assert_eq!(
-        config.test.native_runner().runtime,
-        NativeTestRuntimeConfig::CapabilityJsHost
-    );
-    assert_eq!(
-        config.test.native_runner().performance_target,
-        NativeTestPerformanceTarget::FasterThanBun
-    );
-    assert!(config.test.native_runner().official_flow_parser);
-    assert_eq!(
-        config.test.native_runner().js_hosts,
-        vec![
-            CapabilityJsHost::Node,
-            CapabilityJsHost::Deno,
-            CapabilityJsHost::Bun,
-        ]
-    );
-    assert!(config.test.react_testing_library_native);
-    assert_eq!(config.app.builtins.data, DataEngine::UniflowedQuery);
-    assert_eq!(config.app.builtins.effect, EffectEngine::UniflowedEffect);
-    assert_eq!(config.app.builtins.fetch.module, "@uniflowed/fetch");
-    assert!(!config.app.builtins.fetch.override_global_fetch);
-    assert_eq!(config.app.builtins.graphql.module, "@uniflowed/graphql");
-    assert!(config.app.builtins.graphql.relay_base);
-    assert_eq!(config.app.builtins.loader.module, "@uniflowed/loader");
-    assert_eq!(config.app.builtins.loader.state_module, "@uniflowed/state");
-    assert_eq!(config.app.builtins.loader.cache, CacheModeConfig::OptIn);
-    assert_eq!(config.app.builtins.web.module, "@uniflowed/web");
-    assert!(config.app.builtins.web.typed_routes);
-    assert_eq!(config.app.builtins.web.cache, CacheModeConfig::OptIn);
-    assert_eq!(
-        config.app.builtins.markdown.engine,
-        MarkdownEngineConfig::OxContentWasm
-    );
     assert!(config.app.builtins.markdown.mdx.enabled);
-    assert_eq!(
-        config.app.builtins.markdown.mdx.extensions,
-        vec![CompactString::const_new(".mdx")]
-    );
-    assert_eq!(
-        config.app.builtins.markdown.mdx.jsx_import_source,
-        "@uniflowed/jsx-runtime"
-    );
-    assert_eq!(
-        config.app.builtins.markdown.mdx.pipeline_plugin,
-        MdxPipelinePluginConfig::BuiltIn
-    );
-    assert_eq!(config.app.builtins.markdown.cache, CacheModeConfig::OptIn);
-    assert_eq!(config.app.builtins.motion.module, "@uniflowed/motion");
-    assert_eq!(
-        config.app.builtins.motion.engine,
-        MotionEngineConfig::UfNative
-    );
-    assert!(config.app.builtins.motion.compiler_safe);
-    assert!(config.app.builtins.motion.server_component_safe);
-    assert!(config.app.builtins.motion.reduced_motion_default);
-    assert_eq!(config.app.builtins.tui.module, "@uniflowed/tui");
-    assert_eq!(config.app.builtins.tui.std_module, "@uniflowed/std/tui");
-    assert_eq!(config.app.builtins.tui.standard, TuiStandardConfig::OpenTui);
-    assert!(config.app.builtins.tui.native_renderer);
-    assert!(config.app.builtins.tui.beat_react_ink);
-    assert!(config.app.builtins.tui.rich_media);
-    assert!(config.app.builtins.tui.in_memory_tests);
-    assert_eq!(config.app.builtins.temporal.module, "@uniflowed/temporal");
-    assert!(config.app.builtins.temporal.lite);
-    assert_eq!(config.app.builtins.pwa.module, "@uniflowed/pwa");
-    assert!(!config.app.builtins.pwa.enabled_by_default);
-    assert_eq!(config.app.builtins.pwa.cache, CacheModeConfig::OptIn);
-    assert!(config.story.enabled);
-    assert_eq!(config.story.module, "@uniflowed/story");
-    assert_eq!(config.story.mocks.module, "@uniflowed/mock");
-    assert!(config.story.mocks.msw_compatible);
-    assert_eq!(config.story.browser.module, "@uniflowed/browser");
-    assert!(config.story.browser.playwright_compatible);
-    assert!(config.vrt.enabled);
-    assert_eq!(config.vrt.module, "@uniflowed/vrt");
     assert_eq!(config.vrt.baselines, "__uf_vrt__");
     assert_eq!(config.vrt.threshold, 0);
     assert_eq!(
         config.app.builtins.react_compiler.mode,
         ReactCompilerMode::Syntax
     );
-    assert_eq!(
-        config.app.builtins.react_compiler.implementation,
-        ReactCompilerImplementation::OfficialRust
-    );
     assert!(config.app.targets.contains(&RuntimeTarget::ReactNative));
-    assert!(config.docs.enabled);
-    assert!(config.docs.static_build);
-    assert_eq!(config.docs.deploy, DeployTarget::Void);
-    assert_eq!(config.lint.engine, LintEngine::Rust);
-    assert_eq!(config.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
-    assert_eq!(config.lint.flow.parser, FlowLintParser::OfficialFlowRust);
     assert_eq!(config.lint.rules["flow/syntax"], RuleLevel::Error);
+    // MDX compiles against React's runtime unless a project names another,
+    // and a command-less task is handed to Vite+ unless a project refuses it.
+    // Both were declared with other defaults and read by nothing until
+    // ubugeeei-prod/uf#1387.
+    assert_eq!(config.app.builtins.markdown.mdx.jsx_import_source, "react");
+    assert!(config.task_runner.allow_package_scripts);
 }
 
 #[test]
@@ -294,7 +144,6 @@ fn parses_the_dev_server_access_control_surface() {
               deny: ["*.secret"],
             },
             allowedHosts: ["dev.internal"],
-            allowedOrigins: ["http://dev.internal:5173"],
           },
         });
     "#;
@@ -305,7 +154,6 @@ fn parses_the_dev_server_access_control_surface() {
     assert_eq!(parsed.dev.fs.allow, vec!["../shared"]);
     assert_eq!(parsed.dev.fs.deny, vec!["*.secret"]);
     assert_eq!(parsed.dev.allowed_hosts, vec!["dev.internal"]);
-    assert_eq!(parsed.dev.allowed_origins, vec!["http://dev.internal:5173"]);
 }
 
 #[test]
@@ -317,7 +165,6 @@ fn dev_server_access_control_defaults_to_nothing_extra() {
     assert!(dev.fs.allow.is_empty());
     assert!(dev.fs.deny.is_empty());
     assert!(dev.allowed_hosts.is_empty());
-    assert!(dev.allowed_origins.is_empty());
 }
 
 #[test]
@@ -332,9 +179,7 @@ fn extracts_vite_style_define_config_object() {
               markdown: {
                 mdx: {
                   enabled: true,
-                  extensions: [".mdx"],
-                  jsxImportSource: "@uniflowed/jsx-runtime",
-                  pipelinePlugin: "built-in",
+                  jsxImportSource: "preact",
                 },
               },
             },
@@ -347,20 +192,13 @@ fn extracts_vite_style_define_config_object() {
             },
           },
           taskRunner: {
-            engine: "vite-task",
             allowPackageScripts: false,
           },
           test: {
             target: "react-native",
             runner: {
               applicationTarget: "react-native",
-              runtime: "capability-js-host",
-              performanceTarget: "faster-than-bun",
-              jsHosts: ["node", "deno", "bun"],
             },
-          },
-          rm: {
-            inferFromConfig: true,
           },
           pm: {
             allowLifecycleScripts: false,
@@ -379,25 +217,13 @@ fn extracts_vite_style_define_config_object() {
 
     assert_eq!(parsed.dev.port, 4111);
     assert!(parsed.app.builtins.markdown.mdx.enabled);
-    assert_eq!(
-        parsed.app.builtins.markdown.mdx.extensions,
-        vec![CompactString::const_new(".mdx")]
-    );
-    assert_eq!(
-        parsed.app.builtins.markdown.mdx.jsx_import_source,
-        "@uniflowed/jsx-runtime"
-    );
-    assert_eq!(
-        parsed.app.builtins.markdown.mdx.pipeline_plugin,
-        MdxPipelinePluginConfig::BuiltIn
-    );
+    assert_eq!(parsed.app.builtins.markdown.mdx.jsx_import_source, "preact");
     assert_eq!(parsed.lint.rules["uniflowed/no-tabs"], RuleLevel::Off);
     assert_eq!(
         parsed.lint.rules["react/component-syntax"],
         RuleLevel::Error
     );
     assert_eq!(parsed.tasks["storybook"].command(), "vite --host 0.0.0.0");
-    assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!parsed.task_runner.allow_package_scripts);
     assert_eq!(
         parsed.test.target,
@@ -407,19 +233,6 @@ fn extracts_vite_style_define_config_object() {
         parsed.test.native_runner().application_target,
         NativeTestApplicationTarget::ReactNative
     );
-    assert_eq!(
-        parsed.test.native_runner().performance_target,
-        NativeTestPerformanceTarget::FasterThanBun
-    );
-    assert_eq!(
-        parsed.test.native_runner().js_hosts,
-        vec![
-            CapabilityJsHost::Node,
-            CapabilityJsHost::Deno,
-            CapabilityJsHost::Bun,
-        ]
-    );
-    assert!(parsed.rm.infer_from_config);
     assert!(!parsed.pm.allow_lifecycle_scripts);
     assert_eq!(parsed.pm.package_manager, PackageManagerPreference::Pnpm);
 }
@@ -476,8 +289,7 @@ fn parses_flow_config() {
         r#"
             export default defineConfig({
               dev: { port: 3000 },
-              app: { builtins: { cell: false } },
-              std: { modules: ["tui"] },
+              app: { builtins: { relay: false } },
             });
         "#,
     )
@@ -486,9 +298,7 @@ fn parses_flow_config() {
     let config = load_config_file(&path).unwrap();
 
     assert_eq!(config.dev.port, 3000);
-    assert!(!config.app.builtins.cell);
-    assert!(config.std.modules.contains(&StdModuleConfig::Tui));
-    assert!(config.app.builtins.native_test_runner);
+    assert!(!config.app.builtins.relay);
 }
 
 #[test]
@@ -563,7 +373,6 @@ fn reads_the_two_cache_switches_that_are_implemented() {
     assert!(config.app.rendering.cache.route);
     assert!(config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.data);
-    assert!(!config.app.rendering.cache.actions);
     // Nothing persists unasked. A project that turned the route cache on and
     // said nothing else has the store it has always had: memory, one process.
     assert_eq!(config.app.rendering.cache.store, None);
@@ -651,6 +460,52 @@ fn refuses_a_cache_switch_uf_does_not_implement() {
         ConfigError::UnimplementedCache { key: "actions", .. }
     ));
     assert!(error.to_string().contains("rendering.cache.actions"));
+}
+
+/// `actions: false` said nothing and is dropped, not carried: the key is not
+/// one a project may write any more, so it does not reach `uf inspect`.
+#[test]
+fn a_retired_actions_switch_that_is_off_is_accepted_and_not_carried() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        "export default { app: { rendering: { cache: { actions: false, route: true } } } };",
+    )
+    .unwrap();
+    let config = load_config_file(&path).unwrap();
+    let cache = &serde_json::to_value(&config).unwrap()["app"]["rendering"]["cache"];
+    assert_eq!(cache["route"], serde_json::json!(true));
+    assert!(cache.get("actions").is_none(), "{cache}");
+}
+
+/// The old default of `mdx.jsxImportSource`, refused now that it is read:
+/// honoured, it would make every `.mdx` page import a runtime that does not
+/// exist. Any other package is carried to the MDX plugin as written.
+#[test]
+fn refuses_the_mdx_jsx_runtime_that_was_only_ever_a_default() {
+    let path = Utf8PathBuf::from("/project/uf.config.js");
+    let mdx = |source: &str| {
+        parse_config_projection(
+            &path,
+            serde_json::json!({
+                "app": { "builtins": { "markdown": { "mdx": { "jsxImportSource": source } } } }
+            }),
+        )
+    };
+    let error = mdx("@uniflowed/jsx-runtime").expect_err("no runtime to import");
+    assert!(matches!(error, ConfigError::MdxJsxImportSource { .. }));
+    assert!(error.to_string().contains("uf codemod"), "{error}");
+    assert_eq!(
+        mdx("preact")
+            .unwrap()
+            .app
+            .builtins
+            .markdown
+            .mdx
+            .jsx_import_source,
+        "preact"
+    );
 }
 
 #[test]
@@ -880,17 +735,16 @@ export default defineConfig({
 }
 
 #[test]
-fn fmt_config_reads_max_blank_lines_from_the_config_file() {
+fn fmt_config_reads_the_indent_width_from_the_config_file() {
     let source = r#"
         export default {
-          fmt: { maxBlankLines: 0, indentWidth: 4 },
+          fmt: { indentWidth: 4 },
         };
     "#;
 
     let object = extract_config_object(source).expect("object");
     let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
 
-    assert_eq!(parsed.fmt.max_blank_lines, 0);
     assert_eq!(parsed.fmt.indent_width, 4);
     assert_eq!(parsed.fmt.line_width, 100);
 }
@@ -910,26 +764,13 @@ fn parses_runtime_agnostic_tooling_surface() {
             },
           },
           fmt: {
-            flow: {
-              parser: "official-flow-rust",
-              printer: "uf-rust",
-            },
             nonFlow: {
               formatter: "biome",
-            },
-          },
-          lint: {
-            engine: "rust",
-            flow: {
-              builtins: "mixed",
-              parser: "official-flow-rust",
             },
           },
           test: {
             runner: {
               applicationTarget: "web",
-              runtime: "capability-js-host",
-              jsHosts: ["node", "deno", "bun"],
             },
           },
         });
@@ -951,23 +792,14 @@ fn parses_runtime_agnostic_tooling_surface() {
             CapabilityJsHost::Bun,
         ]
     );
-    assert_eq!(parsed.fmt.flow.parser, FlowFormatParser::OfficialFlowRust);
-    assert_eq!(parsed.fmt.flow.printer, FlowFormatPrinter::UfRust);
     assert_eq!(parsed.fmt.non_flow.formatter, NonFlowFormatter::Biome);
     assert!(
         parsed.fmt.non_flow.chosen_by_project,
         "a project that wrote the formatter down asked for it"
     );
-    assert_eq!(parsed.lint.engine, LintEngine::Rust);
-    assert_eq!(parsed.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
-    assert_eq!(parsed.lint.flow.parser, FlowLintParser::OfficialFlowRust);
     assert_eq!(
         parsed.test.native_runner().application_target,
         NativeTestApplicationTarget::Web
-    );
-    assert_eq!(
-        parsed.test.native_runner().runtime,
-        NativeTestRuntimeConfig::CapabilityJsHost
     );
 }
 

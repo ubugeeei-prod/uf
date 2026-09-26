@@ -645,7 +645,6 @@ fn an_ignore_entry_with_a_separator_still_means_one_place() {
     let mut ignore = uf_config::DEFAULT_IGNORE.to_vec();
     ignore.push("app/generated".into());
     config.ignore = Some(ignore);
-    config.lint.files.push("lib".into());
 
     let files = scan_source_files(&root, &config).unwrap().files;
 

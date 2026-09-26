@@ -80,11 +80,9 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
-use uf_config::load_config;
 use uf_rm::{RuntimeReference, RuntimeUsePlan, RuntimeUseStep, XdgEnv, XdgLayout};
 use uf_term::{KeyValue, Status, Tone};
 
-use crate::support::enabled;
 use crate::ui::Ui;
 
 use switch::{
@@ -273,8 +271,11 @@ fn is_version(text: &str) -> bool {
 }
 
 /// `uf use uf@<version>`: make that version the one `uf` runs.
-pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<()> {
-    let resolved = load_config(cwd)?;
+///
+/// Nothing in the project decides any of it, so the project's config is not
+/// read: `rm.autoSwitch` was, to print a row that changed nothing, and it went
+/// with the rest of `rm` (ubugeeei-prod/uf#1387).
+pub(crate) fn use_runtime(ui: &mut Ui, runtime: &str) -> Result<()> {
     let requested = RuntimeReference::parse(runtime)
         .ok_or_else(|| anyhow!("runtime must look like uf@0.1.0"))?;
     if requested.name != RUNTIME_NAME {
@@ -305,8 +306,7 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
         Origin::acquired()
     };
 
-    let auto_switch = resolved.config.rm.auto_switch;
-    let mut plan = RuntimeUsePlan::new(requested, xdg_layout_from_process(), auto_switch);
+    let mut plan = RuntimeUsePlan::new(requested, xdg_layout_from_process());
     // The plan `uf_rm` declares is the whole ladder; what gets printed is the
     // rungs this run climbed. A version already on the machine downloads and
     // verifies nothing, and printing that it did is the shape of the bug this
@@ -336,7 +336,6 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
     let summary = format!("now using {runtime_label}");
 
     let mut rows = vec![
-        KeyValue::new("auto switch", enabled(plan.auto_switch)),
         KeyValue::new("source", source),
         KeyValue::toned("shim", &shim, Tone::Path),
         KeyValue::toned("state", &state, Tone::Path),

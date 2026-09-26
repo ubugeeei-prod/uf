@@ -38,21 +38,11 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
     let router_root = resolved.config.app.router.root.to_string();
     let style = format!("{:?}", resolved.config.app.builtins.style);
     let compiler = format!("{:?}", resolved.config.app.builtins.react_compiler.mode);
-    let server_engine = format!("{:?}", resolved.config.server.engine);
-    let adapters = resolved.config.server.native.adapters.len().to_string();
-    let task_engine = format!("{:?}", resolved.config.task_runner.engine);
-    let test_runtime = format!("{:?}", resolved.config.test.native_runner().runtime);
-    let test_target = format!(
-        "{:?}",
-        resolved.config.test.native_runner().performance_target
-    );
-    let pm_resolver = format!("{:?}", resolved.config.pm.resolver);
     let pm_lockfile = resolved.config.pm.lockfile.to_string();
     let detected = detection.package_manager.to_string();
     let detected_source = detection.source.kind().to_string();
     let alternatives = detection.alternatives.len().to_string();
     let issues = detection.issues.len().to_string();
-    let rm_module = resolved.config.rm.module.to_string();
     let native_modules = builtin_modules().len().to_string();
     // The same two lines as `ui` below, and for the same reason found twice.
     // `std_module_descriptors().len()` was reported here as a project fact and
@@ -161,26 +151,14 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
         renderer.key_values(
             out,
             4,
-            &[
-                KeyValue::new("server", &server_engine),
-                KeyValue::toned("server adapters", &adapters, Tone::Number),
-                KeyValue::new("tasks", &task_engine),
-                KeyValue::new(
-                    "package scripts",
-                    if resolved.config.task_runner.allow_package_scripts {
-                        "allowed"
-                    } else {
-                        "forbidden"
-                    },
-                ),
-                KeyValue::new("tests", &test_runtime),
-                KeyValue::new("test target", &test_target),
-                KeyValue::new("runtime module", &rm_module),
-                KeyValue::new(
-                    "runtime inference",
-                    enabled(resolved.config.rm.infer_from_config),
-                ),
-            ],
+            &[KeyValue::new(
+                "package scripts",
+                if resolved.config.task_runner.allow_package_scripts {
+                    "allowed"
+                } else {
+                    "forbidden"
+                },
+            )],
         );
         renderer.blank(out);
 
@@ -216,7 +194,6 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             out,
             4,
             &[
-                KeyValue::new("configured", &pm_resolver),
                 KeyValue::toned("lockfile", &pm_lockfile, Tone::Path),
                 KeyValue::toned("detected", &detected, Tone::Accent),
                 KeyValue::new("detected from", &detected_source),
@@ -395,19 +372,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
             // `hosts: [node, deno, bun]` came to be quoted as a statement that
             // a uf project runs on Deno. See `uf_runtime::HostSupport`.
             "hostSupport": host_support(),
-            "server": {
-                "engine": resolved.config.server.engine,
-                "streaming": resolved.config.server.native.streaming,
-                "zeroCopyHttp": resolved.config.server.native.zero_copy_http,
-                "adapters": &resolved.config.server.native.adapters,
-            },
-            "packageGenerator": {
-                "engine": resolved.config.package.generator,
-                "targets": &resolved.config.package.targets,
-                "typescriptDeclarationsToFlow": resolved.config.package.typescript_declarations_to_flow,
-            },
             "taskRunner": {
-                "engine": resolved.config.task_runner.engine,
                 "allowPackageScripts": resolved.config.task_runner.allow_package_scripts,
             },
             "testRunner": test_runner,

@@ -135,6 +135,12 @@ mimalloc = "0.1.52"
 # wherever it cannot start. Only the FSEvents backend is enabled.
 notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
 phf = { version = "0.14.0", features = ["macros"] }
+# Lexes the workspace's own Rust in `uf_config`'s `tests/unread_keys.rs`, which
+# holds every declared config key to a reader. A lexer, not a parser: the
+# test reads field accesses and bindings, and a token stream with its groups
+# already matched is all of that it needs. Already in the graph through
+# `serde_derive`, so it costs no download.
+proc-macro2 = "1.0.107"
 react_compiler = "0.1.0"
 react_compiler_ast = "0.1.0"
 react_compiler_diagnostics = "0.1.0"

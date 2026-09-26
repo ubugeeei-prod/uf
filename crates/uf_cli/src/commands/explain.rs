@@ -416,16 +416,10 @@ fn config_sources(resolved: &ResolvedConfig) -> Vec<String> {
 
 /// What to call the package resolver in a sentence.
 ///
-/// `format!("{:?}")` would print `UfNative`, and lowercasing that gives
-/// `ufnative` — a word nobody wrote and nobody can search for. A provider's
-/// name is the thing a reader has to recognise, so it is spelled out. When a
-/// second resolver lands this stops compiling, which is the right way to be
-/// reminded to name it.
-fn resolver_name(resolved: &ResolvedConfig) -> &'static str {
-    match resolved.config.pm.resolver {
-        uf_config::PackageManagerResolver::UfNative => "uf (its own resolver)",
-    }
-}
+/// There is one, and it is uf's own. `pm.resolver` used to name it with a
+/// single allowed value and chose nothing, so it was removed
+/// (ubugeeei-prod/uf#1387); a second resolver would need a key that does.
+const RESOLVER_NAME: &str = "uf (its own resolver)";
 
 /// The manager this project's commands drive, detected the way those commands
 /// detect it.
@@ -443,12 +437,6 @@ fn detected(resolved: &ResolvedConfig) -> uf_pm::Detection {
 
 /// `uf run`, whose whole question is which runner executes a task.
 fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    // `#[non_exhaustive]`, so the fallback is the debug name: a provider added
-    // upstream should read oddly here rather than not compile here.
-    let engine = match resolved.config.task_runner.engine {
-        uf_config::TaskRunnerEngine::ViteTask => "vite task".to_string(),
-        other => format!("{other:?}"),
-    };
     let mut stages = vec![
         env_stage(resolved, DEVELOPMENT),
         Stage {
@@ -460,23 +448,29 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             ),
         },
         Stage {
-            name: "scheduling",
-            provider: engine,
-            detail: "dependency order and caching, for a task with no command".to_string(),
-        },
-        Stage {
             name: "execution",
             provider: "uf".to_string(),
-            detail: format!(
-                "a task with a `command` runs here — started by uf when the command is a \
-                 program and its arguments, through `sh -c` when it uses shell syntax; \
-                 package scripts are {}",
-                if resolved.config.task_runner.allow_package_scripts {
-                    "allowed"
-                } else {
-                    "refused"
-                }
-            ),
+            detail: "a task with a `command` runs here — started by uf when the command is a \
+                     program and its arguments, through `sh -c` when it uses shell syntax"
+                .to_string(),
+        },
+        // What `taskRunner.allowPackageScripts` decides, and nothing else does.
+        if resolved.config.task_runner.allow_package_scripts {
+            Stage {
+                name: "package scripts",
+                provider: "vite task".to_string(),
+                detail: "a task with no command is handed to `vp run`, which runs the \
+                         package.json script of that name"
+                    .to_string(),
+            }
+        } else {
+            Stage {
+                name: "package scripts",
+                provider: "refused".to_string(),
+                detail: "a task with no command stops the run: \
+                         taskRunner.allowPackageScripts is false"
+                    .to_string(),
+            }
         },
     ];
     // Only when a task declares any, so a project without them is explained
@@ -578,7 +572,7 @@ fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "resolution",
-            provider: resolver_name(resolved).to_string(),
+            provider: RESOLVER_NAME.to_string(),
             detail: format!(
                 "writes {}, and the content-addressed store under {}",
                 resolved.config.pm.lockfile, resolved.config.pm.store_dir
@@ -632,7 +626,7 @@ fn dependency_stages(
         },
         Stage {
             name: "uf's own lockfile",
-            provider: resolver_name(resolved).to_string(),
+            provider: RESOLVER_NAME.to_string(),
             detail: format!(
                 "rewrites {} and the store under {} from the manifests the manager changed",
                 resolved.config.pm.lockfile, resolved.config.pm.store_dir
@@ -753,26 +747,13 @@ fn self_update_stages() -> Vec<Stage> {
 }
 
 /// `uf use` and `uf env`, which are the same question about the same manager.
+///
+/// The host, and only the host. `rm.inferFromConfig`, `rm.acquisition` and
+/// `rm.autoSwitch` used to be printed here as stages, and nothing else read
+/// them: "off" changed a line of this output and no behaviour. They were
+/// removed with the rest of `rm` (ubugeeei-prod/uf#1387).
 fn runtime_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![
-        Stage {
-            name: "inference",
-            provider: "uf_rm".to_string(),
-            detail: if resolved.config.rm.infer_from_config {
-                "reads the version this project asks for".to_string()
-            } else {
-                "off; the version is whatever is active".to_string()
-            },
-        },
-        Stage {
-            name: "acquisition",
-            provider: match resolved.config.rm.acquisition {
-                uf_config::RuntimeManagerAcquisition::Auto => "automatic".to_string(),
-            },
-            detail: format!("auto-switch {}", resolved.config.rm.auto_switch),
-        },
-        host_stage(resolved),
-    ]
+    vec![host_stage(resolved)]
 }
 
 fn prepare_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
@@ -847,10 +828,8 @@ fn publish_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         Stage {
             name: "registry",
             provider: publish.registry.to_string(),
-            detail: format!(
-                "dry run {}, first publish {:?}",
-                publish.dry_run, publish.first_publish.mode
-            ),
+            detail: "`publish.registry`, which `uf publish` writes into .uf/publish.json"
+                .to_string(),
         },
         Stage {
             name: "authentication",
@@ -1796,7 +1775,7 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "scheduling",
-            provider: format!("{:?}", resolved.config.test.native_runner().scheduler),
+            provider: "uf_test".to_string(),
             detail: "one file per worker, longest expected first".to_string(),
         },
         runtime_stage(resolved, runtimes::Role::Test),
@@ -1947,7 +1926,7 @@ fn fmt_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
         Stage {
             name: "Flow files",
-            provider: format!("{:?}", resolved.config.fmt.flow.parser),
+            provider: "official Flow parser".to_string(),
             detail: format!(
                 "the official parser, printed at {} columns",
                 resolved.config.fmt.line_width
@@ -1985,13 +1964,13 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     let mut stages = vec![
         Stage {
             name: "uf rules",
-            provider: format!("{:?}", resolved.config.lint.engine),
+            provider: "uf_lint".to_string(),
             detail: format!("{} rules configured", resolved.config.lint.rules.len()),
         },
         Stage {
             name: "Flow's own lints",
-            provider: format!("{:?}", resolved.config.lint.flow.parser),
-            detail: format!("built-ins: {:?}", resolved.config.lint.flow.builtins),
+            provider: "official Flow parser".to_string(),
+            detail: "the `flow/*` rules, at the levels `lint.rules` gives them".to_string(),
         },
     ];
     // The `react-compiler/*` rules are the official React Compiler's
@@ -2004,10 +1983,7 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     if compiler_rules > 0 {
         stages.push(Stage {
             name: "React Compiler",
-            provider: format!(
-                "{:?}",
-                resolved.config.app.builtins.react_compiler.implementation
-            ),
+            provider: "official-rust".to_string(),
             detail: format!(
                 "{compiler_rules} `react-compiler/*` rules, in the compiler's lint mode"
             ),

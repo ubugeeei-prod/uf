@@ -26,25 +26,18 @@ pub mod schema;
 pub mod tools;
 
 pub use app::{
-    AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,
-    EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, HeaderRule, HighlightConfig,
-    HighlightThemes, LinkPrefetchMode, LoaderConfig, MarkdownConfig, MarkdownEngineConfig,
-    MdxConfig, MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, NativeLinksConfig,
-    Navigation, OrmConfig, PwaConfig, ReactCompilerConfig, ReactCompilerImplementation,
+    AppConfig, BuiltinConfig, CacheConfig, FrameworkPreset, HeaderRule, HighlightConfig,
+    HighlightThemes, MarkdownConfig, MdxConfig, NativeLinksConfig, Navigation, ReactCompilerConfig,
     ReactCompilerMode, ReactConfig, RedirectRule, RenderingConfig, RenderingMode, RewriteRule,
-    RouterConfig, RouterConvention, RuntimeTarget, StyleEngine, TemporalConfig, TrailingSlash,
-    TuiConfig, TuiStandardConfig, WebConfig,
+    RouterConfig, RuntimeTarget, StyleEngine, TrailingSlash,
 };
 pub use library::{LibraryConfig, LibraryFormat, LibraryPlan};
-pub use lint::{
-    FlowBuiltinLintMode, FlowLintConfig, FlowLintParser, LintConfig, LintEngine, RuleLevel,
-};
+pub use lint::{LintConfig, RuleLevel};
 pub use plugins::{ApplyCondition, HookOrder, PipelineMode, PluginEntry, PluginSpec};
 pub use rendering::{PlanSource, Prerender, RenderingPlan};
 pub use runtime::{
-    CapabilityJsHost, CapabilityJsHostConfig, DeployAdapter, DeployAnywhereConfig,
-    NativeServerAdapter, NativeServerConfig, RuntimeConfig, RuntimeEngine, ServerConfig,
-    ServerEngine,
+    CapabilityJsHost, CapabilityJsHostConfig, DeployAdapter, DeployAnywhereConfig, RuntimeConfig,
+    RuntimeEngine,
 };
 pub use tools::{
     BUN_TEST_RUNNER_ISSUE, BuilderSpec, DeclaredTool, PackageManagerName, PackageManagerSpec,
@@ -87,7 +80,6 @@ pub struct UniflowedConfig {
     /// when this is absent; see [`UniflowedConfig::project_ignore`].
     pub ignore: Option<Vec<CompactString>>,
     pub lint: LintConfig,
-    pub package: PackageConfig,
     /// The package manager `uf install`, `uf add`, `uf update` and the rest
     /// drive, and optionally which release of it: `"pnpm@12.0.0"`.
     ///
@@ -119,7 +111,6 @@ pub struct UniflowedConfig {
     pub pm: PackageManagerConfig,
     pub publish: PublishConfig,
     pub release: ReleaseConfig,
-    pub rm: RuntimeManagerConfig,
     /// The runtime every command runs on unless a section names its own, and
     /// optionally which release of it: `"node@26"`.
     ///
@@ -130,7 +121,6 @@ pub struct UniflowedConfig {
     /// `PATH` — so a project that writes none of these runs on what it ran on.
     /// See [`tools`].
     pub runtime: Option<Written<RuntimeSpec>>,
-    pub server: ServerConfig,
     pub site: SiteConfig,
     /// Tasks `uf prepare` runs before a commit, keyed by a glob over the
     /// staged files.
@@ -140,8 +130,6 @@ pub struct UniflowedConfig {
     /// every staged file its glob matches appended to its command, over what
     /// is staged rather than what is on disk. See `uf_prepare`.
     pub staged: BTreeMap<CompactString, StagedTasks>,
-    pub std: StdConfig,
-    pub story: StoryConfig,
     pub task_runner: TaskRunnerConfig,
     pub tasks: BTreeMap<CompactString, TaskDefinition>,
     pub test: TestConfig,
@@ -468,7 +456,6 @@ pub struct BuildConfig {
     /// and then to `@uniflowed/vite`. See [`UniflowedConfig::builder_tool`].
     pub builder: Option<Written<BuilderSpec>>,
     pub entries: Vec<CompactString>,
-    pub hooks: BTreeMap<CompactString, TaskDefinition>,
     /// What a library build writes, or `None` for a project that said nothing.
     ///
     /// An `Option` rather than a struct with defaults, and for the same reason
@@ -500,7 +487,6 @@ impl Default for BuildConfig {
             budgets: BundleBudgets::default(),
             builder: None,
             entries: vec![CompactString::const_new("app.js")],
-            hooks: BTreeMap::new(),
             lib: None,
             out_dir: CompactString::const_new("dist"),
             runtime: None,
@@ -514,41 +500,18 @@ impl Default for BuildConfig {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct DocsConfig {
-    pub enabled: bool,
-    pub app: CompactString,
-    pub source: CompactString,
+    /// Where a documentation build is written, which `uf clean` removes.
     pub out_dir: CompactString,
-    pub static_build: bool,
-    pub deploy: DeployTarget,
 }
 
 impl Default for DocsConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
-            app: CompactString::const_new("docs/app.js"),
-            source: CompactString::const_new("docs"),
             out_dir: CompactString::const_new("dist/docs"),
-            static_build: true,
-            deploy: DeployTarget::Void,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DeployTarget {
-    Void,
-}
-
-/// Where the built application is served from, and what it tells crawlers.
-///
-/// This is the one fact a build cannot work out for itself. A route table says
-/// `/guide/install`; a `sitemap.xml` has to say
-/// `https://docs.uniflowed.dev/guide/install`, and no part of a bundle knows
-/// the host it will be deployed to. So [`url`](Self::url) is the switch: unset,
-/// `uf build` writes no metadata files at all, because a `<loc>` that is wrong
-/// is worse for a site than a sitemap that does not exist.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
@@ -616,7 +579,6 @@ pub struct DevConfig {
     pub strict_port: bool,
     pub fs: DevFsConfig,
     pub allowed_hosts: Vec<CompactString>,
-    pub allowed_origins: Vec<CompactString>,
 }
 
 impl Default for DevConfig {
@@ -627,7 +589,6 @@ impl Default for DevConfig {
             strict_port: false,
             fs: DevFsConfig::default(),
             allowed_hosts: Vec::new(),
-            allowed_origins: Vec::new(),
         }
     }
 }
@@ -719,8 +680,6 @@ impl Default for EnvConfig {
 pub struct FmtConfig {
     pub indent_width: u8,
     pub line_width: u16,
-    pub max_blank_lines: u8,
-    pub flow: FlowFormatConfig,
     pub non_flow: NonFlowFormatConfig,
     pub quotes: QuoteStyle,
     pub semicolons: bool,
@@ -731,44 +690,11 @@ impl Default for FmtConfig {
         Self {
             indent_width: 2,
             line_width: 100,
-            max_blank_lines: 1,
-            flow: FlowFormatConfig::default(),
             non_flow: NonFlowFormatConfig::default(),
             quotes: QuoteStyle::Double,
             semicolons: true,
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct FlowFormatConfig {
-    pub parser: FlowFormatParser,
-    pub printer: FlowFormatPrinter,
-}
-
-impl Default for FlowFormatConfig {
-    fn default() -> Self {
-        Self {
-            parser: FlowFormatParser::OfficialFlowRust,
-            printer: FlowFormatPrinter::UfRust,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum FlowFormatParser {
-    #[default]
-    OfficialFlowRust,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum FlowFormatPrinter {
-    #[default]
-    UfRust,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -921,48 +847,6 @@ pub enum QuoteStyle {
     Double,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct PackageConfig {
-    pub generator: PackageGenerator,
-    pub targets: Vec<PackageTarget>,
-    pub typescript_declarations_to_flow: bool,
-}
-
-impl Default for PackageConfig {
-    fn default() -> Self {
-        Self {
-            generator: PackageGenerator::NapiRs,
-            targets: vec![
-                PackageTarget::NodeNapi,
-                PackageTarget::BunNapi,
-                PackageTarget::DenoNapi,
-                PackageTarget::EdgeWasm,
-                PackageTarget::ServerlessNapi,
-            ],
-            typescript_declarations_to_flow: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PackageGenerator {
-    #[default]
-    NapiRs,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PackageTarget {
-    NodeNapi,
-    BunNapi,
-    DenoNapi,
-    EdgeWasm,
-    ServerlessNapi,
-}
-
 /// The registry uf reads from, and publishes to, when a project names neither.
 pub const DEFAULT_REGISTRY: &str = "https://registry.npmjs.org";
 
@@ -970,8 +854,6 @@ pub const DEFAULT_REGISTRY: &str = "https://registry.npmjs.org";
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct PackageManagerConfig {
-    pub module: CompactString,
-    pub resolver: PackageManagerResolver,
     pub lockfile: CompactString,
     pub store_dir: CompactString,
     pub allow_lifecycle_scripts: bool,
@@ -1007,8 +889,6 @@ pub struct PackageManagerConfig {
 impl Default for PackageManagerConfig {
     fn default() -> Self {
         Self {
-            module: CompactString::const_new("@uniflowed/pm"),
-            resolver: PackageManagerResolver::UfNative,
             lockfile: CompactString::const_new("uf.lock"),
             store_dir: CompactString::const_new(".uf/store"),
             allow_lifecycle_scripts: false,
@@ -1094,13 +974,6 @@ pub struct ReadRegistry<'a> {
     pub source: RegistrySource,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PackageManagerResolver {
-    #[default]
-    UfNative,
-}
-
 /// Which package manager drives the project, overriding auto-inference.
 ///
 /// `Auto` infers the manager from the project itself: an explicit
@@ -1121,217 +994,6 @@ pub enum PackageManagerPreference {
     Bun,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct RuntimeManagerConfig {
-    pub module: CompactString,
-    pub infer_from_config: bool,
-    pub version: CompactString,
-    pub auto_switch: bool,
-    pub acquisition: RuntimeManagerAcquisition,
-    pub apply: RuntimeManagerApply,
-    pub doctor: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct StdConfig {
-    pub module: CompactString,
-    pub wintertc_aligned: bool,
-    pub native_bindings: bool,
-    pub modules: Vec<StdModuleConfig>,
-}
-
-impl Default for StdConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/std"),
-            wintertc_aligned: true,
-            native_bindings: true,
-            modules: vec![
-                StdModuleConfig::Vfs,
-                StdModuleConfig::Fs,
-                StdModuleConfig::Types,
-                StdModuleConfig::Pipeline,
-                StdModuleConfig::Effect,
-                StdModuleConfig::Env,
-                StdModuleConfig::Format,
-                StdModuleConfig::Stdio,
-                StdModuleConfig::Hash,
-                StdModuleConfig::Debug,
-                StdModuleConfig::Defs,
-                StdModuleConfig::Lock,
-                StdModuleConfig::Colors,
-                StdModuleConfig::Qs,
-                StdModuleConfig::Equality,
-                StdModuleConfig::Http,
-                StdModuleConfig::Buffer,
-                StdModuleConfig::Ws,
-                StdModuleConfig::Sql,
-                StdModuleConfig::Json,
-                StdModuleConfig::Yaml,
-                StdModuleConfig::Toml,
-                StdModuleConfig::Collections,
-                StdModuleConfig::Crypto,
-                StdModuleConfig::Dotenv,
-                StdModuleConfig::Math,
-                StdModuleConfig::Os,
-                StdModuleConfig::Net,
-                StdModuleConfig::Dns,
-                StdModuleConfig::Path,
-                StdModuleConfig::Stream,
-                StdModuleConfig::Url,
-                StdModuleConfig::Wasm,
-                StdModuleConfig::Glob,
-                StdModuleConfig::Motion,
-                StdModuleConfig::Tui,
-                StdModuleConfig::Cron,
-                StdModuleConfig::S3,
-                StdModuleConfig::Sigv4,
-                StdModuleConfig::Functions,
-                StdModuleConfig::Uuid,
-                StdModuleConfig::Zip,
-                StdModuleConfig::ImportMeta,
-                StdModuleConfig::Defer,
-            ],
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum StdModuleConfig {
-    Vfs,
-    Fs,
-    Types,
-    Pipeline,
-    Effect,
-    Env,
-    Format,
-    Stdio,
-    Hash,
-    Debug,
-    Defs,
-    Lock,
-    Colors,
-    Qs,
-    Equality,
-    Http,
-    Buffer,
-    Ws,
-    Sql,
-    Json,
-    Yaml,
-    Toml,
-    Collections,
-    Crypto,
-    Dotenv,
-    Math,
-    Os,
-    Net,
-    Dns,
-    Path,
-    Stream,
-    Url,
-    Wasm,
-    Glob,
-    Motion,
-    Tui,
-    Cron,
-    S3,
-    Sigv4,
-    Functions,
-    Uuid,
-    Zip,
-    ImportMeta,
-    Defer,
-}
-
-impl Default for RuntimeManagerConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/rm"),
-            infer_from_config: true,
-            version: CompactString::const_new("node@system"),
-            auto_switch: true,
-            acquisition: RuntimeManagerAcquisition::Auto,
-            apply: RuntimeManagerApply::ConfigAndHost,
-            doctor: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RuntimeManagerAcquisition {
-    #[default]
-    Auto,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RuntimeManagerApply {
-    #[default]
-    ConfigAndHost,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct StoryConfig {
-    pub enabled: bool,
-    pub module: CompactString,
-    pub mocks: MockConfig,
-    pub browser: BrowserAutomationConfig,
-}
-
-impl Default for StoryConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            module: CompactString::const_new("@uniflowed/story"),
-            mocks: MockConfig::default(),
-            browser: BrowserAutomationConfig::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct MockConfig {
-    pub module: CompactString,
-    pub msw_compatible: bool,
-}
-
-impl Default for MockConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/mock"),
-            msw_compatible: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct BrowserAutomationConfig {
-    pub module: CompactString,
-    pub playwright_compatible: bool,
-}
-
-impl Default for BrowserAutomationConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/browser"),
-            playwright_compatible: true,
-        }
-    }
-}
-
 /// Where `uf ui add` writes the components a project owns.
 ///
 /// A section rather than a flag on the command, because `uf ui list` and
@@ -1350,9 +1012,9 @@ pub struct UiConfig {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct VrtConfig {
-    pub enabled: bool,
-    pub module: CompactString,
+    /// Where `page.screenshot(name)` keeps its baselines, inside the project.
     pub baselines: CompactString,
+    /// How many pixels may differ and still pass.
     pub threshold: u16,
 }
 
@@ -1378,7 +1040,6 @@ pub struct TestConfig {
     /// `None` is uf's own runner. See [`UniflowedConfig::test_runner_tool`],
     /// and [`TestConfig::native_runner`] for the object's fields.
     pub runner: Option<TestRunnerConfig>,
-    pub react_testing_library_native: bool,
     /// Whether uf's runner may split a long test file into shares that run
     /// on several workers at once: `uf_test::Part`.
     ///
@@ -1399,7 +1060,6 @@ impl Default for TestConfig {
             runtime: None,
             target: None,
             runner: None,
-            react_testing_library_native: true,
             split_files: false,
             coverage: CoverageConfig::default(),
         }
@@ -1491,27 +1151,18 @@ pub enum CoverageReporterConfig {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct NativeTestRunnerConfig {
+    /// The one field of the deprecated object anything reads: the fallback
+    /// for [`TestConfig::target`]. `runtime`, `scheduler`,
+    /// `performanceTarget`, `jsHosts` and `officialFlowParser` described uf's
+    /// own runner and changed nothing about it; ubugeeei-prod/uf#1387 removed
+    /// them.
     pub application_target: NativeTestApplicationTarget,
-    pub runtime: NativeTestRuntimeConfig,
-    pub scheduler: NativeTestSchedulerConfig,
-    pub performance_target: NativeTestPerformanceTarget,
-    pub js_hosts: Vec<CapabilityJsHost>,
-    pub official_flow_parser: bool,
 }
 
 impl Default for NativeTestRunnerConfig {
     fn default() -> Self {
         Self {
             application_target: NativeTestApplicationTarget::Auto,
-            runtime: NativeTestRuntimeConfig::CapabilityJsHost,
-            scheduler: NativeTestSchedulerConfig::NativeWorkStealing,
-            performance_target: NativeTestPerformanceTarget::FasterThanBun,
-            js_hosts: vec![
-                CapabilityJsHost::Node,
-                CapabilityJsHost::Deno,
-                CapabilityJsHost::Bun,
-            ],
-            official_flow_parser: true,
         }
     }
 }
@@ -1525,36 +1176,9 @@ pub enum NativeTestApplicationTarget {
     ReactNative,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum NativeTestRuntimeConfig {
-    ViteTask,
-    #[default]
-    CapabilityJsHost,
-    UfSelfHosted,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum NativeTestSchedulerConfig {
-    ViteTaskCache,
-    #[default]
-    NativeWorkStealing,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum NativeTestPerformanceTarget {
-    ViteTask,
-    #[default]
-    FasterThanBun,
-}
-
 impl Default for VrtConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
-            module: CompactString::const_new("@uniflowed/vrt"),
             baselines: CompactString::const_new("__uf_vrt__"),
             threshold: 0,
         }
@@ -1570,80 +1194,14 @@ pub struct PublishConfig {
     /// Not where uf reads from: that is `pm.registry`, and it defaults to this
     /// one. See [`UniflowedConfig::read_registry`].
     pub registry: CompactString,
-    pub dry_run: bool,
-    pub first_publish: FirstPublishConfig,
-    pub trusted_publish: TrustedPublishConfig,
 }
 
 impl Default for PublishConfig {
     fn default() -> Self {
         Self {
             registry: CompactString::const_new(DEFAULT_REGISTRY),
-            dry_run: true,
-            first_publish: FirstPublishConfig::default(),
-            trusted_publish: TrustedPublishConfig::default(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct FirstPublishConfig {
-    pub mode: FirstPublishMode,
-    pub local_bootstrap: bool,
-}
-
-impl Default for FirstPublishConfig {
-    fn default() -> Self {
-        Self {
-            mode: FirstPublishMode::Local,
-            local_bootstrap: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum FirstPublishMode {
-    #[default]
-    Local,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct TrustedPublishConfig {
-    pub enabled: bool,
-    pub provider: TrustedPublishProvider,
-    pub tokenless: bool,
-    pub trigger: TrustedPublishTrigger,
-}
-
-impl Default for TrustedPublishConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            provider: TrustedPublishProvider::GitHubActionsOidc,
-            tokenless: true,
-            trigger: TrustedPublishTrigger::TagPush,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TrustedPublishProvider {
-    #[default]
-    #[serde(rename = "github-actions-oidc")]
-    GitHubActionsOidc,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TrustedPublishTrigger {
-    #[default]
-    TagPush,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1651,63 +1209,47 @@ pub enum TrustedPublishTrigger {
 #[non_exhaustive]
 pub struct ReleaseConfig {
     pub tag_prefix: CompactString,
-    pub command: CompactString,
-    pub publish: bool,
 }
 
 impl Default for ReleaseConfig {
     fn default() -> Self {
         Self {
             tag_prefix: CompactString::const_new("uf@"),
-            command: CompactString::const_new("uf release alpha"),
-            publish: true,
         }
     }
 }
 
+/// How `uf run` treats a task it does not run itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct TaskRunnerConfig {
-    pub engine: TaskRunnerEngine,
+    /// Whether a task with no `command` of its own may be handed to Vite+'s
+    /// task runner, `vp run <name>`, which runs the `package.json` script of
+    /// that name.
+    ///
+    /// A task that names a command is run by uf — `uf_task` builds the
+    /// dependency graph, runs independent nodes up to a concurrency limit, and
+    /// answers from `.uf/cache/task` when the files a task declares it reads
+    /// have not changed — and this key has nothing to say about it. The
+    /// hand-over is only for a task with no command, which is Vite+'s to
+    /// define; see ubugeeei-prod/uf#272.
+    ///
+    /// On by default, because the hand-over is what a command-less task has
+    /// always done. `false` refuses such a task by name rather than starting
+    /// a script nobody reviewed in `uf.config.js`. Until ubugeeei-prod/uf#1387
+    /// the key defaulted to `false`, was printed by `uf inspect` and
+    /// `uf explain` as "forbidden", and was enforced nowhere; `engine`, its
+    /// neighbour, had one value and chose nothing, and is gone.
     pub allow_package_scripts: bool,
 }
 
 impl Default for TaskRunnerConfig {
     fn default() -> Self {
         Self {
-            engine: TaskRunnerEngine::ViteTask,
-            allow_package_scripts: false,
+            allow_package_scripts: true,
         }
     }
-}
-
-/// Which runner executes `uf.config.js` tasks.
-///
-/// `uf` delegates this surface to Vite Task so package scripts and task graphs
-/// share the upstream Rust scheduler while the rest of uf stays runtime
-/// agnostic. No alias is kept for the old spelling: a name a user can still
-/// write is still a name they can see, which is the thing being removed.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
-pub enum TaskRunnerEngine {
-    /// Vite+'s Rust task runner, invoked through the public `vp run` interface.
-    ///
-    /// Which is *not* how most tasks run, and the name is the last thing that
-    /// still says otherwise. A task that names a command is run by uf —
-    /// `uf_task` builds the dependency graph, runs independent nodes up to a
-    /// concurrency limit, and answers from `.uf/cache/task` when the files a
-    /// task declares it reads have not changed. This engine is reached only by
-    /// a task with *no* command of its own, which is Vite+'s to define; see
-    /// `uf run`'s `execute_task`, where handing `ci` to `vp run ci` once asked
-    /// Vite+ for a script it had never heard of.
-    ///
-    /// It stays the default because it is the only variant, and because the
-    /// hand-over it names is still real for the command-less case. See
-    /// ubugeeei-prod/uf#272.
-    #[default]
-    ViteTask,
 }
 
 /// The tasks one entry of `staged` names: one, written as a string, or several
@@ -1921,26 +1463,42 @@ pub enum ConfigError {
     /// config file it cannot evaluate — and used to share its message.
     #[error("cannot read {path}: uf reads `.js`, `.mjs`, `.cjs` and `.flow` config files")]
     UnreadableConfigFile { path: Utf8PathBuf },
-    /// A cache switch that is `true` and means nothing.
+    /// `rendering.cache.actions: true`, which asks for a cache uf does not
+    /// have.
     ///
-    /// `rendering.cache` has four keys and uf implements two of them. Reading
-    /// `data: true` and carrying on would put the switch in
-    /// `dist/uf-build-manifest.json` and change no behaviour anywhere — which
-    /// is precisely the state ubugeeei-prod/uf#277 objects to, and it was that
-    /// state for all four keys. Refusing is the only answer that cannot be
-    /// mistaken for a cache: a project that sets it is asking for caching it
-    /// will not get, and the failure has to happen where the request was made
-    /// rather than in production where it was not honoured.
+    /// The key is gone — ubugeeei-prod/uf#1387 removed it from
+    /// `@uniflowed/config` — and `true` is still refused rather than dropped,
+    /// for the reason it was refused while it was declared: a project that
+    /// sets it is asking for caching it will not get, and the failure belongs
+    /// where the request was made rather than in production, where the
+    /// symptom is a mutation that invalidates nothing. See
+    /// ubugeeei-prod/uf#277.
     #[error(
         "{path}: rendering.cache.{key} is true, and uf has no {key} cache. \
-         It would reach the build manifest and change nothing. \
-         `route` and `fetch` are the two that are implemented; \
-         see ubugeeei-prod/uf#277 for what the other two need."
+         The key was removed in uf 0.10 because it could not change anything; \
+         delete it (`uf codemod` does). `route`, `fetch` and `data` are the \
+         caches uf has."
     )]
     UnimplementedCache {
         path: Utf8PathBuf,
         key: &'static str,
     },
+    /// `app.builtins.markdown.mdx.jsxImportSource` naming
+    /// `@uniflowed/jsx-runtime`.
+    ///
+    /// That was the key's default, and the only value `@uniflowed/config`
+    /// accepted, for as long as nothing read it: MDX was compiled against
+    /// React whatever it said. It is read now, and `@uniflowed/jsx-runtime` is
+    /// a package of Flow declarations with no `jsx-runtime` for compiled MDX to
+    /// import, so honouring the value would break every `.mdx` page of a
+    /// project that only ever wrote the default down. See ubugeeei-prod/uf#1387.
+    #[error(
+        "{path}: app.builtins.markdown.mdx.jsxImportSource is \"@uniflowed/jsx-runtime\", \
+         which has no JSX runtime for MDX to import. It was never read before uf 0.10; \
+         delete it to compile MDX against React, as it always has been (`uf codemod` \
+         does), or name a package that exports `jsx-runtime`."
+    )]
+    MdxJsxImportSource { path: Utf8PathBuf },
     /// A runtime named as this project's, with no host behind the name.
     ///
     /// `uf`, `edge`, `serverless` and `container` parse here and have no Flow
@@ -2296,6 +1854,7 @@ pub fn parse_config_projection(
 /// Validate semantic config combinations that serde alone cannot express.
 pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), ConfigError> {
     check_cache_switches(path, &config.app.rendering.cache)?;
+    check_mdx(path, &config.app.builtins.markdown.mdx)?;
     // Which runtime this project says it is written for, checked against the
     // table that says which runtimes have a host. Before the rendering and
     // library checks only because it is the cheapest of the three; the three
@@ -2358,12 +1917,23 @@ fn check_remote_images(path: &Utf8Path, images: &ImagesConfig) -> Result<(), Con
     Ok(())
 }
 
-/// Action result caching is not implemented; the other switches reach a store.
+/// `rendering.cache.actions: true`, which is refused though the key is gone.
 fn check_cache_switches(path: &Utf8Path, cache: &CacheConfig) -> Result<(), ConfigError> {
-    if cache.actions {
+    if cache.retired_actions == Some(true) {
         return Err(ConfigError::UnimplementedCache {
             path: path.to_path_buf(),
             key: "actions",
+        });
+    }
+    Ok(())
+}
+
+/// The one `mdx.jsxImportSource` that cannot be honoured; see
+/// [`ConfigError::MdxJsxImportSource`].
+fn check_mdx(path: &Utf8Path, mdx: &MdxConfig) -> Result<(), ConfigError> {
+    if mdx.jsx_import_source == "@uniflowed/jsx-runtime" {
+        return Err(ConfigError::MdxJsxImportSource {
+            path: path.to_path_buf(),
         });
     }
     Ok(())

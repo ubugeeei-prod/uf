@@ -1014,6 +1014,45 @@ fn a_task_without_a_command_is_handed_to_vite_task() {
     assert_eq!(String::from_utf8(output.stdout).unwrap(), "vite-task");
 }
 
+/// And refused by name when the project says package scripts are not allowed:
+/// the hand-over runs the `package.json` script of that name, which is not a
+/// command anybody wrote in `uf.config.js`. Until ubugeeei-prod/uf#1387 the key
+/// was printed as "forbidden" and the script ran anyway.
+#[test]
+fn a_task_without_a_command_is_refused_when_package_scripts_are_not_allowed() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              taskRunner: { allowPackageScripts: false },
+              tasks: {
+                show: { command: "" },
+              },
+            });
+        "#,
+    )
+    .unwrap();
+    let runner = dir.path().join("vp");
+    fs::write(&runner, "#!/bin/sh\nprintf vite-task\n").unwrap();
+    let mut permissions = fs::metadata(&runner).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&runner, permissions).unwrap();
+
+    let output = binary("ufr")
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("show")
+        .env("UF_VITE_TASK_BIN", &runner)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("allowPackageScripts"), "{stderr}");
+}
+
 #[test]
 fn ufr_alias_runs_config_task() {
     let dir = tempfile::tempdir().unwrap();

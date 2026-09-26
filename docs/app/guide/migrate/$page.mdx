@@ -62,6 +62,12 @@ runtimes, conflicting values and non-default legacy runner options require a
 decision and stay unchanged. Flow-parser source ranges preserve comments and
 unrelated formatting; applying the same migration twice is unchanged.
 
+The 0.10.0 codemod removes the configuration keys nothing read — the list is
+[removed keys](/reference/config#removed-keys) — and any section they leave
+empty. `jsxImportSource: "@uniflowed/jsx-runtime"` goes with them, since 0.10
+reads the key and refuses that value. `taskRunner.allowPackageScripts: false` is
+kept and reported: 0.10 enforces it, so a task with no command stops the run.
+
 **What you will be able to do:** decide whether your application can move today,
 write the `uf.config.js` it needs, move a `create-react-app`, Vite or Next.js
 application step by step — config, scripts, imports, routes, tests and deploy —

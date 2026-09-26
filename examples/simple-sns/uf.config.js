@@ -7,7 +7,6 @@ export default defineConfig({
     builtins: {
       reactCompiler: {
         enabled: true,
-        implementation: "official-rust",
         mode: "syntax",
       },
       style: "style-x",
@@ -21,25 +20,8 @@ export default defineConfig({
     staticBuild: false,
   },
   fmt: {
-    flow: {
-      parser: "official-flow-rust",
-      printer: "uf-rust",
-    },
     nonFlow: {
       formatter: "biome",
-    },
-  },
-  lint: {
-    engine: "rust",
-    flow: {
-      builtins: "mixed",
-      parser: "official-flow-rust",
-    },
-  },
-  test: {
-    runner: {
-      runtime: "capability-js-host",
-      jsHosts: ["node"],
     },
   },
 });

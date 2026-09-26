@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use uf_config::env_files::ProjectEnv;
-use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
+use uf_config::{ResolvedConfig, TaskDefinition, load_config};
 use uf_pm::{
     DetectionOptions, Operation, PackageManager, command_for, detect_package_manager_with,
 };
@@ -741,10 +741,17 @@ impl uf_task::Spawn for TaskSpawner<'_> {
         // it — handing `ci` to `vp run ci` asked Vite+ for a script it had
         // never heard of, so every task defined here failed on a machine that
         // had `vp` and on one that did not. A task with no command of its own
-        // is Vite+'s, and is handed over.
-        if task.command().trim().is_empty()
-            && package.resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
-        {
+        // is Vite+'s, and is handed over — which runs the `package.json`
+        // script of that name, so it is a hand-over a project can refuse.
+        if task.command().trim().is_empty() {
+            if !package.resolved.config.task_runner.allow_package_scripts {
+                return Err(std::io::Error::other(
+                    "it has no `command`, and `taskRunner.allowPackageScripts` is false\n\n  \
+                     A task with no command of its own is handed to Vite+'s task runner, \
+                     `vp run`,\n  which runs the `package.json` script of that name. Give \
+                     the task a `command`,\n  or allow package scripts.",
+                ));
+            }
             return Ok(self.vite_task(package, env, scheduled));
         }
 
