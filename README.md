@@ -61,6 +61,12 @@ walks through routes, shared state, forms and tests.
 - [Reference](https://docs.uniflowed.dev/reference): commands, configuration and package APIs.
 - [Migrating to uf](https://docs.uniflowed.dev/guide/migrate): use uf with an existing application.
 
+## Examples
+
+- [SPA task board](examples/spa): client rendering, shared state and static hosting.
+- [GraphQL SNS](examples/simple-sns-graphql): Relay and server data.
+- [Native SNS](examples/simple-sns-native): React Native.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup and checks,

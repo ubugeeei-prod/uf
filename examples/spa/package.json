@@ -1,0 +1,15 @@
+{
+  "name": "uf-example-spa",
+  "private": true,
+  "type": "module",
+  "description": "A Flow task board rendered in the browser, with client routing and shared reactive state.",
+  "dependencies": {
+    "@uniflowed/config": "0.10.0",
+    "@uniflowed/react": "0.10.0",
+    "@uniflowed/router": "0.10.0",
+    "@uniflowed/state": "0.10.0",
+    "@uniflowed/vite": "0.10.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}
