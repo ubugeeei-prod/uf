@@ -190,13 +190,20 @@ but they are not primitives with a behaviour contract of their own here.
 | --- | --- | --- |
 | `Button` | a real `<button>` plus a style preset, or `uf ui add button` | The behaviour is already in HTML; the design decision is visual |
 | `Card`, `Badge`, `Label`, `Input`, `Textarea` | plain elements plus presets, or `uf ui add card badge label input textarea` | With no styles they are wrappers around one element, and wrappers lose props |
+| `Kbd`, `Typography`, `Empty`, `Item` | `<kbd>`, headings, `<p>`, `<ul>` and `textStyles`, or `uf ui add kbd typography empty item` | Each part is a platform element; the only decision is which element, and that is the caller's |
+| `ButtonGroup`, `InputGroup` | `role="group"` or `:focus-within` around your own controls, or `uf ui add button-group input-group` | The buttons and the input keep the platform's keys; a group that moves focus with arrows is a toolbar, which is a different contract |
+| `NativeSelect` | a real `<select>`, or `uf ui add native-select` | The platform's select already is the component. `Select` is the custom one, for options that need more than text |
+| `Spinner` | `Progress` with no `value`, or `uf ui add spinner` | "Amount unknown" is already `Progress`'s decision: it omits `aria-valuenow` rather than announcing zero |
 | `Command` | `Dialog` + `Combobox` + grouped options + `useKeyCombo` | The composition is the feature; a module would duplicate two finished contracts |
 | `DataTable` | `Table` plus your table state and fetching layer | Sorting, selection and row counts are here; query/state orchestration is app-specific |
 | `FormField` | `Field` plus the control you render | The field owns ids and errors; the form library owns values and validation |
 
 The styled half is different. A styled button, card or badge that the whole
 application agrees on is a decision about that application, so the
-[registry](#registry-components) carries one of each. `uf ui add` writes it into
+[registry](#registry-components) carries one of each. So it does for the eight
+rows after them: a keycap, a type scale, an empty state, a row, a joined button
+bar, an input with addons, a native select with its chevron, and a spinner that
+fades rather than turns under reduced motion. `uf ui add` writes it into
 the project as a file the project owns, and that file passes every attribute
 through to the element. The headless package declines these names, and the
 registry does not: they sit on opposite sides of the same line.

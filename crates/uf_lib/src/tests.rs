@@ -218,6 +218,27 @@ fn ui_registry_keeps_the_roadmap_it_is_not_an_inventory_of() {
             "{declined} is a decision, not a gap"
         );
     }
+    // The shadcn components ubugeeei-prod/uf#1354 found no entry for. Each is
+    // decided here — declined as headless, with the reason on its entry — and
+    // shipped as a styled file in `registry/ui/`, which `crates/uf_ui` holds
+    // to this table: a registry component with no module has to answer one
+    // declined here.
+    for styled_only in [
+        "ButtonGroup",
+        "Empty",
+        "InputGroup",
+        "Item",
+        "Kbd",
+        "NativeSelect",
+        "Spinner",
+        "Typography",
+    ] {
+        assert_eq!(
+            named(styled_only).readiness,
+            UiReadiness::Declined,
+            "{styled_only} has no decision a headless module could own"
+        );
+    }
     // And the five presentational-looking components that are not
     // presentational, which is ubugeeei-prod/uf#298's list. They were the whole
     // of the `Planned` half until they shipped, which is why the size assertion

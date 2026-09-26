@@ -220,6 +220,18 @@ pub fn ui_components() -> Vec<UiComponent> {
         UiComponent::new("Button", &["Root"], UiRuntime::Server)
             .declined()
             .styled_by(&["buttonStyles"]),
+        // Declined, and the first of the eight ubugeeei-prod/uf#1354 found
+        // no entry for. shadcn's `ButtonGroup` is `role="group"` around some
+        // buttons with their inner corners squared, and the role is the one
+        // attribute in it: the caller's `aria-label` names the group, and the
+        // buttons keep every key the platform gives them. A group that moved
+        // focus with the arrow keys would be a toolbar, which is a keyboard
+        // contract rather than a style — that would be a `Toolbar` entry with
+        // behaviour in it, and it is what would reopen this one. The registry
+        // carries the styled group as `registry/ui/button-group.js`.
+        UiComponent::new("ButtonGroup", &["Root", "Item"], UiRuntime::Server)
+            .declined()
+            .styled_by(&["buttonStyles"]),
         // Implemented in `packages/ui/calendar.js`. `Month` is the grid and its
         // caption rather than a wrapper around several months: one month is one
         // `role="grid"` with one caption naming it, and a component that put two
@@ -412,6 +424,20 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Split,
         ),
+        // Declined: an empty state is a heading, a sentence and the action that
+        // fills the space, and each of those is an element a caller already
+        // writes. It has no role — it is not a live region, because it is
+        // rendered with the page rather than arriving — and the heading level is
+        // the caller's, for the reason `Accordion.Header` gives. `Media` is
+        // decorative and `aria-hidden` in the registry's copy,
+        // `registry/ui/empty.js`, and that is a style decision, not a behaviour.
+        UiComponent::new(
+            "Empty",
+            &["Root", "Media", "Title", "Description", "Content"],
+            UiRuntime::Server,
+        )
+        .declined()
+        .styled_by(&["textStyles"]),
         // Implemented in `packages/ui/field.js`, and listed here for the first
         // time: it shipped with #276 and this table never learned about it,
         // while carrying a `Form` entry for a component that does not exist.
@@ -472,6 +498,18 @@ pub fn ui_components() -> Vec<UiComponent> {
         UiComponent::new("Input", &["Root"], UiRuntime::Client)
             .declined()
             .styled_by(&["fieldStyles"]),
+        // Declined, for `Input`'s reasons plus one. The addons around an input
+        // — a currency, a protocol, a clear button — are text and buttons the
+        // platform already makes accessible, and the one thing that looks like
+        // behaviour, the focus ring drawn round the whole group, is
+        // `:focus-within` in CSS. The decision that matters is that an addon's
+        // words are not the input's name: `USD` beside an unlabelled field is
+        // read as nothing, so the label says "Amount in USD", and `Field`
+        // above is where that label is joined. The styled half is
+        // `registry/ui/input-group.js`.
+        UiComponent::new("InputGroup", &["Root", "Addon", "Input"], UiRuntime::Client)
+            .declined()
+            .styled_by(&["fieldStyles"]),
         // Implemented in `packages/ui/input-otp.js`, and the parts say the
         // decision the component is: `Slot` draws a character and is
         // `aria-hidden`, because there is exactly one real `<input>` underneath
@@ -484,6 +522,34 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Group", "Slot", "Separator"],
             UiRuntime::Client,
         ),
+        // Declined: shadcn's `Item` is a row of media, a title, a description
+        // and some actions, and every part is a `<div>` with a class. When the
+        // rows are a list the list is `<ul>` and `<li>`, which `Group` and
+        // `Root` render in the registry's copy, `registry/ui/item.js`; when a
+        // row is selectable or navigable by the arrow keys it is not an item
+        // but a `ListBox`, `GridList` or `Menu`, each of which is implemented
+        // above with the keyboard contract that makes it one.
+        UiComponent::new(
+            "Item",
+            &[
+                "Group",
+                "Root",
+                "Media",
+                "Content",
+                "Title",
+                "Description",
+                "Actions",
+            ],
+            UiRuntime::Server,
+        )
+        .declined()
+        .styled_by(&["surfaceStyles"]),
+        // Declined: `<kbd>` is the platform's element for a key a reader
+        // presses, and a combination is `<kbd>` elements nested in one, which
+        // the HTML specification spells out. There is no role, no state and
+        // nothing to focus, so a headless `Kbd` would be an empty element; the
+        // registry's `registry/ui/kbd.js` is the element with a look.
+        UiComponent::new("Kbd", &["Root"], UiRuntime::Server).declined(),
         // Declined twice over: `<label htmlFor>` is the platform's, and the
         // part of labelling that is hard — a control whose id the caller never
         // has to write, and a label that is a `<label>` for one control and a
@@ -561,6 +627,15 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "List", "Item", "Trigger", "Body", "Link"],
             UiRuntime::Split,
         ),
+        // Declined, because it is the platform's `<select>` and that is the
+        // point of it: the native picker on a phone, the form value, `required`
+        // and reset, and a listbox every screen reader already knows.
+        // `Select` above is the custom one, for when options need more than
+        // text. What is left for a native select is the chevron its
+        // `appearance: none` removes, which is `registry/ui/native-select.js`.
+        UiComponent::new("NativeSelect", &["Root"], UiRuntime::Client)
+            .declined()
+            .styled_by(&["fieldStyles"]),
         // Implemented in `packages/ui/pagination.js`: a named `<nav>`, one
         // `aria-current="page"`, previous and next named in words rather than
         // in chevrons, and a live region that was already there to say the
@@ -704,6 +779,15 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Track", "Range", "Thumb"],
             UiRuntime::Client,
         ),
+        // Declined, because it already exists: a spinner is `Progress` with no
+        // value. `progress.js` omits `aria-valuenow` so that a reader hears "in
+        // progress, amount unknown", and that module's own header says that is
+        // what a spinner means — a second component with the same role would be
+        // a second place for that decision to go wrong. What a spinner adds is
+        // a drawing and a default name, "Loading", and both are styles:
+        // `registry/ui/spinner.js` renders `Progress` around them, and draws a
+        // still, fading mark instead of a turning one under reduced motion.
+        UiComponent::new("Spinner", &["Root"], UiRuntime::Server).declined(),
         // Implemented in `packages/ui/switch.js` as one component with no
         // namespace, for the reason `Checkbox` above gives at length: a `Thumb`
         // is a drawing, and this package draws nothing. `data-state` is what a
@@ -785,5 +869,29 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Provider", "Root", "Trigger", "Body"],
             UiRuntime::Client,
         ),
+        // Declined: headings, paragraphs, a quotation, a list and inline code
+        // are the platform's elements, and the only decision in them is which
+        // one a caller picks — which a component cannot make for them. What
+        // an application wants is one type scale its prose agrees on, and
+        // that is `textStyles` in the preset or `registry/ui/typography.js`,
+        // whose every part renders the element its name says.
+        UiComponent::new(
+            "Typography",
+            &[
+                "H1",
+                "H2",
+                "H3",
+                "H4",
+                "P",
+                "Lead",
+                "Muted",
+                "Blockquote",
+                "List",
+                "InlineCode",
+            ],
+            UiRuntime::Server,
+        )
+        .declined()
+        .styled_by(&["textStyles"]),
     ]
 }
