@@ -34,6 +34,10 @@ export hook useInferredQueryContracts(): void {
   const wrongPage: number | void = paged.data?.pages[0].items;
 }
 
+const leading: string = ufTokens.leadingBase;
+// $FlowExpectedError[incompatible-type] compiled numeric defaults are CSS variable references
+const wrongLeading: number = ufTokens.leadingBase;
+
 const theme: ThemeOverrides<typeof ufTokens> = { accent: "#123456" };
 // $FlowExpectedError[incompatible-type] only shipped token keys can be overridden
 const wrongTheme: ThemeOverrides<typeof ufTokens> = { invented: "#123456" };

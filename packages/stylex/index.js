@@ -153,10 +153,13 @@ export function create<T extends { readonly [string]: mixed }>(
 
 /**
  * Declare design tokens, and hand back the `var(--…)` references to them.
+ * Every compiled value is a string, including a token with a numeric default.
  *
  * Compile-time, for the same reason as `create`.
  */
-export function defineVars<T extends { readonly [string]: ThemeValue }>(tokens: T): T {
+export function defineVars<T extends { readonly [string]: ThemeValue }>(
+  tokens: T,
+): { readonly [Key in keyof T]: string } {
   return nativeRuntimeRequired(MODULE, "stylex.defineVars");
 }
 
