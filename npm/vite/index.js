@@ -67,6 +67,7 @@ import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import { moduleId } from "./internal/module-graph.js";
 import remarkOxContent from "./internal/markdown.js";
+import remarkGfm from "remark-gfm";
 
 import {
   RUNTIME_PUBLIC_PATH,
@@ -1343,7 +1344,7 @@ function mdxPlugin(markdown) {
       // key's old default, which has no runtime in it — where the config is
       // read, so it never arrives here.
       jsxImportSource: mdxConfig.jsxImportSource ?? "react",
-      remarkPlugins: [remarkOxContent, remarkFrontmatterExport],
+      remarkPlugins: [remarkGfm, remarkOxContent, remarkFrontmatterExport],
       rehypePlugins,
     }),
     name: "uf:mdx",

@@ -5,5 +5,6 @@
 // transform then uses Babel's already loaded CommonJS dependencies.
 // This runs only in the CI library lane, not in applications.
 import "rolldown";
+import "@ox-content/napi";
 import { transformAsync } from "@babel/core";
 await transformAsync("const x = 1;", { babelrc: false, configFile: false });

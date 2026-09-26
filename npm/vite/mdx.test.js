@@ -38,7 +38,7 @@ describe("the JSX runtime compiled MDX imports", () => {
   });
 });
 
-describe("ox-content's native Markdown and MDX AST", () => {
+describe("ox-content Markdown and MDX frontmatter", () => {
   it("renders GFM, frontmatter, exports and embedded JSX through React", async () => {
     const source = `---
 title: Native Markdown
@@ -69,10 +69,11 @@ export const Note = ({ label, ...props }) => <aside {...props}>{label}</aside>;
       ).href;
       const file = path.join(directory, "page.mjs");
       writeFileSync(file, code.replaceAll('"react/jsx-runtime"', JSON.stringify(runtime)));
+      // $FlowExpectedError[unsupported-syntax] The fixture module URL is generated at runtime.
       const page = await import(pathToFileURL(file).href);
       expect(page.frontmatter.title).toBe("Native Markdown");
       expect(page.metadata.title).toBe("Native API");
-      const html = renderToStaticMarkup(React.createElement(page.default));
+      const html = renderToStaticMarkup(<page.default />);
       expect(html).toContain('<h1 id="native-markdown">Native Markdown</h1>');
       expect(html).toContain("<table>");
       expect(html).toContain('checked=""');
@@ -83,14 +84,34 @@ export const Note = ({ label, ...props }) => <aside {...props}>{label}</aside>;
     }
   });
 
+  it("compiles native Markdown tables, frontmatter and literal HTML", async () => {
+    const code = await compiled(
+      {},
+      "---\ntitle: Native\n---\n# Guide\n\n| Field | Value |\n| --- | --- |\n| id | stable |\n\n<script>alert(1)</script>\n",
+      "md",
+    );
+    expect(code).toContain('"table"');
+    expect(code).toContain('"title": "Native"');
+    expect(code).toContain("<script>alert(1)</script>");
+  });
+
   it("treats braces in a plain Markdown file as text", async () => {
     const code = await compiled({}, "# Guide\n\nUse {a + b} as text.\n", "md");
     expect(code).toContain("Use {a + b} as text.");
   });
 
+  it("keeps prose continuations starting with import or export as Markdown", async () => {
+    const code = await compiled(
+      {},
+      "A preceding paragraph line\nimport of that kind is `any`.\n\nAnother paragraph\nexport name to import.\n",
+    );
+    expect(code).toContain("import of that kind is ");
+    expect(code).toContain("export name to import.");
+  });
+
   it("fails compilation for invalid embedded JavaScript", async () => {
     await expect(compiled({}, "# Guide\n\n{value +}\n")).rejects.toThrow(
-      "Invalid JavaScript in MDX",
+      "Could not parse expression",
     );
   });
 });

@@ -1,65 +1,33 @@
 // @noflow
-//
-// ox-content owns the Markdown parse. The MDX compiler owns React codegen;
-// Acorn supplies the ESTree payloads it requires for embedded JavaScript.
-// Neither the ox-content site generator nor a default theme enters the page.
+// ox-content parses plain Markdown and frontmatter. MDX keeps the official
+// compiler's JavaScript/JSX grammar, including lowercase tags and nested Markdown.
+// uf owns the page shell and theme in both cases.
+import { parseFrontmatter, transformMdast } from "@ox-content/napi";
 
-import { transformMdast } from "@ox-content/napi";
-import { Parser } from "acorn";
-import jsx from "acorn-jsx";
-
-const JavaScript = Parser.extend(jsx());
-const OPTIONS = { ecmaVersion: "latest", sourceType: "module" };
-
-/** The remark parser, backed by ox-content's native Markdown/MDX AST. */
+/** Native Markdown/frontmatter with the official MDX parser for JSX documents. */
 export default function remarkOxContent() {
+  const mdxParser = this.parser;
   this.parser = (source, file) => {
-    const result = transformMdast(source, {
-      gfm: true,
-      mdx: !file.path?.endsWith(".md"),
-      frontmatter: true,
-    });
-    if (result.errors.length !== 0) file.fail(result.errors.join("; "));
-    file.data.ufFrontmatter = /^---\r?\n/.test(source) ? JSON.parse(result.frontmatter) : undefined;
-    const tree = JSON.parse(result.astJson);
-    try {
-      attachJavaScript(tree);
-    } catch (error) {
-      file.fail(`Invalid JavaScript in MDX: ${error.message}`);
+    const hasFrontmatter = /^---\r?\n/.test(source);
+    if (!file.path?.endsWith(".md")) {
+      const result = parseFrontmatter(source);
+      file.data.ufFrontmatter = hasFrontmatter ? result.frontmatter : undefined;
+      // Retain the original line numbers for MDX errors and source maps.
+      const prefix = source.slice(0, source.length - result.content.length);
+      return mdxParser(prefix.replace(/[^\r\n]/g, "") + result.content, file);
     }
+    const result = transformMdast(source, { gfm: true, mdx: false, frontmatter: true });
+    if (result.errors.length !== 0) file.fail(result.errors.join("; "));
+    file.data.ufFrontmatter = hasFrontmatter ? JSON.parse(result.frontmatter) : undefined;
+    const tree = JSON.parse(result.astJson);
+    escapeHtml(tree);
     return tree;
   };
 }
 
-function expression(value, spread) {
-  // A comment-only expression has no value. Acorn's tokenizer skips comments,
-  // without a second parse or a hand-written JavaScript lexer.
-  if (JavaScript.tokenizer(value, OPTIONS).getToken().type.label === "eof") {
-    return { type: "Program", body: [], sourceType: "module" };
-  }
-  const source = spread ? `{${value}}` : value;
-  return JavaScript.parse(`(\n${source}\n)`, OPTIONS);
-}
-
-function attachJavaScript(node) {
-  if (node.type === "mdxjsEsm") {
-    node.data = { ...node.data, estree: JavaScript.parse(node.value, OPTIONS) };
-  } else if (
-    node.type === "mdxFlowExpression" ||
-    node.type === "mdxTextExpression" ||
-    node.type === "mdxJsxAttributeValueExpression" ||
-    node.type === "mdxJsxExpressionAttribute"
-  ) {
-    node.data = {
-      ...node.data,
-      estree: expression(node.value, node.type === "mdxJsxExpressionAttribute"),
-    };
-  }
-  for (const child of node.children ?? []) attachJavaScript(child);
-  for (const attribute of node.attributes ?? []) {
-    attachJavaScript(attribute);
-    if (typeof attribute.value === "object" && attribute.value !== null) {
-      attachJavaScript(attribute.value);
-    }
-  }
+// Plain Markdown does not execute JSX or raw HTML. Render HTML as literal text,
+// as uf doc does, so the React compiler never receives unsupported HAST raw nodes.
+function escapeHtml(node) {
+  if (node.type === "html") node.type = "text";
+  for (const child of node.children ?? []) escapeHtml(child);
 }
