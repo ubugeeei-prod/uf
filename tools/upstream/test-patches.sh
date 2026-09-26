@@ -71,6 +71,25 @@ scratch() {
   git -C "$root" config user.name test
   cp "$script" "$root/tools/upstream/sync.sh"
   git -C "$root" submodule --quiet add "$work/flow.git" upstream/flow
+  # The mandatory React checkout is independent of the Flow patch cases.
+  # A local miniature keeps this suite hermetic and exercises both gitlinks.
+  react="$work/react.git"
+  if [ ! -d "$react/.git" ]; then
+    mkdir -p "$react/compiler/crates/react_compiler" "$react/compiler/fixtures" \
+      "$react/compiler/packages/babel-plugin-react-compiler-rust/native"
+    printf '[workspace]\n' > "$react/compiler/Cargo.toml"
+    printf '[package]\nname = "react_compiler"\n' > "$react/compiler/crates/react_compiler/Cargo.toml"
+    printf '// fixture\n' > "$react/compiler/fixtures/test.js"
+    git -C "$react" init --quiet
+    git -C "$react" config user.email test@example.com
+    git -C "$react" config user.name test
+    git -C "$react" add -A
+    git -C "$react" commit --quiet -m upstream
+  fi
+  git -C "$root" submodule --quiet add "$react" upstream/react
+  mkdir -p "$root/tools/react-compiler"
+  printf 'commit %s\nfixtures compiler/fixtures\n' "$(git -C "$react" rev-parse HEAD)" \
+    > "$root/tools/react-compiler/pin.txt"
   git -C "$root" add -A
   git -C "$root" commit --quiet -m scratch
 }

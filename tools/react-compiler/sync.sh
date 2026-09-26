@@ -4,8 +4,11 @@
 set -eu
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
-tools/upstream/sync.sh
 fixtures=$(awk '$1 == "fixtures" { print $2 }' tools/react-compiler/pin.txt)
 corpus=upstream/react/$fixtures
+commit=$(awk '$1 == "commit" { print $2 }' tools/react-compiler/pin.txt)
+if [ ! -d "$corpus" ] || [ "$(git -C upstream/react rev-parse HEAD 2>/dev/null || :)" != "$commit" ]; then
+  tools/upstream/sync.sh
+fi
 count=$(find "$corpus" -type f \( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \) | wc -l | tr -d ' ')
 printf 'react-compiler: %s official fixtures ready at %s\n' "$count" "$corpus"
