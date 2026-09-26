@@ -312,10 +312,27 @@ fn doc_writes_api_markdown_from_exported_flow_jsdoc() {
     let markdown = fs::read_to_string(dir.path().join("generated/api.md")).unwrap();
     assert!(markdown.contains("### readUser"), "{markdown}");
     assert!(markdown.contains("@param id stable id"), "{markdown}");
+    let html = fs::read_to_string(dir.path().join("generated/index.html")).unwrap();
+    assert!(html.contains("readUser"), "{html}");
+    assert!(html.contains("uf-doc.css"), "{html}");
+    assert!(html.contains("Skip to content"), "{html}");
     assert!(
         markdown.contains("export function readUser(id: string): ?string { ... }"),
         "{markdown}"
     );
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["doc", "--format", "markdown", "--out", "markdown"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(dir.path().join("markdown/api.md").is_file());
+    assert!(!dir.path().join("markdown/index.html").exists());
 }
 
 /// Completion output is consumed by a shell, so it must be nothing but the

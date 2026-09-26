@@ -4,15 +4,22 @@ use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
-use uf_doc::{DocDiagnostic, DocReport, generate, write_markdown};
+use uf_doc::{DocDiagnostic, DocReport, generate, write_markdown, write_site};
 use uf_term::{KeyValue, Status, Tone};
 
+use crate::cli::DocFormat;
 use crate::support::{
     ignore_deprecation, plural, project_label, relative_to, render_ignore_deprecation,
 };
 use crate::ui::Ui;
 
-pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -> Result<()> {
+pub(crate) fn doc(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    out_dir: &Utf8Path,
+    format: DocFormat,
+    json: bool,
+) -> Result<()> {
     let mut progress = ui.progress();
     progress.draw("loading configuration");
     let resolved = load_config(cwd)?;
@@ -67,7 +74,10 @@ pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -
     }
 
     let output_dir = resolved.root.join(out_dir);
-    let output = write_markdown(&report, &output_dir)?;
+    let output = match format {
+        DocFormat::Html => write_site(&report, &output_dir, project_label(&resolved.root))?,
+        DocFormat::Markdown => write_markdown(&report, &output_dir)?,
+    };
     render_success(ui, &resolved.root, out_dir, &output, &report);
     Ok(())
 }

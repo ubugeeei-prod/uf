@@ -1040,10 +1040,23 @@ still compile and still fail when a request reaches it.
 
 ### uf doc
 
-Generates `api.md` from JSDoc attached to exported Flow declarations. The
-source is parsed with Meta's Flow parser, so Flow-only syntax is read directly.
-`--out DIR` writes somewhere other than `docs/api`; `--json` reports without
-writing.
+Generates an offline API site from JSDoc attached to exported Flow declarations.
+Meta's Flow parser reads Flow-only syntax directly; ox-content renders the
+Markdown body. The page uses uf's paper and ink colours, brand type, module
+sidebar and continuous seam, and follows the system's light or dark theme.
+
+```sh
+uf doc
+uf doc --out dist/api
+uf doc --format markdown
+uf doc --json
+```
+
+The default `docs/api/` contains `index.html`, `api.md` and local uf design
+assets. Open `index.html` directly or deploy the directory to a static host.
+Reading it needs no JavaScript, external theme or font request. `--format
+markdown` writes only `api.md`; `--json` reports without writing files.
+Raw HTML in documentation comments is escaped in the generated site.
 
 ### uf run SCRIPT [ARGS...]
 
