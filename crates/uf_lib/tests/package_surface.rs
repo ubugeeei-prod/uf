@@ -190,7 +190,7 @@ const DECLARATION_KEYWORDS: &[&str] = &[
 ];
 
 fn lib_root() -> Utf8PathBuf {
-    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages")
+    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../npm")
 }
 
 fn crate_root() -> Utf8PathBuf {
