@@ -945,7 +945,7 @@ export default defineConfig({
       command: "tools/ci/test-scripts-parse.sh",
       inputs: ["tools/ci/scripts-parse.sh", "tools/ci/test-scripts-parse.sh"],
     },
-    // And that `integrations/` and the installer still agree. The three CI
+    // And that `ci-setup/` and the installer still agree. The three CI
     // integrations configure `install.sh` entirely through the environment,
     // and nothing else in this repository reads both sides — a renamed
     // variable would leave them passing something nothing reads, the
@@ -955,7 +955,7 @@ export default defineConfig({
       command: "tools/ci/integrations-agree.sh",
       // Both sides of the agreement, and the script that compares them.
       inputs: [
-        "integrations/**",
+        "ci-setup/**",
         "infra/cloudflare/setup-assets/install.sh",
         "tools/ci/integrations-agree.sh",
       ],
@@ -982,7 +982,7 @@ export default defineConfig({
       // binary's own freshness is `Toolchain`'s question rather than this
       // task's.
       inputs: [
-        "integrations/**",
+        "ci-setup/**",
         "docs/app/guide/ci/$page.mdx",
         "tools/ci/recipes-are-runnable.sh",
       ],

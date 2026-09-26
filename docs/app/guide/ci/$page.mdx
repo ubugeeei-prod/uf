@@ -32,9 +32,13 @@ documents its own inputs:
 
 | System | Where it lives |
 | --- | --- |
-| GitHub Actions | [`integrations/github-actions/action.yml`](https://github.com/ubugeeei-prod/uf/blob/main/integrations/github-actions/action.yml) |
-| GitLab CI | [`integrations/gitlab/uf.gitlab-ci.yml`](https://github.com/ubugeeei-prod/uf/blob/main/integrations/gitlab/uf.gitlab-ci.yml) |
-| CircleCI | [`integrations/circleci/orb.yml`](https://github.com/ubugeeei-prod/uf/blob/main/integrations/circleci/orb.yml) |
+| GitHub Actions | [`ci-setup/github-actions/action.yml`](https://github.com/ubugeeei-prod/uf/blob/main/ci-setup/github-actions/action.yml) |
+| GitLab CI | [`ci-setup/gitlab/uf.gitlab-ci.yml`](https://github.com/ubugeeei-prod/uf/blob/main/ci-setup/gitlab/uf.gitlab-ci.yml) |
+| CircleCI | [`ci-setup/circleci/orb.yml`](https://github.com/ubugeeei-prod/uf/blob/main/ci-setup/circleci/orb.yml) |
+
+The examples pin a release published before the directory was renamed to
+`ci-setup/`, so the action and GitLab URLs still name `integrations/` at that
+tag. For a release containing the new directory, use `ci-setup/` in those URLs.
 
 ## GitHub Actions
 
