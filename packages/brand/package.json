@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/brand",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Flow declarations for @uniflowed/brand, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
