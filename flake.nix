@@ -122,6 +122,7 @@
           postPatch = ''
             rm -rf upstream/react
             mkdir -p upstream/react/compiler
+            cp ${react}/compiler/Cargo.toml upstream/react/compiler/Cargo.toml
             cp -R ${react}/compiler/crates upstream/react/compiler/crates
             # The compiler workspace also names the native adapter manifest.
             mkdir -p upstream/react/compiler/packages/babel-plugin-react-compiler-rust
