@@ -91,12 +91,20 @@ impl Host {
     fn join(self, base: &str, relative: &str) -> String {
         let separator = self.separator();
         let base = base.trim_end_matches(['/', '\\']);
-        let relative = if self.windows {
-            relative.replace('/', "\\")
+        let mut path = String::with_capacity(base.len() + 1 + relative.len());
+        path.push_str(base);
+        path.push(separator);
+        if self.windows {
+            for (index, part) in relative.split('/').enumerate() {
+                if index != 0 {
+                    path.push('\\');
+                }
+                path.push_str(part);
+            }
         } else {
-            relative.to_owned()
-        };
-        format!("{base}{separator}{relative}")
+            path.push_str(relative);
+        }
+        path
     }
 }
 
@@ -131,7 +139,7 @@ pub fn find_binary(
 
     let mut tried = Vec::new();
     for name in host.project_names() {
-        let relative = format!("node_modules/.bin/{name}");
+        let relative = ["node_modules/.bin/", name].concat();
         let command = host.join(root, &relative);
         if readable(&relative) {
             return Ok(command);
@@ -144,12 +152,17 @@ pub fn find_binary(
     }
     tried.push("`uf` on PATH".to_owned());
 
-    Err(format!(
-        "uf: no `uf` binary found, so diagnostics, formatting, quick fixes and hover are off. \
-         Looked in: {}. Install uf (https://uniflowed.dev/guide/install), or set \
-         `lsp.uf.binary.path` in Zed's settings.",
-        tried.join(", ")
-    ))
+    let mut message = String::from(
+        "uf: no `uf` binary found, so diagnostics, formatting, quick fixes and hover are off. Looked in: ",
+    );
+    for (index, path) in tried.iter().enumerate() {
+        if index != 0 {
+            message.push_str(", ");
+        }
+        message.push_str(path);
+    }
+    message.push_str(". Install uf (https://uniflowed.dev/guide/install), or set `lsp.uf.binary.path` in Zed's settings.");
+    Err(message)
 }
 
 /// The arguments `uf` is started with.
@@ -347,7 +360,7 @@ mod tests {
     fn the_settings_key_is_the_declared_server() {
         let manifest = include_str!("../extension.toml");
         assert!(
-            manifest.contains(&format!("[language_servers.{}]", crate::SERVER_ID)),
+            manifest.contains(&["[language_servers.", crate::SERVER_ID, "]"].concat()),
             "extension.toml does not declare `{}`",
             crate::SERVER_ID
         );
