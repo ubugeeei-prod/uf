@@ -374,6 +374,13 @@ export default defineConfig({
       dependsOn: ["build"],
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },
+    // The release tooling (#1451). It runs under plain `node`, so its types
+    // are Flow comments, checked here like any other cleared area.
+    "check:release": {
+      command: "./target/release/uf check tools/release",
+      dependsOn: ["build"],
+      inputs: ["**", "!upstream/**", "target/release/uf"],
+    },
 
     // The formatter, over the same. `--check` rather than a write, because CI
     // reporting a diff is useful and CI committing one is not.
@@ -1144,6 +1151,7 @@ export default defineConfig({
         "check:ui",
         "check:web",
         "check:contracts",
+        "check:release",
         "test:lib",
         "test:lib:deno",
         "edge:smoke",
