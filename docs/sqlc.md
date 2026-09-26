@@ -207,5 +207,5 @@ and the default encoder does not already accept it.
   tool's job.
 - A connection pool, retries, or query logging. Those belong to the driver the
   application already chose.
-- An ORM-shaped query builder. `packages/orm` is a placeholder the red lines
-  say not to implement.
+- An ORM-shaped query builder. Applications use their database driver and
+  sqlc-generated queries directly.

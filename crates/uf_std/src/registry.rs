@@ -641,7 +641,7 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Network,
             &["serve", "route", "headers", "status"],
         ),
-        // Go's `database/sql`: `@uniflowed/orm`.
+        // Go's `database/sql`: application SQL drivers and sqlc-generated queries.
         StdModule::declined(
             "@uniflowed/std/sql",
             StdCategory::Network,

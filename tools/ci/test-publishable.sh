@@ -35,21 +35,21 @@ scratch() {
   root="$work/$1"
   rm -rf "$root"
   mkdir -p "$root/tools/ci" "$root/tools/release" \
-    "$root/packages/core" "$root/packages/orm" "$root/packages/state"
+    "$root/packages/core" "$root/packages/native-stub" "$root/packages/state"
   cp "$script" "$root/tools/ci/publishable.sh"
   printf '// @flow\nexport const add = (a: number, b: number): number => a + b;\n' \
     > "$root/packages/core/index.js"
-  printf '// @flow\nimport { nativeRuntimeRequired } from "@uniflowed/core";\nexport const open = (): empty => nativeRuntimeRequired("orm");\n' \
-    > "$root/packages/orm/index.js"
+  printf '// @flow\nimport { nativeRuntimeRequired } from "@uniflowed/core";\nexport const open = (): empty => nativeRuntimeRequired("native-stub");\n' \
+    > "$root/packages/native-stub/index.js"
   printf '// @flow\nexport const atom = <T>(value: T): { value: T } => ({ value });\n' \
     > "$root/packages/state/index.js"
   for name in core state; do
     printf '{ "name": "@uniflowed/%s", "version": "0.0.0" }\n' "$name" > "$root/packages/$name/package.json"
   done
-  # `orm` is the declaration in neither list, so a correct tree says so in the
+  # `native-stub` is the declaration in neither list, so a correct tree says so in the
   # manifest — that is the third rule this script now checks, and this fixture is
   # what a repository looks like once it holds.
-  printf '{ "name": "@uniflowed/orm", "version": "0.0.0", "private": true }\n' > "$root/packages/orm/package.json"
+  printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0", "private": true }\n' > "$root/packages/native-stub/package.json"
   printf '# published\ncore\n' > "$root/tools/release/published-packages.txt"
   printf '# pending\nstate\n' > "$root/tools/release/pending-packages.txt"
 }
@@ -92,23 +92,23 @@ refuses "an implemented package in neither list" "packages/state"
 # refuses is `npm install`, with `ETARGET` and no explanation. Taking the field
 # back out is exactly the state all twenty of these packages were in.
 scratch unmarked
-printf '{ "name": "@uniflowed/orm", "version": "0.0.0" }\n' > "$work/unmarked/packages/orm/package.json"
+printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0" }\n' > "$work/unmarked/packages/native-stub/package.json"
 run unmarked
-refuses "a declaration in neither list with no private" "packages/orm"
+refuses "a declaration in neither list with no private" "packages/native-stub"
 
 # --- unless a list claims it -------------------------------------------------
 # Membership outranks the scan, which is what keeps `core` and `stylex`
 # publishable: both look like declarations to `isDeclaration` and both are
 # published on purpose. A package a list names is never asked to be private.
 scratch claimed
-printf '{ "name": "@uniflowed/orm", "version": "0.0.0" }\n' > "$work/claimed/packages/orm/package.json"
-printf '# pending\nstate\norm\n' > "$work/claimed/tools/release/pending-packages.txt"
+printf '{ "name": "@uniflowed/native-stub", "version": "0.0.0" }\n' > "$work/claimed/packages/native-stub/package.json"
+printf '# pending\nstate\nnative-stub\n' > "$work/claimed/tools/release/pending-packages.txt"
 run claimed
 [ "$status" -eq 0 ] || fail "a declaration a list claims was refused: $out"
 pass "a list claiming a declaration outranks the scan"
 
 # --- a declaration is not required to be anywhere ---------------------------
-# The other direction of the same judgement: `packages/orm` is in no list and
+# The other direction of the same judgement: `packages/native-stub` is in no list and
 # must stay that way, because a name with `nativeRuntimeRequired` behind it
 # squats the name and cannot run.
 scratch declaration
@@ -129,10 +129,10 @@ refuses "a package that only mentions the runtime in a comment" "packages/state"
 
 # --- a nested module counts too ---------------------------------------------
 scratch nested
-mkdir -p "$work/nested/packages/orm/internal"
-printf '// @flow\nexport const open = (): empty => nativeRuntimeRequired("orm");\n' \
-  > "$work/nested/packages/orm/internal/driver.js"
-printf '// @flow\nexport { open } from "./internal/driver.js";\n' > "$work/nested/packages/orm/index.js"
+mkdir -p "$work/nested/packages/native-stub/internal"
+printf '// @flow\nexport const open = (): empty => nativeRuntimeRequired("native-stub");\n' \
+  > "$work/nested/packages/native-stub/internal/driver.js"
+printf '// @flow\nexport { open } from "./internal/driver.js";\n' > "$work/nested/packages/native-stub/index.js"
 run nested
 [ "$status" -eq 0 ] || fail "a declaration whose call is one directory down was refused: $out"
 pass "a declaration is recognized from any module in it, not only its index"
@@ -176,7 +176,7 @@ refuses "a published package peer-depending on a pending one" "would answer ETAR
 # rule over "is it pending" rather than "is it published" would have missed
 # this one entirely.
 scratch depends-on-declaration
-printf '{ "name": "@uniflowed/core", "version": "0.0.0", "dependencies": { "@uniflowed/orm": "0.0.0" } }\n' \
+printf '{ "name": "@uniflowed/core", "version": "0.0.0", "dependencies": { "@uniflowed/native-stub": "0.0.0" } }\n' \
   > "$work/depends-on-declaration/packages/core/package.json"
 run depends-on-declaration
 refuses "a published package depending on a declaration" "is not in either release manifest"
