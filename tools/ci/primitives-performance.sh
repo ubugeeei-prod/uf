@@ -12,6 +12,9 @@ if [ -z "${BASE_SHA:-}" ] || [ ! -f "$head_binary" ]; then
 fi
 baseline=$(mktemp -d "${TMPDIR:-/tmp}/uf-primitives-baseline.XXXXXX")
 rmdir "$baseline"
+if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+  git fetch --no-tags --depth=1 origin "$BASE_SHA"
+fi
 git worktree add --detach "$baseline" "$BASE_SHA"
 # The example uses the same public lint API and is identical on both revisions.
 cp crates/uf_lint/examples/import_graph_alloc.rs "$baseline/crates/uf_lint/examples/import_graph_alloc.rs"
