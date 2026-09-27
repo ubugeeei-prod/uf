@@ -908,7 +908,12 @@ fn version_document(
 ) -> Result<Value> {
     let base = crate::registry::url_for(routing.route(name).registry, name)?;
     let url = uf_infra::cstr!("{base}/{version}");
-    let bytes = download(agent, &url, crate::MAX_PACKUMENT_BYTES as u64)?;
+    let bytes = download_with_accept(
+        agent,
+        &url,
+        crate::MAX_PACKUMENT_BYTES as u64,
+        "application/json",
+    )?;
     let manifest: Value = serde_json::from_slice(&bytes)?;
     ensure!(
         manifest.get("version").and_then(Value::as_str) == Some(version),
@@ -918,14 +923,20 @@ fn version_document(
 }
 
 fn download(agent: &ureq::Agent, url: &str, limit: u64) -> Result<Vec<u8>> {
+    download_with_accept(agent, url, limit, "application/vnd.npm.install-v1+json")
+}
+
+fn download_with_accept(
+    agent: &ureq::Agent,
+    url: &str,
+    limit: u64,
+    accept: &str,
+) -> Result<Vec<u8>> {
     ensure!(
         url.starts_with("https://") && !url[8..].split('/').next().unwrap_or("").contains('@'),
         "package URL must be HTTPS without userinfo"
     );
-    let mut response = agent
-        .get(url)
-        .header("Accept", "application/vnd.npm.install-v1+json")
-        .call()?;
+    let mut response = agent.get(url).header("Accept", accept).call()?;
     let mut bytes = Vec::new();
     response
         .body_mut()
