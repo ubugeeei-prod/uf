@@ -1953,7 +1953,7 @@ pub fn extract_config_object(source: &str) -> Option<String> {
         .filter(|line| !line.trim_start().starts_with("import "))
         .collect::<Vec<_>>()
         .join("\n");
-    let expression = strip_leading_comments(without_imports.trim())
+    let expression = strip_leading_directives(without_imports.trim())
         .trim_end_matches(';')
         .trim();
     let expression = expression
@@ -2121,6 +2121,37 @@ fn strip_leading_comments(mut source: &str) -> &str {
             continue;
         }
         return source;
+    }
+}
+
+fn strip_leading_directives(mut source: &str) -> &str {
+    loop {
+        source = strip_leading_comments(source);
+        let Some(quote) = source.chars().next().filter(|c| matches!(c, '\'' | '"')) else {
+            return source;
+        };
+        let Some(end) = source[1..].find(quote).map(|end| end + 1) else {
+            return source;
+        };
+        if !matches!(
+            &source[1..end],
+            "use flow" | "use js" | "use strict" | "use client" | "use server"
+        ) {
+            return source;
+        }
+        let rest = &source[end + 1..];
+        if let Some(rest) = rest.trim_start().strip_prefix(';') {
+            source = rest;
+        } else if rest.trim_start().is_empty()
+            || rest
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .any(|c| c == '\n' || c == '\r')
+        {
+            source = rest;
+        } else {
+            return source;
+        }
     }
 }
 
