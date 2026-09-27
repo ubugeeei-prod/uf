@@ -83,7 +83,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            candidates_in(&store, &[project.clone()]).unwrap(),
+            candidates_in(&store, std::slice::from_ref(&project)).unwrap(),
             vec![store.version_dir("0.3.0")]
         );
         fs::write(project.join("uf.config.js"), "export default {").unwrap();
