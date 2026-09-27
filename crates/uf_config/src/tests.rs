@@ -7,6 +7,8 @@ fn source_mode_directives_do_not_prevent_static_config_loading() {
         "'use js';",
         "\"use strict\";\n\"use flow\";",
         "'use flow'\n",
+        "\"use flow\" /* mode */;",
+        "\"use flow\" // mode\n",
     ] {
         let source = format!(
             "{header}\nimport {{ defineConfig }} from '@uniflowed/config';\nexport default defineConfig({{}});\n"

@@ -2166,15 +2166,11 @@ fn strip_leading_directives(mut source: &str) -> &str {
             return source;
         }
         let rest = &source[end + 1..];
-        if let Some(rest) = rest.trim_start().strip_prefix(';') {
+        let next = strip_leading_comments(rest);
+        if let Some(rest) = next.strip_prefix(';') {
             source = rest;
-        } else if rest.trim_start().is_empty()
-            || rest
-                .chars()
-                .take_while(|c| c.is_whitespace())
-                .any(|c| c == '\n' || c == '\r')
-        {
-            source = rest;
+        } else if next.is_empty() || rest[..rest.len() - next.len()].contains(['\n', '\r']) {
+            source = next;
         } else {
             return source;
         }
