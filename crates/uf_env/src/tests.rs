@@ -2,6 +2,7 @@ use camino::Utf8PathBuf;
 
 use super::*;
 use crate::project;
+use crate::source::{Checksum, Source};
 
 fn temp() -> (tempfile::TempDir, Utf8PathBuf) {
     let dir = tempfile::tempdir().unwrap();
