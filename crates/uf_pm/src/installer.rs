@@ -123,7 +123,6 @@ pub fn execute_with_path(
                 if let Operation::Add { kind } = operation {
                     let (name, range) = split_spec(operand)?;
                     let range = if range == "latest" {
-                        let store = store::Store::discover()?;
                         let routing = RegistryRouting::from_config(&resolved.config);
                         let metadata = packument(&agent(), &routing, &name)?;
                         let node = registry_node(
