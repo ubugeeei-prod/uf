@@ -216,6 +216,7 @@ async function dispatch(
   title /*: string */,
   inputs /*: Inputs */,
   save /*: () => void */,
+  observeOnly /*: boolean */ = false,
 ) /*: Promise<WorkflowRun> */ {
   const key = RUN_KEYS[workflow];
   let id = state[key];
@@ -226,7 +227,14 @@ async function dispatch(
         `repos/${state.repository}/actions/workflows/${workflow}.yml/runs?event=workflow_dispatch&branch=main&per_page=100`,
       ).workflow_runs.find((run /*: WorkflowRun */) => run.display_title === title);
     let run = find();
-    if (!run) {
+    if (!run && observeOnly) {
+      // The automatic controller owns dispatch. Observers never race it.
+      for (let retry = 0; retry < 40 && !run; retry++) {
+        await sleep(3000);
+        run = find();
+      }
+    }
+    if (!run && !observeOnly) {
       const args = [
         "workflow",
         "run",
@@ -250,7 +258,7 @@ async function dispatch(
     save();
   }
   const previous /*: WorkflowRun */ = api(`repos/${state.repository}/actions/runs/${id}`);
-  if (previous.status === "completed" && previous.conclusion !== "success") {
+  if (!observeOnly && previous.status === "completed" && previous.conclusion !== "success") {
     gh("run", "rerun", String(id), "--repo", state.repository, "--failed");
     for (let retry = 0; retry < 20; retry++) {
       await sleep(3000);
@@ -433,12 +441,17 @@ async function main() /*: Promise<void> */ {
     commit,
     validation_run: validationRun,
   };
+  // Main's release automation is the sole publication controller when active.
+  // The local command stays attached to the same runs and records their ids.
+  const automated =
+    api(`repos/${repository}/actions/workflows/release-automation.yml`).state === "active";
   const npm = await dispatch(
     state,
     "publish",
     `Publish ${state.version} (${commit})`,
     inputs,
     save,
+    automated,
   );
   await dispatch(
     state,
@@ -446,8 +459,16 @@ async function main() /*: Promise<void> */ {
     `Release ${state.version} (${commit})`,
     { ...inputs, npm_run: npm.id },
     save,
+    automated,
   );
-  await dispatch(state, "editors", `Editors ${state.version}`, { version: state.version }, save);
+  await dispatch(
+    state,
+    "editors",
+    `Editors ${state.version}`,
+    { version: state.version },
+    save,
+    automated,
+  );
   const release = JSON.parse(
     gh(
       "release",
