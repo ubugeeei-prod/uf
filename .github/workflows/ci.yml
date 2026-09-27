@@ -1320,6 +1320,41 @@ jobs:
       - run: node tools/deploy-matrix/report.mjs --results output/deploy-matrix
         if: needs.changes.outputs.deploy == 'true'
 
+  native-pm:
+    name: Native package manager
+    needs: [changes, toolchain]
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: useblacksmith/checkout@a6f249f8370a56aa9dc4adfee19b3127d0f7f9ec # v1.8.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          node-version: 24.14.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          bun-version: 1.4.2
+      - run: npm install --global --ignore-scripts pnpm@12.6.0
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.changes.outputs.code == 'true'
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+        if: needs.changes.outputs.code == 'true'
+      - run: python3 tools/bench/pm/native.py --uf target/release/uf --output output/pm-native/results.json
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && needs.changes.outputs.code == 'true'
+        with:
+          name: native-pm-measurements
+          path: output/pm-native
+          retention-days: 14
+
   # One check that is true only when every other one is.
   #
   # Every job above declares `needs: toolchain`, and a job whose dependency
@@ -1384,6 +1419,7 @@ jobs:
       - relay-sns
       - sqlc
       - native-bundle
+      - native-pm
       - browser-testing
       - deploy-matrix
       - deploy-matrix-report

@@ -1,5 +1,5 @@
 //! Native resolution, integrity-checked downloads and shared content-addressed files.
-//! Frozen and warm installs read their graph from uf.lock without registry traffic.
+//! Frozen and warm installs read their graph from uf.lock without metadata requests.
 mod queries;
 mod store;
 pub use queries::{AuditFinding, AuditReport, audit};

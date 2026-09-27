@@ -774,7 +774,17 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Ls { args } => {
             commands::pm::query(&cwd, ui, "uf ls", uf_pm::Operation::List, &args)
         }
-        Commands::Audit { args } => {
+        Commands::Audit {
+            mut args,
+            json,
+            prod,
+        } => {
+            if json {
+                args.push("--json".to_owned());
+            }
+            if prod {
+                args.push("--prod".to_owned());
+            }
             commands::pm::query(&cwd, ui, "uf audit", uf_pm::Operation::Audit, &args)
         }
         Commands::Search { terms } => {

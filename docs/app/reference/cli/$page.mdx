@@ -1724,13 +1724,17 @@ check for CI. `--file FILE` (`-f`) is as for `generate`.
 [Dependencies](/guide/dependencies) is the guide to these commands, with what each
 one printed.
 
-Most of them run the project's own package manager. uf's resolver
-reaches no registry yet, so each one detects whether the project is npm, pnpm,
-Yarn or Bun and runs that — while keeping the three things a bare `npm install`
-would skip: lifecycle scripts stay refused, a manifest that declares scripts of
-its own is rejected before anything is fetched, and `uf.lock` and the
-content-addressed store under `.uf/store` are rewritten from the manifests the
-manager just changed.
+With `packageManager: "uf"`, dependency installation, addition, removal,
+updates and audit run in uf's native manager. Its lock graph records exact
+versions and archive integrity in `uf.lock`. A shared store deduplicates file
+content across versions and projects. Dependencies are hardlinked into an
+isolated `node_modules` graph, with a copy fallback across filesystems.
+`UF_PM_STORE` can select another absolute store location.
+
+With an external manager selected, uf runs that manager and reports it.
+Lifecycle hooks remain disabled by default. `pm.allowLifecycleScripts: true`
+explicitly enables install hooks. Native packages that execute hooks receive
+writable copies so their build cannot modify the shared file store.
 
 Every one of them reports which manager ran, what named it, and the exact
 command it spawned. A command that delegates without saying to whom is the
@@ -1739,7 +1743,7 @@ forbids.
 
 ### uf install
 
-Installs dependencies with the host's package manager, and refuses lifecycle
+Installs dependencies with the selected package manager, and refuses lifecycle
 scripts while doing it — the manager is passed `--ignore-scripts`, and a
 manifest that declares scripts of its own fails before anything is fetched.
 Yarn 2+ answers `--ignore-scripts` with "Unsupported option name" on every
@@ -1881,6 +1885,13 @@ error: the project ends up the way it was asked to be either way.
 members it changes, as for `uf add` — see [`--filter` and `-w`](#--filter-and--w).
 
 ### uf update [PACKAGE...]
+
+In a terminal, the plain command offers a release range and a multiple
+selection list showing the declared range, proposed version, change level and
+manifest. Space toggles packages; Enter applies the selection. Escape or an
+empty selection leaves the manifests unchanged. Explicit `--latest`, `--minor`
+and `--patch` retain their scriptable behavior.
+
 
 Two different things go by this name, and `uf update` does both.
 `--filter SELECTOR` and `-w` (`--workspace-root`) choose the workspace members
@@ -2067,7 +2078,18 @@ Lists the installed tree, through the same manager — `npm ls`, `pnpm list`,
 `yarn list` on Yarn 1, `yarn info --all` on Yarn 2+, `bun pm ls`. A package
 name narrows it.
 
-### uf audit [NAME...]
+### uf audit [NAME...] [--prod] [--json]
+
+With the native manager, checks locked package versions through each configured
+registry's advisory API. Private scopes stay on their configured registry.
+The report shows severity, affected versions, advisory links and the next
+available stable release outside the reported vulnerable ranges, when one
+can be established. A suggested release can require compatibility changes.
+
+`--prod` excludes development dependencies; `--json` prints the native report.
+A vulnerable tree exits nonzero. A failed registry response also exits nonzero
+and reports the audit as incomplete. These two flags are native manager options.
+
 
 Audits the installed tree against the registry's advisories: `npm audit`,
 `pnpm audit`, `yarn audit`, `yarn npm audit` on Yarn 2+, `bun audit`.
