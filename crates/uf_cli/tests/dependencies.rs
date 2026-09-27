@@ -576,6 +576,13 @@ fn a_manifest_that_declares_a_lifecycle_script_stops_an_add_before_anything_is_f
 fn a_workspace_member_is_still_locked_after_an_add() {
     let dir = tempfile::tempdir().unwrap();
     native_project(dir.path(), &[("tiny", "1.2.3")]);
+    let mut manifest = json(dir.path(), "package.json");
+    manifest["workspaces"] = serde_json::json!(["packages/*"]);
+    fs::write(
+        dir.path().join("package.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
     let member = dir.path().join("packages/ui");
     fs::create_dir_all(&member).unwrap();
     fs::write(
