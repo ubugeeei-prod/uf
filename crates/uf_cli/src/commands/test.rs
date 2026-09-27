@@ -829,7 +829,9 @@ fn test_packages(root: &Utf8Path, browser: bool) -> Result<(Utf8PathBuf, Utf8Pat
         .canonicalize_utf8()
         .with_context(|| uf_infra::cstr!("could not resolve {installed}"))?;
     let loader = uniflowed_package(&directory, "host", "register.js")?;
-    Ok((loader, directory.join(marker)))
+    // Node resolves the worker link itself. Windows canonicalization returns
+    // a verbatim path that its command line module resolver cannot consume.
+    Ok((loader, installed.join(marker)))
 }
 
 fn test_host_kind(host: uf_config::CapabilityJsHost, browser: bool) -> HostKind {
@@ -1461,7 +1463,14 @@ mod tests {
                 found_loader.canonicalize_utf8().unwrap(),
                 loader.canonicalize_utf8().unwrap()
             );
-            assert_eq!(worker, package.canonicalize_utf8().unwrap().join(marker));
+            assert_eq!(
+                worker,
+                root.join("node_modules/@uniflowed/test").join(marker)
+            );
+            assert_eq!(
+                worker.canonicalize_utf8().unwrap(),
+                package.canonicalize_utf8().unwrap().join(marker)
+            );
         }
     }
 

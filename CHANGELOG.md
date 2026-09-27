@@ -2,6 +2,7 @@
 
 ## uf@0.13.1
 
+- fix(project): honor native Windows ignore paths and launch linked test workers.
 - fix(host): share transform cache identities across Node and Deno at timestamp boundaries.
 - fix(test): resolve transitive Flow loaders for native package installations on every release target.
 - fix(pm): select macOS native dependencies and verify Vite builds on every release target.

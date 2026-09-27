@@ -608,17 +608,19 @@ const ALWAYS_IGNORED: &[&str] = &[".uf", ".git"];
 /// top-level `ignore` and — for a project that has not moved yet — the
 /// `lint.ignore` it replaced.
 fn is_ignored(root: &Utf8Path, path: &Utf8Path, config: &UniflowedConfig) -> bool {
-    let relative = path.strip_prefix(root).unwrap_or(path).as_str();
-    let mut segments = relative.split('/');
-    if segments.any(|segment| ALWAYS_IGNORED.contains(&segment)) {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    if relative
+        .components()
+        .any(|part| ALWAYS_IGNORED.contains(&part.as_str()))
+    {
         return true;
     }
     config.project_ignore().entries.iter().any(|ignored| {
         let ignored = ignored.as_str();
-        if ignored.contains('/') {
+        if ignored.contains('/') || (cfg!(windows) && ignored.contains('\\')) {
             relative.starts_with(ignored)
         } else {
-            relative.split('/').any(|segment| segment == ignored)
+            relative.components().any(|part| part.as_str() == ignored)
         }
     })
 }
