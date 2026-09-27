@@ -195,6 +195,7 @@ pub(super) fn configure(root: &Utf8Path, config: &UniflowedConfig) -> Result<()>
     Ok(())
 }
 
+#[cfg(feature = "upstream-typecheck")]
 pub(super) fn check(root: &Utf8Path, config: &UniflowedConfig) -> Result<serde_json::Value> {
     let version = config
         .flow
@@ -217,8 +218,10 @@ pub(super) fn check(root: &Utf8Path, config: &UniflowedConfig) -> Result<serde_j
         .output()?;
     ensure!(
         matches!(output.status.code(), Some(0 | 2)),
-        "official Flow failed: {}",
-        String::from_utf8_lossy(&output.stderr)
+        uf_infra::cstr!(
+            "official Flow failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
     );
     let result: serde_json::Value = serde_json::from_slice(&output.stdout)?;
     ensure!(

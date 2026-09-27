@@ -10,7 +10,9 @@
 //! When the checker is not compiled in, the type-checking half reports itself
 //! unavailable and `uf check` is exactly `uf lint` under another name.
 
-use anyhow::{Context, Result, bail};
+#[cfg(feature = "upstream-typecheck")]
+use anyhow::Context;
+use anyhow::{Result, bail};
 use camino::Utf8Path;
 use serde_json::{Value, json};
 #[cfg(feature = "upstream-typecheck")]
