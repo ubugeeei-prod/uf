@@ -103,11 +103,16 @@ impl Types {
             .canonicalize_utf8()
             .ok()
             .filter(|canonical| *canonical != root);
+        let state = if config.flow.version.is_some() {
+            State::Failed
+        } else {
+            State::Idle
+        };
         Self {
             root,
             canonical_root,
             config,
-            state: State::Idle,
+            state,
             pending: Vec::new(),
         }
     }

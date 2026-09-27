@@ -446,7 +446,7 @@ fn the_module_is_a_flow_module_the_loader_can_import() {
     ]);
     let module = render_locale_module("ja-JP", &messages);
 
-    assert!(module.starts_with("// @flow\n"));
+    assert!(module.starts_with("\"use flow\";\n"));
     assert!(module.contains("export default {"));
     // An identifier key is bare, anything else is quoted, which is what a
     // formatter would leave behind.

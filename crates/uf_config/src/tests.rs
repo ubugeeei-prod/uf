@@ -1636,3 +1636,15 @@ fn refuses_a_remote_pattern_wider_or_narrower_than_it_reads() {
         .to_string();
     assert!(error.contains("qualities[1]"), "{error}");
 }
+
+#[test]
+fn official_flow_version_requires_an_exact_release() {
+    let path = Utf8Path::new("uf.config.js");
+    for version in ["0.333.0", "0.330.0"] {
+        let c = parse_config_object(path, &format!("{{flow:{{version:'{version}'}}}}"));
+        assert_eq!(c.unwrap().flow.version.as_deref(), Some(version));
+    }
+    for version in ["latest", "^0.333.0", "0.333", "../flow", "0.0333.0"] {
+        assert!(parse_config_object(path, &format!("{{flow:{{version:'{version}'}}}}")).is_err());
+    }
+}

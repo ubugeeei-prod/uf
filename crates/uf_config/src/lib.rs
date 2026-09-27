@@ -47,6 +47,14 @@ pub use tools::{
     ToolRole, ToolSource, ToolSpec, ToolVersion, VITE_BUILDER_MODULE, Written,
 };
 
+/// Select the official checker instead of the bundled Rust implementation.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FlowConfig {
+    /// Exact official `flow-bin` release; absent uses uf's bundled checker.
+    pub version: Option<CompactString>,
+}
+
 pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +71,8 @@ pub struct UniflowedConfig {
     pub docs: DocsConfig,
     pub env: EnvConfig,
     pub fmt: FmtConfig,
+    /// An exact official Flow release for checking and editor type services.
+    pub flow: FlowConfig,
     /// Paths every command that walks the project stays out of, or `None` for
     /// the list uf ships.
     ///
@@ -1857,6 +1867,22 @@ pub fn parse_config_projection(
 
 /// Validate semantic config combinations that serde alone cannot express.
 pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), ConfigError> {
+    if let Some(version) = &config.flow.version {
+        let parts: Vec<_> = version.split('.').collect();
+        if parts.len() != 3
+            || parts.iter().any(|part| {
+                part.is_empty()
+                    || !part.bytes().all(|b| b.is_ascii_digit())
+                    || (part.len() > 1 && part.starts_with('0'))
+            })
+        {
+            return Err(ConfigError::Parse {
+                path: path.to_path_buf(),
+                message: "flow.version must be an exact official release such as 0.333.0"
+                    .to_owned(),
+            });
+        }
+    }
     check_cache_switches(path, &config.app.rendering.cache)?;
     check_mdx(path, &config.app.builtins.markdown.mdx)?;
     // Which runtime this project says it is written for, checked against the
