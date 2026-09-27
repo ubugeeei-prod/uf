@@ -24,6 +24,7 @@
 pub(crate) mod config_file;
 mod hover;
 pub(crate) mod native;
+mod official;
 mod rsc;
 #[cfg(feature = "upstream-typecheck")]
 mod types;
@@ -535,6 +536,11 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     // start-up. See `EditorRules`.
     // Flow's inference, for hover, definitions and completion. Nothing is read
     // until the client says `initialized` or asks its first question.
+    let mut official = if config.flow.version.is_some() {
+        Some(official::Server::start(&root, &config)?)
+    } else {
+        None
+    };
     let mut types = Types::new(root.clone(), config.clone());
     let mut project_rules = EditorRules::new(root);
     let fmt = config.fmt.clone();
@@ -547,7 +553,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     let mut releases = config_file::ReleaseLists::from_env();
 
     loop {
-        let frame = if types.waiting() {
+        let frame = if types.waiting() || official.is_some() {
             match incoming.recv_timeout(pause) {
                 Ok(frame) => frame?,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
@@ -558,7 +564,19 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                         document.types = found;
                         publish_diagnostics(&mut stdout, &uri, document)?;
                     }
-                    pause = std::time::Duration::ZERO;
+                    if let Some(official) = &mut official {
+                        while let Some((uri, found)) = official.poll()? {
+                            if let Some(document) = documents.get_mut(&uri) {
+                                document.types = found;
+                                publish_diagnostics(&mut stdout, &uri, document)?;
+                            }
+                        }
+                    }
+                    pause = if official.is_some() {
+                        TYPE_CHECK_PAUSE
+                    } else {
+                        std::time::Duration::ZERO
+                    };
                     continue;
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -612,13 +630,46 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
             continue;
         }
 
+        let typed_request = matches!(
+            method,
+            "textDocument/hover"
+                | "textDocument/completion"
+                | "textDocument/definition"
+                | "textDocument/typeDefinition"
+                | "textDocument/references"
+                | "textDocument/documentHighlight"
+                | "textDocument/prepareRename"
+                | "textDocument/rename"
+                | "textDocument/documentSymbol"
+        );
+        let config_document = document_uri(&message).is_some_and(|uri| {
+            Utf8Path::new(&document_path(&uri)).file_name() == Some("uf.config.js")
+        });
+        if typed_request
+            && !config_document
+            && let Some(official) = &mut official
+        {
+            match official.request(
+                method,
+                message.get("params").cloned().unwrap_or(Value::Null),
+            ) {
+                Ok(result) => respond(&mut stdout, id, result)?,
+                Err(error) => {
+                    if let Some(id) = id {
+                        respond_error(&mut stdout, id, -32603, &error.to_string())?;
+                    }
+                }
+            }
+            continue;
+        }
+
         match method {
             "initialize" => respond(
                 &mut stdout,
                 id,
                 json!({
                     "serverInfo": { "name": "uf-lsp", "version": env!("CARGO_PKG_VERSION") },
-                    "capabilities": capabilities(cfg!(feature = "upstream-typecheck")),
+                    "capabilities": capabilities(cfg!(feature = "upstream-typecheck") || official.is_some()),
                 }),
             )?,
             // Every editor sends this right after `initialize`, which makes it
@@ -636,6 +687,9 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                     publish_diagnostics(&mut stdout, &uri, &document)?;
                     project_rules.tell(&mut stdout)?;
                     types.changed(&uri, &document.text);
+                    if let Some(official) = &mut official {
+                        official.changed(&uri, &document.text)?;
+                    }
                     documents.insert(uri, document);
                 }
             }
@@ -646,6 +700,9 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                     publish_diagnostics(&mut stdout, &uri, &document)?;
                     project_rules.tell(&mut stdout)?;
                     types.changed(&uri, &document.text);
+                    if let Some(official) = &mut official {
+                        official.changed(&uri, &document.text)?;
+                    }
                     // Any other open file may import this one.
                     types.recheck(documents.keys().filter(|open| **open != uri));
                     documents.insert(uri, document);
@@ -663,6 +720,9 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                     )?;
                     documents.remove(&uri);
                     types.closed(&uri);
+                    if let Some(official) = &mut official {
+                        official.closed(&uri)?;
+                    }
                 }
             }
             "textDocument/formatting" => {

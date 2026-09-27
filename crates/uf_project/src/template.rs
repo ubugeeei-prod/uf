@@ -220,6 +220,7 @@ dist/
 router.js
 server-actions.js
 .uf/
+.uf-flowconfig
 .uniflowed/
 
 .env.local

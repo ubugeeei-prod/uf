@@ -10,7 +10,7 @@
 //! When the checker is not compiled in, the type-checking half reports itself
 //! unavailable and `uf check` is exactly `uf lint` under another name.
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
 use serde_json::{Value, json};
 #[cfg(feature = "upstream-typecheck")]
@@ -126,6 +126,7 @@ impl Profile {
 struct Batch {
     /// Files the reader asked about.
     requested: usize,
+    official_version: Option<String>,
     /// Modules in the batch only because those files import them.
     imported: usize,
     /// What the closure walk paid for the shared builtin environment, if it
@@ -278,7 +279,21 @@ pub(crate) fn check(
         project_rules,
     } = collect_and_lint(cwd, paths, lint)?;
     progress.draw("type checking");
-    let types = type_check(&sources, &available, &root, explain_any);
+    let config = uf_config::load_config(&root)?.config;
+    #[cfg(feature = "upstream-typecheck")]
+    let types = if config.flow.version.is_some() {
+        official_check(&sources, &available, &root, &config)?
+    } else {
+        type_check(&sources, &available, &root, explain_any)
+    };
+    #[cfg(not(feature = "upstream-typecheck"))]
+    let types = {
+        anyhow::ensure!(
+            config.flow.version.is_none(),
+            "this build does not support official Flow reports"
+        );
+        type_check(&sources, &available, &root, explain_any)
+    };
     progress.finish();
     drop(progress);
 
@@ -429,6 +444,7 @@ fn type_check(
         .collect();
     let mut counts = Batch {
         requested: checked.len(),
+        official_version: None,
         imported: batch.len().saturating_sub(checked.len()),
         builtins,
         libdefs: libs.len(),
@@ -469,6 +485,116 @@ fn type_check(
         Err(error) if error.is_unavailable() => TypeCheck::Unavailable,
         Err(error) => TypeCheck::Failed(error),
     }
+}
+
+#[cfg(feature = "upstream-typecheck")]
+fn official_check(
+    sources: &[SourceFile],
+    available: &[SourceFile],
+    root: &Utf8Path,
+    config: &uf_config::UniflowedConfig,
+) -> Result<TypeCheck> {
+    use uf_check::{DiagnosticKind, MessageSegment, Position, Severity, Span};
+    let started = std::time::Instant::now();
+    let result = crate::commands::flow::check(root, config)?;
+    let canonical = root.canonicalize_utf8()?;
+    let mut diagnostics = Vec::new();
+    for error in result["errors"].as_array().context("missing Flow errors")? {
+        let fragments = error["message"]
+            .as_array()
+            .context("missing Flow message")?;
+        let location = fragments
+            .iter()
+            .find(|fragment| fragment["path"].as_str().is_some_and(|p| !p.is_empty()));
+        let path = location
+            .and_then(|v| v["path"].as_str())
+            .unwrap_or(".uf-flowconfig");
+        let path = Utf8Path::new(path)
+            .strip_prefix(&canonical)
+            .unwrap_or(Utf8Path::new(path));
+        if path != Utf8Path::new(".uf-flowconfig")
+            && !sources.iter().any(|source| source.path == path.as_str())
+        {
+            continue;
+        }
+        let mut message = String::new();
+        for fragment in fragments {
+            if let Some(text) = fragment["descr"].as_str() {
+                if !message.is_empty() {
+                    message.push(' ');
+                }
+                message.push_str(text);
+            }
+        }
+        let at = |name: &str, default| {
+            location
+                .and_then(|v| v[name].as_u64())
+                .and_then(|n| u32::try_from(n).ok())
+                .unwrap_or(default)
+        };
+        let line = at("line", 1);
+        let column = at("start", 1);
+        diagnostics.push(TypeDiagnostic {
+            severity: if error["level"] == "warning" {
+                Severity::Warning
+            } else {
+                Severity::Error
+            },
+            kind: if error["kind"] == "parse" {
+                DiagnosticKind::Parse
+            } else {
+                DiagnosticKind::Infer
+            },
+            code: None,
+            primary: Span {
+                path: path.as_str().into(),
+                start: Position { line, column },
+                end: Position {
+                    line: at("endline", line),
+                    column: at("end", column).saturating_add(1),
+                },
+            },
+            root: None,
+            message: [MessageSegment::Text {
+                text: message.into(),
+            }]
+            .into_iter()
+            .collect(),
+            related: Default::default(),
+        });
+    }
+    let skipped = sources
+        .iter()
+        .filter(|s| crate::commands::flow::opted_out(&s.source))
+        .count();
+    let builtins = BuiltinsTiming {
+        elapsed: Default::default(),
+        cold_elapsed: Default::default(),
+        cold: false,
+        needed: false,
+    };
+    let report = CheckReport {
+        diagnostics,
+        files_checked: sources.len().saturating_sub(skipped),
+        files_skipped: skipped,
+        files_from_cache: 0,
+        untyped_modules: Vec::new(),
+        host_conditional_modules: Vec::new(),
+        builtins,
+        elapsed: started.elapsed(),
+    };
+    Ok(TypeCheck::Checked(
+        report,
+        Box::new(Batch {
+            requested: sources.len(),
+            imported: available.len().saturating_sub(sources.len()),
+            official_version: config.flow.version.as_ref().map(ToString::to_string),
+            builtins: None,
+            libdefs: 0,
+            translated: Vec::new(),
+            explained: None,
+        }),
+    ))
 }
 
 /// What [`closure`] found: the paths the batch reaches, and the sources it had
@@ -658,6 +784,10 @@ fn type_check_payload(types: &TypeCheck) -> Value {
     if let Some(report) = types.report() {
         value["filesChecked"] = json!(report.files_checked);
         if let Some(batch) = types.batch() {
+            if let Some(version) = &batch.official_version {
+                value["backend"] = json!("official-flow");
+                value["version"] = json!(version);
+            }
             value["requested"] = json!(batch.requested);
             value["imported"] = json!(batch.imported);
             value["libdefs"] = json!(batch.libdefs);
@@ -904,11 +1034,18 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             // checked for the first time should not have to read a zero.
             let cached =
                 uf_infra::into_string(uf_infra::cstr!("{} of {files}", report.files_from_cache));
+            let backend = batch
+                .official_version
+                .as_ref()
+                .map(|version| uf_infra::into_string(uf_infra::cstr!("official Flow {version}")));
             let mut rows = vec![
                 KeyValue::toned("types checked", &files, Tone::Number),
                 KeyValue::toned("inference", &inference, Tone::Muted),
                 KeyValue::toned("builtins", &builtins, Tone::Muted),
             ];
+            if let Some(backend) = &backend {
+                rows.insert(0, KeyValue::toned("checker", backend, Tone::Accent));
+            }
             if report.files_from_cache > 0 {
                 rows.insert(1, KeyValue::toned("unchanged", &cached, Tone::Muted));
             }
