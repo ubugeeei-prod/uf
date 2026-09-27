@@ -2,6 +2,7 @@
 
 ## uf@0.13.1
 
+- fix(pm): select macOS native dependencies and verify Vite builds on every release target.
 - fix(pm): support legacy npm tarball layouts (#1655) (73bf4dce)
 
 ## uf@0.13.0
