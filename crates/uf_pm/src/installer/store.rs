@@ -404,7 +404,12 @@ pub(super) fn materialize(
             continue;
         }
         let output = node_path(stage, id, node);
-        let siblings = output.parent().context("package has no module directory")?;
+        let siblings = if node.name.starts_with('@') {
+            output.parent().and_then(Utf8Path::parent)
+        } else {
+            output.parent()
+        }
+        .context("package has no module directory")?;
         for edges in [
             &node.dependencies,
             &node.optional_dependencies,
