@@ -96,6 +96,7 @@ pub(super) fn query(
                     Column::left("severity"),
                     Column::left("package"),
                     Column::left("installed"),
+                    Column::left("fix version"),
                     Column::left("advisory"),
                 ]);
                 for (finding, versions) in report.findings.iter().zip(&versions) {
@@ -108,10 +109,14 @@ pub(super) fn query(
                         Cell::toned(&finding.severity, tone),
                         Cell::toned(&finding.package, Tone::Path),
                         Cell::new(versions),
+                        Cell::toned(
+                            finding.fix_version.as_deref().unwrap_or("unknown"),
+                            Tone::Good,
+                        ),
                         Cell::new(&finding.title),
                     ]);
                 }
-                renderer.table(out, &table);
+                renderer.table(out, 2, &table);
                 for finding in &report.findings {
                     renderer.status(out, Status::Info, &finding.url);
                 }
@@ -138,5 +143,6 @@ pub(super) fn query(
         return Ok(());
     }
     let value = uf_pm::installer::execute(&resolved.root, operation, operands)?;
-    ui.json(&value)
+    ui.json(&value)?;
+    Ok(())
 }

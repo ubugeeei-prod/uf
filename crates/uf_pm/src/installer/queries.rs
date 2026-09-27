@@ -30,6 +30,9 @@ pub struct AuditFinding {
     pub vulnerable_versions: CompactString,
     /// Primary advisory link.
     pub url: String,
+    /// Smallest newer stable release outside every reported vulnerable range,
+    /// when registry metadata was available. Compatibility is not implied.
+    pub fix_version: Option<CompactString>,
 }
 
 /// A complete audit. A registry failure is an error, never a clean result.
@@ -118,7 +121,27 @@ pub fn audit(root: &Utf8Path, config: &UniflowedConfig, prod: bool) -> Result<Au
             "audit response exceeds byte limit"
         );
         let advisories: BTreeMap<CompactString, Vec<Advisory>> = serde_json::from_slice(&bytes)?;
-        report.findings.extend(applicable(&packages, advisories)?);
+        let mut findings = applicable(&packages, advisories)?;
+        let affected: BTreeSet<_> = findings
+            .iter()
+            .map(|finding| finding.package.clone())
+            .collect();
+        for name in affected {
+            let url = crate::registry::url_for(&registry, &name)?;
+            // Enrichment is optional: every confirmed advisory stays reported.
+            if let Ok(bytes) = download(&agent, &url, crate::MAX_PACKUMENT_BYTES as u64)
+                && let Ok(document) = serde_json::from_slice::<Value>(&bytes)
+            {
+                let fixed = fixed_version(&name, &findings, &document);
+                for finding in findings
+                    .iter_mut()
+                    .filter(|finding| finding.package == name)
+                {
+                    finding.fix_version = fixed.clone();
+                }
+            }
+        }
+        report.findings.extend(findings);
         report.registries.push(registry);
     }
     report.findings.sort_by(|a, b| {
@@ -166,11 +189,42 @@ fn applicable(
                     severity: advisory.severity,
                     vulnerable_versions: advisory.vulnerable_versions,
                     url: advisory.url,
+                    fix_version: None,
                 });
             }
         }
     }
     Ok(findings)
+}
+
+fn fixed_version(name: &str, findings: &[AuditFinding], document: &Value) -> Option<CompactString> {
+    let relevant: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.package == name)
+        .collect();
+    let installed = relevant
+        .iter()
+        .flat_map(|finding| &finding.versions)
+        .filter_map(|v| node_semver::Version::parse(v).ok())
+        .max()?;
+    document
+        .get("versions")?
+        .as_object()?
+        .keys()
+        .filter_map(|v| {
+            node_semver::Version::parse(v)
+                .ok()
+                .map(|parsed| (v, parsed))
+        })
+        .filter(|(v, parsed)| {
+            *parsed > installed
+                && !v.contains('-')
+                && relevant
+                    .iter()
+                    .all(|finding| !satisfies(&finding.vulnerable_versions, v))
+        })
+        .min_by(|a, b| a.1.cmp(&b.1))
+        .map(|(v, _)| v.as_str().into())
 }
 
 pub(super) fn query(
