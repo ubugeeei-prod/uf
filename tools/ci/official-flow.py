@@ -50,6 +50,7 @@ def verify(uf, directory, version, env):
     (directory / "ignored.js").write_text('"use js";\nexport const ignored: number = "bad";\n')
     result = subprocess.run([uf, "check", "--no-lint", "--json"], cwd=directory, env=env, capture_output=True, text=True, timeout=180)
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
+    assert result.stdout.strip().startswith("{"), (version, result.stdout, result.stderr)
     checked = json.loads(result.stdout)["typeCheck"]
     assert checked["backend"] == "official-flow" and checked["version"] == version, checked
     diagnostics = checked["diagnostics"]

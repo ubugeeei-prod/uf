@@ -227,6 +227,8 @@ jobs:
       # the crash that can be read is the one that happens. See #1071.
       - run: ./target/release/uf run rust:test:unit
         if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full != 'true'
+      - run: python3 tools/ci/official-flow.py target/release/uf
+        if: needs.changes.outputs.code == 'true'
       # The integration tests of the crates a pull request touched, and
       # `uf_cli`'s, which hold the command-wide invariants — rather than
       # leaving them to the release queue to be the first to run (#1434).
@@ -237,8 +239,6 @@ jobs:
           RUST_VITE_TESTS: ${{ needs.changes.outputs.deploy }}
       - run: tools/ci/test-cores.sh run ./target/release/uf run rust:test
         if: needs.changes.outputs.full == 'true'
-      - run: python3 tools/ci/official-flow.py target/release/uf
-        if: needs.changes.outputs.code == 'true'
       - if: needs.changes.outputs.code == 'true' && failure()
         run: tools/ci/test-cores.sh collect
       - if: needs.changes.outputs.code == 'true' && failure()
