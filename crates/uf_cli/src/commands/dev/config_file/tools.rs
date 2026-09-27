@@ -592,7 +592,10 @@ mod tests {
         // Unquoted: quoted names, filtered on the name.
         let (_, completion) =
             complete_at("export default defineConfig({ runtime: ‸ })", &mut releases);
-        assert_eq!(labels(&completion), ["\"node\"", "\"bun\"", "\"deno\""]);
+        assert_eq!(
+            labels(&completion),
+            ["\"node\"", "\"bun\"", "\"deno\"", "\"nub\""]
+        );
         assert_eq!(completion.items[0].filter_text.as_deref(), Some("node"));
     }
 
