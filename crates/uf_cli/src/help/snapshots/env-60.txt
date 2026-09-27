@@ -10,7 +10,8 @@ Commands
   doctor   Check that this machine has the runtimes and
            package manager this project runs on, and say
            what to do about any that are missing
-  use      Set the active `.env` profile
+  use      Select a tool such as node@26, or set the active
+           `.env` profile
   install  Install the runtimes and package managers
            `uf.config.js` declares
   list     List each tool this project declares, what it is
