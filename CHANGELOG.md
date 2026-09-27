@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.14.0
+
+- feat(vite): fine-grained HMR that keeps page state (#1657) (f1effeac)
+
 ## uf@0.13.1
 
 - fix(project): honor native Windows ignore paths and launch linked test workers.
