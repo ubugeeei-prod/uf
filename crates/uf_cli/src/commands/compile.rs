@@ -621,6 +621,9 @@ fn backend_for(kind: CapabilityJsHost) -> Result<(Backend, Utf8PathBuf, String),
         // has written and run one — not that Deno cannot. Saying "not yet" and
         // naming the two that work is what a reader can act on; silently
         // compiling their Deno project with Bun is not.
+        CapabilityJsHost::Nub => {
+            Err("nub: standalone compilation is not a uf backend yet".to_owned())
+        }
         CapabilityJsHost::Deno => {
             Err("deno: `deno compile` is not a backend uf has written".to_owned())
         }
@@ -657,6 +660,9 @@ fn backend_for_program(
                     "node: could not read a version out of `{version}`"
                 ))),
             }
+        }
+        CapabilityJsHost::Nub => {
+            Err("nub: standalone compilation is not a uf backend yet".to_owned())
         }
         CapabilityJsHost::Deno => {
             Err("deno: `deno compile` is not a backend uf has written".to_owned())

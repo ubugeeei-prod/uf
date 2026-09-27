@@ -527,7 +527,7 @@ fn plugin_modules(config: &UniflowedConfig, root: &Utf8Path) -> Result<Vec<Strin
 fn host_command(root: &Utf8Path, config: &UniflowedConfig) -> Result<HostCommand> {
     let host = resolve_host(config)?;
     let kind = match host.kind {
-        CapabilityJsHost::Node => HostKind::Node,
+        CapabilityJsHost::Node | CapabilityJsHost::Nub => HostKind::Node,
         CapabilityJsHost::Bun => HostKind::Bun,
         // Deno has a Flow loader, and `uf test` starts workers on it. What a
         // lint worker there would also need is a permission set — Deno grants

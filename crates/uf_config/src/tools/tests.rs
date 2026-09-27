@@ -221,7 +221,10 @@ fn a_tag_a_leading_v_and_an_empty_version_are_each_told_what_to_write() {
 fn each_key_takes_the_names_of_its_own_role() {
     let message = refused(r#"{ runtime: "pnpm@9" }"#).to_string();
     assert!(message.contains("`pnpm` is not a runtime"), "{message}");
-    assert!(message.contains("`node`, `bun` or `deno`"), "{message}");
+    assert!(
+        message.contains("`node`, `bun`, `deno` or `nub`"),
+        "{message}"
+    );
 
     let message = refused(r#"{ packageManager: "deno" }"#).to_string();
     assert!(
@@ -229,7 +232,7 @@ fn each_key_takes_the_names_of_its_own_role() {
         "{message}"
     );
     assert!(
-        message.contains("`npm`, `pnpm`, `yarn` or `bun`"),
+        message.contains("`npm`, `pnpm`, `yarn`, `bun` or `aube`"),
         "{message}"
     );
 
@@ -701,4 +704,19 @@ fn each_command_reads_the_roles_the_issue_names() {
     assert_eq!(roles("add"), [ToolRole::PackageManager]);
     assert_eq!(roles("update"), [ToolRole::PackageManager]);
     assert_eq!(roles("fmt"), []);
+}
+
+#[test]
+fn additional_tools_keep_runtime_and_manager_roles_separate() {
+    let config = loaded(r#"{ runtime: "nub@0.9.5", packageManager: "aube@2.5.0" }"#);
+    assert_eq!(
+        config.runtime_tool().unwrap().spec.name,
+        CapabilityJsHost::Nub
+    );
+    assert_eq!(
+        config.package_manager_tool().unwrap().spec.name,
+        PackageManagerName::Aube
+    );
+    assert!(RuntimeSpec::parse("aube@2.5.0").is_err());
+    assert!(PackageManagerSpec::parse("nub@0.9.5").is_err());
 }

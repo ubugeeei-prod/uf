@@ -52,6 +52,7 @@ impl Host {
     pub(crate) fn name(&self) -> &'static str {
         match self.kind {
             CapabilityJsHost::Node => "node",
+            CapabilityJsHost::Nub => "nub",
             CapabilityJsHost::Deno => "deno",
             CapabilityJsHost::Bun => "bun",
         }
@@ -98,6 +99,7 @@ pub(crate) fn resolve_host(config: &UniflowedConfig) -> Result<Host> {
 fn host_program(kind: CapabilityJsHost) -> &'static str {
     match kind {
         CapabilityJsHost::Node => "node",
+        CapabilityJsHost::Nub => "nub",
         CapabilityJsHost::Deno => "deno",
         CapabilityJsHost::Bun => "bun",
     }
@@ -560,7 +562,7 @@ impl Driver {
         let driver = builder.driver.as_path();
         let mut process = Command::new(host.program.as_std_path());
         match host.kind {
-            CapabilityJsHost::Node => {
+            CapabilityJsHost::Node | CapabilityJsHost::Nub => {
                 process.arg(driver.as_str());
             }
             CapabilityJsHost::Bun => {

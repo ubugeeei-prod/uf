@@ -24,6 +24,10 @@ pub enum Tool {
     Bun,
     /// Deno.
     Deno,
+    /// Nub, a Node.js execution toolkit.
+    Nub,
+    /// Aube, a native package manager.
+    Aube,
     /// npm, published as an npm package.
     Npm,
     /// pnpm, published as an npm package.
@@ -38,10 +42,12 @@ impl Tool {
     /// Runtimes first, then package managers: it is the order a project
     /// acquires them in, and the order the question "what am I running this
     /// on" is asked in.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::Node,
         Self::Bun,
         Self::Deno,
+        Self::Nub,
+        Self::Aube,
         Self::Npm,
         Self::Pnpm,
         Self::Yarn,
@@ -54,6 +60,8 @@ impl Tool {
             Self::Node => "node",
             Self::Bun => "bun",
             Self::Deno => "deno",
+            Self::Nub => "nub",
+            Self::Aube => "aube",
             Self::Npm => "npm",
             Self::Pnpm => "pnpm",
             Self::Yarn => "yarn",
@@ -72,7 +80,7 @@ impl Tool {
     /// something to run its code on, which is the question this answers.
     #[must_use]
     pub const fn is_runtime(self) -> bool {
-        matches!(self, Self::Node | Self::Bun | Self::Deno)
+        matches!(self, Self::Node | Self::Bun | Self::Deno | Self::Nub)
     }
 
     /// The executables an installed entry provides, in `bin/`.
@@ -87,6 +95,8 @@ impl Tool {
             Self::Node => &["node", "npx", "corepack"],
             Self::Bun => &["bun", "bunx"],
             Self::Deno => &["deno"],
+            Self::Nub => &["nub"],
+            Self::Aube => &["aube", "aubr", "aubx"],
             Self::Npm => &["npm", "npx"],
             Self::Pnpm => &["pnpm", "pnpx"],
             Self::Yarn => &["yarn"],

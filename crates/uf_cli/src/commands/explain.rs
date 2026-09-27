@@ -1913,7 +1913,9 @@ fn permissions_stage(resolved: &ResolvedConfig) -> Option<Stage> {
         .as_ref()
         .or_else(|| (kind == uf_config::CapabilityJsHost::Deno).then_some(&nothing_declared))?;
     let host = match kind {
-        uf_config::CapabilityJsHost::Node => uf_runtime::RuntimeHost::Node,
+        uf_config::CapabilityJsHost::Node | uf_config::CapabilityJsHost::Nub => {
+            uf_runtime::RuntimeHost::Node
+        }
         uf_config::CapabilityJsHost::Bun => uf_runtime::RuntimeHost::Bun,
         uf_config::CapabilityJsHost::Deno => uf_runtime::RuntimeHost::Deno,
     };

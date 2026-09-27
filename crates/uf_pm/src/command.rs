@@ -70,7 +70,7 @@ pub type InvocationEnv = SmallVec<[(&'static str, &'static str); 1]>;
 ///
 /// The list is closed on purpose: it is the allowlist that keeps untrusted
 /// manifest content out of `argv[0]`.
-pub const PROGRAMS: [&str; 7] = ["uf", "npm", "npx", "pnpm", "yarn", "bun", "bunx"];
+pub const PROGRAMS: [&str; 8] = ["uf", "npm", "npx", "pnpm", "yarn", "bun", "bunx", "aube"];
 
 /// Which of a manifest's dependency maps an added package is recorded in.
 ///
@@ -490,6 +490,40 @@ fn command_spec(manager: PackageManager, operation: Operation<'_>) -> Option<Com
         PackageManager::Yarn(YarnEdition::Classic) => yarn_classic_spec(operation),
         PackageManager::Yarn(YarnEdition::Berry) => yarn_berry_spec(operation),
         PackageManager::Bun => bun_spec(operation),
+        PackageManager::Aube => aube_spec(operation),
+    }
+}
+
+/// Commands supported by the official aube CLI. Advanced link/patch operations
+/// stay explicit refusals until uf models their manager-specific state.
+const fn aube_spec(operation: Operation<'_>) -> Option<CommandSpec> {
+    match operation {
+        Operation::Install => spec("aube", &["install"]),
+        Operation::InstallFrozen => spec("aube", &["install", "--frozen-lockfile"]),
+        Operation::InstallProd => spec("aube", &["install", "--prod"]),
+        Operation::InstallFrozenProd => spec("aube", &["install", "--frozen-lockfile", "--prod"]),
+        Operation::Add {
+            kind: DependencyKind::Prod,
+        } => spec("aube", &["add"]),
+        Operation::Add {
+            kind: DependencyKind::Dev,
+        } => spec("aube", &["add", "--save-dev"]),
+        Operation::Add {
+            kind: DependencyKind::Optional,
+        } => spec("aube", &["add", "--save-optional"]),
+        Operation::Add {
+            kind: DependencyKind::Peer,
+        } => spec("aube", &["add", "--save-peer"]),
+        Operation::Remove => spec("aube", &["remove"]),
+        Operation::Run { .. } => spec("aube", &["run", "--no-install"]),
+        Operation::Exec => spec("aube", &["exec", "--no-install"]),
+        Operation::DlxExec => spec("aube", &["dlx"]),
+        Operation::Update => spec("aube", &["update"]),
+        Operation::Why => spec("aube", &["why"]),
+        Operation::List => spec("aube", &["list"]),
+        Operation::Audit => spec("aube", &["audit"]),
+        Operation::Info => spec("aube", &["view"]),
+        _ => unsupported(),
     }
 }
 

@@ -336,7 +336,7 @@ pub fn registry_entries(
         PackageManager::Yarn(YarnEdition::Classic) => {
             dirs.yarn.iter().map(|links| links.join(name)).collect()
         }
-        PackageManager::Yarn(YarnEdition::Berry) => Vec::new(),
+        PackageManager::Yarn(YarnEdition::Berry) | PackageManager::Aube => Vec::new(),
         PackageManager::Bun => dirs
             .bun
             .iter()

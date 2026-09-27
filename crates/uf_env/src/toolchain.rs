@@ -607,6 +607,7 @@ const fn runtime(host: CapabilityJsHost) -> Tool {
         CapabilityJsHost::Node => Tool::Node,
         CapabilityJsHost::Bun => Tool::Bun,
         CapabilityJsHost::Deno => Tool::Deno,
+        CapabilityJsHost::Nub => Tool::Nub,
     }
 }
 
@@ -618,6 +619,7 @@ const fn manager(name: PackageManagerName) -> Option<Tool> {
         PackageManagerName::Pnpm => Some(Tool::Pnpm),
         PackageManagerName::Yarn => Some(Tool::Yarn),
         PackageManagerName::Bun => Some(Tool::Bun),
+        PackageManagerName::Aube => Some(Tool::Aube),
     }
 }
 

@@ -836,7 +836,7 @@ fn test_host_kind(host: uf_config::CapabilityJsHost, browser: bool) -> HostKind 
         return HostKind::Browser;
     }
     match host {
-        uf_config::CapabilityJsHost::Node => HostKind::Node,
+        uf_config::CapabilityJsHost::Node | uf_config::CapabilityJsHost::Nub => HostKind::Node,
         uf_config::CapabilityJsHost::Bun => HostKind::Bun,
         uf_config::CapabilityJsHost::Deno => HostKind::Deno,
     }

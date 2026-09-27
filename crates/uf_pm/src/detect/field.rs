@@ -287,6 +287,7 @@ pub fn parse_package_manager_field(
         "npm" => PackageManager::Npm,
         "pnpm" => PackageManager::Pnpm,
         "bun" => PackageManager::Bun,
+        "aube" => PackageManager::Aube,
         // The edition is decided by the pinned major once the version parses.
         "yarn" => PackageManager::Yarn(YarnEdition::Classic),
         _ => {

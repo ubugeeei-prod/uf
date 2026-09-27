@@ -116,6 +116,7 @@ pub const fn approvals_for(manager: PackageManager) -> Approvals {
         // install script to approve.
         PackageManager::Npm
         | PackageManager::Uf
+        | PackageManager::Aube
         | PackageManager::Yarn(crate::detect::YarnEdition::Classic) => Approvals::AllOrNothing,
     }
 }
