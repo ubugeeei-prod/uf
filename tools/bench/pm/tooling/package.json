@@ -1,0 +1,7 @@
+{
+  "name": "uf-native-pm-benchmark-tools",
+  "private": true,
+  "dependencies": {
+    "pnpm": "12.6.0"
+  }
+}
