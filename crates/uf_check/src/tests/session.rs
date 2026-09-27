@@ -86,7 +86,7 @@ fn hook_hover_preserves_the_effect_at_declaration_and_imported_call() {
     ]).unwrap();
     let declaration = session.type_at("src/hooks.js", at(2, 13)).unwrap().unwrap();
     assert_eq!(declaration.printed, "hook useCount(value: number): number");
-    let call = session.type_at("src/app.js", at(3, 32)).unwrap().unwrap();
+    let call = session.type_at("src/app.js", at(3, 34)).unwrap().unwrap();
     assert!(call.printed.contains("hook"), "{}", call.printed);
     assert!(!call.printed.contains("function"), "{}", call.printed);
 }
