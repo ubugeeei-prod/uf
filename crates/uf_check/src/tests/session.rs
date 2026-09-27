@@ -8,13 +8,13 @@ fn project() -> Vec<OwnedSource> {
     vec![
         OwnedSource::new(
             "src/user.js",
-            "// @flow\n\
+            "\"use flow\";\n\
              export type User = { name: string, age: number };\n\
              export function greet(user: User): string {\n  return user.name;\n}\n",
         ),
         OwnedSource::new(
             "src/app.js",
-            "// @flow\n\
+            "\"use flow\";\n\
              import { greet, type User } from './user.js';\n\
              const user: User = { name: 'Ada', age: 36 };\n\
              const greeting = greet(user);\n\
