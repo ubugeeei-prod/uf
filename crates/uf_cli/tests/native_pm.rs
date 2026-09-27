@@ -51,6 +51,9 @@ fn local_native_graph_installs_freezes_removes_and_audits_without_a_host() {
     assert!(report["findings"].as_array().unwrap().is_empty());
     run(&["remove", "lib"]);
     assert!(!root.join("node_modules/lib").exists());
-    run(&["add", "lib@file:lib"]);
+    run(&["add", "./lib"]);
     assert!(root.join("node_modules/lib/package.json").exists());
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("package.json")).unwrap()).unwrap();
+    assert_eq!(manifest["dependencies"]["lib"], "file:lib");
 }
