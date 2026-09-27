@@ -120,6 +120,13 @@ pub struct ManagerRun {
 /// Running the manager failed, or uf refused to run it.
 #[derive(Debug, thiserror::Error)]
 pub enum ManagerRunError {
+    /// Native resolution or application failed without spawning another manager.
+    #[error("native uf package manager: {source:#}")]
+    Native {
+        /// Resolver, network, integrity or filesystem failure.
+        #[source]
+        source: anyhow::Error,
+    },
     /// The manager could not be started at all.
     #[error("could not run `{invocation}`: {source}\n{hint}")]
     Spawn {
@@ -253,6 +260,19 @@ pub fn run_operation_with_detection(
     let (manager, substituted) = installable(detection);
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
+    if manager == PackageManager::Uf {
+        crate::installer::execute(root, operation, operands)
+            .map_err(|source| ManagerRunError::Native { source })?;
+        return Ok(ManagerRun {
+            manager,
+            invocation,
+            source: detection.source.clone(),
+            substituted: false,
+            root: root.to_path_buf(),
+            watch: None,
+        });
+    }
+
     let path = prefixed_path(path);
     let mut command = Command::new(program_to_spawn(invocation.program, path.as_deref()));
     if let Some(path) = path {
@@ -331,6 +351,20 @@ pub fn run_captured_with_detection(
 ) -> Result<CapturedRun, ManagerRunError> {
     let (manager, _) = installable(detection);
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
+
+    if manager == PackageManager::Uf {
+        let value = crate::installer::execute(root, operation, operands)
+            .map_err(|source| ManagerRunError::Native { source })?;
+        return Ok(CapturedRun {
+            manager,
+            invocation,
+            succeeded: true,
+            stdout: serde_json::to_string(&value).map_err(|source| ManagerRunError::Native {
+                source: source.into(),
+            })?,
+            stderr: String::new(),
+        });
+    }
 
     let path = prefixed_path(path);
     let mut command = Command::new(program_to_spawn(invocation.program, path.as_deref()));
@@ -915,7 +949,9 @@ fn windows_program_in_path(program: &str, path: &OsStr, pathext: &OsStr) -> Opti
 #[must_use]
 pub fn installable(detection: &Detection) -> (PackageManager, bool) {
     match detection.package_manager {
-        PackageManager::Uf => (PackageManager::Npm, true),
+        PackageManager::Uf if detection.source == DetectionSource::Default => {
+            (PackageManager::Npm, true)
+        }
         other => (other, false),
     }
 }

@@ -270,6 +270,41 @@ pub fn snapshot(root: &Utf8Path, manager: PackageManager) -> LockfileSnapshot {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
         return snapshot;
     };
+    if manager == PackageManager::Uf {
+        let Some(nodes) = value
+            .pointer("/native/nodes")
+            .and_then(serde_json::Value::as_object)
+        else {
+            return snapshot;
+        };
+        for (id, node) in nodes {
+            let (Some(name), Some(version)) = (
+                node.get("name").and_then(serde_json::Value::as_str),
+                node.get("version").and_then(serde_json::Value::as_str),
+            ) else {
+                return snapshot;
+            };
+            snapshot.entries.insert(
+                id.to_compact_string(),
+                LockedEntry {
+                    name: name.to_compact_string(),
+                    version: version.to_compact_string(),
+                    resolved: node
+                        .get("tarball")
+                        .and_then(serde_json::Value::as_str)
+                        .filter(|s| !s.is_empty())
+                        .map(ToCompactString::to_compact_string),
+                    integrity: node
+                        .get("integrity")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToCompactString::to_compact_string),
+                    link: node.get("local").is_some_and(|value| !value.is_null()),
+                },
+            );
+        }
+        snapshot.detailed = true;
+        return snapshot;
+    }
     let Some(packages) = value.get("packages").and_then(serde_json::Value::as_object) else {
         // Lockfile version 1 nests its tree under `dependencies` instead, and
         // npm has not written one since npm 6. Reporting sizes is better than
@@ -469,7 +504,7 @@ fn tree_name(path: &str) -> Option<CompactString> {
 
 /// Whether uf reads this manager's lockfile as a tree rather than as bytes.
 const fn parses_in_detail(manager: PackageManager) -> bool {
-    matches!(manager, PackageManager::Npm)
+    matches!(manager, PackageManager::Npm | PackageManager::Uf)
 }
 
 /// The lockfile `manager` writes under `root`.

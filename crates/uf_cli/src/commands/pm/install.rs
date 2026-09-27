@@ -189,6 +189,9 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool, prod: bool) -> 
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, _) = installable(&detection);
+    if manager == PackageManager::Uf {
+        return super::native::install(&resolved, ui, frozen, prod);
+    }
     let operation = match (frozen, prod) {
         (false, false) => Operation::Install,
         (true, false) => Operation::InstallFrozen,

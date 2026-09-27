@@ -536,7 +536,7 @@ fn parse(bytes: &[u8]) -> Option<Packument> {
 /// so there is no quoting to get wrong — but a name carrying `?`, `#` or `..`
 /// would still change which URL is requested, and a `file://` registry would
 /// make `uf update` read the disk. Both are refused here.
-fn url_for(registry: &str, name: &str) -> Result<String, RegistryError> {
+pub(crate) fn url_for(registry: &str, name: &str) -> Result<String, RegistryError> {
     let Some(authority) = registry.strip_prefix("https://") else {
         // HTTPS only, `http://` included. A registry URL can carry userinfo,
         // and `curl` sends it — over plaintext, to whoever is listening, on a

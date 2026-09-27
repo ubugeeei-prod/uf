@@ -1196,7 +1196,7 @@ fn installed_version(root: &Utf8Path, name: &str) -> Option<String> {
 /// The guard every command that runs a manager keeps: `uf.lock` rewritten for
 /// a native project, the manifests checked for everything else.
 fn guard_manifests(resolved: &ResolvedConfig, detection: &uf_pm::Detection) -> Result<()> {
-    if tracks_uf_lock(detection) {
+    if tracks_uf_lock(detection) && installable(detection).0 != uf_pm::PackageManager::Uf {
         install_workspace(&resolved.root, &resolved.config)?;
     } else {
         check_workspace_manifests(&resolved.root, &resolved.config)?;
@@ -1314,6 +1314,9 @@ pub(crate) fn query(
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, substituted) = installable(&detection);
+    if manager == uf_pm::PackageManager::Uf {
+        return super::native::query(&resolved, ui, operation, operands);
+    }
     // Only an operation that installs has scripts to refuse, and only reading
     // the approvals for one keeps `uf ls` from depending on a manifest it has
     // no reason to parse. Registering a package for `uf link` is the query
@@ -1425,6 +1428,9 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, substituted) = installable(&detection);
+    if manager == uf_pm::PackageManager::Uf {
+        return super::native::query(&resolved, ui, Operation::Why, &[package.to_owned()]);
+    }
     // The release `packageManager` pins, and the runtime it runs on, in front
     // of `PATH` for the manager's process — installed the first time.
     let path =
@@ -1533,7 +1539,7 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     // one: adding a dependency is when a lifecycle script most often arrives,
     // and this is the guard that runs before anything is fetched. Delegated
     // projects get the guard without being forced to grow `uf.lock`.
-    if tracks_uf_lock {
+    if tracks_uf_lock && manager != uf_pm::PackageManager::Uf {
         install_workspace(base, &resolved.config)?;
     } else {
         check_workspace_manifests(base, &resolved.config)?;
@@ -1617,7 +1623,7 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     // The manifests the manager just rewrote are checked again. A native uf
     // project also rewrites the lock and store it owns; a delegated project
     // leaves that to npm, pnpm, Yarn or Bun.
-    if tracks_uf_lock {
+    if tracks_uf_lock && manager != uf_pm::PackageManager::Uf {
         install_workspace(base, &resolved.config).with_context(|| {
             uf_infra::into_string(uf_infra::cstr!(
                 "`{}` succeeded, but uf could not rewrite {} from the manifests it changed",

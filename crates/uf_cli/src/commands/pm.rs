@@ -9,6 +9,7 @@ mod approve;
 mod catalog;
 mod deps;
 mod install;
+mod native;
 mod update;
 
 pub(crate) use approve::approve_builds;
