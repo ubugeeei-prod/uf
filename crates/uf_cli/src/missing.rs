@@ -66,9 +66,12 @@ pub(crate) fn complete(
     };
     let Some(arg) = command.get_arguments().find(|arg| {
         arg.to_string() == written
-            || arg
-                .get_long()
-                .is_some_and(|long| written.starts_with(uf_infra::cstr!("--{long}").as_str()))
+            || arg.get_long().is_some_and(|long| {
+                written
+                    .strip_prefix("--")
+                    .and_then(|rest| rest.strip_prefix(long))
+                    .is_some_and(|tail| tail.is_empty() || tail.starts_with([' ', '=']))
+            })
     }) else {
         return Ok(false);
     };
