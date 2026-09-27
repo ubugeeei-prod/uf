@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use camino::Utf8Path;
 use uf_config::env_files::{self, PROFILE_FILE};
 use uf_config::{discover_root, load_config};
