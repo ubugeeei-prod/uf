@@ -36,6 +36,8 @@ pub struct Options {
     pub prod: bool,
     /// Refresh resolutions within manifest ranges.
     pub update: bool,
+    /// Direct dependencies to refresh; empty refreshes every manifest range.
+    pub update_packages: Vec<CompactString>,
     /// Project runtime directories prepended for explicitly enabled lifecycle hooks.
     pub path: Vec<Utf8PathBuf>,
 }
@@ -89,6 +91,11 @@ pub fn execute_with_path(
             Operation::Update | Operation::Dedupe { check: false }
         ),
         path: path.to_vec(),
+        update_packages: if operation == Operation::Update {
+            operands.iter().map(|name| name.as_str().into()).collect()
+        } else {
+            Vec::new()
+        },
     };
     match operation {
         Operation::Install
@@ -98,8 +105,8 @@ pub fn execute_with_path(
         | Operation::Update
         | Operation::Dedupe { check: false } => {
             ensure!(
-                operands.is_empty(),
-                "native update accepts package selection through uf's update menu"
+                operation == Operation::Update || operands.is_empty(),
+                "native install does not take package names"
             );
             Ok(serde_json::to_value(install(
                 &resolved.root,
@@ -254,7 +261,7 @@ fn install_with_store(
     let start = Instant::now();
     let lock_path = root.join(config.pm.lockfile.as_str());
     let _guard = uf_env::lock::guard(&lock_path)?;
-    let importers = read_importers(root, config)?;
+    let mut importers = read_importers(root, config)?;
     let fingerprint = fingerprint(&importers, config)?;
     let before: Value = match fs::read(&lock_path) {
         Ok(bytes) => serde_json::from_slice(&bytes).context("uf.lock is invalid JSON")?,
@@ -274,6 +281,18 @@ fn install_with_store(
         "uf.lock is absent or stale; run uf install to resolve the native graph"
     );
     let agent = agent();
+    if options.update && !options.update_packages.is_empty() {
+        ensure!(
+            options
+                .update_packages
+                .iter()
+                .all(|name| crate::links::is_package_name(name)),
+            "updates take package names, without version specifiers"
+        );
+        if let Some(graph) = &locked {
+            pin_unselected(&mut importers, graph, &options.update_packages);
+        }
+    }
     let graph = if reusable && !options.update {
         locked.expect("checked lock graph")
     } else {
@@ -350,6 +369,45 @@ fn install_with_store(
         fetch_ms,
         link_ms,
     })
+}
+
+fn pin_unselected(importers: &mut [Importer], locked: &Graph, requested: &[CompactString]) {
+    for importer in importers {
+        let Some(previous) = locked
+            .importers
+            .iter()
+            .find(|old| old.path == importer.path)
+        else {
+            continue;
+        };
+        for (current, previous) in [
+            (&mut importer.dependencies, &previous.dependencies),
+            (&mut importer.dev_dependencies, &previous.dev_dependencies),
+            (
+                &mut importer.optional_dependencies,
+                &previous.optional_dependencies,
+            ),
+            (&mut importer.peer_dependencies, &previous.peer_dependencies),
+        ] {
+            for (name, range) in current {
+                if requested.contains(name) {
+                    continue;
+                }
+                let Some(node) = previous.get(name).and_then(|id| locked.nodes.get(id)) else {
+                    continue;
+                };
+                let (_, wanted) = alias(name, range);
+                if node.local.is_none() && (satisfies(&wanted, &node.version) || wanted == "latest")
+                {
+                    *range = if range.starts_with("npm:") {
+                        uf_infra::cstr!("npm:{}@{}", node.name, node.version)
+                    } else {
+                        node.version.clone()
+                    };
+                }
+            }
+        }
+    }
 }
 
 fn lifecycle(

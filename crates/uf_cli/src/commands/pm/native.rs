@@ -24,6 +24,7 @@ pub(super) fn install(
             frozen,
             prod,
             update: false,
+            update_packages: Vec::new(),
             path: if resolved.config.pm.allow_lifecycle_scripts {
                 crate::commands::runtimes::manager_path(
                     resolved,
