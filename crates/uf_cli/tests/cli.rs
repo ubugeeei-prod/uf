@@ -1758,6 +1758,7 @@ fn completion_offers_every_command_explain_accepts() {
 /// `exec` left this list when it started running things: three of its four
 /// paths hand control to something else, so there is a provider to name.
 const SELF_CONTAINED: &[&str] = &[
+    "gc",
     "codemod",
     "migrate",
     "clean",

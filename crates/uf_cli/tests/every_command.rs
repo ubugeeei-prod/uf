@@ -88,6 +88,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("install", "workflow.rs: runs the package manager"),
     // Where the parser declares it, which is what `uf --help` prints.
     ("clean", "here, and clean/tests.rs for what it removes"),
+    ("gc", "here, and commands/gc.rs for symlink protection"),
     ("lint", "here, and output.rs for the report"),
     ("lsp", "cli.rs: speaks a protocol over stdio"),
     (
@@ -712,4 +713,39 @@ fn prepare_generates_the_router_with_or_without_a_config() {
             "{label}: the generated router does not lint clean\n{stdout}{stderr}"
         );
     }
+}
+
+#[test]
+fn garbage_collection_is_repeatable_and_dry_run_preserves_project_inputs() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".uf/cache/check")).unwrap();
+    fs::write(dir.path().join(".uf/cache/check/entry"), "cache").unwrap();
+    fs::write(dir.path().join(".uf/profile"), "staging").unwrap();
+    fs::write(dir.path().join("uf.lock"), "{}").unwrap();
+    for arguments in [
+        ["gc", "--dry-run"].as_slice(),
+        ["gc"].as_slice(),
+        ["gc"].as_slice(),
+    ] {
+        let output = uf()
+            .arg("--cwd")
+            .arg(dir.path())
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if arguments.contains(&"--dry-run") {
+            assert!(dir.path().join(".uf/cache/check/entry").exists());
+        }
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".uf/profile")).unwrap(),
+            "staging"
+        );
+        assert!(dir.path().join("uf.lock").exists());
+    }
+    assert!(!dir.path().join(".uf/cache").exists());
 }
