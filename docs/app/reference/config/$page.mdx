@@ -15,7 +15,7 @@ opinions can leave the file nearly empty.
 </div>
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
@@ -48,6 +48,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `site` | Where the built site is served from, and what `uf build` writes for a crawler |
 | `env` | The `.env` files and the default mode. Its `toolchain` is deprecated |
 | `fmt` | `uf fmt` |
+| `flow` | The official checker and editor server release. See [below](#official-flow) |
 | `ignore` | Paths no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test`, `uf doc` |
 | `lint` | `uf lint` and Flow's built-in lints |
 | `test` | `uf test`, and the runtime and runner it runs on |

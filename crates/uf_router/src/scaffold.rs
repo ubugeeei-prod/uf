@@ -382,7 +382,7 @@ fn heading(relative: &Utf8Path) -> String {
 /// claims true rather than remembered.
 fn page_source(relative: &Utf8Path, loader: bool) -> String {
     let params = parameters(relative);
-    let mut source = String::from("// @flow\nimport * as React from \"@uniflowed/react\";\n");
+    let mut source = String::from("\"use flow\";\nimport * as React from \"@uniflowed/react\";\n");
     if loader {
         source.push_str("import type { LoaderArgs } from \"@uniflowed/router\";\n");
     }
@@ -449,7 +449,7 @@ fn page_source(relative: &Utf8Path, loader: bool) -> String {
 /// after it.
 ///
 /// `Layout` by name, for the reason [`page_source`] gives about `Page`.
-const LAYOUT_SOURCE: &str = r#"// @flow
+const LAYOUT_SOURCE: &str = r#""use flow";
 import * as React from "@uniflowed/react";
 
 export component Layout(children: React.Node) {
@@ -465,7 +465,7 @@ export component Layout(children: React.Node) {
 ///
 /// `middleware` by name, which is the second of the two spellings the runner
 /// takes and the one `react/no-default-export-component` does not report.
-const MIDDLEWARE_SOURCE: &str = r#"// @flow
+const MIDDLEWARE_SOURCE: &str = r#""use flow";
 
 export function middleware(request: Request): Response | void {
   void request;
