@@ -23,6 +23,46 @@ macro_rules! require_checker {
 mod session;
 
 #[test]
+fn use_directives_select_flow_after_react_and_strict_directives() {
+    require_checker!();
+    for prefix in ["\"use client\";\n", "'use server';\n", "\"use strict\";\n"] {
+        let flow = format!("{prefix}\"use flow\";\nconst n: number = 'wrong';\n");
+        let js = format!("{prefix}\"use js\";\nconst n: number = 'wrong';\n");
+        assert!(
+            check_source(Source::new("app.js", &flow), &[], &CheckLimits::default())
+                .unwrap()
+                .iter()
+                .any(TypeDiagnostic::is_error)
+        );
+        assert!(
+            check_source(Source::new("app.js", &js), &[], &CheckLimits::default())
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn comments_and_strings_outside_the_prologue_cannot_opt_out() {
+    require_checker!();
+    for source in [
+        "// use js\nconst n: number = 'wrong';\n",
+        "const text = 'use js';\nconst n: number = 'wrong';\n",
+        "const text = `use js`;\nconst n: number = 'wrong';\n",
+        "const text = 0;\n'use js';\nconst n: number = 'wrong';\n",
+        "// @noflow\n'use flow';\nconst n: number = 'wrong';\n",
+    ] {
+        assert!(
+            check_source(Source::new("app.js", source), &[], &CheckLimits::default())
+                .unwrap()
+                .iter()
+                .any(TypeDiagnostic::is_error),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn backend_names_are_stable() {
     assert_eq!(
         backend_name(CheckerBackend::UpstreamRustPort),
