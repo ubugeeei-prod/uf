@@ -121,7 +121,7 @@ pub fn execute_with_path(
             let mut manifest: Value = serde_json::from_slice(&bytes)?;
             for operand in operands {
                 if let Operation::Add { kind } = operation {
-                    let (name, range) = split_spec(operand, cwd)?;
+                    let (name, range) = split_add_spec(operand, cwd)?;
                     let range = if range == "latest" {
                         let routing = RegistryRouting::from_config(&resolved.config);
                         let metadata = packument(&agent(), &routing, &name)?;
@@ -184,7 +184,7 @@ pub fn execute_with_path(
     }
 }
 
-fn split_spec(spec: &str, cwd: &Utf8Path) -> Result<(CompactString, CompactString)> {
+fn split_add_spec(spec: &str, cwd: &Utf8Path) -> Result<(CompactString, CompactString)> {
     let local = spec
         .strip_prefix("file:")
         .or_else(|| spec.strip_prefix("link:"))
@@ -202,6 +202,10 @@ fn split_spec(spec: &str, cwd: &Utf8Path) -> Result<(CompactString, CompactStrin
         };
         return Ok((name.into(), uf_infra::cstr!("{protocol}:{path}")));
     }
+    split_spec(spec)
+}
+
+fn split_spec(spec: &str) -> Result<(CompactString, CompactString)> {
     let (name, range) = spec
         .rsplit_once('@')
         .filter(|(name, _)| !name.is_empty())
