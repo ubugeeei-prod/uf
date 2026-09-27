@@ -92,7 +92,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="uf-official-flow-") as temporary:
         root = Path(temporary).resolve()
         env = dict(os.environ, UF_STORE=str(root / "store"), UF_ROOTS=str(root / "roots"), CI="1", NO_COLOR="1")
-        for version in ["0.330.0", "0.333.0"]:
+        for version in ["0.327.0", "0.329.0", "0.330.0", "0.333.0"]:
             verify(uf, root / version, version, env)
 
 

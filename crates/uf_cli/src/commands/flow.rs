@@ -104,11 +104,14 @@ pub(super) fn configure(root: &Utf8Path, config: &UniflowedConfig) -> Result<()>
         .version
         .as_deref()
         .context("flow.version is absent")?;
-    let glob = version
+    let minor = version
         .split('.')
         .nth(1)
         .and_then(|n| n.parse::<u32>().ok())
-        .is_some_and(|n| n >= 333);
+        .unwrap_or_default();
+    // Official Flow migrated ignore/include in 0.328, untyped in 0.330.
+    let glob_ignore = minor >= 328;
+    let glob_untyped = minor >= 330;
     let mut sections: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut section = String::new();
     for line in original.lines() {
@@ -125,7 +128,7 @@ pub(super) fn configure(root: &Utf8Path, config: &UniflowedConfig) -> Result<()>
     sections
         .entry("ignore".into())
         .or_default()
-        .push(if glob { ".uf/**" } else { ".*/\\.uf/.*" }.into());
+        .push(if glob_ignore { ".uf/**" } else { ".*/\\.uf/.*" }.into());
     let sources = uf_project::scan_source_files(root, config)?;
     ensure!(
         sources.unreadable.is_empty(),
@@ -134,7 +137,7 @@ pub(super) fn configure(root: &Utf8Path, config: &UniflowedConfig) -> Result<()>
     for source in &sources.files {
         if opted_out(&source.source) {
             // Newer Flow uses globs; older releases use anchored regular expressions.
-            let pattern = if glob {
+            let pattern = if glob_untyped {
                 source.relative_path.clone()
             } else {
                 let mut escaped = String::from("<PROJECT_ROOT>/");
