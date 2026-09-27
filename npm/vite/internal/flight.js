@@ -718,10 +718,20 @@ export function flightClientSource(appEntry, options = {}) {
   // `app.rendering.staleTime`, in seconds, and nothing for the default `0`.
   const staleTime =
     options.staleTime > 0 ? `, staleTime: ${JSON.stringify(options.staleTime)}` : "";
-  return `import { hydrateFlight } from "@uniflowed/router/rsc/client";
+  // In development, the dev server's `uf:refresh` — a server component or the
+  // route table changed — renders the URL on screen again instead of reloading
+  // it. See `hotUpdate` in `../index.js`.
+  const hot =
+    options.hot === true
+      ? `if (import.meta.hot) {
+  import.meta.hot.on("uf:refresh", () => refreshForHotUpdate());
+}
+`
+      : "";
+  return `import { hydrateFlight${options.hot === true ? ", refreshForHotUpdate" : ""} } from "@uniflowed/router/rsc/client";
 import App from ${JSON.stringify(appEntry)};
 ${clientInstrumentationSource(options.instrumentation)}hydrateFlight({ App${strictMode}${navigation}${staleTime}${routing} });
-`;
+${hot}`;
 }
 
 /**

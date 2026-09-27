@@ -1,6 +1,7 @@
 // @flow
 // A server-component edit has no browser module to hot replace. The RSC
-// environment must tell the client environment to reload the document.
+// environment tells the client environment to render its URL again
+// (`uf:refresh`) rather than reload the document, so client state survives.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -18,7 +19,7 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-it("reloads the client after a server-component edit in the RSC graph", () => {
+it("refreshes the client after a server-component edit in the RSC graph", () => {
   fs.mkdirSync(path.join(root, "app"), { recursive: true });
   fs.writeFileSync(path.join(root, "app/$page.js"), "export default function Page() {}\n");
   const plugin: $FlowFixMe = uniflowed({ root, config: {} })[0];
@@ -46,9 +47,9 @@ it("reloads the client after a server-component edit in the RSC graph", () => {
 
   const serverComponent = path.join(root, "app/$page.js");
   plugin.hotUpdate.call({ environment: { name: "rsc" } }, { modules: [{ file: serverComponent }] });
-  expect(sent).toEqual([{ type: "full-reload", path: "*" }]);
+  expect(sent).toEqual([{ type: "custom", event: "uf:refresh", data: {} }]);
 
-  // Only the server graph asks for this reload. The client graph keeps Fast
+  // Only the server graph asks for this refresh. The client graph keeps Fast
   // Refresh responsible for its own edits.
   plugin.hotUpdate.call(
     { environment: { name: "client" } },

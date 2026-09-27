@@ -45,6 +45,10 @@ import {
 import { hydrationOptions } from "./internal/hydrate-options.js";
 import { readFormState } from "./internal/form-action.js";
 
+// What `virtual:uf/client` calls in development when a server component
+// changed; see "Hot updates" in `./internal/runtime.js`.
+export { refreshForHotUpdate } from "./internal/runtime.js";
+
 /**
  * Hydrate a document React Server Components rendered.
  *

@@ -45,8 +45,11 @@ so the process start-up cost is paid once rather than thousands of times.
 
 <div className="command"><code>uf dev</code></div>
 
-Binds loopback on the port from `dev.port`. React Fast Refresh works through
-`component` declarations. Editing a Flow file re-transforms only that module.
+Binds loopback on the port from `dev.port`. Editing a Flow file re-transforms
+only that module, and the edit reaches the page as a render rather than a
+reload: the counter you clicked, the form you half filled and the dialog you
+opened are still there. [Hot updates](#hot-updates) lists what each kind of
+edit does.
 
 It serves the application the same way a deployment does: one middleware runs
 your `$middleware.js`, then a server action, then a route handler, then the
@@ -255,6 +258,34 @@ rather than guessed at, because a wrong diagnosis costs more than none.
 It is a development tool and it is not in your bundle. The overlay is imported
 dynamically behind `import.meta.hot`, so a production build has no path to the
 module at all.
+
+### Hot updates
+
+`uf dev` is Vite's hot module replacement, with the pieces a router needs on
+top. An edit is sent to the smallest thing that can take it, and the page is
+reloaded only when nothing can:
+
+| You edit | What happens |
+| --- | --- |
+| A component | React Fast Refresh swaps it in place. Hook state survives unless the hooks it calls changed. |
+| A route module's `loader`, `metadata` or other export | The component half is refreshed, and the router runs the route again with the new loader. State on the page survives. |
+| A server component (React Server Components) | The router fetches the payload for the URL on screen again, as `router.refresh()` does. Client components under it keep their state. |
+| A route file added or removed | The route table is replaced in place and the URL on screen is rendered against it. A new page is reachable by a `Link` straight away. |
+| A stylesheet | Vite swaps it without touching the document. |
+| A module nothing accepts | The update climbs to the modules that import it, and reloads the page only if it reaches the entry. |
+| `.env` | The server restarts; see [Environment](/guide/env). |
+| A server action added or removed | The page reloads, because the references the browser's modules were compiled with changed. |
+
+A render that cannot happen in place — no router is mounted, or the refresh
+threw — falls back to a reload, and the console says why before it goes.
+
+The server side announces the renders it asks for as a Vite custom event,
+`uf:refresh`, so code that is not a React component can take part too. A store
+that caches server data can drop it when the server's code changes:
+
+```js
+import.meta.hot?.on("uf:refresh", () => cache.clear());
+```
 
 ### Writing your own `import.meta.hot`
 

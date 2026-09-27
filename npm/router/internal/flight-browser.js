@@ -66,6 +66,25 @@ export function installServerCallback(): void {
 }
 
 /**
+ * The newest evaluation of the client module at `url`, in development.
+ *
+ * `@uniflowed/vite`'s Fast Refresh wrapper publishes every evaluation of a
+ * component module under its path, in `window.__UF_LATEST_MODULES__`. A
+ * client reference is a `React.lazy` that React matches against the component
+ * already mounted by identity, and after a hot update that component is the
+ * module's *newest* evaluation — so a payload that answered with the first one
+ * would be a different component, and a server edit would remount every client
+ * component it rendered, state and all. The registry never exists in a build.
+ */
+function latestModule(url: string): ?ModuleNamespace {
+  const registry = window.__UF_LATEST_MODULES__;
+  if (registry == null) {
+    return null;
+  }
+  return registry.get(new URL(url, window.location.href).pathname);
+}
+
+/**
  * Install the module hook React's Flight client resolves references through.
  *
  * Once per page. Defined rather than assigned, for the reason
@@ -80,7 +99,7 @@ export function installBrowserModules(): void {
   // chunk it lives in. Declared and then given its properties, so the hook is
   // built rather than merged into something that already existed.
   function parcelRequire(id: string): ModuleNamespace {
-    const namespace = loaded.get(id);
+    const namespace = latestModule(id) ?? loaded.get(id);
     if (namespace == null) {
       throw new Error(
         `@uniflowed/router: the client module ${id} was required before it loaded. React's ` +
