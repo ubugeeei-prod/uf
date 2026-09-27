@@ -92,6 +92,19 @@ pub fn guard_path(lockfile: &Utf8Path) -> Utf8PathBuf {
 ///
 /// When the guard file cannot be created or locked.
 pub fn guard(lockfile: &Utf8Path) -> Result<Guard, EnvError> {
+    guard_with(lockfile, false)
+}
+
+/// Hold a shared lease while reading or publishing immutable store files.
+/// Other shared leases run concurrently; collection takes the exclusive guard.
+///
+/// # Errors
+/// When the guard file cannot be created or locked.
+pub fn shared_guard(lockfile: &Utf8Path) -> Result<Guard, EnvError> {
+    guard_with(lockfile, true)
+}
+
+fn guard_with(lockfile: &Utf8Path, shared: bool) -> Result<Guard, EnvError> {
     let path = guard_path(lockfile);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| EnvError::Write {
@@ -102,14 +115,19 @@ pub fn guard(lockfile: &Utf8Path) -> Result<Guard, EnvError> {
     let file = fs::OpenOptions::new()
         .create(true)
         .truncate(false)
+        .read(true)
         .write(true)
         .open(&path)
         .map_err(|source| EnvError::Write {
             path: path.clone(),
             source,
         })?;
-    file.lock()
-        .map_err(|source| EnvError::Write { path, source })?;
+    (if shared {
+        file.lock_shared()
+    } else {
+        file.lock()
+    })
+    .map_err(|source| EnvError::Write { path, source })?;
     Ok(Guard { _file: file })
 }
 

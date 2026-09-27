@@ -77,6 +77,7 @@ impl Store {
                 fs::set_permissions(target, fs::Permissions::from_mode(0o755))?;
             }
         }
+        let _lease = uf_env::lock::shared_guard(&self.root.join("gc"))?;
         intern_tree(&self.root.join("files"), &content)?;
         write_json(
             &path.join("complete.json"),
@@ -86,6 +87,7 @@ impl Store {
         Ok(true)
     }
     pub(super) fn register(&self, project: &Utf8Path, entries: Vec<String>) -> Result<()> {
+        let _guard = uf_env::lock::guard(&self.root.join("gc"))?;
         let root = uf_env::Roots::new(self.root.join("roots"));
         root.register(&project.canonicalize_utf8()?, &entries)?;
         Ok(())

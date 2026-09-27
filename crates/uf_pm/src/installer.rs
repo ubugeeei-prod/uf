@@ -1,5 +1,7 @@
 //! Native resolution, integrity-checked downloads and shared content-addressed files.
 //! Frozen and warm installs read their graph from uf.lock without metadata requests.
+mod gc;
+pub use gc::{GcPlan, gc_collect, gc_plan};
 mod queries;
 mod store;
 pub use queries::{AuditFinding, AuditReport, audit};
@@ -281,6 +283,18 @@ fn install_with_store(
     let selected = selected(&graph, options.prod)?;
     let resolve_ms = start.elapsed().as_millis();
     let fetch = Instant::now();
+    // Publish the acquisition lease before fetching so concurrent GC retains
+    // packages needed by an install that has not written its lockfile yet.
+    store.register(
+        root,
+        selected
+            .iter()
+            .filter_map(|id| {
+                let node = &graph.nodes[id];
+                node.local.is_none().then(|| store::package_key(node))
+            })
+            .collect(),
+    )?;
     let requests: Vec<_> = selected.iter().map(|id| (&graph.nodes[id], id)).collect();
     let acquired = parallel(&requests, |(node, _)| {
         if node.local.is_some() {
