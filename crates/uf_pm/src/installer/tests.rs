@@ -158,3 +158,22 @@ fn locked_scopes_and_importer_paths_cannot_be_retargeted() {
         .insert("@private".into(), "https://private.example.org".into());
     assert!(validate_graph(&graph, root, &config).is_err());
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn optional_packages_select_the_hosts_c_library() {
+    let current = if cfg!(target_env = "musl") {
+        "musl"
+    } else {
+        "glibc"
+    };
+    let other = if current == "musl" { "glibc" } else { "musl" };
+    assert!(compatible(&Node {
+        libc: vec![current.into()],
+        ..Node::default()
+    }));
+    assert!(!compatible(&Node {
+        libc: vec![other.into()],
+        ..Node::default()
+    }));
+}

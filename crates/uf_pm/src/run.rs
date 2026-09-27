@@ -3,8 +3,7 @@
 //! [`crate::install_workspace`] records what a workspace declares; it reaches
 //! no registry and creates no `node_modules`. Everything a uf project imports —
 //! React, Vite, the `@uniflowed/*` packages — has to come from somewhere, and
-//! until uf's own resolver can fetch and link a dependency tree, that somewhere
-//! is the package manager the project already uses.
+//! uf resolves a native graph or runs the external manager the project selected.
 //!
 //! So `uf install`, `uf add`, `uf remove`, `uf update` and `uf why` each detect
 //! the manager, map their [`Operation`] through the table in [`crate::command`],
@@ -35,14 +34,11 @@
 //! never asked for, so [`operands_for`] refuses it before the spawn rather than
 //! letting `uf remove --global` mean something.
 //!
-//! # Why a detected manager and not uf's own
+//! # Native selection
 //!
-//! [`PackageManager::Uf`] is what detection reports when a project shows no
-//! evidence of any manager. Spawning `uf install` for it would be a loop, and
-//! uf's resolver cannot fetch yet, so that case falls back to npm — present
-//! wherever Node.js is, which a uf project needs regardless. The report says
-//! which manager ran and why, because "uf installed your dependencies" is not
-//! true and should not be printed.
+//! Explicit `packageManager: "uf"` and a native `uf.lock` execute uf's own
+//! resolver and shared store. A project with no manager evidence retains npm
+//! as its default. Unsupported native operations are reported explicitly.
 
 use std::ffi::{OsStr, OsString};
 use std::io::{BufRead, BufReader, Read};

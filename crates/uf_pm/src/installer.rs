@@ -223,6 +223,7 @@ struct Node {
     os: Vec<CompactString>,
     #[serde(default)]
     cpu: Vec<CompactString>,
+    libc: Vec<CompactString>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -521,7 +522,7 @@ fn read_importers(root: &Utf8Path, config: &UniflowedConfig) -> Result<Vec<Impor
         .map(|dir| {
             let manifest: Value = serde_json::from_slice(&fs::read(dir.join("package.json"))?)?;
             let path = dir.strip_prefix(root)?.as_str();
-            Ok(Importer {
+            let mut importer = Importer {
                 path: if path.is_empty() {
                     ".".into()
                 } else {
@@ -542,7 +543,11 @@ fn read_importers(root: &Utf8Path, config: &UniflowedConfig) -> Result<Vec<Impor
                 optional_dependencies: map(&manifest, "optionalDependencies")?,
                 peer_dependencies: map(&manifest, "peerDependencies")?,
                 scripts: map(&manifest, "scripts")?,
-            })
+            };
+            importer
+                .dependencies
+                .retain(|name, _| !importer.optional_dependencies.contains_key(name));
+            Ok(importer)
         })
         .collect()
 }
@@ -864,6 +869,7 @@ fn node_from_manifest(manifest: &Value) -> Result<Node> {
         scripts: map(manifest, "scripts")?,
         os: list("os"),
         cpu: list("cpu"),
+        libc: list("libc"),
         ..Node::default()
     };
     node.dependencies
@@ -1087,7 +1093,14 @@ fn compatible(node: &Node) -> bool {
             && (values.iter().all(|v| v.starts_with('!'))
                 || values.iter().any(|v| v == current || v == "any"))
     };
-    matches(&node.os, platform) && matches(&node.cpu, arch)
+    let libc = if cfg!(target_env = "musl") {
+        "musl"
+    } else {
+        "glibc"
+    };
+    matches(&node.os, platform)
+        && matches(&node.cpu, arch)
+        && (platform != "linux" || matches(&node.libc, libc))
 }
 
 fn hex(bytes: &[u8]) -> String {
