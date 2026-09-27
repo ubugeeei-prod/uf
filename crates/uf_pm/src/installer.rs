@@ -121,7 +121,7 @@ pub fn execute_with_path(
             let mut manifest: Value = serde_json::from_slice(&bytes)?;
             for operand in operands {
                 if let Operation::Add { kind } = operation {
-                    let (name, range) = split_spec(operand)?;
+                    let (name, range) = split_spec(operand, cwd)?;
                     let range = if range == "latest" {
                         let routing = RegistryRouting::from_config(&resolved.config);
                         let metadata = packument(&agent(), &routing, &name)?;
@@ -184,7 +184,24 @@ pub fn execute_with_path(
     }
 }
 
-fn split_spec(spec: &str) -> Result<(CompactString, CompactString)> {
+fn split_spec(spec: &str, cwd: &Utf8Path) -> Result<(CompactString, CompactString)> {
+    let local = spec
+        .strip_prefix("file:")
+        .or_else(|| spec.strip_prefix("link:"))
+        .or_else(|| {
+            (crate::LinkTarget::of(Some(spec)) == crate::LinkTarget::Directory).then_some(spec)
+        });
+    if let Some(path) = local {
+        let name = crate::links::package_name(&cwd.join(path))
+            .context("local dependency needs a package.json with a valid package name")?;
+        let path = path.strip_prefix("./").unwrap_or(path);
+        let protocol = if spec.starts_with("link:") {
+            "link"
+        } else {
+            "file"
+        };
+        return Ok((name.into(), uf_infra::cstr!("{protocol}:{path}")));
+    }
     let (name, range) = spec
         .rsplit_once('@')
         .filter(|(name, _)| !name.is_empty())
@@ -279,7 +296,7 @@ fn install_with_store(
     });
     ensure!(
         !options.frozen || reusable,
-        "uf.lock is absent or stale; run uf install to resolve the native graph"
+        "uf.lock is absent or stale; run `uf install` to resolve the native graph"
     );
     let agent = agent();
     if options.update && !options.update_packages.is_empty() {
