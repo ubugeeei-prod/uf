@@ -24,6 +24,16 @@ pub(super) fn install(
             frozen,
             prod,
             update: false,
+            path: if resolved.config.pm.allow_lifecycle_scripts {
+                crate::commands::runtimes::manager_path(
+                    resolved,
+                    uf_pm::PackageManager::Uf,
+                    frozen,
+                    &mut |_| {},
+                )?
+            } else {
+                Vec::new()
+            },
         },
     )?;
     let packages = report.packages.to_string();

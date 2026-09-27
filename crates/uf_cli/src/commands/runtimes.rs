@@ -233,6 +233,9 @@ pub(crate) fn manager_path_with(
     releases: &dyn Releases,
 ) -> Result<Vec<Utf8PathBuf>> {
     let config = &resolved.config;
+    if manager == uf_pm::PackageManager::Uf && !config.pm.allow_lifecycle_scripts {
+        return Ok(Vec::new());
+    }
     let mut path = Vec::new();
     if let Some(spec) = config.package_manager.as_ref().and_then(Written::spec)
         && spec.version != ToolVersion::OnPath

@@ -274,15 +274,20 @@ fn node_path(modules: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
         .join(node.name.as_str())
 }
 
+pub(super) fn installed_package(root: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
+    node_path(&root.join("node_modules"), id, node)
+}
+
 pub(super) fn materialize(
     root: &Utf8Path,
     store: &Store,
     graph: &Graph,
     selected: &BTreeSet<CompactString>,
     prod: bool,
+    allow_scripts: bool,
 ) -> Result<(usize, usize)> {
     let modules = root.join("node_modules");
-    let stamp = serde_json::json!({"graph":hex(&Sha256::digest(serde_json::to_vec(graph)?)),"prod":prod,"store":store.root});
+    let stamp = serde_json::json!({"graph":hex(&Sha256::digest(serde_json::to_vec(graph)?)),"prod":prod,"store":store.root,"scripts":allow_scripts});
     if fs::read(modules.join(".uf/state.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
@@ -293,6 +298,19 @@ pub(super) fn materialize(
                 || node_path(&modules, id, &graph.nodes[id])
                     .join("package.json")
                     .is_file()
+        })
+        && graph.importers.iter().all(|importer| {
+            let output = root.join(importer.path.as_str()).join("node_modules");
+            importer_edges(importer, prod).all(|(name, id)| {
+                !selected.contains(id) || {
+                    let target = target_path(root, &modules, id, graph);
+                    output
+                        .join(name.as_str())
+                        .canonicalize_utf8()
+                        .ok()
+                        .is_some_and(|path| target.canonicalize_utf8().ok().as_ref() == Some(&path))
+                }
+            })
         })
     {
         return Ok((0, 0));
@@ -315,6 +333,10 @@ pub(super) fn materialize(
             &output,
             &mut hardlinked,
             &mut copied,
+            allow_scripts
+                && crate::builds::LIFECYCLE_SCRIPTS
+                    .iter()
+                    .any(|hook| node.scripts.contains_key(*hook)),
         )?;
     }
     for id in selected {
@@ -342,85 +364,99 @@ pub(super) fn materialize(
             }
         }
     }
-    for importer in &graph.importers {
-        if importer.path != "." {
-            continue;
-        }
-        for edges in [
-            &importer.dependencies,
-            &importer.optional_dependencies,
-            &importer.peer_dependencies,
-        ] {
-            for (name, target) in edges {
-                if selected.contains(target) {
-                    link_dependency(root, &modules, stage, name, target, graph)?;
-                    link_bins(root, &modules, stage, target, graph)?;
-                }
-            }
-        }
-        if !prod {
-            for (name, target) in &importer.dev_dependencies {
-                if selected.contains(target) {
-                    link_dependency(root, &modules, stage, name, target, graph)?;
-                    link_bins(root, &modules, stage, target, graph)?;
-                }
-            }
-        }
+    for importer in graph
+        .importers
+        .iter()
+        .filter(|importer| importer.path == ".")
+    {
+        link_importer(root, &modules, stage, importer, graph, selected, prod)?;
     }
     write_json(&stage.join(".uf/state.json"), &stamp)?;
-    // Rename the fully prepared graph, with rollback if activation fails.
-    let old = tempfile::Builder::new()
+    let backup = tempfile::Builder::new()
         .prefix(".uf-previous-modules-")
         .tempdir_in(root)?;
-    let backup = old.path().join("node_modules");
-    let existed = fs::symlink_metadata(&modules).is_ok();
-    if existed {
+    let mut prepared = vec![(modules.clone(), staging, backup)];
+    for importer in graph
+        .importers
+        .iter()
+        .filter(|importer| importer.path != ".")
+    {
+        let directory = root.join(importer.path.as_str());
+        let staging = tempfile::Builder::new()
+            .prefix(".uf-modules-")
+            .tempdir_in(&directory)?;
+        let stage = Utf8Path::from_path(staging.path()).context("non UTF-8 workspace staging")?;
+        link_importer(root, &modules, stage, importer, graph, selected, prod)?;
+        let backup = tempfile::Builder::new()
+            .prefix(".uf-previous-modules-")
+            .tempdir_in(&directory)?;
+        prepared.push((directory.join("node_modules"), staging, backup));
+    }
+    // Check every destination before activating any graph, then keep enough
+    // state to roll all workspaces back on a later rename failure.
+    for (destination, _, _) in &prepared {
         ensure!(
-            !fs::symlink_metadata(&modules)?.file_type().is_symlink(),
+            !fs::symlink_metadata(destination).is_ok_and(|m| m.file_type().is_symlink()),
             "node_modules is a symlink; refusing to replace it"
         );
-        fs::rename(&modules, &backup)?;
     }
-    if let Err(error) = fs::rename(stage, &modules) {
-        if existed {
-            fs::rename(&backup, &modules).context("could not restore previous node_modules")?;
+    let mut moved = vec![(false, false); prepared.len()];
+    let activation: Result<()> = (|| {
+        for (index, (destination, staging, backup)) in prepared.iter().enumerate() {
+            if destination.exists() {
+                fs::rename(destination, backup.path().join("node_modules"))?;
+                moved[index].0 = true;
+            }
+            fs::rename(staging.path(), destination)?;
+            moved[index].1 = true;
         }
-        return Err(error.into());
-    }
-    // A member has its own direct dependencies and bins, while all file data
-    // stays in the root's shared isolated graph.
-    for importer in &graph.importers {
-        if importer.path == "." {
-            continue;
-        }
-        let member = root.join(importer.path.as_str()).join("node_modules");
-        ensure!(
-            !fs::symlink_metadata(&member).is_ok_and(|m| m.file_type().is_symlink()),
-            "workspace node_modules is a symlink"
-        );
-        fs::create_dir_all(&member)?;
-        for edges in [
-            &importer.dependencies,
-            &importer.optional_dependencies,
-            &importer.peer_dependencies,
-        ] {
-            for (name, target) in edges {
-                if selected.contains(target) {
-                    link_dependency(root, &modules, &member, name, target, graph)?;
-                    link_bins(root, &modules, &member, target, graph)?;
-                }
+        Ok(())
+    })();
+    if let Err(error) = activation {
+        for ((destination, _, backup), (previous, installed)) in prepared.iter().zip(moved).rev() {
+            if installed {
+                fs::remove_dir_all(destination)?;
+            }
+            if previous {
+                fs::rename(backup.path().join("node_modules"), destination)
+                    .context("could not restore previous workspace dependencies")?;
             }
         }
-        if !prod {
-            for (name, target) in &importer.dev_dependencies {
-                if selected.contains(target) {
-                    link_dependency(root, &modules, &member, name, target, graph)?;
-                    link_bins(root, &modules, &member, target, graph)?;
-                }
-            }
-        }
+        return Err(error);
     }
     Ok((hardlinked, copied))
+}
+
+fn importer_edges(
+    importer: &super::Importer,
+    prod: bool,
+) -> impl Iterator<Item = (&CompactString, &CompactString)> {
+    [
+        &importer.dependencies,
+        &importer.optional_dependencies,
+        &importer.peer_dependencies,
+    ]
+    .into_iter()
+    .flat_map(|edges| edges.iter())
+    .chain(importer.dev_dependencies.iter().filter(move |_| !prod))
+}
+
+fn link_importer(
+    root: &Utf8Path,
+    modules: &Utf8Path,
+    output: &Utf8Path,
+    importer: &super::Importer,
+    graph: &Graph,
+    selected: &BTreeSet<CompactString>,
+    prod: bool,
+) -> Result<()> {
+    for (name, target) in importer_edges(importer, prod) {
+        if selected.contains(target) {
+            link_dependency(root, modules, output, name, target, graph)?;
+            link_bins(root, modules, output, target, graph)?;
+        }
+    }
+    Ok(())
 }
 
 fn copy_tree(
@@ -428,6 +464,7 @@ fn copy_tree(
     target: &Utf8Path,
     hardlinked: &mut usize,
     copied: &mut usize,
+    writable: bool,
 ) -> Result<()> {
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -436,12 +473,23 @@ fn copy_tree(
         let target = target.join(name.to_str().context("non UTF-8 shared file")?);
         if entry.file_type()?.is_dir() {
             fs::create_dir(&target)?;
-            copy_tree(&source, &target, hardlinked, copied)?;
+            copy_tree(&source, &target, hardlinked, copied, writable)?;
         } else {
             ensure!(
                 entry.file_type()?.is_file(),
                 "shared store contains an unexpected link"
             );
+            if writable {
+                fs::copy(&source, &target)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = fs::metadata(&source)?.permissions().mode() | 0o200;
+                    fs::set_permissions(&target, fs::Permissions::from_mode(mode))?;
+                }
+                *copied += 1;
+                continue;
+            }
             match fs::hard_link(&source, &target) {
                 Ok(()) => *hardlinked += 1,
                 Err(error)

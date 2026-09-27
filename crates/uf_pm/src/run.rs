@@ -261,7 +261,7 @@ pub fn run_operation_with_detection(
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
     if manager == PackageManager::Uf {
-        crate::installer::execute(root, operation, operands)
+        crate::installer::execute_with_path(root, operation, operands, path)
             .map_err(|source| ManagerRunError::Native { source })?;
         return Ok(ManagerRun {
             manager,
@@ -353,7 +353,7 @@ pub fn run_captured_with_detection(
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
     if manager == PackageManager::Uf {
-        let value = crate::installer::execute(root, operation, operands)
+        let value = crate::installer::execute_with_path(root, operation, operands, path)
             .map_err(|source| ManagerRunError::Native { source })?;
         return Ok(CapturedRun {
             manager,

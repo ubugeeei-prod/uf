@@ -26,7 +26,7 @@ type Edges = BTreeMap<CompactString, CompactString>;
 const MAX_PACKAGES: usize = 50_000;
 
 /// Options for an install of uf's own graph.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Options {
     /// Refuse absent or stale uf.lock without changing it.
     pub frozen: bool,
@@ -34,6 +34,8 @@ pub struct Options {
     pub prod: bool,
     /// Refresh resolutions within manifest ranges.
     pub update: bool,
+    /// Project runtime directories prepended for explicitly enabled lifecycle hooks.
+    pub path: Vec<Utf8PathBuf>,
 }
 
 /// Measured native work, with no external package manager involved.
@@ -60,6 +62,16 @@ pub struct Report {
 
 /// Run an operation against uf's native store, without invoking another manager.
 pub fn execute(cwd: &Utf8Path, operation: Operation<'_>, operands: &[String]) -> Result<Value> {
+    execute_with_path(cwd, operation, operands, &[])
+}
+
+/// Run a native operation with the project's prepared runtime directories.
+pub fn execute_with_path(
+    cwd: &Utf8Path,
+    operation: Operation<'_>,
+    operands: &[String],
+    path: &[Utf8PathBuf],
+) -> Result<Value> {
     let resolved = uf_config::load_config(cwd)?;
     let options = Options {
         frozen: matches!(
@@ -74,6 +86,7 @@ pub fn execute(cwd: &Utf8Path, operation: Operation<'_>, operands: &[String]) ->
             operation,
             Operation::Update | Operation::Dedupe { check: false }
         ),
+        path: path.to_vec(),
     };
     match operation {
         Operation::Install
@@ -278,7 +291,23 @@ fn install_with_store(
     })?;
     let fetch_ms = fetch.elapsed().as_millis();
     let link = Instant::now();
-    let (hardlinked, copied) = store::materialize(root, &store, &graph, &selected, options.prod)?;
+    let (hardlinked, copied) = store::materialize(
+        root,
+        &store,
+        &graph,
+        &selected,
+        options.prod,
+        config.pm.allow_lifecycle_scripts,
+    )?;
+    if config.pm.allow_lifecycle_scripts {
+        lifecycle(
+            root,
+            &graph,
+            &selected,
+            &options.path,
+            hardlinked + copied > 0,
+        )?;
+    }
     let link_ms = link.elapsed().as_millis();
     if !options.frozen && (!reusable || options.update) {
         let mut document = before.as_object().cloned().unwrap_or_default();
@@ -307,6 +336,85 @@ fn install_with_store(
         fetch_ms,
         link_ms,
     })
+}
+
+fn lifecycle(
+    root: &Utf8Path,
+    graph: &Graph,
+    selected: &BTreeSet<CompactString>,
+    path: &[Utf8PathBuf],
+    changed: bool,
+) -> Result<()> {
+    let run = |directory: &Utf8Path,
+               name: &str,
+               scripts: &BTreeMap<CompactString, CompactString>|
+     -> Result<()> {
+        for hook in crate::builds::LIFECYCLE_SCRIPTS {
+            let Some(script) = scripts.get(hook) else {
+                continue;
+            };
+            let mut command = if cfg!(windows) {
+                let mut command = std::process::Command::new("cmd");
+                command.args(["/d", "/s", "/c", script]);
+                command
+            } else {
+                let mut command = std::process::Command::new("sh");
+                command.args(["-c", script]);
+                command
+            };
+            let mut entries = vec![
+                directory.join("node_modules/.bin").into_std_path_buf(),
+                root.join("node_modules/.bin").into_std_path_buf(),
+            ];
+            entries.extend(path.iter().map(|p| p.clone().into_std_path_buf()));
+            if let Some(existing) = std::env::var_os("PATH") {
+                entries.extend(std::env::split_paths(&existing));
+            }
+            let status = command
+                .current_dir(directory)
+                .env("PATH", std::env::join_paths(entries)?)
+                .env("npm_lifecycle_event", hook)
+                .env("npm_package_name", name)
+                .status()?;
+            ensure!(
+                status.success(),
+                "native lifecycle hook {name}:{hook} failed"
+            );
+        }
+        Ok(())
+    };
+    if changed {
+        let mut seen = BTreeSet::new();
+        let mut pending: Vec<_> = selected.iter().map(|id| (id, false)).collect();
+        while let Some((id, ready)) = pending.pop() {
+            let node = &graph.nodes[id];
+            if ready {
+                if node.local.is_none() {
+                    run(
+                        &store::installed_package(root, id, node),
+                        &node.name,
+                        &node.scripts,
+                    )?;
+                }
+            } else if seen.insert(id) {
+                pending.push((id, true));
+                pending.extend(
+                    node.dependencies
+                        .values()
+                        .filter(|id| selected.contains(*id))
+                        .map(|id| (id, false)),
+                );
+            }
+        }
+    }
+    for importer in &graph.importers {
+        run(
+            &root.join(importer.path.as_str()),
+            &importer.name,
+            &importer.scripts,
+        )?;
+    }
+    Ok(())
 }
 
 fn local_manifests_match(root: &Utf8Path, graph: &Graph) -> bool {
