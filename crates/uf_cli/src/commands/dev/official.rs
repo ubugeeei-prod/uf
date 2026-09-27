@@ -140,33 +140,45 @@ impl Server {
         {
             return Ok(Value::Null);
         }
-        let id = self.next;
-        self.next += 1;
-        write_message(
-            &mut self.input,
-            &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
-        )?;
         let deadline = Instant::now() + Duration::from_secs(60);
-        loop {
-            let remaining = deadline
-                .checked_duration_since(Instant::now())
-                .context("official Flow request timed out")?;
-            let frame = self
-                .frames
-                .recv_timeout(remaining)
-                .context("official Flow stopped or timed out")??;
-            let Frame::Message(message) = frame else {
-                bail!("official Flow sent malformed JSON")
-            };
-            if message.get("id").and_then(Value::as_u64) == Some(id)
-                && message.get("method").is_none()
-            {
-                if let Some(error) = message.get("error") {
-                    bail!("official Flow: {error}")
+        'connecting: loop {
+            let id = self.next;
+            self.next += 1;
+            write_message(
+                &mut self.input,
+                &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": &params }),
+            )?;
+            loop {
+                let remaining = deadline
+                    .checked_duration_since(Instant::now())
+                    .context("official Flow request timed out")?;
+                let frame = self
+                    .frames
+                    .recv_timeout(remaining)
+                    .context("official Flow stopped or timed out")??;
+                let Frame::Message(message) = frame else {
+                    bail!("official Flow sent malformed JSON")
+                };
+                if message.get("id").and_then(Value::as_u64) == Some(id)
+                    && message.get("method").is_none()
+                {
+                    if let Some(error) = message.get("error") {
+                        // Flow acknowledges initialize before its type server connects.
+                        // An immediate hover waits within the same request deadline.
+                        if error["code"] == -32800
+                            && error["message"]
+                                .as_str()
+                                .is_some_and(|m| m.starts_with("Server not connected"))
+                        {
+                            std::thread::sleep(Duration::from_millis(100).min(remaining));
+                            continue 'connecting;
+                        }
+                        bail!("official Flow: {error}")
+                    }
+                    return Ok(message.get("result").cloned().unwrap_or(Value::Null));
                 }
-                return Ok(message.get("result").cloned().unwrap_or(Value::Null));
+                self.receive(message)?;
             }
-            self.receive(message)?;
         }
     }
 
