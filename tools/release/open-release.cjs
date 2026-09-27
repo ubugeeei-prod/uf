@@ -189,7 +189,11 @@ async function waitForMerge(state /*: State */) /*: Promise<string> */ {
   }
   throw new Error("Release is still pending. Repeat the command to resume.");
 }
-async function waitRun(repository /*: string */, id /*: number */, controller /*: ?number */ = null) /*: Promise<WorkflowRun> */ {
+async function waitRun(
+  repository /*: string */,
+  id /*: number */,
+  controller /*: ?number */ = null,
+) /*: Promise<WorkflowRun> */ {
   const until = Date.now() + 6 * 60 * 60 * 1000;
   while (Date.now() < until) {
     const run /*: WorkflowRun */ = api(`repos/${repository}/actions/runs/${id}`);
@@ -457,10 +461,14 @@ async function main() /*: Promise<void> */ {
   // Observe the controller for this exact release commit. A workflow merely
   // being enabled does not establish ownership of this release.
   const findController = () /*: ?WorkflowRun */ =>
-    api(`repos/${repository}/actions/workflows/release-automation.yml/runs?event=push&branch=main&per_page=100`)
-      .workflow_runs.find((run /*: WorkflowRun */) => run.head_sha === commit);
+    api(
+      `repos/${repository}/actions/workflows/release-automation.yml/runs?event=push&branch=main&per_page=100`,
+    ).workflow_runs.find((run /*: WorkflowRun */) => run.head_sha === commit);
   let owner = findController();
-  if (!owner && api(`repos/${repository}/actions/workflows/release-automation.yml`).state === "active") {
+  if (
+    !owner &&
+    api(`repos/${repository}/actions/workflows/release-automation.yml`).state === "active"
+  ) {
     for (let retry = 0; retry < 40 && !owner; retry++) {
       await sleep(3000);
       owner = findController();

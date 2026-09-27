@@ -1164,7 +1164,7 @@ pub(crate) enum Commands {
         /// Names only, for the reason `uf ls` gives: every manager spells its
         /// severity threshold and its `--fix` differently, and one of those
         /// rewrites a lockfile.
-        #[arg(value_name = "NAME", trailing_var_arg = true)]
+        #[arg(value_name = "NAME")]
         args: Vec<String>,
     },
     /// Search the registry.

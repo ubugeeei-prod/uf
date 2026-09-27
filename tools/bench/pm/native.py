@@ -70,6 +70,7 @@ def smoke(uf, root, environment):
     assert any(row["package"] == "lodash" and "4.17.20" in row["versions"] for row in findings["findings"])
     assert any(row["fixVersion"] for row in findings["findings"])
     _, scoped = invoke([uf, "audit", "lodash", "--json"], directory, environment, expected=1)
+    assert scoped.stdout.lstrip().startswith("{"), (scoped.stdout, scoped.stderr)
     assert json.loads(scoped.stdout)["checked"] == 1
     javascript = "const l=require('plugin'); if(l.chunk([1,2],1).length!==2)process.exit(1)"
     invoke(["node", "-e", javascript], directory, environment)
