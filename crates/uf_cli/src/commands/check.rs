@@ -916,7 +916,10 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                 rows.insert(1, KeyValue::toned("asked about", &requested, Tone::Muted));
             }
             if report.files_skipped > 0 {
-                rows.insert(1, KeyValue::toned("@noflow", &skipped, Tone::Muted));
+                rows.insert(
+                    1,
+                    KeyValue::toned("use js / @noflow", &skipped, Tone::Muted),
+                );
             }
             // Only when the project has some. A project with no `[libs]` and
             // no `flow-typed` should not have to read a zero to find that out.

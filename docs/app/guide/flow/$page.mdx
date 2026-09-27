@@ -21,12 +21,32 @@ and `enum`, and know what uf turns each one into before Vite sees it.
 React you already know. [Why Flow](/guide/why) is the argument for this syntax,
 if you want it first.
 
+## Source mode
+
+Write `"use flow";` in a file's directive prologue to select Flow, or
+`"use js";` to skip type inference. Syntax is still checked in both modes.
+They can appear beside React's `"use client";` and `"use server";` directives:
+
+```js
+"use client";
+"use flow";
+
+export component Greeting(name: string) {
+  return <p>Hello, {name}</p>;
+}
+```
+
+Directives must precede ordinary statements. Strings inside comments,
+template literals or later expressions do not select a mode. Files with no
+mode retain uf's default of type checking. Existing `@flow` and `@noflow`
+pragmas are supported; a source directive takes precedence.
+
 ## component
 
 A component declaration is a function whose parameters are its props:
 
 ```js
-// @flow
+"use flow";
 export component Avatar(src: string, size: number = 32, alt?: string) {
   return <img src={src} width={size} height={size} alt={alt ?? ""} />;
 }

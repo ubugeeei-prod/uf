@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use camino::Utf8Path;
 use uf_config::env_files::{self, PROFILE_FILE};
 use uf_config::{discover_root, load_config};
@@ -448,6 +448,11 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
         return Ok(());
     }
     if matches!(name, "node" | "bun" | "deno" | "npm" | "pnpm" | "yarn") {
+        if !uf_term::prompt::is_interactive() {
+            bail!(uf_infra::cstr!(
+                "specify `{name}@<version>` when no interactive terminal is available"
+            ));
+        }
         let tool = uf_env::Tool::parse(name).ok_or_else(|| anyhow::anyhow!("unknown tool"))?;
         let index = uf_env::index::refresh(tool)?;
         let values: Vec<_> = index
@@ -462,9 +467,10 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
                 )
             })
             .collect();
-        let selected = crate::missing::choose("Choose a version", &values)?
-            .or_else(|| values.first().map(|(spec, _)| spec.clone()))
-            .ok_or_else(|| anyhow::anyhow!("publisher has no stable releases"))?;
+        ensure!(!values.is_empty(), "publisher has no stable releases");
+        let selected = crate::missing::choose("Choose a version", &values)?.ok_or_else(|| {
+            anyhow::anyhow!("interactive terminal is unavailable; specify a version")
+        })?;
         return use_tool(cwd, ui, &selected);
     }
     if name.contains('@') {
