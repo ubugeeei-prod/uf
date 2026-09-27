@@ -132,4 +132,11 @@ jobs:
         env:
           UF_TEST_RELEASE_DIR: dist/release/uf/${{ steps.version.outputs.version }}
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/test-install.ps1
-
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+      - name: Install native platform dependencies from this archive
+        env:
+          UF_TEST_RELEASE_DIR: dist/release/uf/${{ steps.version.outputs.version }}
+          UF_TEST_TARGET: ${{ matrix.target }}
+        run: node tools/ci/native-pm-platform.cjs "$UF_TEST_RELEASE_DIR/uf-$UF_TEST_TARGET.tar.gz"

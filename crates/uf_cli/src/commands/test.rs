@@ -669,23 +669,7 @@ pub(crate) fn test_host(
     // and runs on a Capability JS Host; nothing in that path is Vite's, and
     // asking for `@uniflowed/vite` made a test run depend on a bundler it never
     // loads.
-    let loader = uniflowed_package(root, "host", "register.js")?;
-    let scope = loader.parent().map(Utf8Path::to_path_buf);
-    let worker_module = if browser {
-        "test/browser-worker.js"
-    } else {
-        "test/worker.js"
-    };
-    let worker = scope
-        .as_ref()
-        .map(|scope| scope.join(worker_module))
-        .filter(|worker| worker.is_file())
-        .ok_or_else(|| {
-            anyhow::anyhow!(uf_infra::cstr!(
-                "`@uniflowed/test` is not installed for {root}; add it to the project's \
-                 dependencies and run the package manager (`uf install`)"
-            ))
-        })?;
+    let (loader, worker) = test_packages(root, browser)?;
 
     let kind = test_host_kind(host.kind, browser);
     let native = test_application_target(config) == TestApplicationTarget::ReactNative;
@@ -728,7 +712,7 @@ pub(crate) fn test_host(
     }
     let mut command = HostCommand::new(kind, program, worker, root.to_path_buf())
         .with_flow_loader(
-            Utf8Path::new("@uniflowed/host/register"),
+            &loader.join("register.js"),
             &loader.join("bun-preload.js"),
             &loader.join("deno-preload.js"),
         )
@@ -829,6 +813,25 @@ pub(crate) fn test_host(
         ));
     }
     Ok(command)
+}
+
+fn test_packages(root: &Utf8Path, browser: bool) -> Result<(Utf8PathBuf, Utf8PathBuf)> {
+    let marker = if browser {
+        "browser-worker.js"
+    } else {
+        "worker.js"
+    };
+    let installed = uniflowed_package(root, "test", marker)?;
+    // Follow the package link before walking its dependency ancestry, as Node
+    // does. Native uf and pnpm keep host beside test's real package rather
+    // than exposing a transitive dependency at the project root.
+    let directory = installed
+        .canonicalize_utf8()
+        .with_context(|| uf_infra::cstr!("could not resolve {installed}"))?;
+    let loader = uniflowed_package(&directory, "host", "register.js")?;
+    // Node resolves the worker link itself. Windows canonicalization returns
+    // a verbatim path that its command line module resolver cannot consume.
+    Ok((loader, installed.join(marker)))
 }
 
 fn test_host_kind(host: uf_config::CapabilityJsHost, browser: bool) -> HostKind {
@@ -1436,6 +1439,40 @@ fn finish(report: &TestRunReport, violations: &[uf_test::ThresholdViolation]) ->
 mod tests {
     use super::*;
     use uf_project::SourceKind;
+
+    #[cfg(unix)]
+    #[test]
+    fn test_packages_resolve_host_from_the_workers_native_dependency_layout() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(temporary.path()).unwrap();
+        let modules = root.join("node_modules/.uf/test-instance/node_modules");
+        let package = modules.join("@uniflowed/test");
+        let loader = modules.join("@uniflowed/host");
+        std::fs::create_dir_all(&package).unwrap();
+        std::fs::create_dir_all(&loader).unwrap();
+        for marker in ["worker.js", "browser-worker.js"] {
+            std::fs::write(package.join(marker), "").unwrap();
+        }
+        std::fs::write(loader.join("register.js"), "").unwrap();
+        std::fs::create_dir_all(root.join("node_modules/@uniflowed")).unwrap();
+        std::os::unix::fs::symlink(&package, root.join("node_modules/@uniflowed/test")).unwrap();
+        assert!(!root.join("node_modules/@uniflowed/host").exists());
+        for (browser, marker) in [(false, "worker.js"), (true, "browser-worker.js")] {
+            let (found_loader, worker) = test_packages(root, browser).unwrap();
+            assert_eq!(
+                found_loader.canonicalize_utf8().unwrap(),
+                loader.canonicalize_utf8().unwrap()
+            );
+            assert_eq!(
+                worker,
+                root.join("node_modules/@uniflowed/test").join(marker)
+            );
+            assert_eq!(
+                worker.canonicalize_utf8().unwrap(),
+                package.canonicalize_utf8().unwrap().join(marker)
+            );
+        }
+    }
 
     fn file(path: &str, source: &str) -> ProjectFile {
         ProjectFile {

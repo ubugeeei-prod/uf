@@ -289,16 +289,12 @@ export function ufBinaryIdentity(command = ufBinary()) {
   const binary = resolveExecutable(command);
   if (binary == null) return null;
   try {
-    const stats = statSync(binary);
+    const stats = statSync(binary, { bigint: true });
     if (!stats.isFile() || !isExecutable(binary, stats)) return null;
-    // Whole milliseconds, because hosts disagree below that: Node reports the
-    // filesystem's nanosecond timestamp as a fraction and Deno reports whole
-    // milliseconds. Node's and Deno's loaders share one cache
-    // (`./internal/flow-cache.js`), and two spellings of one binary's
-    // identity would be two keys for every module either host compiled. A
-    // rebuild that lands in the same millisecond at the same size is not a
-    // rebuild anybody runs.
-    return `${binary}\0${stats.size}\0${Math.trunc(stats.mtimeMs)}`;
+    // Deno exposes whole milliseconds. Divide integer nanoseconds so Node's
+    // floating point mtimeMs cannot round up at a millisecond boundary and
+    // give the same binary a different cache identity on the two hosts.
+    return `${binary}\0${stats.size}\0${stats.mtimeNs / 1000000n}`;
   } catch {
     // Named a binary that is not there, or is not one. The caller gets `null`
     // and stops trusting the cache, which is right: nothing can be compiled
@@ -329,7 +325,7 @@ function isExecutable(file, stats) {
     accessSync(file, constants.X_OK);
     return true;
   } catch (error) {
-    return error?.name === "NotCapable" && (stats.mode & 0o111) !== 0;
+    return error?.name === "NotCapable" && (Number(stats.mode) & 0o111) !== 0;
   }
 }
 

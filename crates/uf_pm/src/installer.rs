@@ -1183,6 +1183,7 @@ fn selected(graph: &Graph, prod: bool) -> Result<BTreeSet<CompactString>> {
 
 fn compatible(node: &Node) -> bool {
     let platform = match std::env::consts::OS {
+        "macos" => "darwin",
         "windows" => "win32",
         other => other,
     };

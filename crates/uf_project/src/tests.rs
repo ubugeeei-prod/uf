@@ -1,6 +1,33 @@
 use super::*;
 
 #[test]
+fn project_ignores_follow_native_path_components() {
+    let root = Utf8Path::new("project");
+    let config = UniflowedConfig::default();
+    for ignored in ["node_modules", ".uf", "dist", "target"] {
+        let path = root.join("nested").join(ignored).join("entry.js");
+        assert!(is_ignored(root, &path, &config), "{path}");
+    }
+    assert!(!is_ignored(
+        root,
+        &root.join("app").join("entry.js"),
+        &config
+    ));
+    let mut configured = config;
+    configured.ignore = Some(vec!["src/generated".into()]);
+    assert!(is_ignored(
+        root,
+        &root.join("src").join("generated").join("entry.js"),
+        &configured
+    ));
+    assert!(!is_ignored(
+        root,
+        &root.join("src").join("generated-other").join("entry.js"),
+        &configured
+    ));
+}
+
+#[test]
 fn creates_zero_config_react_flow_app() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();

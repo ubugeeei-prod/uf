@@ -249,7 +249,7 @@ impl HostCommand {
             HostKind::Node | HostKind::Browser => vec![
                 String::from("--enable-source-maps"),
                 String::from("--import"),
-                register.to_string(),
+                node_import_specifier(register),
             ],
             HostKind::Bun => vec![String::from("--preload"), bun_preload.to_string()],
             // `run`, then the hooks: `registerHooks` from `node:module`, which
@@ -426,6 +426,48 @@ impl HostCommand {
             .iter()
             .any(|(name, value)| name == KEEP_WORKERS && value == "1")
     }
+}
+
+/// Node's `--import` takes an ESM specifier. Absolute filenames need a file
+/// URL on Windows, and escaping keeps spaces, fragments and Unicode in the
+/// filename rather than interpreting them as URL syntax.
+fn node_import_specifier(path: &Utf8Path) -> String {
+    if !path.is_absolute() {
+        return path.to_string();
+    }
+    #[cfg(windows)]
+    let normalized = path.as_str().replace('\\', "/");
+    #[cfg(windows)]
+    let normalized = if let Some(unc) = normalized.strip_prefix("//?/UNC/") {
+        uf_infra::into_string(uf_infra::cstr!("//{unc}"))
+    } else {
+        normalized
+            .strip_prefix("//?/")
+            .unwrap_or(&normalized)
+            .to_owned()
+    };
+    #[cfg(not(windows))]
+    let normalized = path.as_str();
+    let prefix = if normalized.starts_with("//") {
+        "file:"
+    } else if normalized.starts_with('/') {
+        "file://"
+    } else {
+        "file:///"
+    };
+    let mut specifier = String::with_capacity(prefix.len() + normalized.len());
+    specifier.push_str(prefix);
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for byte in normalized.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b':' | b'-' | b'.' | b'_' | b'~') {
+            specifier.push(char::from(byte));
+        } else {
+            specifier.push('%');
+            specifier.push(char::from(HEX[usize::from(byte >> 4)]));
+            specifier.push(char::from(HEX[usize::from(byte & 15)]));
+        }
+    }
+    specifier
 }
 
 /// One file handed to a worker.
@@ -1610,6 +1652,36 @@ fn is_loader_variable(name: &std::ffi::OsStr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn node_loader_paths_escape_url_syntax() {
+        assert_eq!(
+            node_import_specifier(Utf8Path::new("@uniflowed/host/register")),
+            "@uniflowed/host/register"
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            node_import_specifier(Utf8Path::new("/tmp/a #?%/日/register.js")),
+            "file:///tmp/a%20%23%3F%25/%E6%97%A5/register.js"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn node_loader_paths_accept_windows_drives_and_unc() {
+        assert_eq!(
+            node_import_specifier(Utf8Path::new(r"C:\a b\register.js")),
+            "file:///C:/a%20b/register.js"
+        );
+        assert_eq!(
+            node_import_specifier(Utf8Path::new(r"\\?\C:\a b\register.js")),
+            "file:///C:/a%20b/register.js"
+        );
+        assert_eq!(
+            node_import_specifier(Utf8Path::new(r"\\?\UNC\server\share\register.js")),
+            "file://server/share/register.js"
+        );
+    }
 
     /// The variables a Deno worker is started without, and nothing else: a
     /// name that merely contains `LD` is somebody's own.

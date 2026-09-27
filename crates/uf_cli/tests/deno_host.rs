@@ -230,6 +230,12 @@ fn loader_flags(project: &Project, run_uf: bool) -> Vec<String> {
     let mut toolchain = ToolchainAccess {
         read: vec![
             root.clone(),
+            project
+                .path()
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
             repo_root().to_string_lossy().into_owned(),
             uf_path().to_owned(),
         ],
@@ -520,12 +526,36 @@ fn a_module_the_node_loader_compiled_is_one_deno_reads() {
             return;
         }
         let project = Project::new(&[("entry.js", RELATIVE_ONLY), ("double.js", DOUBLE)]);
+        let compiler =
+            project
+                .path()
+                .join(".uf/compiler")
+                .join(if cfg!(windows) { "uf.exe" } else { "uf" });
+        std::fs::create_dir_all(compiler.parent().unwrap()).unwrap();
+        std::fs::copy(uf_path(), &compiler).unwrap();
+        // Node's numeric mtimeMs rounds this up to the next millisecond;
+        // Deno truncates it. Both must still identify the same compiler.
+        std::fs::File::open(&compiler)
+            .unwrap()
+            .set_times(
+                std::fs::FileTimes::new().set_modified(
+                    std::time::UNIX_EPOCH + Duration::new(1_790_504_762, 229_999_999),
+                ),
+            )
+            .unwrap();
+        let entry = project.path().join("entry.js").canonicalize().unwrap();
+        let mut environment = loader_env(&project);
+        environment
+            .iter_mut()
+            .find(|(name, _)| *name == "UF_BINARY")
+            .unwrap()
+            .1 = compiler.to_string_lossy().into_owned();
 
         let node = Command::new("node")
             .args(["--import", "@uniflowed/host/register"])
-            .arg(project.path().join("entry.js"))
+            .arg(&entry)
             .current_dir(project.path())
-            .env("UF_BINARY", uf_path())
+            .env("UF_BINARY", &compiler)
             .env("UF_PROJECT_ROOT", project.path())
             .env_remove("UF_IN_SOURCE_TESTS")
             .output()
@@ -539,8 +569,8 @@ fn a_module_the_node_loader_compiled_is_one_deno_reads() {
         let run = deno(
             &project,
             &loader_flags(&project, false),
-            "entry.js",
-            &loader_env(&project),
+            entry.to_str().unwrap(),
+            &environment,
         );
         assert!(
             run.success && run.stdout.contains("double=42"),
