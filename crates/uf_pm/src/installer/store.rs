@@ -24,7 +24,7 @@ impl Store {
             Some(path) => Utf8PathBuf::from_path_buf(path.into())
                 .map_err(|_| anyhow::anyhow!("UF_PM_STORE is not UTF-8"))?,
             None => uf_env::Store::discover()?
-                .path()
+                .root()
                 .parent()
                 .context("shared data directory has no parent")?
                 .join("pm"),
