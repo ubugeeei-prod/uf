@@ -31,7 +31,11 @@ function run(argv /*: $ReadOnlyArray<string> */) /*: string */ {
 }
 
 try {
-  execFileSync("tar", ["-xzf", path.resolve(archive), "-C", runtime], {
+  const tar =
+    process.platform === "win32"
+      ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe")
+      : "tar";
+  execFileSync(tar, ["-xzf", path.resolve(archive), "-C", runtime], {
     timeout: 120000,
   });
   const uf = path.join(runtime, "bin", process.platform === "win32" ? "uf.exe" : "uf");
