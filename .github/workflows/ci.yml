@@ -237,6 +237,8 @@ jobs:
           RUST_VITE_TESTS: ${{ needs.changes.outputs.deploy }}
       - run: tools/ci/test-cores.sh run ./target/release/uf run rust:test
         if: needs.changes.outputs.full == 'true'
+      - run: python3 tools/ci/official-flow.py target/release/uf
+        if: needs.changes.outputs.code == 'true'
       - if: needs.changes.outputs.code == 'true' && failure()
         run: tools/ci/test-cores.sh collect
       - if: needs.changes.outputs.code == 'true' && failure()

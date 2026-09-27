@@ -127,6 +127,10 @@ pub(super) fn configure(root: &Utf8Path, config: &UniflowedConfig) -> Result<()>
         .or_default()
         .push(if glob { ".uf/**" } else { ".*/\\.uf/.*" }.into());
     let sources = uf_project::scan_source_files(root, config)?;
+    ensure!(
+        sources.unreadable.is_empty(),
+        "some project files could not be read for official Flow configuration"
+    );
     for source in &sources.files {
         if opted_out(&source.source) {
             // Newer Flow uses globs; older releases use anchored regular expressions.
@@ -149,6 +153,12 @@ pub(super) fn configure(root: &Utf8Path, config: &UniflowedConfig) -> Result<()>
     let options = sections.entry("options".into()).or_default();
     options.retain(|line| !line.trim_start().starts_with("all="));
     options.push("all=true".into());
+    if !options
+        .iter()
+        .any(|line| line.trim_start().starts_with("server.max_workers="))
+    {
+        options.push("server.max_workers=4".into());
+    }
     if !options
         .iter()
         .any(|line| line.trim_start().starts_with("module.name_mapper="))
