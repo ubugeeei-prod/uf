@@ -83,6 +83,11 @@ def smoke(uf, root, environment):
     invoke([uf, "install"], directory, environment)
     _, prod = invoke([uf, "audit", "--prod", "--json"], directory, environment)
     assert json.loads(prod.stdout)["checked"] == 0
+    archives = root / "archives"
+    project(archives, {"@rollup/pluginutils": "5.4.0", "@types/estree": "1.0.9"}, "uf")
+    invoke([uf, "install"], archives, environment)
+    invoke([uf, "install", "--frozen-lockfile"], archives, environment)
+    invoke(["node", "-e", "const {createFilter}=require('@rollup/pluginutils'); if(!createFilter('**/*.js')('src/main.js'))process.exit(1); if(require('@types/estree/package.json').name!=='@types/estree')process.exit(1)"], archives, environment)
     print("native registry install, frozen reuse, JavaScript resolution and security audit passed", flush=True)
 
 

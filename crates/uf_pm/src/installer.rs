@@ -361,7 +361,13 @@ fn install_with_store(
         if node.local.is_some() {
             Ok(false)
         } else {
-            store.ensure(node, &agent)
+            store.ensure(node, &agent).with_context(|| {
+                uf_infra::into_string(uf_infra::cstr!(
+                    "could not acquire {}@{}",
+                    node.name,
+                    node.version
+                ))
+            })
         }
     })?;
     let fetch_ms = fetch.elapsed().as_millis();
