@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.12.0
+
+- fix(cli): select project runtimes and missing arguments, collect caches (#1646) (9c3f3804)
+
 ## uf@0.11.1
 
 - fix(editors): color Flow signatures and isolate inferred hover types (#1644) (50b82e84)
