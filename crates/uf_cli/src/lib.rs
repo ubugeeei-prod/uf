@@ -371,7 +371,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
     let root = uf_config::discover_root(&cwd);
     if !matches!(
         &cli.command,
-        Commands::SelfUninstall { .. } | Commands::SelfUpdate { .. } | Commands::Use { .. }
+        Commands::SelfUninstall { .. }
+            | Commands::SelfUpdate { .. }
+            | Commands::Use { .. }
+            | Commands::Gc { dry_run: true, .. }
     ) && (root.join("package.json").exists() || uf_config::discover_config(&root).is_some())
     {
         // Register projects even when they only use uf's own caches or toolchain.
