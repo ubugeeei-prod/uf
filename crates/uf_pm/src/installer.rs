@@ -125,7 +125,7 @@ pub fn execute_with_path(
                     let range = if range == "latest" {
                         let store = store::Store::discover()?;
                         let routing = RegistryRouting::from_config(&resolved.config);
-                        let metadata = packument(&store, &agent(), &routing, &name)?;
+                        let metadata = packument(&agent(), &routing, &name)?;
                         let node = registry_node(
                             &metadata,
                             &name,
@@ -296,7 +296,7 @@ fn install_with_store(
     let graph = if reusable && !options.update {
         locked.expect("checked lock graph")
     } else {
-        resolve(root, importers, fingerprint, config, &store, &agent)?
+        resolve(root, importers, fingerprint, config, &agent)?
     };
     validate_graph(&graph, root, config)?;
     let selected = selected(&graph, options.prod)?;
@@ -584,7 +584,6 @@ fn resolve(
     mut importers: Vec<Importer>,
     fingerprint: CompactString,
     config: &UniflowedConfig,
-    store: &store::Store,
     agent: &ureq::Agent,
 ) -> Result<Graph> {
     let routing = RegistryRouting::from_config(config);
@@ -630,20 +629,30 @@ fn resolve(
             nodes.len() < MAX_PACKAGES,
             "native dependency graph exceeds package limit"
         );
-        let names: BTreeSet<_> = frontier
+        let wanted: BTreeSet<_> = frontier
             .iter()
             .filter(|request| {
                 !workspaces.contains_key(&request.name)
                     && !request.range.starts_with("file:")
                     && !request.range.starts_with("link:")
             })
-            .map(|request| alias(&request.name, &request.range).0)
-            .filter(|name| !metadata.contains_key(name))
+            .map(|request| {
+                let (name, range) = alias(&request.name, &request.range);
+                let version = exact_version(&range).unwrap_or_default();
+                (name, version)
+            })
+            .filter(|key| !metadata.contains_key(key))
             .collect();
-        let names: Vec<_> = names.into_iter().collect();
-        let fetched = parallel(&names, |name| packument(store, agent, &routing, name))?;
-        for (name, document) in names.into_iter().zip(fetched) {
-            metadata.insert(name, document);
+        let wanted: Vec<_> = wanted.into_iter().collect();
+        let fetched = parallel(&wanted, |(name, version)| {
+            if version.is_empty() {
+                packument(agent, &routing, name)
+            } else {
+                version_document(agent, &routing, name, version)
+            }
+        })?;
+        for (key, document) in wanted.into_iter().zip(fetched) {
+            metadata.insert(key, document);
         }
         let requests = std::mem::take(&mut frontier);
         for request in requests {
@@ -677,7 +686,8 @@ fn resolve(
                 // Directory dependencies can live beside a project; they are explicit manifest inputs.
                 local_node(root, local.as_str())?
             } else {
-                let document = &metadata[&name];
+                let key = (name.clone(), exact_version(&range).unwrap_or_default());
+                let document = &metadata[&key];
                 registry_node(document, &name, &range, routing.route(&name).registry)?
             };
             let id = if let Some(path) = &node.local {
@@ -880,22 +890,32 @@ fn local_node(root: &Utf8Path, path: &str) -> Result<Node> {
     Ok(node)
 }
 
-fn packument(
-    store: &store::Store,
+fn exact_version(range: &str) -> Option<CompactString> {
+    let version = node_semver::Version::parse(range).ok()?;
+    (version.to_string() == range).then(|| range.into())
+}
+
+fn packument(agent: &ureq::Agent, routing: &RegistryRouting, name: &str) -> Result<Value> {
+    let url = crate::registry::url_for(routing.route(name).registry, name)?;
+    let bytes = download(agent, &url, crate::MAX_PACKUMENT_BYTES as u64)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+fn version_document(
     agent: &ureq::Agent,
     routing: &RegistryRouting,
     name: &str,
+    version: &str,
 ) -> Result<Value> {
-    let registry = routing.route(name).registry;
-    let url = crate::registry::url_for(registry, name)?;
+    let base = crate::registry::url_for(routing.route(name).registry, name)?;
+    let url = uf_infra::cstr!("{base}/{version}");
     let bytes = download(agent, &url, crate::MAX_PACKUMENT_BYTES as u64)?;
-    let document: Value = serde_json::from_slice(&bytes)?;
-    let cache = store
-        .root
-        .join("metadata")
-        .join(hex(&Sha256::digest(url.as_bytes())));
-    store::write_json(&cache, &document)?;
-    Ok(document)
+    let manifest: Value = serde_json::from_slice(&bytes)?;
+    ensure!(
+        manifest.get("version").and_then(Value::as_str) == Some(version),
+        "registry returned a different package version"
+    );
+    Ok(serde_json::json!({ "versions": { version: manifest } }))
 }
 
 fn download(agent: &ureq::Agent, url: &str, limit: u64) -> Result<Vec<u8>> {

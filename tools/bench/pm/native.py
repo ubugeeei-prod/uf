@@ -149,7 +149,7 @@ def main():
         grouped.setdefault(key, []).append(row["milliseconds"])
     medians = {key: statistics.median(values) for key, values in grouped.items()}
     output.write_text(json.dumps({"versions": versions, "fixtures": FIXTURES, "samples": rows, "disk": sizes, "medianMilliseconds": medians,
-        "method": "Three isolated cache repetitions, rotated manager order, identical direct versions and disabled install scripts; allocated bytes count each inode once across cache and projects."}, indent=2) + "\n")
+        "method": "Three isolated cache repetitions, rotated manager order, identical direct versions and disabled install scripts and release-age policies; allocated bytes count each inode once across cache and projects."}, indent=2) + "\n")
     print(json.dumps(medians, indent=2))
 
 

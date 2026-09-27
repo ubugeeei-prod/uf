@@ -122,7 +122,11 @@ pub(super) fn query(
                         Cell::new(versions),
                         Cell::toned(
                             finding.fix_version.as_deref().unwrap_or("unknown"),
-                            Tone::Good,
+                            if finding.fix_version.is_some() {
+                                Tone::Good
+                            } else {
+                                Tone::Muted
+                            },
                         ),
                         Cell::new(&finding.title),
                     ]);
