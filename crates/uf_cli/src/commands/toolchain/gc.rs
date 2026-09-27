@@ -5,9 +5,12 @@ use camino::Utf8PathBuf;
 use std::{collections::BTreeSet, fs};
 
 pub(crate) fn candidates(projects: &[Utf8PathBuf]) -> Result<Vec<Utf8PathBuf>> {
-    let store = Store::from_process();
+    candidates_in(&Store::from_process(), projects)
+}
+
+fn candidates_in(store: &Store, projects: &[Utf8PathBuf]) -> Result<Vec<Utf8PathBuf>> {
     let mut keep = BTreeSet::from([OWN_VERSION.to_owned()]);
-    if let Some(previous) = recorded_previous(&store) {
+    if let Some(previous) = recorded_previous(store) {
         keep.insert(previous);
     }
     for project in projects {
@@ -51,4 +54,58 @@ pub(crate) fn candidates(projects: &[Utf8PathBuf]) -> Result<Vec<Utf8PathBuf>> {
     }
     candidates.sort();
     Ok(candidates)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use camino::Utf8Path;
+
+    #[test]
+    fn retains_current_previous_and_live_project_pins() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        let store = Store {
+            runtimes: root.join("runtimes"),
+            bin_dir: root.join("bin"),
+            state_dir: root.join("state"),
+        };
+        fs::create_dir_all(store.root()).unwrap();
+        fs::write(store.previous_record(), "0.1.0\n").unwrap();
+        for version in [OWN_VERSION, "0.1.0", "0.2.0", "0.3.0"] {
+            fs::create_dir_all(store.version_dir(version)).unwrap();
+        }
+        let project = root.join("project");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(
+            project.join("uf.config.js"),
+            "export default { uf: '0.2.0' };",
+        )
+        .unwrap();
+        assert_eq!(
+            candidates_in(&store, &[project.clone()]).unwrap(),
+            vec![store.version_dir("0.3.0")]
+        );
+        fs::write(project.join("uf.config.js"), "export default {").unwrap();
+        assert!(candidates_in(&store, &[project]).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn retains_every_active_binary_target_and_skips_symlinked_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        let store = Store {
+            runtimes: root.join("runtimes"),
+            bin_dir: root.join("bin"),
+            state_dir: root.join("state"),
+        };
+        fs::create_dir_all(&store.bin_dir).unwrap();
+        let pinned = store.version_dir("0.1.0").join("bin");
+        fs::create_dir_all(&pinned).unwrap();
+        fs::write(pinned.join("ufr"), "binary").unwrap();
+        std::os::unix::fs::symlink(pinned.join("ufr"), store.bin_dir.join("ufr")).unwrap();
+        std::os::unix::fs::symlink(root, store.version_dir("0.9.0")).unwrap();
+        assert!(candidates_in(&store, &[]).unwrap().is_empty());
+    }
 }
