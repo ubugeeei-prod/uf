@@ -8,6 +8,7 @@ import sys
 import tempfile
 
 uf = str(Path(sys.argv[1]).resolve())
+repository = Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix="uf-additional-tools-") as directory:
     root = Path(directory)
     project = root / "project"
@@ -30,4 +31,16 @@ with tempfile.TemporaryDirectory(prefix="uf-additional-tools-") as directory:
     assert (project / "aube-lock.yaml").is_file()
     output = run("env", "exec", "nub", "-e", "console.log('runtime-ok')")
     assert "runtime-ok" in output, output
+    modules = project / "node_modules" / "@uniflowed"
+    modules.mkdir(parents=True, exist_ok=True)
+    for package in ("test", "host"):
+        (modules / package).symlink_to(repository / "npm" / package, target_is_directory=True)
+    (project / "runtime.test.js").write_text('''"use flow";
+import { it, expect } from "@uniflowed/test";
+it("executes Flow source on the selected runtime", () => {
+  const value: number = 42;
+  expect(value).toBe(42);
+});
+''')
+    run("test", "--threads", "1", "--json")
     print("official native carriers: aube and Nub project selection passed")

@@ -194,13 +194,13 @@ pub enum Lockfile {
 impl Lockfile {
     /// Every recognised lockfile, in detection precedence order.
     pub const ALL: [Self; 8] = [
-        Self::AubeLock,
         Self::BunLock,
         Self::BunLockb,
         Self::PnpmLock,
         Self::YarnLock,
         Self::PackageLock,
         Self::NpmShrinkwrap,
+        Self::AubeLock,
         Self::UfLock,
     ];
 
