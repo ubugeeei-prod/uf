@@ -1227,6 +1227,7 @@ impl Commands {
         matches!(
             self,
             Self::Migrate { json: true, .. }
+                | Self::Audit { json: true, .. }
                 | Self::Codemod { json: true, .. }
                 | Self::Dev { json: true, .. }
                 | Self::Check { json: true, .. }

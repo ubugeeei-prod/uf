@@ -49,6 +49,9 @@ fn local_native_graph_installs_freezes_removes_and_audits_without_a_host() {
     let report: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
     assert_eq!(report["checked"], 0);
     assert!(report["findings"].as_array().unwrap().is_empty());
+    let report = run(&["audit", "lib", "--json"]);
+    let report: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
+    assert_eq!(report["checked"], 0);
     run(&["remove", "lib"]);
     assert!(!root.join("node_modules/lib").exists());
     run(&["add", "./lib"]);
@@ -56,4 +59,25 @@ fn local_native_graph_installs_freezes_removes_and_audits_without_a_host() {
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(root.join("package.json")).unwrap()).unwrap();
     assert_eq!(manifest["dependencies"]["lib"], "file:lib");
+}
+
+#[test]
+fn external_audit_refuses_native_flags_before_spawning_a_manager() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("package.json"),
+        r#"{"name":"app","packageManager":"npm@11.0.0"}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("uf.config.js"), "export default {};\n").unwrap();
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["audit", "--json"])
+        .env("PATH", dir.path().join("no-external-programs"))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("native audit options"));
+    assert!(output.stdout.is_empty());
 }

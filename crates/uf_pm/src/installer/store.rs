@@ -296,10 +296,33 @@ pub(super) fn materialize(
         .as_ref()
         == Some(&stamp)
         && selected.iter().all(|id| {
-            graph.nodes[id].local.is_some()
-                || node_path(&modules, id, &graph.nodes[id])
-                    .join("package.json")
-                    .is_file()
+            let node = &graph.nodes[id];
+            if let Some(local) = &node.local {
+                let output = root.join(local.as_str()).join("node_modules");
+                [
+                    &node.dependencies,
+                    &node.optional_dependencies,
+                    &node.peer_dependencies,
+                ]
+                .into_iter()
+                .flat_map(|edges| edges.iter())
+                .all(|(name, target)| {
+                    !selected.contains(target)
+                        || output
+                            .join(name.as_str())
+                            .canonicalize_utf8()
+                            .ok()
+                            .is_some_and(|path| {
+                                target_path(root, &modules, target, graph)
+                                    .canonicalize_utf8()
+                                    .ok()
+                                    .as_ref()
+                                    == Some(&path)
+                            })
+                })
+            } else {
+                node_path(&modules, id, node).join("package.json").is_file()
+            }
         })
         && graph.importers.iter().all(|importer| {
             let output = root.join(importer.path.as_str()).join("node_modules");
@@ -389,6 +412,44 @@ pub(super) fn materialize(
             .tempdir_in(&directory)?;
         let stage = Utf8Path::from_path(staging.path()).context("non UTF-8 workspace staging")?;
         link_importer(root, &modules, stage, importer, graph, selected, prod)?;
+        let backup = tempfile::Builder::new()
+            .prefix(".uf-previous-modules-")
+            .tempdir_in(&directory)?;
+        prepared.push((directory.join("node_modules"), staging, backup));
+    }
+    let mut local_directories = BTreeSet::new();
+    for id in selected {
+        let node = &graph.nodes[id];
+        let Some(local) = &node.local else {
+            continue;
+        };
+        let directory = root.join(local.as_str()).canonicalize_utf8()?;
+        if graph.importers.iter().any(|importer| {
+            root.join(importer.path.as_str())
+                .canonicalize_utf8()
+                .ok()
+                .as_ref()
+                == Some(&directory)
+        }) || !local_directories.insert(directory.clone())
+        {
+            continue;
+        }
+        let staging = tempfile::Builder::new()
+            .prefix(".uf-modules-")
+            .tempdir_in(&directory)?;
+        let stage = Utf8Path::from_path(staging.path()).context("non UTF-8 local staging")?;
+        for edges in [
+            &node.dependencies,
+            &node.optional_dependencies,
+            &node.peer_dependencies,
+        ] {
+            for (name, target) in edges {
+                if selected.contains(target) {
+                    link_dependency(root, &modules, stage, name, target, graph)?;
+                    link_bins(root, &modules, stage, target, graph)?;
+                }
+            }
+        }
         let backup = tempfile::Builder::new()
             .prefix(".uf-previous-modules-")
             .tempdir_in(&directory)?;

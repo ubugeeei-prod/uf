@@ -187,3 +187,28 @@ test("core versions remain readable before and after the workspace rename", () =
     assert.equal(versionAt("HEAD", io), "0.10.0");
   }
 });
+
+test("release observers wait through the automatic controller's retry", async () => {
+  const { readFileSync } = require("node:fs");
+  const { resolve } = require("node:path");
+  const { runInNewContext } = require("node:vm");
+  const source = readFileSync(resolve(__dirname, "open-release.cjs"), "utf8");
+  for (const succeeds of [true, false]) {
+    let calls = 0;
+    const module = { exports: {} };
+    const requireMock = (name) => name === "./policy.cjs" ? {
+      api: (path) => {
+        if (path.endsWith("/20")) return { status: calls < 2 ? "in_progress" : "completed" };
+        calls++;
+        return { status: "completed", conclusion: calls >= 2 && succeeds ? "success" : "failure", html_url: "run/10" };
+      },
+    } : require(name);
+    runInNewContext(source + "\nmodule.exports.waitRun = waitRun;", {
+      require: requireMock, module, setTimeout: (callback) => callback(),
+    });
+    const result = module.exports.waitRun(repository, 10, 20);
+    if (succeeds) assert.equal((await result).conclusion, "success");
+    else await assert.rejects(result, /ended with failure/);
+    assert.ok(calls >= 2);
+  }
+});

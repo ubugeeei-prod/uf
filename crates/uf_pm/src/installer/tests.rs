@@ -1,6 +1,50 @@
 use super::*;
 
 #[test]
+fn row_updates_pin_the_same_package_in_unselected_dependency_fields() {
+    let mut importer = Importer {
+        path: ".".into(),
+        name: "app".into(),
+        version: "1.0.0".into(),
+        dependencies: [("lib".into(), "^1".into())].into(),
+        dev_dependencies: [("lib".into(), "^1".into())].into(),
+        optional_dependencies: Edges::new(),
+        peer_dependencies: Edges::new(),
+        scripts: BTreeMap::new(),
+    };
+    let mut previous = importer.clone();
+    previous.dependencies.insert("lib".into(), "lib-id".into());
+    previous
+        .dev_dependencies
+        .insert("lib".into(), "lib-id".into());
+    let graph = Graph {
+        fingerprint: "old".into(),
+        importers: vec![previous],
+        nodes: [(
+            "lib-id".into(),
+            Node {
+                name: "lib".into(),
+                version: "1.0.0".into(),
+                ..Default::default()
+            },
+        )]
+        .into(),
+    };
+    pin_unselected(
+        std::slice::from_mut(&mut importer),
+        &graph,
+        &[],
+        &[UpdateTarget {
+            importer: ".".into(),
+            field: "dependencies".into(),
+            name: "lib".into(),
+        }],
+    );
+    assert_eq!(importer.dependencies["lib"], "^1");
+    assert_eq!(importer.dev_dependencies["lib"], "1.0.0");
+}
+
+#[test]
 fn frozen_local_install_is_offline_and_rejects_changed_local_inputs() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8Path::from_path(dir.path()).unwrap();

@@ -4,7 +4,7 @@ mod gc;
 pub use gc::{GcPlan, gc_collect, gc_plan};
 mod queries;
 mod store;
-pub use queries::{AuditFinding, AuditReport, audit};
+pub use queries::{AuditFinding, AuditReport, audit, audit_packages};
 #[cfg(test)]
 mod tests;
 
@@ -38,8 +38,21 @@ pub struct Options {
     pub update: bool,
     /// Direct dependencies to refresh; empty refreshes every manifest range.
     pub update_packages: Vec<CompactString>,
+    /// Exact manifest declarations to refresh when the UI selects individual rows.
+    pub update_targets: Vec<UpdateTarget>,
     /// Project runtime directories prepended for explicitly enabled lifecycle hooks.
     pub path: Vec<Utf8PathBuf>,
+}
+
+/// A dependency declaration selected for an update.
+#[derive(Clone, Debug)]
+pub struct UpdateTarget {
+    /// Importer directory relative to the workspace root.
+    pub importer: CompactString,
+    /// Dependency field in package.json.
+    pub field: CompactString,
+    /// Dependency name, including its scope.
+    pub name: CompactString,
 }
 
 /// Measured native work, with no external package manager involved.
@@ -96,6 +109,7 @@ pub fn execute_with_path(
         } else {
             Vec::new()
         },
+        update_targets: Vec::new(),
     };
     match operation {
         Operation::Install
@@ -303,7 +317,8 @@ fn install_with_store(
         "uf.lock is absent or stale; run `uf install` to resolve the native graph"
     );
     let agent = agent();
-    if options.update && !options.update_packages.is_empty() {
+    if options.update && (!options.update_packages.is_empty() || !options.update_targets.is_empty())
+    {
         ensure!(
             options
                 .update_packages
@@ -312,7 +327,12 @@ fn install_with_store(
             "updates take package names, without version specifiers"
         );
         if let Some(graph) = &locked {
-            pin_unselected(&mut importers, graph, &options.update_packages);
+            pin_unselected(
+                &mut importers,
+                graph,
+                &options.update_packages,
+                &options.update_targets,
+            );
         }
     }
     let graph = if reusable && !options.update {
@@ -393,7 +413,12 @@ fn install_with_store(
     })
 }
 
-fn pin_unselected(importers: &mut [Importer], locked: &Graph, requested: &[CompactString]) {
+fn pin_unselected(
+    importers: &mut [Importer],
+    locked: &Graph,
+    requested: &[CompactString],
+    targets: &[UpdateTarget],
+) {
     for importer in importers {
         let Some(previous) = locked
             .importers
@@ -402,17 +427,38 @@ fn pin_unselected(importers: &mut [Importer], locked: &Graph, requested: &[Compa
         else {
             continue;
         };
-        for (current, previous) in [
-            (&mut importer.dependencies, &previous.dependencies),
-            (&mut importer.dev_dependencies, &previous.dev_dependencies),
+        for (field, current, previous) in [
             (
+                "dependencies",
+                &mut importer.dependencies,
+                &previous.dependencies,
+            ),
+            (
+                "devDependencies",
+                &mut importer.dev_dependencies,
+                &previous.dev_dependencies,
+            ),
+            (
+                "optionalDependencies",
                 &mut importer.optional_dependencies,
                 &previous.optional_dependencies,
             ),
-            (&mut importer.peer_dependencies, &previous.peer_dependencies),
+            (
+                "peerDependencies",
+                &mut importer.peer_dependencies,
+                &previous.peer_dependencies,
+            ),
         ] {
             for (name, range) in current {
-                if requested.contains(name) {
+                if if targets.is_empty() {
+                    requested.contains(name)
+                } else {
+                    targets.iter().any(|target| {
+                        target.importer == importer.path
+                            && target.field == field
+                            && target.name == *name
+                    })
+                } {
                     continue;
                 }
                 let Some(node) = previous.get(name).and_then(|id| locked.nodes.get(id)) else {
@@ -908,11 +954,34 @@ fn node_from_manifest(manifest: &Value) -> Result<Node> {
 }
 
 fn local_node(root: &Utf8Path, path: &str) -> Result<Node> {
-    let dir = root.join(path);
+    let dir = root.join(path).canonicalize_utf8()?;
+    let canonical_root = root.canonicalize_utf8()?;
+    let root_parts: Vec<_> = canonical_root.components().collect();
+    let local_parts: Vec<_> = dir.components().collect();
+    let common = root_parts
+        .iter()
+        .zip(&local_parts)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut relative = Utf8PathBuf::new();
+    if common == 0 {
+        // Different Windows volumes cannot be expressed as a relative path.
+        relative = dir.clone();
+    } else {
+        for _ in common..root_parts.len() {
+            relative.push("..");
+        }
+        for part in &local_parts[common..] {
+            relative.push(part.as_str());
+        }
+        if relative.as_str().is_empty() {
+            relative.push(".");
+        }
+    }
     let bytes = fs::read(dir.join("package.json"))?;
     let manifest: Value = serde_json::from_slice(&bytes)?;
     let mut node = node_from_manifest(&manifest)?;
-    node.local = Some(path.into());
+    node.local = Some(relative.as_str().into());
     node.integrity = hex(&Sha256::digest(bytes)).into();
     Ok(node)
 }

@@ -70,13 +70,37 @@ fn read_graph(root: &Utf8Path, config: &UniflowedConfig) -> Result<Graph> {
 
 /// Audit locked native packages against each configured registry's bulk advisory API.
 pub fn audit(root: &Utf8Path, config: &UniflowedConfig, prod: bool) -> Result<AuditReport> {
+    audit_packages(root, config, prod, &[])
+}
+
+/// Audit a selected set of installed package names; an empty set checks every package.
+pub fn audit_packages(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    prod: bool,
+    names: &[String],
+) -> Result<AuditReport> {
     let graph = read_graph(root, config)?;
     let selected = super::selected(&graph, prod)?;
+    for name in names {
+        ensure!(
+            crate::links::is_package_name(name),
+            "invalid audit package name"
+        );
+        ensure!(
+            selected
+                .iter()
+                .any(|id| graph.nodes[id].name == name.as_str()),
+            "audit package is not installed in the selected dependency tree"
+        );
+    }
     let mut groups: BTreeMap<CompactString, BTreeMap<CompactString, BTreeSet<CompactString>>> =
         BTreeMap::new();
     for id in selected {
         let node = &graph.nodes[&id];
-        if node.local.is_none() {
+        if node.local.is_none()
+            && (names.is_empty() || names.iter().any(|name| name.as_str() == node.name))
+        {
             groups
                 .entry(node.registry.clone())
                 .or_default()

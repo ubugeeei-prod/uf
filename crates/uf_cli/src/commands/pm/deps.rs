@@ -1301,6 +1301,29 @@ pub(crate) fn info(cwd: &Utf8Path, ui: &mut Ui, package: &str, field: Option<&st
 /// also be uf choosing a package manager the project did not, which is the one
 /// thing a manager-agnostic tool must not do. See
 /// [`uf_pm::ManagerRunError::Unsupported`].
+pub(crate) fn audit(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    packages: &[String],
+    json: bool,
+    prod: bool,
+) -> Result<()> {
+    uf_pm::check_operands(packages)?;
+    let resolved = load_config(cwd)?;
+    let detection = detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    );
+    if detection.is_uf_native() {
+        return super::native::audit(&resolved, ui, packages, json, prod);
+    }
+    anyhow::ensure!(
+        !json && !prod,
+        "--json and --prod are native audit options; use `uf exec` for the selected external manager's audit flags"
+    );
+    query(cwd, ui, "uf audit", Operation::Audit, packages)
+}
+
 pub(crate) fn query(
     cwd: &Utf8Path,
     ui: &mut Ui,

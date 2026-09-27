@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import statistics
+import stat
 import subprocess
 import tempfile
 import time
@@ -39,22 +40,26 @@ def disk_usage(directories):
     for directory in directories:
         if not directory.exists():
             continue
-        for root, _, names in os.walk(directory, followlinks=False):
-            for name in names:
-                path = Path(root) / name
-                stat = path.lstat()
-                if path.is_symlink() or not path.is_file() or (stat.st_dev, stat.st_ino) in seen:
+        for root, directories, names in os.walk(directory, followlinks=False):
+            for path in [Path(root), *(Path(root) / name for name in directories + names)]:
+                info = path.lstat()
+                if (info.st_dev, info.st_ino) in seen:
                     continue
-                seen.add((stat.st_dev, stat.st_ino))
-                files += 1
-                logical += stat.st_size
-                allocated += stat.st_blocks * 512
+                seen.add((info.st_dev, info.st_ino))
+                if stat.S_ISREG(info.st_mode):
+                    files += 1
+                    logical += info.st_size
+                allocated += info.st_blocks * 512
     return {"allocatedBytes": allocated, "logicalBytes": logical, "uniqueFiles": files}
 
 
 def smoke(uf, root, environment):
     directory = root / "security"
-    project(directory, {"lodash": "4.17.20"}, "uf")
+    project(directory, {"plugin": "file:vendor/plugin"}, "uf")
+    plugin = directory / "vendor" / "plugin"
+    plugin.mkdir(parents=True)
+    (plugin / "package.json").write_text(json.dumps({"name": "plugin", "version": "1.0.0", "main": "index.cjs", "dependencies": {"lodash": "4.17.20"}}))
+    (plugin / "index.cjs").write_text("module.exports = require('lodash');\n")
     invoke([uf, "install"], directory, environment)
     before = (directory / "uf.lock").read_bytes()
     invoke([uf, "install", "--frozen-lockfile"], directory, environment)
@@ -64,7 +69,15 @@ def smoke(uf, root, environment):
     assert findings["checked"] == 1
     assert any(row["package"] == "lodash" and "4.17.20" in row["versions"] for row in findings["findings"])
     assert any(row["fixVersion"] for row in findings["findings"])
-    invoke(["node", "-e", "const l=require('lodash'); if(l.chunk([1,2],1).length!==2)process.exit(1)"], directory, environment)
+    _, scoped = invoke([uf, "audit", "lodash", "--json"], directory, environment, expected=1)
+    assert json.loads(scoped.stdout)["checked"] == 1
+    javascript = "const l=require('plugin'); if(l.chunk([1,2],1).length!==2)process.exit(1)"
+    invoke(["node", "-e", javascript], directory, environment)
+    assert "local:vendor/plugin" in before.decode()
+    relocated = root / "security-relocated"
+    shutil.copytree(directory, relocated, ignore=shutil.ignore_patterns("node_modules"))
+    invoke([uf, "install", "--frozen-lockfile"], relocated, environment)
+    invoke(["node", "-e", javascript], relocated, environment)
     (directory / "package.json").write_text(json.dumps({"name": "pm-fixture", "private": True, "devDependencies": {"lodash": "4.17.20"}}))
     invoke([uf, "install"], directory, environment)
     _, prod = invoke([uf, "audit", "--prod", "--json"], directory, environment)

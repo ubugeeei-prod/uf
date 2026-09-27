@@ -204,6 +204,7 @@ pub(crate) fn update(
                 }
                 rows.push(Row {
                     manifest: relative(&root, &declaration.manifest),
+                    field: declaration.field,
                     name: declaration.name.clone(),
                     declared: declaration.range.clone(),
                     rewritten,
@@ -226,11 +227,12 @@ pub(crate) fn update(
             .iter()
             .map(|row| {
                 uf_infra::into_string(uf_infra::cstr!(
-                    "{} → {} · {} · {}",
+                    "{} → {} · {} · {} · {}",
                     row.declared,
                     row.newest,
                     row.step,
-                    row.manifest
+                    row.manifest,
+                    row.field
                 ))
             })
             .collect();
@@ -249,14 +251,22 @@ pub(crate) fn update(
         let wanted: BTreeSet<_> = selected
             .iter()
             .filter_map(|choice| choices.iter().position(|item| std::ptr::eq(item, *choice)))
-            .map(|index| (rows[index].manifest.clone(), rows[index].name.clone()))
+            .map(|index| {
+                (
+                    rows[index].manifest.clone(),
+                    rows[index].field,
+                    rows[index].name.clone(),
+                )
+            })
             .collect();
         changes.retain(|path, values| {
             let manifest = relative(&root, path);
-            values.retain(|(_, name), _| wanted.contains(&(manifest.clone(), name.clone())));
+            values.retain(|(field, name), _| {
+                wanted.contains(&(manifest.clone(), *field, name.clone()))
+            });
             !values.is_empty()
         });
-        rows.retain(|row| wanted.contains(&(row.manifest.clone(), row.name.clone())));
+        rows.retain(|row| wanted.contains(&(row.manifest.clone(), row.field, row.name.clone())));
     }
 
     let report = Report {
@@ -320,6 +330,40 @@ pub(crate) fn update(
         super::Scope::Project => super::Scope::Project,
         _ => super::Scope::WorkspaceRoot,
     };
+    let detection = uf_pm::detect::detect_package_manager_with(
+        &resolved.root,
+        &uf_pm::detect::DetectionOptions::from_config(&resolved.config),
+    );
+    if detection.is_uf_native() {
+        let update_targets = changes
+            .iter()
+            .flat_map(|(manifest, entries)| {
+                let directory = manifest.parent().expect("manifest directory");
+                let importer = directory.strip_prefix(&root).unwrap_or(directory);
+                let importer = if importer.as_str().is_empty() {
+                    "."
+                } else {
+                    importer.as_str()
+                };
+                entries
+                    .keys()
+                    .map(move |(field, name)| uf_pm::installer::UpdateTarget {
+                        importer: importer.into(),
+                        field: (*field).into(),
+                        name: name.clone(),
+                    })
+            })
+            .collect();
+        return super::native::install_options(
+            &resolved,
+            ui,
+            uf_pm::installer::Options {
+                update: true,
+                update_targets,
+                ..Default::default()
+            },
+        );
+    }
     super::deps::delegate(
         cwd,
         ui,
@@ -337,6 +381,7 @@ pub(crate) fn update(
 /// One dependency that could move.
 struct Row {
     manifest: String,
+    field: &'static str,
     name: CompactString,
     declared: CompactString,
     rewritten: CompactString,
