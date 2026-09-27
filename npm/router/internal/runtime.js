@@ -114,7 +114,9 @@ import {
   interceptingRoutes,
   loadOnce,
   pageSearchParams,
+  replaceHotModule,
   resolveFailure,
+  retainHotModules,
   resolveInterception,
   resolveMatch,
 } from "./resolve.js";
@@ -410,6 +412,96 @@ hook useMountedRouter(router: Router, showNotFound: ShowNotFound): void {
       }
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Hot updates, in development
+// ---------------------------------------------------------------------------
+//
+// A dev server edit used to reach this router one way: a reload, which renders
+// the edit and discards every `useState`, scroll position and open dialog on
+// the page. Three kinds of edit now arrive as a render instead, and all three
+// end in `refreshForHotUpdate` — the mounted router's own `refresh()`, which
+// resolves the URL on screen again under the components React already has, so
+// state survives wherever the tree still has the same shape:
+//
+//   * a server component, under React Server Components: `@uniflowed/vite`
+//     sends `uf:refresh`, and the payload is fetched again;
+//   * a route file added or removed: a new `virtual:uf/routes`, installed by
+//     `replaceRoutesForHotUpdate`, or `uf:refresh` for the server's table;
+//   * a route module's loader, metadata or other data export: its Fast Refresh
+//     wrapper calls the hook `acceptHotRouteModules` installs, the next exports
+//     answer that module's loader from then on, and the loader runs again.
+//
+// `@uniflowed/vite` generates the calls into `virtual:uf/client` for a dev
+// server and never for a build, so none of this is reached in production.
+
+/**
+ * Long enough to land after Fast Refresh's own 16 ms batch, so React has the
+ * new component families before the router renders with them, and to collapse
+ * one save that touched several modules into one refresh.
+ */
+const HOT_REFRESH_DELAY = 32;
+
+let hotRefreshTimer: TimeoutID | null = null;
+
+/**
+ * Render the URL on screen again because the dev server replaced something
+ * under it. Reloads the document when no router is mounted — a page that ships
+ * no client page, say — or when the refresh itself fails, because a reload is
+ * always right and the render only usually is.
+ */
+export function refreshForHotUpdate(): void {
+  if (!isBrowser()) {
+    return;
+  }
+  if (hotRefreshTimer != null) {
+    clearTimeout(hotRefreshTimer);
+  }
+  hotRefreshTimer = setTimeout(() => {
+    hotRefreshTimer = null;
+    const router = mountedRouter;
+    if (router == null) {
+      window.location.reload();
+      return;
+    }
+    router.refresh().catch((error) => {
+      // Said before the document goes, so the console that is about to be
+      // cleared says why a hot update became a reload.
+      console.warn("[uf] could not render the hot update in place, reloading:", error);
+      window.location.reload();
+    });
+  }, HOT_REFRESH_DELAY);
+}
+
+/**
+ * Install a route table the dev server rebuilt, and render the URL on screen
+ * against it. `table` is the new `virtual:uf/routes` itself; the modules
+ * replaced under the old table stay replaced unless its `hotFiles` no longer
+ * names them. See `retainHotModules` for why.
+ */
+export function replaceRoutesForHotUpdate(
+  table: $ReadOnly<{ ...RouteTable, hotFiles?: $ReadOnlySet<string>, ... }>,
+): void {
+  installRoutes({ routes: table.routes, notFound: table.notFound, errors: table.errors });
+  retainHotModules(table.hotFiles);
+  refreshForHotUpdate();
+}
+
+/**
+ * Let a route module's Fast Refresh wrapper hand this router its next exports.
+ * See `addRefreshWrapper` in `@uniflowed/vite`, which calls it as
+ * `window.__UF_HOT_ROUTE__(file, exports)` with the module's path from the
+ * project root.
+ */
+export function acceptHotRouteModules(): void {
+  if (!isBrowser()) {
+    return;
+  }
+  window.__UF_HOT_ROUTE__ = (file: string, exports: mixed) => {
+    replaceHotModule(file, exports);
+    refreshForHotUpdate();
+  };
 }
 
 /**

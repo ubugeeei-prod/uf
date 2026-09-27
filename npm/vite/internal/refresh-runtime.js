@@ -599,7 +599,18 @@ const enqueueUpdate = debounce(async () => {
   performReactRefresh();
 }, 16);
 
-export function validateRefreshBoundaryAndEnqueueUpdate(id, prevExports, nextExports) {
+// `dataExports` is uf's: a route module (`$page.js`, `$layout.js`, …) exports
+// its `loader`, `metadata` and friends beside its component, and each of those
+// is a new identity after every edit. Plain Fast Refresh calls that an
+// incompatible export and reloads the page. The router re-reads them instead —
+// the wrapper hands it the next exports — so here they only have to exist on
+// both sides.
+export function validateRefreshBoundaryAndEnqueueUpdate(
+  id,
+  prevExports,
+  nextExports,
+  dataExports = false,
+) {
   const ignoredExports = window.__getReactRefreshIgnoredExports?.({ id }) ?? [];
   if (predicateOnExport(ignoredExports, prevExports, (key) => key in nextExports) !== true) {
     return "Could not Fast Refresh (export removed)";
@@ -616,13 +627,14 @@ export function validateRefreshBoundaryAndEnqueueUpdate(id, prevExports, nextExp
       hasExports = true;
       if (isLikelyComponentType(value)) return true;
       if (isCompoundComponent(value)) return true;
+      if (dataExports) return true;
       return prevExports[key] === nextExports[key];
     },
   );
   if (hasExports && allExportsAreComponentsOrUnchanged === true) {
     enqueueUpdate();
   } else {
-    return `Could not Fast Refresh ("${allExportsAreComponentsOrUnchanged}" export is incompatible). Learn more at __README_URL__#consistent-components-exports`;
+    return `Could not Fast Refresh ("${allExportsAreComponentsOrUnchanged}" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports`;
   }
 }
 

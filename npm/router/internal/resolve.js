@@ -649,7 +649,53 @@ type InterceptedUrl = {|
 
 const moduleCache: Map<() => Promise<mixed>, Promise<mixed>> = new Map();
 
+/**
+ * Route modules a dev server replaced, by the key their loader carries.
+ *
+ * A loader is `() => import("/app/$page.js")`, and asking it again after a hot
+ * update returns the module the browser evaluated first — the browser keys
+ * modules by URL, and the update arrived under another one. So the Fast Refresh
+ * wrapper hands the router the next exports, and a loader the development
+ * route table tagged with `ufHotFile` (see `routesModuleSource` in
+ * `@uniflowed/vite`) answers with those. Empty outside development: nothing
+ * else writes to it.
+ */
+const hotModules: Map<string, mixed> = new Map();
+
+/** Answer `file`'s loader with `exports` from now on. Development only. */
+export function replaceHotModule(file: string, exports: mixed): void {
+  hotModules.set(file, exports);
+}
+
+/**
+ * Keep the replaced modules a new route table still loads, and forget the
+ * rest. `files` is the table's `hotFiles`; `null`, from a table that carries
+ * none, forgets everything.
+ *
+ * Kept rather than forgotten, because the new table's `import()` names the
+ * module under a URL of its own, and a second evaluation of `$page.js` is a
+ * second `Page` React has never seen: it would remount the page and throw away
+ * the state the update was meant to keep. The replaced exports *are* the
+ * module's newest version — every edit to a route module goes through
+ * `replaceHotModule` — so answering with them is answering with the file.
+ */
+export function retainHotModules(files: ?$ReadOnlySet<string>): void {
+  for (const file of [...hotModules.keys()]) {
+    if (files == null || !files.has(file)) {
+      hotModules.delete(file);
+    }
+  }
+}
+
 export function loadOnce<T>(load: () => Promise<T>): Promise<T> {
+  if (hotModules.size > 0) {
+    // $FlowFixMe[prop-missing] a development table's loaders carry their module's key.
+    const file: mixed = load.ufHotFile;
+    if (typeof file === "string" && hotModules.has(file)) {
+      // $FlowFixMe[incompatible-type] the module this loader imports, replaced.
+      return Promise.resolve(hotModules.get(file));
+    }
+  }
   let pending = moduleCache.get(load);
   if (pending == null) {
     pending = load();

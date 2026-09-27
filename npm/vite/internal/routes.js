@@ -1312,6 +1312,16 @@ export const VIRTUAL = Object.freeze({
  * relative to it. Diagnostics keep a path a person can act on — a shorter one
  * — and a deploy stops describing the machine it was built on.
  *
+ * # `hot`, and which module a loader loads
+ *
+ * A dev server's browser table passes `hot: true`, and every loader then
+ * carries `ufHotFile`: the module's path relative to the root, the same key the
+ * Fast Refresh wrapper hands the router when that module is replaced. It is
+ * how a hot update to `$page.js` reaches the route that loads it — the loader
+ * itself is a closure over a specifier, and asking it again returns the module
+ * the browser already evaluated. See "Hot updates" in
+ * `@uniflowed/router/internal/runtime.js`.
+ *
  * @param {{
  *   routes: Route[],
  *   handlers?: Handler[],
@@ -1322,11 +1332,13 @@ export const VIRTUAL = Object.freeze({
  * @param {{
  *   shipsPage?: (route: Route) => boolean,
  *   relativeTo?: string,
+ *   hot?: boolean,
  * }} [options]
  */
 export function routesModuleSource(table, options = {}) {
   const shipsPage = options.shipsPage ?? (() => true);
   const relativeTo = options.relativeTo ?? null;
+  const hot = options.hot === true && relativeTo != null;
   /**
    * A `file` as this table should state it.
    *
@@ -1342,6 +1354,19 @@ export function routesModuleSource(table, options = {}) {
     }
     return path.relative(relativeTo, file).split(path.sep).join("/");
   };
+  /** A lazy `import()` of `file`, tagged with its hot-update key under `hot`. */
+  const lazy = (file) =>
+    hot
+      ? `hotLoader(${JSON.stringify(displayFile(file))}, () => import(${JSON.stringify(file)}))`
+      : `() => import(${JSON.stringify(file)})`;
+  // Declared once at the top of a development table; see `hot` above.
+  // `hotFiles` is every key the table's loaders carry, so the router can tell
+  // a module that is still routed from one whose file was deleted.
+  const hotHeader = hot
+    ? [
+        "export const hotFiles = new Set();\nconst hotLoader = (ufHotFile, load) => {\n  hotFiles.add(ufHotFile);\n  load.ufHotFile = ufHotFile;\n  return load;\n};",
+      ]
+    : [];
   const layoutIds = new Map();
   const layoutImports = [];
   const layoutId = (file) => {
@@ -1349,7 +1374,7 @@ export function routesModuleSource(table, options = {}) {
     if (id === undefined) {
       id = `layout${layoutIds.size}`;
       layoutIds.set(file, id);
-      layoutImports.push(`const ${id} = () => import(${JSON.stringify(file)});`);
+      layoutImports.push(`const ${id} = ${lazy(file)};`);
     }
     return id;
   };
@@ -1372,7 +1397,7 @@ export function routesModuleSource(table, options = {}) {
     if (id === undefined) {
       id = `loading${loadingIds.size}`;
       loadingIds.set(file, id);
-      loadingImports.push(`const ${id} = () => import(${JSON.stringify(file)});`);
+      loadingImports.push(`const ${id} = ${lazy(file)};`);
     }
     return id;
   };
@@ -1389,7 +1414,7 @@ export function routesModuleSource(table, options = {}) {
     if (id === undefined) {
       id = `template${templateIds.size}`;
       templateIds.set(file, id);
-      templateImports.push(`const ${id} = () => import(${JSON.stringify(file)});`);
+      templateImports.push(`const ${id} = ${lazy(file)};`);
     }
     return id;
   };
@@ -1406,9 +1431,7 @@ export function routesModuleSource(table, options = {}) {
   const slotDefinitions = [];
   const slotFiles = new Set();
   const slotErrorBoundary = (boundary) =>
-    boundary == null
-      ? "null"
-      : `{ above: ${boundary.above}, module: () => import(${JSON.stringify(boundary.module)}) }`;
+    boundary == null ? "null" : `{ above: ${boundary.above}, module: ${lazy(boundary.module)} }`;
   // One route a slot may render, as source. The same shape for a slot's own
   // routes and for its interceptions, because an intercepting page is composed
   // exactly the way every other page in the slot is.
@@ -1423,7 +1446,7 @@ export function routesModuleSource(table, options = {}) {
       params: ${JSON.stringify(route.params)},
       mdx: ${route.mdx},
       file: ${JSON.stringify(displayFile(route.page))},
-      page: () => import(${JSON.stringify(route.page)}),
+      page: ${lazy(route.page)},
       layouts: [${route.layouts.map(layoutId).join(", ")}],
       loading: [${(route.loading ?? [])
         .map((boundary) => `{ above: ${boundary.above}, module: ${loadingId(boundary.module)} }`)
@@ -1454,7 +1477,7 @@ export function routesModuleSource(table, options = {}) {
     const fallback =
       slot.defaultPage == null
         ? "    defaultPage: null,"
-        : `    defaultPage: () => import(${JSON.stringify(slot.defaultPage)}),
+        : `    defaultPage: ${lazy(slot.defaultPage)},
     defaultFile: ${JSON.stringify(displayFile(slot.defaultPage))},`;
     // Only when there is one, so a slot that intercepts nothing is emitted byte
     // for byte the way it was before interception existed.
@@ -1504,7 +1527,7 @@ ${routes.join(",\n")}
     params: ${JSON.stringify(route.params)},
     mdx: ${route.mdx},
     file: ${JSON.stringify(displayFile(route.page))},
-    page: () => import(${JSON.stringify(route.page)}),
+    page: ${lazy(route.page)},
     layouts: [${layouts.join(", ")}],
     loading: [${loading.join(", ")}],
     templates: [${templates.join(", ")}],
@@ -1517,8 +1540,7 @@ ${routes.join(",\n")}
   // emits a loader, and a name for `file` rather than a path nothing wrote.
   // See the note in `scanRoutes` and ubugeeei-prod/uf#351.
   const SYNTHESISED = JSON.stringify("@uniflowed/router");
-  const boundaryModule = (file) =>
-    file == null ? "null" : `() => import(${JSON.stringify(file)})`;
+  const boundaryModule = (file) => (file == null ? "null" : `${lazy(file)}`);
   const boundaryFile = (file) => (file == null ? SYNTHESISED : JSON.stringify(displayFile(file)));
 
   // A list, because a not-found is a segment file: every directory may declare
@@ -1556,7 +1578,7 @@ ${routes.join(",\n")}
     path: ${JSON.stringify(handler.path)},
     params: ${JSON.stringify(handler.params)},
     file: ${JSON.stringify(displayFile(handler.module))},
-    load: () => import(${JSON.stringify(handler.module)}),
+    load: ${lazy(handler.module)},
   }`,
   );
 
@@ -1569,7 +1591,7 @@ ${routes.join(",\n")}
     (entry) => `  {
     path: ${JSON.stringify(entry.path)},
     file: ${JSON.stringify(displayFile(entry.module))},
-    load: () => import(${JSON.stringify(entry.module)}),
+    load: ${lazy(entry.module)},
   }`,
   );
 
@@ -1603,7 +1625,7 @@ ${routes.join(",\n")}
     }
   }
 
-  return `${[...styleOnlyImports, ...layoutImports, ...loadingImports, ...templateImports, ...slotDefinitions].join("\n")}
+  return `${[...hotHeader, ...styleOnlyImports, ...layoutImports, ...loadingImports, ...templateImports, ...slotDefinitions].join("\n")}
 export const routes = [
 ${entries.join(",\n")}
 ];
@@ -1705,6 +1727,7 @@ function slotModuleFiles(slots) {
  *   strictMode?: boolean,
  *   navigation?: "client" | "document",
  *   mount?: "hydrate" | "render",
+ *   hot?: boolean,
  * }} [options]
  */
 export function clientModuleSource(appEntry, options = {}) {
@@ -1715,11 +1738,34 @@ export function clientModuleSource(appEntry, options = {}) {
   // `app.rendering.staleTime`, in seconds, and nothing for the default `0`.
   const staleTime =
     options.staleTime > 0 ? `, staleTime: ${JSON.stringify(options.staleTime)}` : "";
-  return `import { ${mount} } from "@uniflowed/router/client";
+  // In development this entry is the application's hot-update boundary for
+  // the route table: a route file added or removed is a new
+  // `virtual:uf/routes`, accepted here and installed in place, and the dev
+  // server's `uf:refresh` renders the URL on screen again. Neither reloads the
+  // document, so no component on it loses its state. A route module's own
+  // edits reach the router through its Fast Refresh wrapper instead; see
+  // `internal/refresh.js`.
+  const hot =
+    options.hot === true
+      ? `if (import.meta.hot) {
+  acceptHotRouteModules();
+  import.meta.hot.on("uf:refresh", () => refreshForHotUpdate());
+  import.meta.hot.accept(${JSON.stringify(VIRTUAL.routes)}, (next) => {
+    if (next == null) import.meta.hot.invalidate("The route table could not be replaced");
+    else replaceRoutesForHotUpdate(next);
+  });
+}
+`
+      : "";
+  const imports =
+    options.hot === true
+      ? `${mount}, acceptHotRouteModules, refreshForHotUpdate, replaceRoutesForHotUpdate`
+      : mount;
+  return `import { ${imports} } from "@uniflowed/router/client";
 import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
 ${clientInstrumentationSource(options.instrumentation)}${mount}({ App, routes, notFound, errors${strictMode}${navigation}${staleTime}${routing} });
-`;
+${hot}`;
 }
 
 /**

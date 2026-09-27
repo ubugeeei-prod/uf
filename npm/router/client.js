@@ -122,6 +122,14 @@ import { type TrailingSlash, addressOf, applicationPathOf } from "./internal/bas
 import { hydrationOptions } from "./internal/hydrate-options.js";
 import { readFormState } from "./internal/form-action.js";
 
+// What `virtual:uf/client` calls in development to take a dev server's edits
+// as renders rather than reloads; see "Hot updates" in `./internal/runtime.js`.
+export {
+  acceptHotRouteModules,
+  refreshForHotUpdate,
+  replaceRoutesForHotUpdate,
+} from "./internal/runtime.js";
+
 /**
  * The React root `hydrate` and `render` mounted, as far as a caller needs it:
  * a way to take the application down again. See `hydrate` for who needs that.

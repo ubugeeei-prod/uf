@@ -175,6 +175,51 @@ const CLIENT_COMMONJS_DEPENDENCIES = Object.freeze([
  */
 const STYLE_PREFIX = "uf-style:";
 
+/**
+ * A reserved route file: `$page.js`, `$layout.jsx`, `$not-found.mdx`, …
+ *
+ * Built from `RESERVED` rather than written out. It used to be the literal
+ * `(page|layout|middleware|not-found)`, which is a fourth spelling of a grammar
+ * that already has three, and it was already missing `route` — so adding a
+ * route handler to a running dev server did not rebuild the table and the
+ * handler stayed invisible until a restart. A list that has to match another
+ * list has to be that list.
+ */
+const RESERVED_FILE = new RegExp(
+  `/(${Object.values(RESERVED)
+    .map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")})(\\.[a-z]+)?\\.(js|jsx|mdx)$`,
+);
+
+/**
+ * What the dev server sends the browser when the URL on screen has to be
+ * rendered again rather than reloaded: a server component changed, or the
+ * route table did. `virtual:uf/client` listens for it and refreshes the router
+ * on screen, which keeps every client component's state; see
+ * `refreshForHotUpdate` in `@uniflowed/router`. Any other module can listen
+ * too, through `import.meta.hot.on("uf:refresh", …)`.
+ */
+const HOT_REFRESH = Object.freeze({ type: "custom", event: "uf:refresh", data: {} });
+
+/** Whether two action tables name the same actions, module by module. */
+function sameActions(previous, next) {
+  if (previous.size !== next.size) return false;
+  for (const [file, rows] of previous) {
+    const other = next.get(file);
+    if (other == null || other.length !== rows.length) return false;
+    for (let at = 0; at < rows.length; at += 1) {
+      if (rows[at].id !== other[at].id || rows[at].export !== other[at].export) return false;
+    }
+  }
+  return true;
+}
+
+/** Send `message` to the browser, through the client environment where there is one. */
+function sendToClient(devServer, message) {
+  const hot = devServer.environments?.client?.hot ?? devServer.ws;
+  hot.send(message);
+}
+
 /** The URL a NUL-prefixed module is served at in development. */
 export function devUrlFor(id) {
   return `/@id/__x00__${id}`;
@@ -390,6 +435,8 @@ function flowPlugin({
       {
         shipsPage: (route) => kept.has(route),
         relativeTo: root,
+        // Loaders a hot update can reach; see `routesModuleSource`.
+        hot: server != null && !isProduction,
       },
     );
   };
@@ -615,6 +662,7 @@ function flowPlugin({
         return flightClientSource(entryPath, {
           instrumentation: instrumentationFile(appRoot, true),
           strictMode: strictMode && !isProduction,
+          hot: server != null && !isProduction,
           navigation,
           staleTime,
           routing,
@@ -624,6 +672,7 @@ function flowPlugin({
         return clientModuleSource(entryPath, {
           instrumentation: instrumentationFile(appRoot, true),
           strictMode: strictMode && !isProduction,
+          hot: server != null && !isProduction,
           navigation,
           staleTime,
           mount,
@@ -789,7 +838,10 @@ function flowPlugin({
       const moduleSideEffects = styled ? true : undefined;
       if (!refresh) return { code: output, map, moduleSideEffects };
       const relative = path.relative(root, cleanId(id)).split(path.sep).join("/");
-      return { ...addRefreshWrapper(output, map, relative), moduleSideEffects };
+      // A route module under the router root is refreshed as one: its loader
+      // and metadata go to the router rather than forcing a reload.
+      const route = cleanId(id).startsWith(appRoot) && RESERVED_FILE.test(cleanId(id));
+      return { ...addRefreshWrapper(output, map, relative, { route }), moduleSideEffects };
     },
 
     buildEnd() {
@@ -847,9 +899,13 @@ function flowPlugin({
     },
 
     // An edit to a server component changes what the rsc graph renders and no
-    // module the browser holds, so Vite has nothing to tell the browser. It is
-    // reloaded, which renders the edit; an edit to a client module — which the
-    // rsc graph only holds references to — is left to Fast Refresh.
+    // module the browser holds, so Vite has nothing to tell the browser. It
+    // used to reload the document, which renders the edit and throws away every
+    // `useState` on the page. Now the browser is told `uf:refresh`, and the
+    // router on screen fetches the payload for its URL again — the same thing
+    // `router.refresh()` does — so the edit arrives as a React update and the
+    // client components under it keep their state. An edit to a client module,
+    // which the rsc graph only holds references to, is left to Fast Refresh.
     hotUpdate({ modules }) {
       if (flightState == null || server == null) return;
       if (this.environment?.name !== RSC_ENVIRONMENT) return;
@@ -857,7 +913,7 @@ function flowPlugin({
         const file = module.file ?? cleanId(module.id ?? "");
         return file !== "" && !flightState.clientModules.has(file);
       });
-      if (serverSide) server.environments.client.hot.send({ type: "full-reload", path: "*" });
+      if (serverSide) server.environments.client.hot.send(HOT_REFRESH);
     },
 
     configureServer(devServer) {
@@ -920,18 +976,30 @@ function flowPlugin({
 
       // A reserved file appearing or disappearing changes the route table,
       // which lives in a virtual module the watcher knows nothing about.
-      //
-      // Built from `RESERVED` rather than written out. It used to be the
-      // literal `(page|layout|middleware|not-found)`, which is a fourth
-      // spelling of a grammar that already has three, and it was already
-      // missing `route` — so adding a route handler to a running dev server
-      // did not rebuild the table and the handler stayed invisible until a
-      // restart. A list that has to match another list has to be that list.
-      const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const stems = Object.values(RESERVED).map(escapeRegExp).join("|");
-      const reserved = new RegExp(`/(${stems})(\\.[a-z]+)?\\.(js|jsx|mdx)$`);
+      // The browser's copy of the route table, read before it is invalidated:
+      // an application rendered from its modules holds one, and
+      // `virtual:uf/client` accepts a new one in place. React Server
+      // Components keep theirs on the server.
+      const browserRouteTable = () =>
+        flightState == null ? devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes)) : null;
+      // Tell the browser its route table changed, without a reload either way.
+      // React Server Components render the table on the server, so the browser
+      // only has to ask for its URL again; an application rendered from its
+      // modules is sent the new table as a hot update. A browser that has not
+      // loaded the table yet has nothing to keep, and is reloaded.
+      const sendRouteTable = (clientTable) => {
+        if (flightState != null) {
+          sendToClient(devServer, HOT_REFRESH);
+        } else if (clientTable != null && typeof devServer.reloadModule === "function") {
+          devServer.reloadModule(clientTable).catch(() => {
+            sendToClient(devServer, { type: "full-reload", path: "*" });
+          });
+        } else {
+          sendToClient(devServer, { type: "full-reload", path: "*" });
+        }
+      };
       const onRouteFile = (file) => {
-        if (!reserved.test(file) || !file.startsWith(appRoot)) return;
+        if (!RESERVED_FILE.test(file) || !file.startsWith(appRoot)) return;
         // The rsc graph's table too, where the pages, the route handlers and
         // the middleware of an application React Server Components render
         // live (ubugeeei-prod/uf#1487).
@@ -939,13 +1007,14 @@ function flowPlugin({
           devServer.moduleGraph,
           devServer.environments?.[RSC_ENVIRONMENT]?.moduleGraph,
         ].filter((graph) => graph != null);
+        const clientTable = browserRouteTable();
         for (const graph of graphs) {
           for (const id of [VIRTUAL.routes, VIRTUAL.server, VIRTUAL.client]) {
             const module = graph.getModuleById(resolved(id));
             if (module) graph.invalidateModule(module);
           }
         }
-        devServer.ws.send({ type: "full-reload", path: "*" });
+        sendRouteTable(clientTable);
       };
       devServer.watcher.on("add", onRouteFile);
       devServer.watcher.on("unlink", onRouteFile);
@@ -976,6 +1045,7 @@ function flowPlugin({
             devServer.moduleGraph,
             devServer.environments?.[RSC_ENVIRONMENT]?.moduleGraph,
           ].filter((graph) => graph != null);
+          const clientTable = browserRouteTable();
           for (const graph of graphs) {
             invalidateActionModules(graph, previousActions);
             invalidateActionModules(graph, nextActions);
@@ -984,7 +1054,18 @@ function flowPlugin({
             const actions = graph.getModuleById(resolved(VIRTUAL.actions));
             if (actions) graph.invalidateModule(actions);
           }
-          devServer.ws.send({ type: "full-reload", path: "*" });
+          // A new or removed action changes the references the browser's
+          // modules were compiled with, and those are not modules a render can
+          // replace, so that is still a reload. Anything else the manifest says
+          // — which routes ship a page, which modules are client components —
+          // is the route table's business, and arrives the way a new route
+          // file does. `uf dev` rewrites the manifest whenever a route file
+          // comes or goes, so a reload here was a reload on every new page.
+          if (sameActions(previousActions, nextActions)) {
+            sendRouteTable(clientTable);
+          } else {
+            sendToClient(devServer, { type: "full-reload", path: "*" });
+          }
         };
         devServer.watcher.on("add", onManifest);
         devServer.watcher.on("change", onManifest);
