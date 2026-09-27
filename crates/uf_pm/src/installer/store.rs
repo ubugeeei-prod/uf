@@ -157,6 +157,7 @@ fn unpack(bytes: &[u8], destination: &Utf8Path) -> Result<()> {
     let mut archive = tar::Archive::new(GzDecoder::new(bytes));
     let mut expanded = 0u64;
     let mut count = 0usize;
+    let mut prefix: Option<CompactString> = None;
     for entry in archive.entries()? {
         let mut entry = entry?;
         count += 1;
@@ -170,13 +171,37 @@ fn unpack(bytes: &[u8], destination: &Utf8Path) -> Result<()> {
         let path = entry.path()?.into_owned();
         let path =
             Utf8Path::from_path(&path).context("package archive contains a non UTF-8 path")?;
-        let mut parts = path.components();
         ensure!(
-            parts.next().is_some_and(|part| part.as_str() == "package"),
-            "package archive lacks package/ prefix"
+            safe_relative(path),
+            "package archive path escapes its destination"
+        );
+        let mut parts = path.components();
+        let directory = parts.next().context("package archive has an empty path")?;
+        let directory = directory.as_str();
+        ensure!(
+            directory != "." && safe_relative(Utf8Path::new(directory)),
+            "package archive lacks a directory prefix"
+        );
+        // Older npm tarballs, including DefinitelyTyped, use the package's
+        // basename instead of package/. Strip one consistent, safe directory.
+        let expected = prefix.get_or_insert_with(|| CompactString::new(directory));
+        ensure!(
+            expected.as_str() == directory,
+            "package archive mixes directory prefixes"
         );
         let relative = parts.as_path();
+        let kind = entry.header().entry_type();
+        // Refuse devices, archive symlinks and hardlink entries before they can
+        // redirect a later archive member. Verified data is still untrusted code.
+        ensure!(
+            kind.is_dir() || kind.is_file(),
+            "package archive contains an unsupported link or special file"
+        );
         if relative.as_str().is_empty() {
+            ensure!(
+                kind.is_dir(),
+                "package archive file lacks a directory prefix"
+            );
             continue;
         }
         ensure!(
@@ -184,25 +209,34 @@ fn unpack(bytes: &[u8], destination: &Utf8Path) -> Result<()> {
             "package archive path escapes its destination"
         );
         let target = destination.join(relative);
-        let kind = entry.header().entry_type();
         if kind.is_dir() {
             fs::create_dir_all(&target)?;
             continue;
         }
-        // Refuse devices, archive symlinks and hardlink entries before they can
-        // redirect a later archive member. Verified data is still untrusted code.
-        ensure!(
-            kind.is_file(),
-            "package archive contains an unsupported link or special file"
-        );
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let mut output = fs::OpenOptions::new()
+        let parent = target.parent().context("archive file has no parent")?;
+        fs::create_dir_all(parent)?;
+        let created = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&target)?;
-        std::io::copy(&mut entry, &mut output)?;
+            .open(&target);
+        match created {
+            Ok(mut output) => {
+                std::io::copy(&mut entry, &mut output)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                // A regular file can occur more than once, including via ./.
+                // Match tar's last-member semantics in this private staging
+                // directory without following links or truncating directories.
+                ensure!(
+                    fs::symlink_metadata(&target)?.is_file(),
+                    "duplicate archive path is not a regular file"
+                );
+                let mut replacement = tempfile::NamedTempFile::new_in(parent)?;
+                std::io::copy(&mut entry, replacement.as_file_mut())?;
+                replacement.persist(&target)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -268,16 +302,23 @@ fn intern_tree(files: &Utf8Path, directory: &Utf8Path) -> Result<()> {
     Ok(())
 }
 
-fn node_path(modules: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
+fn node_modules_path(modules: &Utf8Path, id: &str) -> Utf8PathBuf {
     modules
         .join(".uf")
         .join(hex(&Sha256::digest(id.as_bytes())))
         .join("node_modules")
-        .join(node.name.as_str())
+}
+
+fn node_path(modules: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
+    node_modules_path(modules, id).join(node.name.as_str())
 }
 
 pub(super) fn installed_package(root: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
     node_path(&root.join("node_modules"), id, node)
+}
+
+pub(super) fn installed_bins(root: &Utf8Path, id: &str) -> Utf8PathBuf {
+    node_modules_path(&root.join("node_modules"), id).join(".bin")
 }
 
 pub(super) fn materialize(
@@ -289,7 +330,7 @@ pub(super) fn materialize(
     allow_scripts: bool,
 ) -> Result<(usize, usize)> {
     let modules = root.join("node_modules");
-    let stamp = serde_json::json!({"graph":hex(&Sha256::digest(serde_json::to_vec(graph)?)),"prod":prod,"store":store.root,"scripts":allow_scripts});
+    let stamp = serde_json::json!({"layoutVersion":2,"graph":hex(&Sha256::digest(serde_json::to_vec(graph)?)),"prod":prod,"store":store.root,"scripts":allow_scripts});
     if fs::read(modules.join(".uf/state.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
@@ -369,8 +410,7 @@ pub(super) fn materialize(
         if node.local.is_some() {
             continue;
         }
-        let output = node_path(stage, id, node);
-        let siblings = output.parent().context("package has no module directory")?;
+        let siblings = node_modules_path(stage, id);
         for edges in [
             &node.dependencies,
             &node.optional_dependencies,
@@ -378,14 +418,14 @@ pub(super) fn materialize(
         ] {
             for (name, target) in edges {
                 if selected.contains(target) {
-                    link_dependency(root, &modules, siblings, name, target, graph)?;
+                    link_dependency(root, &modules, &siblings, name, target, graph)?;
                 }
             }
         }
         // Dependencies expose executables to one another, as node_modules/.bin.
         for edges in [&node.dependencies, &node.optional_dependencies] {
             for target in edges.values().filter(|target| selected.contains(*target)) {
-                link_bins(root, &modules, siblings, target, graph)?;
+                link_bins(root, &modules, &siblings, target, graph)?;
             }
         }
     }
@@ -662,6 +702,79 @@ pub(super) fn write_json(path: &Utf8Path, value: &impl Serialize) -> Result<()> 
 mod tests {
     use super::*;
     use flate2::{Compression, write::GzEncoder};
+
+    fn file_archive(entries: &[(&str, &[u8], u32)]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(GzEncoder::new(Vec::new(), Compression::fast()));
+        for (path, bytes, mode) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_mode(*mode);
+            header.set_size(bytes.len() as u64);
+            builder.append_data(&mut header, path, *bytes).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[test]
+    fn extracts_legacy_npm_directory_prefixes() {
+        let output = tempfile::tempdir().unwrap();
+        let output = Utf8Path::from_path(output.path()).unwrap();
+        let bytes = file_archive(&[
+            ("estree/package.json", br#"{"name":"@types/estree"}"#, 0o644),
+            ("estree/index.d.ts", b"export interface Node {}", 0o644),
+        ]);
+        unpack(&bytes, output).unwrap();
+        assert_eq!(
+            fs::read(output.join("index.d.ts")).unwrap(),
+            b"export interface Node {}"
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(
+                &fs::read(output.join("package.json")).unwrap()
+            )
+            .unwrap()["name"],
+            "@types/estree"
+        );
+        assert!(!output.join("estree").exists());
+    }
+
+    #[test]
+    fn normalized_duplicate_files_use_the_last_member_and_mode() {
+        let output = tempfile::tempdir().unwrap();
+        let output = Utf8Path::from_path(output.path()).unwrap();
+        let bytes = file_archive(&[
+            ("package/./dist/index.js", b"old", 0o444),
+            ("package/dist/index.js", b"replacement", 0o755),
+        ]);
+        unpack(&bytes, output).unwrap();
+        let path = output.join("dist/index.js");
+        assert_eq!(fs::read(&path).unwrap(), b"replacement");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o755
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_mixed_prefixes_and_replacing_directories_with_files() {
+        let output = tempfile::tempdir().unwrap();
+        let output = Utf8Path::from_path(output.path()).unwrap();
+        let mixed = file_archive(&[
+            ("package/first.js", b"first", 0o644),
+            ("other/second.js", b"second", 0o644),
+        ]);
+        assert!(unpack(&mixed, output).is_err());
+        assert!(!output.join("second.js").exists());
+        let collision = file_archive(&[
+            ("package/dist/index.js", b"first", 0o644),
+            ("package/dist", b"replacement", 0o644),
+        ]);
+        assert!(unpack(&collision, output).is_err());
+        assert_eq!(fs::read(output.join("dist/index.js")).unwrap(), b"first");
+    }
 
     #[test]
     fn verifies_strongest_integrity_and_refuses_corruption() {

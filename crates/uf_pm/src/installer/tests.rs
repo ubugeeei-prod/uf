@@ -1,5 +1,71 @@
 use super::*;
 
+#[cfg(unix)]
+#[test]
+fn scoped_dependency_hooks_can_run_their_transitive_executables() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(directory.path()).unwrap();
+    let store = store::Store {
+        root: root.join("store"),
+    };
+    let graph = Graph {
+        fingerprint: "hook-fixture".into(),
+        importers: vec![],
+        nodes: [
+            (
+                "plugin".into(),
+                Node {
+                    name: "@scope/plugin".into(),
+                    version: "1.0.0".into(),
+                    integrity: "sha512-plugin".into(),
+                    dependencies: [("helper".into(), "helper".into())].into(),
+                    scripts: [("postinstall".into(), "native-helper > installed.txt".into())]
+                        .into(),
+                    ..Default::default()
+                },
+            ),
+            (
+                "helper".into(),
+                Node {
+                    name: "helper".into(),
+                    version: "1.0.0".into(),
+                    integrity: "sha512-helper".into(),
+                    bin: [("native-helper".into(), "cli.sh".into())].into(),
+                    ..Default::default()
+                },
+            ),
+        ]
+        .into(),
+    };
+    for node in graph.nodes.values() {
+        let package = store.package(node).join("package");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("package.json"),
+            serde_json::to_vec(&serde_json::json!({"name":node.name,"version":node.version}))
+                .unwrap(),
+        )
+        .unwrap();
+    }
+    let helper = store.package(&graph.nodes["helper"]).join("package/cli.sh");
+    fs::write(&helper, "#!/bin/sh\nprintf 'ready\\n'\n").unwrap();
+    fs::set_permissions(&helper, fs::Permissions::from_mode(0o755)).unwrap();
+    let selected = graph.nodes.keys().cloned().collect();
+    store::materialize(root, &store, &graph, &selected, false, true).unwrap();
+    assert!(!root.join("node_modules/.bin/native-helper").exists());
+    lifecycle(root, &graph, &selected, &[], true).unwrap();
+    let plugin = store::installed_package(root, "plugin", &graph.nodes["plugin"]);
+    assert_eq!(fs::read(plugin.join("installed.txt")).unwrap(), b"ready\n");
+    assert!(
+        !store
+            .package(&graph.nodes["plugin"])
+            .join("package/installed.txt")
+            .exists()
+    );
+}
+
 #[test]
 fn row_updates_pin_the_same_package_in_unselected_dependency_fields() {
     let mut importer = Importer {

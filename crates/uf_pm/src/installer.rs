@@ -361,7 +361,13 @@ fn install_with_store(
         if node.local.is_some() {
             Ok(false)
         } else {
-            store.ensure(node, &agent)
+            store.ensure(node, &agent).with_context(|| {
+                uf_infra::into_string(uf_infra::cstr!(
+                    "could not acquire {}@{}",
+                    node.name,
+                    node.version
+                ))
+            })
         }
     })?;
     let fetch_ms = fetch.elapsed().as_millis();
@@ -486,6 +492,7 @@ fn lifecycle(
     changed: bool,
 ) -> Result<()> {
     let run = |directory: &Utf8Path,
+               dependency_bins: Option<&Utf8Path>,
                name: &str,
                scripts: &BTreeMap<CompactString, CompactString>|
      -> Result<()> {
@@ -506,6 +513,9 @@ fn lifecycle(
                 directory.join("node_modules/.bin").into_std_path_buf(),
                 root.join("node_modules/.bin").into_std_path_buf(),
             ];
+            if let Some(binaries) = dependency_bins {
+                entries.insert(1, binaries.to_path_buf().into_std_path_buf());
+            }
             entries.extend(path.iter().map(|p| p.clone().into_std_path_buf()));
             if let Some(existing) = std::env::var_os("PATH") {
                 entries.extend(std::env::split_paths(&existing));
@@ -532,6 +542,7 @@ fn lifecycle(
                 if node.local.is_none() {
                     run(
                         &store::installed_package(root, id, node),
+                        Some(&store::installed_bins(root, id)),
                         &node.name,
                         &node.scripts,
                     )?;
@@ -550,6 +561,7 @@ fn lifecycle(
     for importer in &graph.importers {
         run(
             &root.join(importer.path.as_str()),
+            None,
             &importer.name,
             &importer.scripts,
         )?;
