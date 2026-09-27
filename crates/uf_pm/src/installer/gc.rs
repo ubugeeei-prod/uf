@@ -1,7 +1,9 @@
 //! Collect unreferenced shared package trees and files while respecting live roots.
 use super::{Graph, store};
 use anyhow::{Context, Result, ensure};
-use camino::{Utf8Path, Utf8PathBuf};
+#[cfg(unix)]
+use camino::Utf8Path;
+use camino::Utf8PathBuf;
 #[cfg(unix)]
 use std::collections::BTreeMap;
 use std::{collections::BTreeSet, fs};
