@@ -302,16 +302,23 @@ fn intern_tree(files: &Utf8Path, directory: &Utf8Path) -> Result<()> {
     Ok(())
 }
 
-fn node_path(modules: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
+fn node_modules_path(modules: &Utf8Path, id: &str) -> Utf8PathBuf {
     modules
         .join(".uf")
         .join(hex(&Sha256::digest(id.as_bytes())))
         .join("node_modules")
-        .join(node.name.as_str())
+}
+
+fn node_path(modules: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
+    node_modules_path(modules, id).join(node.name.as_str())
 }
 
 pub(super) fn installed_package(root: &Utf8Path, id: &str, node: &Node) -> Utf8PathBuf {
     node_path(&root.join("node_modules"), id, node)
+}
+
+pub(super) fn installed_bins(root: &Utf8Path, id: &str) -> Utf8PathBuf {
+    node_modules_path(&root.join("node_modules"), id).join(".bin")
 }
 
 pub(super) fn materialize(
@@ -403,13 +410,7 @@ pub(super) fn materialize(
         if node.local.is_some() {
             continue;
         }
-        let output = node_path(stage, id, node);
-        let siblings = if node.name.starts_with('@') {
-            output.parent().and_then(Utf8Path::parent)
-        } else {
-            output.parent()
-        }
-        .context("package has no module directory")?;
+        let siblings = node_modules_path(stage, id);
         for edges in [
             &node.dependencies,
             &node.optional_dependencies,
@@ -417,14 +418,14 @@ pub(super) fn materialize(
         ] {
             for (name, target) in edges {
                 if selected.contains(target) {
-                    link_dependency(root, &modules, siblings, name, target, graph)?;
+                    link_dependency(root, &modules, &siblings, name, target, graph)?;
                 }
             }
         }
         // Dependencies expose executables to one another, as node_modules/.bin.
         for edges in [&node.dependencies, &node.optional_dependencies] {
             for target in edges.values().filter(|target| selected.contains(*target)) {
-                link_bins(root, &modules, siblings, target, graph)?;
+                link_bins(root, &modules, &siblings, target, graph)?;
             }
         }
     }
