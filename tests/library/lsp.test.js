@@ -1233,7 +1233,7 @@ describe("completion in uf.config.js", () => {
         lists.env,
       );
 
-      expect(labels(items)).toEqual(["node", "bun", "deno"]);
+      expect(labels(items)).toEqual(["node", "bun", "deno", "nub"]);
       expect(apply(text, [items[1].textEdit ?? {}])).toBe(
         'export default defineConfig({ test: { runtime: "bun" } });\n',
       );

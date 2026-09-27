@@ -111,7 +111,7 @@ fn row<'a>(text: &'a str, key: &str) -> &'a str {
 
 /// The `uf.lock` entry for the package at `path`, relative to the root.
 fn locked<'a>(lock: &'a Value, path: &str) -> &'a Value {
-    lock["packages"]
+    lock["native"]["importers"]
         .as_array()
         .expect("uf.lock lists packages")
         .iter()
@@ -468,18 +468,15 @@ fn a_frozen_install_refuses_a_uf_lock_the_manifests_have_moved_past() {
     native_project(dir.path(), &[("tiny", "1.2.3")]);
     ok(dir.path(), &["add", "./vendor/tiny"]);
 
-    let stale = fs::read_to_string(dir.path().join("uf.lock"))
-        .unwrap()
-        .replace("file:vendor/tiny", "file:vendor/gone");
+    let mut lock = json(dir.path(), "uf.lock");
+    lock["native"]["fingerprint"] = Value::from("stale");
+    let stale = serde_json::to_string_pretty(&lock).unwrap();
     fs::write(dir.path().join("uf.lock"), &stale).unwrap();
 
     let (stdout, stderr, success) = run(dir.path(), &["install", "--frozen-lockfile"]);
 
     assert!(!success, "a stale uf.lock has to fail:\n{stdout}{stderr}");
-    assert!(
-        stderr.contains("uf.lock does not match this workspace's package manifests"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("uf.lock is absent or stale"), "{stderr}");
     assert!(stderr.contains("run `uf install`"), "{stderr}");
     assert_eq!(
         stale,
@@ -579,6 +576,13 @@ fn a_manifest_that_declares_a_lifecycle_script_stops_an_add_before_anything_is_f
 fn a_workspace_member_is_still_locked_after_an_add() {
     let dir = tempfile::tempdir().unwrap();
     native_project(dir.path(), &[("tiny", "1.2.3")]);
+    let mut manifest = json(dir.path(), "package.json");
+    manifest["workspaces"] = serde_json::json!(["packages/*"]);
+    fs::write(
+        dir.path().join("package.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
     let member = dir.path().join("packages/ui");
     fs::create_dir_all(&member).unwrap();
     fs::write(
@@ -594,10 +598,22 @@ fn a_workspace_member_is_still_locked_after_an_add() {
     let ui = locked(&uf_lock, "packages/ui");
     assert_eq!(ui["name"], "@fixture/ui");
     assert_eq!(ui["version"], "0.3.0");
-    assert_eq!(ui["dependencies"]["tiny"], "file:../../vendor/tiny");
+    assert_eq!(ui["dependencies"]["tiny"], "local:vendor/tiny");
     assert_eq!(
         locked(&uf_lock, ".")["dependencies"]["tiny"],
+        "local:vendor/tiny"
+    );
+    assert_eq!(
+        uf_lock["native"]["nodes"]["local:vendor/tiny"]["version"],
+        "1.2.3"
+    );
+    assert_eq!(
+        json(dir.path(), "package.json")["dependencies"]["tiny"],
         "file:vendor/tiny"
+    );
+    assert_eq!(
+        json(&member, "package.json")["dependencies"]["tiny"],
+        "file:../../vendor/tiny"
     );
 }
 

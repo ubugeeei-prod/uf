@@ -39,6 +39,11 @@ pub(crate) fn collect(cwd: &Utf8Path, ui: &mut Ui, global: bool, dry_run: bool) 
     } else {
         None
     };
+    let native = if global {
+        Some(uf_pm::installer::gc_plan(&projects)?)
+    } else {
+        None
+    };
     // Build the complete plan before touching anything. Broken references abort it.
     ui.render(|renderer, out| {
         renderer.banner(out, "uf gc", None);
@@ -62,6 +67,14 @@ pub(crate) fn collect(cwd: &Utf8Path, ui: &mut Ui, global: bool, dry_run: bool) 
         }
         if !dry_run {
             uf_env::gc::collect(&store, &roots, &plan)?;
+        }
+    }
+    if let Some(plan) = native {
+        for path in &plan.paths {
+            ui.render(|renderer, out| renderer.status(out, Status::Info, path.as_str()));
+        }
+        if !dry_run {
+            uf_pm::installer::gc_collect(&plan, &projects)?;
         }
     }
     let message = if dry_run {

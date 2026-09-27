@@ -1724,22 +1724,34 @@ check for CI. `--file FILE` (`-f`) is as for `generate`.
 [Dependencies](/guide/dependencies) is the guide to these commands, with what each
 one printed.
 
-Most of them run the project's own package manager. uf's resolver
-reaches no registry yet, so each one detects whether the project is npm, pnpm,
-Yarn or Bun and runs that — while keeping the three things a bare `npm install`
-would skip: lifecycle scripts stay refused, a manifest that declares scripts of
-its own is rejected before anything is fetched, and `uf.lock` and the
-content-addressed store under `.uf/store` are rewritten from the manifests the
-manager just changed.
+With `packageManager: "uf"`, dependency installation, addition, removal,
+updates and audit run in uf's native manager. Its lock graph records exact
+versions and archive integrity in `uf.lock`. A shared store deduplicates file
+content across versions and projects. Dependencies are hardlinked into an
+isolated `node_modules` graph, with a copy fallback across filesystems.
+`UF_PM_STORE` can select another absolute store location.
 
-Every one of them reports which manager ran, what named it, and the exact
-command it spawned. A command that delegates without saying to whom is the
+With an external manager selected, uf runs that manager and reports it.
+Lifecycle hooks remain disabled by default. `pm.allowLifecycleScripts: true`
+explicitly enables install hooks. Native packages that execute hooks receive
+writable copies so their build cannot modify the shared file store.
+
+External operations report which manager ran, what named it, and the exact
+command it spawned. Native operations report the shared store and install results.
+A command that delegates without saying to whom is the
 black box [red line 7](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md)
 forbids.
 
 ### uf install
 
-Installs dependencies with the host's package manager, and refuses lifecycle
+With `packageManager: "uf"`, resolves the native lock graph, verifies archive
+integrity and links packages from the shared store. The report includes package,
+download, hardlink and copy counts. A warm frozen install uses the lock and store
+without requesting package metadata.
+
+With an external manager selected:
+
+Installs dependencies with the selected package manager, and refuses lifecycle
 scripts while doing it — the manager is passed `--ignore-scripts`, and a
 manifest that declares scripts of its own fails before anything is fetched.
 Yarn 2+ answers `--ignore-scripts` with "Unsupported option name" on every
@@ -1881,6 +1893,13 @@ error: the project ends up the way it was asked to be either way.
 members it changes, as for `uf add` — see [`--filter` and `-w`](#--filter-and--w).
 
 ### uf update [PACKAGE...]
+
+In a terminal, the plain command offers a release range and a multiple
+selection list showing the declared range, proposed version, change level and
+manifest. Space toggles packages; Enter applies the selection. Escape or an
+empty selection leaves the manifests unchanged. Explicit `--latest`, `--minor`
+and `--patch` retain their scriptable behavior.
+
 
 Two different things go by this name, and `uf update` does both.
 `--filter SELECTOR` and `-w` (`--workspace-root`) choose the workspace members
@@ -2067,14 +2086,27 @@ Lists the installed tree, through the same manager — `npm ls`, `pnpm list`,
 `yarn list` on Yarn 1, `yarn info --all` on Yarn 2+, `bun pm ls`. A package
 name narrows it.
 
-### uf audit [NAME...]
+### uf audit [NAME...] [--prod] [--json]
 
-Audits the installed tree against the registry's advisories: `npm audit`,
-`pnpm audit`, `yarn audit`, `yarn npm audit` on Yarn 2+, `bun audit`.
+With the native manager, checks locked package versions through each configured
+registry's advisory API. Private scopes stay on their configured registry.
+The report shows severity, affected versions, advisory links and the next
+available stable release outside the reported vulnerable ranges, when one
+can be established. A suggested release can require compatibility changes.
+
+`--prod` excludes development dependencies; `--json` prints the native report.
+A vulnerable tree exits nonzero. A failed registry response also exits nonzero
+and reports the audit as incomplete. These two flags are native manager options.
+
+
+With an external manager, audits the installed tree against the registry's
+advisories: `npm audit`, `pnpm audit`, `yarn audit`, `yarn npm audit` on Yarn 2+,
+`bun audit`, or `aube audit`.
 
 ### uf search TERM...
 
-Searches the registry. **npm and pnpm can; Yarn and bun cannot**, and uf says
+Searches the registry. **uf's native manager, npm and pnpm can; Yarn, bun and
+Aube cannot**, and uf says
 so rather than running a manager the project did not choose:
 
 <figure className="terminal">
@@ -2092,7 +2124,7 @@ another manager would resolve against that manager's registry configuration and
 could write its own lockfile, which is the one thing a manager-agnostic front
 end must not do.
 
-Each of the three takes package names and no flags. A manager's own flags are
+External manager queries take package names and no flags. A manager's own flags are
 its own surface — reached with `uf exec` — because uf cannot know which of them
 only read: `pnpm audit --fix` rewrites a lockfile.
 
@@ -2555,3 +2587,16 @@ defaults, and every read-only command works. Two cases that *should* be `2` are
 `@uniflowed/host`. Every command returns the same error type, so telling "could
 not run" from "ran and found a problem" needs a distinction the command layer
 does not make yet.
+
+### Additional environment tools
+
+`uf env use aube` selects an official aube release for `packageManager`.
+`uf env use nub` selects an official Nub release for `runtime`; Nub executes
+on Node.js and uses uf's Node Flow loader for tests. Both commands show a
+version selector in a terminal. Automation supplies an exact version, such as
+`uf env use aube@2.5.0` or `uf env use nub@0.9.5`.
+
+uf acquires the platform's native npm carrier directly and checks the
+publisher's integrity. No npm installation or package lifecycle script runs.
+macOS and Linux on x64 and arm64 are supported. Advanced aube link and patch
+operations and Nub standalone compilation have no uf adapter yet.

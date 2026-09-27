@@ -51,6 +51,7 @@ use uf_pm::detect::Version;
 use uf_pm::manifests::{Changes, Declaration};
 use uf_pm::ranges::{Level, Range};
 use uf_pm::{Operation, registry};
+use uf_term::prompt::{self, Choice, ManyOutcome, Outcome, Request};
 use uf_term::{Cell, Column, Status, Table, Tone};
 
 use crate::support::{plural, project_label};
@@ -80,6 +81,27 @@ pub(crate) fn update(
     scope: &super::Scope,
 ) -> Result<()> {
     uf_pm::check_operands(packages)?;
+    let interactive = level.is_none() && !dry_run && prompt::is_interactive();
+    let level = if interactive {
+        let choices = [
+            Choice::new(
+                "latest",
+                "Include major releases; review compatibility before applying",
+            ),
+            Choice::new("minor", "Stay within the current major release"),
+            Choice::new("patch", "Stay within the current minor release"),
+        ];
+        match prompt::select(&Request::new("Choose an update range", &choices)) {
+            Outcome::Chose(choice) => Some(match choice.name {
+                "minor" => Level::Minor,
+                "patch" => Level::Patch,
+                _ => Level::Major,
+            }),
+            Outcome::Cancelled | Outcome::NotInteractive => return Ok(()),
+        }
+    } else {
+        level
+    };
     let resolved = load_config(cwd)?;
     // `--filter` and `-w` narrow the report and the rewrite to the manifests
     // they choose, and everything is settled at the workspace root, which is
@@ -182,6 +204,7 @@ pub(crate) fn update(
                 }
                 rows.push(Row {
                     manifest: relative(&root, &declaration.manifest),
+                    field: declaration.field,
                     name: declaration.name.clone(),
                     declared: declaration.range.clone(),
                     rewritten,
@@ -198,6 +221,53 @@ pub(crate) fn update(
             .then_with(|| left.name.cmp(&right.name))
             .then_with(|| left.manifest.cmp(&right.manifest))
     });
+
+    if interactive && !rows.is_empty() {
+        let descriptions: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                uf_infra::into_string(uf_infra::cstr!(
+                    "{} → {} · {} · {} · {}",
+                    row.declared,
+                    row.newest,
+                    row.step,
+                    row.manifest,
+                    row.field
+                ))
+            })
+            .collect();
+        let choices: Vec<_> = rows
+            .iter()
+            .zip(&descriptions)
+            .map(|(row, description)| Choice::new(&row.name, description))
+            .collect();
+        let selected = match prompt::select_many(&Request::new(
+            "Select dependencies to update · Space toggles · Enter applies",
+            &choices,
+        )) {
+            ManyOutcome::Chose(selected) => selected,
+            ManyOutcome::Cancelled | ManyOutcome::NotInteractive => return Ok(()),
+        };
+        let wanted: BTreeSet<_> = selected
+            .iter()
+            .filter_map(|choice| choices.iter().position(|item| std::ptr::eq(item, *choice)))
+            .map(|index| {
+                (
+                    rows[index].manifest.clone(),
+                    rows[index].field,
+                    rows[index].name.clone(),
+                )
+            })
+            .collect();
+        changes.retain(|path, values| {
+            let manifest = relative(&root, path);
+            values.retain(|(field, name), _| {
+                wanted.contains(&(manifest.clone(), *field, name.clone()))
+            });
+            !values.is_empty()
+        });
+        rows.retain(|row| wanted.contains(&(row.manifest.clone(), row.field, row.name.clone())));
+    }
 
     let report = Report {
         level,
@@ -260,6 +330,40 @@ pub(crate) fn update(
         super::Scope::Project => super::Scope::Project,
         _ => super::Scope::WorkspaceRoot,
     };
+    let detection = uf_pm::detect::detect_package_manager_with(
+        &resolved.root,
+        &uf_pm::detect::DetectionOptions::from_config(&resolved.config),
+    );
+    if detection.is_uf_native() {
+        let update_targets = changes
+            .iter()
+            .flat_map(|(manifest, entries)| {
+                let directory = manifest.parent().expect("manifest directory");
+                let importer = directory.strip_prefix(&root).unwrap_or(directory);
+                let importer = if importer.as_str().is_empty() {
+                    "."
+                } else {
+                    importer.as_str()
+                };
+                entries
+                    .keys()
+                    .map(move |(field, name)| uf_pm::installer::UpdateTarget {
+                        importer: importer.into(),
+                        field: (*field).into(),
+                        name: name.clone(),
+                    })
+            })
+            .collect();
+        return super::native::install_options(
+            &resolved,
+            ui,
+            uf_pm::installer::Options {
+                update: true,
+                update_targets,
+                ..Default::default()
+            },
+        );
+    }
     super::deps::delegate(
         cwd,
         ui,
@@ -277,6 +381,7 @@ pub(crate) fn update(
 /// One dependency that could move.
 struct Row {
     manifest: String,
+    field: &'static str,
     name: CompactString,
     declared: CompactString,
     rewritten: CompactString,

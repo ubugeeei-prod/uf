@@ -529,15 +529,15 @@ mod tests {
         for (marked, names) in [
             (
                 "export default defineConfig({ runtime: \"‸\" })",
-                &["node", "bun", "deno"][..],
+                &["node", "bun", "deno", "nub"][..],
             ),
             (
                 "export default defineConfig({ build: { runtime: \"‸\" } })",
-                &["node", "bun", "deno"],
+                &["node", "bun", "deno", "nub"],
             ),
             (
                 "export default defineConfig({ packageManager: \"‸\" })",
-                &["npm", "pnpm", "yarn", "bun"],
+                &["uf", "npm", "pnpm", "yarn", "bun", "aube"],
             ),
             (
                 "export default defineConfig({ test: { runner: \"‸\" } })",
@@ -592,7 +592,10 @@ mod tests {
         // Unquoted: quoted names, filtered on the name.
         let (_, completion) =
             complete_at("export default defineConfig({ runtime: ‸ })", &mut releases);
-        assert_eq!(labels(&completion), ["\"node\"", "\"bun\"", "\"deno\""]);
+        assert_eq!(
+            labels(&completion),
+            ["\"node\"", "\"bun\"", "\"deno\"", "\"nub\""]
+        );
         assert_eq!(completion.items[0].filter_text.as_deref(), Some("node"));
     }
 

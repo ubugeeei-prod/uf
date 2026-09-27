@@ -189,11 +189,27 @@ async function waitForMerge(state /*: State */) /*: Promise<string> */ {
   }
   throw new Error("Release is still pending. Repeat the command to resume.");
 }
-async function waitRun(repository /*: string */, id /*: number */) /*: Promise<WorkflowRun> */ {
+async function waitRun(
+  repository /*: string */,
+  id /*: number */,
+  controller /*: ?number */ = null,
+) /*: Promise<WorkflowRun> */ {
   const until = Date.now() + 6 * 60 * 60 * 1000;
   while (Date.now() < until) {
     const run /*: WorkflowRun */ = api(`repos/${repository}/actions/runs/${id}`);
     if (run.status === "completed") {
+      if (run.conclusion !== "success" && controller != null) {
+        const owner /*: WorkflowRun */ = api(`repos/${repository}/actions/runs/${controller}`);
+        // The automatic controller may be rerunning a failed npm visibility check.
+        // Observe its final outcome instead of racing its retry or rejecting early.
+        if (owner.status !== "completed") {
+          await sleep(3000);
+          continue;
+        }
+        const current /*: WorkflowRun */ = api(`repos/${repository}/actions/runs/${id}`);
+        if (current.status !== "completed") continue;
+        if (current.conclusion === "success") return current;
+      }
       if (run.conclusion !== "success")
         throw new Error(
           `Workflow ${run.html_url} ended with ${String(run.conclusion)}. Fix or rerun failed jobs, then repeat the command.`,
@@ -216,7 +232,9 @@ async function dispatch(
   title /*: string */,
   inputs /*: Inputs */,
   save /*: () => void */,
+  controller /*: ?number */ = null,
 ) /*: Promise<WorkflowRun> */ {
+  const observeOnly = controller != null;
   const key = RUN_KEYS[workflow];
   let id = state[key];
   if (!id) {
@@ -226,7 +244,14 @@ async function dispatch(
         `repos/${state.repository}/actions/workflows/${workflow}.yml/runs?event=workflow_dispatch&branch=main&per_page=100`,
       ).workflow_runs.find((run /*: WorkflowRun */) => run.display_title === title);
     let run = find();
-    if (!run) {
+    if (!run && observeOnly) {
+      // The automatic controller owns dispatch. Observers never race it.
+      for (let retry = 0; retry < 40 && !run; retry++) {
+        await sleep(3000);
+        run = find();
+      }
+    }
+    if (!run && !observeOnly) {
       const args = [
         "workflow",
         "run",
@@ -250,7 +275,7 @@ async function dispatch(
     save();
   }
   const previous /*: WorkflowRun */ = api(`repos/${state.repository}/actions/runs/${id}`);
-  if (previous.status === "completed" && previous.conclusion !== "success") {
+  if (!observeOnly && previous.status === "completed" && previous.conclusion !== "success") {
     gh("run", "rerun", String(id), "--repo", state.repository, "--failed");
     for (let retry = 0; retry < 20; retry++) {
       await sleep(3000);
@@ -259,7 +284,7 @@ async function dispatch(
     }
   }
   console.log(`Waiting for https://github.com/${state.repository}/actions/runs/${id}`);
-  return waitRun(state.repository, id);
+  return waitRun(state.repository, id, controller);
 }
 async function main() /*: Promise<void> */ {
   const root = git("rev-parse", "--show-toplevel");
@@ -433,12 +458,30 @@ async function main() /*: Promise<void> */ {
     commit,
     validation_run: validationRun,
   };
+  // Observe the controller for this exact release commit. A workflow merely
+  // being enabled does not establish ownership of this release.
+  const findController = () /*: ?WorkflowRun */ =>
+    api(
+      `repos/${repository}/actions/workflows/release-automation.yml/runs?event=push&branch=main&per_page=100`,
+    ).workflow_runs.find((run /*: WorkflowRun */) => run.head_sha === commit);
+  let owner = findController();
+  if (
+    !owner &&
+    api(`repos/${repository}/actions/workflows/release-automation.yml`).state === "active"
+  ) {
+    for (let retry = 0; retry < 40 && !owner; retry++) {
+      await sleep(3000);
+      owner = findController();
+    }
+  }
+  const controller = owner ? owner.id : null;
   const npm = await dispatch(
     state,
     "publish",
     `Publish ${state.version} (${commit})`,
     inputs,
     save,
+    controller,
   );
   await dispatch(
     state,
@@ -446,8 +489,16 @@ async function main() /*: Promise<void> */ {
     `Release ${state.version} (${commit})`,
     { ...inputs, npm_run: npm.id },
     save,
+    controller,
   );
-  await dispatch(state, "editors", `Editors ${state.version}`, { version: state.version }, save);
+  await dispatch(
+    state,
+    "editors",
+    `Editors ${state.version}`,
+    { version: state.version },
+    save,
+    controller,
+  );
   const release = JSON.parse(
     gh(
       "release",

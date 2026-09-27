@@ -9,11 +9,12 @@ mod approve;
 mod catalog;
 mod deps;
 mod install;
+mod native;
 mod update;
 
 pub(crate) use approve::approve_builds;
 pub(crate) use catalog::{list as catalog, set as catalog_set};
-pub(crate) use deps::{Scope, add, dedupe, info, link, patch, query, remove, unlink, why};
+pub(crate) use deps::{Scope, add, audit, dedupe, info, link, patch, query, remove, unlink, why};
 pub(crate) use install::{chosen_by, install};
 pub(crate) use update::update;
 

@@ -9,11 +9,9 @@ readiness: "Implemented"
 # Dependencies
 
 <div className="lede">
-uf does not resolve or fetch packages. `uf install`, `uf add` and the rest find
-the package manager your project already uses — npm, pnpm, Yarn or Bun — and run
-it, with a policy in front of it: install scripts refused, a lockfile that has
-drifted refused when CI asks for exactly what it pins, and a manager with no
-answer to a command said to have none rather than swapped for one that does.
+uf can resolve, verify and install dependencies in its native manager, sharing
+file content across projects. It can also run the package manager your project
+selects. Both paths retain lockfile checks and disable install scripts by default.
 </div>
 
 **What you will be able to do:** install a project and keep its lockfile honest in
@@ -65,9 +63,20 @@ whichever `pnpm` is on `PATH`. A project still naming its manager in
 and a project that writes both, naming different managers, is refused with
 both keys named.
 
-`uf.lock` names uf's own resolver, and that resolver cannot fetch yet. A project
-that asks for it gets npm, and the `chosen by` row says so:
-`uf.lock names uf, whose resolver cannot fetch yet`.
+`packageManager: "uf"` selects the native manager. Its `uf.lock` records exact
+versions, dependency edges, registry routes and archive integrity. A warm frozen
+install reuses the graph and verified shared package trees. A cold frozen install
+uses the locked tarball URLs without resolving metadata again.
+
+Files are deduplicated across packages and hardlinked into projects. Across
+filesystems, uf copies them. The terminal report shows downloads, hardlinks,
+copies and measured resolve, fetch and link times. `UF_PM_STORE` selects an
+absolute shared store location.
+
+`uf gc --global --dry-run` lists unused package trees and shared files. Global
+collection preserves live project references and files still linked into projects.
+On Windows, shared file collection remains conservative; unused package trees
+can be removed while file data is retained.
 
 ## Installing
 
@@ -427,13 +436,21 @@ which is what the install above shows.
 
 ## What is not here
 
-- **uf's own resolver.** It cannot fetch, and `uf.lock` holds only a hash of each
-  workspace manifest, not the packages.
-- **`--json`** on any of these commands.
+- **Complete external-manager compatibility in native mode.** Native installs
+  support registry ranges, aliases, local directories and workspace links.
+  Peer packages bind to compatible root declarations; separate nested peer
+  contexts, git/URL dependencies and patch protocols need an external manager.
+- **Authenticated registry reads in native mode.** Tokens are not loaded from
+  `.npmrc`; a registry that requires credentials reports a failure.
+- **Native package provenance signatures.** Native downloads verify SRI, not
+  Sigstore signatures. The attestation report above applies to npm installs.
+- **`--json` on every package command.** Native queries and `uf audit --json`
+  provide JSON; install output remains a terminal report.
 - **The manager's exit status.** A manager that fails makes uf exit 1, whatever it
   exited with.
-- **End-to-end runs of pnpm, Yarn and Bun in uf's own tests.** The command lines
-  for each manager are unit-tested, and npm is the one driven for real.
+- **A speed guarantee for every dependency graph.** CI measures repeated
+  installs and shared disk usage on fixed fixtures; project graphs and network
+  conditions change the results.
 - **Publishing.** `uf publish` writes a plan to `.uf/publish.json` and publishes
   nothing.
 

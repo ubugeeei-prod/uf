@@ -1006,6 +1006,7 @@ pub enum PackageManagerPreference {
     YarnClassic,
     YarnBerry,
     Bun,
+    Aube,
 }
 
 /// Where `uf ui add` writes the components a project owns.

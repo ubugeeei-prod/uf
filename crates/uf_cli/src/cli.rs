@@ -1153,12 +1153,18 @@ pub(crate) enum Commands {
     /// Every manager uf supports has one, and each spells its severity
     /// threshold and its fix differently, so the flags are its own.
     Audit {
+        /// Print the native advisory report as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Audit production dependencies only with the native manager.
+        #[arg(long)]
+        prod: bool,
         /// Package names, where the manager narrows an audit to them.
         ///
         /// Names only, for the reason `uf ls` gives: every manager spells its
         /// severity threshold and its `--fix` differently, and one of those
         /// rewrites a lockfile.
-        #[arg(value_name = "NAME", trailing_var_arg = true)]
+        #[arg(value_name = "NAME")]
         args: Vec<String>,
     },
     /// Search the registry.
@@ -1221,6 +1227,7 @@ impl Commands {
         matches!(
             self,
             Self::Migrate { json: true, .. }
+                | Self::Audit { json: true, .. }
                 | Self::Codemod { json: true, .. }
                 | Self::Dev { json: true, .. }
                 | Self::Check { json: true, .. }

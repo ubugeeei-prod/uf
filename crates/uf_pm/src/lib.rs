@@ -16,6 +16,7 @@ pub mod command;
 pub mod confusion;
 pub mod delta;
 pub mod detect;
+pub mod installer;
 pub mod links;
 pub mod manifests;
 pub mod native;

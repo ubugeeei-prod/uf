@@ -12,6 +12,13 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+anyhow.workspace = true
+flate2.workspace = true
+node-semver = "2.2.0"
+tar = "0.4.46"
+tempfile.workspace = true
+ureq = { version = "3.4.2", default-features = false, features = ["rustls", "gzip"] }
+uf_project = { path = "../uf_project" }
 uf_infra = { path = "../uf_infra" }
 base64.workspace = true
 camino.workspace = true
@@ -27,6 +34,9 @@ uf_config = { path = "../uf_config" }
 # the file holds, and all three are `uf_env::lock`'s to define — a second copy of
 # the record's shape here would be a second thing to keep in step.
 uf_env = { path = "../uf_env" }
+
+[target.'cfg(windows)'.dependencies]
+junction = "1.4.2"
 
 [dev-dependencies]
 tempfile.workspace = true

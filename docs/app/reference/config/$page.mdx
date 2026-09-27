@@ -979,7 +979,7 @@ report is against.
 | `pm.scopes` | `{}` | `{ "@company": "https://npm.company.example" }` — which registry answers for which scope |
 | `pm.provenance` | `"report"` | `"off"` reads no attestations |
 | `pm.lockfile` | `"uf.lock"` | The lockfile `uf install` writes |
-| `pm.storeDir` | `".uf/store"` | The content-addressed store |
+| `pm.storeDir` | `".uf/store"` | Legacy project store. The native manager uses the global shared store; set the absolute `UF_PM_STORE` environment variable to move it |
 | `pm.allowLifecycleScripts` | `false` | Every dependency's install scripts, including the ones nobody has read |
 | `pm.packageManager` | `"auto"` | **Deprecated** for every value but `"uf"`, which has no other spelling. Overrides the manager uf infers from the project; [`packageManager`](#runtime-and-packagemanager) does the same ahead of it, and can pin a release. The two naming different managers is an error naming both keys |
 | `publish.registry` | `"https://registry.npmjs.org"` | Where `uf publish` pushes |

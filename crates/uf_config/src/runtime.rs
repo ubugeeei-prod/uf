@@ -229,6 +229,8 @@ pub enum CapabilityJsHost {
     Deno,
     /// Bun.
     Bun,
+    /// Nub, executing on Node.js.
+    Nub,
 }
 
 impl CapabilityJsHost {
@@ -239,6 +241,7 @@ impl CapabilityJsHost {
             Self::Node => "node",
             Self::Deno => "deno",
             Self::Bun => "bun",
+            Self::Nub => "nub",
         }
     }
 }

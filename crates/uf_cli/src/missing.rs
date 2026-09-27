@@ -94,7 +94,7 @@ pub(crate) fn complete(
         .collect();
     if path.iter().map(String::as_str).eq(["env", "use"]) {
         values.extend(
-            ["node", "bun", "deno", "cfw", "uf"]
+            ["node", "bun", "deno", "nub", "aube", "cfw", "uf"]
                 .map(|name| (name.to_owned(), "Select runtime".to_owned())),
         );
         if let Ok(files) = std::fs::read_dir(uf_config::discover_root(&cwd)) {

@@ -52,6 +52,33 @@ pub fn ensure(store: &Store, pin: &Pin) -> Result<bool, EnvError> {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
     }
+    // Nub's native npm carrier stores both programs as 0644. Its npm
+    // installer normally marks them executable; uf acquires the carrier
+    // without that installer and prepares only these publisher-known files.
+    if pin.tool == crate::Tool::Nub {
+        for name in [
+            String::from("nub"),
+            uf_infra::into_string(uf_infra::cstr!("nub-launcher-{}", pin.platform)),
+        ] {
+            let path = staging.join("bin").join(name);
+            let metadata = std::fs::symlink_metadata(&path).map_err(|source| EnvError::Read {
+                path: path.clone(),
+                source,
+            })?;
+            if !metadata.is_file() {
+                return Err(EnvError::NoExecutable {
+                    pin: pin.clone(),
+                    entry: staging,
+                });
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+                    .map_err(|source| EnvError::Write { path, source })?;
+            }
+        }
+    }
     store.adopt(pin, &staging)?;
     Ok(true)
 }

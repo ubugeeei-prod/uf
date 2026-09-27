@@ -20,6 +20,7 @@ fn row(name: &str, declared: &str, newest: &str, step: Level) -> Row {
     let newest = version(newest);
     Row {
         manifest: ".".to_owned(),
+        field: "dependencies",
         name: name.to_compact_string(),
         declared: declared.to_compact_string(),
         rewritten: range.rewritten_to(&newest),

@@ -114,7 +114,7 @@ pub trait ToolName: Copy + Eq + fmt::Debug + 'static {
 /// writes is the executable's name.
 impl ToolName for CapabilityJsHost {
     const ROLE: &'static str = "a runtime";
-    const ALL: &'static [Self] = &[Self::Node, Self::Bun, Self::Deno];
+    const ALL: &'static [Self] = &[Self::Node, Self::Bun, Self::Deno, Self::Nub];
     const EXAMPLE: &'static str = "node@26";
 
     fn name(self) -> &'static str {
@@ -124,12 +124,13 @@ impl ToolName for CapabilityJsHost {
 
 /// A package manager `packageManager` may name.
 ///
-/// Four, and not [`PackageManagerPreference`]'s eight. `auto` is the absence
-/// of a declaration rather than one; `uf` is uf's own resolver, which has no
-/// release of its own to pin; and `yarn-classic` and `yarn-berry` are one tool
+/// `auto` is the absence of a declaration. `uf` names the bundled manager
+/// and takes no separate version. `yarn-classic` and `yarn-berry` are one tool
 /// whose edition is its major version — `yarn@1` is Classic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PackageManagerName {
+    /// The native manager bundled with the running uf binary.
+    Uf,
     /// npm.
     Npm,
     /// pnpm.
@@ -138,19 +139,30 @@ pub enum PackageManagerName {
     Yarn,
     /// Bun, which installs as well as runs.
     Bun,
+    /// Aube.
+    Aube,
 }
 
 impl ToolName for PackageManagerName {
     const ROLE: &'static str = "a package manager";
-    const ALL: &'static [Self] = &[Self::Npm, Self::Pnpm, Self::Yarn, Self::Bun];
+    const ALL: &'static [Self] = &[
+        Self::Uf,
+        Self::Npm,
+        Self::Pnpm,
+        Self::Yarn,
+        Self::Bun,
+        Self::Aube,
+    ];
     const EXAMPLE: &'static str = "pnpm@10";
 
     fn name(self) -> &'static str {
         match self {
+            Self::Uf => "uf",
             Self::Npm => "npm",
             Self::Pnpm => "pnpm",
             Self::Yarn => "yarn",
             Self::Bun => "bun",
+            Self::Aube => "aube",
         }
     }
 }
@@ -273,6 +285,7 @@ impl<N: ToolName> ToolSpec<N> {
         };
         let version = match version {
             None => ToolVersion::OnPath,
+            Some(_) if tool.name() == "uf" => return Err(SpecError::VersionedUfManager),
             Some(version) => ToolVersion::parse(tool.name(), version)?,
         };
         Ok(Self {
@@ -644,6 +657,8 @@ impl crate::TestConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SpecError {
+    /// The bundled manager follows the uf binary rather than a separate tool release.
+    VersionedUfManager,
     /// Nothing was written.
     Empty {
         /// The role, as `a runtime`.
@@ -696,6 +711,7 @@ pub enum SpecError {
 impl fmt::Display for SpecError {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::VersionedUfManager => out.write_str("and the native manager follows the uf binary; write packageManager: \"uf\" and pin the binary with uf: \"VERSION\""),
             Self::Empty { role, names } => {
                 write!(
                     out,
@@ -1304,6 +1320,7 @@ impl UniflowedConfig {
             PackageManagerPreference::Npm => "npm",
             PackageManagerPreference::Pnpm => "pnpm",
             PackageManagerPreference::Bun => "bun",
+            PackageManagerPreference::Aube => "aube",
         };
         Some(uf_infra::into_string(uf_infra::cstr!(
             "pm.packageManager is the top-level `packageManager` now, which can pin a release as \
@@ -1381,6 +1398,7 @@ fn preference_name(preference: PackageManagerPreference) -> Option<PackageManage
         | PackageManagerPreference::YarnClassic
         | PackageManagerPreference::YarnBerry => Some(PackageManagerName::Yarn),
         PackageManagerPreference::Bun => Some(PackageManagerName::Bun),
+        PackageManagerPreference::Aube => Some(PackageManagerName::Aube),
     }
 }
 
@@ -1395,6 +1413,7 @@ const fn preference_text(preference: PackageManagerPreference) -> &'static str {
         PackageManagerPreference::YarnClassic => "yarn-classic",
         PackageManagerPreference::YarnBerry => "yarn-berry",
         PackageManagerPreference::Bun => "bun",
+        PackageManagerPreference::Aube => "aube",
     }
 }
 
@@ -1405,9 +1424,11 @@ const fn preference_text(preference: PackageManagerPreference) -> &'static str {
 fn preference_agrees(preference: PackageManagerPreference, spec: &PackageManagerSpec) -> bool {
     match (preference, spec.name) {
         (PackageManagerPreference::Auto, _)
+        | (PackageManagerPreference::Uf, PackageManagerName::Uf)
         | (PackageManagerPreference::Npm, PackageManagerName::Npm)
         | (PackageManagerPreference::Pnpm, PackageManagerName::Pnpm)
-        | (PackageManagerPreference::Bun, PackageManagerName::Bun) => true,
+        | (PackageManagerPreference::Bun, PackageManagerName::Bun)
+        | (PackageManagerPreference::Aube, PackageManagerName::Aube) => true,
         (PackageManagerPreference::YarnClassic, PackageManagerName::Yarn) => {
             spec.version.major().is_none_or(|major| major == 1)
         }
