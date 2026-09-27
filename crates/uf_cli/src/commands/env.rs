@@ -447,7 +447,10 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
         });
         return Ok(());
     }
-    if matches!(name, "node" | "bun" | "deno" | "npm" | "pnpm" | "yarn") {
+    if matches!(
+        name,
+        "node" | "bun" | "deno" | "nub" | "npm" | "pnpm" | "yarn" | "aube"
+    ) {
         if !uf_term::prompt::is_interactive() {
             bail!(uf_infra::cstr!(
                 "specify `{name}@<version>` when no interactive terminal is available"
@@ -504,15 +507,15 @@ fn use_tool(cwd: &Utf8Path, ui: &mut Ui, spec: &str) -> Result<()> {
     let resolved = load_config(cwd)?;
     let name = spec.split_once('@').map_or(spec, |(name, _)| name);
     let key = match name {
-        "node" | "bun" | "deno" => {
+        "node" | "bun" | "deno" | "nub" => {
             uf_config::RuntimeSpec::parse(spec)?;
             "runtime"
         }
-        "npm" | "pnpm" | "yarn" => {
+        "npm" | "pnpm" | "yarn" | "aube" => {
             uf_config::PackageManagerSpec::parse(spec)?;
             "packageManager"
         }
-        _ => bail!("choose node, bun, deno, npm, pnpm or yarn followed by @version"),
+        _ => bail!("choose node, bun, deno, nub, npm, pnpm, yarn or aube followed by @version"),
     };
     let path = resolved
         .config_path

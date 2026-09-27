@@ -114,7 +114,7 @@ pub trait ToolName: Copy + Eq + fmt::Debug + 'static {
 /// writes is the executable's name.
 impl ToolName for CapabilityJsHost {
     const ROLE: &'static str = "a runtime";
-    const ALL: &'static [Self] = &[Self::Node, Self::Bun, Self::Deno];
+    const ALL: &'static [Self] = &[Self::Node, Self::Bun, Self::Deno, Self::Nub];
     const EXAMPLE: &'static str = "node@26";
 
     fn name(self) -> &'static str {
@@ -139,11 +139,20 @@ pub enum PackageManagerName {
     Yarn,
     /// Bun, which installs as well as runs.
     Bun,
+    /// Aube.
+    Aube,
 }
 
 impl ToolName for PackageManagerName {
     const ROLE: &'static str = "a package manager";
-    const ALL: &'static [Self] = &[Self::Uf, Self::Npm, Self::Pnpm, Self::Yarn, Self::Bun];
+    const ALL: &'static [Self] = &[
+        Self::Uf,
+        Self::Npm,
+        Self::Pnpm,
+        Self::Yarn,
+        Self::Bun,
+        Self::Aube,
+    ];
     const EXAMPLE: &'static str = "pnpm@10";
 
     fn name(self) -> &'static str {
@@ -153,6 +162,7 @@ impl ToolName for PackageManagerName {
             Self::Pnpm => "pnpm",
             Self::Yarn => "yarn",
             Self::Bun => "bun",
+            Self::Aube => "aube",
         }
     }
 }
@@ -1310,6 +1320,7 @@ impl UniflowedConfig {
             PackageManagerPreference::Npm => "npm",
             PackageManagerPreference::Pnpm => "pnpm",
             PackageManagerPreference::Bun => "bun",
+            PackageManagerPreference::Aube => "aube",
         };
         Some(uf_infra::into_string(uf_infra::cstr!(
             "pm.packageManager is the top-level `packageManager` now, which can pin a release as \
@@ -1387,6 +1398,7 @@ fn preference_name(preference: PackageManagerPreference) -> Option<PackageManage
         | PackageManagerPreference::YarnClassic
         | PackageManagerPreference::YarnBerry => Some(PackageManagerName::Yarn),
         PackageManagerPreference::Bun => Some(PackageManagerName::Bun),
+        PackageManagerPreference::Aube => Some(PackageManagerName::Aube),
     }
 }
 
@@ -1401,6 +1413,7 @@ const fn preference_text(preference: PackageManagerPreference) -> &'static str {
         PackageManagerPreference::YarnClassic => "yarn-classic",
         PackageManagerPreference::YarnBerry => "yarn-berry",
         PackageManagerPreference::Bun => "bun",
+        PackageManagerPreference::Aube => "aube",
     }
 }
 
@@ -1414,7 +1427,8 @@ fn preference_agrees(preference: PackageManagerPreference, spec: &PackageManager
         | (PackageManagerPreference::Uf, PackageManagerName::Uf)
         | (PackageManagerPreference::Npm, PackageManagerName::Npm)
         | (PackageManagerPreference::Pnpm, PackageManagerName::Pnpm)
-        | (PackageManagerPreference::Bun, PackageManagerName::Bun) => true,
+        | (PackageManagerPreference::Bun, PackageManagerName::Bun)
+        | (PackageManagerPreference::Aube, PackageManagerName::Aube) => true,
         (PackageManagerPreference::YarnClassic, PackageManagerName::Yarn) => {
             spec.version.major().is_none_or(|major| major == 1)
         }

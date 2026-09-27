@@ -27,6 +27,8 @@ pub enum PackageManager {
     Yarn(YarnEdition),
     /// Bun.
     Bun,
+    /// Aube.
+    Aube,
 }
 
 /// Yarn major-line, which changes both the lockfile format and the CLI flags.
@@ -41,9 +43,10 @@ pub enum YarnEdition {
 
 impl PackageManager {
     /// Every package manager uf can drive, in stable display/test order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Uf,
         Self::Bun,
+        Self::Aube,
         Self::Pnpm,
         Self::Yarn(YarnEdition::Berry),
         Self::Yarn(YarnEdition::Classic),
@@ -60,6 +63,7 @@ impl PackageManager {
             Self::Yarn(YarnEdition::Classic) => "yarn-classic",
             Self::Yarn(YarnEdition::Berry) => "yarn-berry",
             Self::Bun => "bun",
+            Self::Aube => "aube",
         }
     }
 
@@ -76,6 +80,7 @@ impl PackageManager {
             "yarn" | "yarn-berry" => Some(Self::Yarn(YarnEdition::Berry)),
             "yarn-classic" => Some(Self::Yarn(YarnEdition::Classic)),
             "bun" => Some(Self::Bun),
+            "aube" => Some(Self::Aube),
             _ => None,
         }
     }
@@ -93,6 +98,7 @@ impl PackageManager {
             }
             PackageManagerPreference::YarnClassic => Some(Self::Yarn(YarnEdition::Classic)),
             PackageManagerPreference::Bun => Some(Self::Bun),
+            PackageManagerPreference::Aube => Some(Self::Aube),
         }
     }
 
@@ -108,6 +114,7 @@ impl PackageManager {
             uf_config::PackageManagerName::Npm => Self::Npm,
             uf_config::PackageManagerName::Pnpm => Self::Pnpm,
             uf_config::PackageManagerName::Bun => Self::Bun,
+            uf_config::PackageManagerName::Aube => Self::Aube,
             uf_config::PackageManagerName::Yarn => match spec.version.major() {
                 Some(1) => Self::Yarn(YarnEdition::Classic),
                 _ => Self::Yarn(YarnEdition::Berry),
@@ -124,6 +131,7 @@ impl PackageManager {
             Self::Pnpm => Lockfile::PnpmLock,
             Self::Yarn(_) => Lockfile::YarnLock,
             Self::Bun => Lockfile::BunLock,
+            Self::Aube => Lockfile::AubeLock,
         }
     }
 }
@@ -142,7 +150,7 @@ impl From<PackageManager> for CompactString {
 
 /// Rejection returned when a string does not name a package manager uf can drive.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("`{name}` is not one of uf, npm, pnpm, yarn, yarn-classic, yarn-berry, bun")]
+#[error("`{name}` is not one of uf, npm, pnpm, yarn, yarn-classic, yarn-berry, bun, aube")]
 pub struct UnknownPackageManager {
     /// The rejected identifier.
     pub name: CompactString,
@@ -167,6 +175,8 @@ impl TryFrom<CompactString> for PackageManager {
 pub enum Lockfile {
     /// `uf.lock`.
     UfLock,
+    /// `aube-lock.yaml`.
+    AubeLock,
     /// `bun.lock`, Bun's textual lockfile.
     BunLock,
     /// `bun.lockb`, Bun's binary lockfile.
@@ -183,7 +193,8 @@ pub enum Lockfile {
 
 impl Lockfile {
     /// Every recognised lockfile, in detection precedence order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
+        Self::AubeLock,
         Self::BunLock,
         Self::BunLockb,
         Self::PnpmLock,
@@ -198,6 +209,7 @@ impl Lockfile {
     pub const fn file_name(self) -> &'static str {
         match self {
             Self::UfLock => "uf.lock",
+            Self::AubeLock => "aube-lock.yaml",
             Self::BunLock => "bun.lock",
             Self::BunLockb => "bun.lockb",
             Self::PnpmLock => "pnpm-lock.yaml",
@@ -216,6 +228,7 @@ impl Lockfile {
     pub const fn manager(self) -> PackageManager {
         match self {
             Self::UfLock => PackageManager::Uf,
+            Self::AubeLock => PackageManager::Aube,
             Self::BunLock | Self::BunLockb => PackageManager::Bun,
             Self::PnpmLock => PackageManager::Pnpm,
             Self::YarnLock => PackageManager::Yarn(YarnEdition::Classic),

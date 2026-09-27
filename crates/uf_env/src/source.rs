@@ -121,6 +121,7 @@ impl Source {
             Tool::Node => Some(Self::node(pin)),
             Tool::Bun => Self::bun(pin),
             Tool::Deno => Self::deno(pin),
+            Tool::Aube | Tool::Nub => Some(Self::native_package(pin)),
             Tool::Npm | Tool::Pnpm | Tool::Yarn => Some(Self::npm_package(pin)),
         }
     }
@@ -201,6 +202,33 @@ impl Source {
             // The zip holds `deno` at its root.
             strip: 0,
         })
+    }
+
+    /// Published native carrier; no npm installation or lifecycle scripts.
+    fn native_package(pin: &Pin) -> Self {
+        let base = base("https://registry.npmjs.org");
+        let scope = if pin.tool == Tool::Aube {
+            "@endevco"
+        } else {
+            "@nubjs"
+        };
+        let package = uf_infra::cstr!(
+            "{}-{}-{}",
+            pin.tool.name(),
+            pin.platform.os.as_str(),
+            pin.platform.arch.as_str()
+        );
+        let version = &pin.version;
+        Self {
+            archive: uf_infra::into_string(uf_infra::cstr!(
+                "{base}/{scope}/{package}/-/{package}-{version}.tgz"
+            )),
+            checksum: Checksum::NpmIntegrity {
+                url: uf_infra::into_string(uf_infra::cstr!("{base}/{scope}/{package}/{version}")),
+            },
+            format: Format::TarGz,
+            strip: 1,
+        }
     }
 
     /// An npm registry tarball: npm, pnpm and Yarn are all published as npm

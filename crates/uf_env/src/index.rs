@@ -361,6 +361,8 @@ impl Bases {
             )],
             Tool::Bun => vec![packument("bun")],
             Tool::Deno => vec![packument("deno")],
+            Tool::Aube => vec![packument("@endevco/aube")],
+            Tool::Nub => vec![packument("@nubjs/nub")],
             Tool::Npm => vec![packument("npm")],
             Tool::Pnpm => vec![packument("pnpm")],
             Tool::Yarn => vec![packument("yarn"), packument("@yarnpkg/cli-dist")],

@@ -641,6 +641,7 @@ pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Resul
             uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Classic) => dirs.yarn.is_some(),
             uf_pm::PackageManager::Bun => dirs.bun.is_some(),
             uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry) => true,
+            uf_pm::PackageManager::Aube => false,
         };
         if !known {
             bail!(uf_infra::cstr!(

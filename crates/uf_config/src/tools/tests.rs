@@ -702,3 +702,18 @@ fn each_command_reads_the_roles_the_issue_names() {
     assert_eq!(roles("update"), [ToolRole::PackageManager]);
     assert_eq!(roles("fmt"), []);
 }
+
+#[test]
+fn additional_tools_keep_runtime_and_manager_roles_separate() {
+    let config = loaded(r#"{ runtime: "nub@0.9.5", packageManager: "aube@2.5.0" }"#);
+    assert_eq!(
+        config.runtime_tool().unwrap().spec.name,
+        CapabilityJsHost::Nub
+    );
+    assert_eq!(
+        config.package_manager_tool().unwrap().spec.name,
+        PackageManagerName::Aube
+    );
+    assert!(RuntimeSpec::parse("aube@2.5.0").is_err());
+    assert!(PackageManagerSpec::parse("nub@0.9.5").is_err());
+}

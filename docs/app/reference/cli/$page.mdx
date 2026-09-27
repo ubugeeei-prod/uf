@@ -2577,3 +2577,16 @@ defaults, and every read-only command works. Two cases that *should* be `2` are
 `@uniflowed/host`. Every command returns the same error type, so telling "could
 not run" from "ran and found a problem" needs a distinction the command layer
 does not make yet.
+
+### Additional environment tools
+
+`uf env use aube` selects an official aube release for `packageManager`.
+`uf env use nub` selects an official Nub release for `runtime`; Nub executes
+on Node.js and uses uf's Node Flow loader for tests. Both commands show a
+version selector in a terminal. Automation supplies an exact version, such as
+`uf env use aube@2.5.0` or `uf env use nub@0.9.5`.
+
+uf acquires the platform's native npm carrier directly and checks the
+publisher's integrity. No npm installation or package lifecycle script runs.
+macOS and Linux on x64 and arm64 are supported. Advanced aube link and patch
+operations and Nub standalone compilation have no uf adapter yet.

@@ -156,7 +156,7 @@ export type DeployAdapter =
  * A JavaScript runtime, and optionally which release of it: `"node"`,
  * `"node@26"`, `"bun@1.3.5"`.
  *
- * The names are `node`, `bun` and `deno`. No version is the one on `PATH`; a
+ * The names are `node`, `bun`, `deno` and `nub`. No version is the one on `PATH`; a
  * prefix is the newest release that starts with it, locked in `uf.lock`; a full
  * version is exactly that release. A range or a tag is refused.
  *
@@ -169,7 +169,7 @@ export type RuntimeSpec = string;
  * `"pnpm@10"`, `"pnpm@12.0.0"`.
  *
  * `"uf"` selects the native manager bundled with the running uf binary.
- * External names are `npm`, `pnpm`, `yarn` and `bun`. Yarn's edition is its major
+ * External names are `npm`, `pnpm`, `yarn`, `bun` and `aube`. Yarn's edition is its major
  * version — `"yarn@1"` is Classic. No version is the one on `PATH`; a prefix is
  * the newest release that starts with it, locked in `uf.lock`; a full version
  * is exactly that release. A range or a tag is refused.

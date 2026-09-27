@@ -728,3 +728,21 @@ fn a_yarn_is_fetched_from_the_package_that_publishes_it() {
             .contains("/@yarnpkg/cli-dist/")
     );
 }
+
+#[test]
+fn native_tool_carriers_use_platform_specific_registry_integrity() {
+    for (tool, scope) in [(Tool::Aube, "@endevco"), (Tool::Nub, "@nubjs")] {
+        let pin = Pin {
+            tool,
+            ..node("1.2.3")
+        };
+        let source = Source::for_pin(&pin).unwrap();
+        assert!(
+            source
+                .archive
+                .contains(&uf_infra::cstr!("{scope}/{}-darwin-arm64/-/", tool.name()).to_string())
+        );
+        assert!(matches!(source.checksum, Checksum::NpmIntegrity { .. }));
+        assert_eq!(source.strip, 1);
+    }
+}
