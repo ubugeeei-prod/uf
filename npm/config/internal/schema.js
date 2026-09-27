@@ -336,6 +336,11 @@ export type CoverageThresholds = {
 };
 
 export type UniflowedConfig = {
+  /** Official Flow checker and language server; absent uses uf's bundled checker. */
+  readonly flow?: {
+    /** Exact official release, for example "0.333.0". Acquired and verified automatically. */
+    readonly version?: string,
+  },
   /**
    * The runtime accessibility audit: `expect(el).toHaveNoAxeViolations()` in a
    * test, and the page `uf dev` is serving.

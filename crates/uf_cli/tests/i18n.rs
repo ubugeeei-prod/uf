@@ -178,7 +178,7 @@ fn merge_writes_the_locale_module_and_reports_the_rest() {
     // Beside the file it read, named for the locale, which is where
     // `defineLocales`' `() => import("./ja-JP.js")` points.
     let module = fs::read_to_string(project.path().join("i18n/ja-JP.js")).expect("the module");
-    assert!(module.starts_with("// @flow\n"), "{module}");
+    assert!(module.starts_with("\"use flow\";\n"), "{module}");
     assert!(
         module.contains("greeting: \"こんにちは、{$name}!\","),
         "{module}"

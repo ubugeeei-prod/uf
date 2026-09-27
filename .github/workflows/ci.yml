@@ -227,6 +227,8 @@ jobs:
       # the crash that can be read is the one that happens. See #1071.
       - run: ./target/release/uf run rust:test:unit
         if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full != 'true'
+      - run: python3 tools/ci/official-flow.py target/release/uf
+        if: needs.changes.outputs.code == 'true'
       - run: python3 tools/ci/additional-env-tools.py target/release/uf
         if: needs.changes.outputs.code == 'true'
       # The integration tests of the crates a pull request touched, and

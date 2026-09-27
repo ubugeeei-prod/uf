@@ -20,6 +20,7 @@ pub(crate) mod doc;
 pub(crate) mod editor;
 pub(crate) mod env;
 pub(crate) mod explain;
+pub(crate) mod flow;
 pub(crate) mod fmt;
 pub(crate) mod gc;
 pub(crate) mod i18n;

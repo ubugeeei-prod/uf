@@ -249,7 +249,7 @@ fn list(parameters: &BTreeMap<String, ParamKind>) -> String {
 #[must_use]
 pub fn render_locale_module(locale: &str, messages: &BTreeMap<&str, &str>) -> String {
     let mut out = String::new();
-    out.push_str("// @flow\n//\n");
+    out.push_str("\"use flow\";\n//\n");
     let _ = writeln!(
         out,
         "// {locale} translations, written by `uf i18n merge`.\n\

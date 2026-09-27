@@ -41,6 +41,13 @@ template literals or later expressions do not select a mode. Files with no
 mode retain uf's default of type checking. Existing `@flow` and `@noflow`
 pragmas are supported; a source directive takes precedence.
 
+## Choose a checker version
+
+Set `flow: { version: "0.333.0" }` in `uf.config.js` to use that official
+release for both `uf check` and editor types. uf verifies and caches the
+binary automatically. Without a version, the bundled checker runs.
+See [Official Flow configuration](/reference/config#official-flow).
+
 ## component
 
 A component declaration is a function whose parameters are its props:

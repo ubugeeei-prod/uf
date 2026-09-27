@@ -15,7 +15,7 @@ opinions can leave the file nearly empty.
 </div>
 
 ```js
-// @flow
+"use flow";
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
@@ -48,6 +48,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `site` | Where the built site is served from, and what `uf build` writes for a crawler |
 | `env` | The `.env` files and the default mode. Its `toolchain` is deprecated |
 | `fmt` | `uf fmt` |
+| `flow` | The official checker and editor server release. See [below](#official-flow) |
 | `ignore` | Paths no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test`, `uf doc` |
 | `lint` | `uf lint` and Flow's built-in lints |
 | `test` | `uf test`, and the runtime and runner it runs on |
@@ -1236,3 +1237,25 @@ defaults to `"react"`, which is what MDX was always compiled against.
 `taskRunner.allowPackageScripts` is enforced, and defaults to `true`, which is
 what `uf run` always did; a project that wrote `false` is told so by the
 codemod, because from 0.10 that refuses a task with no command.
+
+## Official Flow
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `flow.version` | unset | An exact official Flow release, such as `"0.333.0"`, for `uf check` and editor type services. |
+
+```js
+export default defineConfig({
+  flow: { version: "0.333.0" },
+});
+```
+
+uf acquires the official `flow-bin` package, checks its published integrity
+and executable version, then reuses the binary. The selected release must
+publish a binary for your platform. Leave the key absent to use the bundled
+checker. Changing the version requires restarting the editor language server.
+
+The generated `.uf-flowconfig` preserves sections from `.flowconfig`, enables
+checking without pragmas and marks `"use js";` files untyped. Add
+`.uf-flowconfig` to `.gitignore`; `uf new` includes it. uf formatting, lint
+markers and configuration completion remain available in the editor.
