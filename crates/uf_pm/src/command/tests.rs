@@ -496,7 +496,15 @@ fn search_is_unsupported_where_the_manager_has_none() {
         .collect::<Vec<_>>();
 
     // In `PackageManager::ALL`'s own order.
-    assert_eq!(without, [PackageManager::Bun, YARN_BERRY, YARN_CLASSIC]);
+    assert_eq!(
+        without,
+        [
+            PackageManager::Bun,
+            PackageManager::Aube,
+            YARN_BERRY,
+            YARN_CLASSIC
+        ]
+    );
 }
 
 /// Every operation but the ones named here, so a manager uf supports can
@@ -786,7 +794,12 @@ fn patch_is_unsupported_where_the_manager_has_none() {
     // In `PackageManager::ALL`'s own order.
     assert_eq!(
         without,
-        [PackageManager::Bun, YARN_CLASSIC, PackageManager::Npm]
+        [
+            PackageManager::Bun,
+            PackageManager::Aube,
+            YARN_CLASSIC,
+            PackageManager::Npm
+        ]
     );
 
     for manager in PackageManager::ALL {

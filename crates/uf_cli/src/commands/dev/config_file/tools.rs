@@ -529,15 +529,15 @@ mod tests {
         for (marked, names) in [
             (
                 "export default defineConfig({ runtime: \"‸\" })",
-                &["node", "bun", "deno"][..],
+                &["node", "bun", "deno", "nub"][..],
             ),
             (
                 "export default defineConfig({ build: { runtime: \"‸\" } })",
-                &["node", "bun", "deno"],
+                &["node", "bun", "deno", "nub"],
             ),
             (
                 "export default defineConfig({ packageManager: \"‸\" })",
-                &["uf", "npm", "pnpm", "yarn", "bun"],
+                &["uf", "npm", "pnpm", "yarn", "bun", "aube"],
             ),
             (
                 "export default defineConfig({ test: { runner: \"‸\" } })",

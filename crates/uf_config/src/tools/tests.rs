@@ -221,7 +221,10 @@ fn a_tag_a_leading_v_and_an_empty_version_are_each_told_what_to_write() {
 fn each_key_takes_the_names_of_its_own_role() {
     let message = refused(r#"{ runtime: "pnpm@9" }"#).to_string();
     assert!(message.contains("`pnpm` is not a runtime"), "{message}");
-    assert!(message.contains("`node`, `bun` or `deno`"), "{message}");
+    assert!(
+        message.contains("`node`, `bun`, `deno` or `nub`"),
+        "{message}"
+    );
 
     let message = refused(r#"{ packageManager: "deno" }"#).to_string();
     assert!(
@@ -229,7 +232,7 @@ fn each_key_takes_the_names_of_its_own_role() {
         "{message}"
     );
     assert!(
-        message.contains("`npm`, `pnpm`, `yarn` or `bun`"),
+        message.contains("`npm`, `pnpm`, `yarn`, `bun` or `aube`"),
         "{message}"
     );
 

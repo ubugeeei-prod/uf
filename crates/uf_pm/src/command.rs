@@ -70,7 +70,7 @@ pub type InvocationEnv = SmallVec<[(&'static str, &'static str); 1]>;
 ///
 /// The list is closed on purpose: it is the allowlist that keeps untrusted
 /// manifest content out of `argv[0]`.
-pub const PROGRAMS: [&str; 7] = ["uf", "npm", "npx", "pnpm", "yarn", "bun", "bunx"];
+pub const PROGRAMS: [&str; 8] = ["uf", "npm", "npx", "pnpm", "yarn", "bun", "bunx", "aube"];
 
 /// Which of a manifest's dependency maps an added package is recorded in.
 ///
@@ -517,6 +517,7 @@ const fn aube_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Remove => spec("aube", &["remove"]),
         Operation::Run { .. } => spec("aube", &["run", "--no-install"]),
         Operation::Exec => spec("aube", &["exec", "--no-install"]),
+        Operation::DlxExec => spec("aube", &["dlx"]),
         Operation::Update => spec("aube", &["update"]),
         Operation::Why => spec("aube", &["why"]),
         Operation::List => spec("aube", &["list"]),
