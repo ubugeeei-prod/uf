@@ -1736,12 +1736,20 @@ Lifecycle hooks remain disabled by default. `pm.allowLifecycleScripts: true`
 explicitly enables install hooks. Native packages that execute hooks receive
 writable copies so their build cannot modify the shared file store.
 
-Every one of them reports which manager ran, what named it, and the exact
-command it spawned. A command that delegates without saying to whom is the
+External operations report which manager ran, what named it, and the exact
+command it spawned. Native operations report the shared store and install results.
+A command that delegates without saying to whom is the
 black box [red line 7](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md)
 forbids.
 
 ### uf install
+
+With `packageManager: "uf"`, resolves the native lock graph, verifies archive
+integrity and links packages from the shared store. The report includes package,
+download, hardlink and copy counts. A warm frozen install uses the lock and store
+without requesting package metadata.
+
+With an external manager selected:
 
 Installs dependencies with the selected package manager, and refuses lifecycle
 scripts while doing it — the manager is passed `--ignore-scripts`, and a
@@ -2091,12 +2099,14 @@ A vulnerable tree exits nonzero. A failed registry response also exits nonzero
 and reports the audit as incomplete. These two flags are native manager options.
 
 
-Audits the installed tree against the registry's advisories: `npm audit`,
-`pnpm audit`, `yarn audit`, `yarn npm audit` on Yarn 2+, `bun audit`.
+With an external manager, audits the installed tree against the registry's
+advisories: `npm audit`, `pnpm audit`, `yarn audit`, `yarn npm audit` on Yarn 2+,
+`bun audit`, or `aube audit`.
 
 ### uf search TERM...
 
-Searches the registry. **npm and pnpm can; Yarn and bun cannot**, and uf says
+Searches the registry. **uf's native manager, npm and pnpm can; Yarn, bun and
+Aube cannot**, and uf says
 so rather than running a manager the project did not choose:
 
 <figure className="terminal">
@@ -2114,7 +2124,7 @@ another manager would resolve against that manager's registry configuration and
 could write its own lockfile, which is the one thing a manager-agnostic front
 end must not do.
 
-Each of the three takes package names and no flags. A manager's own flags are
+External manager queries take package names and no flags. A manager's own flags are
 its own surface — reached with `uf exec` — because uf cannot know which of them
 only read: `pnpm audit --fix` rewrites a lockfile.
 
