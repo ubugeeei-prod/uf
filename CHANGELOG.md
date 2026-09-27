@@ -2,6 +2,7 @@
 
 ## uf@0.13.1
 
+- fix(test): resolve transitive Flow loaders for native package installations on every release target.
 - fix(pm): select macOS native dependencies and verify Vite builds on every release target.
 - fix(pm): support legacy npm tarball layouts (#1655) (73bf4dce)
 
