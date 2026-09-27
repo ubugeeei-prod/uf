@@ -369,7 +369,11 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         None => cwd,
     };
     let root = uf_config::discover_root(&cwd);
-    if root.join("package.json").exists() || uf_config::discover_config(&root).is_some() {
+    if !matches!(
+        &cli.command,
+        Commands::SelfUninstall { .. } | Commands::SelfUpdate { .. } | Commands::Use { .. }
+    ) && (root.join("package.json").exists() || uf_config::discover_config(&root).is_some())
+    {
         // Register projects even when they only use uf's own caches or toolchain.
         // Read-only state must not prevent a build; GC never invents missing pins.
         if let Err(error) = uf_env::Roots::discover().and_then(|roots| roots.add(&root, &[])) {
