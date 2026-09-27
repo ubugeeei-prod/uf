@@ -164,13 +164,14 @@ impl Server {
                 {
                     if let Some(error) = message.get("error") {
                         // Flow acknowledges initialize before its type server connects.
-                        // An immediate hover waits within the same request deadline.
+                        // Flow reconnects on a one-second idle tick. Leave time for that
+                        // tick; frequent retries otherwise keep the server disconnected.
                         if error["code"] == -32800
                             && error["message"]
                                 .as_str()
                                 .is_some_and(|m| m.starts_with("Server not connected"))
                         {
-                            std::thread::sleep(Duration::from_millis(100).min(remaining));
+                            std::thread::sleep(Duration::from_millis(1250).min(remaining));
                             continue 'connecting;
                         }
                         bail!("official Flow: {error}")
