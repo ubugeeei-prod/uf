@@ -402,7 +402,7 @@ pub const fn tool_for_runtime(host: CapabilityJsHost) -> Tool {
 
 /// The tool a package manager spec names: `npm`, `pnpm`, `yarn` or `bun`.
 #[must_use]
-pub const fn tool_for_manager(name: PackageManagerName) -> Tool {
+pub const fn tool_for_manager(name: PackageManagerName) -> Option<Tool> {
     manager(name)
 }
 
@@ -532,11 +532,13 @@ fn declarations(
             );
         }
     }
-    if let Some(declared) = config.package_manager_tool() {
+    if let Some(declared) = config.package_manager_tool()
+        && let Some(tool) = manager(declared.spec.name)
+    {
         let key = declared.source.key().unwrap_or("packageManager").to_owned();
         add(
             &mut found,
-            manager(declared.spec.name),
+            tool,
             declared.spec.version,
             "package manager",
             key,
@@ -609,12 +611,13 @@ const fn runtime(host: CapabilityJsHost) -> Tool {
 }
 
 /// The tool a package manager spec names.
-const fn manager(name: PackageManagerName) -> Tool {
+const fn manager(name: PackageManagerName) -> Option<Tool> {
     match name {
-        PackageManagerName::Npm => Tool::Npm,
-        PackageManagerName::Pnpm => Tool::Pnpm,
-        PackageManagerName::Yarn => Tool::Yarn,
-        PackageManagerName::Bun => Tool::Bun,
+        PackageManagerName::Uf => None,
+        PackageManagerName::Npm => Some(Tool::Npm),
+        PackageManagerName::Pnpm => Some(Tool::Pnpm),
+        PackageManagerName::Yarn => Some(Tool::Yarn),
+        PackageManagerName::Bun => Some(Tool::Bun),
     }
 }
 

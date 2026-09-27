@@ -244,7 +244,8 @@ pub(crate) fn manager_path_with(
         let wanted = Wanted {
             key: "packageManager",
             spec: &spec.to_string(),
-            tool: uf_env::toolchain::tool_for_manager(spec.name),
+            tool: uf_env::toolchain::tool_for_manager(spec.name)
+                .context("native manager does not require an external tool")?,
             version: &spec.version,
         };
         path.push(store_tool(resolved, &wanted, frozen, notify, releases)?.bin);
@@ -411,7 +412,7 @@ pub(crate) fn describe_manager(
     let wanted = Wanted {
         key: "packageManager",
         spec: &spec.to_string(),
-        tool: uf_env::toolchain::tool_for_manager(spec.name),
+        tool: uf_env::toolchain::tool_for_manager(spec.name)?,
         version: &spec.version,
     };
     Some(describe_wanted(
@@ -528,7 +529,7 @@ pub(crate) fn locked(resolved: &ResolvedConfig, role: uf_config::ToolRole) -> Op
                 .package_manager_tool()
                 .and_then(|declared| match declared.spec.version {
                     ToolVersion::Prefix(prefix) => Some((
-                        uf_env::toolchain::tool_for_manager(declared.spec.name),
+                        uf_env::toolchain::tool_for_manager(declared.spec.name)?,
                         prefix,
                     )),
                     ToolVersion::OnPath | ToolVersion::Exact(_) => None,

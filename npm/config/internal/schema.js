@@ -168,7 +168,8 @@ export type RuntimeSpec = string;
  * A package manager, and optionally which release of it: `"pnpm"`,
  * `"pnpm@10"`, `"pnpm@12.0.0"`.
  *
- * The names are `npm`, `pnpm`, `yarn` and `bun`. Yarn's edition is its major
+ * `"uf"` selects the native manager bundled with the running uf binary.
+ * External names are `npm`, `pnpm`, `yarn` and `bun`. Yarn's edition is its major
  * version — `"yarn@1"` is Classic. No version is the one on `PATH`; a prefix is
  * the newest release that starts with it, locked in `uf.lock`; a full version
  * is exactly that release. A range or a tag is refused.

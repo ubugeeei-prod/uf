@@ -104,6 +104,7 @@ impl PackageManager {
     #[must_use]
     pub fn from_spec(spec: &uf_config::PackageManagerSpec) -> Self {
         match spec.name {
+            uf_config::PackageManagerName::Uf => Self::Uf,
             uf_config::PackageManagerName::Npm => Self::Npm,
             uf_config::PackageManagerName::Pnpm => Self::Pnpm,
             uf_config::PackageManagerName::Bun => Self::Bun,
