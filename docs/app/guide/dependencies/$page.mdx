@@ -436,13 +436,21 @@ which is what the install above shows.
 
 ## What is not here
 
-- **uf's own resolver.** It cannot fetch, and `uf.lock` holds only a hash of each
-  workspace manifest, not the packages.
-- **`--json`** on any of these commands.
+- **Complete external-manager compatibility in native mode.** Native installs
+  support registry ranges, aliases, local directories and workspace links.
+  Peer packages bind to compatible root declarations; separate nested peer
+  contexts, git/URL dependencies and patch protocols need an external manager.
+- **Authenticated registry reads in native mode.** Tokens are not loaded from
+  `.npmrc`; a registry that requires credentials reports a failure.
+- **Native package provenance signatures.** Native downloads verify SRI, not
+  Sigstore signatures. The attestation report above applies to npm installs.
+- **`--json` on every package command.** Native queries and `uf audit --json`
+  provide JSON; install output remains a terminal report.
 - **The manager's exit status.** A manager that fails makes uf exit 1, whatever it
   exited with.
-- **End-to-end runs of pnpm, Yarn and Bun in uf's own tests.** The command lines
-  for each manager are unit-tested, and npm is the one driven for real.
+- **A speed guarantee for every dependency graph.** CI measures repeated
+  installs and shared disk usage on fixed fixtures; project graphs and network
+  conditions change the results.
 - **Publishing.** `uf publish` writes a plan to `.uf/publish.json` and publishes
   nothing.
 

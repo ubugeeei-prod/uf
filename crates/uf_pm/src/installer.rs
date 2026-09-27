@@ -223,6 +223,7 @@ struct Node {
     os: Vec<CompactString>,
     #[serde(default)]
     cpu: Vec<CompactString>,
+    #[serde(default)]
     libc: Vec<CompactString>,
 }
 
