@@ -87,7 +87,19 @@ def smoke(uf, root, environment):
     project(archives, {"@rollup/pluginutils": "5.4.0", "@types/estree": "1.0.9"}, "uf")
     invoke([uf, "install"], archives, environment)
     invoke([uf, "install", "--frozen-lockfile"], archives, environment)
-    invoke(["node", "-e", "const {createFilter}=require('@rollup/pluginutils'); if(!createFilter('**/*.js')('src/main.js'))process.exit(1); if(require('@types/estree/package.json').name!=='@types/estree')process.exit(1)"], archives, environment)
+    probe = ["node", "-e", "const {createFilter}=require('@rollup/pluginutils'); if(!createFilter('**/*.js')('src/main.js'))process.exit(1); if(require('@types/estree/package.json').name!=='@types/estree')process.exit(1)"]
+    invoke(probe, archives, environment)
+    # Existing installations must rebuild the previous scoped dependency layout,
+    # even when their lockfile and direct importer links are already current.
+    state_path = archives / "node_modules" / ".uf" / "state.json"
+    state = json.loads(state_path.read_text())
+    state.pop("layoutVersion")
+    state_path.write_text(json.dumps(state))
+    package = (archives / "node_modules" / "@rollup" / "pluginutils").resolve()
+    (package.parent.parent / "estree-walker").rename(package.parent / "estree-walker")
+    invoke(probe, archives, environment, expected=1)
+    invoke([uf, "install", "--frozen-lockfile"], archives, environment)
+    invoke(probe, archives, environment)
     print("native registry install, frozen reuse, JavaScript resolution and security audit passed", flush=True)
 
 

@@ -323,7 +323,7 @@ pub(super) fn materialize(
     allow_scripts: bool,
 ) -> Result<(usize, usize)> {
     let modules = root.join("node_modules");
-    let stamp = serde_json::json!({"graph":hex(&Sha256::digest(serde_json::to_vec(graph)?)),"prod":prod,"store":store.root,"scripts":allow_scripts});
+    let stamp = serde_json::json!({"layoutVersion":2,"graph":hex(&Sha256::digest(serde_json::to_vec(graph)?)),"prod":prod,"store":store.root,"scripts":allow_scripts});
     if fs::read(modules.join(".uf/state.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
