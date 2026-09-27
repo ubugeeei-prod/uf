@@ -44,7 +44,8 @@ try {
     JSON.stringify({
       name: "native-platform-fixture",
       private: true,
-      dependencies: { vite: "8.3.1" },
+      type: "module",
+      dependencies: { vite: "8.3.1", "@uniflowed/test": "0.13.0" },
     }),
   );
   fs.writeFileSync(
@@ -52,6 +53,14 @@ try {
     "export default { pm: { packageManager: 'uf' } };\n",
   );
   run([uf, "install"]);
+  fs.writeFileSync(
+    path.join(project, "native.test.js"),
+    '"use flow";\nimport { expect, it } from "@uniflowed/test";\nit("loads the transitive host", () => { const value: number = 2; expect(value).toBe(2); });\n',
+  );
+  const tests = JSON.parse(run([uf, "test", "--json"]));
+  if (tests.passed !== 1 || tests.failed !== 0) {
+    throw new Error(`Native test runner failed: ${JSON.stringify(tests)}`);
+  }
   const lock = fs.readFileSync(path.join(project, "uf.lock"));
   run([uf, "install", "--frozen-lockfile"]);
   if (!lock.equals(fs.readFileSync(path.join(project, "uf.lock")))) {
