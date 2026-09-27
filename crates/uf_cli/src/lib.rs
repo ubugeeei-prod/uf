@@ -13,6 +13,7 @@ mod commands;
 mod fix;
 mod help;
 mod menu;
+mod missing;
 mod suggest;
 mod support;
 mod ui;
@@ -105,6 +106,7 @@ pub fn main() -> ExitCode {
             // saying so would be one more line to dismiss.
             Asked::Nothing => return ExitCode::SUCCESS,
         },
+        Err(error) if error.is::<missing::Cancelled>() => return ExitCode::SUCCESS,
         Err(error) => return report_startup_error(error),
     };
     let mode = if cli.command.wants_json() || cli.command.owns_stdout() {
@@ -366,6 +368,20 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Some(target) => enter_workspace(&cwd, target)?,
         None => cwd,
     };
+    let root = uf_config::discover_root(&cwd);
+    if root.join("package.json").exists() || uf_config::discover_config(&root).is_some() {
+        // Register projects even when they only use uf's own caches or toolchain.
+        // Read-only state must not prevent a build; GC never invents missing pins.
+        if let Err(error) = uf_env::Roots::discover().and_then(|roots| roots.add(&root, &[])) {
+            ui.render_err(|renderer, out| {
+                renderer.status(
+                    out,
+                    uf_term::Status::Warn,
+                    uf_infra::cstr!("cannot register project for global GC: {error}").as_str(),
+                )
+            });
+        }
+    }
 
     match cli.command {
         Commands::Add {
@@ -547,6 +563,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             &paths,
         ),
         Commands::Clean { deps, dry_run } => commands::clean::clean(&cwd, ui, deps, dry_run),
+        Commands::Gc { global, dry_run } => commands::gc::collect(&cwd, ui, global, dry_run),
         Commands::Lsp => commands::dev::lsp(&cwd),
         Commands::Mcp => commands::mcp::mcp(&cwd),
         Commands::Editor { command } => match command {
@@ -783,14 +800,33 @@ fn parse_cli() -> Result<(Cli, Option<String>)> {
     // command again on the way to printing one page.
     let mut command = Cli::command();
     silence_clap_help(&mut command, &args);
-    let parsed = match command.try_get_matches_from_mut(args) {
-        Ok(mut matches) => {
-            Cli::from_arg_matches_mut(&mut matches).map_err(|error| error.format(&mut command))
+    let parsed = loop {
+        match command.try_get_matches_from_mut(&args) {
+            Ok(mut matches) => {
+                break Cli::from_arg_matches_mut(&mut matches)
+                    .map_err(|error| error.format(&mut command));
+            }
+            Err(error) => match missing::complete(&mut args, &command, &error)? {
+                true => continue,
+                false => break Err(error),
+            },
         }
-        Err(error) => Err(error),
     };
     match parsed {
-        Ok(cli) => Ok((cli, target)),
+        Ok(mut cli) => {
+            if let Commands::Run { script, .. } = &mut cli.command
+                && script.is_none()
+                && uf_term::prompt::is_interactive()
+            {
+                let cwd = resolve_cwd(cli.cwd.clone())?;
+                let cwd = match target.as_deref() {
+                    Some(target) => enter_workspace(&cwd, target)?,
+                    None => cwd,
+                };
+                *script = missing::choose("Choose a task", &commands::task::task_names(&cwd))?;
+            }
+            Ok((cli, target))
+        }
         Err(error) => Err(Refused {
             error,
             command: Box::new(command),

@@ -66,6 +66,7 @@
 //! `~/.local/bin/uf` the two of them take turns overwriting with different
 //! kinds of file.
 
+pub(crate) mod gc;
 mod pin;
 mod switch;
 mod uninstall;
@@ -357,6 +358,22 @@ pub(crate) fn use_runtime(ui: &mut Ui, runtime: &str) -> Result<()> {
         renderer.blank(out);
         renderer.status(out, Status::Success, &summary);
     });
+    Ok(())
+}
+
+/// Acquire a project-pinned uf without changing the machine's active links.
+pub(crate) fn install_project_version(version: &str) -> Result<()> {
+    if !is_version(version) {
+        bail!("uf must be an exact release version");
+    }
+    let store = Store::from_process();
+    if !store.has_complete(version) {
+        if version == OWN_VERSION {
+            install_running_binary(&store, version)?;
+        } else {
+            acquire(&store, version)?;
+        }
+    }
     Ok(())
 }
 

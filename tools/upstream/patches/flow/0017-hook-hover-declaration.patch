@@ -1,0 +1,32 @@
+Subject: preserve hook declarations in type-at-position hover
+
+Issue: user-reported hook hover on 2026-09-27
+Upstream: not filed yet
+
+The hook effect is already inferred; binder framing must print hook instead
+of function and avoid placing hook between the name and parameters.
+
+diff --git a/rust_port/crates/flow_common_ty/src/ty_printer.rs b/rust_port/crates/flow_common_ty/src/ty_printer.rs
+--- a/rust_port/crates/flow_common_ty/src/ty_printer.rs
++++ b/rust_port/crates/flow_common_ty/src/ty_printer.rs
+@@ -1878,6 +1878,20 @@
+     let head = layout_of_binder_head(binder);
+     match t {
+         Ty::Fun(func) if matches!(binder.kind, BinderKind::Function | BinderKind::Method) => {
++            if matches!(func.fun_effect, FunEffect::Hook)
++                && matches!(binder.kind, BinderKind::Function)
++            {
++                // The declaration owns the hook keyword. The signature must not
++                // print it a second time between the name and the parameters.
++                let mut signature = (**func).clone();
++                signature.fun_effect = FunEffect::Arbitrary;
++                return layout::fuse(vec![
++                    LayoutNode::atom("hook".to_string()),
++                    layout::space(),
++                    LayoutNode::atom(binder.name.to_string()),
++                    type_function(opts, 0, &LayoutNode::atom(":".to_string()), &signature, state),
++                ]);
++            }
+             layout::fuse(vec![
+                 head,
+                 type_function(opts, 0, &LayoutNode::atom(":".to_string()), func, state),

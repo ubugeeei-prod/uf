@@ -200,6 +200,33 @@ fn no_extraneous_dependencies_rejects_packages_missing_from_the_nearest_manifest
 }
 
 #[test]
+fn config_api_is_builtin_only_inside_uf_configuration() {
+    let diagnostics = lint_many(
+        "import/no-extraneous-dependencies",
+        &[
+            ("package.json", r#"{"name":"app"}"#),
+            (
+                "uf.config.js",
+                "import { defineConfig } from '@uniflowed/config';",
+            ),
+            (
+                "variants/static/uf.config.js",
+                "import { defineConfig } from '@uniflowed/config';",
+            ),
+            (
+                "app/page.js",
+                "import { defineConfig } from '@uniflowed/config';",
+            ),
+            (
+                "other.config.js",
+                "import { defineConfig } from '@uniflowed/config';",
+            ),
+        ],
+    );
+    assert_eq!(diagnostics.len(), 2);
+}
+
+#[test]
 fn no_extraneous_dependencies_uses_context_manifests_for_narrowed_runs() {
     let selected = [at(
         "app/page.js",

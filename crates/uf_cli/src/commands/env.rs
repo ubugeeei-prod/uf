@@ -397,6 +397,79 @@ fn gc(ui: &mut Ui, dry_run: bool) -> Result<()> {
 /// of a file name — `.env.<profile>` — and a profile that could climb out of
 /// the project would be a profile that reads somebody else's file.
 fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
+    if name == "cfw" {
+        let root = discover_root(cwd);
+        let path = uf_config::discover_config(&root).unwrap_or_else(|| root.join("uf.config.js"));
+        let mut source = if path.exists() {
+            fs::read_to_string(&path)?
+        } else {
+            "export default {};\n".to_owned()
+        };
+        super::config_edit::put(
+            &mut source,
+            &["app", "runtime", "deploy", "adapter"],
+            &serde_json::json!("edge"),
+        )?;
+        let object = uf_config::extract_config_object(&source)
+            .ok_or_else(|| anyhow::anyhow!("expected a static configuration"))?;
+        uf_config::parse_config_object(&path, &object)?;
+        fs::write(&path, source)?;
+        ui.render(|renderer, out| renderer.status(out, Status::Success,
+            "Cloudflare Workers selected; uf build writes the edge worker and Wrangler configuration"));
+        return Ok(());
+    }
+    if name == "uf" || name.starts_with("uf@") {
+        let spec = if name == "uf" {
+            uf_infra::into_string(uf_infra::cstr!("uf@{}", env!("CARGO_PKG_VERSION")))
+        } else {
+            name.to_owned()
+        };
+        let root = discover_root(cwd);
+        let path = uf_config::discover_config(&root).unwrap_or_else(|| root.join("uf.config.js"));
+        let mut source = if path.exists() {
+            fs::read_to_string(&path)?
+        } else {
+            "export default {};\n".to_owned()
+        };
+        let version = spec.strip_prefix("uf@").unwrap_or_default();
+        super::config_edit::put(&mut source, &["uf"], &serde_json::json!(version))?;
+        let object = uf_config::extract_config_object(&source)
+            .ok_or_else(|| anyhow::anyhow!("expected a static configuration"))?;
+        uf_config::parse_config_object(&path, &object)?;
+        super::toolchain::install_project_version(version)?;
+        fs::write(&path, source)?;
+        ui.render(|renderer, out| {
+            renderer.status(
+                out,
+                Status::Success,
+                uf_infra::cstr!("project toolchain selected: uf@{version}").as_str(),
+            )
+        });
+        return Ok(());
+    }
+    if matches!(name, "node" | "bun" | "deno" | "npm" | "pnpm" | "yarn") {
+        let tool = uf_env::Tool::parse(name).ok_or_else(|| anyhow::anyhow!("unknown tool"))?;
+        let index = uf_env::index::refresh(tool)?;
+        let values: Vec<_> = index
+            .releases
+            .iter()
+            .filter(|release| !release.is_prerelease())
+            .take(20)
+            .map(|release| {
+                (
+                    uf_infra::into_string(uf_infra::cstr!("{name}@{}", release.version)),
+                    "Install this release".to_owned(),
+                )
+            })
+            .collect();
+        let selected = crate::missing::choose("Choose a version", &values)?
+            .or_else(|| values.first().map(|(spec, _)| spec.clone()))
+            .ok_or_else(|| anyhow::anyhow!("publisher has no stable releases"))?;
+        return use_tool(cwd, ui, &selected);
+    }
+    if name.contains('@') {
+        return use_tool(cwd, ui, name);
+    }
     // The project root rather than the working directory: `uf dev` reads this
     // from the root, so `uf env use` run one directory down has to write it
     // there or the two would disagree about a file with one name.
@@ -418,6 +491,48 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
     ));
     ui.render(|renderer, out| renderer.status(out, Status::Success, &message));
     Ok(())
+}
+
+/// Select a project tool without confusing its spec with a dotenv mode.
+fn use_tool(cwd: &Utf8Path, ui: &mut Ui, spec: &str) -> Result<()> {
+    let resolved = load_config(cwd)?;
+    let name = spec.split_once('@').map_or(spec, |(name, _)| name);
+    let key = match name {
+        "node" | "bun" | "deno" => {
+            uf_config::RuntimeSpec::parse(spec)?;
+            "runtime"
+        }
+        "npm" | "pnpm" | "yarn" => {
+            uf_config::PackageManagerSpec::parse(spec)?;
+            "packageManager"
+        }
+        _ => bail!("choose node, bun, deno, npm, pnpm or yarn followed by @version"),
+    };
+    let path = resolved
+        .config_path
+        .unwrap_or_else(|| resolved.root.join("uf.config.js"));
+    let before = if path.exists() {
+        fs::read_to_string(&path)?
+    } else {
+        "export default {};\n".to_owned()
+    };
+    let mut source = before;
+    super::config_edit::put(&mut source, &[key], &serde_json::json!(spec))?;
+    super::config_edit::remove(&mut source, &["env", "toolchain", name])?;
+    let object = uf_config::extract_config_object(&source)
+        .ok_or_else(|| anyhow::anyhow!("expected a static uf configuration"))?;
+    let candidate = uf_config::parse_config_object(&path, &object)?;
+    let platform = uf_env::Platform::current()
+        .ok_or_else(|| anyhow::anyhow!("tool installation is unsupported on this platform"))?;
+    let tools =
+        uf_env::toolchain::resolve(&resolved.root, &candidate, Lookup::Missing, &Publishers)?;
+    let store = uf_env::Store::discover()?;
+    for pin in tools.pins(platform) {
+        uf_env::archive::ensure(&store, &pin)?;
+    }
+    // A failed download leaves the existing configuration intact.
+    fs::write(&path, source)?;
+    install(&resolved.root, ui)
 }
 
 #[cfg(test)]

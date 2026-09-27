@@ -52,7 +52,7 @@ const OVERRIDE: &str = "UF_TOOLCHAIN";
 const FOLLOWED: &str = "UF_TOOLCHAIN_FOLLOWED";
 
 /// The commands that manage the machine's uf, and so never follow a pin.
-const MACHINE_COMMANDS: &[&str] = &["self-update", "self-uninstall", "use"];
+const MACHINE_COMMANDS: &[&str] = &["self-update", "self-uninstall", "use", "gc"];
 
 /// Where a version to follow came from, for the messages.
 #[derive(Debug, Clone, PartialEq, Eq)]

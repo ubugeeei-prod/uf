@@ -1,5 +1,5 @@
 //! Parser-backed, minimal config edits. Unchanged bytes keep their formatting.
-use super::super::dev::config_file::outline::{self, Entry, Object, Value};
+use super::dev::config_file::outline::{self, Entry, Object, Value};
 use anyhow::{Result, bail, ensure};
 use serde_json::Value as Json;
 

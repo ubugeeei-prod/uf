@@ -593,6 +593,15 @@ pub(crate) enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Collect project caches, or machine caches and unused uf versions.
+    Gc {
+        /// Include registered projects and this machine's shared caches.
+        #[arg(long)]
+        global: bool,
+        /// List candidates without deleting them.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Lint the project without type checking it.
     Lint {
         /// Emit machine-readable JSON on stdout.
@@ -1648,9 +1657,9 @@ pub(crate) enum EnvCommand {
         #[arg(long, short)]
         verbose: bool,
     },
-    /// Set the active `.env` profile.
+    /// Select a tool such as node@26, or set the active `.env` profile.
     Use {
-        /// The profile name, e.g. `production`.
+        /// A tool spec such as `node@26`, or a profile such as `production`.
         name: String,
     },
     /// Install the runtimes and package managers `uf.config.js` declares.
