@@ -537,7 +537,7 @@ mod tests {
             ),
             (
                 "export default defineConfig({ packageManager: \"‸\" })",
-                &["npm", "pnpm", "yarn", "bun"],
+                &["uf", "npm", "pnpm", "yarn", "bun"],
             ),
             (
                 "export default defineConfig({ test: { runner: \"‸\" } })",

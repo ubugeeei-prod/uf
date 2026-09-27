@@ -29,6 +29,8 @@ def project(directory, deps, manager):
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "package.json").write_text(json.dumps({"name": "pm-fixture", "private": True, "dependencies": deps}))
     (directory / "uf.config.js").write_text(f"export default {{ packageManager: '{manager}' }};\n")
+    if manager == "pnpm":
+        (directory / "pnpm-workspace.yaml").write_text("minimumReleaseAge: 0\n")
 
 
 def disk_usage(directories):
