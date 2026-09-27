@@ -1,5 +1,10 @@
 # Changelog
 
+## uf@0.13.0
+
+- feat(pm): install and audit dependencies from a shared native store (#1647) (1e35aab9)
+- feat(flow): configure official checker and editor server versions (#1651) (ba207a91)
+
 ## uf@0.12.0
 
 - fix(cli): select project runtimes and missing arguments, collect caches (#1646) (9c3f3804)
