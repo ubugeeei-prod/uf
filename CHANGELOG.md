@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.13.1
+
+- fix(pm): support legacy npm tarball layouts (#1655) (73bf4dce)
+
 ## uf@0.13.0
 
 - feat(pm): install and audit dependencies from a shared native store (#1647) (1e35aab9)
