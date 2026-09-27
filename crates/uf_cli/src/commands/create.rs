@@ -267,6 +267,9 @@ fn render_remote(
     progress.finish();
     drop(progress);
     let mut files = remote::copy_into(&fetched?, &target, force)?;
+    if uf_project::ensure_gitignore(&target)? {
+        files.push(target.join(".gitignore"));
+    }
     super::agents::update(&target)?;
     if !files
         .iter()

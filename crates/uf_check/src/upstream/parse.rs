@@ -53,19 +53,16 @@ impl Parsed {
         self.parse_errors.is_empty()
     }
 
-    /// Whether the file's docblock says `@noflow`.
+    /// Whether the selected source mode opts out of inference.
     fn opted_out(&self) -> bool {
         matches!(self.docblock.flow(), Some(FlowMode::OptOut))
     }
 
     /// Whether inference should run over this file.
     ///
-    /// `@noflow` is Flow's own way for a file to say it is plain JavaScript,
-    /// and it is the only one uf offers: a config key listing paths would be a
-    /// second, uf-shaped answer to a question Flow has already answered, and
-    /// the file itself is where a reader looks. Parse errors are reported
-    /// either way — uf transforms every `.js` it owns regardless of docblock,
-    /// so a file that does not parse is broken whatever it opted out of.
+    /// `"use js"` opts out, while `"use flow"` opts in. Legacy docblock
+    /// pragmas remain supported; a directive takes precedence. Parse errors
+    /// are reported in either mode because uf still transforms the file.
     pub(super) fn is_checked(&self) -> bool {
         !self.opted_out()
     }
@@ -81,12 +78,29 @@ pub(super) fn parse_file(
     options: &Options,
     is_lib_file: bool,
 ) -> Parsed {
-    let (_docblock_errors, docblock) = docblock_parser::parse_docblock(
+    let (ast, parse_errors) = uf_flow::module::parse(content, Some(&file_key.dupe()));
+    let (_docblock_errors, mut docblock) = docblock_parser::parse_docblock(
         options.max_header_tokens as usize,
         &options.file_options,
         &file_key,
         content,
     );
+    // Read the parsed directive prologue. Strings in comments, template
+    // literals or later expressions cannot select a file's checker mode.
+    // Keep the original AST and text so byte and UTF-16 positions stay exact.
+    for statement in ast.statements.iter() {
+        let ast::statement::StatementInner::Expression { inner, .. } = &**statement else {
+            break;
+        };
+        let Some(directive) = inner.directive.as_deref() else {
+            break;
+        };
+        match directive {
+            "use flow" => docblock.flow = Some(FlowMode::OptIn),
+            "use js" => docblock.flow = Some(FlowMode::OptOut),
+            _ => {}
+        }
+    }
     let metadata = flow_typing_context::docblock_overrides(
         &docblock,
         &file_key,
@@ -104,7 +118,6 @@ pub(super) fn parse_file(
     // decorated class was a file `uf check` accepted and `uf fmt`, `uf lint`
     // and `uf transform` refused. There is no options argument any more —
     // ubugeeei-prod/uf#430.
-    let (ast, parse_errors) = uf_flow::module::parse(content, Some(&file_key.dupe()));
     let file_sig = Arc::new(FileSig::from_program(
         &file_key,
         &ast,

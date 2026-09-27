@@ -597,8 +597,8 @@ fn with_a_server_action(root: &Path) {
     fs::write(
         &page,
         source.replacen(
-            "// @flow\n",
-            "// @flow\nimport { createUser, deleteUser } from \"./actions.js\";\n",
+            "\"use flow\";\n",
+            "\"use flow\";\nimport { createUser, deleteUser } from \"./actions.js\";\n",
             1,
         ),
     )

@@ -8,13 +8,13 @@ fn project() -> Vec<OwnedSource> {
     vec![
         OwnedSource::new(
             "src/user.js",
-            "// @flow\n\
+            "\"use flow\";\n\
              export type User = { name: string, age: number };\n\
              export function greet(user: User): string {\n  return user.name;\n}\n",
         ),
         OwnedSource::new(
             "src/app.js",
-            "// @flow\n\
+            "\"use flow\";\n\
              import { greet, type User } from './user.js';\n\
              const user: User = { name: 'Ada', age: 36 };\n\
              const greeting = greet(user);\n\
@@ -74,6 +74,21 @@ fn the_type_of_an_imported_function_comes_from_the_file_that_exports_it() {
         "{}",
         found.printed
     );
+}
+
+#[test]
+fn hook_hover_preserves_the_effect_at_declaration_and_imported_call() {
+    require_checker!();
+    let session = Session::start(Vec::new(), CheckLimits::default()).unwrap();
+    session.load(vec![
+        OwnedSource::new("src/hooks.js", "// @flow\nexport hook useCount(value: number): number { return value; }\n"),
+        OwnedSource::new("src/app.js", "// @flow\nimport { useCount as count } from './hooks.js';\ncomponent App() { const value = count(1); return null; }\n"),
+    ]).unwrap();
+    let declaration = session.type_at("src/hooks.js", at(2, 13)).unwrap().unwrap();
+    assert_eq!(declaration.printed, "hook useCount(value: number): number");
+    let call = session.type_at("src/app.js", at(3, 34)).unwrap().unwrap();
+    assert!(call.printed.contains("hook"), "{}", call.printed);
+    assert!(!call.printed.contains("function"), "{}", call.printed);
 }
 
 #[test]

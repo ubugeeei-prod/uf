@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn source_mode_directives_do_not_prevent_static_config_loading() {
+    for header in [
+        "\"use flow\";",
+        "'use js';",
+        "\"use strict\";\n\"use flow\";",
+        "'use flow'\n",
+        "\"use flow\" /* mode */;",
+        "\"use flow\" // mode\n",
+    ] {
+        let source = format!(
+            "{header}\nimport {{ defineConfig }} from '@uniflowed/config';\nexport default defineConfig({{}});\n"
+        );
+        assert_eq!(extract_config_object(&source).as_deref(), Some("{}"));
+    }
+    assert!(extract_config_object("'use flow' + execute(); export default {};").is_none());
+}
+
+#[test]
 fn zero_config_defaults_to_flow_react_app_stack() {
     let config = UniflowedConfig::default();
 

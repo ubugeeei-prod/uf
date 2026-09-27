@@ -1,7 +1,7 @@
 //! Reviewable adoption and versioned source migrations, without executing configs.
 mod adopt;
 mod codemod;
-mod source;
+use super::config_edit as source;
 #[cfg(test)]
 mod tests;
 mod ui_copies;

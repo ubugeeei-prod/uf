@@ -231,7 +231,8 @@ fn write<W: Write + ?Sized>(out: &mut W, text: &str) -> io::Result<()> {
 /// Both streams, not just one. Stdin has to be a terminal or there are no
 /// keystrokes to read; stderr has to be one or the frame is being written into
 /// a file that will end up full of cursor movements.
-fn is_interactive() -> bool {
+/// Whether a visible terminal can answer a prompt without blocking automation.
+pub fn is_interactive() -> bool {
     if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
         return false;
     }

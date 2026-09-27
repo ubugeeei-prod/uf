@@ -115,6 +115,8 @@ pub(crate) fn run_import_no_extraneous_dependencies(
         if manifest.name.as_deref() == Some(package)
             || manifest.declared.contains(package)
             || is_generated_router_dependency(&scan.file.path, package, config)
+            || (package == "@uniflowed/config"
+                && scan.file.path.rsplit('/').next() == Some("uf.config.js"))
         {
             continue;
         }

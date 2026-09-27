@@ -38,6 +38,24 @@ pub struct CreateReport {
     pub files: Vec<Utf8PathBuf>,
 }
 
+/// Create the standard generated-file ignores when a template supplies none.
+/// Existing project rules are retained byte for byte.
+pub fn ensure_gitignore(root: &Utf8Path) -> std::io::Result<bool> {
+    use std::io::Write as _;
+    let path = root.join(".gitignore");
+    let mut file = match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    file.write_all(template::gitignore().as_bytes())?;
+    Ok(true)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectFile {
     pub absolute_path: Utf8PathBuf,
