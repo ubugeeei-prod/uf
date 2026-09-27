@@ -16,8 +16,9 @@ Commands
       what to do about any that
       are missing
   use
-      Set the active `.env`
-      profile
+      Select a tool such as
+      node@26, or set the active
+      `.env` profile
   install
       Install the runtimes and
       package managers

@@ -68,6 +68,7 @@ pub(crate) const GROUPS: &[(&str, &[&str])] = &[
             "inspect",
             "explain",
             "env",
+            "gc",
             "use",
             "self-update",
             "self-uninstall",

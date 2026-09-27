@@ -24,10 +24,10 @@ pub(crate) fn collect(cwd: &Utf8Path, ui: &mut Ui, global: bool, dry_run: bool) 
     }
     if global {
         let cache = uf_env::index::cache_dir()?;
-        if let Some(parent) = cache.parent() {
-            if let Some(name) = cache.file_name() {
-                add_cache(&mut candidates, parent, name)?;
-            }
+        if let Some(parent) = cache.parent()
+            && let Some(name) = cache.file_name()
+        {
+            add_cache(&mut candidates, parent, name)?;
         }
         candidates.extend(super::toolchain::gc::candidates(&projects)?);
     }

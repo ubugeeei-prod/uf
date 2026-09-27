@@ -105,14 +105,13 @@ pub(crate) fn complete(
                 }
             }
         }
-    } else if matches!(path.last().map(String::as_str), Some("remove" | "why")) {
-        if let Ok(bytes) = std::fs::read(cwd.join("package.json"))
-            && let Ok(manifest) = serde_json::from_slice::<serde_json::Value>(&bytes)
-        {
-            for field in uf_pm::DEPENDENCY_FIELDS {
-                if let Some(deps) = manifest.get(field).and_then(serde_json::Value::as_object) {
-                    values.extend(deps.keys().map(|name| (name.clone(), field.to_owned())));
-                }
+    } else if matches!(path.last().map(String::as_str), Some("remove" | "why"))
+        && let Ok(bytes) = std::fs::read(cwd.join("package.json"))
+        && let Ok(manifest) = serde_json::from_slice::<serde_json::Value>(&bytes)
+    {
+        for field in uf_pm::DEPENDENCY_FIELDS {
+            if let Some(deps) = manifest.get(field).and_then(serde_json::Value::as_object) {
+                values.extend(deps.keys().map(|name| (name.clone(), field.to_owned())));
             }
         }
     }
@@ -133,10 +132,11 @@ pub(crate) fn complete(
     };
     let Some(value) = value else { return Ok(false) };
     // A required option has not been supplied; an empty supplied option needs only its value.
-    if error.kind() == ErrorKind::MissingRequiredArgument && !arg.is_positional() {
-        if let Some(long) = arg.get_long() {
-            args.push(uf_infra::into_string(uf_infra::cstr!("--{long}")).into());
-        }
+    if error.kind() == ErrorKind::MissingRequiredArgument
+        && !arg.is_positional()
+        && let Some(long) = arg.get_long()
+    {
+        args.push(uf_infra::into_string(uf_infra::cstr!("--{long}")).into());
     }
     args.push(value.into());
     Ok(true)
