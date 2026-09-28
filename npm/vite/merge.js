@@ -22,7 +22,8 @@
 //
 //   * `plugins`, which are concatenated rather than replaced — dropping uf's
 //     Flow transform would leave a project whose source no longer compiles,
-//     which is not a thing anyone means to configure.
+//     which is not a thing anyone means to configure. `worker.plugins` is
+//     composed for the same reason, as Vite's own `mergeConfig` composes it.
 //   * `configFile`, because a `vite.config.ts` beside `uf.config.js` is two
 //     files disagreeing about one project.
 //   * `root`, which is the project uf resolved.
@@ -73,7 +74,22 @@ export function withProjectConfig(generated, overrides) {
     ...(generated.plugins ?? []),
     ...(Array.isArray(overrides.plugins) ? overrides.plugins : []),
   ];
+  const ours = generated.worker?.plugins;
+  const theirs = overrides.worker?.plugins;
+  if (ours != null && theirs != null) {
+    // uf's first, for the reason `plugins` puts them first.
+    merged.worker.plugins = () => [...workerPlugins(ours), ...workerPlugins(theirs)];
+  }
   return merged;
+}
+
+/**
+ * What a `worker.plugins` returns. A function in every Vite uf supports; an
+ * array is the spelling Vite used to take and still reads, with a warning.
+ */
+function workerPlugins(value) {
+  const plugins = typeof value === "function" ? value() : value;
+  return Array.isArray(plugins) ? plugins : [plugins];
 }
 
 function isPlainObject(value) {
