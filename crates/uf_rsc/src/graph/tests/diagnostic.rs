@@ -414,6 +414,82 @@ fn the_one_server_safe_hook_is_not_reported_as_client_only() {
     assert!(!graph.has_errors(), "{:#?}", graph.diagnostics());
 }
 
+/// ubugeeei-prod/uf#1681: the router's hooks are decided the same way.
+///
+/// A layout reading `useRoute()` to mark the active link is ordinary, and the
+/// router gives a Server Component its own implementation of it — and of
+/// `useLoaderData`, `useSeo` and `useIsServer` — so asking about them on every
+/// build was asking a question the package had already answered.
+#[test]
+fn the_router_hooks_a_server_component_can_call_are_not_asked_about() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/$layout.js",
+        "import { useIsServer, useLoaderData, useRoute, useSeo } from \"@uniflowed/router\";\n\
+         export default function Layout({ children }) {\n\
+           const { pathname } = useRoute();\n\
+           const data = useLoaderData();\n\
+           const head = useSeo({ title: \"Docs\" });\n\
+           const server = useIsServer();\n\
+         }",
+    );
+    builder.add_entry("app/$layout.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(graph.diagnostics().is_empty(), "{:#?}", graph.diagnostics());
+}
+
+/// And the ones it cannot: `useRouter` refuses in a Server Component, and
+/// `useLinkStatus` is a client reference there.
+#[test]
+fn the_router_hooks_that_only_run_in_the_browser_are_errors() {
+    for hook in ["useRouter", "useLinkStatus"] {
+        let mut builder = RscGraphBuilder::new();
+        builder.add_source(
+            "app/page.js",
+            &format!(
+                "import {{ {hook} }} from \"@uniflowed/router\";\n\
+                 export default function Page() {{ {hook}(); }}"
+            ),
+        );
+        builder.add_entry("app/page.js", EntryKind::Server);
+        let graph = builder.build();
+
+        let diagnostic = graph
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.rule() == "rsc/client-only-hook-in-server")
+            .unwrap_or_else(|| panic!("{hook}: nothing was reported: {:#?}", graph.diagnostics()));
+        let message = diagnostic.to_string();
+        assert!(message.contains(hook), "{message}");
+        assert!(message.contains("`@uniflowed/router`"), "{message}");
+        assert_eq!(graph.diagnostics().len(), 1, "{:#?}", graph.diagnostics());
+    }
+}
+
+/// Only the package root has a `react-server` entry, so a hook named through
+/// a subpath is still the question it was.
+#[test]
+fn a_router_subpath_is_not_the_router_root() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        "import { useRoute } from \"@uniflowed/router/client\";\n\
+         export default function Page() { useRoute(); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(
+        graph
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.rule() == "rsc/unclassified-hook-in-server"),
+        "{:#?}",
+        graph.diagnostics()
+    );
+}
+
 /// The first half of ubugeeei-prod/uf#388: a hook the project wrote can be
 /// decided once the graph knows which export owns the body and which import
 /// binding a call names.

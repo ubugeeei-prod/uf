@@ -76,8 +76,36 @@ pub const SERVER_ONLY_SUFFIX: &str = ".server.js";
 /// writing one by hand is 36 more judgements whose failure mode is turning a
 /// warning into an error in somebody's build. Those wait for the export-graph
 /// fixpoint in ubugeeei-prod/uf#388, which can derive them; this is the half
-/// that needs no new data at all.
+/// that needs no new data at all. [`ROUTER_PACKAGE`] is the one exception,
+/// because its six are small enough to hold to the package's own sources and
+/// `useRoute` in a layout is the commonest server hook call there is
+/// (ubugeeei-prod/uf#1681).
 pub const CLIENT_ONLY_HOOK_PACKAGE: &str = "@uniflowed/hooks";
+
+/// The router, whose hooks this crate can also decide without reading a body.
+///
+/// Its root specifier only. The package's `"."` export has a `react-server`
+/// condition that hands a Server Component `server-components.js`, which
+/// implements `useRoute`, `useLoaderData`, `useSeo` and `useIsServer` against
+/// the route the Flight renderer is rendering; no subpath has such a
+/// condition, so a hook named through one is left to the question it was.
+pub const ROUTER_PACKAGE: &str = "@uniflowed/router";
+
+/// Server-component safety for every hook [`ROUTER_PACKAGE`] exports. Sorted.
+///
+/// Written by hand, unlike [`CLIENT_ONLY_HOOK_PACKAGE`]'s, and held to the
+/// package by `the_router_hook_table_matches_the_router`: each `true` is an
+/// `export hook` in `server-components.js`; `useRouter` is one too, but a
+/// refusal that throws; `useLinkStatus` is a client reference there, out of the
+/// `"use client"` runtime, and calling one is not rendering it.
+const ROUTER_HOOKS: &[(&str, bool)] = &[
+    ("useIsServer", true),
+    ("useLinkStatus", false),
+    ("useLoaderData", true),
+    ("useRoute", true),
+    ("useRouter", false),
+    ("useSeo", true),
+];
 
 /// Server-component safety for hooks of [`CLIENT_ONLY_HOOK_PACKAGE`].
 ///
@@ -94,18 +122,33 @@ fn package_hook_safety() -> &'static FxHashMap<CompactString, bool> {
     })
 }
 
-/// Whether a hook exported by [`CLIENT_ONLY_HOOK_PACKAGE`] is safe in a Server
-/// Component.
-pub(crate) fn package_hook_server_component_safe(hook: &str) -> Option<bool> {
-    package_hook_safety().get(hook).copied()
+/// Whether `hook`, exported by `package`, is safe in a Server Component.
+///
+/// `package` is what [`hook_package`] answered; `None` for a name the package
+/// does not export as a hook.
+pub(crate) fn package_hook_server_component_safe(package: &str, hook: &str) -> Option<bool> {
+    match package {
+        CLIENT_ONLY_HOOK_PACKAGE => package_hook_safety().get(hook).copied(),
+        ROUTER_PACKAGE => ROUTER_HOOKS
+            .binary_search_by(|(name, _)| (*name).cmp(hook))
+            .ok()
+            .map(|index| ROUTER_HOOKS[index].1),
+        _ => None,
+    }
 }
 
-/// Whether `specifier` names [`CLIENT_ONLY_HOOK_PACKAGE`] or a subpath of it.
-pub(crate) fn is_client_only_hook_package(specifier: &str) -> bool {
-    specifier == CLIENT_ONLY_HOOK_PACKAGE
+/// The package with a hook table that `specifier` names, if any:
+/// [`CLIENT_ONLY_HOOK_PACKAGE`] or a subpath of it, or [`ROUTER_PACKAGE`]'s
+/// root.
+pub(crate) fn hook_package(specifier: &str) -> Option<&'static str> {
+    if specifier == ROUTER_PACKAGE {
+        return Some(ROUTER_PACKAGE);
+    }
+    (specifier == CLIENT_ONLY_HOOK_PACKAGE
         || specifier
             .strip_prefix(CLIENT_ONLY_HOOK_PACKAGE)
-            .is_some_and(|rest| rest.starts_with('/'))
+            .is_some_and(|rest| rest.starts_with('/')))
+    .then_some(CLIENT_ONLY_HOOK_PACKAGE)
 }
 
 /// Identifier of a module inside one [`RscGraph`].
