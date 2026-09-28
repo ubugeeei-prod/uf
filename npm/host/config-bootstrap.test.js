@@ -16,7 +16,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "@uniflowed/test";
 
@@ -44,7 +43,7 @@ parentPort.on("message", () => parentPort.postMessage({
 }));
 `,
   );
-  return { worker: new Worker(pathToFileURL(file), { workerData: { flag } }), directory };
+  return { worker: new Worker(file, { workerData: { flag } }), directory };
 }
 
 function ask(worker: Worker): Promise<{ shared: boolean, variable: ?string }> {
