@@ -7,16 +7,16 @@ export default defineConfig({
     builtins: {
       reactCompiler: {
         enabled: true,
-        mode: "syntax",
+        mode   : "syntax",
       },
       style: "style-x",
     },
-    router: { entry: "app.js", root: "app" },
+    router   : { entry: "app.js", root: "app" },
     rendering: { modes: ["ssr"] },
   },
   build: {
-    entries: ["app.js"],
-    outDir: "dist",
+    entries    : ["app.js"],
+    outDir     : "dist",
     staticBuild: false,
   },
   fmt: {

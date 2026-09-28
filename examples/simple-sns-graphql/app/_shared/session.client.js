@@ -102,8 +102,8 @@ export component SignedIn(queryRef: SessionRef, guest: React.Node, children: Rea
 /** Reset the entire browser store when identity changes. */
 
 component SignOut() {
-  const [commit, pending] = useMutation(logout);
-  const [error, setError] = useState("");
+  const [commit, pending]  = useMutation(logout);
+  const [error,  setError] = useState("");
 
   return (
     <div>
@@ -114,9 +114,9 @@ component SignOut() {
         disabled={pending}
         onClick={() =>
           commit({
-            variables: {},
+            variables  : {},
             onCompleted: () => window.location.assign("/"),
-            onError: () => setError("Could not sign out. Try again."),
+            onError    : () => setError("Could not sign out. Try again."),
           })
         }
       >

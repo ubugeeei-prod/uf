@@ -7,7 +7,7 @@ import { completed, tasks } from "../model.js";
 
 export component Page() {
   const total = useAtomValue(tasks).length;
-  const done = useAtomValue(completed);
+  const done  = useAtomValue(completed);
   return (
     <>
       <p className="eyebrow">A little at a time</p>

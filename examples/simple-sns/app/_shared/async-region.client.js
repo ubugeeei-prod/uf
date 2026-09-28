@@ -20,7 +20,7 @@ async function settle<T>(read: () => Promise<T>): Promise<ResourceResult<T>> {
 
   return match (result) {
     {kind: "success", value: const value} => { kind: "ready", value },
-    {kind: "failure", ...} => { kind: "failed" },
+    {kind: "failure", ...}                => { kind: "failed" },
   };
 }
 
@@ -32,10 +32,10 @@ async function settle<T>(read: () => Promise<T>): Promise<ResourceResult<T>> {
  */
 export hook useRetryableResource<T>(
   initial: Promise<T>,
-  load: () => Promise<T>,
+  load   : () => Promise<T>,
 ): {|
   readonly resource: Promise<ResourceResult<T>>,
-  readonly retry: () => void,
+  readonly retry   : () => void,
 |} {
   const [request, setRequest] = useState(() => ({ initial, resource: settle(() => initial) }));
 
@@ -56,8 +56,8 @@ export hook useRetryableResource<T>(
 
 component SettledRegion<T>(
   resource: Promise<ResourceResult<T>>,
-  label: string,
-  retry: () => void,
+  label   : string,
+  retry   : () => void,
   children: (T) => React.MixedElement,
 ) {
   return match (use(resource)) {
@@ -77,9 +77,9 @@ component SettledRegion<T>(
 
 export component AsyncRegion<T>(
   resource: Promise<ResourceResult<T>>,
-  label: string,
-  retry: () => void,
-  pending: renders LoadingState,
+  label   : string,
+  retry   : () => void,
+  pending : renders LoadingState,
   children: (T) => React.MixedElement,
 ) {
   return (

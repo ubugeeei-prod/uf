@@ -17,7 +17,7 @@ export component SignOut() {
       promise(() =>
         fetch("/auth/session", {
           method: "POST",
-          body: new URLSearchParams({ mode: "logout" }),
+          body  : new URLSearchParams({ mode: "logout" }),
         }),
       ),
     );

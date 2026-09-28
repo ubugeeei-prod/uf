@@ -15,6 +15,6 @@ export async function callAction<T>(
 
   return match (result) {
     {kind: "success", value: const value} => value,
-    {kind: "failure", ...} => failed(message),
+    {kind: "failure", ...}                => failed(message),
   };
 }

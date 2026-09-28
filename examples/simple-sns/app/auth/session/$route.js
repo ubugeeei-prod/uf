@@ -58,7 +58,7 @@ async function readForm(request: Request): Promise<string | null> {
 
   return match (result) {
     {kind: "success", value: const value} => value,
-    {kind: "failure", ...} => null,
+    {kind: "failure", ...}                => null,
   };
 }
 

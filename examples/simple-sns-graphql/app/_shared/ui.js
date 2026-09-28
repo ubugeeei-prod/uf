@@ -27,18 +27,18 @@ export component Icon(name: string, size: number = 20) {
       "M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7M16 3l5 5M10 14l-1 5 5-1L22 10l-5-5Z",
     users:
       "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M15 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.9M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
-    home: "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z",
-    message: "M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-1 1v-9.5a8.5 8.5 0 0 1 17 0ZM7 9h9M7 13h6",
+    home    : "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z",
+    message : "M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-1 1v-9.5a8.5 8.5 0 0 1 17 0ZM7 9h9M7 13h6",
     settings: "M4 7h16M4 17h16M8 4v6M16 14v6",
-    search: "m21 21-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z",
+    search  : "m21 21-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z",
     heart:
       "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z",
-    arrow: "M5 12h14m-6-6 6 6-6 6",
-    plus: "M12 5v14M5 12h14",
+    arrow : "M5 12h14m-6-6 6 6-6 6",
+    plus  : "M12 5v14M5 12h14",
     logout: "M9 4H4v16h5M9 12h12m-4-4 4 4-4 4",
-    leaf: "M20 3C7 2 2 8 5 16c8 3 14-2 15-13ZM4 21 15 10",
-    check: "m5 12 4 4L19 6",
-    lock: "M6 11h12v10H6ZM8 11V7a4 4 0 0 1 8 0v4",
+    leaf  : "M20 3C7 2 2 8 5 16c8 3 14-2 15-13ZM4 21 15 10",
+    check : "m5 12 4 4L19 6",
+    lock  : "M6 11h12v10H6ZM8 11V7a4 4 0 0 1 8 0v4",
   };
 
   return (
@@ -61,7 +61,7 @@ export component Icon(name: string, size: number = 20) {
 /** Compose the UI avatar primitive with a licensed portrait or a stable initials fallback. */
 
 export component Avatar(
-  user: { readonly id: string, readonly photo?: ?string, readonly avatar: string, ... },
+  user : { readonly id: string, readonly photo?: ?string, readonly avatar: string, ... },
   small: boolean = false,
 ) renders UiAvatar.Root {
   const photo = user.photo ?? avatarPhoto(user.id);
@@ -87,9 +87,9 @@ export component Avatar(
 /** Render a regional explanation with an optional typed recovery action. */
 
 export component EmptyState(
-  title: string,
+  title   : string,
   children: string,
-  action: renders? (ActionLink | RetryButton) = null,
+  action  : renders? (ActionLink | RetryButton) = null,
 ) {
   return (
     <div className="empty-state">
@@ -156,10 +156,10 @@ component SkeletonField(multiline: boolean = false) {
 
 export component LoadingState(kind: "feed" | "threads" | "conversation" | "profile") {
   const label = match (kind) {
-    "feed" => "Loading notes",
-    "threads" => "Loading conversations",
+    "feed"         => "Loading notes",
+    "threads"      => "Loading conversations",
     "conversation" => "Loading messages",
-    "profile" => "Loading profile",
+    "profile"      => "Loading profile",
   };
 
   return (
@@ -383,21 +383,21 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
 
 const styles = stylex.create({
   avatar: {
-    position: "relative",
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    display: "inline-flex",
-    flexShrink: 0,
-    width: 42,
-    height: 42,
-    borderRadius: "50%",
+    position       : "relative",
+    overflow       : "hidden",
+    alignItems     : "center",
+    justifyContent : "center",
+    display        : "inline-flex",
+    flexShrink     : 0,
+    width          : 42,
+    height         : 42,
+    borderRadius   : "50%",
     backgroundColor: "#ffffffa6",
-    color: "#3b3b3b",
-    fontSize: 12,
-    fontWeight: 550,
-    border: "1px solid var(--line)",
-    letterSpacing: "-0.02em",
+    color          : "#3b3b3b",
+    fontSize       : 12,
+    fontWeight     : 550,
+    border         : "1px solid var(--line)",
+    letterSpacing  : "-0.02em",
   },
   small: { width: 34, height: 34, fontSize: 11 },
 });

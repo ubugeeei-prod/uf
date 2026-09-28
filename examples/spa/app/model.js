@@ -4,9 +4,9 @@ import { action, atom, selector } from "@uniflowed/state";
 
 /** One task shared by the board and the progress page. */
 export type Task = {
-  readonly id: number,
+  readonly id   : number,
   readonly title: string,
-  readonly done: boolean,
+  readonly done : boolean,
 };
 
 /** Client memory persists through navigation and resets on a reload. */

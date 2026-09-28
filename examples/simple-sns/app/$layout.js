@@ -9,7 +9,7 @@ import { props, stylex } from "@uniflowed/stylex";
 import "./_shared/base.css";
 
 export const metadata: Metadata = {
-  title: "Commonplace",
+  title      : "Commonplace",
   description: "Commonplace community workspace. Notes, private conversations, and your profile.",
 };
 
@@ -31,7 +31,7 @@ export component Layout(...{ children }: LayoutProps) {
 
 const styles = stylex.create({
   body: {
-    margin: 0,
+    margin   : 0,
     minHeight: "100vh",
   },
 });

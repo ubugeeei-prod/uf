@@ -72,9 +72,9 @@ component Conversation(conversationRef: SnsConversation_conversation$key) {
     SnsSendMessageMutation["variables"],
     SnsSendMessageMutation["response"],
   >(sendMessage);
-  const [body, setBody] = useState("");
+  const [body,      setBody]      = useState("");
   const [requestId, setRequestId] = useState("");
-  const [error, setError] = useState("");
+  const [error,     setError]     = useState("");
 
   return (
     <section className="conversation">

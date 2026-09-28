@@ -30,10 +30,10 @@ export type Identity = {| readonly current: () => User | null |};
 /** Persistence capabilities injected into mutation programs for production or isolated tests. */
 
 export type Store = {|
-  readonly insertPost: (User, string, Topic, string) => Post,
-  readonly setReaction: (User, string, boolean) => Post,
+  readonly insertPost   : (User, string, Topic, string) => Post,
+  readonly setReaction  : (User, string, boolean) => Post,
   readonly insertMessage: (User, string, string, string) => Message,
-  readonly saveSettings: (User, Settings) => Settings,
+  readonly saveSettings : (User, Settings) => Settings,
 |};
 
 /** Expected failures callers can act on; unexpected storage faults remain defects. */
@@ -111,8 +111,8 @@ export function deliverMessage(form: FormData): Mutation<Message> {
   return effect(function* (): EffectGenerator<Message, MutationProblem, Identity | Store> {
     const user = yield* authenticated;
     const input = yield* attempt(() => ({
-      threadId: identifier(field(form, "threadId", 100, 1)),
-      body: field(form, "body", MAX_MESSAGE_LENGTH, 1),
+      threadId : identifier(field(form, "threadId", 100, 1)),
+      body     : field(form, "body", MAX_MESSAGE_LENGTH, 1),
       requestId: identifier(field(form, "requestId", 100, 1)),
     }));
     const store = yield* SocialStore;
@@ -129,9 +129,9 @@ export function changeProfile(form: FormData): Mutation<Settings> {
     const user = yield* authenticated;
     const next = yield* attempt(() => ({
       displayName: field(form, "displayName", 80, 1),
-      handle: handleField(form),
-      bio: field(form, "bio", 160),
-      email: emailField(form),
+      handle     : handleField(form),
+      bio        : field(form, "bio", 160),
+      email      : emailField(form),
     }));
     const store = yield* SocialStore;
     return yield* attempt(() => store.saveSettings(user, next));

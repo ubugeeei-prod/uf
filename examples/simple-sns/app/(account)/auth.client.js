@@ -49,7 +49,7 @@ export component AuthClient(mode: "login" | "signup") {
         {
           match (mode) {
             "signup" => "Create an account",
-            "login" => "Sign in",
+            "login"  => "Sign in",
           }
         }
       </h1>
@@ -57,7 +57,7 @@ export component AuthClient(mode: "login" | "signup") {
         {
           match (mode) {
             "signup" => "Create a profile to publish notes and send messages.",
-            "login" => "Enter your handle and password to continue.",
+            "login"  => "Enter your handle and password to continue.",
           }
         }
       </p>

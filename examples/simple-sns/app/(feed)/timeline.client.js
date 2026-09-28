@@ -145,12 +145,12 @@ type LocalPost = {| readonly requestId: string, readonly post: Post |};
  */
 
 component PostComposer(
-  viewer: User,
+  viewer      : User,
   onOptimistic: (LocalPost) => void,
-  onPublished: (LocalPost) => void,
+  onPublished : (LocalPost) => void,
 ) {
-  const [body, setBody] = useState("");
-  const [topic, setTopic] = useState("community");
+  const [body,      setBody]      = useState("");
+  const [topic,     setTopic]     = useState("community");
   const [requestId, setRequestId] = useState("");
   const [state, submit, pending] = useActionState<FormState<Post>, FormData>(
     async (_previous: FormState<Post>, form: FormData): Promise<FormState<Post>> => {
@@ -165,12 +165,12 @@ component PostComposer(
         onOptimistic({
           requestId: submissionId,
           post: {
-            id: `pending-${submissionId}`,
-            author: viewer,
-            body: text,
-            topic: TOPICS.find((value) => value === topic) ?? "community",
-            likes: 0,
-            liked: false,
+            id       : `pending-${submissionId}`,
+            author   : viewer,
+            body     : text,
+            topic    : TOPICS.find((value) => value === topic) ?? "community",
+            likes    : 0,
+            liked    : false,
             createdAt: new Date().toISOString(),
           },
         });

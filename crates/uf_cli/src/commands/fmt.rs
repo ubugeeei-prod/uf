@@ -30,10 +30,18 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
     scan.unreadable
         .retain(|failure| selects(paths, &failure.relative_path));
     let unreadable = unreadable_lines(&scan.unreadable);
+    // `fmt.ignore` on top of the walk's own ignore: paths the other commands
+    // still read and this one leaves to be formatted from somewhere else.
     let discovered = scan
         .files
         .into_iter()
         .filter(|file| selects(paths, &file.relative_path))
+        .filter(|file| {
+            !resolved
+                .config
+                .fmt
+                .ignores(Utf8Path::new(&file.relative_path))
+        })
         .collect::<Vec<_>>();
     if discovered.is_empty() && !paths.is_empty() && unreadable.is_empty() {
         bail!(uf_infra::cstr!("no file matched {}", quoted_list(paths)));

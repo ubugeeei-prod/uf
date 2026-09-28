@@ -22,12 +22,12 @@ export component ThreadLink(thread: MessageThread, selected: boolean) {
     >
       <Avatar
         user={{
-          id: thread.id,
-          name: thread.name,
+          id    : thread.id,
+          name  : thread.name,
           handle: thread.handle,
           avatar: thread.avatar,
-          photo: thread.photo,
-          bio: "",
+          photo : thread.photo,
+          bio   : "",
         }}
         small
       />
@@ -83,11 +83,11 @@ component Conversation(data: ConversationData) {
 /** Reveal and retry inbox previews independently from the selected conversation. */
 
 export component InboxRegions(
-  threads: Promise<InboxData>,
+  threads     : Promise<InboxData>,
   conversation: Promise<ConversationData>,
-  threadId: string,
+  threadId    : string,
 ) {
-  const list = useRetryableResource(threads, threadsData);
+  const list   = useRetryableResource(threads, threadsData);
   const detail = useRetryableResource(conversation, () => messagesData(threadId));
 
   return (

@@ -52,14 +52,14 @@ export component AccountForm(register: boolean) {
         const password = String(values.get("password"));
         const callbacks = {
           onCompleted: () => window.location.assign("/"),
-          onError: (failure: Error) => setError(failure.message),
+          onError    : (failure: Error) => setError(failure.message),
         };
         if (register)
           signup({
             ...callbacks,
             variables: {
               input: {
-                name: String(values.get("name")),
+                name : String(values.get("name")),
                 email: String(values.get("email")),
                 handle,
                 password,

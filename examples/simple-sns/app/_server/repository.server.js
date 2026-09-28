@@ -19,10 +19,10 @@ import {
 
 export function publicUser(row: Row): User {
   const user = {
-    id: String(row.id),
-    name: String(row.name),
+    id    : String(row.id),
+    name  : String(row.name),
     handle: String(row.handle),
-    bio: String(row.bio),
+    bio   : String(row.bio),
     avatar: "",
   };
 
@@ -44,13 +44,13 @@ const POST_SELECT = `SELECT e.id, e.body, e.topic, e.created_at, m.id AS author_
 
 function asPost(row: Row): Post {
   return {
-    id: String(row.id),
-    body: String(row.body),
-    topic: topicFrom(String(row.topic)) ?? "community",
+    id       : String(row.id),
+    body     : String(row.body),
+    topic    : topicFrom(String(row.topic)) ?? "community",
     createdAt: String(row.created_at),
-    likes: Number(row.likes),
-    liked: Number(row.liked) === 1,
-    author: publicUser({ id: row.author_id, name: row.name, handle: row.handle, bio: row.bio }),
+    likes    : Number(row.likes),
+    liked    : Number(row.liked) === 1,
+    author   : publicUser({ id: row.author_id, name: row.name, handle: row.handle, bio: row.bio }),
   };
 }
 
@@ -61,9 +61,9 @@ function asPost(row: Row): Post {
 
 export function listPosts(
   viewerId: string | null,
-  topic: Topic | "all",
-  query: string,
-  page: number,
+  topic   : Topic | "all",
+  query   : string,
+  page    : number,
 ): Array<Post> {
   // instr is literal search; user input cannot become LIKE wildcards or SQL.
 
@@ -140,11 +140,11 @@ export function listThreads(viewer: User): Array<MessageThread> {
     )
     .all(viewer.id, viewer.id)
     .map((row) => ({
-      id: String(row.id),
-      name: String(row.name),
-      handle: String(row.handle),
-      avatar: profileInitials(publicUser(row)),
-      photo: avatarPhoto(String(row.member_id)),
+      id         : String(row.id),
+      name       : String(row.name),
+      handle     : String(row.handle),
+      avatar     : profileInitials(publicUser(row)),
+      photo      : avatarPhoto(String(row.member_id)),
       lastMessage: String(row.last_message),
     }));
 }
@@ -161,11 +161,11 @@ function requireParticipant(viewer: User, threadId: string): void {
 
 function asMessage(row: Row, viewer: User): Message {
   return {
-    id: String(row.id),
+    id      : String(row.id),
     threadId: String(row.conversation_id),
-    author: row.author_id === viewer.id ? "me" : "them",
-    body: String(row.body),
-    sentAt: String(row.created_at),
+    author  : row.author_id === viewer.id ? "me" : "them",
+    body    : String(row.body),
+    sentAt  : String(row.created_at),
   };
 }
 
@@ -188,9 +188,9 @@ export function listMessages(viewer: User, threadId: string): Array<Message> {
  */
 
 export function insertMessage(
-  viewer: User,
-  threadId: string,
-  body: string,
+  viewer   : User,
+  threadId : string,
+  body     : string,
   requestId: string,
 ): Message {
   return transaction((db) => {
@@ -229,9 +229,9 @@ export function settingsFor(viewer: User): Settings {
 
   return {
     displayName: String(row.name),
-    handle: String(row.handle),
-    bio: String(row.bio),
-    email: String(row.email),
+    handle     : String(row.handle),
+    bio        : String(row.bio),
+    email      : String(row.email),
   };
 }
 

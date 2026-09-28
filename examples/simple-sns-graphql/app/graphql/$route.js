@@ -50,14 +50,14 @@ export async function POST(request: Request): Promise<Response> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      cookie: sessionCookie(request.headers.get("cookie") ?? ""),
+      cookie        : sessionCookie(request.headers.get("cookie") ?? ""),
     },
     body,
-    signal: signals.any([request.signal, signals.timeout(10000)]),
+    signal  : signals.any([request.signal, signals.timeout(10000)]),
     redirect: "error",
   });
   const resultHeaders = new Headers({
-    "content-type": "application/json",
+    "content-type" : "application/json",
     "cache-control": "private, no-store",
   });
   for (let cookie of (

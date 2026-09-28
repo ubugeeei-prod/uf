@@ -28,7 +28,7 @@ async function requestPlayback(player: HTMLVideoElement, blocked: () => void): P
  */
 
 export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute: () => void) {
-  const video = useRef<HTMLVideoElement | null>(null);
+  const video                   = useRef<HTMLVideoElement | null>(null);
   const [playback, setPlayback] = useState<Playback>({ kind: "paused" });
 
   useEffect(() => {
@@ -152,9 +152,9 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
  */
 
 export component Clips(clips: $ReadOnlyArray<Clip>) {
-  const viewport = useRef<HTMLDivElement | null>(null);
+  const viewport                = useRef<HTMLDivElement | null>(null);
   const [selected, setSelected] = useState(0);
-  const [muted, setMuted] = useState(true);
+  const [muted,    setMuted]    = useState(true);
 
   useEffect(() => {
     const element = viewport.current;
@@ -178,7 +178,7 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
     const element = viewport.current;
     if (element == null || index < 0 || index >= clips.length) return;
     element.scrollTo({
-      top: index * element.clientHeight,
+      top     : index * element.clientHeight,
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
     });
   }

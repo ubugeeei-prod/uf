@@ -8,7 +8,7 @@ import type { Metadata } from "@uniflowed/router";
 import "./board.css";
 
 export const metadata: Metadata = {
-  title: "Taskboard",
+  title      : "Taskboard",
   description: "A little room for today's tasks.",
 };
 

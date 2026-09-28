@@ -44,7 +44,7 @@ use std::collections::BTreeSet;
 use std::fs;
 
 use anyhow::{Context, Result, bail};
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::{ResolvedConfig, load_config};
 use uf_fmt::{NonFlowOutcome, format_source};
@@ -678,15 +678,21 @@ impl Run<'_> {
             return StepReport::failed(step, error.to_string());
         }
 
+        // What `uf fmt` would open, and no more: `fmt.ignore` is formatted from
+        // somewhere else, so a commit touching it is not this check's to fail.
+        let fmt = &self.resolved.config.fmt;
+        let formats = |file: &&ProjectFile| !fmt.ignores(Utf8Path::new(&file.relative_path));
         let non_flow: Vec<String> = self
             .sources
             .iter()
+            .filter(formats)
             .filter(|file| file.kind.is_non_flow_formattable())
             .map(|file| file.relative_path.clone())
             .collect();
         let flow: Vec<&ProjectFile> = self
             .sources
             .iter()
+            .filter(formats)
             .filter(|file| file.kind.is_formattable())
             .collect();
         if flow.is_empty() && non_flow.is_empty() {

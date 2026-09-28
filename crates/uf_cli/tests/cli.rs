@@ -838,6 +838,55 @@ fn a_formatter_the_project_named_is_an_error_when_it_is_missing() {
     assert!(stderr.contains("1 non-Flow file was skipped"), "{stderr}");
 }
 
+/// `fmt.ignore` keeps a path out of `uf fmt` and nothing else.
+///
+/// A nested project formatted from its own directory, with its own settings,
+/// must not be reprinted in the parent's style by a run from the parent — but
+/// it is still the parent's to lint and check, so this is not the top-level
+/// `ignore`. Both halves are asserted: the unformatted file under the ignored
+/// path does not fail the check, and the same file one directory over does.
+#[test]
+fn fmt_ignore_keeps_a_path_out_of_the_formatter() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default defineConfig({ fmt: { ignore: [\"examples/app\"], nonFlow: { formatter: \"none\" } } });\n",
+    )
+    .unwrap();
+    let unformatted = "// @flow\nexport const a: number =    1;\n";
+    for directory in ["examples/app", "examples/other"] {
+        fs::create_dir_all(dir.path().join(directory)).unwrap();
+    }
+    fs::write(dir.path().join("examples/app/app.js"), unformatted).unwrap();
+
+    let check = || {
+        uf().arg("--cwd")
+            .arg(dir.path())
+            .args(["--color", "never", "fmt", "--check"])
+            .output()
+            .unwrap()
+    };
+    let output = check();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        output.status.success(),
+        "a file under fmt.ignore failed the check\n{stdout}{stderr}"
+    );
+
+    fs::write(dir.path().join("examples/other/app.js"), unformatted).unwrap();
+    let output = check();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stdout}{stderr}");
+    assert!(stdout.contains("examples/other/app.js"), "{stdout}");
+    assert!(!stdout.contains("examples/app/app.js"), "{stdout}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("examples/app/app.js")).unwrap(),
+        unformatted
+    );
+}
+
 /// The warning must not become an excuse.
 ///
 /// `uf fmt --check` still answers for the files uf can format, whether or not

@@ -54,8 +54,8 @@ const createPost = graphql`
 
 export component ComposerSlot(
   queryRef: PreloadedQueryRef<SnsComposerQuery$variables, SnsComposerQuery$data>,
-  filter: FeedFilter,
-  guest: React.Node,
+  filter  : FeedFilter,
+  guest   : React.Node,
 ) {
   const { viewer } = useQueryFromServer(composerQuery, queryRef);
 
@@ -68,11 +68,11 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
     SnsCreatePostMutation["variables"],
     SnsCreatePostMutation["response"],
   >(createPost);
-  const environment = useRelayEnvironment();
-  const [body, setBody] = useState("");
-  const [topic, setTopic] = useState(filter.topic === "all" ? "community" : filter.topic);
+  const environment               = useRelayEnvironment();
+  const [body,      setBody]      = useState("");
+  const [topic,     setTopic]     = useState(filter.topic === "all" ? "community" : filter.topic);
   const [requestId, setRequestId] = useState("");
-  const [error, setError] = useState("");
+  const [error,     setError]     = useState("");
 
   return (
     <form
@@ -86,7 +86,7 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
         setError("");
         commit({
           variables: { input: { body, topic, requestId: id } },
-          onError: (failure: Error) => setError(failure.message),
+          onError  : (failure: Error) => setError(failure.message),
           onCompleted: () => {
             setBody("");
             setRequestId("");
@@ -94,9 +94,9 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
               environment,
               timelineQuery,
               {
-                topic: filter.topic,
+                topic : filter.topic,
                 search: filter.query,
-                page: filter.page,
+                page  : filter.page,
               },
               { fetchPolicy: "network-only" },
             ).subscribe({ error: () => setError("Published. Refresh the feed to see your note.") });

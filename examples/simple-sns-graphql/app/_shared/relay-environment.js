@@ -9,7 +9,7 @@ import type { Environment } from "@uniflowed/graphql";
 export function environment(endpoint: string, cookie?: string): Environment {
   return createEnvironment({
     endpoint,
-    fetch: createFetch(),
+    fetch  : createFetch(),
     headers: cookie == null ? {} : { cookie },
   });
 }

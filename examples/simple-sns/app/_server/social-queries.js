@@ -30,7 +30,7 @@ export async function sessionData(): Promise<Session> {
 export async function timelineData(
   topic: string = "all",
   query: string = "",
-  page: string = "1",
+  page : string = "1",
 ): Promise<FeedData> {
   const current = viewer();
   const filter = feedFilter(topic, query, page);

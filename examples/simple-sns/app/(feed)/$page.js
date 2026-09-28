@@ -25,8 +25,8 @@ import {
 
 export type Data = {|
   readonly session: Session,
-  readonly filter: FeedFilter,
-  readonly feed: Promise<FeedData>,
+  readonly filter : FeedFilter,
+  readonly feed   : Promise<FeedData>,
 |};
 
 /** Start session and feed reads together; await only the identity needed by the page shell. */
