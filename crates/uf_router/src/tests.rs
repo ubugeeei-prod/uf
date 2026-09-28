@@ -181,8 +181,9 @@ fn a_route_without_parameters_takes_no_second_argument() {
         !source.contains("empty,"),
         "no route's parameters are the bottom type:\n{source}"
     );
-    assert!(source.contains(r#"  "/": {},"#), "{source}");
-    assert!(source.contains(r#"  "/": [],"#), "{source}");
+    // The generated type fields follow the formatter's aligned columns.
+    assert!(source.contains(r#"  "/"           : {},"#), "{source}");
+    assert!(source.contains(r#"  "/"           : [],"#), "{source}");
     // A catch-all is every remaining segment, so it is an array of them.
     assert!(
         source.contains(r#"  "/docs/:slug*": { slug: $ReadOnlyArray<string> },"#),
