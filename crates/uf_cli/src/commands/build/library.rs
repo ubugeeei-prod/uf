@@ -139,7 +139,7 @@ pub(crate) fn build(
     // library with no declared dependencies, which externalises nothing beyond
     // the host's built-ins and is a correct build of a project that imports
     // only its own modules — which is exactly the scaffold.
-    let external = declared_dependencies(&root);
+    let external = external_names(&root, plan);
 
     progress.tick("building the library");
     let warnings = timer.measure("vite", || -> Result<Vec<String>> {
@@ -452,6 +452,20 @@ fn arguments(out_dir: &str, plan: &LibraryPlan, external: &[String]) -> Vec<Stri
         args.push(name.clone());
     }
     args
+}
+
+/// Every name the driver leaves as an import: the manifest's dependencies
+/// and `build.lib.external`, sorted and de-duplicated together.
+///
+/// `build.lib.external` is for what no manifest can declare — `vscode` in an
+/// editor extension is the ordinary case, a module the host provides at run
+/// time and nobody installs. Before ubugeeei-prod/uf#1675 it was read and
+/// validated and never reached the driver, so such a library could not be
+/// built at all.
+fn external_names(root: &Utf8Path, plan: &LibraryPlan) -> Vec<String> {
+    let mut names: BTreeSet<String> = declared_dependencies(root).into_iter().collect();
+    names.extend(plan.external().iter().map(ToString::to_string));
+    names.into_iter().collect()
 }
 
 /// Every package name the project's `package.json` declares, sorted.

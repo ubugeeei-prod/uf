@@ -4,8 +4,8 @@ use uf_config::{LibraryConfig, LibraryFormat, LibraryPlan, UniflowedConfig};
 use uf_declare::{Construct, Gap};
 
 use super::{
-    Declarations, arguments, declared_dependencies, gap_summary, missing_types_condition,
-    unpublished_exports, unresolved_exports,
+    Declarations, arguments, declared_dependencies, external_names, gap_summary,
+    missing_types_condition, unpublished_exports, unresolved_exports,
 };
 
 /// A project directory holding `package.json` with `manifest` in it.
@@ -75,6 +75,24 @@ fn every_declared_dependency_is_external_and_dev_dependencies_are_not() {
     );
     // Sorted, so two builds of one tree produce one command line.
     assert_eq!(declared_dependencies(&root), ["fsevents", "react", "zod"]);
+}
+
+/// `build.lib.external` reaches the driver alongside the manifest's names.
+///
+/// ubugeeei-prod/uf#1675: the list was validated and then dropped, so a VS
+/// Code extension importing `vscode` — which no manifest can declare — failed
+/// to resolve it.
+#[test]
+fn configured_externals_join_the_declared_dependencies() {
+    let (_dir, root) = project(r#"{ "name": "lib", "dependencies": { "zod": "^3" } }"#);
+    let mut uf = UniflowedConfig::default();
+    uf.app.router.enabled = false;
+    uf.build.lib = Some(LibraryConfig::default());
+    let lib = uf.build.lib.as_mut().expect("just set");
+    lib.external = vec!["vscode".into(), "zod".into()];
+    let plan = LibraryPlan::resolve(&uf).expect("a library");
+    // Sorted and de-duplicated: `zod` is in both and appears once.
+    assert_eq!(external_names(&root, &plan), ["vscode", "zod"]);
 }
 
 /// The scaffold: a manifest with no dependency fields at all.

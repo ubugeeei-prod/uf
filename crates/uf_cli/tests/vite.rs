@@ -9718,6 +9718,39 @@ fn a_library_leaves_a_declared_dependency_an_import_and_writes_both_formats() {
     assert!(said.contains("external packages"), "{said}");
 }
 
+/// `build.lib.external` leaves a module no manifest can declare as an import.
+///
+/// ubugeeei-prod/uf#1675, in the shape it was found: a VS Code extension, whose
+/// `vscode` is provided by the editor and installed by nobody. The list was
+/// read and validated and never passed to the driver, so Rolldown tried to
+/// resolve `vscode` and the build failed.
+#[test]
+fn a_library_leaves_a_configured_external_an_import() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "configured-external-lib");
+    project.write(
+        "index.js",
+        "// @flow\nimport * as vscode from \"vscode\";\n\nexport function activate(): void {\n  vscode.window.showInformationMessage(\"hello\");\n}\n",
+    );
+    project.write(
+        "uf.config.js",
+        &config_with(
+            "  app: { router: { enabled: false } },\n  build: { lib: { formats: [\"cjs\"], external: [\"vscode\"], declarations: false } },\n",
+        ),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(
+        succeeded,
+        "a configured external was resolved rather than left an import:\n{said}"
+    );
+    let cjs = fs::read_to_string(project.path().join("dist/index.cjs")).unwrap();
+    assert!(cjs.contains("require(\"vscode\")"), "{cjs}");
+}
+
 /// A library whose manifest names a built file the build did not write.
 ///
 /// The package installs, the build succeeds, and importing that subpath fails.
