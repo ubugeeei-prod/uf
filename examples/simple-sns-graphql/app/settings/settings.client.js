@@ -60,12 +60,12 @@ export component SettingsForm(
           variables: {
             input: {
               displayName: String(values.get("displayName")),
-              bio: String(values.get("bio")),
-              email: String(values.get("email")),
+              bio        : String(values.get("bio")),
+              email      : String(values.get("email")),
             },
           },
           onCompleted: () => setFeedback("Your changes are saved."),
-          onError: (failure: Error) => setFeedback(failure.message),
+          onError    : (failure: Error) => setFeedback(failure.message),
         });
       }}
     >

@@ -785,6 +785,50 @@ fn fmt_alignment_can_be_disabled_in_the_config_file() {
 }
 
 #[test]
+fn fmt_ignore_is_empty_by_default_and_read_from_the_config_file() {
+    assert!(FmtConfig::default().ignore.is_empty());
+    let source = r#"export default { fmt: { ignore: ["examples", "docs/generated"] } };"#;
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+    assert_eq!(parsed.fmt.ignore, ["examples", "docs/generated"]);
+    // The top-level list is untouched: this one is the formatter's alone.
+    assert!(parsed.ignore.is_none());
+}
+
+#[test]
+fn fmt_ignore_reads_entries_the_way_the_top_level_ignore_does() {
+    let fmt = FmtConfig {
+        ignore: vec!["generated".into(), "examples/app".into()],
+        ..FmtConfig::default()
+    };
+    // A bare name is a kind of directory, at any depth.
+    assert!(fmt.ignores(Utf8Path::new("generated/a.js")));
+    assert!(fmt.ignores(Utf8Path::new("src/generated/a.js")));
+    // A path is one place, matched as a prefix of whole components.
+    assert!(fmt.ignores(Utf8Path::new("examples/app/app.js")));
+    assert!(!fmt.ignores(Utf8Path::new("examples/app-two/app.js")));
+    assert!(!fmt.ignores(Utf8Path::new("src/examples/app/app.js")));
+    assert!(!fmt.ignores(Utf8Path::new("src/app.js")));
+}
+
+#[test]
+fn fmt_ignore_refuses_entries_that_could_never_match() {
+    for (entry, said) in [
+        ("", "is empty"),
+        ("/abs/examples", "absolute path"),
+        ("../sibling", "leaves the project"),
+    ] {
+        let mut config = UniflowedConfig::default();
+        config.fmt.ignore = vec!["fine".into(), entry.into()];
+        let error = validate_config(Utf8Path::new("uf.config.js"), &config)
+            .expect_err(entry)
+            .to_string();
+        assert!(error.contains("fmt.ignore[1]"), "{error}");
+        assert!(error.contains(said), "{error}");
+    }
+}
+
+#[test]
 fn parses_runtime_agnostic_tooling_surface() {
     let source = r#"
         export default defineConfig({

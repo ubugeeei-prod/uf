@@ -697,6 +697,49 @@ pub struct FmtConfig {
     pub non_flow: NonFlowFormatConfig,
     pub quotes: QuoteStyle,
     pub semicolons: bool,
+    /// Paths `uf fmt` leaves alone, on top of the top-level `ignore`.
+    ///
+    /// The top-level list is every command's: a path in it is not linted,
+    /// checked or tested either. Some paths should be all of those and still
+    /// not formatted *from here*: a nested project with a `uf.config.js` of
+    /// its own, whose `fmt` settings differ from this one's, is formatted from
+    /// its own directory, and a run from the parent would print it in the
+    /// parent's style. This repository's `examples/` are exactly that — they
+    /// show uf's defaults, and the root keeps `align: false`.
+    ///
+    /// The same grammar as `ignore`: a bare name matches a directory at any
+    /// depth, a path names one place. Additive, never a replacement: it cannot
+    /// bring back something the top-level list keeps out.
+    pub ignore: Vec<CompactString>,
+}
+
+impl FmtConfig {
+    /// Whether `uf fmt` leaves `relative` alone because of [`Self::ignore`].
+    ///
+    /// Only this list. What the top-level `ignore` excludes never reaches the
+    /// formatter, because the walk that finds the files already skipped it.
+    #[must_use]
+    pub fn ignores(&self, relative: &Utf8Path) -> bool {
+        self.ignore
+            .iter()
+            .any(|entry| ignore_entry_matches(relative, entry))
+    }
+}
+
+/// Whether one `ignore` entry covers `relative`, a path from the project root.
+///
+/// A name without a separator — `dist` — is a kind of directory and matches
+/// wherever it appears; a path — `src/generated` — names one place and is
+/// matched as a prefix. One function for the top-level `ignore` and for
+/// [`FmtConfig::ignore`], so the two lists cannot come to read the same entry
+/// two ways.
+#[must_use]
+pub fn ignore_entry_matches(relative: &Utf8Path, entry: &str) -> bool {
+    if entry.contains('/') || (cfg!(windows) && entry.contains('\\')) {
+        relative.starts_with(entry)
+    } else {
+        relative.components().any(|part| part.as_str() == entry)
+    }
 }
 
 impl Default for FmtConfig {
@@ -708,6 +751,7 @@ impl Default for FmtConfig {
             non_flow: NonFlowFormatConfig::default(),
             quotes: QuoteStyle::Double,
             semicolons: true,
+            ignore: Vec::new(),
         }
     }
 }
@@ -1888,6 +1932,7 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
         }
     }
     check_cache_switches(path, &config.app.rendering.cache)?;
+    check_fmt_ignore(path, &config.fmt)?;
     check_mdx(path, &config.app.builtins.markdown.mdx)?;
     // Which runtime this project says it is written for, checked against the
     // table that says which runtimes have a host. Before the rendering and
@@ -1918,6 +1963,32 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
     // boundary: a pattern read wider than it is written admits a host nobody
     // listed. See ubugeeei-prod/uf#958.
     check_remote_images(path, &config.app.builtins.images)?;
+    Ok(())
+}
+
+/// Refuse a `fmt.ignore` entry that could never match a file in the project.
+///
+/// Every file the formatter sees is named relative to the project root, so an
+/// empty entry, an absolute path or one that climbs out with `..` matches
+/// nothing — and a list that silently excludes nothing reads, in a green
+/// `uf fmt --check`, as a list that worked.
+fn check_fmt_ignore(path: &Utf8Path, fmt: &FmtConfig) -> Result<(), ConfigError> {
+    for (index, entry) in fmt.ignore.iter().enumerate() {
+        let entry_path = Utf8Path::new(entry.as_str());
+        let reason = if entry.trim().is_empty() {
+            "is empty"
+        } else if entry_path.is_absolute() || entry.starts_with('/') {
+            "is an absolute path; name it from the project root, like `examples/app`"
+        } else if entry_path.components().any(|part| part.as_str() == "..") {
+            "leaves the project with `..`, and uf fmt only formats files inside it"
+        } else {
+            continue;
+        };
+        return Err(ConfigError::Parse {
+            path: path.to_path_buf(),
+            message: uf_infra::into_string(uf_infra::cstr!("fmt.ignore[{index}] {reason}")),
+        });
+    }
     Ok(())
 }
 

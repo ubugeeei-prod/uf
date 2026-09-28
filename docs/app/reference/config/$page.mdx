@@ -706,6 +706,7 @@ Two things worth knowing before you write one:
 | `semicolons` | `true` | Keep semicolons |
 | `nonFlow.formatter` | `"biome"` | Who formats JSON, CSS and TypeScript: `"biome"`, `"prettier"` or `"none"` |
 | `nonFlow.arguments` | `[]` | Extra arguments, passed to that formatter verbatim |
+| `ignore` | `[]` | Paths `uf fmt` leaves alone, on top of the top-level [`ignore`](#ignore) |
 
 `nonFlow.arguments` is a list of strings and not a shape, on purpose. uf does
 not re-declare another tool's options — every option it copied would be one
@@ -728,6 +729,25 @@ width other than `fmt.lineWidth` for its stylesheets can say so. The one thing
 they may not do is turn a check into a write — `--write`, `--fix` and their
 spellings are refused where the configuration is read, because `uf fmt --check`
 changing files is the failure nobody sees: a green CI job and a rewritten tree.
+
+`fmt.ignore` is for a path the other commands should still read but `uf fmt`
+should not print from here. The usual case is a nested project with its own
+`uf.config.js` and its own `fmt` settings: it is formatted from its own
+directory, and a run from the parent would reprint it in the parent's style.
+It is still linted, type-checked and tested from the parent, which the
+top-level `ignore` would stop.
+
+```js
+export default defineConfig({
+  fmt: { align: false, ignore: ["examples"] },
+});
+```
+
+Entries read the way the top-level `ignore` reads them: a bare name matches a
+directory at any depth, a path names one place. The list only adds to the
+top-level one. An empty entry, an absolute path or one that leaves the project
+with `..` is refused where the configuration is read, because it could never
+match anything.
 
 ## ignore
 

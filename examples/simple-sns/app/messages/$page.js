@@ -20,9 +20,9 @@ import type {
 /** Resolved shell identity with independently deferred inbox and conversation reads. */
 
 export type Data = {|
-  readonly session: Session,
-  readonly threadId: string,
-  readonly threads: Promise<InboxData>,
+  readonly session     : Session,
+  readonly threadId    : string,
+  readonly threads     : Promise<InboxData>,
   readonly conversation: Promise<ConversationData>,
 |};
 

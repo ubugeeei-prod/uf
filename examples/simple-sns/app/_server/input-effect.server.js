@@ -9,9 +9,9 @@ import type { FieldErrors } from "../_shared/social-model.js";
 /** Expected input or ownership rejection, safe to return to the submitting user. */
 
 export type InputProblem = {|
-  readonly kind: "validation",
+  readonly kind   : "validation",
   readonly message: string,
-  readonly fields: FieldErrors,
+  readonly fields : FieldErrors,
 |};
 
 /**

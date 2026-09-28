@@ -79,9 +79,9 @@ export component Page(searchParams: SearchParams) {
           />
           <Timeline
             queryRef={relay.serverPreloadQuery(timelineQuery, {
-              topic: filter.topic,
+              topic : filter.topic,
               search: filter.query,
-              page: filter.page,
+              page  : filter.page,
             })}
             filter={filter}
           />

@@ -26,8 +26,8 @@ const PEOPLE: $ReadOnlyArray<User> = [
  */
 
 export component SocialFrame(
-  active: View,
-  aside: boolean = true,
+  active : View,
+  aside  : boolean = true,
   session: SessionRef = preloadSession(),
   ...{ children }: React.ElementConfig<"main">
 ) {
@@ -95,9 +95,9 @@ export component SocialFrame(
             <Icon
               name={
                 match (active) {
-                  "timeline" => "home",
-                  "clips" => "video",
-                  "messages" => "message",
+                  "timeline"                      => "home",
+                  "clips"                         => "video",
+                  "messages"                      => "message",
                   "settings" | "login" | "signup" => "settings",
                 }
               }
@@ -107,10 +107,10 @@ export component SocialFrame(
             <strong>
               {
                 match (active) {
-                  "timeline" => "Feed",
-                  "clips" => "Clips",
-                  "messages" => "Inbox",
-                  "settings" => "Settings",
+                  "timeline"         => "Feed",
+                  "clips"            => "Clips",
+                  "messages"         => "Inbox",
+                  "settings"         => "Settings",
                   "login" | "signup" => "Account",
                 }
               }

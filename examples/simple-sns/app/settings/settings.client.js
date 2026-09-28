@@ -48,11 +48,11 @@ export component SettingsClient(initial: Settings) {
       <div className="settings-profile">
         <Avatar
           user={{
-            id: "profile",
-            name: draft.displayName,
+            id    : "profile",
+            name  : draft.displayName,
             handle: draft.handle,
             avatar: profileInitials(draft),
-            bio: draft.bio,
+            bio   : draft.bio,
           }}
         />
         <div>

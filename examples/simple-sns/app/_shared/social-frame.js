@@ -29,9 +29,9 @@ const PEOPLE: $ReadOnlyArray<User> = [
  */
 
 export component SocialFrame(
-  active: View,
+  active : View,
   session: Session = GUEST,
-  aside: boolean = true,
+  aside  : boolean = true,
   ...{ children }: React.ElementConfig<"main">
 ) {
   const links = [
@@ -79,7 +79,7 @@ export component SocialFrame(
           className="compose-link"
           to={
             match (session) {
-              {kind: "guest"} => "/login",
+              {kind: "guest"}              => "/login",
               {kind: "authenticated", ...} => "/#compose",
             }
           }
@@ -122,9 +122,9 @@ export component SocialFrame(
             <Icon
               name={
                 match (active) {
-                  "timeline" => "home",
-                  "clips" => "video",
-                  "messages" => "message",
+                  "timeline"                      => "home",
+                  "clips"                         => "video",
+                  "messages"                      => "message",
                   "settings" | "login" | "signup" => "settings",
                 }
               }
@@ -134,10 +134,10 @@ export component SocialFrame(
             <strong>
               {
                 match (active) {
-                  "timeline" => "Feed",
-                  "clips" => "Clips",
-                  "messages" => "Inbox",
-                  "settings" => "Settings",
+                  "timeline"         => "Feed",
+                  "clips"            => "Clips",
+                  "messages"         => "Inbox",
+                  "settings"         => "Settings",
                   "login" | "signup" => "Account",
                 }
               }
@@ -210,7 +210,7 @@ export component SocialFrame(
         <Link
           to={
             match (session) {
-              {kind: "guest"} => "/login",
+              {kind: "guest"}              => "/login",
               {kind: "authenticated", ...} => "/#compose",
             }
           }
@@ -219,7 +219,7 @@ export component SocialFrame(
           <span>
             {
               match (session) {
-                {kind: "guest"} => "Sign in",
+                {kind: "guest"}              => "Sign in",
                 {kind: "authenticated", ...} => "Write",
               }
             }

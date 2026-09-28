@@ -12,23 +12,23 @@ export type Topic = "release" | "runtime" | "design" | "community";
 /** Public profile DTO. Credentials and contact email never belong in this shape. */
 
 export type User = {|
-  readonly id: string,
-  readonly name: string,
+  readonly id    : string,
+  readonly name  : string,
   readonly handle: string,
   readonly avatar: string,
   readonly photo?: string | null,
-  readonly bio: string,
+  readonly bio   : string,
 |};
 
 /** A published note with reaction state calculated for the requesting viewer. */
 
 export type Post = {|
-  readonly id: string,
-  readonly author: User,
-  readonly body: string,
-  readonly topic: Topic,
-  readonly likes: number,
-  readonly liked: boolean,
+  readonly id       : string,
+  readonly author   : User,
+  readonly body     : string,
+  readonly topic    : Topic,
+  readonly likes    : number,
+  readonly liked    : boolean,
   readonly createdAt: string,
 |};
 
@@ -36,30 +36,30 @@ export type Post = {|
 
 export type Settings = {|
   readonly displayName: string,
-  readonly handle: string,
-  readonly bio: string,
-  readonly email: string,
+  readonly handle     : string,
+  readonly bio        : string,
+  readonly email      : string,
 |};
 
 /** An authorized inbox preview; the full conversation is loaded separately. */
 
 export type MessageThread = {|
-  readonly id: string,
-  readonly name: string,
-  readonly handle: string,
-  readonly avatar: string,
-  readonly photo?: string | null,
+  readonly id         : string,
+  readonly name       : string,
+  readonly handle     : string,
+  readonly avatar     : string,
+  readonly photo?     : string | null,
   readonly lastMessage: string,
 |};
 
 /** A conversation entry whose direction is relative to the authenticated reader. */
 
 export type Message = {|
-  readonly id: string,
+  readonly id      : string,
   readonly threadId: string,
-  readonly author: "me" | "them",
-  readonly body: string,
-  readonly sentAt: string,
+  readonly author  : "me" | "them",
+  readonly body    : string,
+  readonly sentAt  : string,
 |};
 
 /** Safe validation messages keyed by the associated HTML form field name. */
@@ -93,14 +93,14 @@ export type Protected<out T> =
 export type FeedFilter = {|
   readonly topic: Topic | "all",
   readonly query: string,
-  readonly page: number,
+  readonly page : number,
 |};
 
 /** One feed page and the presence of a next page, without an expensive total count. */
 
 export type FeedData = {|
   ...FeedFilter,
-  readonly posts: $ReadOnlyArray<Post>,
+  readonly posts  : $ReadOnlyArray<Post>,
   readonly hasNext: boolean,
 |};
 
@@ -117,8 +117,8 @@ export type ConversationData =
   | {| readonly kind: "empty" |}
   | {| readonly kind: "missing" |}
   | {|
-      readonly kind: "ready",
-      readonly thread: MessageThread,
+      readonly kind    : "ready",
+      readonly thread  : MessageThread,
       readonly messages: $ReadOnlyArray<Message>,
     |};
 
@@ -142,7 +142,7 @@ export function failed(message: string, fields: FieldErrors = {}): ActionResult<
 
 export function fieldError(state: FormState<mixed>, name: string): string | null {
   return match (state) {
-    {status: "idle"} | {status: "success", ...} => null,
+    {status: "idle"} | {status: "success", ...}  => null,
     {status: "error", fields: const fields, ...} => fields[name] ?? null,
   };
 }
@@ -155,7 +155,7 @@ export function feedFilter(topic: string, query: string, page: string): FeedFilt
   return {
     topic: topicFrom(typeof topic === "string" ? topic : "") ?? "all",
     query: typeof query === "string" ? query.trim().slice(0, 100) : "",
-    page: Number.isInteger(parsed) ? Math.min(1000, Math.max(1, parsed)) : 1,
+    page : Number.isInteger(parsed) ? Math.min(1000, Math.max(1, parsed)) : 1,
   };
 }
 
@@ -171,9 +171,9 @@ export const TOPICS: $ReadOnlyArray<Topic> = ["design", "release", "runtime", "c
 
 export function topicLabel(topic: Topic): string {
   return match (topic) {
-    "design" => "Design",
-    "release" => "Shipping",
-    "runtime" => "Engineering",
+    "design"    => "Design",
+    "release"   => "Shipping",
+    "runtime"   => "Engineering",
     "community" => "Community",
   };
 }
@@ -182,11 +182,11 @@ export function topicLabel(topic: Topic): string {
 
 export function topicFrom(value: string): Topic | null {
   return match (value) {
-    "design" => "design",
-    "release" => "release",
-    "runtime" => "runtime",
+    "design"    => "design",
+    "release"   => "release",
+    "runtime"   => "runtime",
     "community" => "community",
-    _ => null,
+    _           => null,
   };
 }
 
@@ -228,9 +228,9 @@ export function displayDate(value: string): string {
 
 export function displayTime(value: string): string {
   return new Intl.DateTimeFormat("en", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
+    hour    : "2-digit",
+    minute  : "2-digit",
+    hour12  : false,
     timeZone: "UTC",
   }).format(new Date(value));
 }
@@ -240,9 +240,9 @@ export function displayTime(value: string): string {
 export function avatarPhoto(id: string): string | null {
   return match (id) {
     "seed-mika" => "/media/avatars/mika.jpg",
-    "seed-ren" => "/media/avatars/ren.jpg",
+    "seed-ren"  => "/media/avatars/ren.jpg",
     "seed-sora" => "/media/avatars/sora.jpg",
     "seed-niko" => "/media/avatars/niko.jpg",
-    _ => null,
+    _           => null,
   };
 }

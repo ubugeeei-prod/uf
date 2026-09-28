@@ -39,7 +39,7 @@ const timelineQuery = graphql`
 
 export component Timeline(
   queryRef: PreloadedQueryRef<SnsTimelineQuery$variables, SnsTimelineQuery$data>,
-  filter: FeedFilter,
+  filter  : FeedFilter,
 ) {
   const data = useQueryFromServer(timelineQuery, queryRef);
   const posts = data.feed.posts;

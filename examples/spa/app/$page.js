@@ -6,11 +6,11 @@ import { useAtomValue, useSetAtom } from "@uniflowed/state";
 import { addTask, clearCompleted, completed, tasks, toggleTask } from "./model.js";
 
 export component Page() {
-  const items = useAtomValue(tasks);
-  const done = useAtomValue(completed);
-  const add = useSetAtom(addTask);
-  const toggle = useSetAtom(toggleTask);
-  const clear = useSetAtom(clearCompleted);
+  const items             = useAtomValue(tasks);
+  const done              = useAtomValue(completed);
+  const add               = useSetAtom(addTask);
+  const toggle            = useSetAtom(toggleTask);
+  const clear             = useSetAtom(clearCompleted);
   const [draft, setDraft] = useState("");
 
   return (

@@ -18,8 +18,8 @@ type Statement = {|
 |};
 
 type Database = {|
-  close: () => void,
-  exec: (sql: string) => void,
+  close  : () => void,
+  exec   : (sql: string) => void,
   prepare: (sql: string) => Statement,
 |};
 

@@ -79,7 +79,7 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
                   variables: { id: post.id, liked: !post.liked },
                   optimisticResponse: {
                     setAppreciation: {
-                      id: post.id,
+                      id   : post.id,
                       liked: !post.liked,
                       likes: post.likes + (post.liked ? -1 : 1),
                     },

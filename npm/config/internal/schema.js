@@ -720,6 +720,16 @@ export type UniflowedConfig = {
     },
     readonly quotes?: "single" | "double",
     readonly semicolons?: boolean,
+    /**
+     * Paths `uf fmt` leaves alone, on top of the top-level `ignore`.
+     *
+     * For a path the other commands should still read — a nested project
+     * formatted from its own directory with its own `fmt` settings, which a
+     * run from here would reprint in this project's style. The same grammar
+     * as `ignore`: a bare name matches a directory at any depth, a path names
+     * one place.
+     */
+    readonly ignore?: $ReadOnlyArray<string>,
   },
   /**
    * Paths no command walks into.

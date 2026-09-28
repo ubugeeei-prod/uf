@@ -30,7 +30,7 @@ type LocalMessage = {| readonly requestId: string, readonly message: Message |};
  */
 
 export component DirectMessagesClient(
-  thread: MessageThread,
+  thread         : MessageThread,
   initialMessages: $ReadOnlyArray<Message>,
 ) {
   const [committed, setCommitted] = useState<Array<LocalMessage>>(() =>
@@ -42,7 +42,7 @@ export component DirectMessagesClient(
       current.some((entry) => entry.requestId === draft.requestId) ? current : [...current, draft],
   );
   const messages = entries.map((entry) => entry.message);
-  const [body, setBody] = useState("");
+  const [body,      setBody]      = useState("");
   const [requestId, setRequestId] = useState("");
   const [state, submit, pending] = useActionState<FormState<Message>, FormData>(
     async (_previous: FormState<Message>, form: FormData): Promise<FormState<Message>> => {
@@ -57,11 +57,11 @@ export component DirectMessagesClient(
         addOptimistic({
           requestId: submissionId,
           message: {
-            id: `pending-${submissionId}`,
+            id      : `pending-${submissionId}`,
             threadId: thread.id,
-            author: "me",
-            body: text,
-            sentAt: new Date().toISOString(),
+            author  : "me",
+            body    : text,
+            sentAt  : new Date().toISOString(),
           },
         });
       const result = await callAction(
@@ -89,12 +89,12 @@ export component DirectMessagesClient(
       <header className="conversation-header">
         <Avatar
           user={{
-            id: thread.id,
-            name: thread.name,
+            id    : thread.id,
+            name  : thread.name,
             handle: thread.handle,
             avatar: thread.avatar,
-            photo: thread.photo,
-            bio: "",
+            photo : thread.photo,
+            bio   : "",
           }}
           small
         />
@@ -165,7 +165,7 @@ export component MessageBubble(message: Message) {
 /** Accept typed message children and synchronize scroll position with the latest message. */
 
 export component MessageLog(lastId: string, children: renders* MessageBubble) {
-  const viewport = useRef<HTMLDivElement | null>(null);
+  const viewport  = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
   // Scroll is a DOM side effect. Reading older messages opts out until the reader returns below.
 

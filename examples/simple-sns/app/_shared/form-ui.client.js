@@ -11,9 +11,9 @@ import { fieldError, type FormState } from "./social-model.js";
 /** Read the nearest form’s pending state and announce its current submission action. */
 
 export component SubmitButton(
-  children: string,
+  children    : string,
   pendingLabel: string = "Saving…",
-  disabled: boolean = false,
+  disabled    : boolean = false,
 ) {
   const { pending } = useFormStatus();
 
@@ -54,7 +54,7 @@ export component FormStatus(state: FormState<mixed>) {
       </p>
       {
         match (state) {
-          {status: "idle"} | {status: "success", ...} => null,
+          {status: "idle"} | {status: "success", ...}    => null,
           {status: "error", message: const message, ...} => <ErrorStatus message={message} />,
         }
       }
@@ -65,9 +65,9 @@ export component FormStatus(state: FormState<mixed>) {
 /** Associate a field label with its native control through the shared UI primitive. */
 
 export component FormField(
-  label: string,
-  error: string | null = null,
-  hint: string | null = null,
+  label   : string,
+  error   : string | null = null,
+  hint    : string | null = null,
   children: renders Field.Control,
 ) renders Field.Root {
   return (

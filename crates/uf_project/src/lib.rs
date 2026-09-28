@@ -615,14 +615,11 @@ fn is_ignored(root: &Utf8Path, path: &Utf8Path, config: &UniflowedConfig) -> boo
     {
         return true;
     }
-    config.project_ignore().entries.iter().any(|ignored| {
-        let ignored = ignored.as_str();
-        if ignored.contains('/') || (cfg!(windows) && ignored.contains('\\')) {
-            relative.starts_with(ignored)
-        } else {
-            relative.components().any(|part| part.as_str() == ignored)
-        }
-    })
+    config
+        .project_ignore()
+        .entries
+        .iter()
+        .any(|ignored| uf_config::ignore_entry_matches(relative, ignored))
 }
 
 #[cfg(test)]

@@ -27,6 +27,12 @@ export default defineConfig({
     // Keep this repository's existing Prettier-compatible formatting while
     // the published default aligns related Flow declarations.
     align: false,
+    // Each example is its own project, formatted from its own directory by
+    // its own config — uf's defaults, so it shows what they produce — which a
+    // run from here would reprint with the `align: false` above.
+    // `examples:fmt:check` checks them; lint, check and test still read them
+    // from here, which is why this is not the top-level `ignore`.
+    ignore: ["examples"],
     nonFlow: {
       // Named rather than left to the default, and the difference is the
       // point: uf's default is a suggestion, and `uf fmt` warns when a
@@ -377,8 +383,8 @@ export default defineConfig({
     // reporting a diff is useful and CI committing one is not.
     "fmt:check": {
       command: "./target/release/uf fmt --check",
-      // And the one example this run does not open, below.
-      dependsOn: ["build", "fmt:check:native"],
+      // And the examples this run does not open, below.
+      dependsOn: ["build", "examples:fmt:check"],
       // A deliberate superset. What `uf fmt` opens is decided by uf's own
       // project discovery rather than by a list in this file, so a glob that
       // tried to reproduce that rule would be a guess — and a guess that came
@@ -390,17 +396,17 @@ export default defineConfig({
       inputs: ["**", "!upstream/**", "target/release/uf"],
     },
 
-    // The native example, which the root `ignore` list keeps out of the run
-    // above, checked from its own directory with its own `fmt` settings. The
-    // release-queue-only `native:example` was the only check it had (#1683);
-    // the script says why it needs no `npm ci` there.
-    "fmt:check:native": {
-      command: "tools/ci/native-example-fmt.sh",
+    // Every example, from its own directory with its own `fmt` settings:
+    // `fmt.ignore` keeps them out of the run above. The native example had
+    // only the release-queue `native:example` before (#1683); the script says
+    // why none of them needs an `npm ci` of its own.
+    "examples:fmt:check": {
+      command: "tools/ci/examples-fmt.sh",
       dependsOn: ["build"],
       inputs: [
-        "examples/simple-sns-native/**",
-        "!examples/simple-sns-native/node_modules/**",
-        "tools/ci/native-example-fmt.sh",
+        "examples/**",
+        "!examples/*/node_modules/**",
+        "tools/ci/examples-fmt.sh",
         "target/release/uf",
       ],
     },
