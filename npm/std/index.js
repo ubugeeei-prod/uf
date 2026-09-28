@@ -175,9 +175,10 @@ export function defer(id: string, phase?: DeferPhase): DeferredTask {
   return nativeRuntimeRequired(MODULE, "defer");
 }
 
-export function parseDotEnv(
-  source: string,
-): $ReadOnlyArray<{ readonly key: string, readonly value: string }> {
+export function parseDotEnv(source: string): $ReadOnlyArray<{
+  readonly key: string,
+  readonly value: string,
+}> {
   return nativeRuntimeRequired(MODULE, "parseDotEnv");
 }
 

@@ -430,10 +430,9 @@ const table = {
 const assets = { scripts: [], styles: [], preloads: [] };
 
 /** Read a streamed document as chunks, recording when each one arrived. */
-async function chunksOf(result: {
-  readonly stream: () => ReadableStream,
-  ...
-}): Promise<Array<{| readonly at: number, readonly text: string |}>> {
+async function chunksOf(result: { readonly stream: () => ReadableStream, ... }): Promise<
+  Array<{| readonly at: number, readonly text: string |}>,
+> {
   const started = Date.now();
   const decoder = new TextDecoder();
   const reader = result.stream().getReader();

@@ -324,10 +324,9 @@ describe("the `<Suspense>` in the tree", () => {
 // ---------------------------------------------------------------------------
 
 /** Read a document's chunks, recording when each one was produced. */
-async function chunksOf(result: {
-  readonly stream: () => ReadableStream,
-  ...
-}): Promise<Array<{| readonly at: number, readonly text: string |}>> {
+async function chunksOf(result: { readonly stream: () => ReadableStream, ... }): Promise<
+  Array<{| readonly at: number, readonly text: string |}>,
+> {
   const started = Date.now();
   const decoder = new TextDecoder();
   const reader = result.stream().getReader();

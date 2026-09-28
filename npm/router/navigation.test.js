@@ -318,9 +318,10 @@ async function clickAndReportPrevention(element: Element): Promise<boolean> {
 }
 
 /** Record what a navigation asked the browser to do, and put it back after. */
-async function watchingLocation(
-  run: () => Promise<void>,
-): Promise<{ assigned: Array<string>, replaced: Array<string> }> {
+async function watchingLocation(run: () => Promise<void>): Promise<{
+  assigned: Array<string>,
+  replaced: Array<string>,
+}> {
   const assigned: Array<string> = [];
   const replaced: Array<string> = [];
   const location = globalThis.window.location;
