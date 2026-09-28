@@ -55,6 +55,8 @@ const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".txt": "text/plain; charset=utf-8",
+  // `WebAssembly.instantiateStreaming` refuses a module under any other type.
+  ".wasm": "application/wasm",
   ".webmanifest": "application/manifest+json",
   ".webp": "image/webp",
   ".woff": "font/woff",

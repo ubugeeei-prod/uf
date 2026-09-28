@@ -156,10 +156,17 @@ const USE_CLIENT = `use client`;
  * On unless `app.rsc` is `false`, read as `!== false` for the reason every
  * default-on flag in `../index.js` is. A single-page build (`modes: ["csr"]`)
  * renders nothing on a server, so it has no payload to render, and a native
- * target has no document to write one into.
+ * target has no document to write one into. With the router off there are no
+ * routes to render at all — a library build is one — so it asks nothing of
+ * React's version or of `react-server-dom-parcel` (ubugeeei-prod/uf#1680).
  */
 export function rendersFlight(app, { mount, routeTarget }) {
-  return app?.rsc !== false && mount === "hydrate" && routeTarget === "web";
+  return (
+    app?.rsc !== false &&
+    app?.router?.enabled !== false &&
+    mount === "hydrate" &&
+    routeTarget === "web"
+  );
 }
 
 /**
