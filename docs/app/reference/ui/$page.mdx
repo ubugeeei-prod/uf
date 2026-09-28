@@ -2270,10 +2270,9 @@ all. `Field` composes every attribute from them in one place, so
 `Field.Error` shows what the store said without being handed it. `name` is a key
 of the form's values, so a renamed schema key is a type error at the call.
 
-It lives in `@uniflowed/form` rather than in `@uniflowed/ui` because the
-dependency can only run one way: `@uniflowed/ui` is on npm and
-`@uniflowed/form` is not, and `tools/ci/publishable.sh` refuses a published
-package that depends on an unpublished one.
+It lives in `@uniflowed/form` rather than in `@uniflowed/ui` so the form
+store and field bindings remain usable without the UI components. Both
+packages are published to npm.
 
 `Field.Root group` is for a set with no single control to point a `<label for>`
 at — a radio group, a checkbox group, three selects making a date. The root
