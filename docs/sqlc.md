@@ -15,12 +15,10 @@ documentation site (`/guide/sqlc`).
 
 ## Status
 
-**The target as a whole is Experimental.** Generation, the runtime and the
-tested adapters work, and CI runs them against real databases, but
-`@uniflowed/sql` — which every generated module imports — is not on npm yet
-(it waits in `tools/release/pending-packages.txt` for trusted publishing,
-#1314). Until it publishes, a project outside this repository cannot install
-what the generator writes against, and nothing here is production-ready.
+**The generator and tested adapters are ready for use.** CI runs them against
+real SQLite, PostgreSQL and MySQL databases, and `@uniflowed/sql` is published
+to npm. The `better-sqlite3` and D1 adapters remain Experimental, and the WASM
+plugin, PostgreSQL COPY fast path and managed sqlc install remain Planned.
 
 | Piece | Status | Checked by |
 | --- | --- | --- |
@@ -35,13 +33,13 @@ what the generator writes against, and nothing here is production-ready.
 | Adapter: `mysql2` (`fromMysql2Pool`) | Implemented | `tests/sqlc/mysql.test.js`, against the MySQL 8.4 service container of the `sqlc Flow target` CI job |
 | Adapters: `better-sqlite3`, Cloudflare D1 | Experimental | typed against the drivers' documented APIs; no test runs them yet |
 | `tools/ci/sqlc.sh` in CI | Implemented | the `sqlc Flow target` job in `.github/workflows/ci.yml` (`uf run test:sqlc`) |
-| `@uniflowed/sql` on npm | Planned | #1314; `tools/release/pending-packages.txt` |
+| `@uniflowed/sql` on npm | Implemented | release registry verification |
 | WASM plugin (`wasm32-wasip1`) | Planned | the `sqlc-gen-flow` binary exists; nothing builds or publishes it for the target yet |
 | PostgreSQL `COPY` for `:copyfrom` | Planned | `:copyfrom` is chunked multi-row `INSERT`s on every engine today |
 | Installing sqlc for a project | Planned | `uf sqlc` runs the project's own sqlc (`$SQLC` or `PATH`) |
 
 "Implemented" means a test in this repository runs it. A row with no test is
-never above Experimental. #1367 tracks the rest.
+never above Experimental. #1367 tracks the remaining enhancements.
 
 ## Decisions
 
