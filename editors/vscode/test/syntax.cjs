@@ -72,6 +72,15 @@ async function verifySyntax(appRoot) {
   has(alias[0], "id", "variable.other.property");
   has(alias[0], "+", "keyword.operator.variance");
   has(alias[1], "user", "variable.other");
+  const exported = tokenize("export type Result<T> = {| ok: T |};\nconst after = 1;\nexport async function later() { return after; }");
+  has(exported[0], "Result", "entity.name.type.alias.flow");
+  has(exported[0], "ok", "variable.other.property.flow");
+  has(exported[1], "after", "variable.other");
+  assert.ok(exported[1].every((token) => !token.scopes.includes("meta.type.declaration.flow")));
+  has(exported[2], "async", "storage.modifier.async");
+  const asyncFunction = tokenize("export async function load(): Promise<string> {\n  return await fetchValue();\n}");
+  has(asyncFunction[0], "async", "storage.modifier.async");
+  has(asyncFunction[1], "await", "keyword.control.flow");
   const generic = tokenize("component List<T>(items: $ReadOnlyArray<T>) renders* Item {\n return null;\n}");
   has(generic[0], "$ReadOnlyArray", "entity.name.type");
   has(generic[0], "renders*", "keyword.other.renders");
