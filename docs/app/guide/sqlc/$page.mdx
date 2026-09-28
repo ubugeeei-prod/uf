@@ -1,7 +1,7 @@
 ---
 title: "SQL with sqlc · uf"
-description: "Write SQL, and get Flow row types and query functions whose types hold under every driver. Experimental."
-readiness: "Experimental"
+description: "Write SQL, and get Flow row types and query functions checked against SQLite, PostgreSQL and MySQL."
+readiness: "Implemented"
 ---
 
 <p className="eyebrow">Build an app</p>
@@ -19,10 +19,9 @@ function per query, and `@uniflowed/sql` runs them on the driver you already use
 **Status: ready for the tested adapters.** Generation and the adapters marked
 *tested* below run against real SQLite, PostgreSQL and MySQL in uf's CI, and
 `@uniflowed/sql` is available on npm. The `better-sqlite3` and D1 adapters
-remain Experimental. [#1367](https://github.com/ubugeeei-prod/uf/issues/1367)
-tracks the remaining enhancements.
+remain Experimental.
 
-**What you will be able to do:** point sqlc at `uf`, generate Flow from your
+**What you can do:** point sqlc at `uf`, generate Flow from your
 queries, run them on SQLite, PostgreSQL or MySQL, use transactions, and fail CI
 when the generated files are stale.
 
@@ -257,9 +256,11 @@ These are deliberately missing: migrations (sqlc reads a schema, and applying it
 is your migration tool's job), a connection pool, retries, and a query builder.
 The pool and retries belong to the driver you already chose.
 
-These are planned: `@uniflowed/sql` on npm, the generator as a sqlc WASM plugin,
-PostgreSQL `COPY` for `:copyfrom`, and uf installing sqlc for you. See
-[#1367](https://github.com/ubugeeei-prod/uf/issues/1367).
+These are planned: the generator as a [sqlc WASM plugin](https://github.com/ubugeeei-prod/uf/issues/1669),
+PostgreSQL [`COPY` for `:copyfrom`](https://github.com/ubugeeei-prod/uf/issues/1670),
+and [uf installing sqlc](https://github.com/ubugeeei-prod/uf/issues/1671) for you.
+The [`better-sqlite3` and D1 adapters](https://github.com/ubugeeei-prod/uf/issues/1668)
+remain Experimental until integration tests cover them.
 
 ## Where to go next
 

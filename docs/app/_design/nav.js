@@ -46,7 +46,6 @@ const experimentalPages = new Set([
   "/guide/graphql-relay",
   "/guide/nextjs",
   "/guide/react-native",
-  "/guide/sqlc",
   "/guide/targets",
 ]);
 
@@ -344,7 +343,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/sqlc",
         title: "SQL with sqlc",
         blurb:
-          "Write SQL, and get Flow row types and query functions whose types hold under every driver. Experimental.",
+          "Write SQL, and get Flow row types and query functions checked against SQLite, PostgreSQL and MySQL.",
       },
       {
         href: "/guide/logging",
