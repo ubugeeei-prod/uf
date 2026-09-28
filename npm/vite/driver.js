@@ -45,6 +45,7 @@ import { builtinModules, register } from "node:module";
 import { esmExternalRequirePlugin } from "rolldown/plugins";
 import "@ox-content/napi";
 import { installFlowHooks } from "@uniflowed/host/internal/sync-hooks.js";
+import { configBootstrapFlag } from "@uniflowed/host/transform";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -134,7 +135,11 @@ process.env.UF_PROJECT_ROOT = root;
 if (typeof Deno !== "undefined") {
   installFlowHooks(root);
 } else if (typeof Bun === "undefined") {
-  register("@uniflowed/host/internal/node-hooks.js", import.meta.url, { data: { root } });
+  // The loader thread cannot see this thread's environment change, so the
+  // config loader's bootstrap reaches it through memory the two share.
+  register("@uniflowed/host/internal/node-hooks.js", import.meta.url, {
+    data: { root, configBootstrap: configBootstrapFlag() },
+  });
 }
 
 process.stdin.on("end", () => process.exit(0));

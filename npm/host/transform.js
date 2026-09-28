@@ -213,6 +213,68 @@ export function environmentVariable(name) {
 }
 
 /**
+ * How many `uf.config.js` loads this process is inside, shared with the loader
+ * thread `register()` starts.
+ *
+ * The config's own imports are compiled by the loader hooks, and they have to
+ * be compiled as the config bootstrap: `uf transform` is not asked for the
+ * config it is helping to evaluate. `UF_TRANSFORM_BOOTSTRAP_CONFIG` says so to
+ * hooks that run in the importing thread, and cannot say it to the loader
+ * thread — a thread's `process.env` is a copy taken when it started, which is
+ * before any config was loaded, so the hooks there read the flag as unset
+ * however many times the main thread set it (ubugeeei-prod/uf#1674). Memory
+ * the two threads share is the one thing both see change: the main thread
+ * hands this to `register()` in `data`, and the loader thread adopts it in
+ * `initialize`.
+ *
+ * A count rather than a flag, so two loads that overlap cannot end each
+ * other's. Made on first use, because a `SharedArrayBuffer` is not available
+ * everywhere this module is imported — a browser page that is not
+ * cross-origin isolated has none — and nothing there loads a config.
+ */
+let configLoads = null;
+
+/** The counter to pass to `register()` as `data.configBootstrap`. */
+export function configBootstrapFlag() {
+  configLoads ??= new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+  return configLoads;
+}
+
+/** Count the loads another thread's `configBootstrapFlag()` counts. */
+export function shareConfigBootstrapFlag(flag) {
+  if (flag instanceof Int32Array && flag.buffer instanceof SharedArrayBuffer) configLoads = flag;
+}
+
+/** Whether a module compiled now is compiled for the config bootstrap. */
+export function isConfigBootstrap() {
+  return (
+    environmentVariable("UF_TRANSFORM_BOOTSTRAP_CONFIG") === "1" ||
+    (configLoads != null && Atomics.load(configLoads, 0) > 0)
+  );
+}
+
+/**
+ * Run `load` — the import of a compiled `uf.config.js` — as the config
+ * bootstrap, for this thread and for the loader thread both.
+ */
+export async function bootstrappingConfig(load) {
+  const flag = configBootstrapFlag();
+  const previous = environmentVariable("UF_TRANSFORM_BOOTSTRAP_CONFIG");
+  process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
+  Atomics.add(flag, 0, 1);
+  try {
+    return await load();
+  } finally {
+    Atomics.sub(flag, 0, 1);
+    if (previous == null) {
+      delete process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
+    } else {
+      process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG = previous;
+    }
+  }
+}
+
+/**
  * The names a `uf transform` child inherits when the whole environment may not
  * be read.
  *
@@ -431,6 +493,11 @@ export class TransformService {
    * @param {string} [options.root] project root, so `uf.config.js` is found
    * @param {boolean} [options.configBootstrap] transform code that is needed
    *   before `uf.config.js` can be evaluated
+   * @param {object} [options.config] the JSON projection of the `uf.config.js`
+   *   the caller evaluated, which the service compiles under instead of
+   *   reading the file again. A file that is JavaScript rather than data — a
+   *   Vite plugin, a value from `process.env` — is one only an evaluation can
+   *   read (ubugeeei-prod/uf#1674).
    */
   constructor(options = {}) {
     const command = options.command ?? ufBinary();
@@ -449,6 +516,7 @@ export class TransformService {
     } else {
       delete env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
     }
+    if (options.config != null) env.UF_TRANSFORM_CONFIG = JSON.stringify(options.config);
     this.#child = spawn(command, ["--cwd", root, "transform"], {
       stdio: ["pipe", "pipe", "inherit"],
       env,

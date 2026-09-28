@@ -15,10 +15,22 @@ use support::uf_path;
 
 /// Send `requests` through one `uf transform` process and collect the replies.
 fn exchange(dir: &std::path::Path, requests: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    exchange_with(dir, &[], requests)
+}
+
+/// [`exchange`], with `env` set on the service.
+fn exchange_with(
+    dir: &std::path::Path,
+    env: &[(&str, &str)],
+    requests: &[serde_json::Value],
+) -> Vec<serde_json::Value> {
     let mut child = std::process::Command::new(uf_path())
         .arg("--cwd")
         .arg(dir)
         .arg("transform")
+        .env_remove("UF_TRANSFORM_BOOTSTRAP_CONFIG")
+        .env_remove("UF_TRANSFORM_CONFIG")
+        .envs(env.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -90,6 +102,53 @@ fn modern_flow_syntax_is_lowered_and_compiled() {
     assert!(code.contains("react/jsx-runtime"), "{code}");
     assert!(!code.contains("match ("), "{code}");
     assert!(!code.contains("component "), "{code}");
+}
+
+/// A `uf.config.js` only an evaluation can read, as ubugeeei-prod/uf#1674
+/// found it: a Vite plugin from the project and a value from `process.env`.
+fn evaluated_only_project() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\nimport { stamp } from \"./plugins/stamp.js\";\n\nexport default defineConfig({\n  app: { router: { basePath: process.env.BASE_PATH } },\n  plugins: [stamp(\"hello\")],\n});\n",
+    )
+    .unwrap();
+    dir
+}
+
+const COMPONENT: &str =
+    "// @flow\nexport component Hello(name: string) {\n  return <p>{name}</p>;\n}\n";
+
+/// The service used to exit on such a file, and every build that started one
+/// failed. It compiles under the defaults instead: the command that started
+/// it has already evaluated the file, and reported it if it was broken.
+#[test]
+fn a_config_the_static_reader_refuses_does_not_stop_the_service() {
+    let dir = evaluated_only_project();
+    let replies = exchange(
+        dir.path(),
+        &[serde_json::json!({ "id": "/app/Hello.js", "code": COMPONENT })],
+    );
+    let code = replies[0]["code"].as_str().expect("transformed");
+    assert!(code.contains("react/compiler-runtime"), "{code}");
+}
+
+/// What the host evaluated is what the service compiles under: here, the
+/// React Compiler turned off by a config the static reader cannot read.
+#[test]
+fn the_evaluated_config_reaches_the_service_through_its_environment() {
+    let dir = evaluated_only_project();
+    let replies = exchange_with(
+        dir.path(),
+        &[(
+            "UF_TRANSFORM_CONFIG",
+            r#"{"app":{"builtins":{"reactCompiler":{"enabled":false}}},"plugins":["stamp"]}"#,
+        )],
+        &[serde_json::json!({ "id": "/app/Hello.js", "code": COMPONENT })],
+    );
+    let code = replies[0]["code"].as_str().expect("transformed");
+    assert!(code.contains("function Hello"), "{code}");
+    assert!(!code.contains("react/compiler-runtime"), "{code}");
 }
 
 /// The order *is* the protocol: a caller pairs replies with requests by

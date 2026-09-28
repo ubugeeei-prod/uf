@@ -8858,6 +8858,53 @@ fn library_watch_rebuilds_javascript_and_declarations_after_an_edit() {
     });
 }
 
+/// A `uf.config.js` that is JavaScript rather than data builds.
+///
+/// ubugeeei-prod/uf#1674, in the shape it was found: a Vite plugin imported
+/// from the project and a value read from `process.env`. `uf build` evaluates
+/// such a file, and every `uf transform` it started then read the file again
+/// with the static reader and exited on it — the one the loader thread starts
+/// for the plugin's own module, and the one `uf:flow` starts for the app. One
+/// plugin was enough to leave a project unbuildable.
+///
+/// The plugin writes a file, so the test also proves it is the project's
+/// plugin that ran rather than a config that was quietly skipped.
+#[test]
+fn a_config_with_a_local_vite_plugin_and_an_environment_value_builds() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "plugins/stamp.js",
+        "// @flow\nexport function stamp(label: string): { name: string, generateBundle: () => void } {\n  return {\n    name: \"stamp\",\n    generateBundle() {\n      // $FlowFixMe[object-this-reference] Rollup binds the plugin context.\n      this.emitFile({ type: \"asset\", fileName: \"stamp.txt\", source: label });\n    },\n  };\n}\n",
+    );
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\nimport { stamp } from \"./plugins/stamp.js\";\n\nexport default defineConfig({\n  app: { router: { basePath: process.env.UF_TEST_BASE_PATH } },\n  plugins: [stamp(\"hello\")],\n});\n",
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .env("UF_TEST_BASE_PATH", "/under")
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "the build failed:\n{said}");
+    assert!(!said.contains("uf transform exited"), "{said}");
+    let stamped = walk_files(&project.path().join("dist"))
+        .into_iter()
+        .find(|path| path.file_name().is_some_and(|name| name == "stamp.txt"));
+    let stamped = stamped.unwrap_or_else(|| panic!("the project's plugin did not run:\n{said}"));
+    assert_eq!(fs::read_to_string(stamped).unwrap(), "hello");
+}
+
 fn build_output(root: &Path) -> (bool, String) {
     let output = uf().arg("--cwd").arg(root).arg("build").output().unwrap();
     let said = format!(

@@ -38,7 +38,10 @@ use anyhow::{Context, Result};
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use uf_config::{UniflowedConfig, load_config};
+use uf_config::{
+    ConfigError, UniflowedConfig, discover_config, discover_root, load_config,
+    parse_config_projection,
+};
 use uf_infra::FxHashMap;
 use uf_transform::{
     CompilerDiagnostic, ReactCompilerMode, TransformError, TransformOptions, is_flow_module,
@@ -242,16 +245,17 @@ fn frame(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
+/// The evaluated config's JSON projection, when the host that started this
+/// service has one. See [`service_config`].
+const TRANSFORM_CONFIG_ENV: &str = "UF_TRANSFORM_CONFIG";
+
 /// Serve transform requests until stdin closes.
 pub(crate) fn transform_service(cwd: &Utf8Path) -> Result<()> {
-    // The config loader itself reaches `uf transform` before the config can be
-    // evaluated. That bootstrap transform must not recursively ask the static
-    // config loader to read the file it is currently compiling.
-    let config = if std::env::var_os("UF_TRANSFORM_BOOTSTRAP_CONFIG").is_some() {
-        UniflowedConfig::default()
-    } else {
-        load_config(cwd)?.config
-    };
+    let config = service_config(
+        cwd,
+        std::env::var_os("UF_TRANSFORM_BOOTSTRAP_CONFIG").is_some(),
+        std::env::var(TRANSFORM_CONFIG_ENV).ok().as_deref(),
+    )?;
     let project = ProjectTransform::from_config(&config);
 
     // A host starts this process only when it has something to compile, and
@@ -281,6 +285,47 @@ pub(crate) fn transform_service(cwd: &Utf8Path) -> Result<()> {
         .context("failed to start the transform service thread")?
         .join()
         .map_err(|_| anyhow::anyhow!(uf_infra::cstr!("the transform service panicked")))?
+}
+
+/// The config this service compiles under, in order of preference.
+///
+/// - **Bootstrap.** The config loader itself reaches `uf transform` before the
+///   config can be evaluated. That transform must not ask for the file it is
+///   compiling, so it gets the defaults.
+/// - **The host's projection.** A host that has evaluated `uf.config.js` —
+///   `@uniflowed/vite`'s `TransformService`, started by `uf build` and
+///   `uf dev` — passes its JSON projection in `UF_TRANSFORM_CONFIG`, which is
+///   read exactly as `uf config` reads the same projection.
+/// - **The static reader**, for a host with nothing evaluated in hand. A file
+///   it refuses — a Vite plugin in `plugins`, a value from `process.env` —
+///   gets the defaults rather than a service that exits: every command that
+///   reads such a file has already evaluated it, and reported it if it was
+///   broken, before any module reaches this service. Exiting here made one
+///   Vite plugin enough to leave a project unbuildable
+///   (ubugeeei-prod/uf#1674).
+fn service_config(
+    cwd: &Utf8Path,
+    bootstrap: bool,
+    projection: Option<&str>,
+) -> Result<UniflowedConfig> {
+    if bootstrap {
+        return Ok(UniflowedConfig::default());
+    }
+    if let Some(projection) = projection {
+        let root = discover_root(cwd);
+        let path = discover_config(&root).unwrap_or_else(|| root.join("uf.config.js"));
+        let value = serde_json::from_str(projection).with_context(|| {
+            uf_infra::cstr!("{TRANSFORM_CONFIG_ENV} is not the JSON projection of {path}")
+        })?;
+        return Ok(parse_config_projection(&path, value)?);
+    }
+    match load_config(cwd) {
+        Ok(resolved) => Ok(resolved.config),
+        Err(ConfigError::Parse { .. } | ConfigError::UnsupportedExpression { .. }) => {
+            Ok(UniflowedConfig::default())
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn serve(input: impl Read, out: &mut impl Write, project: &ProjectTransform) -> Result<()> {
@@ -595,5 +640,78 @@ mod tests {
         assert!(code.contains("$RefreshReg$"), "{code}");
         assert!(code.contains("jsxDEV"), "{code}");
         assert!(replies[0]["map"].as_str().is_some());
+    }
+
+    /// A project directory holding `uf.config.js` with `source` in it.
+    fn configured(source: &str) -> (tempfile::TempDir, camino::Utf8PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        std::fs::write(root.join("uf.config.js"), source).unwrap();
+        (dir, root)
+    }
+
+    /// The shape ubugeeei-prod/uf#1674 was found with: a Vite plugin and a
+    /// value from `process.env`, which the static reader refuses. The service
+    /// used to exit on it, and every build that started one failed.
+    const EVALUATED_ONLY: &str = "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\nimport { stamp } from \"./plugins/stamp.js\";\n\nexport default defineConfig({\n  app: { router: { basePath: process.env.BASE_PATH } },\n  plugins: [stamp(\"hello\")],\n});\n";
+
+    #[test]
+    fn a_config_the_static_reader_refuses_compiles_under_the_defaults() {
+        let (_dir, root) = configured(EVALUATED_ONLY);
+        let config = service_config(&root, false, None).unwrap();
+        assert!(config.app.builtins.react_compiler.enabled);
+    }
+
+    #[test]
+    fn the_hosts_projection_is_the_config_the_service_compiles_under() {
+        let (_dir, root) = configured(EVALUATED_ONLY);
+        let config = service_config(
+            &root,
+            false,
+            Some(r#"{"app":{"builtins":{"reactCompiler":{"enabled":false}}},"plugins":["stamp"]}"#),
+        )
+        .unwrap();
+        assert!(!config.app.builtins.react_compiler.enabled);
+    }
+
+    /// The projection wins over a file the static reader *can* read, because
+    /// it is the config the host actually evaluated.
+    #[test]
+    fn the_projection_is_preferred_to_the_static_reader() {
+        let (_dir, root) = configured(
+            "export default { app: { builtins: { reactCompiler: { enabled: true } } } };\n",
+        );
+        let config = service_config(
+            &root,
+            false,
+            Some(r#"{"app":{"builtins":{"reactCompiler":{"enabled":false}}}}"#),
+        )
+        .unwrap();
+        assert!(!config.app.builtins.react_compiler.enabled);
+    }
+
+    #[test]
+    fn a_static_config_is_still_read_without_a_projection() {
+        let (_dir, root) = configured(
+            "export default { app: { builtins: { reactCompiler: { enabled: false } } } };\n",
+        );
+        let config = service_config(&root, false, None).unwrap();
+        assert!(!config.app.builtins.react_compiler.enabled);
+    }
+
+    #[test]
+    fn the_bootstrap_transform_reads_nothing() {
+        let (_dir, root) = configured(
+            "export default { app: { builtins: { reactCompiler: { enabled: false } } } };\n",
+        );
+        let config = service_config(&root, true, Some("not json")).unwrap();
+        assert!(config.app.builtins.react_compiler.enabled);
+    }
+
+    #[test]
+    fn a_malformed_projection_is_an_error_rather_than_the_defaults() {
+        let (_dir, root) = configured("export default {};\n");
+        let error = service_config(&root, false, Some("{ not json")).unwrap_err();
+        assert!(error.to_string().contains("UF_TRANSFORM_CONFIG"), "{error}");
     }
 }

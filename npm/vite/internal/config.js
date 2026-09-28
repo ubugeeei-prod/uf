@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { transformFlow } from "@uniflowed/host/transform";
+import { bootstrappingConfig, transformFlow } from "@uniflowed/host/transform";
 import { writeAtomically } from "@uniflowed/host/write-atomically";
 
 /** The one config file name uf reads. */
@@ -82,18 +82,14 @@ export async function loadUfConfig(root) {
   return { config, file };
 }
 
+/**
+ * Import the compiled config as the config bootstrap, so the modules it
+ * imports are compiled without asking `uf transform` for the config they are
+ * part of — on the loader thread as well as this one. See
+ * `bootstrappingConfig` in `@uniflowed/host/transform`.
+ */
 async function importConfigModule(compiled) {
-  const previous = process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
-  process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
-  try {
-    return await import(pathToFileURL(compiled).href);
-  } finally {
-    if (previous == null) {
-      delete process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
-    } else {
-      process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG = previous;
-    }
-  }
+  return bootstrappingConfig(() => import(pathToFileURL(compiled).href));
 }
 
 /**
