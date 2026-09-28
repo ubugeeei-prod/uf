@@ -867,9 +867,9 @@ fn a_mapped_types_variance_operator_is_not_dropped() {
     let config = FmtConfig::default();
     let source = concat!(
         "// @flow\n",
-        "type Mutable<T> = { -readonly [K in keyof T]: T[K] };\n",
-        "type Frozen<T> = { +readonly [K in keyof T]: T[K] };\n",
-        "type Plain<T> = { readonly [K in keyof T]: T[K] };\n",
+        "type Mutable<T>  = { -readonly [K in keyof T]: T[K] };\n",
+        "type Frozen<T>   = { +readonly [K in keyof T]: T[K] };\n",
+        "type Plain<T>    = { readonly [K in keyof T]: T[K] };\n",
         "type Optional<T> = { [K in keyof T]?: T[K] };\n",
         "type Required<T> = { [K in keyof T]-?: T[K] };\n",
     );
