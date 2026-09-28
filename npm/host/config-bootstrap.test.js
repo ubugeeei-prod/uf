@@ -13,6 +13,10 @@
 // A worker is the same kind of thread with the same copy of the environment,
 // so this asks one.
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "@uniflowed/test";
 
@@ -20,18 +24,27 @@ import { bootstrappingConfig, configBootstrapFlag, isConfigBootstrap } from "./t
 
 const TRANSFORM = new URL("./transform.js", import.meta.url).href;
 
-/** A thread that adopted `flag` and answers `isConfigBootstrap()` on request. */
-function loaderLikeThread(flag: Int32Array): Worker {
-  return new Worker(
+/**
+ * A thread that adopted `flag` and answers `isConfigBootstrap()` on request.
+ *
+ * Started from a module file rather than `eval: true`: Deno evaluates an
+ * `eval` worker as a script, where an `import` statement is a syntax error.
+ */
+function loaderLikeThread(flag: Int32Array): { worker: Worker, directory: string } {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-config-bootstrap-"));
+  const file = path.join(directory, "thread.mjs");
+  fs.writeFileSync(
+    file,
     `import { parentPort, workerData } from "node:worker_threads";
-     const { isConfigBootstrap, shareConfigBootstrapFlag } = await import(${JSON.stringify(TRANSFORM)});
-     shareConfigBootstrapFlag(workerData.flag);
-     parentPort.on("message", () => parentPort.postMessage({
-       shared: isConfigBootstrap(),
-       variable: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG ?? null,
-     }));`,
-    { eval: true, workerData: { flag } },
+import { isConfigBootstrap, shareConfigBootstrapFlag } from ${JSON.stringify(TRANSFORM)};
+shareConfigBootstrapFlag(workerData.flag);
+parentPort.on("message", () => parentPort.postMessage({
+  shared: isConfigBootstrap(),
+  variable: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG ?? null,
+}));
+`,
   );
+  return { worker: new Worker(pathToFileURL(file), { workerData: { flag } }), directory };
 }
 
 function ask(worker: Worker): Promise<{ shared: boolean, variable: ?string }> {
@@ -44,7 +57,7 @@ function ask(worker: Worker): Promise<{ shared: boolean, variable: ?string }> {
 
 describe("the config bootstrap", () => {
   it("reaches a thread that cannot see this thread's environment change", async () => {
-    const worker = loaderLikeThread(configBootstrapFlag());
+    const { worker, directory } = loaderLikeThread(configBootstrapFlag());
     try {
       expect((await ask(worker)).shared).toBe(false);
 
@@ -61,6 +74,7 @@ describe("the config bootstrap", () => {
       expect((await ask(worker)).shared).toBe(false);
     } finally {
       await worker.terminate();
+      fs.rmSync(directory, { recursive: true, force: true });
     }
   });
 
