@@ -27,14 +27,19 @@
 #   tools/release/trust-npm.sh
 #
 # and run `uf run release:preflight` before tagging to see where things stand.
+brand
 cell
 config
 core
+effect
 fetch
+form
 graphql
 hooks
 host
 i18n
+immer
+mock
 query
 react
 react-native
@@ -43,10 +48,16 @@ react-testing
 relay
 router
 server
+sql
 state
+std
+story
 stylex
 temporal
 test
+tui
 ui
 validator
 vite
+vrt
+web

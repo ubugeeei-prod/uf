@@ -16,13 +16,11 @@ sqlc's **Flow target**: it turns what sqlc inferred into Flow row types and one
 function per query, and `@uniflowed/sql` runs them on the driver you already use.
 </div>
 
-**Status: Experimental.** Generation, the runtime and the adapters marked
-*tested* below run against real SQLite, PostgreSQL and MySQL in uf's CI. But
-`@uniflowed/sql`, which every generated module imports, is **not on npm yet**
-([#1314](https://github.com/ubugeeei-prod/uf/issues/1314)), so a project outside
-the uf repository cannot install what the generator writes against. Until it
-publishes, treat this page as a preview. [#1367](https://github.com/ubugeeei-prod/uf/issues/1367)
-tracks what is left.
+**Status: ready for the tested adapters.** Generation and the adapters marked
+*tested* below run against real SQLite, PostgreSQL and MySQL in uf's CI, and
+`@uniflowed/sql` is available on npm. The `better-sqlite3` and D1 adapters
+remain Experimental. [#1367](https://github.com/ubugeeei-prod/uf/issues/1367)
+tracks the remaining enhancements.
 
 **What you will be able to do:** point sqlc at `uf`, generate Flow from your
 queries, run them on SQLite, PostgreSQL or MySQL, use transactions, and fail CI
