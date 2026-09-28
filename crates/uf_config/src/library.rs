@@ -138,7 +138,8 @@ pub struct LibraryConfig {
     /// `dependencies`, `peerDependencies` and `optionalDependencies`, plus the
     /// host's built-in modules — that is the default and it is the opposite of
     /// the application build's, which inlines what it can. This list is for
-    /// what a manifest cannot say: a peer a consumer supplies under a
+    /// what a manifest cannot say: a module the host provides at run time
+    /// (`vscode` in an editor extension), a peer a consumer supplies under a
     /// different name, an import that resolves through an alias.
     pub external: Vec<CompactString>,
     /// Write a TypeScript declaration file beside each entry.
