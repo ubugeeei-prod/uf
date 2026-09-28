@@ -23,7 +23,7 @@ use super::resolve::{
 };
 use super::{
     ClientBoundary, ClientBoundaryProximity, ClientBoundaryTarget, EntryKind, ModuleId,
-    ModuleReachability, RscGraph, RscModule, RscModuleInput, is_client_only_hook_package,
+    ModuleReachability, RscGraph, RscModule, RscModuleInput, hook_package,
     package_hook_server_component_safe,
 };
 
@@ -255,7 +255,8 @@ enum ExportStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum HookDependency {
-    PackageClientOnly,
+    /// Client-only, and the package that says so.
+    PackageClientOnly(&'static str),
     PackageServerSafe,
     Project(ExportKey),
     Unknown,
@@ -371,9 +372,9 @@ impl HookClassifications {
         resolved: &ResolvedImports,
     ) -> HookCallVerdict {
         match package_hook_dependency(&call.name, &resolved.external) {
-            Some(HookDependency::PackageClientOnly) => {
+            Some(HookDependency::PackageClientOnly(package)) => {
                 return HookCallVerdict::ClientOnly(ClientOnlyHookOrigin::Package(
-                    CompactString::from(super::CLIENT_ONLY_HOOK_PACKAGE),
+                    CompactString::from(package),
                 ));
             }
             Some(HookDependency::PackageServerSafe) => return HookCallVerdict::ServerSafe,
@@ -384,7 +385,7 @@ impl HookClassifications {
         match project_hook_dependency(module, &call.name, resolved, &self.candidates) {
             HookDependency::Project(target) => self.export_verdict(target),
             HookDependency::Unknown => HookCallVerdict::Unknown,
-            HookDependency::PackageClientOnly | HookDependency::PackageServerSafe => {
+            HookDependency::PackageClientOnly(_) | HookDependency::PackageServerSafe => {
                 unreachable!("project dependency only")
             }
         }
@@ -448,7 +449,7 @@ impl HookDependencyCollector<'_> {
         {
             if let Some(dependency) = package_hook_dependency(&call.name, &self.resolved.external) {
                 match dependency {
-                    HookDependency::PackageClientOnly => {
+                    HookDependency::PackageClientOnly(_) => {
                         self.direct_client.insert(source.clone());
                     }
                     HookDependency::PackageServerSafe => {}
@@ -470,7 +471,7 @@ impl HookDependencyCollector<'_> {
                 HookDependency::Unknown => {
                     self.direct_unknown.insert(source.clone());
                 }
-                HookDependency::PackageClientOnly | HookDependency::PackageServerSafe => {
+                HookDependency::PackageClientOnly(_) | HookDependency::PackageServerSafe => {
                     unreachable!("project dependency only")
                 }
             }
@@ -505,9 +506,13 @@ impl HookDependencyCollector<'_> {
                 }
             }
         }
-        for import in self.resolved.external.iter().filter(|import| {
-            import.kind == ImportKind::ReExport && is_client_only_hook_package(&import.specifier)
-        }) {
+        for (import, package) in self
+            .resolved
+            .external
+            .iter()
+            .filter(|import| import.kind == ImportKind::ReExport)
+            .filter_map(|import| Some((import, hook_package(&import.specifier)?)))
+        {
             for binding in &import.bindings {
                 if binding.local != source.name {
                     continue;
@@ -517,7 +522,7 @@ impl HookDependencyCollector<'_> {
                     self.direct_unknown.insert(source.clone());
                     continue;
                 };
-                match package_hook_server_component_safe(imported) {
+                match package_hook_server_component_safe(package, imported) {
                     Some(true) => {}
                     Some(false) => {
                         self.direct_client.insert(source.clone());
@@ -535,9 +540,9 @@ impl HookDependencyCollector<'_> {
 }
 
 fn package_hook_dependency(hook: &str, imports: &[ImportSpecifier]) -> Option<HookDependency> {
-    for import in imports
+    for (import, package) in imports
         .iter()
-        .filter(|import| is_client_only_hook_package(&import.specifier))
+        .filter_map(|import| Some((import, hook_package(&import.specifier)?)))
     {
         for binding in &import.bindings {
             if binding.local != hook {
@@ -546,11 +551,13 @@ fn package_hook_dependency(hook: &str, imports: &[ImportSpecifier]) -> Option<Ho
             let Some(imported) = binding.imported.as_export_name() else {
                 return Some(HookDependency::Unknown);
             };
-            return Some(match package_hook_server_component_safe(imported) {
-                Some(true) => HookDependency::PackageServerSafe,
-                Some(false) => HookDependency::PackageClientOnly,
-                None => HookDependency::Unknown,
-            });
+            return Some(
+                match package_hook_server_component_safe(package, imported) {
+                    Some(true) => HookDependency::PackageServerSafe,
+                    Some(false) => HookDependency::PackageClientOnly(package),
+                    None => HookDependency::Unknown,
+                },
+            );
         }
     }
     if imports

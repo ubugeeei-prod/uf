@@ -230,7 +230,7 @@ fixed by bundling it. The one exception is the last row.
 | --- | --- |
 | `rsc/server-only-import-in-client` | A module the client graph reaches imports `@uniflowed/db`, `@uniflowed/server`, `server-only`, a subpath of one of those, or a `*.server.js` file. The message names the chain of imports from the client boundary down to that module — `` `app/Counter.js` → `app/format.js` → `app/session.js` `` — because the import to cut is on that path, and rarely in the module that did the importing |
 | `rsc/client-only-api-in-server` | A Server Component calls `useState`, `useEffect`, `createContext` and the rest, or reads `window`, `document`, `localStorage`, `sessionStorage`, `navigator` or `alert` |
-| `rsc/client-only-hook-in-server` | A Server Component calls a hook `@uniflowed/hooks` declares as browser-only |
+| `rsc/client-only-hook-in-server` | A Server Component calls a hook `@uniflowed/hooks` declares as browser-only, or `useRouter` / `useLinkStatus` from `@uniflowed/router` |
 | `rsc/server-action-not-async` | A `"use server"` export React cannot call, because it is not an async function |
 | `rsc/server-action-not-a-function` | A `"use server"` module exporting something that is not a function at all |
 | `rsc/import-escapes-project-root` | An import that resolves outside the project |
@@ -246,9 +246,10 @@ a warning because it is a statement that the analysis *stopped*. A hook you
 wrote in the project is followed into its body: one that reaches `useState` or
 another client-only API is `rsc/client-only-hook-in-server`, naming the module
 that defines it, whatever it was imported as
-([#388](https://github.com/ubugeeei-prod/uf/issues/388)). A hook whose body the
-analysis cannot read, such as `useRoute` from a package that is not on the name
-lists, gets the warning instead. Asking the question is more honest than
+([#388](https://github.com/ubugeeei-prod/uf/issues/388)). The router's
+`useRoute`, `useLoaderData`, `useSeo` and `useIsServer` have server
+implementations and pass. A hook whose body the analysis cannot read, such as
+one from a third-party package, gets the warning instead. Asking the question is more honest than
 staying silent, because silence reads as "checked and fine", which is the one
 thing it is not.
 
