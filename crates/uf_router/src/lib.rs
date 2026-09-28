@@ -1499,6 +1499,12 @@ pub fn find_reserved_file_violations(
 /// be a second implementation of the pattern grammar, and the two would drift
 /// — as a link that 404s, which is the failure typed routes exist to remove.
 pub fn generate_router_flow(routes: &[Route]) -> String {
+    let source = generate_router_flow_unformatted(routes);
+    uf_fmt::format_source(&source, &uf_config::FmtConfig::default())
+        .map_or(source, |formatted| formatted.output)
+}
+
+fn generate_router_flow_unformatted(routes: &[Route]) -> String {
     let mut output = String::from("\"use flow\";\n\n");
     output.push_str("import { buildRoute } from \"@uniflowed/router/routing\";\n\n");
     output.push_str("export type RoutePath = ");
@@ -1546,11 +1552,9 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
         }
         output.push_str("};\n\n");
     }
-    // Written the way `uf fmt` writes it, down to the trailing comma: uf
-    // scaffolds a project and then checks it with its own formatter, so a
-    // generated file the formatter disagrees with fails `uf fmt --check` on
-    // code nobody wrote. `the_generated_router_is_already_formatted` is what
-    // keeps the two in step.
+    // `generate_router_flow` formats this source with the default settings.
+    // A project may select different settings, so writing its manifest formats
+    // the raw source with that project's configuration instead.
     output.push_str(
         "export function route<Path extends RoutePath>(path: Path, ...params: RouteArgs[Path]): string {\n  return buildRoute(path, ...params);\n}\n",
     );
@@ -1588,7 +1592,7 @@ pub fn write_router_manifest_for_target(
     // file rather than in the project, so the unformatted source is written
     // instead of failing the build: an unformatted `router.js` still type
     // checks and still runs.
-    let mut generated = generate_router_flow(&routes);
+    let mut generated = generate_router_flow_unformatted(&routes);
     // Native clients call the web handler table; no server module is imported.
     let handlers = discover_server_modules(root, config)?;
     generated.push_str(&http_client::generate_http_client(&handlers));
