@@ -197,7 +197,7 @@ function basePathOf(config) {
 
 /** The Vite inline config a uf config describes. */
 async function viteConfig(config, mode) {
-  const { default: uniflowed } = await import("./index.js");
+  const { default: uniflowed, flowTransform } = await import("./index.js");
   const dev = config.dev ?? {};
   const build = config.build ?? {};
   const userPlugins = Array.isArray(config.plugins) ? config.plugins : [];
@@ -259,6 +259,11 @@ async function viteConfig(config, mode) {
     customLogger: eventLogger(argument("--log-level") ?? "info"),
     // One `uf transform` for every pass this process runs; see the option.
     plugins: [uniflowed({ root, config, target: routeTarget, shareTransformAcrossBuilds: true })],
+    // A Web Worker is bundled with these and never with `plugins`, so without
+    // them a worker written in Flow reaches the bundler as Flow
+    // (ubugeeei-prod/uf#1676). A function, which is the only spelling Vite
+    // still accepts, called once per worker bundle.
+    worker: { plugins: () => [flowTransform({ root })] },
     server: {
       host,
       port,

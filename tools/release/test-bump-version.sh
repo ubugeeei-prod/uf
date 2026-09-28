@@ -92,6 +92,39 @@ JSON
   "dependencies": { "@uniflowed/core": "$version", "vite": "^7.0.0" }
 }
 JSON
+  # Examples: one that installs uf from npm and pins the release it was written
+  # against (and pins the toolchain in its config), and one that installs this
+  # checkout's packages by path, which is not a version at all.
+  mkdir -p "$root/examples/published" "$root/examples/local"
+  cat > "$root/examples/published/package.json" <<JSON
+{
+  "name": "example-published",
+  "private": true,
+  "dependencies": {
+    "@uniflowed/react": "0.0.0-alpha.20",
+    "@uniflowed/vite": "^0.10.0",
+    "react": "^19.3.0"
+  },
+  "devDependencies": { "@uniflowed/test": "0.0.0-alpha.20" }
+}
+JSON
+  cat > "$root/examples/published/uf.config.js" <<'JS'
+export default defineConfig({
+  uf: "0.0.0-alpha.20",
+  fmt: { align: false },
+});
+JS
+  cat > "$root/examples/local/package.json" <<'JSON'
+{
+  "name": "example-local",
+  "private": true,
+  "dependencies": {
+    "@uniflowed/core": "file:../../npm/core",
+    "@uniflowed/router": "link:../../npm/router",
+    "@uniflowed/state": "workspace:*"
+  }
+}
+JSON
   printf '# Changelog\n\n## uf@%s\n\n_2026-01-01_\n' "$version" > "$root/CHANGELOG.md"
 }
 
@@ -146,6 +179,21 @@ pass "every \`@uniflowed/*\` pin moves, in all four dependency fields"
 [ "$(declares "$work/happy/docs/package.json")" = "0.0.0" ] || fail "docs/package.json is not shipped and must keep its own version"
 grep -q '"vite": "\^7.0.0"' "$work/happy/docs/package.json" || fail "a dependency outside the scope was rewritten"
 pass "a manifest that is not shipped keeps its version, and foreign pins are left alone"
+
+for field in "@uniflowed/react" "@uniflowed/vite" "@uniflowed/test"; do
+  [ "$(pins "$work/happy/examples/published/package.json" "$field")" = "0.2.0" ] ||
+    fail "examples/published still pins $field at an old release"
+done
+[ "$(pins "$work/happy/examples/published/package.json" react)" = "^19.3.0" ] ||
+  fail "an example's dependency outside the scope was rewritten"
+grep -q '^  uf: "0.2.0",$' "$work/happy/examples/published/uf.config.js" ||
+  fail "an example's uf.config.js still pins an old uf: $(cat "$work/happy/examples/published/uf.config.js")"
+pass "an example that installs uf from npm names the release it ships with"
+
+scratch pristine 0.1.0
+cmp -s "$work/happy/examples/local/package.json" "$work/pristine/examples/local/package.json" ||
+  fail "a file:/link:/workspace: example manifest was rewritten: $(cat "$work/happy/examples/local/package.json")"
+pass "an example that installs this checkout by path is left byte for byte"
 
 grep -q '^cargo metadata' "$work/happy/stub.log" || fail "Cargo.lock was not refreshed"
 grep -q '^npm install .*--package-lock-only' "$work/happy/stub.log" || fail "package-lock.json was not refreshed"

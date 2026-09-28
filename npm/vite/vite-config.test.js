@@ -62,6 +62,25 @@ describe("reaching Vite directly", () => {
     expect(merged.plugins).toEqual(["uf:flow", "svgr"]);
   });
 
+  it("keeps uf's worker plugins and adds the project's after them", () => {
+    // ubugeeei-prod/uf#1676. `worker.plugins` is how a worker written in Flow
+    // compiles, so it is composed the way `plugins` is — and the way Vite's own
+    // `mergeConfig` composes it — rather than replaced.
+    const merged = withProjectConfig(
+      { ...generated(), worker: { plugins: () => ["uf:flow-transform"] } },
+      { worker: { format: "es", plugins: () => ["wasm"] } },
+    );
+    expect(merged.worker.format).toBe("es");
+    expect(merged.worker.plugins()).toEqual(["uf:flow-transform", "wasm"]);
+
+    // The array Vite used to take, and still reads.
+    const legacy = withProjectConfig(
+      { ...generated(), worker: { plugins: () => ["uf:flow-transform"] } },
+      { worker: { plugins: ["wasm"] } },
+    );
+    expect(legacy.worker.plugins()).toEqual(["uf:flow-transform", "wasm"]);
+  });
+
   it("keeps the project root and the config file uf resolved", () => {
     const merged = withProjectConfig(generated(), {
       root: "/somewhere-else",
