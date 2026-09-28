@@ -24,12 +24,18 @@
   ],
   "repository": {
     "component-declaration": {
-      "begin": "(?<![\\w$.])(component)\\s+([A-Za-z_$][\\w$]*)(?=\\s*[<(])",
+      "begin": "(?<![\\w$.])(?:(export)\\s+)?(?:(async)\\s+)?(component)\\s+([A-Za-z_$][\\w$]*)(?=\\s*[<(])",
       "beginCaptures": {
         "1": {
-          "name": "storage.type.component.flow"
+          "name": "keyword.control.export.flow"
         },
         "2": {
+          "name": "storage.modifier.async.flow"
+        },
+        "3": {
+          "name": "storage.type.component.flow"
+        },
+        "4": {
           "name": "entity.name.function.component.flow"
         }
       },
