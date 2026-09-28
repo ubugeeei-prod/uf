@@ -327,13 +327,21 @@ test("a lagging npm verification is rerun once, and then the release goes on", a
   assert.equal(posted.filter((item) => item.route.endsWith("rerun-failed-jobs")).length, 1);
   assert.equal(posted.filter((item) => item.route.endsWith("dispatches")).length, 3);
 });
-test("a verification that fails twice stops the release", async () => {
-  const { io, posted } = actions({ "publish.yml": [verifyFailed, verifyFailed] });
+test("registry lag through two verifications still releases after the next succeeds", async () => {
+  const { io, posted } = actions({
+    "publish.yml": [verifyFailed, verifyFailed, { conclusion: "success", jobs: [] }],
+  });
+  await autoRelease({ GITHUB_REPOSITORY: repository, RELEASE_COMMIT: commit }, io);
+  assert.equal(posted.filter((item) => item.route.endsWith("rerun-failed-jobs")).length, 2);
+  assert.equal(posted.filter((item) => item.route.endsWith("dispatches")).length, 3);
+});
+test("verification retries stop after three reruns", async () => {
+  const { io, posted } = actions({ "publish.yml": Array(4).fill(verifyFailed) });
   await assert.rejects(
     autoRelease({ GITHUB_REPOSITORY: repository, RELEASE_COMMIT: commit }, io),
     new RegExp(`Publish ${version} .* ended with failure \\(${VERIFY_JOB}\\)`),
   );
-  assert.equal(posted.filter((item) => item.route.endsWith("rerun-failed-jobs")).length, 1);
+  assert.equal(posted.filter((item) => item.route.endsWith("rerun-failed-jobs")).length, 3);
   assert.ok(!posted.some((item) => item.route.includes("release.yml")));
 });
 test("any other failure stops the release without a rerun", async () => {

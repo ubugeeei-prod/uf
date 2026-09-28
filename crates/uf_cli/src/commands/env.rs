@@ -397,6 +397,15 @@ fn gc(ui: &mut Ui, dry_run: bool) -> Result<()> {
 /// of a file name — `.env.<profile>` — and a profile that could climb out of
 /// the project would be a profile that reads somebody else's file.
 fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
+    use_environment_with_interactivity(cwd, ui, name, uf_term::prompt::is_interactive())
+}
+
+fn use_environment_with_interactivity(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    name: &str,
+    interactive: bool,
+) -> Result<()> {
     if name == "cfw" {
         let root = discover_root(cwd);
         let path = uf_config::discover_config(&root).unwrap_or_else(|| root.join("uf.config.js"));
@@ -451,7 +460,7 @@ fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
         name,
         "node" | "bun" | "deno" | "nub" | "npm" | "pnpm" | "yarn" | "aube"
     ) {
-        if !uf_term::prompt::is_interactive() {
+        if !interactive {
             bail!(uf_infra::cstr!(
                 "specify `{name}@<version>` when no interactive terminal is available"
             ));
@@ -547,6 +556,22 @@ fn use_tool(cwd: &Utf8Path, ui: &mut Ui, spec: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bare_tool_refuses_without_a_terminal_before_touching_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        let config = root.join("uf.config.js");
+        let original = "export default defineConfig({});\n";
+        fs::write(&config, original).unwrap();
+        let mut ui = Ui::new(uf_term::ColorChoice::Never, crate::ui::OutputMode::Json);
+
+        let error = use_environment_with_interactivity(&root, &mut ui, "node", false).unwrap_err();
+
+        assert!(error.to_string().contains("node@<version>"), "{error}");
+        assert_eq!(fs::read_to_string(config).unwrap(), original);
+        assert!(!root.join("uf.lock").exists());
+    }
 
     /// A project root inside `dir`.
     ///

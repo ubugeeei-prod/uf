@@ -9,13 +9,21 @@ fn source_mode_directives_do_not_prevent_static_config_loading() {
         "'use flow'\n",
         "\"use flow\" /* mode */;",
         "\"use flow\" // mode\n",
+        "/* source mode */ \"use flow\" /* kept by the parser */ ;",
     ] {
         let source = format!(
             "{header}\nimport {{ defineConfig }} from '@uniflowed/config';\nexport default defineConfig({{}});\n"
         );
-        assert_eq!(extract_config_object(&source).as_deref(), Some("{}"));
+        assert_eq!(
+            extract_config_object(&source).as_deref(),
+            Some("{}"),
+            "{header}"
+        );
     }
     assert!(extract_config_object("'use flow' + execute(); export default {};").is_none());
+    assert!(extract_config_object("\"use\\x20flow\"; export default {};").is_none());
+    assert!(extract_config_object("const text = 'use flow'; export default {};").is_none());
+    assert!(extract_config_object("`use flow`; export default {};").is_none());
 }
 
 #[test]

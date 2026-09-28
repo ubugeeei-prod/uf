@@ -64,15 +64,7 @@ pub(crate) fn complete(
     let Some(written) = written else {
         return Ok(false);
     };
-    let Some(arg) = command.get_arguments().find(|arg| {
-        arg.to_string() == written
-            || arg.get_long().is_some_and(|long| {
-                written
-                    .strip_prefix("--")
-                    .and_then(|rest| rest.strip_prefix(long))
-                    .is_some_and(|tail| tail.is_empty() || tail.starts_with([' ', '=']))
-            })
-    }) else {
+    let Some(arg) = argument_for_written(command, written) else {
         return Ok(false);
     };
     let cwd = cwd(args)?;
@@ -145,6 +137,18 @@ pub(crate) fn complete(
     Ok(true)
 }
 
+fn argument_for_written<'a>(command: &'a Command, written: &str) -> Option<&'a clap::Arg> {
+    command.get_arguments().find(|arg| {
+        arg.to_string() == written
+            || arg.get_long().is_some_and(|long| {
+                written
+                    .strip_prefix("--")
+                    .and_then(|rest| rest.strip_prefix(long))
+                    .is_some_and(|tail| tail.is_empty() || tail.starts_with([' ', '=']))
+            })
+    })
+}
+
 pub(crate) fn cwd(args: &[OsString]) -> Result<camino::Utf8PathBuf> {
     let written = args
         .windows(2)
@@ -177,5 +181,32 @@ fn enter(title: &str, placeholder: &str) -> Result<Option<String>> {
         Answer::Typed(value) => Ok(Some(value)),
         Answer::Cancelled => Err(Cancelled.into()),
         Answer::NotInteractive => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Arg;
+
+    #[test]
+    fn a_longer_flag_does_not_select_its_prefix() {
+        let mut command = Command::new("test")
+            .arg(Arg::new("fix").long("fix"))
+            .arg(Arg::new("fix-unsafe").long("fix-unsafe"))
+            .arg(Arg::new("coverage").long("coverage"))
+            .arg(Arg::new("coverage-reporter").long("coverage-reporter"));
+        command.build();
+        for (written, expected) in [
+            ("--fix-unsafe <bad-value>", "fix-unsafe"),
+            ("--coverage-reporter <bad-value>", "coverage-reporter"),
+            ("--coverage=lcov", "coverage"),
+        ] {
+            assert_eq!(
+                argument_for_written(&command, written).map(|arg| arg.get_id().as_str()),
+                Some(expected),
+                "{written}",
+            );
+        }
     }
 }

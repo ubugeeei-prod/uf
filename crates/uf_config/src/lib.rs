@@ -2151,31 +2151,35 @@ fn strip_leading_comments(mut source: &str) -> &str {
     }
 }
 
-fn strip_leading_directives(mut source: &str) -> &str {
-    loop {
-        source = strip_leading_comments(source);
-        let Some(quote) = source.chars().next().filter(|c| matches!(c, '\'' | '"')) else {
-            return source;
-        };
-        let Some(end) = source[1..].find(quote).map(|end| end + 1) else {
-            return source;
-        };
+fn strip_leading_directives(source: &str) -> &str {
+    let Ok(parsed) = uf_flow::parse(source) else {
+        return source;
+    };
+    let mut end = 0;
+    for (directive, location) in uf_flow::module::directive_prologue(&parsed.program) {
         if !matches!(
-            &source[1..end],
+            directive,
             "use flow" | "use js" | "use strict" | "use client" | "use server"
         ) {
-            return source;
+            break;
         }
-        let rest = &source[end + 1..];
-        let next = strip_leading_comments(rest);
-        if let Some(rest) = next.strip_prefix(';') {
-            source = rest;
-        } else if next.is_empty() || rest[..rest.len() - next.len()].contains(['\n', '\r']) {
-            source = next;
-        } else {
+        let Some(offset) = source_offset(source, location.end) else {
             return source;
-        }
+        };
+        end = offset;
     }
+    strip_leading_comments(&source[end..])
+}
+
+fn source_offset(source: &str, position: uf_flow::Position) -> Option<usize> {
+    let line = usize::try_from(position.line).ok()?.checked_sub(1)?;
+    let column = usize::try_from(position.column).ok()?;
+    let mut start = 0;
+    for _ in 0..line {
+        start += source[start..].find('\n')? + 1;
+    }
+    let offset = start.checked_add(column)?;
+    (offset <= source.len() && source.is_char_boundary(offset)).then_some(offset)
 }
 
 fn extract_balanced(source: &str, open: char, close: char) -> Option<String> {
