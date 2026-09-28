@@ -2,6 +2,7 @@
 
 ## uf@0.15.0
 
+- fix(fmt): decide a lone parameter's group from the return type's syntax (#1696) (4a7f29a2)
 - feat(fmt): add fmt.ignore, and format each example with its own config (#1694) (953c5692)
 - fix(build): pass build.lib.external to the library driver (#1689) (54964193)
 - fix(transform): compile under the evaluated config, not a second static read (#1690) (5bc87eae)
