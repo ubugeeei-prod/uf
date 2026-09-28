@@ -81,7 +81,7 @@ fn same_type(a: &Type, b: &Type) -> bool {
 /// anything about it: a generic's arguments, a union or intersection, and the
 /// wrappers. It stops at a function type, whose own parameters and return are
 /// a separate decision.
-fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
+pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
     match &**ty {
         types::TypeInner::Object { .. } => true,
         types::TypeInner::Generic { inner, .. } => inner
