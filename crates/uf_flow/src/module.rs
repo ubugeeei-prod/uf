@@ -82,6 +82,17 @@ use crate::scan::{Token, tokenize};
 /// the one the author meant.
 pub type Program = (ast::Program<Loc, Loc>, Vec<(Loc, ParseError)>);
 
+/// Directives at the start of a parsed module, in source order. A string in a
+/// later expression or a comment is not a directive.
+pub fn directive_prologue(program: &ast::Program<Loc, Loc>) -> impl Iterator<Item = (&str, &Loc)> {
+    program.statements.iter().map_while(|statement| {
+        let ast::statement::StatementInner::Expression { inner, .. } = &**statement else {
+            return None;
+        };
+        Some((inner.directive.as_deref()?, statement.loc()))
+    })
+}
+
 /// The `await` keyword, whose five bytes this module trades for another five.
 const AWAIT: &str = "await";
 

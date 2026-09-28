@@ -548,6 +548,22 @@ fn use_tool(cwd: &Utf8Path, ui: &mut Ui, spec: &str) -> Result<()> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn bare_tool_refuses_without_a_terminal_before_touching_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        let config = root.join("uf.config.js");
+        let original = "export default defineConfig({});\n";
+        fs::write(&config, original).unwrap();
+        let mut ui = Ui::new(uf_term::ColorChoice::Never, crate::ui::OutputMode::Json);
+
+        let error = use_environment(&root, &mut ui, "node").unwrap_err();
+
+        assert!(error.to_string().contains("node@<version>"), "{error}");
+        assert_eq!(fs::read_to_string(config).unwrap(), original);
+        assert!(!root.join("uf.lock").exists());
+    }
+
     /// A project root inside `dir`.
     ///
     /// The marker file matters: root discovery walks up until it finds one, and

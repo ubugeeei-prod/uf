@@ -88,13 +88,7 @@ pub(super) fn parse_file(
     // Read the parsed directive prologue. Strings in comments, template
     // literals or later expressions cannot select a file's checker mode.
     // Keep the original AST and text so byte and UTF-16 positions stay exact.
-    for statement in ast.statements.iter() {
-        let ast::statement::StatementInner::Expression { inner, .. } = &**statement else {
-            break;
-        };
-        let Some(directive) = inner.directive.as_deref() else {
-            break;
-        };
+    for (directive, _) in uf_flow::module::directive_prologue(&ast) {
         match directive {
             "use flow" => docblock.flow = Some(FlowMode::OptIn),
             "use js" => docblock.flow = Some(FlowMode::OptOut),

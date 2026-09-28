@@ -24,7 +24,7 @@
 // than duplicated, and so is one from an earlier attempt of this job. One
 // failure is retried: `publish.yml`'s "Verify the npm release" job, when it is
 // the only failed job, because npm's registry can lag behind a publish for
-// longer than that job waits. It gets one rerun. Any other failure stops here,
+// longer than that job waits. It gets up to three reruns. Any other failure stops here,
 // loudly, with the run's URL.
 
 const { execFileSync } = require("node:child_process");
@@ -44,6 +44,7 @@ type Inputs = { readonly [name: string]: string };
 */
 
 const VERIFY_JOB = "Verify the npm release";
+const VERIFY_RERUNS = 3;
 const POLL_MS = 30_000;
 const FIND_TRIES = 20;
 const RUN_DEADLINE_MS = 90 * 60 * 1000;
@@ -193,16 +194,16 @@ async function runWorkflow(
     io.log(`${title}: started ${run.html_url}`);
   }
   let done = await waitFor(repository, run.id, run.run_attempt, io);
-  let retried = false;
+  let retries = 0;
   while (done.conclusion !== "success") {
     const failed = done.conclusion === "failure" ? failedJobs(repository, done, io) : [];
     const lagging = workflow === "publish.yml" && failed.length === 1 && failed[0] === VERIFY_JOB;
-    if (!lagging || retried)
+    if (!lagging || retries >= VERIFY_RERUNS)
       throw new Error(
         `${title} ended with ${String(done.conclusion)}${failed.length ? ` (${failed.join(", ")})` : ""}: ${done.html_url}`,
       );
-    retried = true;
-    io.log(`${title}: npm had not caught up; rerunning "${VERIFY_JOB}" once`);
+    retries++;
+    io.log(`${title}: npm had not caught up; rerunning "${VERIFY_JOB}" (${retries}/${VERIFY_RERUNS})`);
     io.post(`repos/${repository}/actions/runs/${done.id}/rerun-failed-jobs`, {});
     done = await waitFor(repository, done.id, done.run_attempt + 1, io);
   }
