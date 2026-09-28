@@ -171,7 +171,8 @@ export const goals: $ReadOnlyArray<Goal> = [
     title: "Talk to a database with sqlc",
     outcome: "SQL you write, with Flow types generated from it.",
     status: "Implemented",
-    caveat: "The generator and tested SQLite, PostgreSQL and MySQL adapters are ready; better-sqlite3 and D1 remain experimental.",
+    caveat:
+      "The generator and tested SQLite, PostgreSQL and MySQL adapters are ready; better-sqlite3 and D1 remain experimental.",
     steps: [
       {
         label: "SQL with sqlc",
