@@ -16,6 +16,7 @@ use crate::flow::text::{SourceText, Span};
 #[derive(Clone, Copy)]
 struct Stop {
     at: usize,
+    entry_end: usize,
     line_start: usize,
     line_end: usize,
     column: usize,
@@ -91,10 +92,16 @@ impl Collector<'_> {
         }
         Some(Stop {
             at,
+            entry_end: span.end,
             line_start,
             line_end,
             column: text_width(prefix),
         })
+    }
+
+    fn trailing_comment(&self, stop: &Stop) -> bool {
+        let suffix = &self.text.text()[stop.entry_end..stop.line_end];
+        suffix.contains("//") || suffix.contains("/*")
     }
 
     fn align_stops(&mut self, stops: &[Option<Stop>]) {
@@ -102,9 +109,9 @@ impl Collector<'_> {
         for item in stops.iter().copied().chain(std::iter::once(None)) {
             match item {
                 Some(stop)
-                    if run
-                        .last()
-                        .is_none_or(|previous: &Stop| previous.line_end + 1 == stop.line_start) =>
+                    if run.last().is_none_or(|previous: &Stop| {
+                        previous.line_end + 1 == stop.line_start && !self.trailing_comment(previous)
+                    }) =>
                 {
                     run.push(stop);
                 }
@@ -250,7 +257,7 @@ impl Collector<'_> {
                 let function::Param::RegularParam {
                     loc,
                     argument: pattern::Pattern::Identifier { inner, .. },
-                    default: None,
+                    ..
                 } = param
                 else {
                     return None;
@@ -280,7 +287,7 @@ impl Collector<'_> {
                     return None;
                 };
                 let at = self.text.span(&annotation.loc).start;
-                (param.default.is_none() && self.text.text().as_bytes().get(at) == Some(&b':'))
+                (self.text.text().as_bytes().get(at) == Some(&b':'))
                     .then(|| self.stop(self.text.span(&param.loc), at))?
             })
             .collect()
@@ -377,6 +384,7 @@ impl Collector<'_> {
                 Some(entry)
                     if run.last().is_none_or(|previous: &UseEntry| {
                         previous.equal.line_end + 1 == entry.equal.line_start
+                            && !self.trailing_comment(&previous.equal)
                     }) =>
                 {
                     run.push(entry);

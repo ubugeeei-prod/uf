@@ -212,3 +212,69 @@ type Resolver = (
         );
     }
 }
+
+#[test]
+fn aligns_single_line_default_parameters() {
+    let source = r#"function connect(
+  id: number = 0,
+  selectedProjectSymbol: string = "",
+  enabled: boolean = true,
+): void {}
+component Search(
+  query: string = "",
+  selectedProjectSymbol: number = 0,
+) {
+  return null;
+}
+"#;
+    let aligned = formatted_with_width(source, true, 60);
+    let function_params: Vec<_> = aligned
+        .lines()
+        .filter(|line| {
+            let line = line.trim_start();
+            line.starts_with("id")
+                || line.starts_with("selectedProjectSymbol")
+                || line.starts_with("enabled")
+        })
+        .take(3)
+        .collect();
+    assert_eq!(function_params.len(), 3, "{aligned}");
+    assert!(
+        function_params
+            .iter()
+            .all(|line| line.find(':') == function_params[0].find(':')),
+        "{aligned}"
+    );
+    let component_params: Vec<_> = aligned
+        .lines()
+        .filter(|line| {
+            let line = line.trim_start();
+            line.starts_with("query") || line.starts_with("selectedProjectSymbol")
+        })
+        .rev()
+        .take(2)
+        .collect();
+    assert_eq!(component_params.len(), 2, "{aligned}");
+    assert_eq!(
+        component_params[0].find(':'),
+        component_params[1].find(':'),
+        "{aligned}"
+    );
+}
+
+#[test]
+fn trailing_comment_breaks_type_alias_alignment() {
+    let source =
+        "type Short = string; // separate group\ntype LongerName = number;\ntype Mid = boolean;\n";
+    let aligned = formatted(source, true);
+    assert!(
+        aligned.contains("type Short = string; // separate group"),
+        "{aligned}"
+    );
+    let last_two: Vec<_> = aligned
+        .lines()
+        .filter(|line| line.starts_with("type LongerName") || line.starts_with("type Mid"))
+        .collect();
+    assert_eq!(last_two.len(), 2, "{aligned}");
+    assert_eq!(last_two[0].find('='), last_two[1].find('='), "{aligned}");
+}
