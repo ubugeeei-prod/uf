@@ -331,6 +331,55 @@ export default function uniflowed(options = {}) {
   ];
 }
 
+/**
+ * The Flow transform alone: `uf:flow`'s `transform` half, without the refresh
+ * wrapper, the virtual modules or the dev server.
+ *
+ * For a Web Worker. Vite bundles a worker with `worker.plugins` and never with
+ * `plugins`, so a worker written in Flow reached the bundler as Flow and the
+ * build failed with "Flow is not supported" (ubugeeei-prod/uf#1676). `uf dev`
+ * never saw it, because a dev server serves a worker through the ordinary
+ * pipeline, where `uf:flow` already runs.
+ *
+ * A worker bundle has no document, no stylesheet and no refresh runtime, so
+ * this compiles and returns the code and nothing else. Vite calls
+ * `worker.plugins` once per worker bundle, so each call is a fresh plugin with
+ * its own `uf transform`, closed when that bundle ends.
+ *
+ * @param {{ root?: string, command?: string }} [options]
+ */
+export function flowTransform(options = {}) {
+  let root = options.root ?? process.cwd();
+  let isProduction = true;
+  /** @type {TransformService | null} */
+  let service = null;
+  return {
+    name: "uf:flow-transform",
+    enforce: "pre",
+    configResolved(config) {
+      root = config.root;
+      isProduction = config.isProduction;
+    },
+    async transform(code, id) {
+      if (!isFlowModule(id) || isCompiledOutput(id)) return null;
+      if (service == null || !service.alive) {
+        service = new TransformService({ command: options.command, root });
+      }
+      const out = await service.transform(cleanId(id), code, {
+        development: !isProduction,
+        refresh: false,
+        sourceMap: true,
+      });
+      if (out == null) return null;
+      return { code: out.code, map: out.map == null ? null : JSON.parse(out.map) };
+    },
+    buildEnd() {
+      service?.close();
+      service = null;
+    },
+  };
+}
+
 function flowPlugin({
   routerRoot,
   appEntry,
