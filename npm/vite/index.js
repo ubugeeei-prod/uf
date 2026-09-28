@@ -60,6 +60,7 @@ import {
   auditTag,
 } from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
+import { projectConfig } from "./internal/config.js";
 import { barrelImportsPlugin } from "./internal/barrel-imports.js";
 import { refuseServerErrorBoundaries } from "./internal/error-boundaries.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";
@@ -311,6 +312,11 @@ export default function uniflowed(options = {}) {
       flightState,
       routing,
       command: options.command,
+      // What `uf transform` compiles under: the config this process
+      // evaluated, rather than the file read again by a reader that refuses
+      // anything that is not data (ubugeeei-prod/uf#1674). Absent when the
+      // plugin was given no config, and the service reads the file itself.
+      transformConfig: options.config == null ? undefined : projectConfig(options.config),
       shareTransformAcrossBuilds: options.shareTransformAcrossBuilds === true,
       accessibility,
       relayEnabled: builtins.relay !== false,
@@ -342,6 +348,7 @@ function flowPlugin({
   flightState,
   routing,
   command,
+  transformConfig,
   shareTransformAcrossBuilds,
   accessibility,
   relayEnabled,
@@ -396,7 +403,9 @@ function flowPlugin({
   // `shareTransformAcrossBuilds` one outlives a build, and a `uf transform`
   // that died in one pass must not fail every pass after it.
   const ensureService = () => {
-    if (service == null || !service.alive) service = new TransformService({ command, root });
+    if (service == null || !service.alive) {
+      service = new TransformService({ command, root, config: transformConfig });
+    }
     return service;
   };
 

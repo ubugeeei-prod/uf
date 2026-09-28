@@ -70,7 +70,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { environmentVariable, inSourceTests } from "../transform.js";
+import { inSourceTests, isConfigBootstrap } from "../transform.js";
 import { writeAtomically } from "../write-atomically.js";
 
 /**
@@ -184,8 +184,11 @@ export function framed(out) {
  * key above; and the config bootstrap flag the config loader sets on the
  * process that compiles `uf.config.js` itself.
  *
- * The flag is read through `environmentVariable`, which answers "unset" for a
- * variable the process may not read. A Deno worker `uf test` starts is granted
+ * The flag is `isConfigBootstrap`: the variable for hooks in the importing
+ * thread, and the counter the main thread shares for the loader thread, which
+ * never sees the variable change. The variable is read through
+ * `environmentVariable`, which answers "unset" for a variable the process may
+ * not read. A Deno worker `uf test` starts is granted
  * the variables uf set on it and nothing else, and a plain `process.env` read
  * of this one threw `NotCapable` out of the first compile of every cold run —
  * measured on Deno 2.9, and a variable no `uf test` worker is ever given.
@@ -196,6 +199,6 @@ export function compileOptions(root) {
     development: true,
     sourceMap: true,
     inSourceTests: inSourceTests(),
-    configBootstrap: environmentVariable("UF_TRANSFORM_BOOTSTRAP_CONFIG") === "1",
+    configBootstrap: isConfigBootstrap(),
   };
 }

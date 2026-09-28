@@ -31,6 +31,7 @@ import {
   environmentVariable,
   isCompiledOutput,
   isFlowModule,
+  shareConfigBootstrapFlag,
   sharedService,
   transformFlow,
   ufBinaryIdentity,
@@ -49,11 +50,15 @@ let cacheDirectory = null;
 let root = null;
 
 /**
- * Called once by `register()` with `{ root }`; the cache lives under it and
- * the transform service is started there so it reads the right config.
+ * Called once by `register()` with `{ root, configBootstrap }`; the cache lives
+ * under `root` and the transform service is started there so it reads the
+ * right config. `configBootstrap` is the registering thread's
+ * `configBootstrapFlag()`, which is how this thread learns that a module it is
+ * compiling is one `uf.config.js` imports.
  */
 export async function initialize(data) {
   root = data?.root ?? process.cwd();
+  shareConfigBootstrapFlag(data?.configBootstrap);
   cacheDirectory = cacheDirectoryFor(root);
 }
 
