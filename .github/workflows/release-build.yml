@@ -54,6 +54,12 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
+      - name: Limit Windows release codegen memory
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: |
+          echo CARGO_PROFILE_DIST_LTO=false >> "$GITHUB_ENV"
+          echo CARGO_BUILD_JOBS=1 >> "$GITHUB_ENV"
+
       - name: Resolve version
         id: version
         env:
