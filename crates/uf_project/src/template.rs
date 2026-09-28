@@ -110,6 +110,8 @@ import { defineConfig } from "@uniflowed/config";
 // here reaches one package. `uf run bundle` verifies the repository, builds
 // the library, then builds the application that consumes it.
 export default defineConfig({
+  // Keep this starter's existing layout. Remove this to align related columns.
+  fmt: { align: false },
   tasks: {
     "serve:web": { command: "uf dev#apps/web" },
     "verify:format": { command: "uf fmt --check" },
@@ -369,6 +371,8 @@ fn app_config() -> String {
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
+  // Keep this starter's existing layout. Remove this to align related columns.
+  fmt: { align: false },
   tasks: {
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
@@ -396,6 +400,8 @@ fn lib_config() -> String {
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
+  // Keep this starter's existing layout. Remove this to align related columns.
+  fmt: { align: false },
   app: {
     // Turning the file-system router off is what makes this a library:
     // `uf build` compiles index.js to dist/ rather than looking for an
