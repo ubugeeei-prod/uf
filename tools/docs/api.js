@@ -179,9 +179,11 @@ export function reexports(source: string, file: string): Map<string, Map<string,
  * x`, and the local `export { a, b as c }`. Re-exports from another file are
  * `reexports`'s, not this.
  */
-export function declaredExports(
-  source: string,
-): Array<{| name: string, kind: string, line: number |}> {
+export function declaredExports(source: string): Array<{|
+  name: string,
+  kind: string,
+  line: number,
+|}> {
   const out = [];
   const lines = source.split("\n");
   const declaration =

@@ -15,6 +15,7 @@ use super::assignment::{Layout, PrintArgs};
 use super::call::{is_test_call, parameter_count};
 use super::parens::{is_binaryish, is_call_like, is_jsx, starts_with_no_lookahead_token};
 use super::statement::EmptyBlock;
+use super::types::returns_a_shape_that_breaks;
 use crate::doc::{Doc, HARDLINE, LINE, SOFTLINE, will_break};
 use crate::flow::comments::Marker;
 use crate::flow::node::{Expression, Function, NodeKey, NodeRef};
@@ -201,6 +202,14 @@ impl<'a> Printer<'a> {
     /// Prettier's `shouldGroupFunctionParameters`: one parameter, a
     /// return type that is an object or breaks, and no complex type
     /// parameters.
+    ///
+    /// "Breaks" is asked of the syntax as well as of the printed doc, for
+    /// the reason [`returns_a_shape_that_breaks`] gives: `will_break` only
+    /// sees an object type that the *source* had expanded, so a first run
+    /// that expanded `Promise<{ … }>` for width broke the parameter list
+    /// with it, and the second run, reading the newline that run wrote, kept
+    /// the parameter flat. `npm/host/config-bootstrap.test.js`'s
+    /// `function ask(worker: Worker): Promise<{ … }>` was formatted two ways.
     pub fn should_group_function_parameters(
         &self,
         function: &'a Function,
@@ -220,7 +229,8 @@ impl<'a> Printer<'a> {
                 return false;
             }
         }
-        parameter_count(function) == 1 && (is_object_type(return_node) || will_break(return_type))
+        parameter_count(function) == 1
+            && (returns_a_shape_that_breaks(return_node) || will_break(return_type))
     }
 
     /// Prettier's `shouldHugTheOnlyFunctionParameter`.

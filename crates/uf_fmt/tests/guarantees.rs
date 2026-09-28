@@ -217,6 +217,53 @@ fn a_lone_parameter_stays_flat_whether_or_not_its_object_was_already_open() {
 }
 
 #[test]
+fn a_lone_parameter_before_a_generic_holding_an_object_is_one_fixed_point() {
+    // The same question as above, asked of a function with a body rather
+    // than a function type. `Promise<{ … }>` is not itself an object type, so
+    // the parameter kept its own group only when the printed return type
+    // would break — and it breaks only when the source had a newline after
+    // its `{`. The first run, too narrow for the object, broke the parameter
+    // and the object; the second read the object's new newline and put the
+    // parameter back. `npm/host/config-bootstrap.test.js` found it, at the
+    // narrow configuration, with and without alignment.
+    let flat = concat!(
+        "// @flow\n",
+        "function ask(worker: Worker): Promise<{ shared: boolean, variable: ?string }> {\n",
+        "  return worker;\n",
+        "}\n",
+        "class Asker {\n",
+        "  ask(worker: Worker): Promise<{ shared: boolean, variable: ?string }> {\n",
+        "    return worker;\n",
+        "  }\n",
+        "}\n",
+    );
+    for align in [true, false] {
+        for indent_width in [2, 4] {
+            let mut config = FmtConfig::default();
+            config.line_width = 40;
+            config.indent_width = indent_width;
+            config.align = align;
+            let once = format_source(flat, &config).expect("formats").output;
+            let twice = format_source(&once, &config).expect("reformats").output;
+            similar_asserts::assert_eq!(once, twice, "align: {align}, indent: {indent_width}");
+            // The object absorbs the break and the parameter stays whole.
+            assert!(
+                once.contains("function ask(worker: Worker): Promise<{\n"),
+                "the lone parameter stays on its line:\n{once}"
+            );
+            let method = format!(
+                "\n{}ask(worker: Worker): Promise<{{\n",
+                " ".repeat(usize::from(indent_width))
+            );
+            assert!(
+                once.contains(&method),
+                "the method's lone parameter stays on its line too:\n{once}"
+            );
+        }
+    }
+}
+
+#[test]
 fn shipped_sources_keep_their_tree_and_comments() {
     for (label, source) in shipped_sources().into_iter().chain(template_sources()) {
         let output = format_source(&source, &FmtConfig::default())

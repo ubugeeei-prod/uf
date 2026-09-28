@@ -287,9 +287,10 @@ export async function serve(options: ServeOptions): Promise<{|
  * megabytes of sourcemaps should not spend the startup decoding the ones this
  * process will never be asked for.
  */
-function index(
-  assets: EmbeddedAssets,
-): Map<string, {| readonly type: string, readonly bytes: () => Uint8Array |}> {
+function index(assets: EmbeddedAssets): Map<
+  string,
+  {| readonly type: string, readonly bytes: () => Uint8Array |},
+> {
   // `Uint8Array` rather than `Buffer` in the types: a `Buffer` is one, it is all
   // `sendBytes` needs, and `Buffer` imported from `node:buffer` is a value to
   // Flow rather than a type.
