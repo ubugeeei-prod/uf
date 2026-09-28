@@ -7,7 +7,7 @@
 //! same columns, so alignment stays idempotent.
 
 use uf_flow::Loc;
-use uf_flow::ast::{self, expression, pattern, statement};
+use uf_flow::ast::{self, expression, function, pattern, statement, types};
 use uf_flow::ast_visitor::{self, AstVisitor};
 
 use crate::doc::printer::text_width;
@@ -194,6 +194,119 @@ impl Collector<'_> {
             .collect()
     }
 
+    fn object_type_stops(&self, object: &types::Object<Loc, Loc>) -> Vec<Option<Stop>> {
+        object
+            .properties
+            .iter()
+            .map(|property| {
+                let types::object::Property::NormalProperty(property) = property else {
+                    return None;
+                };
+                let types::object::PropertyValue::Init(Some(value)) = &property.value else {
+                    return None;
+                };
+                let property_span = self.text.span(&property.loc);
+                let before_value = self.text.span(value.loc()).start;
+                let gap = self.text.text().get(property_span.start..before_value)?;
+                let at = property_span.start + gap.rfind(':')?;
+                if !self.text.text()[at + 1..before_value].trim().is_empty() {
+                    return None;
+                }
+                self.stop(property_span, at)
+            })
+            .collect()
+    }
+
+    fn type_alias_stop(&self, statement: &statement::Statement<Loc, Loc>) -> Option<Stop> {
+        let alias = match &**statement {
+            statement::StatementInner::TypeAlias { inner, .. } => inner,
+            statement::StatementInner::ExportNamedDeclaration { inner, .. } => {
+                let declaration = inner.declaration.as_ref()?;
+                let statement::StatementInner::TypeAlias { inner, .. } = &**declaration else {
+                    return None;
+                };
+                inner
+            }
+            _ => return None,
+        };
+        let after_name = alias.tparams.as_ref().map_or_else(
+            || self.text.span(&alias.id.loc).end,
+            |params| self.text.span(&params.loc).end,
+        );
+        let before_value = self.text.span(alias.right.loc()).start;
+        let gap = self.text.text().get(after_name..before_value)?;
+        let relative = gap.find('=')?;
+        if !gap[..relative].trim().is_empty() || !gap[relative + 1..].trim().is_empty() {
+            return None;
+        }
+        self.stop(self.text.span(statement.loc()), after_name + relative)
+    }
+
+    fn function_param_stops(&self, params: &function::Params<Loc, Loc>) -> Vec<Option<Stop>> {
+        params
+            .params
+            .iter()
+            .map(|param| {
+                let function::Param::RegularParam {
+                    loc,
+                    argument: pattern::Pattern::Identifier { inner, .. },
+                    default: None,
+                } = param
+                else {
+                    return None;
+                };
+                let types::AnnotationOrHint::Available(annotation) = &inner.annot else {
+                    return None;
+                };
+                let at = self.text.span(&annotation.loc).start;
+                (self.text.text().as_bytes().get(at) == Some(&b':'))
+                    .then(|| self.stop(self.text.span(loc), at))?
+            })
+            .collect()
+    }
+
+    fn component_param_stops(
+        &self,
+        params: &statement::component_params::Params<Loc, Loc>,
+    ) -> Vec<Option<Stop>> {
+        params
+            .params
+            .iter()
+            .map(|param| {
+                let pattern::Pattern::Identifier { inner, .. } = &param.local else {
+                    return None;
+                };
+                let types::AnnotationOrHint::Available(annotation) = &inner.annot else {
+                    return None;
+                };
+                let at = self.text.span(&annotation.loc).start;
+                (param.default.is_none() && self.text.text().as_bytes().get(at) == Some(&b':'))
+                    .then(|| self.stop(self.text.span(&param.loc), at))?
+            })
+            .collect()
+    }
+
+    fn function_type_param_stops(&self, function: &types::Function<Loc, Loc>) -> Vec<Option<Stop>> {
+        function
+            .params
+            .params
+            .iter()
+            .map(|param| {
+                let types::function::ParamKind::Labeled { name, annot, .. } = &param.param else {
+                    return None;
+                };
+                let after_name = self.text.span(&name.loc).end;
+                let before_type = self.text.span(annot.loc()).start;
+                let gap = self.text.text().get(after_name..before_type)?;
+                let relative = gap.rfind(':')?;
+                if !gap[relative + 1..].trim().is_empty() {
+                    return None;
+                }
+                self.stop(self.text.span(&param.loc), after_name + relative)
+            })
+            .collect()
+    }
+
     fn use_entry(&self, statement: &statement::Statement<Loc, Loc>) -> Option<UseEntry> {
         let statement::StatementInner::VariableDeclaration { inner, .. } = &**statement else {
             return None;
@@ -342,6 +455,45 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Collector<'_> {
 
     fn normalize_type(type_: &'ast Loc) -> &'ast Loc {
         type_
+    }
+
+    fn statement_list(
+        &mut self,
+        statements: &'ast [statement::Statement<Loc, Loc>],
+    ) -> Result<(), ()> {
+        let stops = statements
+            .iter()
+            .map(|statement| self.type_alias_stop(statement))
+            .collect::<Vec<_>>();
+        self.align_stops(&stops);
+        ast_visitor::statement_list_default(self, statements)
+    }
+
+    fn function_params(&mut self, params: &'ast function::Params<Loc, Loc>) -> Result<(), ()> {
+        let stops = self.function_param_stops(params);
+        self.align_stops(&stops);
+        ast_visitor::function_params_default(self, params)
+    }
+
+    fn component_params(
+        &mut self,
+        params: &'ast statement::component_params::Params<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let stops = self.component_param_stops(params);
+        self.align_stops(&stops);
+        ast_visitor::component_params_default(self, params)
+    }
+
+    fn function_type(&mut self, function: &'ast types::Function<Loc, Loc>) -> Result<(), ()> {
+        let stops = self.function_type_param_stops(function);
+        self.align_stops(&stops);
+        ast_visitor::function_type_default(self, function)
+    }
+
+    fn object_type(&mut self, object: &'ast types::Object<Loc, Loc>) -> Result<(), ()> {
+        let stops = self.object_type_stops(object);
+        self.align_stops(&stops);
+        ast_visitor::object_type_default(self, object)
     }
 
     fn match_expression(

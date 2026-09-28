@@ -33,8 +33,11 @@ syntax rather than survived. The output follows Prettier's conventions — doubl
 the same line-breaking decisions — because the point of a formatter is that
 nobody argues about it, and Prettier already won that argument. The default
 width is 100 rather than Prettier's 80; `fmt.lineWidth` changes it. Related
-`match` arrows, component hook bindings and expanded object keys are aligned
-in columns, following [Scalafmt's alignment model](https://scalameta.org/scalafmt/docs/configuration.html#alignment).
+`match` arrows, component hook bindings, expanded object keys, multiline
+function parameters, type aliases and object type fields are aligned in
+columns, following [Scalafmt's alignment model](https://scalameta.org/scalafmt/docs/configuration.html#alignment).
+Only adjacent, single-line entries are aligned; comments, complex multiline
+entries and the line width end a group.
 Set `fmt.align: false` in `uf.config.js` to keep single spaces instead.
 
 The underlying layout is checked against Prettier: `uf_fmt`'s golden fixtures
