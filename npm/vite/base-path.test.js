@@ -13,10 +13,19 @@
 // What every front door does with the settings is `@uniflowed/server`'s
 // `internal/routing.js`, and `tests/library/deploy.test.js` compares the doors.
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "@uniflowed/test";
 
 import { routingRulesOf } from "./internal/routes.js";
-import { answersInFrontOfFiles, assetsFromManifest, forViteBase } from "./internal/serve.js";
+import {
+  answersInFrontOfFiles,
+  assetsFromManifest,
+  createStaticBuildHandler,
+  forViteBase,
+} from "./internal/serve.js";
 
 describe("the settings as the config is read", () => {
   it("are the root and the default policy when the project says nothing", () => {
@@ -104,5 +113,103 @@ describe("a request Vite's own middleware is handed under a base path", () => {
     forViteBase(routingRulesOf({}), request);
 
     expect(request.url).toBe("/docs");
+  });
+});
+
+describe("a static build under `uf preview`", () => {
+  // ubugeeei-prod/uf#1678. A `build.staticBuild` has no server bundle, so
+  // every page was left to Vite's file server, which answered each one the
+  // build prerendered with a 404 and knew nothing of the base path.
+  const files = {
+    "index.html": "<p>home</p>",
+    "guide/index.html": "<p>guide</p>",
+    "404.html": "<p>missing</p>",
+    "assets/client.js": "export {};",
+  };
+
+  function outDir(): string {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "uf-static-preview-")));
+    for (const [name, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
+      fs.writeFileSync(path.join(root, name), String(text));
+    }
+    return root;
+  }
+
+  /** A `ServerResponse` that keeps what it was sent. */
+  function recorder(): $FlowFixMe {
+    const response = {
+      statusCode: 200,
+      statusMessage: "",
+      headersSent: false,
+      headers: {} as { [string]: mixed },
+      body: "",
+      setHeader(name: string, value: mixed) {
+        response.headers[name.toLowerCase()] = value;
+      },
+      write(chunk: Uint8Array | string): boolean {
+        response.body += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+        return true;
+      },
+      end(chunk?: Uint8Array | string) {
+        if (chunk != null) response.write(chunk);
+      },
+      destroy() {},
+      on() {},
+      once() {},
+      off() {},
+    };
+    return response;
+  }
+
+  async function ask(
+    basePath: string,
+    url: string,
+    accept: string = "text/html",
+  ): Promise<{ answered: boolean, status: number, body: string, location: mixed }> {
+    const root = outDir();
+    try {
+      const answer = createStaticBuildHandler({ root, routing: routingRulesOf({ basePath }) });
+      const response = recorder();
+      const answered = await answer(
+        new Request(`http://localhost${url}`, { headers: { accept } }),
+        response,
+      );
+      return {
+        answered,
+        status: response.statusCode,
+        body: response.body,
+        location: response.headers.location,
+      };
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it("answers every page it prerendered, by the path a person types", async () => {
+    expect(await ask("", "/")).toEqual({
+      answered: true,
+      status: 200,
+      body: "<p>home</p>",
+      location: undefined,
+    });
+    expect((await ask("", "/guide/")).body).toBe("<p>guide</p>");
+    expect((await ask("", "/guide")).body).toBe("<p>guide</p>");
+  });
+
+  it("serves the pages under the base path, with the base taken off", async () => {
+    expect((await ask("/docs", "/docs/")).body).toBe("<p>home</p>");
+    expect((await ask("/docs", "/docs/guide/")).body).toBe("<p>guide</p>");
+    expect((await ask("/docs", "/docs/assets/client.js", "*/*")).body).toBe("export {};");
+    // Outside the base is not the application's, as at every other door.
+    expect((await ask("/docs", "/guide/")).status).toBe(404);
+  });
+
+  it("answers a document nothing matched with 404.html and a 404, as a static host does", async () => {
+    const missing = await ask("", "/nowhere/");
+    expect(missing.status).toBe(404);
+    expect(missing.body).toBe("<p>missing</p>");
+    // Anything but a document is left to go on, and Vite answers it.
+    expect((await ask("", "/assets/gone.js", "*/*")).answered).toBe(false);
   });
 });

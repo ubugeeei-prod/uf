@@ -792,6 +792,65 @@ export function forViteBase(routing, request) {
 }
 
 /**
+ * A `build.staticBuild` output, answered the way a static host answers it.
+ *
+ * For `uf preview`, which has no server bundle to mount for such a build, and
+ * which left every page to Vite's file server: that one does not map `/guide/`
+ * to `guide/index.html` under `appType: "custom"`, and knows nothing of
+ * `app.router.basePath`, so every page the build prerendered was a 404
+ * (ubugeeei-prod/uf#1678). This is `app.router`'s rules first — headers, the
+ * base path, the trailing slash, redirects — then `@uniflowed/server`'s static
+ * half at the application path, then, for a document request nothing
+ * matched, the build's `404.html` with a `404`. `true` when it answered; a
+ * request for anything but a document that matched nothing goes on.
+ *
+ * `notFoundPage: false` leaves an unmatched document to the caller, for a
+ * single-page build whose every URL is its shell.
+ *
+ * @param {{ root: string, routing: object, notFoundPage?: boolean }} options the
+ *   output directory and `routingRulesOf(app.router)`
+ */
+export function createStaticBuildHandler({ root, routing, notFoundPage = true }) {
+  const serveStatic = createStaticHandler({ root });
+  const notFound = path.join(root, "404.html");
+  /**
+   * @param {Request} request
+   * @param {import("node:http").ServerResponse} response
+   */
+  return async function answer(request, response) {
+    const { admit, headersFor, pinHeaders, send: write } = await deployment();
+    pinHeaders(response, headersFor(routing, request));
+    const admitted = admit(routing, request);
+    if (admitted.kind === "answer") {
+      await write(response, admitted.response);
+      return true;
+    }
+    const file = await serveStatic(admitted.request);
+    if (file != null) {
+      await write(response, file);
+      return true;
+    }
+    const method = request.method.toUpperCase();
+    if (!notFoundPage || (method !== "GET" && method !== "HEAD")) return false;
+    if (!(request.headers.get("accept") ?? "").includes("text/html")) return false;
+    let page;
+    try {
+      page = await readFile(notFound);
+    } catch {
+      return false;
+    }
+    await write(
+      response,
+      new Response(method === "HEAD" ? null : page, {
+        status: 404,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    );
+    return true;
+  };
+}
+
+/**
  * `app.router.rewrites` for this request, for `uf dev`: the rewritten request,
  * or `null`.
  *

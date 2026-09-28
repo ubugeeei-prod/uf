@@ -76,6 +76,7 @@ import {
   buildIdentity,
   createPrerenderGate,
   createServeHandler,
+  createStaticBuildHandler,
   deploymentIdFor,
   documentAssetsFor,
   forViteBase,
@@ -467,10 +468,10 @@ async function preview() {
   const inline = await viteConfig(config, argument("--mode") ?? "production");
   // A build that declared it emits no server has none to mount. `uf` refuses
   // `uf start` for such a project and lets this one through, because a preview
-  // of files *is* the deployment: what a static host does with `dist/` is
-  // exactly what Vite's preview server does with it, and mounting a request
-  // handler behind it would make this preview right about a deployment that is
-  // not the one happening. See `uf_cli`'s `commands::serve`.
+  // of files *is* the deployment, and mounting a request handler behind it
+  // would make this preview right about a deployment that is not the one
+  // happening. What a static host does with `dist/` is what
+  // `createStaticBuildHandler` does below. See `uf_cli`'s `commands::serve`.
   const staticBuild = flag("--static-build");
   const build = staticBuild
     ? null
@@ -519,6 +520,34 @@ async function preview() {
       // with. `uf start` and every adapter put the same two in front of their
       // static half; the application's own answers get them from
       // `createServeHandler` behind. See `internal/serve.js`'s `answerRouting`.
+      //
+      // A static build has no bundle to carry them, so they come from the
+      // config, and its pages are answered here as a static host answers them:
+      // at the application path, `guide/` as `guide/index.html`, and a
+      // document nothing matched as `404.html`. Vite's file server does
+      // neither, so it answered every prerendered page with a 404
+      // (ubugeeei-prod/uf#1678). What this leaves — a missing asset — still
+      // goes on to Vite.
+      if (staticBuild) {
+        const answerStatic = createStaticBuildHandler({
+          root: path.resolve(root, inline.build.outDir),
+          routing: routingRulesOf(config.app?.router),
+          // A `["csr"]` build's unmatched document is its shell, which the
+          // fallback below answers; a static host serving it is told to.
+          notFoundPage: !flag("--spa-fallback"),
+        });
+        previewServer.middlewares.use((request, response, next) => {
+          const method = (request.method ?? "GET").toUpperCase();
+          if (method !== "GET" && method !== "HEAD") return next();
+          toRequest(request, previewServer.config)
+            .then((asRequest) => answerStatic(asRequest, response))
+            .then((answered) => {
+              if (!answered) next();
+            })
+            .catch(next);
+          return undefined;
+        });
+      }
       const routing = build?.entry?.routing;
       if (answersInFrontOfFiles(routing)) {
         previewServer.middlewares.use((request, response, next) => {
