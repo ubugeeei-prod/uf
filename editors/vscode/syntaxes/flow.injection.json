@@ -344,15 +344,18 @@
     },
     "type-declaration": {
       "name": "meta.type.declaration.flow",
-      "begin": "(?<![\\w$.])(?:(opaque)\\s+)?(type)\\s+([_$[:alpha:]][_$[:alnum:]]*)",
+      "begin": "(?<![\\w$.])(?:(export)\\s+)?(?:(opaque)\\s+)?(type)\\s+([_$[:alpha:]][_$[:alnum:]]*)",
       "beginCaptures": {
         "1": {
-          "name": "storage.modifier.opaque.flow"
+          "name": "keyword.control.export.flow"
         },
         "2": {
-          "name": "storage.type.type.flow"
+          "name": "storage.modifier.opaque.flow"
         },
         "3": {
+          "name": "storage.type.type.flow"
+        },
+        "4": {
           "name": "entity.name.type.alias.flow"
         }
       },
