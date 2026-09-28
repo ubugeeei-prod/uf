@@ -2,7 +2,7 @@
 
 ## uf@0.14.1
 
-- feat(fmt): align related Flow columns with opt out (#1666) (d41cd8e0)
+- feat(fmt): align related Flow columns with an opt-out (#1666) (d41cd8e0)
 - fix(editor): scope async Flow components (#1665) (fdbcf164)
 - feat(release): publish remaining implemented packages (#1661) (bbb1f022)
 - fix(editor): preserve Flow highlighting after exported types (#1663) (551b9a72)
