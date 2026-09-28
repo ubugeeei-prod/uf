@@ -348,6 +348,17 @@ describe("which applications render React Server Components", () => {
     expect(rendersFlight({}, { mount: "render", routeTarget: "web" })).toBe(false);
     expect(rendersFlight({}, { mount: "hydrate", routeTarget: "native" })).toBe(false);
   });
+
+  it("is no application whose router is off, which has no routes to render", () => {
+    // ubugeeei-prod/uf#1680. A library build asked for React 19.3 and
+    // `react-server-dom-parcel` though nothing in it renders on a server.
+    expect(
+      rendersFlight({ router: { enabled: false } }, { mount: "hydrate", routeTarget: "web" }),
+    ).toBe(false);
+    expect(
+      rendersFlight({ router: { enabled: true } }, { mount: "hydrate", routeTarget: "web" }),
+    ).toBe(true);
+  });
 });
 
 describe("what the browser's graph pre-bundles for React Server Components", () => {
