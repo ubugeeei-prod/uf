@@ -63,6 +63,12 @@ async function verifySyntax(appRoot) {
   has(component[1], "count", "variable.other");
   has(component[2], "button", "entity.name.tag");
   has(component[4], "after", "variable.other");
+  const asyncComponent = tokenize("export async component AsyncCounter(initial: number) {\n  return <div>{initial}</div>;\n}\nconst afterAsync = 1;");
+  has(asyncComponent[0], "async", "storage.modifier.async");
+  has(asyncComponent[0], "AsyncCounter", "entity.name.function.component.flow");
+  has(asyncComponent[0], "initial", "variable.parameter.flow");
+  has(asyncComponent[1], "div", "entity.name.tag");
+  has(asyncComponent[3], "afterAsync", "variable.other");
   const hook = tokenize("export hook useCounter(initial: number): [number, () => void] {\n return [initial, () => {}];\n}");
   has(hook[0], "useCounter", "entity.name.function");
   has(hook[0], "initial", "variable.parameter");

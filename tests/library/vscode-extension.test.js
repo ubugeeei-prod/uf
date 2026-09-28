@@ -520,8 +520,8 @@ describe("the Flow grammar injected into JavaScript", () => {
   // JavaScript, which is what lets them be tested without an editor.
   const pattern = (name: string) =>
     new RegExp(grammar.repository[name].match ?? grammar.repository[name].begin, "g");
-  const matches = (name: string, source: string): Array<string> =>
-    Array.from(source.matchAll(pattern(name)), (match) => match[1]);
+  const matches = (name: string, source: string, capture: number = 1): Array<string> =>
+    Array.from(source.matchAll(pattern(name)), (match) => match[capture]);
 
   it("is contributed to the grammars VS Code uses for .js and .jsx", () => {
     const contributed = manifest.contributes.grammars.find(
@@ -536,10 +536,13 @@ describe("the Flow grammar injected into JavaScript", () => {
 
   it("marks component and hook declarations", () => {
     expect(
-      matches("component-declaration", "export default component Button(label: string) {"),
+      matches("component-declaration", "export default component Button(label: string) {", 3),
     ).toEqual(["component"]);
-    expect(matches("component-declaration", "declare component Icon<T>(name: T);")).toEqual([
+    expect(matches("component-declaration", "declare component Icon<T>(name: T);", 3)).toEqual([
       "component",
+    ]);
+    expect(matches("component-declaration", "export async component Counter() {", 2)).toEqual([
+      "async",
     ]);
     expect(matches("hook-declaration", "export hook useCounter(start: number) {")).toEqual([
       "hook",
