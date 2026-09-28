@@ -132,6 +132,7 @@ import {
 import { createChannelMiddleware } from "./internal/diagnostics.js";
 import { startDevState } from "./internal/dev-state.js";
 import { devtoolsPreamble } from "./internal/devtools.js";
+import { transformRenderedHead } from "./internal/dev-head.js";
 import { send, toAddressRequest, toRequest } from "./internal/http.js";
 import {
   answerRouting,
@@ -218,6 +219,21 @@ function sameActions(previous, next) {
 function sendToClient(devServer, message) {
   const hot = devServer.environments?.client?.hot ?? devServer.ws;
   hot.send(message);
+}
+
+/**
+ * `devServer.transformIndexHtml`, for a head uf rendered rather than an
+ * `index.html` somebody wrote.
+ *
+ * Every document `uf dev` answers with goes through here, so the two things
+ * Vite's hook assumes about an `index.html` are corrected in one place: the
+ * base comes off the URLs that already carry it, because the hook puts it on
+ * again (ubugeeei-prod/uf#1677), and the tags the hook prepends are moved past
+ * the layout's own head children, where React has nothing left to pair them
+ * with (#1682). See `internal/dev-head.js`.
+ */
+function transformDevHead(devServer, url, html) {
+  return transformRenderedHead(devServer, url, html, devUrlFor(VIRTUAL.client));
 }
 
 /** The URL a NUL-prefixed module is served at in development. */
@@ -922,6 +938,11 @@ function flowPlugin({
     // runs. A classic inline script runs while the parser is on it; a module
     // waits for the document. `internal/devtools.js` has the rest of the
     // argument, and the three conditions DevTools needs.
+    //
+    // `head-prepend` says "ahead of the client entry", not "ahead of the
+    // layout's head": `transformDevHead` moves everything prepended to just
+    // before uf's own tags, where React does not pair it with a `<script>` the
+    // layout rendered (ubugeeei-prod/uf#1682).
     transformIndexHtml() {
       if (isProduction) return [];
       const tags = [
@@ -1245,7 +1266,8 @@ function flowPlugin({
                     {
                       onError: (error) => reportRenderError(devServer, url, error),
                       transformHead: (head) =>
-                        devServer.transformIndexHtml(
+                        transformDevHead(
+                          devServer,
                           url,
                           flightState == null
                             ? head
@@ -1354,7 +1376,7 @@ function flowPlugin({
                   styles: [],
                   preloads: [],
                 });
-                response.end(await devServer.transformIndexHtml(url, shell));
+                response.end(await transformDevHead(devServer, url, shell));
                 return true;
               }
 
@@ -1377,7 +1399,8 @@ function flowPlugin({
                   // call and before the head is written, which is when this
                   // runs. See `devStylesheets`.
                   transformHead: (head) =>
-                    devServer.transformIndexHtml(
+                    transformDevHead(
+                      devServer,
                       url,
                       flightState == null ? head : linkStylesheets(head, devStylesheets(devServer)),
                     ),

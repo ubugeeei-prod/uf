@@ -32,8 +32,11 @@
 // edit away from being lost:
 //
 //   1. **The hook, before the renderer.** This module, injected by
-//      `npm/vite/index.js`'s `transformIndexHtml` as a *classic* script at
-//      the top of the head — see [`devtoolsPreamble`] for why classic.
+//      `npm/vite/index.js`'s `transformIndexHtml` as a *classic* script,
+//      ahead of uf's client entry — see [`devtoolsPreamble`] for why classic.
+//      It is prepended, and `uf dev` then moves the prepended tags past the
+//      layout's own head children (`./dev-head.js`), which is still before
+//      every module the document runs.
 //   2. **One copy of the renderer.** `resolve.dedupe: ["react", "react-dom"]`
 //      in that same file. Two copies of `react-dom` register two renderers, and
 //      DevTools shows the tree of whichever one it heard from — which is the
