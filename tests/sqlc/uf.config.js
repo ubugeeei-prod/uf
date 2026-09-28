@@ -8,6 +8,8 @@
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
+  // Keep the checked-in integration tests in their existing layout.
+  fmt: { align: false },
   // `capture.mjs` drives sqlc, `bridge.mjs` reaches into PGlite-socket and
   // `mysql.mjs` stands in for types uf cannot translate yet;
   // all three are plain JavaScript, and say why at their tops.

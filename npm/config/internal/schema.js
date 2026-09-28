@@ -703,6 +703,8 @@ export type UniflowedConfig = {
   readonly fmt?: {
     readonly indentWidth?: number,
     readonly lineWidth?: number,
+    /** Align related match arms, component hook bindings, and object entries. */
+    readonly align?: boolean,
     readonly nonFlow?: {
       readonly formatter?: "biome" | "prettier" | "none",
       /**

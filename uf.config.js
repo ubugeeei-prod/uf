@@ -24,6 +24,9 @@ export default defineConfig({
   },
 
   fmt: {
+    // Keep this repository's existing Prettier-compatible formatting while
+    // the published default aligns related Flow declarations.
+    align: false,
     nonFlow: {
       // Named rather than left to the default, and the difference is the
       // point: uf's default is a suggestion, and `uf fmt` warns when a

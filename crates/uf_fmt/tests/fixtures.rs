@@ -54,13 +54,17 @@ fn config_with(mutate: impl FnOnce(&mut FmtConfig)) -> FmtConfig {
 
 /// The configuration a fixture is formatted with, from its name.
 fn config_for(name: &str) -> FmtConfig {
-    match name {
+    let mut config = match name {
         "config_narrow_lines" => config_with(|config| config.line_width = 40),
         "config_single_quotes" => config_with(|config| config.quotes = QuoteStyle::Single),
         "config_no_semicolons" => config_with(|config| config.semicolons = false),
         "config_wide_indent" => config_with(|config| config.indent_width = 4),
         _ => FmtConfig::default(),
-    }
+    };
+    // These snapshots deliberately compare the ordinary printer with
+    // Prettier. Column alignment has its own assertions.
+    config.align = false;
+    config
 }
 
 /// Every fixture, keyed by name, as `(input, expected)` pairs.
