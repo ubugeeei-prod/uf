@@ -203,7 +203,9 @@ async function runWorkflow(
         `${title} ended with ${String(done.conclusion)}${failed.length ? ` (${failed.join(", ")})` : ""}: ${done.html_url}`,
       );
     retries++;
-    io.log(`${title}: npm had not caught up; rerunning "${VERIFY_JOB}" (${retries}/${VERIFY_RERUNS})`);
+    io.log(
+      `${title}: npm had not caught up; rerunning "${VERIFY_JOB}" (${retries}/${VERIFY_RERUNS})`,
+    );
     io.post(`repos/${repository}/actions/runs/${done.id}/rerun-failed-jobs`, {});
     done = await waitFor(repository, done.id, done.run_attempt + 1, io);
   }
