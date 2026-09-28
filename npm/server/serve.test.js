@@ -370,6 +370,17 @@ describe("the static handler", () => {
       "application/octet-stream",
     );
   });
+
+  it("answers a WebAssembly module as `application/wasm`", async () => {
+    // ubugeeei-prod/uf#1679. `WebAssembly.instantiateStreaming` refuses a
+    // module under any other type, and falls back to reading the whole of it
+    // before compiling.
+    const serveStatic = createStaticHandler({ root: directoryWith({ "m.wasm": "\0asm" }) });
+
+    expect((await serveStatic(request("/m.wasm")))?.headers.get("content-type")).toBe(
+      "application/wasm",
+    );
+  });
 });
 
 describe("the two together", () => {
