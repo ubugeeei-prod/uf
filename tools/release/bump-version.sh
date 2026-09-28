@@ -10,8 +10,15 @@
 # It rewrites the Cargo workspace version (every crate inherits it), every
 # `npm/*/package.json` (its own version and its `@uniflowed/*`
 # dependencies, which are pinned exactly so a release is internally
-# consistent), the docs site's manifest, and then refreshes `Cargo.lock` and
-# `package-lock.json` so `--locked` and `npm ci` stay green.
+# consistent), the docs site's manifest, the `@uniflowed/*` pins in
+# `examples/*/package.json` (and a `uf: "<version>"` pin in an example's
+# `uf.config.js`), and then refreshes `Cargo.lock` and `package-lock.json` so
+# `--locked` and `npm ci` stay green.
+#
+# An example that pins a published version is one a reader copies out of the
+# repository, so it should name the release it ships with rather than whatever
+# release somebody last remembered to move it to. `file:`, `link:` and
+# `workspace:` specs point at this checkout and are left alone.
 set -eu
 
 version="${1:-}"
@@ -98,6 +105,41 @@ for (const file of manifests) {
     }
   }
   fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`${path.relative(".", file)} -> ${version}`);
+}
+
+// Examples: only the published pins. A `file:`, `link:` or `workspace:` spec
+// is this checkout, and rewriting it to a version would point the example at
+// npm instead. Edited in place rather than re-serialized, so an example
+// manifest keeps whatever layout it was written in.
+const local = /^(file|link|workspace):/;
+for (const file of fs.globSync("examples/*/package.json")) {
+  const source = fs.readFileSync(file, "utf8");
+  const manifest = JSON.parse(source);
+  const pinned = new Set();
+  for (const field of ["dependencies", "peerDependencies", "devDependencies", "optionalDependencies"]) {
+    for (const [name, spec] of Object.entries(manifest[field] ?? {})) {
+      if (name.startsWith("@uniflowed/") && !local.test(spec)) pinned.add(name);
+    }
+  }
+  if (pinned.size === 0) continue;
+  const next = source.replace(/("(@uniflowed\/[^"]+)"\s*:\s*)"[^"]*"/g, (whole, key, name) =>
+    pinned.has(name) ? `${key}"${version}"` : whole,
+  );
+  if (next !== source) fs.writeFileSync(file, next);
+  console.log(`${path.relative(".", file)} -> ${version}`);
+}
+
+// An example's config can pin the toolchain it runs under. The same rule: a
+// version string moves, anything else is left for a person to read.
+for (const file of fs.globSync("examples/*/uf.config.{js,mjs,cjs,ts}")) {
+  const source = fs.readFileSync(file, "utf8");
+  const next = source.replace(
+    /(^|[\s{,])(uf\s*:\s*)(["'])\d+\.\d+\.\d+[^"']*\3/gm,
+    (_, lead, key, quote) => `${lead}${key}${quote}${version}${quote}`,
+  );
+  if (next === source) continue;
+  fs.writeFileSync(file, next);
   console.log(`${path.relative(".", file)} -> ${version}`);
 }
 EOF

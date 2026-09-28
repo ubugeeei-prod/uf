@@ -377,7 +377,8 @@ export default defineConfig({
     // reporting a diff is useful and CI committing one is not.
     "fmt:check": {
       command: "./target/release/uf fmt --check",
-      dependsOn: ["build"],
+      // And the one example this run does not open, below.
+      dependsOn: ["build", "fmt:check:native"],
       // A deliberate superset. What `uf fmt` opens is decided by uf's own
       // project discovery rather than by a list in this file, so a glob that
       // tried to reproduce that rule would be a guess — and a guess that came
@@ -387,6 +388,28 @@ export default defineConfig({
       // binary doing the work. It over-invalidates, which costs a run; it
       // cannot under-invalidate, which would cost the check.
       inputs: ["**", "!upstream/**", "target/release/uf"],
+    },
+
+    // The native example, which the root `ignore` list keeps out of the run
+    // above: it is its own project with its own `fmt` settings (`align: false`
+    // there is load-bearing for `native:smoke`, #1667), so it is checked from
+    // its own directory, the way `native:example` checks it. That lane only
+    // runs in the release queue (#1683), so without this a formatter change
+    // would leave the example unformatted until a release PR had to carry the
+    // fix. It needs none of the example's own dependencies (no `npm ci`
+    // there): the Flow is formatted by uf, and the non-Flow files by the
+    // repository's own Biome. uf looks for Biome in the example's
+    // `node_modules/.bin` and then on `PATH`, so the root's `.bin` goes on
+    // `PATH`; the example asks for the same `^2.5.12`.
+    "fmt:check:native": {
+      command:
+        'PATH="$PWD/node_modules/.bin:$PATH" ./target/release/uf --cwd examples/simple-sns-native fmt --check',
+      dependsOn: ["build"],
+      inputs: [
+        "examples/simple-sns-native/**",
+        "!examples/simple-sns-native/node_modules/**",
+        "target/release/uf",
+      ],
     },
 
     // The formatter, over Flow nobody here wrote.
