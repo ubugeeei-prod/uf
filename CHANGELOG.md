@@ -1,5 +1,20 @@
 # Changelog
 
+## uf@0.15.0
+
+- fix(fmt): decide a lone parameter's group from the return type's syntax (#1696) (4a7f29a2)
+- feat(fmt): add fmt.ignore, and format each example with its own config (#1694) (953c5692)
+- fix(build): pass build.lib.external to the library driver (#1689) (54964193)
+- fix(transform): compile under the evaluated config, not a second static read (#1690) (5bc87eae)
+- fix(server,vite): serve .wasm as application/wasm; no RSC for a router-less build (#1684) (4afc3b5c)
+- fix(vite): hand Vite a head it can transform in uf dev (#1691) (9417d177)
+- fix(vite): preview a static build as a static host serves it (#1687) (6186f5e4)
+- fix(rsc): classify @uniflowed/router's hooks in server components (#1685) (50c849ed)
+- ci(release): keep the examples on the current release and formatting (#1688) (118ab325)
+- fix(vite): compile a Web Worker written in Flow (#1686) (ee47641f)
+- feat(fmt): align multiline parameters and type declarations (#1673) (8d3d4c55)
+- docs(sqlc): mark tested Flow target ready (#1672) (2f7c4320)
+
 ## uf@0.14.1
 
 - feat(fmt): align related Flow columns with an opt-out (#1666) (d41cd8e0)
