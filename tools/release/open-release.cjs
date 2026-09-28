@@ -385,6 +385,9 @@ async function main() /*: Promise<void> */ {
           "package-lock.json",
           "npm",
           "docs/package.json",
+          // The bump moves the examples that install uf from npm onto the
+          // release; leaving them out of the commit would leave them behind.
+          "examples",
           "CHANGELOG.md",
           ".github/release.json",
         );

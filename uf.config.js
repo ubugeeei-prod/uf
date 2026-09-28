@@ -377,7 +377,8 @@ export default defineConfig({
     // reporting a diff is useful and CI committing one is not.
     "fmt:check": {
       command: "./target/release/uf fmt --check",
-      dependsOn: ["build"],
+      // And the one example this run does not open, below.
+      dependsOn: ["build", "fmt:check:native"],
       // A deliberate superset. What `uf fmt` opens is decided by uf's own
       // project discovery rather than by a list in this file, so a glob that
       // tried to reproduce that rule would be a guess — and a guess that came
@@ -387,6 +388,21 @@ export default defineConfig({
       // binary doing the work. It over-invalidates, which costs a run; it
       // cannot under-invalidate, which would cost the check.
       inputs: ["**", "!upstream/**", "target/release/uf"],
+    },
+
+    // The native example, which the root `ignore` list keeps out of the run
+    // above, checked from its own directory with its own `fmt` settings. The
+    // release-queue-only `native:example` was the only check it had (#1683);
+    // the script says why it needs no `npm ci` there.
+    "fmt:check:native": {
+      command: "tools/ci/native-example-fmt.sh",
+      dependsOn: ["build"],
+      inputs: [
+        "examples/simple-sns-native/**",
+        "!examples/simple-sns-native/node_modules/**",
+        "tools/ci/native-example-fmt.sh",
+        "target/release/uf",
+      ],
     },
 
     // The formatter, over Flow nobody here wrote.
