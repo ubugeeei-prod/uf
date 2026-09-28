@@ -101,13 +101,16 @@ async function main() {
     fs.mkdirSync(path.dirname(added), { recursive: true });
     fs.writeFileSync(added, "export default component Added() { return null; }\n");
     const table = path.join(app, "router.ios.js");
+    // The formatter may align object value columns; the route value is the
+    // assertion here, independent of spaces before the colon.
+    const hasAddedRoute = () => /\bpath\s*:\s*"\/added"/.test(fs.readFileSync(table, "utf8"));
     await until(
-      () => fs.existsSync(table) && fs.readFileSync(table, "utf8").includes('path: "/added"'),
+      () => fs.existsSync(table) && hasAddedRoute(),
       "added native route",
     );
     fs.rmSync(path.dirname(added), { recursive: true });
     await until(
-      () => !fs.readFileSync(table, "utf8").includes('path: "/added"'),
+      () => !hasAddedRoute(),
       "removed native route",
     );
     console.log(
