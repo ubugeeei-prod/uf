@@ -91,6 +91,13 @@ fn comments_and_multiline_entries_end_an_alignment_group() {
   line: "Line",
 };
 const inline = { file: 1, projectSymbols: 2 };
+const complex = {
+  file: "Files",
+  projectSymbols: {
+    label: "Project",
+  },
+  line: "Line",
+};
 "#;
     let output = formatted(source, true);
     assert!(output.contains("  file: \"Files\","), "{output}");
@@ -100,4 +107,9 @@ const inline = { file: 1, projectSymbols: 2 };
         .find(|line| line.contains("const inline"))
         .expect("inline object");
     assert!(inline.contains("file: 1"), "{inline}");
+    assert!(
+        output.contains("  file: \"Files\",\n  projectSymbols: {"),
+        "{output}"
+    );
+    assert!(output.contains("  line: \"Line\",\n};"), "{output}");
 }
