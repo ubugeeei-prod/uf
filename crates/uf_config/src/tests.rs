@@ -773,6 +773,15 @@ fn fmt_config_reads_the_indent_width_from_the_config_file() {
 
     assert_eq!(parsed.fmt.indent_width, 4);
     assert_eq!(parsed.fmt.line_width, 100);
+    assert!(parsed.fmt.align);
+}
+
+#[test]
+fn fmt_alignment_can_be_disabled_in_the_config_file() {
+    let source = "export default { fmt: { align: false } };";
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+    assert!(!parsed.fmt.align);
 }
 
 #[test]

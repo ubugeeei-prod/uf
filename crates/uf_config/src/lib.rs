@@ -692,6 +692,8 @@ impl Default for EnvConfig {
 pub struct FmtConfig {
     pub indent_width: u8,
     pub line_width: u16,
+    /// Align related match arms, component hook bindings, and object entries.
+    pub align: bool,
     pub non_flow: NonFlowFormatConfig,
     pub quotes: QuoteStyle,
     pub semicolons: bool,
@@ -702,6 +704,7 @@ impl Default for FmtConfig {
         Self {
             indent_width: 2,
             line_width: 100,
+            align: true,
             non_flow: NonFlowFormatConfig::default(),
             quotes: QuoteStyle::Double,
             semicolons: true,

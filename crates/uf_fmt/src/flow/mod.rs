@@ -9,6 +9,7 @@
 //! printer marks every comment it emits, and a comment left unmarked turns
 //! the whole run into an error rather than into silently shorter output.
 
+mod align;
 pub mod comments;
 pub mod node;
 pub mod print;
@@ -100,14 +101,19 @@ pub fn format(source: &str, config: &FmtConfig) -> Result<String, FlowFormatErro
     }
 
     let group_count = printer.docs.group_count();
-    Ok(print(
+    let printed = print(
         doc,
         PrintOptions {
             width: options.line_width,
             indent_width: options.indent_width,
         },
         group_count,
-    ))
+    );
+    if config.align {
+        Ok(align::align(printed, options.line_width))
+    } else {
+        Ok(printed)
+    }
 }
 
 /// The opening tag of the first JSX element whose closing tag never arrived.
