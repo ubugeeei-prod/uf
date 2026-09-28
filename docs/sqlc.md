@@ -31,15 +31,15 @@ plugin, PostgreSQL COPY fast path and managed sqlc install remain Planned.
 | Adapter: `bun:sqlite` | Implemented | `tests/sqlc/sqlite.test.js` under `uf test --host bun`, on Bun 1.3.14 in CI |
 | Adapters: PGlite, `pg` (`fromPgClient`, `fromPgPool`), `postgres` | Implemented | `tests/sqlc/postgresql.test.js`: every scenario under all four, against a real PostgreSQL (PGlite, reached by `pg` and `postgres` over the wire protocol) |
 | Adapter: `mysql2` (`fromMysql2Pool`) | Implemented | `tests/sqlc/mysql.test.js`, against the MySQL 8.4 service container of the `sqlc Flow target` CI job |
-| Adapters: `better-sqlite3`, Cloudflare D1 | Experimental | typed against the drivers' documented APIs; no test runs them yet |
+| Adapters: `better-sqlite3`, Cloudflare D1 | Experimental | typed against the drivers' documented APIs; no test runs them yet ([#1668](https://github.com/ubugeeei-prod/uf/issues/1668)) |
 | `tools/ci/sqlc.sh` in CI | Implemented | the `sqlc Flow target` job in `.github/workflows/ci.yml` (`uf run test:sqlc`) |
 | `@uniflowed/sql` on npm | Implemented | release registry verification |
-| WASM plugin (`wasm32-wasip1`) | Planned | the `sqlc-gen-flow` binary exists; nothing builds or publishes it for the target yet |
-| PostgreSQL `COPY` for `:copyfrom` | Planned | `:copyfrom` is chunked multi-row `INSERT`s on every engine today |
-| Installing sqlc for a project | Planned | `uf sqlc` runs the project's own sqlc (`$SQLC` or `PATH`) |
+| WASM plugin (`wasm32-wasip1`) | Planned | the `sqlc-gen-flow` binary exists; nothing builds or publishes it for the target yet ([#1669](https://github.com/ubugeeei-prod/uf/issues/1669)) |
+| PostgreSQL `COPY` for `:copyfrom` | Planned | `:copyfrom` is chunked multi-row `INSERT`s on every engine today ([#1670](https://github.com/ubugeeei-prod/uf/issues/1670)) |
+| Installing sqlc for a project | Planned | `uf sqlc` runs the project's own sqlc (`$SQLC` or `PATH`) ([#1671](https://github.com/ubugeeei-prod/uf/issues/1671)) |
 
 "Implemented" means a test in this repository runs it. A row with no test is
-never above Experimental. #1367 tracks the remaining enhancements.
+never above Experimental.
 
 ## Decisions
 
