@@ -58,7 +58,7 @@ pub(crate) fn plugin() -> ExitCode {
     }
 }
 
-/// `uf fmt`'s printer with its defaults.
+/// `uf fmt`'s printer with stable generator layout.
 ///
 /// Not the project's `fmt` settings: the plugin runs wherever sqlc runs, with
 /// the environment sqlc clears, and the output must be the same for everyone
@@ -66,7 +66,11 @@ pub(crate) fn plugin() -> ExitCode {
 /// `uf fmt` leaves a signed file alone, so a project that formats differently
 /// never sees them change.
 fn format(source: &str) -> std::result::Result<String, String> {
-    uf_fmt::format_source(source, &uf_config::FmtConfig::default())
+    let mut config = uf_config::FmtConfig::default();
+    // Existing generated files remain byte-for-byte reproducible across a
+    // formatter release; alignment is for author-written Flow source.
+    config.align = false;
+    uf_fmt::format_source(source, &config)
         .map(|result| result.output)
         .map_err(|error| error.to_string())
 }

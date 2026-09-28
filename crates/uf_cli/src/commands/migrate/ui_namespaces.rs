@@ -406,9 +406,22 @@ pub(super) fn plan_project(root: &Utf8Path, plan: &mut Plan, steps: Steps) -> Re
             continue;
         }
         if let Some(config) = &fmt {
-            let was_formatted =
-                uf_fmt::format_source(&before, config).is_ok_and(|result| !result.changed);
-            if was_formatted && let Ok(result) = uf_fmt::format_source(&text, config) {
+            // Older UI copies were formatted before column alignment existed.
+            // Preserve their layout when rewriting imports during migration.
+            let mut legacy = config.clone();
+            legacy.align = false;
+            let source_config = if uf_fmt::format_source(&before, config)
+                .is_ok_and(|result| !result.changed)
+            {
+                Some(config)
+            } else if uf_fmt::format_source(&before, &legacy).is_ok_and(|result| !result.changed) {
+                Some(&legacy)
+            } else {
+                None
+            };
+            if let Some(source_config) = source_config
+                && let Ok(result) = uf_fmt::format_source(&text, source_config)
+            {
                 text = result.output;
             }
         }

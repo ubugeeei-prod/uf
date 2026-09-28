@@ -19,7 +19,9 @@ fn cases() -> PathBuf {
 }
 
 fn format(source: &str) -> Result<String, String> {
-    uf_fmt::format_source(source, &uf_config::FmtConfig::default())
+    let mut config = uf_config::FmtConfig::default();
+    config.align = false;
+    uf_fmt::format_source(source, &config)
         .map(|result| result.output)
         .map_err(|error| error.to_string())
 }
