@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.17.0
+
+- fix: align content types, base paths, and keyboard steps (#1710) (be6ff25b)
+
 ## uf@0.16.0
 
 - feat: ship verified sqlc WASM and adapters with dev refresh fixes (#1698) (870b92c9)
