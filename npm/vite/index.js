@@ -690,7 +690,7 @@ function flowPlugin({
 
     load(id, loadOptions) {
       if (id === RUNTIME_RESOLVED_ID) return refreshRuntimeSource();
-      if (id === AUDIT_RESOLVED_ID) return auditRuntimeSource(accessibility?.axe);
+      if (id === AUDIT_RESOLVED_ID) return auditRuntimeSource(accessibility?.axe, base);
       if (id === resolved(VIRTUAL.routes)) {
         const table = scanRoutes(appRoot, { target: routeTarget });
         // Under React Server Components the whole table is the rsc graph's:

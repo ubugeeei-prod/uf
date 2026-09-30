@@ -27,6 +27,8 @@ import { VITALS_ENDPOINT } from "@uniflowed/web";
 // tested against it in `hydration.test.js`, which has a document to hydrate
 // into; what is tested here is the poster and the endpoint it agrees on.
 import { DIAGNOSTIC_ENDPOINT, reportDiagnostic } from "../../npm/router/internal/diagnostics.js";
+import { installRouting } from "../../npm/router/internal/base-path.js";
+import { auditRuntimeSource } from "./internal/a11y.js";
 
 // Not a package export, deliberately, for the reason `serve.test.js` gives
 // about `internal/serve.js`: this is the dev server's own wiring rather than an
@@ -121,6 +123,11 @@ async function ask(
 }
 
 describe("the endpoints the browser posts to", () => {
+  it("injects the accessibility reporter's endpoint under Vite's base", () => {
+    expect(auditRuntimeSource({}, "/docs/")).toContain('"endpoint":"/docs/__uf/diagnostic"');
+    expect(auditRuntimeSource({})).toContain('"endpoint":"/__uf/diagnostic"');
+  });
+
   // The two constants are written out in three packages — the client halves in
   // `@uniflowed/router` and `@uniflowed/web`, the server half in
   // `@uniflowed/vite` — because the server half is loaded by Vite before any
@@ -366,6 +373,29 @@ describe("the channel itself", () => {
 });
 
 describe("reporting from the browser", () => {
+  it("uses the installed base path and preserves an explicit endpoint", () => {
+    const posted: Array<string> = [];
+    installRouting({ basePath: "/docs", trailingSlash: "always" });
+    try {
+      withWindow(
+        {
+          document: {},
+          fetch: (target: string) => {
+            posted.push(target);
+            return Promise.resolve(null);
+          },
+        },
+        () => {
+          reportDiagnostic({ message: "under the base", severity: "warn" });
+          reportDiagnostic({ message: "custom", severity: "warn" }, "/custom");
+        },
+      );
+      expect(posted).toEqual(["/docs/__uf/diagnostic", "/custom"]);
+    } finally {
+      installRouting({});
+    }
+  });
+
   it("posts the diagnostic to the endpoint on the page's own origin", () => {
     const posted: Array<{ readonly target: string, readonly body: mixed }> = [];
     withWindow(

@@ -70,9 +70,9 @@ export function auditAvailable(root) {
  * second name to agree on. `JSON.stringify` of a value uf built from its own
  * config — never from anything a page said — is what goes in.
  */
-export function auditRuntimeSource(settings) {
+export function auditRuntimeSource(settings, base = "/") {
   const options = {
-    endpoint: DIAGNOSTIC_ENDPOINT,
+    endpoint: `${base.replace(/\/$/, "")}${DIAGNOSTIC_ENDPOINT}`,
     settleMs: SETTLE_MS,
     axe: {
       tags: settings?.tags ?? [],
