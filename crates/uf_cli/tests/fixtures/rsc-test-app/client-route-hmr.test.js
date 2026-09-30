@@ -1,12 +1,14 @@
 // @flow
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { it, expect } from "@uniflowed/test";
 import { createTestApp } from "@uniflowed/test/app";
 import { createBrowser } from "@uniflowed/test/browser";
 
 it("keeps a client route's state across Fast Refresh in RSC mode", async () => {
-  const directory = new URL("./app/hot-route/", import.meta.url);
-  const file = new URL("$page.js", directory);
+  const directory = fileURLToPath(new URL("./app/hot-route/", import.meta.url));
+  const file = path.join(directory, "$page.js");
   const source = (version: string) => `"use client";
 import { useState, useEffect } from "react";
 export default component HotRoute() {
