@@ -148,12 +148,42 @@ function needsDenoLibrary(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
   );
 }
 
+// Formatter output is consumed by the native route watcher and Metro. Catch
+// regressions on the PR that changes it, rather than on the release (#1683).
+const NATIVE_LANE = [
+  "crates/uf_fmt/",
+  "crates/uf_transform/",
+  "crates/uf_router/",
+  "crates/uf_cli/src/commands/build/native",
+  "crates/uf_cli/src/commands/dev/native",
+  "crates/uf_cli/src/commands/dev/metro_probe.cjs",
+  "crates/uf_cli/src/commands/pm/native",
+  "npm/react-native/",
+  "examples/simple-sns-native/",
+  "Cargo.toml",
+  "Cargo.lock",
+  "rust-toolchain.toml",
+  "uf.config.js",
+  "tools/ci/native-",
+  "tools/ci/pack-native-dependencies.cjs",
+  "tools/ci/change-scope.cjs",
+  ".github/workflows/ci.yml",
+];
+
+function needsNativeSuite(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
+  return (
+    paths.length === 0 ||
+    paths.some((path) => NATIVE_LANE.some((prefix) => path.startsWith(prefix)))
+  );
+}
+
 if (require.main === module) {
   let full = true;
   let code = true;
   let rsc = true;
   let deploy = true;
   let deno = true;
+  let native = true;
   let rustTests = "";
   let release = false;
   let paths;
@@ -178,6 +208,8 @@ if (require.main === module) {
     rsc = rsc || full;
     deploy = full || touchesDeployment(paths);
     deno = full || needsDenoLibrary(paths);
+    // Release version bumps use the final queue validation once.
+    native = full || (!release && needsNativeSuite(paths));
     // The full suite runs every integration test already.
     rustTests = full ? "" : rustIntegrationScope(paths);
     console.log(
@@ -200,6 +232,7 @@ release=${String(release)}
 version=${version}
 deploy=${String(deploy)}
 deno=${String(deno)}
+native=${String(native)}
 rust_tests=${rustTests}
 `,
   );
@@ -209,5 +242,6 @@ module.exports = {
   needsRscSuite,
   touchesDeployment,
   needsDenoLibrary,
+  needsNativeSuite,
   rustIntegrationScope,
 };

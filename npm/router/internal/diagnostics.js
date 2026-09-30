@@ -48,6 +48,8 @@
 // a URL, so it cannot be pointed at somebody else's server. Nothing leaves the
 // machine.
 
+import { basePath } from "./base-path.js";
+
 /**
  * The path `uf dev` serves the diagnostic channel on.
  *
@@ -145,7 +147,7 @@ export function reportDiagnostic(diagnostic: BrowserDiagnostic, endpoint?: strin
   // about development tooling. Losing the report is the right outcome when
   // there is nothing listening; reporting the loss as an application error is
   // not.
-  post(endpoint ?? DIAGNOSTIC_ENDPOINT, {
+  post(endpoint ?? `${basePath()}${DIAGNOSTIC_ENDPOINT}`, {
     method: "POST",
     body,
     keepalive: true,

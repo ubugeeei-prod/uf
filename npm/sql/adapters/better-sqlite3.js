@@ -7,8 +7,8 @@
 //
 //   const db = fromBetterSqlite3(new Database("app.db"));
 //
-// Experimental: typed against better-sqlite3's documented `Statement` API
-// (`raw`, `safeIntegers`, `reader`); this repository's CI does not install it.
+// Tested with its prebuilt native addon in `tests/sqlc/external-adapters.mjs`,
+// including exact integers, nulls, transactions and savepoints.
 
 import type { Queryable, SqlParam } from "../index.js";
 import { SqlError, singleConnection } from "../index.js";

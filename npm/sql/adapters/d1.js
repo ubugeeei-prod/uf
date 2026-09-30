@@ -6,7 +6,8 @@
 //
 //   export default { fetch: (request, env) => handle(request, fromD1(env.DB)) };
 //
-// Experimental, and narrower than the other adapters in three ways D1 decides:
+// Tested under workerd in `tests/sqlc/external-adapters.mjs`, and narrower
+// than the other adapters in three ways D1 decides:
 //
 //   * **No interactive transactions.** The returned `Queryable` has no
 //     `transaction`, so `:batch*` and `:copyfrom` run their statements in order

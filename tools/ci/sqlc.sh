@@ -30,6 +30,7 @@ node capture.mjs --check
 "$uf" lint
 "$uf" fmt --check
 "$uf" test
+UF_BINARY="$uf" UF_PROJECT_ROOT="$root/tests/sqlc" node --import @uniflowed/host/register external-adapters.mjs
 if command -v bun >/dev/null 2>&1; then
   "$uf" test --host bun sqlite.test.js
 elif [ -n "${CI:-}" ]; then

@@ -731,11 +731,12 @@ export function flightClientSource(appEntry, options = {}) {
   const hot =
     options.hot === true
       ? `if (import.meta.hot) {
+  acceptHotRouteModules();
   import.meta.hot.on("uf:refresh", () => refreshForHotUpdate());
 }
 `
       : "";
-  return `import { hydrateFlight${options.hot === true ? ", refreshForHotUpdate" : ""} } from "@uniflowed/router/rsc/client";
+  return `import { hydrateFlight${options.hot === true ? ", acceptHotRouteModules, refreshForHotUpdate" : ""} } from "@uniflowed/router/rsc/client";
 import App from ${JSON.stringify(appEntry)};
 ${clientInstrumentationSource(options.instrumentation)}hydrateFlight({ App${strictMode}${navigation}${staleTime}${routing} });
 ${hot}`;

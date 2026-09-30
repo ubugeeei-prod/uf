@@ -171,8 +171,9 @@ describe("virtual:uf/client", () => {
   it("listens for uf:refresh under React Server Components", () => {
     const source = flightClientSource("/project/app.js", { hot: true });
     expect(source).toContain(
-      'import { hydrateFlight, refreshForHotUpdate } from "@uniflowed/router/rsc/client";',
+      'import { hydrateFlight, acceptHotRouteModules, refreshForHotUpdate } from "@uniflowed/router/rsc/client";',
     );
+    expect(source).toContain("acceptHotRouteModules();");
     expect(source).toContain('import.meta.hot.on("uf:refresh"');
   });
 

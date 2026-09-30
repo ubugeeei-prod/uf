@@ -266,6 +266,9 @@ export default defineConfig({
     "test:sqlc": {
       command: "UF_BINARY=./target/release/uf sh tools/ci/sqlc.sh",
     },
+    "test:sqlc:wasm": {
+      command: "sh tools/ci/sqlc-wasm-build.sh",
+    },
     "test:lib:coverage": {
       command: "./target/release/uf test --coverage",
       dependsOn: ["build"],

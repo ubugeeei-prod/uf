@@ -9,6 +9,7 @@ const {
   needsRscSuite,
   touchesDeployment,
   needsDenoLibrary,
+  needsNativeSuite,
   rustIntegrationScope,
 } = require("./change-scope.cjs");
 
@@ -110,6 +111,22 @@ test("the Deno library lane runs for the library, its script and the binary it d
     assert.equal(needsDenoLibrary([path]), false, path);
   assert.equal(needsDenoLibrary([]), true);
 });
+test("native smoke runs on formatter, native tooling and its own changes", () => {
+  for (const path of [
+    "crates/uf_fmt/src/flow/align.rs",
+    "crates/uf_cli/src/commands/dev/native.rs",
+    "crates/uf_cli/src/commands/build/native_links.rs",
+    "crates/uf_router/src/lib.rs",
+    "Cargo.lock",
+    "tools/ci/native-dev-smoke.cjs",
+    "npm/react-native/metro.js",
+    ".github/workflows/ci.yml",
+  ])
+    assert.equal(needsNativeSuite([path]), true, path);
+  for (const path of ["docs/sqlc.md", "npm/ui/button.js", "crates/uf_check/src/lib.rs"])
+    assert.equal(needsNativeSuite([path]), false, path);
+  assert.equal(needsNativeSuite([]), true);
+});
 test("missing history cannot suppress tests", () => {
   const dir = mkdtempSync(join(tmpdir(), "uf-ci-scope-"));
   try {
@@ -119,7 +136,7 @@ test("missing history cannot suppress tests", () => {
       env: { ...process.env, BASE_SHA: "a".repeat(40), GITHUB_OUTPUT: output },
       stdio: "pipe",
     });
-    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrsc=true\nrelease=false\nversion=\ndeploy=true\ndeno=true\nrust_tests=\n");
+    assert.equal(readFileSync(output, "utf8"), "full=true\ncode=true\nrsc=true\nrelease=false\nversion=\ndeploy=true\ndeno=true\nnative=true\nrust_tests=\n");
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -210,6 +227,6 @@ test("only the final release merge group gets full validation", () => {
     // Cargo.toml reaches nothing the RSC job tests, so only the full run takes
     // it. It reaches every crate's integration tests and the binary the Deno
     // lane drives, so the pull request runs both; the full run has its own.
-    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\ndeploy=${full}\ndeno=true\nrust_tests=${full ? "" : "workspace"}\n`, event);
+    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\ndeploy=${full}\ndeno=true\nnative=${full || !release}\nrust_tests=${full ? "" : "workspace"}\n`, event);
   }
 });
