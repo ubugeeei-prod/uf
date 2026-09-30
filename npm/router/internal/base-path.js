@@ -53,13 +53,13 @@ function publishBase(base: string): void {
   });
 }
 
-// An application that never calls `installRouting` is at the root, and a
-// beacon that reads the symbol before any entry runs has to see that.
-publishBase(installedBase);
-
 /**
  * Say where this application is served and how its paths are spelled. Called
  * once, by the entry that starts it.
+ *
+ * This is what publishes the base `vitalsBeacon` reads. The module does not
+ * publish when it loads: nothing installed is the root, and a shipped module
+ * cannot run a call at import time. ubugeeei-prod/uf#1701
  */
 export function installRouting(settings: RoutingSettings): void {
   installedBase = normalizeBase(settings.basePath ?? "");
