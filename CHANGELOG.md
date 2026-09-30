@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.16.0
+
+- feat: ship verified sqlc WASM and adapters with dev refresh fixes (#1698) (870b92c9)
+
 ## uf@0.15.0
 
 - fix(fmt): decide a lone parameter's group from the return type's syntax (#1696) (4a7f29a2)
