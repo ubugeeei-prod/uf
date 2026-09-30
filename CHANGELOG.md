@@ -2,6 +2,7 @@
 
 ## uf@0.17.0
 
+- fix: do not publish the routing base when the module loads (#1712) (c4e4207c)
 - fix: align content types, base paths, and keyboard steps (#1710) (be6ff25b)
 
 ## uf@0.16.0
