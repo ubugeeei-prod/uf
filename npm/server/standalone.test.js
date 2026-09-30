@@ -57,6 +57,9 @@ const assets = {
   "guide/index.html": embed("text/html; charset=utf-8", "<!doctype html><p>prerendered guide</p>"),
   "assets/app-a1b2c3.js": embed("text/javascript; charset=utf-8", "console.log('hydrate')"),
   "brand/logo с пробелом.svg": embed("image/svg+xml", "<svg/>"),
+  // The type is what the build wrote. `crates/uf_bundle` decides it; this
+  // handler forwards it and adds `nosniff`. ubugeeei-prod/uf#1707
+  "guide/__uf.flight": embed("text/x-component", "payload"),
 };
 
 const document = { scripts: ["/assets/app-a1b2c3.js"], styles: [], preloads: [] };
@@ -242,6 +245,17 @@ describe("embedded files", () => {
   it("sends a length, so a client can keep the connection", async () => {
     const { response } = await request("GET", "/assets/app-a1b2c3.js");
     expect(response.headers["content-length"]).toBe("22");
+  });
+
+  it("serves a prerendered payload as a payload, and never as something to sniff", async () => {
+    // ubugeeei-prod/uf#1707. Opening `<route>/__uf.flight` as a document is the
+    // case `nosniff` exists for. The media type is the one the build embedded.
+    const { response, asked } = await request("GET", "/guide/__uf.flight");
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toBe("text/x-component");
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.body()).toBe("payload");
+    expect(asked.rendered).toEqual([]);
   });
 
   it("percent-decodes a path before looking for the file", async () => {

@@ -295,7 +295,12 @@ export function spellPath(path: string, policy: TrailingSlash, underBase: boolea
 }
 
 function looksLikeAFile(path: string): boolean {
-  return path.slice(path.lastIndexOf("/") + 1).includes(".");
+  const last = path.slice(path.lastIndexOf("/") + 1);
+  // Apple's association file has no dot, and it is served only at the path
+  // with no trailing slash. `trailingSlash: "always"` must not add one.
+  // The router's copy of this test is the same; `routing.test.js` holds the
+  // two to one answer. ubugeeei-prod/uf#1704
+  return last.includes(".") || last.toLowerCase() === "apple-app-site-association";
 }
 
 /** The path the rules are matched against, and whether the request was for a payload. */

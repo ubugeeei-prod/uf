@@ -421,6 +421,14 @@ describe("the variant", () => {
     expect(lifetimeOf("max-age=60, s-maxage=7200")).toBe(7200);
     expect(lifetimeOf("max-age=999999999")).toBe(365 * 24 * 60 * 60);
     expect(lifetimeOf("no-store")).toBe(null);
+    // ubugeeei-prod/uf#1702. `no-cache` is revalidation, not an hour in the
+    // cache. It wins over a `max-age` in the same header, and
+    // `no-cache=Set-Cookie` is the same directive once it is split on `=`.
+    expect(lifetimeOf("no-cache")).toBe(null);
+    expect(lifetimeOf("public, no-cache")).toBe(null);
+    expect(lifetimeOf("max-age=60, no-cache")).toBe(null);
+    expect(lifetimeOf("no-cache=Set-Cookie")).toBe(null);
+    expect(lifetimeOf("must-revalidate")).toBe(3600);
 
     expect(sniff(PNG)).toBe("image/png");
     expect(sniff(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");

@@ -73,7 +73,7 @@
 "use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useMemo, useRef } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
@@ -96,6 +96,10 @@ type SliderState = {|
   readonly orientation: Orientation,
   readonly disabled: boolean,
   readonly valueText: ((value: number, index: number) => string) | void,
+  /** The values the last key left, which can be ahead of `values`. */
+  readonly valuesNow: () => $ReadOnlyArray<number>,
+  /** One thumb's value from [`valuesNow`]. */
+  readonly valueAt: (index: number) => number,
   /** Move one thumb, holding it inside its neighbours. */
   readonly setAt: (index: number, value: number) => void,
   /** The thumb nearest a value, which is the one a press on the track moves. */
@@ -138,12 +142,24 @@ component SliderRoot(
 ) {
   const [values, setValues] = useControlled(value, defaultValue, onValueChange);
   const trackRef = useRef<HTMLElement | null>(null);
+  // Ahead of `values` for the length of a batch React has not committed.
+  // `useStableCallback` holds the render that installed the handler until its
+  // insertion effect, so two arrow keys in one batch both used to read the
+  // same number. Written here, and copied back after commit, so a controlled
+  // parent that refuses a change wins the next keystroke. ubugeeei-prod/uf#1708
+  const live = useRef<$ReadOnlyArray<number>>(values);
+  useEffect(() => {
+    live.current = values;
+  });
+  const valuesNow = useStableCallback((): $ReadOnlyArray<number> => live.current);
+  const valueAt = useStableCallback((index: number): number => live.current[index] ?? min);
 
   const setAt = useStableCallback((index: number, next: number) => {
     if (disabled) {
       return;
     }
-    const current = values[index];
+    const currentValues = live.current;
+    const current = currentValues[index];
     if (current === undefined) {
       return;
     }
@@ -151,21 +167,23 @@ component SliderRoot(
     // the thumbs being dragged through each other — and it is the same pair of
     // numbers the thumb announces as its own min and max, so what a reader is
     // told and what the control does cannot drift apart.
-    const [lower, upper] = boundsOf(values, index, min, max);
+    const [lower, upper] = boundsOf(currentValues, index, min, max);
     const settled = snap(next, lower, upper, step);
     if (settled === current) {
       return;
     }
-    const changed = values.slice();
+    const changed = currentValues.slice();
     changed[index] = settled;
+    live.current = changed;
     setValues(changed);
   });
 
   const nearest = useStableCallback((target: number): number => {
+    const currentValues = live.current;
     let at = 0;
     let best = Infinity;
-    for (let index = 0; index < values.length; index += 1) {
-      const distance = Math.abs((values[index] ?? 0) - target);
+    for (let index = 0; index < currentValues.length; index += 1) {
+      const distance = Math.abs((currentValues[index] ?? 0) - target);
       // Strictly nearer, so a press exactly between two thumbs takes the first
       // one rather than the last — arbitrary either way, and consistent is
       // what stops it feeling random.
@@ -187,11 +205,26 @@ component SliderRoot(
       orientation,
       disabled,
       valueText,
+      valuesNow,
+      valueAt,
       setAt,
       nearest,
       trackRef,
     }),
-    [values, min, max, step, largeStep, orientation, disabled, valueText, setAt, nearest],
+    [
+      values,
+      min,
+      max,
+      step,
+      largeStep,
+      orientation,
+      disabled,
+      valueText,
+      valuesNow,
+      valueAt,
+      setAt,
+      nearest,
+    ],
   );
 
   return (
@@ -344,19 +377,22 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
       }
       const reversed = isReversed(event.currentTarget, slider.orientation);
       const move = stepFor(event.key, slider.step, slider.largeStep, reversed);
+      // Inside the handler, not from this render. Two keys can arrive before
+      // React commits the first, and both would otherwise step from `value`.
+      const [lowerNow, upperNow] = boundsOf(slider.valuesNow(), index, slider.min, slider.max);
       if (move != null) {
         // Before moving: the arrow keys scroll the page, and a slider that
         // moves the page under the reader as it moves the value is a control
         // they cannot watch.
         event.preventDefault();
-        slider.setAt(index, value + move);
+        slider.setAt(index, slider.valueAt(index) + move);
         return;
       }
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
         // This thumb's own ends, which for the lower thumb of a range is its
         // neighbour rather than the slider's maximum.
-        slider.setAt(index, event.key === "Home" ? lower : upper);
+        slider.setAt(index, event.key === "Home" ? lowerNow : upperNow);
       }
     }),
     role: "slider",

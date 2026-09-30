@@ -116,7 +116,8 @@ Two paths under `/__uf/` exist only while `uf dev` is running, and both of them
 lead to your terminal:
 
 - `/__uf/vitals` — where `vitalsBeacon()` posts by default, so the five numbers
-  a page is judged on turn up beside the reload that caused them. See
+  a page is judged on turn up beside the reload that caused them. Under
+  `app.router.basePath` the post includes that prefix. See
   [Web vitals](/guide/vitals).
 - `/__uf/diagnostic` — where a diagnostic only the browser can produce is
   posted. A hydration mismatch is the loudest one — *When hydration fails* below

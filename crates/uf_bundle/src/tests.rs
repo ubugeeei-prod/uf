@@ -171,10 +171,29 @@ fn an_excluded_name_stays_out_of_the_payload() {
 fn a_content_type_is_decided_by_extension_and_never_guessed() {
     for (path, expected) in [
         ("a/b/index.html", "text/html; charset=utf-8"),
+        ("page.htm", "text/html; charset=utf-8"),
         ("assets/app.JS", "text/javascript; charset=utf-8"),
         ("assets/app.js.map", "application/json; charset=utf-8"),
+        (
+            "site.webmanifest",
+            "application/manifest+json; charset=utf-8",
+        ),
         ("brand/mark.svg", "image/svg+xml"),
         ("brand/Inter.woff2", "font/woff2"),
+        ("brand/Inter.ttf", "font/ttf"),
+        ("brand/Inter.otf", "font/otf"),
+        ("docs/guide.pdf", "application/pdf"),
+        ("media/clip.mp4", "video/mp4"),
+        ("media/clip.webm", "video/webm"),
+        ("guide/__uf.flight", "text/x-component"),
+        (
+            ".well-known/apple-app-site-association",
+            "application/json; charset=utf-8",
+        ),
+        (
+            ".well-known/Apple-App-Site-Association",
+            "application/json; charset=utf-8",
+        ),
         ("data/model.bin", "application/octet-stream"),
         ("LICENSE", "application/octet-stream"),
     ] {

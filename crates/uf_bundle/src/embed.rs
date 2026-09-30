@@ -131,15 +131,27 @@ pub fn write_embedded_assets(
     })
 }
 
-/// What to serve a file as, by extension.
+/// What to serve a file as.
 ///
 /// Decided here rather than in the shim that serves it, so there is one table
 /// and it is the one the build can be tested against. Anything unrecognised is
 /// `application/octet-stream`: a browser asked to guess at a type is a worse
 /// outcome than a download, and a build that emits a type this list has never
 /// heard of is a bug report worth receiving.
+///
+/// `apple-app-site-association` has no extension. The static handler already
+/// answers that filename as JSON; this is the same rule for the compiled
+/// binary (ubugeeei-prod/uf#1706). `.flight` is a prerendered payload. The
+/// extensions named here are the same types `CONTENT_TYPES` names in
+/// `npm/server/internal/static.js`.
 #[must_use]
 pub fn content_type(path: &Utf8Path) -> &'static str {
+    if path
+        .file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("apple-app-site-association"))
+    {
+        return "application/json; charset=utf-8";
+    }
     match path
         .extension()
         .unwrap_or_default()
@@ -168,6 +180,7 @@ pub fn content_type(path: &Utf8Path) -> &'static str {
         "pdf" => "application/pdf",
         "mp4" => "video/mp4",
         "webm" => "video/webm",
+        "flight" => "text/x-component",
         _ => "application/octet-stream",
     }
 }

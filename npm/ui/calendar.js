@@ -117,6 +117,11 @@ type CalendarState = {|
   readonly caption: string,
   readonly focused: PlainDate,
   /**
+   * The day the last key left, which can be ahead of `focused` until that
+   * render commits. The grid still draws `focused`.
+   */
+  readonly focusedDate: () => PlainDate,
+  /**
    * The cell holding the tab stop, written after every render of the grid.
    *
    * For an overlay around the calendar to send focus there when it opens:
@@ -232,6 +237,15 @@ component CalendarRoot(
     const start = defaultFocused ?? value ?? defaultValue;
     return start == null ? currentDate : toDate(start);
   });
+  // Ahead of `focused` for the length of a batch React has not committed.
+  // The key handler used to pass `focused` from the render, so two arrows
+  // both named the same day and the second update changed nothing. Copied
+  // back after commit. ubugeeei-prod/uf#1709
+  const focusedRef = useRef<PlainDate>(focused);
+  useEffect(() => {
+    focusedRef.current = focused;
+  });
+  const focusedDate = useStableCallback((): PlainDate => focusedRef.current);
 
   const weekStart = useMemo(
     () => (weekStartsOn == null ? firstDayOfWeekFor(resolvedLocale) : weekStartsOn),
@@ -241,6 +255,7 @@ component CalendarRoot(
   const isDisabled = useStableCallback((date: PlainDate) => isDateDisabled?.(date) === true);
 
   const moveFocus = useStableCallback((date: PlainDate, viaKeyboard: boolean) => {
+    focusedRef.current = date;
     if (viaKeyboard) {
       // Only for the keyboard. A press already put focus on the cell it landed
       // on, and asking for it again would fight a caller who moved it.
@@ -259,6 +274,7 @@ component CalendarRoot(
       return;
     }
     setSelected(date);
+    focusedRef.current = date;
     setFocused((current) => (current.equals(date) ? current : date));
   });
 
@@ -291,6 +307,7 @@ component CalendarRoot(
       base,
       caption,
       focused,
+      focusedDate,
       focusedDayRef: dayRef,
       isDisabled,
       isDateSelected,
@@ -308,6 +325,7 @@ component CalendarRoot(
       currentDate,
       dayRef,
       focused,
+      focusedDate,
       isDisabled,
       isDateSelected,
       resolvedLocale,
@@ -363,7 +381,8 @@ component CalendarMonth(
 ) {
   const calendar = useCalendar("Calendar.Month");
   const gridRef = useRef<HTMLElement | null>(null);
-  const { focused, focusedDayRef, moveFocus, pendingFocusRef, weekStartsOn } = calendar;
+  const { focused, focusedDate, focusedDayRef, moveFocus, pendingFocusRef, weekStartsOn } =
+    calendar;
 
   const weeks = useMemo(
     () => weeksOf(focused.year, focused.month, weekStartsOn),
@@ -416,7 +435,9 @@ component CalendarMonth(
         // Before moving, or the arrow scrolls the page under the cell that has
         // just taken focus and the reader ends up looking somewhere else.
         event.preventDefault();
-        moveFocus(moveDate(focused, movement, weekStartsOn), true);
+        // The day the previous key left, not the day this render drew. Two
+        // arrows can arrive before that render. ubugeeei-prod/uf#1709
+        moveFocus(moveDate(focusedDate(), movement, weekStartsOn), true);
       })}
       ref={composeRefs(rest.ref, (element) => {
         gridRef.current = element;

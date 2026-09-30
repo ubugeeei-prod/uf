@@ -107,6 +107,8 @@ describe("an application nothing was installed for", () => {
     // test that installs nothing still gets.
     expect(basePath()).toBe("");
     expect(trailingSlash()).toBe("ignore");
+    // What `vitalsBeacon` reads when nothing installed a base. ubugeeei-prod/uf#1701
+    expect((globalThis as $FlowFixMe)[Symbol.for("@uniflowed/router.basePath")]).toBe(basePath());
     for (const to of ["/", "/guide", "/guide/", "/posts/a?b=1#c"]) {
       expect(addressOf(to)).toBe(to);
     }
@@ -119,6 +121,7 @@ describe("an address under a base path", () => {
   it("is the application path with the base in front, the query and fragment kept", () => {
     installRouting({ basePath: "/docs" });
 
+    expect((globalThis as $FlowFixMe)[Symbol.for("@uniflowed/router.basePath")]).toBe(basePath());
     expect(addressOf("/guide")).toBe("/docs/guide");
     expect(addressOf("/guide/install?tab=api#npm")).toBe("/docs/guide/install?tab=api#npm");
   });

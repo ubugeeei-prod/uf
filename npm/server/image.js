@@ -58,8 +58,8 @@
 // was negotiated (not the raw `Accept`, which would give every browser build
 // its own copy of the same bytes). The lifetime is the origin's own
 // `Cache-Control` `max-age`, held between a minute and a year, and an hour
-// when it says nothing; an origin that says `no-store` or `private` is
-// answered and not kept.
+// when it says nothing; an origin that says `no-store`, `private` or
+// `no-cache` is answered and not kept.
 //
 // # What it does not do
 //
@@ -559,7 +559,10 @@ export function lifetimeOf(cacheControl: string | null): number | null {
   let maxAge = null;
   for (const directive of cacheControl.toLowerCase().split(",")) {
     const [name, value] = directive.trim().split("=");
-    if (name === "no-store" || name === "private") return null;
+    // `no-cache` has to be revalidated before reuse (RFC 9111). A
+    // `no-cache=Set-Cookie` splits on `=` into the name `no-cache` and is the
+    // same answer: do not keep the variant. ubugeeei-prod/uf#1702
+    if (name === "no-store" || name === "private" || name === "no-cache") return null;
     if (name === "s-maxage" || (name === "max-age" && maxAge == null)) {
       const seconds = Number(value);
       if (Number.isInteger(seconds) && seconds >= 0) maxAge = seconds;

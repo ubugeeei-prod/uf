@@ -5254,6 +5254,18 @@ describe("Calendar", () => {
     expect(screen.getByRole("gridcell", { name: "14" })).toHaveFocus();
   });
 
+  it("moves twice when two arrow keys arrive before the next render", () => {
+    // ubugeeei-prod/uf#1709. Both keydowns used to name day 14, and the second
+    // update changed nothing, so focus landed on 15.
+    render(<Booking />);
+    const grid = screen.getByRole("grid");
+    act(() => {
+      fireEvent.keyDown(grid, { key: "ArrowRight" });
+      fireEvent.keyDown(grid, { key: "ArrowRight" });
+    });
+    expect(screen.getByRole("gridcell", { name: "16" })).toHaveFocus();
+  });
+
   it("goes to the ends of the week, not of the month", async () => {
     render(<Booking />);
     act(() => {
@@ -6026,6 +6038,52 @@ describe("Slider", () => {
     expect(now(thumb)).toBe("100");
     await userEvent.keyboard("{Home}");
     expect(now(thumb)).toBe("0");
+  });
+
+  it("steps twice when two arrow keys arrive before the next render", () => {
+    // ubugeeei-prod/uf#1708. Both keydowns used to read 20, so both wrote 21.
+    render(<Example />);
+    const thumb = screen.getByRole("slider");
+    act(() => {
+      fireEvent.keyDown(thumb, { key: "ArrowRight" });
+      fireEvent.keyDown(thumb, { key: "ArrowRight" });
+    });
+    expect(now(thumb)).toBe("22");
+  });
+
+  it("lets a controlled parent refuse the next keystroke", () => {
+    const changed = fn();
+    component Holding() {
+      const [value, setValue] = useState<$ReadOnlyArray<number>>([20]);
+      return (
+        <Slider.Root
+          onValueChange={(next) => {
+            changed(next);
+            // A new array of the same numbers: the parent re-renders and the
+            // value does not move. The key after that commit has to start
+            // from 20, not from the step the parent refused.
+            setValue(value.slice());
+          }}
+          value={value}
+        >
+          <Slider.Track>
+            <Slider.Range />
+          </Slider.Track>
+          <Slider.Thumb aria-label="Volume" />
+        </Slider.Root>
+      );
+    }
+    render(<Holding />);
+    const thumb = screen.getByRole("slider");
+    act(() => {
+      fireEvent.keyDown(thumb, { key: "ArrowRight" });
+    });
+    expect(changed).toHaveBeenLastCalledWith([21]);
+    act(() => {
+      fireEvent.keyDown(thumb, { key: "ArrowRight" });
+    });
+    expect(changed).toHaveBeenLastCalledWith([21]);
+    expect(now(thumb)).toBe("20");
   });
 
   it("stops at its ends rather than running past them", async () => {

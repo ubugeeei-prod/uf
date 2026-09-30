@@ -32,9 +32,13 @@ import { prerenderedMayAnswer } from "./draft.js";
  *
  * A closed table rather than a dependency, and deliberately short: every entry
  * is an extension `uf build` actually writes or a project actually puts in
- * `public/`. Anything else is `application/octet-stream`, which a browser
- * downloads rather than executes — the safe answer for a file whose type we do
- * not know, and the reason this is not a guess based on the bytes.
+ * `public/`. The extensions both this table and `uf_bundle::content_type`
+ * name are the same types — the two have to move together
+ * (ubugeeei-prod/uf#1700, ubugeeei-prod/uf#1707). Anything else is
+ * `application/octet-stream`, which a browser downloads rather than executes —
+ * the safe answer for a file whose type we do not know, and the reason this
+ * is not a guess based on the bytes. `apple-app-site-association` has no
+ * extension; `locateStatic` names that file by its filename.
  */
 const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
   ".avif": "image/avif",
@@ -44,6 +48,7 @@ const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
   // and it is what the router checks before handing the bytes to React.
   ".flight": "text/x-component",
   ".gif": "image/gif",
+  ".htm": "text/html; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".ico": "image/x-icon",
   ".jpeg": "image/jpeg",
@@ -52,12 +57,17 @@ const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
   ".json": "application/json; charset=utf-8",
   ".map": "application/json; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
+  ".mp4": "video/mp4",
+  ".otf": "font/otf",
+  ".pdf": "application/pdf",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".ttf": "font/ttf",
   ".txt": "text/plain; charset=utf-8",
   // `WebAssembly.instantiateStreaming` refuses a module under any other type.
   ".wasm": "application/wasm",
-  ".webmanifest": "application/manifest+json",
+  ".webm": "video/webm",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".webp": "image/webp",
   ".woff": "font/woff",
   ".woff2": "font/woff2",

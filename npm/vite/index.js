@@ -63,6 +63,7 @@ import { assetPlugin } from "./internal/assets.js";
 import { projectConfig } from "./internal/config.js";
 import { barrelImportsPlugin } from "./internal/barrel-imports.js";
 import { refuseServerErrorBoundaries } from "./internal/error-boundaries.js";
+import { inDevCacheScope } from "./internal/dev-cache.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
@@ -1187,15 +1188,14 @@ function flowPlugin({
       // to Vite's chain rather than become a 404 — neither of which a handler
       // that always answers with a `Response` can do.
       //
-      // What that still costs, written down so the next reader does not have
-      // to find it: `createFetchHandler` renders inside a cache scope even
-      // with no cache configured, so a component calling `cacheLife` states a
-      // lifetime nobody honours; here there is no scope, so the same component
-      // throws under `uf dev` and renders under `uf start`. Closing that means
-      // the generated server entry handing the host a scope the way it already
-      // hands it `beginRequest` — see `serverModuleSource` in
-      // `./internal/routes.js` — and it is the next thing to remove from this
-      // list rather than something this middleware can decide on its own.
+      // The postback, the Flight payload and the document render below run
+      // inside the same empty cache scope `createFetchHandler` uses, so
+      // `cacheLife`, `cacheTag` and `noStore` are statements under `uf dev`
+      // as they are under `uf start` (ubugeeei-prod/uf#1703). The scope lasts
+      // until `render` or `flight` returns; a suspense fill after that is
+      // outside it on both doors. A route handler stays outside it. The helper
+      // is `internal/dev-cache.js` because this file is loaded before any Flow
+      // transform and cannot import `@uniflowed/server/cache`.
       return () => {
         // The browser's own reporting channel, mounted above the application
         // so that a report never reaches a project's `$middleware.js` or
@@ -1269,21 +1269,23 @@ function flowPlugin({
               // `useActionState`'s state — the render below, given `formState`.
               const acted = await entry.callAction(asRequest, {
                 postback: async (formState) => {
-                  const result = await entry.render(
-                    url,
-                    { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
-                    {
-                      onError: (error) => reportRenderError(devServer, url, error),
-                      transformHead: (head) =>
-                        transformDevHead(
-                          devServer,
-                          url,
-                          flightState == null
-                            ? head
-                            : linkStylesheets(head, devStylesheets(devServer)),
-                        ),
-                      formState,
-                    },
+                  const result = await inDevCacheScope(() =>
+                    entry.render(
+                      url,
+                      { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
+                      {
+                        onError: (error) => reportRenderError(devServer, url, error),
+                        transformHead: (head) =>
+                          transformDevHead(
+                            devServer,
+                            url,
+                            flightState == null
+                              ? head
+                              : linkStylesheets(head, devStylesheets(devServer)),
+                          ),
+                        formState,
+                      },
+                    ),
                   );
                   if (result.error != null) reportRenderError(devServer, url, result.error);
                   return new Response(result.stream(), {
@@ -1318,11 +1320,13 @@ function flowPlugin({
                 // anyway. See "A payload that renders over another page" in
                 // `@uniflowed/router/middleware`.
                 const interceptedFrom = asRequest.headers.get(INTERCEPTED_FROM_HEADER) ?? undefined;
-                const answered = await entry.flight(target, {
-                  onError: (error) => reportRenderError(devServer, target, error),
-                  interceptedFrom,
-                  notFound: asRequest.headers.get(NOT_FOUND_HEADER) === "1",
-                });
+                const answered = await inDevCacheScope(() =>
+                  entry.flight(target, {
+                    onError: (error) => reportRenderError(devServer, target, error),
+                    interceptedFrom,
+                    notFound: asRequest.headers.get(NOT_FOUND_HEADER) === "1",
+                  }),
+                );
                 if (answered.error != null) reportRenderError(devServer, target, answered.error);
                 if (request.method === "HEAD") await answered.stream?.cancel();
                 await send(
@@ -1389,47 +1393,51 @@ function flowPlugin({
                 return true;
               }
 
-              const result = await entry.render(
-                url,
-                { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
-                {
-                  // A boundary that threw after the shell went out.
-                  // `result.error` cannot carry it — the caller already has the
-                  // result by then — so the terminal hears about it here or not
-                  // at all.
-                  onError: (error) => reportRenderError(devServer, url, error),
-                  // Vite sees the head and only the head. That is what lets the
-                  // development server stream like every other host — see below.
-                  //
-                  // Under React Server Components it is also where a server
-                  // component's stylesheets are linked in development: they are
-                  // in the rsc graph, which the browser never loads, and they
-                  // enter it when the route's modules are imported — after this
-                  // call and before the head is written, which is when this
-                  // runs. See `devStylesheets`.
-                  transformHead: (head) =>
-                    transformDevHead(
-                      devServer,
-                      url,
-                      flightState == null ? head : linkStylesheets(head, devStylesheets(devServer)),
-                    ),
-                  // And what the streaming actually did, when it changed. The
-                  // router has already decided there is something worth saying
-                  // and written the words — see its `internal/inspector.js`,
-                  // which cannot be imported from here because this file is
-                  // plain JavaScript that Vite loads before any Flow transform
-                  // exists. `info`, because a page that streamed is a
-                  // measurement and not a problem; `origin`, because a report
-                  // that does not say which page produced it is one somebody
-                  // has to reproduce before they can act on it.
-                  onStream: (diagnostic) =>
-                    emit("diagnostic", {
-                      severity: "info",
-                      origin: url,
-                      message: diagnostic.message,
-                      detail: diagnostic.detail,
-                    }),
-                },
+              const result = await inDevCacheScope(() =>
+                entry.render(
+                  url,
+                  { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
+                  {
+                    // A boundary that threw after the shell went out.
+                    // `result.error` cannot carry it — the caller already has the
+                    // result by then — so the terminal hears about it here or not
+                    // at all.
+                    onError: (error) => reportRenderError(devServer, url, error),
+                    // Vite sees the head and only the head. That is what lets the
+                    // development server stream like every other host — see below.
+                    //
+                    // Under React Server Components it is also where a server
+                    // component's stylesheets are linked in development: they are
+                    // in the rsc graph, which the browser never loads, and they
+                    // enter it when the route's modules are imported — after this
+                    // call and before the head is written, which is when this
+                    // runs. See `devStylesheets`.
+                    transformHead: (head) =>
+                      transformDevHead(
+                        devServer,
+                        url,
+                        flightState == null
+                          ? head
+                          : linkStylesheets(head, devStylesheets(devServer)),
+                      ),
+                    // And what the streaming actually did, when it changed. The
+                    // router has already decided there is something worth saying
+                    // and written the words — see its `internal/inspector.js`,
+                    // which cannot be imported from here because this file is
+                    // plain JavaScript that Vite loads before any Flow transform
+                    // exists. `info`, because a page that streamed is a
+                    // measurement and not a problem; `origin`, because a report
+                    // that does not say which page produced it is one somebody
+                    // has to reproduce before they can act on it.
+                    onStream: (diagnostic) =>
+                      emit("diagnostic", {
+                        severity: "info",
+                        origin: url,
+                        message: diagnostic.message,
+                        detail: diagnostic.detail,
+                      }),
+                  },
+                ),
               );
               if (result.error != null) reportRenderError(devServer, url, result.error);
               // Piped, like every other host. This used to collect the whole
