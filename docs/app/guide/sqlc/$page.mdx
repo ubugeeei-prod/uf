@@ -18,8 +18,8 @@ function per query, and `@uniflowed/sql` runs them on the driver you already use
 
 **Status: ready for the tested adapters.** Generation and the adapters marked
 *tested* below run against real SQLite, PostgreSQL and MySQL in uf's CI, and
-`@uniflowed/sql` is available on npm. The `better-sqlite3` and D1 adapters
-remain Experimental.
+`@uniflowed/sql` is available on npm. `better-sqlite3` uses its tested prebuilt addon; D1 runs in workerd in CI.
+D1 supports its own atomic `batch()` API and has no interactive transactions.
 
 **What you can do:** point sqlc at `uf`, generate Flow from your
 queries, run them on SQLite, PostgreSQL or MySQL, use transactions, and fail CI
@@ -130,8 +130,8 @@ const everyone = await listAuthors(db);
 | --- | --- | --- | --- |
 | SQLite | `node:sqlite` (Node 22.16 or 24 and newer) | `fromNodeSqlite` from `@uniflowed/sql/node-sqlite` | tested |
 | SQLite | `bun:sqlite` | `fromBunSqlite` from `@uniflowed/sql/bun-sqlite` | tested |
-| SQLite | `better-sqlite3` | `fromBetterSqlite3` from `@uniflowed/sql/better-sqlite3` | Experimental: no test runs it yet |
-| SQLite | Cloudflare D1 | `fromD1` from `@uniflowed/sql/d1` | Experimental: no test runs it yet, and D1 has no interactive transactions |
+| SQLite | `better-sqlite3` | `fromBetterSqlite3` from `@uniflowed/sql/better-sqlite3` | Tested with its prebuilt addon |
+| SQLite | Cloudflare D1 | `fromD1` from `@uniflowed/sql/d1` | Tested in workerd; no interactive transactions |
 | PostgreSQL | PGlite | `fromPGlite` from `@uniflowed/sql/pglite` | tested |
 | PostgreSQL | `pg` | `fromPgClient`, `fromPgPool` from `@uniflowed/sql/pg` | tested |
 | PostgreSQL | `postgres` (postgres.js) | `fromPostgres` from `@uniflowed/sql/postgres` | tested |
@@ -250,17 +250,36 @@ uf sqlc diff
 This runs `sqlc diff`. It exits non-zero when generating again would change a
 file, and says to run `uf sqlc generate`.
 
+## Using the WASM plugin
+
+Each GitHub Release includes `sqlc-gen-flow.wasm`, its `.sha256` checksum and
+its `.sigstore` signing bundle. sqlc 1.31.1 can use that artifact instead of
+starting `uf` as a process plugin. Download the checksum from the same release
+and use its 64-character digest below:
+
+```yaml
+plugins:
+  - name: flow
+    wasm:
+      url: https://github.com/ubugeeei-prod/uf/releases/download/uf%400.16.0/sqlc-gen-flow.wasm
+      sha256: <the digest in sqlc-gen-flow.wasm.sha256>
+```
+
+Keep the existing `codegen` entry naming the `flow` plugin. `cmd: uf` remains
+supported. The release smoke test verifies the signature, downloads the
+published bytes and runs a generated SQLite query with the pinned sqlc.
+To rehearse it locally, add the Rust `wasm32-wasip1` target, run
+`uf run test:sqlc`, then `uf run test:sqlc:wasm`.
+
 ## What is not here
 
 These are deliberately missing: migrations (sqlc reads a schema, and applying it
 is your migration tool's job), a connection pool, retries, and a query builder.
 The pool and retries belong to the driver you already chose.
 
-These are planned: the generator as a [sqlc WASM plugin](https://github.com/ubugeeei-prod/uf/issues/1669),
-PostgreSQL [`COPY` for `:copyfrom`](https://github.com/ubugeeei-prod/uf/issues/1670),
+These are planned: PostgreSQL [`COPY` for `:copyfrom`](https://github.com/ubugeeei-prod/uf/issues/1670),
 and [uf installing sqlc](https://github.com/ubugeeei-prod/uf/issues/1671) for you.
-The [`better-sqlite3` and D1 adapters](https://github.com/ubugeeei-prod/uf/issues/1668)
-remain Experimental until integration tests cover them.
+
 
 ## Where to go next
 

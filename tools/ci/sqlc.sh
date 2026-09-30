@@ -24,12 +24,16 @@ export SQLC
 
 cd "$root/tests/sqlc"
 npm ci --no-audit --no-fund
+# Require the pinned driver's published addon: do not count a node-gyp fallback
+# as coverage of the consumer's prebuilt installation path (#1668).
+(cd node_modules/better-sqlite3 && ../.bin/prebuild-install)
 node capture.mjs --check
 "$uf" sqlc diff -f sqlc.json
 "$uf" check
 "$uf" lint
 "$uf" fmt --check
 "$uf" test
+UF_BINARY="$uf" UF_PROJECT_ROOT="$root/tests/sqlc" node --import @uniflowed/host/register external-adapters.mjs
 if command -v bun >/dev/null 2>&1; then
   "$uf" test --host bun sqlite.test.js
 elif [ -n "${CI:-}" ]; then

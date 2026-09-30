@@ -15,6 +15,33 @@ defaults:
     shell: bash
 
 jobs:
+  wasm:
+    name: Build sqlc WASM plugin
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly-2026-08-01
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: sqlc-wasm
+      - run: |
+          cargo build -p uf_sqlc --bin sqlc-gen-flow --target wasm32-wasip1 --profile dist
+          mkdir -p artifacts
+          cp target/wasm32-wasip1/dist/sqlc-gen-flow.wasm artifacts/
+          (cd artifacts && sha256sum sqlc-gen-flow.wasm > sqlc-gen-flow.wasm.sha256)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: uf-release-sqlc-wasm
+          path: artifacts
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.builder }}

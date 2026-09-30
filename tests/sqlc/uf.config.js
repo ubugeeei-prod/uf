@@ -13,5 +13,5 @@ export default defineConfig({
   // `capture.mjs` drives sqlc, `bridge.mjs` reaches into PGlite-socket and
   // `mysql.mjs` stands in for types uf cannot translate yet;
   // all three are plain JavaScript, and say why at their tops.
-  ignore: ["node_modules", "capture.mjs", "bridge.mjs", "mysql.mjs"],
+  ignore: ["node_modules", "capture.mjs", "bridge.mjs", "mysql.mjs", "external-adapters.mjs"],
 });

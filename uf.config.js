@@ -266,6 +266,10 @@ export default defineConfig({
     "test:sqlc": {
       command: "UF_BINARY=./target/release/uf sh tools/ci/sqlc.sh",
     },
+    "test:sqlc:wasm": {
+      command:
+        'cargo build --profile ci-opt -p uf_sqlc --bin sqlc-gen-flow --target wasm32-wasip1 && sh tools/ci/sqlc-wasm.sh "$PWD/target/wasm32-wasip1/ci-opt/sqlc-gen-flow.wasm"',
+    },
     "test:lib:coverage": {
       command: "./target/release/uf test --coverage",
       dependsOn: ["build"],
