@@ -153,8 +153,17 @@ function needsDenoLibrary(paths /*: $ReadOnlyArray<string> */) /*: boolean */ {
 const NATIVE_LANE = [
   "crates/uf_fmt/",
   "crates/uf_transform/",
-  "crates/uf_cli/src/commands/native",
+  "crates/uf_router/",
+  "crates/uf_cli/src/commands/build/native",
+  "crates/uf_cli/src/commands/dev/native",
+  "crates/uf_cli/src/commands/dev/metro_probe.cjs",
+  "crates/uf_cli/src/commands/pm/native",
   "npm/react-native/",
+  "examples/simple-sns-native/",
+  "Cargo.toml",
+  "Cargo.lock",
+  "rust-toolchain.toml",
+  "uf.config.js",
   "tools/ci/native-",
   "tools/ci/pack-native-dependencies.cjs",
   "tools/ci/change-scope.cjs",
@@ -199,7 +208,8 @@ if (require.main === module) {
     rsc = rsc || full;
     deploy = full || touchesDeployment(paths);
     deno = full || needsDenoLibrary(paths);
-    native = full || needsNativeSuite(paths);
+    // Release version bumps use the final queue validation once.
+    native = full || (!release && needsNativeSuite(paths));
     // The full suite runs every integration test already.
     rustTests = full ? "" : rustIntegrationScope(paths);
     console.log(

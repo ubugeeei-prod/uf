@@ -112,7 +112,16 @@ test("the Deno library lane runs for the library, its script and the binary it d
   assert.equal(needsDenoLibrary([]), true);
 });
 test("native smoke runs on formatter, native tooling and its own changes", () => {
-  for (const path of ["crates/uf_fmt/src/flow/align.rs", "tools/ci/native-dev-smoke.cjs", "npm/react-native/metro.js", ".github/workflows/ci.yml"])
+  for (const path of [
+    "crates/uf_fmt/src/flow/align.rs",
+    "crates/uf_cli/src/commands/dev/native.rs",
+    "crates/uf_cli/src/commands/build/native_links.rs",
+    "crates/uf_router/src/lib.rs",
+    "Cargo.lock",
+    "tools/ci/native-dev-smoke.cjs",
+    "npm/react-native/metro.js",
+    ".github/workflows/ci.yml",
+  ])
     assert.equal(needsNativeSuite([path]), true, path);
   for (const path of ["docs/sqlc.md", "npm/ui/button.js", "crates/uf_check/src/lib.rs"])
     assert.equal(needsNativeSuite([path]), false, path);
