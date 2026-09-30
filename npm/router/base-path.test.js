@@ -107,8 +107,12 @@ describe("an application nothing was installed for", () => {
     // test that installs nothing still gets.
     expect(basePath()).toBe("");
     expect(trailingSlash()).toBe("ignore");
-    // What `vitalsBeacon` reads when nothing installed a base. ubugeeei-prod/uf#1701
-    expect((globalThis as $FlowFixMe)[Symbol.for("@uniflowed/router.basePath")]).toBe(basePath());
+    // `installRouting` is what publishes the symbol. Loading the module must
+    // not: a shipped file cannot run a call at import time. An absent symbol
+    // is the root, which is what `vitalsBeacon` reads. ubugeeei-prod/uf#1701
+    const routingBase = Symbol.for("@uniflowed/router.basePath");
+    delete (globalThis as $FlowFixMe)[routingBase];
+    expect((globalThis as $FlowFixMe)[routingBase]).toBeUndefined();
     for (const to of ["/", "/guide", "/guide/", "/posts/a?b=1#c"]) {
       expect(addressOf(to)).toBe(to);
     }
