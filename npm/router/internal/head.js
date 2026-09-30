@@ -10,6 +10,7 @@
 
 import * as React from "react";
 
+import { addressOf } from "./base-path.js";
 import type { JsonLd, Metadata, Robots } from "./resolve.js";
 
 /**
@@ -22,18 +23,26 @@ import type { JsonLd, Metadata, Robots } from "./resolve.js";
  * Three things it deliberately does not do. It does not resolve against the
  * *page's* URL: `Head` renders inside the route and does not know it, and a
  * `metadataBase` is a site-wide fact rather than a per-page one. It does not
- * invent a base: with none declared the value is emitted exactly as written,
- * which is what every page that predates this field already gets. And it does
- * not throw — a `metadataBase` that is not a URL is a mistake in one field,
- * and turning it into a blank page would be a worse answer than an unresolved
- * `og:image`.
+ * invent a `metadataBase`: with none declared, a root-relative value is the
+ * address the router writes — the installed base in front of an application
+ * path — and every other value is emitted as written. The routing base is not
+ * a host, and a page that predates `metadataBase` still gets no origin invented
+ * for it. And it does not throw — a `metadataBase` that is not a URL is a
+ * mistake in one field, and turning it into a blank page would be a worse
+ * answer than an unresolved `og:image`.
  */
 function absoluteUrl(value: string, base: void | string): string {
-  if (base == null) return value;
+  // `addressOf` leaves an absolute URL, a protocol-relative URL, `mailto:`,
+  // a query and a fragment as written, and it does not add a slash to a file.
+  // A path-absolute URL replaces `metadataBase`'s path, so the base has to be
+  // in the path before `URL` sees it or `og:image` drops `app.router.basePath`.
+  // ubugeeei-prod/uf#1705
+  const addressed = addressOf(value);
+  if (base == null) return addressed;
   try {
-    return new URL(value, base).href;
+    return new URL(addressed, base).href;
   } catch {
-    return value;
+    return addressed;
   }
 }
 

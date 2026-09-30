@@ -873,6 +873,66 @@ describe("vitalsBeacon", () => {
     expect(sent[0].url).toBe("/telemetry");
   });
 
+  const routingBase = Symbol.for("@uniflowed/router.basePath");
+
+  function publishRoutingBase(value: string) {
+    const previous = (globalThis as $FlowFixMe)[routingBase];
+    Object.defineProperty(globalThis, routingBase, {
+      value,
+      writable: true,
+      configurable: true,
+    });
+    undo.push(() => {
+      Object.defineProperty(globalThis, routingBase, {
+        value: typeof previous === "string" ? previous : "",
+        writable: true,
+        configurable: true,
+      });
+    });
+  }
+
+  it("posts under the routing base when one is installed", async () => {
+    // ubugeeei-prod/uf#1701. Vite 404s a request that does not start with the
+    // base, before the channel that answers `/__uf/vitals` sees it. The base
+    // is installed after the reporter is built: module init runs first.
+    const browser = fakeBrowser({ supports: ["largest-contentful-paint"] });
+    const sent = watchBeacon(true);
+
+    collectVitals({ report: vitalsBeacon() });
+    publishRoutingBase("/docs");
+    browser.deliver("largest-contentful-paint", [candidate(1)]);
+    browser.hide();
+    await settle();
+
+    expect(sent[0].url).toBe("/docs/__uf/vitals");
+  });
+
+  it("does not prefix an endpoint the project named", async () => {
+    publishRoutingBase("/docs");
+    const browser = fakeBrowser({ supports: ["largest-contentful-paint"] });
+    const sent = watchBeacon(true);
+
+    collectVitals({ report: vitalsBeacon("/telemetry") });
+    browser.deliver("largest-contentful-paint", [candidate(1)]);
+    browser.hide();
+    await settle();
+
+    expect(sent[0].url).toBe("/telemetry");
+  });
+
+  it("posts to /__uf/vitals when the published base is the root", async () => {
+    publishRoutingBase("");
+    const browser = fakeBrowser({ supports: ["largest-contentful-paint"] });
+    const sent = watchBeacon(true);
+
+    collectVitals({ report: vitalsBeacon() });
+    browser.deliver("largest-contentful-paint", [candidate(1)]);
+    browser.hide();
+    await settle();
+
+    expect(sent[0].url).toBe("/__uf/vitals");
+  });
+
   it("falls back to a keepalive post when the beacon queue refuses the report", async () => {
     // `sendBeacon` answers false when the payload will not fit in the queue,
     // and a report that was dropped after looking sent is worse than one that

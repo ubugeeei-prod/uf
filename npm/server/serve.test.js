@@ -381,6 +381,37 @@ describe("the static handler", () => {
       "application/wasm",
     );
   });
+
+  it("names the types the compiled binary names, for the extensions both serve", async () => {
+    // ubugeeei-prod/uf#1700. A video, a PDF, a font and an `.htm` page were
+    // `application/octet-stream`. Unknown extensions stay that way — the `.bin`
+    // case above — and nothing here is guessed from the bytes.
+    const serveStatic = createStaticHandler({
+      root: directoryWith({
+        "page.htm": "<p>hi</p>",
+        "clip.mp4": "mp4",
+        "clip.webm": "webm",
+        "guide.pdf": "%PDF",
+        "Inter.ttf": "ttf",
+        "Inter.otf": "otf",
+        "site.webmanifest": "{}",
+      }),
+    });
+    const expected = {
+      "/page.htm": "text/html; charset=utf-8",
+      "/clip.mp4": "video/mp4",
+      "/clip.webm": "video/webm",
+      "/guide.pdf": "application/pdf",
+      "/Inter.ttf": "font/ttf",
+      "/Inter.otf": "font/otf",
+      "/site.webmanifest": "application/manifest+json; charset=utf-8",
+    };
+    for (const path of Object.keys(expected)) {
+      expect(`${path} ${(await serveStatic(request(path)))?.headers.get("content-type")}`).toBe(
+        `${path} ${expected[path]}`,
+      );
+    }
+  });
 });
 
 describe("the two together", () => {

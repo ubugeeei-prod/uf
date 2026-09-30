@@ -713,6 +713,14 @@ function sendBytes(
   outgoing.setHeader("content-type", type);
   outgoing.setHeader("cache-control", cacheControl);
   outgoing.setHeader("content-length", String(bytes.byteLength));
+  // A prerendered payload is the page's text, served at a URL anybody can
+  // open as a document. `nosniff` is what `docs/security.md` requires of
+  // every door, keyed on the type the build wrote into the manifest.
+  // ubugeeei-prod/uf#1707
+  const media = type.split(";")[0].trim().toLowerCase();
+  if (media === "text/x-component") {
+    outgoing.setHeader("x-content-type-options", "nosniff");
+  }
   outgoing.end(method === "HEAD" ? undefined : bytes);
 }
 

@@ -23,6 +23,8 @@ import type { LayoutModule, Metadata, PageModule } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { describe, expect, it } from "@uniflowed/test";
 
+import { installRouting } from "./internal/base-path.js";
+
 const assets = { scripts: [], styles: [], preloads: [] };
 
 component Page() {
@@ -104,6 +106,54 @@ describe("a canonical URL", () => {
     });
 
     expect(html).toContain('<link rel="canonical" href="https://docs.uniflowed.dev/guide"/>');
+  });
+
+  it("puts the routing base on a root-relative canonical and image", async () => {
+    // ubugeeei-prod/uf#1705. `new URL("/guide", "https://example.com/docs")`
+    // is `https://example.com/guide`, so the base has to be in the path first.
+    // Reset afterwards: this file shares a worker, and a base left installed
+    // would change every later render.
+    installRouting({ basePath: "/docs" });
+    try {
+      const html = await documentFor({
+        metadataBase: "https://docs.uniflowed.dev",
+        canonical: "/guide",
+        openGraph: { images: ["/brand/uf.png"] },
+      });
+      expect(html).toContain(
+        '<link rel="canonical" href="https://docs.uniflowed.dev/docs/guide"/>',
+      );
+      expect(html).toContain(
+        '<meta property="og:image" content="https://docs.uniflowed.dev/docs/brand/uf.png"/>',
+      );
+    } finally {
+      installRouting({});
+    }
+  });
+
+  it("spells that canonical with a trailing slash when the policy is always", async () => {
+    installRouting({ basePath: "/docs", trailingSlash: "always" });
+    try {
+      const html = await documentFor({
+        metadataBase: "https://docs.uniflowed.dev",
+        canonical: "/guide",
+      });
+      expect(html).toContain(
+        '<link rel="canonical" href="https://docs.uniflowed.dev/docs/guide/"/>',
+      );
+    } finally {
+      installRouting({});
+    }
+  });
+
+  it("keeps a root-relative canonical addressed when there is no metadataBase", async () => {
+    installRouting({ basePath: "/docs" });
+    try {
+      const html = await documentFor({ canonical: "/guide" });
+      expect(html).toContain('<link rel="canonical" href="/docs/guide"/>');
+    } finally {
+      installRouting({});
+    }
   });
 
   it("is absent from a page that declares none", async () => {

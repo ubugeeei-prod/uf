@@ -137,6 +137,27 @@ export type CollectOptions = {
 export const VITALS_ENDPOINT: string = "/__uf/vitals";
 
 /**
+ * The routing base `installRouting` publishes, when it is a path.
+ *
+ * `@uniflowed/web` does not depend on `@uniflowed/router`. The string is the
+ * same one `npm/router/internal/base-path.js` writes with `Symbol.for`; the
+ * two have to move together, and the symbol is not part of the router's
+ * public API. The root is `""`, and anything that is not a path is ignored.
+ * ubugeeei-prod/uf#1701
+ */
+function routingBase(): string {
+  // Flow rejects `globalThis[symbol]` as a computed property on a namespace.
+  const published = (globalThis as $FlowFixMe)[Symbol.for("@uniflowed/router.basePath")];
+  return typeof published === "string" && published.startsWith("/") ? published : "";
+}
+
+/** The default post, including `app.router.basePath` when one is installed. */
+function defaultVitalsTarget(): string {
+  const base = routingBase();
+  return base === "" ? VITALS_ENDPOINT : `${base}${VITALS_ENDPOINT}`;
+}
+
+/**
  * The published boundaries, in the metric's own units.
  *
  * At or below `good` is good; above `poor` is poor; between them is the middle
@@ -673,7 +694,6 @@ export function vitalsBeacon(endpoint?: string): VitalsReporter {
     return noop;
   }
 
-  const target = endpoint ?? VITALS_ENDPOINT;
   const pending: Array<Vital> = [];
   let scheduled = false;
 
@@ -682,6 +702,11 @@ export function vitalsBeacon(endpoint?: string): VitalsReporter {
     if (pending.length === 0) {
       return;
     }
+    // Resolved here, not when the reporter was built. This module evaluates
+    // before `installRouting`, and a base installed after that has to be on
+    // the post or Vite's base middleware 404s it. An endpoint the project
+    // named is used as written.
+    const target = endpoint ?? defaultVitalsTarget();
     const body = JSON.stringify({ url: win.location?.href ?? "", vitals: pending });
     pending.length = 0;
 

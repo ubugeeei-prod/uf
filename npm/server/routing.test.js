@@ -165,6 +165,12 @@ describe("a trailing-slash policy", () => {
     expect(admitted({ trailingSlash: "always" }, "/robots.txt")).toBe(
       "continue http://uf.test/robots.txt",
     );
+    // ubugeeei-prod/uf#1704. The association file has no dot, and Apple only
+    // serves it without a slash. `"always"` used to 308 it onto a path nothing
+    // answers.
+    expect(admitted({ trailingSlash: "always" }, "/.well-known/apple-app-site-association")).toBe(
+      "continue http://uf.test/.well-known/apple-app-site-association",
+    );
     expect(admitted({ trailingSlash: "always" }, "/guide/__uf.flight")).toBe(
       "continue http://uf.test/guide/__uf.flight",
     );
@@ -185,7 +191,16 @@ describe("a trailing-slash policy", () => {
     const policies: $ReadOnlyArray<TrailingSlash> = ["never", "always", "ignore"];
     for (const policy of policies) {
       for (const underBase of [false, true]) {
-        for (const path of ["/", "/guide", "/guide/", "/a/b", "/robots.txt", "/docs/"]) {
+        for (const path of [
+          "/",
+          "/guide",
+          "/guide/",
+          "/a/b",
+          "/robots.txt",
+          "/docs/",
+          "/.well-known/apple-app-site-association",
+          "/.well-known/Apple-App-Site-Association",
+        ]) {
           expect(
             `${policy} ${String(underBase)} ${path}: ${spellPath(path, policy, underBase)}`,
           ).toBe(

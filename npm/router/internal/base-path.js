@@ -37,12 +37,34 @@ let installedBase: string = "";
 let installedSlash: TrailingSlash = "ignore";
 
 /**
+ * The string `@uniflowed/web`'s vitals beacon reads. Duplicated there on
+ * purpose: that package does not depend on this one, and the symbol is not
+ * part of the public API. The two have to move together. ubugeeei-prod/uf#1701
+ */
+const ROUTING_BASE: symbol = Symbol.for("@uniflowed/router.basePath");
+
+function publishBase(base: string): void {
+  // `globalThis[symbol]` is a computed property on a namespace, which Flow
+  // rejects. `Object.defineProperty` is the write the rest of the repo uses.
+  Object.defineProperty(globalThis, ROUTING_BASE, {
+    value: base,
+    writable: true,
+    configurable: true,
+  });
+}
+
+// An application that never calls `installRouting` is at the root, and a
+// beacon that reads the symbol before any entry runs has to see that.
+publishBase(installedBase);
+
+/**
  * Say where this application is served and how its paths are spelled. Called
  * once, by the entry that starts it.
  */
 export function installRouting(settings: RoutingSettings): void {
   installedBase = normalizeBase(settings.basePath ?? "");
   installedSlash = settings.trailingSlash ?? "ignore";
+  publishBase(installedBase);
 }
 
 /**
@@ -143,10 +165,18 @@ export function spellPath(path: string, policy: TrailingSlash, underBase: boolea
   return policy === "always" ? `${trimmed}/` : trimmed;
 }
 
-/** Whether a path's last segment has an extension. */
+/**
+ * Whether a path's last segment is a file: it has an extension, or it is
+ * Apple's association file.
+ *
+ * That file has no dot, and it is served only without a trailing slash.
+ * `trailingSlash: "always"` must not add one. The server's copy is
+ * `@uniflowed/server`'s `internal/routing.js`; `routing.test.js` holds the
+ * two to one answer. ubugeeei-prod/uf#1704
+ */
 function looksLikeAFile(path: string): boolean {
   const last = path.slice(path.lastIndexOf("/") + 1);
-  return last.includes(".");
+  return last.includes(".") || last.toLowerCase() === "apple-app-site-association";
 }
 
 function splitPath(to: string): {| readonly path: string, readonly rest: string |} {

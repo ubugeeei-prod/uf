@@ -205,7 +205,8 @@ them runs with no browser on every build.
 ## In development
 
 `uf dev` answers `/__uf/vitals`, so the beacon with no argument reports into the
-terminal you started it in:
+terminal you started it in. Under `app.router.basePath` the beacon includes that
+prefix; the dev server takes the base off before this path matches.
 
 ```console
 ✗ web vitals: LCP is poor (3200 ms)
