@@ -227,6 +227,6 @@ test("only the final release merge group gets full validation", () => {
     // Cargo.toml reaches nothing the RSC job tests, so only the full run takes
     // it. It reaches every crate's integration tests and the binary the Deno
     // lane drives, so the pull request runs both; the full run has its own.
-    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\ndeploy=${full}\ndeno=true\nnative=${full}\nrust_tests=${full ? "" : "workspace"}\n`, event);
+    assert.equal(output, `full=${full}\ncode=true\nrsc=${full}\nrelease=${release}\nversion=${release ? "0.0.0-alpha.46" : ""}\ndeploy=${full}\ndeno=true\nnative=${full || !release}\nrust_tests=${full ? "" : "workspace"}\n`, event);
   }
 });

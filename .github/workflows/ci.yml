@@ -1407,7 +1407,7 @@ jobs:
   # job runs it, and `uf run ci:gate` is it on a laptop.
   release-artifacts:
     name: Release artifacts
-    needs: changes
+    needs: [changes, toolchain]
     if: needs.changes.outputs.release == 'true' && needs.changes.outputs.full == 'true'
     uses: $/.github/workflows/release-build.yml
     with:

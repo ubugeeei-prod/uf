@@ -1,7 +1,6 @@
 // @noflow
 // Native better-sqlite3 and workerd's real D1 binding, through generated Flow.
 import assert from "node:assert/strict";
-import Database from "better-sqlite3";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { fromBetterSqlite3 } from "@uniflowed/sql/better-sqlite3";
 import { fromD1 } from "@uniflowed/sql/d1";
@@ -32,6 +31,9 @@ async function queries(db, label) {
   console.log(`${label}: generated CRUD, nulls, exact integers and errors passed`);
 }
 
+// v13 ships the addons in its tarball. The platform entry can only load that
+// prebuild, so a node-gyp fallback cannot make this check pass.
+const { default: Database } = await import(`better-sqlite3/${process.platform}-${process.arch}`);
 const sqlite = new Database(":memory:");
 try {
   sqlite.exec(schemaOf("authors-sqlite"));

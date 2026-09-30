@@ -24,9 +24,6 @@ export SQLC
 
 cd "$root/tests/sqlc"
 npm ci --no-audit --no-fund
-# Require the pinned driver's published addon: do not count a node-gyp fallback
-# as coverage of the consumer's prebuilt installation path (#1668).
-(cd node_modules/better-sqlite3 && ../.bin/prebuild-install)
 node capture.mjs --check
 "$uf" sqlc diff -f sqlc.json
 "$uf" check
