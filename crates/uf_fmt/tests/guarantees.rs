@@ -264,6 +264,57 @@ fn a_lone_parameter_before_a_generic_holding_an_object_is_one_fixed_point() {
 }
 
 #[test]
+fn a_lone_parameter_before_a_keyof_or_indexed_object_is_one_fixed_point() {
+    let mut config = FmtConfig::default();
+    config.line_width = 40;
+    for source in [
+        concat!(
+            "// @flow\n",
+            "function ask(worker: Worker): keyof { shared: boolean, variable: ?string } {\n",
+            "  return worker;\n",
+            "}\n",
+        ),
+        concat!(
+            "// @flow\n",
+            "function ask(worker: Worker): { shared: boolean, variable: ?string }[\"shared\"] {\n",
+            "  return worker;\n",
+            "}\n",
+        ),
+        concat!(
+            "// @flow\n",
+            "function ask(worker: Worker): { shared: boolean, variable: ?string }?.[\"shared\"] {\n",
+            "  return worker;\n",
+            "}\n",
+        ),
+        concat!(
+            "// @flow\n",
+            "function ask(x: X): T extends { shared: boolean, variable: ?string } ? string : number {\n",
+            "  return x;\n",
+            "}\n",
+        ),
+        concat!(
+            "// @flow\n",
+            "function ask(worker: Worker): renders { shared: boolean, variable: ?string } {\n",
+            "  return worker;\n",
+            "}\n",
+        ),
+    ] {
+        let once = format_source(source, &config).expect("formats").output;
+        let twice = format_source(&once, &config).expect("reformats").output;
+        similar_asserts::assert_eq!(once, twice, "{source}");
+        let head = if source.contains("function ask(x: X)") {
+            "function ask(x: X):"
+        } else {
+            "function ask(worker: Worker):"
+        };
+        assert!(
+            once.contains(head),
+            "the lone parameter stays on its line:\n{once}"
+        );
+    }
+}
+
+#[test]
 fn a_lone_parameter_before_a_tuple_holding_an_object_is_one_fixed_point() {
     // `Promise<[{ … }]>` holds its object in a tuple. The tuple was not
     // walked, so the parameter list broke on the first narrow run and stayed
