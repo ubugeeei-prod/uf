@@ -2,6 +2,7 @@
 
 ## uf@0.18.0
 
+- fix: align continued hooks and match arrows (#1725) (a7fa8fa9)
 - fix: copyfrom bounds, DateStyle timestamps, and lint false positives (#1723) (d7a28cd9)
 
 ## uf@0.17.0
