@@ -79,6 +79,12 @@ impl<'a> Line<'a> {
         search::in_string_from(self.code(), at, self.opens_in_template)
     }
 
+    /// Whether this line begins inside a backtick template literal.
+    #[inline]
+    pub fn opens_in_template(&self) -> bool {
+        self.opens_in_template
+    }
+
     /// The trailing comment on this line, including its `//` or `/*` opener.
     #[inline]
     pub fn trailing_comment(&self) -> &'a str {

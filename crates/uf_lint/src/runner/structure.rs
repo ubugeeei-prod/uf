@@ -58,7 +58,13 @@ pub(crate) fn run_structure_rules(
         let code = line.code();
         let bytes = code.as_bytes();
         let mut previous: Option<&str> = None;
-        let mut at = 0usize;
+        // A continuation line has no backtick of its own. `{` on it is text
+        // until the template ends, the same way a backtick on this line skips.
+        let mut at = if line.opens_in_template() {
+            skip_string(bytes, 0, b'`')
+        } else {
+            0
+        };
 
         while at < bytes.len() {
             match bytes[at] {

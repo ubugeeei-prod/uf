@@ -358,7 +358,21 @@ function instantToText(value: Date): string {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
     return encodeError("timestamptz (a valid Date)", value);
   }
-  return value.toISOString();
+  // ISO DateStyle. `toISOString()` is `T`/`Z` with a leading `+` past year
+  // 9999, and PostgreSQL rejects that form for BC, year 0, and year >= 10000.
+  // Year 0 is `0001 … BC` and year -43 is `0044 … BC`.
+  const year = value.getUTCFullYear();
+  const bc = year <= 0;
+  const printed = String(bc ? 1 - year : year);
+  const y = printed.length < 4 ? printed.padStart(4, "0") : printed;
+  const pad = (part: number): string => String(part).padStart(2, "0");
+  const millis = value.getUTCMilliseconds();
+  const fraction = millis === 0 ? "" : `.${String(millis).padStart(3, "0")}`;
+  return (
+    `${y}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())} ` +
+    `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}` +
+    `${fraction}+00${bc ? " BC" : ""}`
+  );
 }
 
 /** `timestamp with time zone`: an instant. Millisecond precision, which is a `Date`'s. */
@@ -404,10 +418,12 @@ export function enumeration<T extends string>(
 /**
  * Parse an array literal: `{1,2,NULL}`, `{{a,b},{c,d}}`, `{"a b","x\"y"}`.
  *
- * A literal with non-default bounds starts with a dimension decoration
- * (`[0:2]={…}`); the bounds are not part of the value and are dropped.
+ * `delimiter` is the type's typdelim: `,` for almost every type, `;` for
+ * `box`, whose literal contains commas. A literal with non-default bounds
+ * starts with a dimension decoration (`[0:2]={…}`); the bounds are not part
+ * of the value and are dropped.
  */
-export function parseArray(literal: string): $ReadOnlyArray<ArrayNode> {
+export function parseArray(literal: string, delimiter: string = ","): $ReadOnlyArray<ArrayNode> {
   let at = 0;
   if (literal.startsWith("[")) {
     const equals = literal.indexOf("=");
@@ -456,7 +472,11 @@ export function parseArray(literal: string): $ReadOnlyArray<ArrayNode> {
         items.push(value);
       } else {
         const start = at;
-        while (at < literal.length && literal.charAt(at) !== "," && literal.charAt(at) !== "}") {
+        while (
+          at < literal.length &&
+          literal.charAt(at) !== "}" &&
+          !literal.startsWith(delimiter, at)
+        ) {
           at += 1;
         }
         const raw = literal.slice(start, at).trim();
@@ -468,8 +488,8 @@ export function parseArray(literal: string): $ReadOnlyArray<ArrayNode> {
       while (literal.charAt(at) === " ") {
         at += 1;
       }
-      if (literal.charAt(at) === ",") {
-        at += 1;
+      if (literal.startsWith(delimiter, at)) {
+        at += delimiter.length;
       } else if (literal.charAt(at) === "}") {
         at += 1;
         return items;
@@ -486,6 +506,15 @@ export function parseArray(literal: string): $ReadOnlyArray<ArrayNode> {
   return root;
 }
 
+// `box` literals contain commas, so PostgreSQL delimits `box[]` (every dimension) with `;`.
+function arrayDelimiter(sqlType: string): string {
+  let base = sqlType;
+  while (base.endsWith("[]")) {
+    base = base.slice(0, -2);
+  }
+  return base === "box" ? ";" : ",";
+}
+
 /**
  * An array of `element`. Nest it for more dimensions: `array(array(int4))` is
  * `int4[][]`.
@@ -498,6 +527,7 @@ export function parseArray(literal: string): $ReadOnlyArray<ArrayNode> {
  */
 export function array<T>(element: Codec<T>): Codec<$ReadOnlyArray<T>> {
   const sqlType = `${element.sqlType}[]`;
+  const delimiter = arrayDelimiter(element.sqlType);
   const fromNode = (node: ArrayNode): $ReadOnlyArray<T> => {
     if (node === null || typeof node === "string") {
       return decodeError(`${sqlType} with ${element.depth + 1} dimension(s)`, node);
@@ -508,7 +538,7 @@ export function array<T>(element: Codec<T>): Codec<$ReadOnlyArray<T>> {
     if (!Array.isArray(value)) {
       return encodeError(`${sqlType} (an array)`, value);
     }
-    return `{${value.map(element.literal).join(",")}}`;
+    return `{${value.map(element.literal).join(delimiter)}}`;
   };
   return {
     sqlType,
@@ -516,7 +546,7 @@ export function array<T>(element: Codec<T>): Codec<$ReadOnlyArray<T>> {
       if (typeof value !== "string") {
         return decodeError(sqlType, value);
       }
-      const root = parseArray(value);
+      const root = parseArray(value, delimiter);
       // An empty array has no dimensions at all, whatever the column says.
       return root.length === 0 ? [] : fromNode(root);
     },

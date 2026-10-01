@@ -264,6 +264,28 @@ fn a_lone_parameter_before_a_generic_holding_an_object_is_one_fixed_point() {
 }
 
 #[test]
+fn a_lone_parameter_before_a_tuple_holding_an_object_is_one_fixed_point() {
+    // `Promise<[{ … }]>` holds its object in a tuple. The tuple was not
+    // walked, so the parameter list broke on the first narrow run and stayed
+    // flat on the second.
+    let mut config = FmtConfig::default();
+    config.line_width = 40;
+    let source = concat!(
+        "// @flow\n",
+        "function ask(worker: Worker): Promise<[{ shared: boolean, variable: ?string }]> {\n",
+        "  return worker;\n",
+        "}\n",
+    );
+    let once = format_source(source, &config).expect("formats").output;
+    let twice = format_source(&once, &config).expect("reformats").output;
+    similar_asserts::assert_eq!(once, twice);
+    assert!(
+        once.contains("function ask(worker: Worker): Promise<"),
+        "the lone parameter stays on its line:\n{once}"
+    );
+}
+
+#[test]
 fn shipped_sources_keep_their_tree_and_comments() {
     for (label, source) in shipped_sources().into_iter().chain(template_sources()) {
         let output = format_source(&source, &FmtConfig::default())

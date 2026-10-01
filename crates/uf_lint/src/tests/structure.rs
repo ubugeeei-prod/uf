@@ -31,6 +31,16 @@ fn sibling_component_declarations_are_accepted() {
 /// `component` after it read as nested inside something. The comment is blanked
 /// before any line is read now — see `scan::mask_inline_comments`.
 #[test]
+fn a_template_continuation_does_not_nest_the_component_after_it() {
+    let diagnostics = lint_js(
+        "flow/nested-component",
+        "// @flow\nconst note = `\n  { still text\n`;\ncomponent After() {\n  return null;\n}\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn a_jsx_comment_does_not_nest_the_components_after_it() {
     let diagnostics = lint_js(
         "flow/nested-component",

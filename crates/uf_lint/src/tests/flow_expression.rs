@@ -67,6 +67,16 @@ fn unnecessary_optional_chain_accepts_chains_on_nullable_bases() {
 }
 
 #[test]
+fn unsafe_object_assign_ignores_a_string_that_contains_one() {
+    let diagnostics = lint_js(
+        "flow/unsafe-object-assign",
+        "// @flow\nconst s = \"Object.assign(a, b)\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn unnecessary_optional_chain_ignores_a_string_that_contains_one() {
     // `"this?.foo"` is text. A quick fix that rewrote it would change what the
     // program prints, which is why the fix was not offered until this was.

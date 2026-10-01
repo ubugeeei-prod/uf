@@ -88,7 +88,7 @@ pub(crate) fn sqlc(cwd: &Utf8Path, ui: &mut Ui, command: SqlcCommand) -> Result<
     if let Some(file) = &file {
         run.arg("-f").arg(absolute(cwd, file));
     }
-    let status = run.status().map_err(|error| {
+    let failed_to_start = |error: std::io::Error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             anyhow::anyhow!(uf_infra::cstr!(
                 "sqlc is not installed, or not on PATH. Install it \
@@ -100,14 +100,31 @@ pub(crate) fn sqlc(cwd: &Utf8Path, ui: &mut Ui, command: SqlcCommand) -> Result<
                 sqlc.to_string_lossy()
             )))
         }
-    })?;
-    if !status.success() {
-        if verb == "diff" {
-            bail!(uf_infra::cstr!(
-                "the generated files are out of date; run `uf sqlc generate`"
-            ));
+    };
+    if verb == "diff" {
+        // sqlc exits 1 both for a stale tree and for a SQL error. Only that
+        // exit, with an empty stderr or a unified diff on either stream, is
+        // the stale tree. A signal or any other code is sqlc failing.
+        let output = run.output().map_err(failed_to_start)?;
+        let _ = std::io::stdout().write_all(&output.stdout);
+        let _ = std::io::stderr().write_all(&output.stderr);
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let diff = stdout.contains("--- a") || stderr.contains("--- a");
+            if output.status.code() == Some(1) && (stderr.is_empty() || diff) {
+                bail!(uf_infra::cstr!(
+                    "the generated files are out of date; run `uf sqlc generate`"
+                ));
+            }
+            let status = output.status;
+            bail!(uf_infra::cstr!("sqlc diff failed ({status})"));
         }
-        bail!(uf_infra::cstr!("sqlc {verb} failed"));
+    } else {
+        let status = run.status().map_err(failed_to_start)?;
+        if !status.success() {
+            bail!(uf_infra::cstr!("sqlc {verb} failed"));
+        }
     }
     let message = if verb == "generate" {
         "sqlc generated the Flow modules"
