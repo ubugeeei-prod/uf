@@ -132,6 +132,19 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `function test(any: string)` and `function test(any?: string)` — the name
+    // before the colon is a binding. `(node: any)` still has the type after it.
+    if names_a_parameter(code, at, len) {
+        return true;
+    }
+
+    // `return any`, and `const any` / `let any` / `var any`.
+    if previous_word(code, at)
+        .is_some_and(|(_, word)| matches!(word, "return" | "const" | "let" | "var"))
+    {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -159,6 +172,23 @@ fn names_a_property_key(code: &str, at: usize, len: usize, before: Option<(usize
     }
     // `readonly any: …`, which is the third spelling of it.
     previous_word(code, at).is_some_and(|(_, word)| word == "readonly")
+}
+
+/// Whether the name at `at` is a function parameter (`(any: string)`, `any?`).
+///
+/// A parameter is a word with `(` or `,` in front and `:` after it, with an
+/// optional `?` between the name and the colon. The type is what follows the
+/// colon, so `(node: any)` is not this shape.
+fn names_a_parameter(code: &str, at: usize, len: usize) -> bool {
+    if !prev_non_space(code, at).is_some_and(|(_, byte)| matches!(byte, b'(' | b',')) {
+        return false;
+    }
+    let mut after = at + len;
+    if next_non_space(code, after).is_some_and(|(_, byte)| byte == b'?') {
+        let (index, _) = next_non_space(code, after).unwrap_or((after, b'?'));
+        after = index + 1;
+    }
+    next_non_space(code, after).is_some_and(|(_, byte)| byte == b':')
 }
 
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.

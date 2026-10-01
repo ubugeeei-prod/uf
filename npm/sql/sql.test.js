@@ -103,6 +103,22 @@ describe("postgresql codecs", () => {
     expect(bc.getUTCFullYear()).toBe(-43);
   });
 
+  it("writes timestamptz in ISO DateStyle, including BC and year 10000", () => {
+    const bc = pg.timestamptz.decode("0044-03-15 12:00:00+00 BC");
+    expect(pg.timestamptz.encode(bc)).toBe("0044-03-15 12:00:00+00 BC");
+    const year0 = pg.timestamptz.decode("0001-01-01 00:00:00+00 BC");
+    expect(year0.getUTCFullYear()).toBe(0);
+    expect(pg.timestamptz.encode(year0)).toBe("0001-01-01 00:00:00+00 BC");
+    const year10000 = new Date(0);
+    year10000.setUTCFullYear(10000, 0, 1);
+    year10000.setUTCHours(0, 0, 0, 0);
+    expect(pg.timestamptz.encode(year10000)).toBe("10000-01-01 00:00:00+00");
+    const instant = new Date(Date.UTC(2024, 0, 2, 3, 4, 5, 678));
+    expect(pg.timestamptz.encode(instant)).toBe("2024-01-02 03:04:05.678+00");
+    expect(pg.timestamptz.decode(pg.timestamptz.encode(instant)).getTime()).toBe(instant.getTime());
+    expect(pg.timestamptz.decode(pg.timestamptz.encode(bc)).getTime()).toBe(bc.getTime());
+  });
+
   it("refuses infinity rather than handing on an Invalid Date", () => {
     expect(failure(() => pg.timestamptz.decode("infinity"))).toMatchObject({ kind: "decode" });
     expect(pg.timestamptzAsString.decode("infinity")).toBe("infinity");
@@ -130,6 +146,20 @@ describe("postgresql codecs", () => {
       [3, 4],
     ]);
     expect(pg.array(pg.array(pg.int4)).decode("{}")).toEqual([]);
+    const boxes = pg.array(pg.text("box"));
+    expect(boxes.decode("{(1,1),(0,0);(3,3),(2,2)}")).toEqual(["(1,1),(0,0)", "(3,3),(2,2)"]);
+    expect(boxes.encode(["(1,1),(0,0)", "(3,3),(2,2)"])).toBe('{"(1,1),(0,0)";"(3,3),(2,2)"}');
+    const grid = pg.array(boxes);
+    expect(grid.decode("{{(1,1),(0,0);(2,2),(1,1)};{(3,3),(2,2);(4,4),(3,3)}}")).toEqual([
+      ["(1,1),(0,0)", "(2,2),(1,1)"],
+      ["(3,3),(2,2)", "(4,4),(3,3)"],
+    ]);
+    expect(
+      grid.encode([
+        ["(1,1),(0,0)", "(2,2),(1,1)"],
+        ["(3,3),(2,2)", "(4,4),(3,3)"],
+      ]),
+    ).toBe('{{"(1,1),(0,0)";"(2,2),(1,1)"};{"(3,3),(2,2)";"(4,4),(3,3)"}}');
   });
 
   it("refuses a NULL element instead of typing it away", () => {
@@ -298,6 +328,36 @@ describe(":copyfrom", () => {
     expect(statements.map((statement) => statement.params.length)).toEqual([4, 4, 2]);
     expect(statements[0].text).toBe("INSERT INTO t (a, b) VALUES (?, ?), (?, ?)");
     expect(transactions()).toBe(1);
+  });
+
+  it("throws when one row needs more parameters than the adapter allows", async () => {
+    const wide = {
+      head: "INSERT INTO t (a, b, c) VALUES ",
+      tuple: ["(", ", ", ", ", ")"],
+      refs: [0, 1, 2],
+      tail: "",
+    };
+    const { db, statements } = recorder("sqlite", 2);
+    await expect(copyFrom(db, "Copy", wide, [[1, 2, 3]])).rejects.toMatchObject({
+      failure: { kind: "params", width: 3, max: 2 },
+    });
+    expect(statements).toEqual([]);
+  });
+
+  it("throws when a row is shorter than an index the statement reads", async () => {
+    const { db, statements } = recorder("postgresql");
+    await expect(copyFrom(db, "Copy", plan, [["only"]])).rejects.toMatchObject({
+      failure: { kind: "row", index: 1, length: 1 },
+    });
+    expect(statements).toEqual([]);
+  });
+
+  it("binds null and ignores fields the statement does not read", async () => {
+    const { db, statements } = recorder("postgresql");
+    await copyFrom(db, "Copy", plan, [[null, "a", "extra"]]);
+    expect(statements).toEqual([
+      { text: "INSERT INTO t (a, b) VALUES ($1, $2)", params: [null, "a"] },
+    ]);
   });
 });
 

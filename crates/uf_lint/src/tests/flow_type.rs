@@ -60,6 +60,16 @@ fn unclear_type_ignores_value_positions() {
 }
 
 #[test]
+fn unclear_type_ignores_a_parameter_name_and_a_returned_value() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction test(any: string) { return any; }\nconst any = 1;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn unclear_type_ignores_a_case_label() {
     // `case Object:` matches against the global constructor. Flow has no syntax
     // that puts a type after `case`, so this is only ever a value.

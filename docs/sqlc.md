@@ -78,8 +78,10 @@ sqlc has two plugin transports, and both carry the same protobuf:
 
 `uf sqlc generate` runs `sqlc generate` with the running `uf` first on `PATH`,
 so the plugin sqlc starts is the same `uf` that was asked. `uf sqlc diff` runs
-`sqlc diff`, which exits non-zero when checked-in output is stale; that is the
-CI check.
+`sqlc diff` and prints what sqlc printed. A non-zero exit whose stderr is
+empty, or whose stdout or stderr contains a unified diff (`--- a`), means the
+checked-in files are stale. Any other stderr is sqlc itself failing, and uf
+reports that instead of asking for a regenerate.
 
 ### Generated code is formatted, and marked generated
 
@@ -154,7 +156,10 @@ would also admit `undefined`, which nothing produces.
   `{ rowsAffected, lastInsertId }`; `:execlastid` to the last id as a `bigint`.
 - `:copyfrom` inserts an array of argument objects with multi-row `INSERT`s,
   chunked under the adapter's `maxParams` (PostgreSQL and MySQL 65,535, SQLite
-  32,766, D1 100). It works on every engine; PostgreSQL's `COPY` protocol is
+  32,766, D1 100). A row that binds more parameters than `maxParams` throws
+  rather than being sent. A row shorter than an index the statement reads
+  throws; fields past the ones it reads are ignored, and `null` is a SQL null.
+  It works on every engine; PostgreSQL's `COPY` protocol is
   Planned as an adapter fast path.
 - `:batchexec`, `:batchmany` and `:batchone` take an array of argument objects
   and return one result per item, in order, inside one transaction when the

@@ -281,8 +281,7 @@ pub fn copy_split(text: &str, dialect: Dialect, params: &[Parameter]) -> Result<
     } else {
         bind_order(&found, params)?
     };
-    let upper = text.to_ascii_uppercase();
-    let values = find_keyword(&upper, "VALUES")
+    let values = find_keyword(text, "VALUES", dialect)
         .ok_or_else(|| ":copyfrom needs an INSERT … VALUES (…) statement".to_owned())?;
     let open = text[values..]
         .find('(')
@@ -317,21 +316,56 @@ pub fn copy_split(text: &str, dialect: Dialect, params: &[Parameter]) -> Result<
     })
 }
 
-/// The end of the first `keyword` in `upper` that is a whole word. sqlc only
-/// accepts a plain `INSERT INTO t (…) VALUES (…)` for `:copyfrom`, so the
-/// first `VALUES` is the one.
-fn find_keyword(upper: &str, keyword: &str) -> Option<usize> {
-    let bytes = upper.as_bytes();
-    let mut from = 0;
-    while let Some(offset) = upper[from..].find(keyword) {
-        let start = from + offset;
-        let end = start + keyword.len();
-        let before = start == 0 || !is_word(bytes[start - 1]);
-        let after = end >= bytes.len() || !is_word(bytes[end]);
-        if before && after {
-            return Some(end);
+/// The end of the first whole-word `keyword` outside quotes, comments, and
+/// dollar-quotes. sqlc only accepts a plain `INSERT INTO t (…) VALUES (…)`
+/// for `:copyfrom`, so the first such `VALUES` is the one. A quoted
+/// identifier `"values"` is not it. The match is ASCII case-insensitive.
+fn find_keyword(text: &str, keyword: &str, dialect: Dialect) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\'' => at = skip_quoted(bytes, at, b'\'', dialect == Dialect::Mysql),
+            b'"' => at = skip_quoted(bytes, at, b'"', dialect == Dialect::Mysql),
+            b'`' if dialect != Dialect::Postgresql => at = skip_quoted(bytes, at, b'`', false),
+            b'[' if dialect == Dialect::Sqlite => {
+                at = text[at..].find(']').map_or(bytes.len(), |end| at + end + 1);
+            }
+            b'-' if bytes.get(at + 1) == Some(&b'-') => {
+                at = text[at..]
+                    .find('\n')
+                    .map_or(bytes.len(), |end| at + end + 1);
+            }
+            b'/' if bytes.get(at + 1) == Some(&b'*') => {
+                at = text[at + 2..]
+                    .find("*/")
+                    .map_or(bytes.len(), |end| at + 2 + end + 2);
+            }
+            b'$' if dialect == Dialect::Postgresql => {
+                let digits = count_digits(bytes, at + 1);
+                if digits > 0 {
+                    at += 1 + digits;
+                } else if let Some(tag_end) = dollar_tag(bytes, at) {
+                    let tag = &text[at..=tag_end];
+                    at = text[tag_end + 1..]
+                        .find(tag)
+                        .map_or(bytes.len(), |end| tag_end + 1 + end + tag.len());
+                } else {
+                    at += 1;
+                }
+            }
+            byte if byte.is_ascii_alphabetic() => {
+                let start = at;
+                at += 1;
+                while at < bytes.len() && is_word(bytes[at]) {
+                    at += 1;
+                }
+                if text[start..at].eq_ignore_ascii_case(keyword) {
+                    return Some(at);
+                }
+            }
+            _ => at += 1,
         }
-        from = end;
     }
     None
 }
@@ -448,5 +482,47 @@ mod tests {
         assert_eq!(split.tuple, ["(", ", ", ")"]);
         assert_eq!(split.refs, [0, 1]);
         assert_eq!(split.tail, "");
+    }
+
+    #[test]
+    fn a_quoted_values_is_not_the_keyword() {
+        let quoted = r#"INSERT INTO "values" (a, b) VALUES ($1, $2)"#;
+        let split = copy_split(
+            quoted,
+            Dialect::Postgresql,
+            &[param(1, "a", false), param(2, "b", false)],
+        )
+        .unwrap();
+        assert_eq!(split.head, r#"INSERT INTO "values" (a, b) VALUES "#);
+        assert_eq!(split.refs, [0, 1]);
+
+        let ticks = "INSERT INTO `values` (a, b) VALUES (?, ?)";
+        let split = copy_split(
+            ticks,
+            Dialect::Mysql,
+            &[param(1, "a", false), param(2, "b", false)],
+        )
+        .unwrap();
+        assert_eq!(split.head, "INSERT INTO `values` (a, b) VALUES ");
+        assert_eq!(split.refs, [0, 1]);
+
+        let brackets = "INSERT INTO [values] (a, b) VALUES (?, ?)";
+        let split = copy_split(
+            brackets,
+            Dialect::Sqlite,
+            &[param(1, "a", false), param(2, "b", false)],
+        )
+        .unwrap();
+        assert_eq!(split.head, "INSERT INTO [values] (a, b) VALUES ");
+
+        let dollars = "INSERT INTO $$values$$ (a, b) VALUES ($1, $2)";
+        let split = copy_split(
+            dollars,
+            Dialect::Postgresql,
+            &[param(1, "a", false), param(2, "b", false)],
+        )
+        .unwrap();
+        assert_eq!(split.head, "INSERT INTO $$values$$ (a, b) VALUES ");
+        assert_eq!(split.refs, [0, 1]);
     }
 }

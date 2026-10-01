@@ -85,7 +85,9 @@ export type SqlFailure =
   | {| readonly kind: "encode", readonly expected: string, readonly value: mixed |}
   | {| readonly kind: "shape", readonly expected: number, readonly actual: number |}
   | {| readonly kind: "closed" |}
-  | {| readonly kind: "unsupported", readonly feature: string |};
+  | {| readonly kind: "unsupported", readonly feature: string |}
+  | {| readonly kind: "params", readonly width: number, readonly max: number |}
+  | {| readonly kind: "row", readonly index: number, readonly length: number |};
 
 /**
  * A value that did not fit its column, a row of the wrong width, or a
@@ -135,6 +137,10 @@ function explain(failure: SqlFailure, query: string | null): string {
       {kind: "closed"} => "the transaction has already committed or rolled back",
       {kind: "unsupported", feature: const feature} =>
         `${feature} is not supported by this adapter`,
+      {kind: "params", width: const width, max: const max} =>
+        `a :copyfrom row binds ${width} parameters and this adapter allows ${max}`,
+      {kind: "row", index: const index, length: const length} =>
+        `a :copyfrom row has ${length} fields and the statement reads index ${index}`,
     }
   );
 }
@@ -375,6 +381,10 @@ export async function copyFrom(
     return 0;
   }
   const width = plan.refs.length;
+  // One row is the smallest statement. Wider than `maxParams`, it cannot be sent.
+  if (width > db.maxParams) {
+    throw new SqlError({ kind: "params", width, max: db.maxParams }, name);
+  }
   const perStatement =
     width === 0 ? COPY_ROWS_WITHOUT_PARAMS : Math.max(1, Math.floor(db.maxParams / width));
   const insert = async (q: Queryable): Promise<number> => {
@@ -386,7 +396,11 @@ export async function copyFrom(
       for (const row of chunk) {
         let tuple = plan.tuple[0];
         for (let i = 0; i < width; i += 1) {
-          params.push(row[plan.refs[i]]);
+          const index = plan.refs[i];
+          if (index >= row.length) {
+            throw new SqlError({ kind: "row", index, length: row.length }, name);
+          }
+          params.push(row[index]);
           tuple += (q.engine === "postgresql" ? `$${params.length}` : "?") + plan.tuple[i + 1];
         }
         tuples.push(tuple);

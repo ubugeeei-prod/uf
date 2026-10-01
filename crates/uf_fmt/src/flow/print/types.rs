@@ -78,9 +78,9 @@ fn same_type(a: &Type, b: &Type) -> bool {
 /// one the second run was already producing.
 ///
 /// The walk goes through the constructs that hold a type without deciding
-/// anything about it: a generic's arguments, a union or intersection, and the
-/// wrappers. It stops at a function type, whose own parameters and return are
-/// a separate decision.
+/// anything about it: a generic's arguments, a union or intersection, a
+/// tuple's elements, and the wrappers. It stops at a function type, whose own
+/// parameters and return are a separate decision.
 pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
     match &**ty {
         types::TypeInner::Object { .. } => true,
@@ -100,6 +100,14 @@ pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
         }
         types::TypeInner::Nullable { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
         types::TypeInner::Array { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
+        types::TypeInner::Tuple { inner, .. } => inner.elements.iter().any(|element| {
+            let annot = match element {
+                types::tuple::Element::UnlabeledElement { annot, .. } => annot,
+                types::tuple::Element::LabeledElement { element, .. } => &element.annot,
+                types::tuple::Element::SpreadElement { element, .. } => &element.annot,
+            };
+            returns_a_shape_that_breaks(annot)
+        }),
         types::TypeInner::ReadOnly { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
         _ => false,
     }

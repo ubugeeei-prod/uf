@@ -67,7 +67,10 @@ pub(crate) fn run_flow_unsafe_object_assign(
 
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
-        for at in find_all(code, "Object.assign").filter(|&at| starts_word(code, at)) {
+        // Not inside a string: `"Object.assign(a, b)"` is text.
+        for at in find_all(code, "Object.assign")
+            .filter(|&at| starts_word(code, at) && !line.in_string(at))
+        {
             push_in_code(
                 diagnostics,
                 scan,

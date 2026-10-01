@@ -132,13 +132,24 @@ fn a_request_it_cannot_generate_is_an_error_on_stderr_and_nothing_on_stdout() {
 
 #[cfg(unix)]
 fn fake_sqlc(dir: &Path, exit: i32) -> PathBuf {
+    fake_sqlc_output(dir, exit, "", "")
+}
+
+#[cfg(unix)]
+fn fake_sqlc_output(dir: &Path, exit: i32, stdout: &str, stderr: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
+    let out_path = dir.join("fake-stdout");
+    let err_path = dir.join("fake-stderr");
+    fs::write(&out_path, stdout).expect("write stdout");
+    fs::write(&err_path, stderr).expect("write stderr");
     let script = dir.join("fake-sqlc");
     fs::write(
         &script,
         format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{log}\"\ncommand -v uf >> \"{log}\"\nexit {exit}\n",
-            log = dir.join("log").display()
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{log}\"\ncommand -v uf >> \"{log}\"\ncat \"{out}\"\ncat \"{err}\" >&2\nexit {exit}\n",
+            log = dir.join("log").display(),
+            out = out_path.display(),
+            err = err_path.display(),
         ),
     )
     .expect("write fake sqlc");
@@ -196,6 +207,51 @@ fn diff_fails_when_sqlc_says_the_files_are_stale() {
             .next(),
         Some("diff")
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn diff_reports_a_sqlc_failure_that_is_not_a_diff() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let sqlc = fake_sqlc_output(
+        dir.path(),
+        1,
+        "",
+        "ERROR: syntax error at or near \"SELEC\"\n",
+    );
+    let output = uf()
+        .args(["sqlc", "diff"])
+        .current_dir(dir.path())
+        .env("SQLC", &sqlc)
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("sqlc diff failed"), "{stderr}");
+    assert!(!stderr.contains("out of date"), "{stderr}");
+    assert!(stderr.contains("syntax error"), "{stderr}");
+}
+
+#[cfg(unix)]
+#[test]
+fn diff_treats_a_unified_diff_as_stale_output() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let sqlc = fake_sqlc_output(
+        dir.path(),
+        1,
+        "--- a/query.sql.js\n+++ b/query.sql.js\n",
+        "note: checked 1 file\n",
+    );
+    let output = uf()
+        .args(["sqlc", "diff"])
+        .current_dir(dir.path())
+        .env("SQLC", &sqlc)
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("out of date"), "{stderr}");
+    assert!(stderr.contains("checked 1 file"), "{stderr}");
 }
 
 #[test]
