@@ -25,7 +25,7 @@ import {
  */
 
 export component SettingsClient(initial: Settings) {
-  const [draft, setDraft] = useState<Settings>(initial);
+  const [draft, setDraft]        = useState<Settings>(initial);
   const [state, submit, pending] = useActionState<FormState<Settings>, FormData>(
     async (_previous: FormState<Settings>, form: FormData): Promise<FormState<Settings>> => {
       const result = await callAction(
@@ -36,7 +36,7 @@ export component SettingsClient(initial: Settings) {
         {status: "success", value: const saved, ...} => {
           setDraft(saved);
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}                       => {}
       }
       return result;
     },

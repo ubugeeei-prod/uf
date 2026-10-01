@@ -12,7 +12,7 @@ import type { Settings, Protected } from "../_shared/social-model.js";
 
 component Profile(data: Protected<Settings>) {
   return match (data) {
-    {kind: "unauthenticated"} => <SignInPrompt title="Sign in to manage your account" />,
+    {kind: "unauthenticated"}              => <SignInPrompt title="Sign in to manage your account" />,
     {kind: "ready", value: const settings} => <SettingsClient initial={settings} />,
   };
 }

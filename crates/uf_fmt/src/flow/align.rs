@@ -1,10 +1,11 @@
 //! Optional, token-based column alignment after the ordinary Flow printer.
 //!
 //! The printer decides every line break first. This pass only inserts spaces
-//! before tokens in adjacent, single-line entries that share an AST container.
-//! Re-parsing the printed text gives the inserted spaces stable byte positions;
-//! the normal printer removes them on the next run and this pass reapplies the
-//! same columns, so alignment stays idempotent.
+//! before tokens that share an AST container. A hook call or a match arm may
+//! continue onto later lines; the `=` or `=>` on its first line still takes
+//! the column. Re-parsing the printed text gives the inserted spaces stable
+//! byte positions; the normal printer removes them on the next run and this
+//! pass reapplies the same columns, so alignment stays idempotent.
 
 use uf_flow::Loc;
 use uf_flow::ast::{self, expression, function, pattern, statement, types};
@@ -32,6 +33,9 @@ struct Edit {
 struct UseEntry {
     equal: Stop,
     second_binding: Option<Stop>,
+    /// First byte of the line after this statement. A call that continues
+    /// past the `=` still joins the next hook.
+    next_line: usize,
 }
 
 struct Collector<'a> {
@@ -97,6 +101,46 @@ impl Collector<'_> {
             line_end,
             column: text_width(prefix),
         })
+    }
+
+    /// [`Self::stop`] for a token whose entry continues onto later lines.
+    ///
+    /// The column is the token's own line. Object values stay single-line,
+    /// because a value that breaks should not share a column with its
+    /// neighbours; hooks and match arrows opt in here.
+    fn stop_on_its_line(&self, span: Span, at: usize) -> Option<Stop> {
+        let source = self.text.text();
+        if at < span.start || at >= span.end || !source.is_char_boundary(at) {
+            return None;
+        }
+        let line_start = source[..at].rfind('\n').map_or(0, |index| index + 1);
+        let line_end = source[at..]
+            .find('\n')
+            .map_or(source.len(), |offset| at + offset);
+        self.stop(
+            Span {
+                start: line_start.max(span.start),
+                end: line_end.min(span.end),
+            },
+            at,
+        )
+    }
+
+    /// The first byte of the line after the one containing `end - 1`.
+    fn line_after(&self, end: usize) -> usize {
+        let source = self.text.text();
+        if end == 0 || end > source.len() {
+            return source.len();
+        }
+        let last = end - 1;
+        let line_end = source[last..]
+            .find('\n')
+            .map_or(source.len(), |offset| last + offset);
+        if line_end < source.len() {
+            line_end + 1
+        } else {
+            source.len()
+        }
     }
 
     fn trailing_comment(&self, stop: &Stop) -> bool {
@@ -170,7 +214,30 @@ impl Collector<'_> {
         if !gap[relative + 2..].trim().is_empty() {
             return None;
         }
-        self.stop(case, at)
+        self.stop_on_its_line(case, at)
+    }
+
+    /// Every arm of one match, including arms whose body continues below the
+    /// `=>`. The arrow column has to sit inside the line width; the body after
+    /// it may run past that width, which is the line the printer already chose.
+    fn align_arrows(&mut self, stops: &[Option<Stop>]) {
+        let run: Vec<Stop> = stops.iter().copied().flatten().collect();
+        if run.len() < 2 {
+            return;
+        }
+        let max_column = run.iter().map(|stop| stop.column).max().unwrap_or(0);
+        if max_column + 2 > self.line_width {
+            return;
+        }
+        for stop in &run {
+            let spaces = max_column - stop.column;
+            if spaces > 0 {
+                self.edits.push(Edit {
+                    at: stop.at,
+                    spaces,
+                });
+            }
+        }
     }
 
     fn object_stops(&self, object: &expression::Object<Loc, Loc>) -> Vec<Option<Stop>> {
@@ -340,11 +407,12 @@ impl Collector<'_> {
         if !gap[..at - after_id].trim().is_empty() || !gap[at - after_id + 1..].trim().is_empty() {
             return None;
         }
-        let equal = self.stop(statement_span, at)?;
+        let equal = self.stop_on_its_line(statement_span, at)?;
         let second_binding = self.second_binding(&declarator.id, statement_span);
         Some(UseEntry {
             equal,
             second_binding,
+            next_line: self.line_after(statement_span.end),
         })
     }
 
@@ -371,19 +439,16 @@ impl Collector<'_> {
         if !between[comma + 1..].trim().is_empty() {
             return None;
         }
-        self.stop(statement, second_start)
+        self.stop_on_its_line(statement, second_start)
     }
 
-    fn component_uses(&mut self, component: &statement::ComponentDeclaration<Loc, Loc>) {
-        let Some((_, body)) = &component.body else {
-            return;
-        };
+    fn align_uses(&mut self, statements: &[statement::Statement<Loc, Loc>]) {
         let mut run = Vec::new();
-        for statement in body.body.iter() {
+        for statement in statements {
             match self.use_entry(statement) {
                 Some(entry)
                     if run.last().is_none_or(|previous: &UseEntry| {
-                        previous.equal.line_end + 1 == entry.equal.line_start
+                        previous.next_line == entry.equal.line_start
                             && !self.trailing_comment(&previous.equal)
                     }) =>
                 {
@@ -474,6 +539,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Collector<'_> {
             .map(|statement| self.type_alias_stop(statement))
             .collect::<Vec<_>>();
         self.align_stops(&stops);
+        self.align_uses(statements);
         ast_visitor::statement_list_default(self, statements)
     }
 
@@ -521,7 +587,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Collector<'_> {
                 )
             })
             .collect::<Vec<_>>();
-        self.align_stops(&stops);
+        self.align_arrows(&stops);
         ast_visitor::match_expression_default(self, loc, m)
     }
 
@@ -542,7 +608,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Collector<'_> {
                 )
             })
             .collect::<Vec<_>>();
-        self.align_stops(&stops);
+        self.align_arrows(&stops);
         ast_visitor::match_statement_default(self, loc, m)
     }
 
@@ -554,14 +620,5 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Collector<'_> {
         let stops = self.object_stops(object);
         self.align_stops(&stops);
         ast_visitor::object_default(self, loc, object)
-    }
-
-    fn component_declaration(
-        &mut self,
-        loc: &'ast Loc,
-        component: &'ast statement::ComponentDeclaration<Loc, Loc>,
-    ) -> Result<(), ()> {
-        self.component_uses(component);
-        ast_visitor::component_declaration_default(self, loc, component)
     }
 }

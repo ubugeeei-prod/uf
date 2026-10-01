@@ -31,7 +31,7 @@ export component SignOut() {
         window.location.assign("/");
         return "";
       }
-      {kind: "failure", ...} => {
+      {kind: "failure", ...}                   => {
         return "You are offline. Try again.";
       }
     }

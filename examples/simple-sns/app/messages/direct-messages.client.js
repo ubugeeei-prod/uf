@@ -33,10 +33,10 @@ export component DirectMessagesClient(
   thread         : MessageThread,
   initialMessages: $ReadOnlyArray<Message>,
 ) {
-  const [committed, setCommitted] = useState<Array<LocalMessage>>(() =>
+  const [committed, setCommitted]  = useState<Array<LocalMessage>>(() =>
     initialMessages.map((message) => ({ requestId: message.id, message })),
   );
-  const [entries, addOptimistic] = useOptimistic<Array<LocalMessage>, LocalMessage>(
+  const [entries,   addOptimistic] = useOptimistic<Array<LocalMessage>, LocalMessage>(
     committed,
     (current, draft) =>
       current.some((entry) => entry.requestId === draft.requestId) ? current : [...current, draft],
@@ -44,7 +44,7 @@ export component DirectMessagesClient(
   const messages = entries.map((entry) => entry.message);
   const [body,      setBody]      = useState("");
   const [requestId, setRequestId] = useState("");
-  const [state, submit, pending] = useActionState<FormState<Message>, FormData>(
+  const [state, submit, pending]  = useActionState<FormState<Message>, FormData>(
     async (_previous: FormState<Message>, form: FormData): Promise<FormState<Message>> => {
       const text = String(form.get("body") ?? "").trim();
       const submissionId = requestId || crypto.randomUUID();
@@ -77,7 +77,7 @@ export component DirectMessagesClient(
           setBody("");
           setRequestId("");
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}                       => {}
       }
       return result;
     },

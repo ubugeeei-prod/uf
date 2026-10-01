@@ -43,12 +43,12 @@ const appreciate = graphql`
 /** Relay owns the optimistic layer and rolls it back when a request fails. */
 
 export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
-  const post = useFragment(postFragment, postRef);
-  const [commit, pending] = useMutation<
+  const post               = useFragment(postFragment, postRef);
+  const [commit, pending]  = useMutation<
     SnsAppreciateMutation["variables"],
     SnsAppreciateMutation["response"],
   >(appreciate);
-  const [error, setError] = useState("");
+  const [error,  setError] = useState("");
   const topic = topicFrom(post.topic) ?? "community";
 
   return (

@@ -43,7 +43,7 @@ export component FormStatus(state: FormState<mixed>) {
       <p className="form-status success" role="status">
         {
           match (state) {
-            {status: "idle"} | {status: "error", ...} => null,
+            {status: "idle"} | {status: "error", ...}        => null,
             {status: "success", message: const message, ...} =>
               <>
                 <Icon name="check" size={15} />

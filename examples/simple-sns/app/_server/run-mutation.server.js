@@ -23,14 +23,14 @@ const live = layerMerge(
 
 function rejected(cause: Cause<MutationProblem>): ActionResult<empty> {
   return match (cause) {
-    {kind: "fail", error: {kind: "unauthenticated"}} => failed("Please sign in to continue."),
+    {kind: "fail", error: {kind: "unauthenticated"}}                                          => failed("Please sign in to continue."),
     {kind: "fail", error: {kind: "validation", message: const message, fields: const fields}} =>
       failed(message, fields),
-    {kind: "interrupt"} => failed("The request was cancelled. Please try again."),
+    {kind: "interrupt"}                                                                       => failed("The request was cancelled. Please try again."),
     {kind: "empty"}
       | {kind: "die", defect: _}
       | {kind: "parallel", causes: _}
-      | {kind: "sequential", causes: _} =>
+      | {kind: "sequential", causes: _}                                                       =>
       failed("Your changes could not be saved. Please try again."),
   };
 }
