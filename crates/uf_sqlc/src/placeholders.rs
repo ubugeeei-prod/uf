@@ -55,11 +55,10 @@ pub fn scan(text: &str, dialect: Dialect) -> Vec<Found> {
             b'[' if dialect == Dialect::Sqlite => {
                 at = text[at..].find(']').map_or(bytes.len(), |end| at + end + 1);
             }
-            b'-' if bytes.get(at + 1) == Some(&b'-') => {
-                at = text[at..]
-                    .find('\n')
-                    .map_or(bytes.len(), |end| at + end + 1);
-            }
+            b'-' => match line_comment_end(text, at, dialect) {
+                Some(end) => at = end,
+                None => at += 1,
+            },
             b'/' if bytes.get(at + 1) == Some(&b'*') => {
                 let end = text[at + 2..]
                     .find("*/")
@@ -339,11 +338,10 @@ fn find_keyword(text: &str, keyword: &str, dialect: Dialect) -> Option<usize> {
             b'[' if dialect == Dialect::Sqlite => {
                 at = text[at..].find(']').map_or(bytes.len(), |end| at + end + 1);
             }
-            b'-' if bytes.get(at + 1) == Some(&b'-') => {
-                at = text[at..]
-                    .find('\n')
-                    .map_or(bytes.len(), |end| at + end + 1);
-            }
+            b'-' => match line_comment_end(text, at, dialect) {
+                Some(end) => at = end,
+                None => at += 1,
+            },
             b'/' if bytes.get(at + 1) == Some(&b'*') => {
                 at = text[at + 2..]
                     .find("*/")
@@ -410,8 +408,9 @@ fn find_code_byte(text: &str, from: usize, dialect: Dialect, wanted: u8) -> Opti
     None
 }
 
-/// Past a quote, comment, dollar-quote, or bracket identifier starting at `at`.
-/// `None` when the byte is ordinary code.
+/// Past a quote, comment, dollar-quote, bracket identifier, or word starting
+/// at `at`. `None` when the byte is ordinary code. A PostgreSQL word is
+/// consumed whole so `f$x$` is not read as a dollar quote.
 fn skip_trivia(text: &str, at: usize, dialect: Dialect) -> Option<usize> {
     let bytes = text.as_bytes();
     match bytes.get(at)? {
@@ -421,11 +420,7 @@ fn skip_trivia(text: &str, at: usize, dialect: Dialect) -> Option<usize> {
         b'[' if dialect == Dialect::Sqlite => {
             Some(text[at..].find(']').map_or(bytes.len(), |end| at + end + 1))
         }
-        b'-' if bytes.get(at + 1) == Some(&b'-') => Some(
-            text[at..]
-                .find('\n')
-                .map_or(bytes.len(), |end| at + end + 1),
-        ),
+        b'-' => line_comment_end(text, at, dialect),
         b'/' if bytes.get(at + 1) == Some(&b'*') => Some(
             text[at + 2..]
                 .find("*/")
@@ -445,8 +440,38 @@ fn skip_trivia(text: &str, at: usize, dialect: Dialect) -> Option<usize> {
                 None
             }
         }
+        byte if byte.is_ascii_alphabetic() || *byte == b'_' => {
+            let mut end = at + 1;
+            while end < bytes.len() && is_identifier_byte(bytes[end], dialect) {
+                end += 1;
+            }
+            Some(end)
+        }
         _ => None,
     }
+}
+
+/// The index just past a `--` line comment starting at `at`.
+///
+/// MySQL only starts that comment when whitespace or a control character
+/// follows, so `?--1` is subtraction and the `)` after it still closes the
+/// tuple. The other dialects comment out the rest of the line either way.
+fn line_comment_end(text: &str, at: usize, dialect: Dialect) -> Option<usize> {
+    let bytes = text.as_bytes();
+    if bytes.get(at + 1) != Some(&b'-') {
+        return None;
+    }
+    if dialect == Dialect::Mysql {
+        let follows = bytes.get(at + 2)?;
+        if !follows.is_ascii_whitespace() && !follows.is_ascii_control() {
+            return None;
+        }
+    }
+    Some(
+        text[at..]
+            .find('\n')
+            .map_or(bytes.len(), |end| at + end + 1),
+    )
 }
 
 fn matching_paren(text: &str, open: usize, dialect: Dialect) -> Option<usize> {
@@ -624,6 +649,20 @@ mod tests {
         let quoted = "INSERT INTO t (a) VALUES ($1 || $$)$$)";
         let split = copy_split(quoted, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
         assert_eq!(split.tuple, ["(", " || $$)$$)"]);
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.tail, "");
+
+        // `f$x$` is one identifier. The `$` inside it does not open a dollar quote.
+        let function = "INSERT INTO t (a) VALUES (f$x$($1))";
+        let split = copy_split(function, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.tuple, ["(f$x$(", "))"]);
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.tail, "");
+
+        // MySQL: `--` comments only when whitespace follows, so `?--1` is subtraction.
+        let mysql = "INSERT INTO t (a) VALUES (?--1)";
+        let split = copy_split(mysql, Dialect::Mysql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.tuple, ["(", "--1)"]);
         assert_eq!(split.refs, [0]);
         assert_eq!(split.tail, "");
     }

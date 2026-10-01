@@ -60,6 +60,19 @@ fn unclear_type_ignores_value_positions() {
 }
 
 #[test]
+fn unclear_type_still_reads_a_type_parameter_default_on_the_next_line() {
+    // `T` starts the line, which is also what `ctor = Function` looks like.
+    // The `<` that makes it a type closed the line above.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Box<\n  T = any\n> = T;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (3, 7));
+}
+
+#[test]
 fn unclear_type_ignores_a_value_on_the_right_of_an_assignment() {
     let diagnostics = lint_js(
         "flow/unclear-type",

@@ -146,8 +146,9 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     }
 
     // `const value = any`, `let ctor = Object`, and `ctor = Function`.
-    // `type Handler = Function` stays a type, and so does `type Box<T = any>`.
-    if assignment_is_a_value(code, at) {
+    // `type Handler = Function` stays a type, and so does `type Box<T = any>`
+    // and a default continued onto the next line.
+    if assignment_is_a_value(code, at, outer) {
         return true;
     }
 
@@ -201,9 +202,10 @@ fn names_a_parameter(code: &str, at: usize, len: usize) -> bool {
 ///
 /// `const value = any` and `ctor = Function` name a value. `type Handler =
 /// Function`, `type Box<T = any>`, and `opaque type Box: Super = any` name a
-/// type. A `<`, `,`, or `:` in front of the name on the left is what keeps
-/// those three on the type side.
-fn assignment_is_a_value(code: &str, at: usize) -> bool {
+/// type. A `<`, `,`, or `:` in front of the name on the left keeps it a type,
+/// including when that byte is the end of the previous line (`type Box<\n T =
+/// any`).
+fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
     let Some((eq, b'=')) = prev_non_space(code, at) else {
         return false;
     };
@@ -225,7 +227,10 @@ fn assignment_is_a_value(code: &str, at: usize) -> bool {
     }
     // `ctor = Function`, where the name is the whole left-hand side.
     match prev_non_space(code, name_at) {
-        None => true,
+        // A continued type-parameter list. `T = any` has nothing in front of
+        // it on its own line; the `<` or `,` that introduces it closed the
+        // line above.
+        None => !matches!(outer.last_byte, Some(b'<' | b',')),
         Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
     }
 }
@@ -305,10 +310,16 @@ impl Enclosing {
     /// Strings and comments are already blanked out of `code` by the scan, so
     /// a bracket here is a bracket in the program.
     fn after(self, code: &str) -> Self {
-        let mut stack: Vec<Opener> = match self.kind {
-            Some(kind) => vec![kind],
-            None => Vec::new(),
-        };
+        // The stack lives for one line and only its top is kept. A `Vec` here
+        // allocated once per line, and `flow/deprecated-type` walks every line
+        // with it, which put the router runtime over the allocation budget.
+        const CAP: usize = 32;
+        let mut inline = [Opener::Other; CAP];
+        let mut depth = 0usize;
+        if let Some(kind) = self.kind {
+            inline[0] = kind;
+            depth = 1;
+        }
         let bytes = code.as_bytes();
         let mut last = self.last_byte;
         for (index, byte) in bytes.iter().enumerate() {
@@ -317,12 +328,18 @@ impl Enclosing {
                     let call = prev_non_space(code, index).is_some_and(|(_, previous)| {
                         is_word_byte(previous) || previous == b')' || previous == b']'
                     });
-                    stack.push(if call { Opener::Call } else { Opener::Other });
+                    if depth < CAP {
+                        inline[depth] = if call { Opener::Call } else { Opener::Other };
+                        depth += 1;
+                    }
                 }
-                b'[' | b'{' => stack.push(Opener::Other),
-                b')' | b']' | b'}' => {
-                    stack.pop();
+                b'[' | b'{' => {
+                    if depth < CAP {
+                        inline[depth] = Opener::Other;
+                        depth += 1;
+                    }
                 }
+                b')' | b']' | b'}' => depth = depth.saturating_sub(1),
                 _ => {}
             }
             if !byte.is_ascii_whitespace() {
@@ -330,9 +347,11 @@ impl Enclosing {
             }
         }
         Self {
-            // Only the innermost one is ever asked about, so only it is kept —
-            // a deeper stack would be state nothing reads.
-            kind: stack.last().copied(),
+            kind: if depth > 0 {
+                Some(inline[depth - 1])
+            } else {
+                None
+            },
             last_byte: last,
         }
     }
