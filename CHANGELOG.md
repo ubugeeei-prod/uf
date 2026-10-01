@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.18.0
+
+- fix: copyfrom bounds, DateStyle timestamps, and lint false positives (#1723) (d7a28cd9)
+
 ## uf@0.17.0
 
 - fix: do not publish the routing base when the module loads (#1712) (c4e4207c)
