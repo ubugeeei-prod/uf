@@ -168,7 +168,7 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
     >
       {
         match (kind) {
-          "feed" =>
+          "feed"         =>
             [0, 1, 2].map((id) => (
               <div className="post skeleton-post" key={id} aria-hidden="true">
                 <Skeleton.Box className="skeleton-avatar" />
@@ -226,7 +226,7 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
                 </div>
               </div>
             )),
-          "threads" =>
+          "threads"      =>
             <div className="thread-list" aria-hidden="true">
               <h2>Your conversations</h2>
               {[0, 1, 2].map((id) => (
@@ -302,7 +302,7 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
                 </div>
               </div>
             </>,
-          "profile" =>
+          "profile"      =>
             <div className="settings-panel" aria-hidden="true">
               <div className="settings-profile">
                 <Skeleton.Box className="skeleton-avatar" />

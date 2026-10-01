@@ -101,7 +101,7 @@ export component SocialFrame(
                   </Link>
                   <SignOut />
                 </>,
-              {kind: "guest"} =>
+              {kind: "guest"}                           =>
                 <>
                   <Link className="button primary" to="/login">
                     Sign in

@@ -51,7 +51,7 @@ export component Page(data: Data) {
       </header>
       {
         match (data.session) {
-          {kind: "guest"} => <SignInPrompt title="Sign in to open your inbox" />,
+          {kind: "guest"}              => <SignInPrompt title="Sign in to open your inbox" />,
           {kind: "authenticated", ...} =>
             <InboxRegions
               threads={data.threads}

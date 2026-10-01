@@ -95,14 +95,14 @@ export async function POST(request: Request): Promise<Response> {
       tryPromise({
         try: async () => {
           match (mode) {
-            "logout" => {
+            "logout"                              => {
               return revokeSession(token, secure);
             }
             "login" | "signup" as const operation => {
               const user = await authenticate(form, operation);
               return issueSession(user, token, secure);
             }
-            _ => {
+            _                                     => {
               return null;
             }
           }
@@ -113,7 +113,7 @@ export async function POST(request: Request): Promise<Response> {
   );
 
   match (result) {
-    {kind: "success", value: const cookie} => {
+    {kind: "success", value: const cookie}                       => {
       if (cookie == null) {
         return json({ message: "Unknown operation." }, { status: 400 });
       }
@@ -129,7 +129,7 @@ export async function POST(request: Request): Promise<Response> {
         { status: 400 },
       );
     }
-    {kind: "failure", cause: const cause} => {
+    {kind: "failure", cause: const cause}                        => {
       console.error("Commonplace authentication failed", cause);
 
       return json(

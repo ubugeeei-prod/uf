@@ -108,7 +108,7 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
           </div>
           {
             match (playback) {
-              {kind: "error"} =>
+              {kind: "error"}                      =>
                 <div className="clip-notice" role="alert">
                   Could not load this clip.{" "}
                   <button
@@ -121,12 +121,12 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
                     Try again
                   </button>
                 </div>,
-              {kind: "blocked"} =>
+              {kind: "blocked"}                    =>
                 <button type="button" className="clip-play" onClick={toggle}>
                   <Icon name="play" size={26} />
                   <span>Play video</span>
                 </button>,
-              {kind: "loading"} =>
+              {kind: "loading"}                    =>
                 <span className="clip-loading" role="status">
                   Loading video…
                 </span>,

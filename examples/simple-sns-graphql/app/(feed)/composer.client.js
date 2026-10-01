@@ -63,8 +63,8 @@ export component ComposerSlot(
 }
 
 component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
-  const viewer = useFragment(composerFragment, viewerRef);
-  const [commit, pending] = useMutation<
+  const viewer                    = useFragment(composerFragment, viewerRef);
+  const [commit,    pending]      = useMutation<
     SnsCreatePostMutation["variables"],
     SnsCreatePostMutation["response"],
   >(createPost);

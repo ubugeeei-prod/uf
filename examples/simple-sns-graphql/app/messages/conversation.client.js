@@ -67,8 +67,8 @@ export component ConversationPane(
 }
 
 component Conversation(conversationRef: SnsConversation_conversation$key) {
-  const conversation = useFragment(conversationFragment, conversationRef);
-  const [commit, pending] = useMutation<
+  const conversation              = useFragment(conversationFragment, conversationRef);
+  const [commit,    pending]      = useMutation<
     SnsSendMessageMutation["variables"],
     SnsSendMessageMutation["response"],
   >(sendMessage);

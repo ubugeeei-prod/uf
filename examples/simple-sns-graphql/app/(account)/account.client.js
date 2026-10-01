@@ -38,7 +38,7 @@ export component AccountForm(register: boolean) {
     SnsLoginMutation["variables"],
     SnsLoginMutation["response"],
   >(login);
-  const [error, setError] = useState("");
+  const [error,  setError]  = useState("");
   const pending = signingUp || signingIn;
 
   return (
