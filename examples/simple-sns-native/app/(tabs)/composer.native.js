@@ -54,19 +54,19 @@ component ChannelPicker(children: renders* ChannelChip) {
 
 export component Composer(viewer: User, topic: TopicFilter, onPublishing: (Post) => void) {
   const { service, refresh } = useSocial();
-  const [body, setBody] = useState("");
-  const [picked, setPicked] = useState<Topic | null>(null);
+  const [body,   setBody]    = useState("");
+  const [picked, setPicked]  = useState<Topic | null>(null);
   const channel = picked ?? defaultTopic(topic);
   const [state, submit, pending] = useActionState<FormState<Post>, Draft>(
     async (_previous: FormState<Post>, draft: Draft): Promise<FormState<Post>> => {
       onPublishing({
-        id: "pending-note",
-        author: viewer,
-        body: draft.body.trim(),
-        topic: draft.topic,
+        id       : "pending-note",
+        author   : viewer,
+        body     : draft.body.trim(),
+        topic    : draft.topic,
         createdAt: new Date().toISOString(),
-        likes: 0,
-        liked: false,
+        likes    : 0,
+        liked    : false,
       });
       const result = await service.publish(draft.body, draft.topic);
       match (result) {
@@ -74,7 +74,7 @@ export component Composer(viewer: User, topic: TopicFilter, onPublishing: (Post)
           startTransition(() => setBody(""));
           refresh();
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}   => {}
       }
 
       return result;
@@ -114,7 +114,12 @@ export component Composer(viewer: User, topic: TopicFilter, onPublishing: (Post)
         </Text>
         <Button
           disabled={body.trim() === ""}
-          pending={pending ? "Publishing…" : null}
+          pending={
+            match (pending) {
+              true  => "Publishing…",
+              false => null,
+            }
+          }
           label="Publish note"
           onPress={() => startTransition(() => submit({ body, topic: channel }))}
         >
@@ -128,22 +133,22 @@ export component Composer(viewer: User, topic: TopicFilter, onPublishing: (Post)
 
 const local = stylex.create({
   composer: { paddingTop: 20, paddingBottom: 6 },
-  body: { flexDirection: "row", alignItems: "flex-start", gap: 14 },
-  input: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 22, minHeight: 66, color: "#242424" },
+  body    : { flexDirection: "row", alignItems: "flex-start", gap: 14 },
+  input   : { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 22, minHeight: 66, color: "#242424" },
   channels: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 10 },
   chip: {
-    paddingLeft: 10,
-    paddingRight: 10,
-    paddingTop: 6,
-    paddingBottom: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#e3e3e3",
+    paddingLeft    : 10,
+    paddingRight   : 10,
+    paddingTop     : 6,
+    paddingBottom  : 6,
+    borderRadius   : 6,
+    borderWidth    : 1,
+    borderColor    : "#e3e3e3",
     backgroundColor: "#ffffff",
   },
-  chipSelected: { borderColor: "#202020" },
-  chipLabel: { fontSize: 11, color: "#707070" },
+  chipSelected     : { borderColor: "#202020" },
+  chipLabel        : { fontSize: 11, color: "#707070" },
   chipLabelSelected: { color: "#242424", fontWeight: "600" },
-  footer: { paddingTop: 12, paddingBottom: 12 },
-  counter: { fontSize: 11, color: "#707070" },
+  footer           : { paddingTop: 12, paddingBottom: 12 },
+  counter          : { fontSize: 11, color: "#707070" },
 });

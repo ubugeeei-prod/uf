@@ -70,7 +70,12 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
   >(createPost);
   const environment               = useRelayEnvironment();
   const [body,      setBody]      = useState("");
-  const [topic,     setTopic]     = useState(filter.topic === "all" ? "community" : filter.topic);
+  const [topic,     setTopic]     = useState(
+    match (filter.topic) {
+      "all"         => "community",
+      const channel => channel,
+    },
+  );
   const [requestId, setRequestId] = useState("");
   const [error,     setError]     = useState("");
 
@@ -136,14 +141,23 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
         </select>
         <span className="counter">{body.length}/500</span>
         <button type="submit" className="button primary" disabled={pending}>
-          {pending ? "Publishing…" : "Publish note"}
+          {
+            match (pending) {
+              true  => "Publishing…",
+              false => "Publish note",
+            }
+          }
         </button>
       </footer>
-      {error ? (
-        <p role="alert" {...styled("post-error", sharedStyles.postError)}>
-          {error}
-        </p>
-      ) : null}
+      {
+        match (error) {
+          ""            => null,
+          const message =>
+            <p role="alert" {...styled("post-error", sharedStyles.postError)}>
+              {message}
+            </p>,
+        }
+      }
     </form>
   );
 }

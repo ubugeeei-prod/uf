@@ -14,10 +14,17 @@ import { styles } from "../_shared/commonplace.stylex.js";
 import { IDLE, displayDate } from "../_shared/social.js";
 import { Avatar, ChannelBadge, FormStatus } from "../_shared/ui.native.js";
 
-component Heart(liked: boolean, likes: number) {
+component Heart(liked: boolean, likes: number) renders View {
   return (
     <View {...stylex.props(local.reaction)}>
-      <Text {...stylex.props(local.heart, liked && local.heartOn)}>{liked ? "♥" : "♡"}</Text>
+      <Text {...stylex.props(local.heart, liked && local.heartOn)}>
+        {
+          match (liked) {
+            true  => "♥",
+            false => "♡",
+          }
+        }
+      </Text>
       <Text {...stylex.props(local.count, liked && local.heartOn)}>{String(likes)}</Text>
     </View>
   );
@@ -29,9 +36,9 @@ component Heart(liked: boolean, likes: number) {
  * same transition, and a failure leaves the committed value, so the heart goes back by itself.
  */
 
-component Appreciation(post: Post, signedIn: boolean) {
-  const { service, refresh } = useSocial();
-  const [optimistic, change] = useOptimistic<Post, boolean>(post, (value, liked) => ({
+component Appreciation(post: Post, signedIn: boolean) renders View {
+  const { service, refresh }     = useSocial();
+  const [optimistic, change]     = useOptimistic<Post, boolean>(post, (value, liked) => ({
     ...value,
     liked,
     likes: value.likes + (liked === value.liked ? 0 : liked ? 1 : -1),
@@ -44,7 +51,7 @@ component Appreciation(post: Post, signedIn: boolean) {
         {status: "success", ...} => {
           refresh();
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}   => {}
       }
 
       return result;
@@ -54,22 +61,31 @@ component Appreciation(post: Post, signedIn: boolean) {
 
   return (
     <View {...stylex.props(local.appreciation)}>
-      {signedIn ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${optimistic.liked ? "Remove appreciation" : "Appreciate"} · ${optimistic.likes}`}
-          accessibilityState={{ selected: optimistic.liked, busy: pending }}
-          disabled={pending}
-          hitSlop={8}
-          onPress={() => startTransition(() => submit(!optimistic.liked))}
-        >
-          <Heart liked={optimistic.liked} likes={optimistic.likes} />
-        </Pressable>
-      ) : (
-        <Link href={route("/join")} accessibilityLabel={`Sign in to appreciate · ${post.likes}`}>
-          <Heart liked={false} likes={post.likes} />
-        </Link>
-      )}
+      {
+        match (signedIn) {
+          true  =>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${match (optimistic.liked) {
+                true  => "Remove appreciation",
+                false => "Appreciate",
+              }} · ${optimistic.likes}`}
+              accessibilityState={{ selected: optimistic.liked, busy: pending }}
+              disabled={pending}
+              hitSlop={8}
+              onPress={() => startTransition(() => submit(!optimistic.liked))}
+            >
+              <Heart liked={optimistic.liked} likes={optimistic.likes} />
+            </Pressable>,
+          false =>
+            <Link
+              href={route("/join")}
+              accessibilityLabel={`Sign in to appreciate · ${post.likes}`}
+            >
+              <Heart liked={false} likes={post.likes} />
+            </Link>,
+        }
+      }
       <FormStatus state={state} quiet />
     </View>
   );
@@ -77,7 +93,7 @@ component Appreciation(post: Post, signedIn: boolean) {
 
 /** One note as the web renders it: a row under a hairline, not a card. */
 
-export component PostCard(post: Post, signedIn: boolean, linked: boolean = true) {
+export component PostCard(post: Post, signedIn: boolean, linked: boolean = true) renders View {
   const publishing = post.id.startsWith("pending-");
 
   return (
@@ -91,22 +107,34 @@ export component PostCard(post: Post, signedIn: boolean, linked: boolean = true)
           <Text {...stylex.props(local.name)}>{post.author.name}</Text>
           <Text {...stylex.props(local.meta)}>@{post.author.handle}</Text>
           <Text {...stylex.props(local.meta, local.date)}>
-            {publishing ? "Publishing…" : displayDate(post.createdAt)}
+            {
+              match (publishing) {
+                true  => "Publishing…",
+                false => displayDate(post.createdAt),
+              }
+            }
           </Text>
         </View>
-        {linked && !publishing ? (
-          <Link
-            href={route("/notes/:id", { id: post.id })}
-            accessibilityLabel={`Open note by ${post.author.name}`}
-          >
-            <Text {...stylex.props(local.body)}>{post.body}</Text>
-          </Link>
-        ) : (
-          <Text {...stylex.props(local.body)}>{post.body}</Text>
-        )}
+        {
+          match (linked && !publishing) {
+            true  =>
+              <Link
+                href={route("/notes/:id", { id: post.id })}
+                accessibilityLabel={`Open note by ${post.author.name}`}
+              >
+                <Text {...stylex.props(local.body)}>{post.body}</Text>
+              </Link>,
+            false => <Text {...stylex.props(local.body)}>{post.body}</Text>,
+          }
+        }
         <View {...stylex.props(local.footer)}>
           <ChannelBadge topic={post.topic} />
-          {publishing ? null : <Appreciation post={post} signedIn={signedIn} />}
+          {
+            match (publishing) {
+              true  => null,
+              false => <Appreciation post={post} signedIn={signedIn} />,
+            }
+          }
         </View>
       </View>
     </View>
@@ -116,22 +144,22 @@ export component PostCard(post: Post, signedIn: boolean, linked: boolean = true)
 const local = stylex.create({
   post: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 14,
-    paddingTop: 24,
+    alignItems   : "flex-start",
+    gap          : 14,
+    paddingTop   : 24,
     paddingBottom: 18,
   },
   publishing: { opacity: 0.6 },
-  header: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
-  name: { fontSize: 13, fontWeight: "600", color: "#242424" },
-  meta: { fontSize: 11, color: "#707070" },
-  date: { marginLeft: "auto" },
-  body: { fontSize: 14, lineHeight: 24, color: "#505050", marginTop: 9, marginBottom: 12 },
+  header    : { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  name      : { fontSize: 13, fontWeight: "600", color: "#242424" },
+  meta      : { fontSize: 11, color: "#707070" },
+  date      : { marginLeft: "auto" },
+  body      : { fontSize: 14, lineHeight: 24, color: "#505050", marginTop: 9, marginBottom: 12 },
   footer: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+    flexDirection : "row",
+    alignItems    : "flex-start",
     justifyContent: "space-between",
-    gap: 18,
+    gap           : 18,
   },
   appreciation: { alignItems: "flex-end" },
   reaction: { flexDirection: "row", alignItems: "center", gap: 7, minHeight: 32, paddingLeft: 7 },

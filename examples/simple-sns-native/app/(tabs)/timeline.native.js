@@ -15,13 +15,13 @@ import { PostCard } from "./post-card.native.js";
 
 /** The list accepts cards — a fragment or an array of them — and not arbitrary children. */
 
-component PostList(children: renders* PostCard) {
+component PostList(children: renders* PostCard) renders View {
   return <View accessibilityLabel="Timeline posts">{children}</View>;
 }
 
 /** What a guest sees where the composer would be. */
 
-component Invitation() {
+component Invitation() renders View {
   return (
     <View {...stylex.props(styles.spread, styles.rule, local.invitation)}>
       <View {...stylex.props(styles.grow)}>
@@ -41,9 +41,9 @@ component Invitation() {
 
 export component Timeline(
   session: Session,
-  posts: $ReadOnlyArray<Post>,
-  topic: TopicFilter,
-  stale: boolean,
+  posts  : $ReadOnlyArray<Post>,
+  topic  : TopicFilter,
+  stale  : boolean,
 ) {
   const [entries, addOptimistic] = useOptimistic<$ReadOnlyArray<Post>, Post>(
     posts,
@@ -54,25 +54,37 @@ export component Timeline(
     <View {...stylex.props(stale && local.stale)}>
       {
         match (session) {
-          {kind: "guest"} => <Invitation />,
+          {kind: "guest"}                           => <Invitation />,
           {kind: "authenticated", user: const user} =>
             <Composer viewer={user} topic={topic} onPublishing={addOptimistic} />,
         }
       }
-      {entries.length > 0 ? (
-        <PostList>
-          {entries.map((post) => (
-            <PostCard key={post.id} post={post} signedIn={session.kind === "authenticated"} />
-          ))}
-        </PostList>
-      ) : (
-        <EmptyState title="No notes here yet">Try another channel or search.</EmptyState>
-      )}
+      {
+        match (entries.length > 0) {
+          true  =>
+            <PostList>
+              {entries.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  signedIn={
+                    match (session) {
+                      {kind: "guest"}              => false,
+                      {kind: "authenticated", ...} => true,
+                    }
+                  }
+                />
+              ))}
+            </PostList>,
+          false =>
+            <EmptyState title="No notes here yet">Try another channel or search.</EmptyState>,
+        }
+      }
     </View>
   );
 }
 
 const local = stylex.create({
   invitation: { paddingTop: 22, paddingBottom: 22 },
-  stale: { opacity: 0.55 },
+  stale     : { opacity: 0.55 },
 });

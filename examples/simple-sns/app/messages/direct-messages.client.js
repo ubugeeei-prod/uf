@@ -152,11 +152,22 @@ export component MessageBubble(message: Message) {
 
   return (
     <article
-      className={`message-bubble ${message.author === "me" ? "mine" : ""} ${pending ? "optimistic" : ""}`}
+      className={`message-bubble ${match (message.author) {
+        "me" => "mine",
+        _    => "",
+      }} ${match (pending) {
+        true  => "optimistic",
+        false => "",
+      }}`}
     >
       <p>{message.body}</p>
       <time dateTime={message.sentAt}>
-        {pending ? "Sending…" : `${displayTime(message.sentAt)} UTC`}
+        {
+          match (pending) {
+            true  => "Sending…",
+            false => `${displayTime(message.sentAt)} UTC`,
+          }
+        }
       </time>
     </article>
   );

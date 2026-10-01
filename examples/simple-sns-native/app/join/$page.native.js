@@ -21,11 +21,11 @@ import { Button, Field, FormStatus, PageHeading, Screen } from "../_shared/ui.na
  */
 
 export component Page() {
-  const { service, refresh } = useSocial();
-  const router = useNativeRouter();
-  const [name, setName] = useState("");
-  const [handle, setHandle] = useState("");
-  const [email, setEmail] = useState("");
+  const { service, refresh }     = useSocial();
+  const router                   = useNativeRouter();
+  const [name,   setName]        = useState("");
+  const [handle, setHandle]      = useState("");
+  const [email,  setEmail]       = useState("");
   const [state, submit, pending] = useActionState<FormState<User>, Account>(
     async (_previous: FormState<User>, account: Account): Promise<FormState<User>> => {
       const result = await service.join(account);
@@ -34,7 +34,7 @@ export component Page() {
           refresh();
           router.back();
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}   => {}
       }
 
       return result;
@@ -67,7 +67,12 @@ export component Page() {
             <FormStatus state={state} quiet />
           </View>
           <Button
-            pending={pending ? "Please wait…" : null}
+            pending={
+              match (pending) {
+                true  => "Please wait…",
+                false => null,
+              }
+            }
             label="Create account"
             onPress={() => startTransition(() => submit({ name, handle, email }))}
           >
@@ -83,8 +88,8 @@ export component Page() {
 }
 
 const local = stylex.create({
-  back: { fontSize: 12, fontWeight: "600", color: "#242424", paddingBottom: 22 },
-  form: { marginTop: 28 },
+  back  : { fontSize: 12, fontWeight: "600", color: "#242424", paddingBottom: 22 },
+  form  : { marginTop: 28 },
   status: { marginBottom: 14 },
-  note: { marginTop: 16, textAlign: "center" },
+  note  : { marginTop: 16, textAlign: "center" },
 });

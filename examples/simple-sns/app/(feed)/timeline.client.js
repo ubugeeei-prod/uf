@@ -65,24 +65,34 @@ component Appreciation(post: Post, signedIn: boolean) {
 
   return (
     <div>
-      {signedIn ? (
-        <button
-          type="button"
-          className="reaction"
-          aria-label={`${optimistic.liked ? "Remove appreciation" : "Appreciate"} · ${optimistic.likes}`}
-          aria-pressed={optimistic.liked}
-          disabled={pending}
-          onClick={() => startTransition(() => submit(!optimistic.liked))}
-        >
-          <Icon name="heart" size={16} />
-          <span>{optimistic.likes}</span>
-        </button>
-      ) : (
-        <Link className="reaction" to="/login" aria-label={`Sign in to appreciate · ${post.likes}`}>
-          <Icon name="heart" size={16} />
-          <span>{post.likes}</span>
-        </Link>
-      )}
+      {
+        match (signedIn) {
+          true  =>
+            <button
+              type="button"
+              className="reaction"
+              aria-label={`${match (optimistic.liked) {
+                true  => "Remove appreciation",
+                false => "Appreciate",
+              }} · ${optimistic.likes}`}
+              aria-pressed={optimistic.liked}
+              disabled={pending}
+              onClick={() => startTransition(() => submit(!optimistic.liked))}
+            >
+              <Icon name="heart" size={16} />
+              <span>{optimistic.likes}</span>
+            </button>,
+          false =>
+            <Link
+              className="reaction"
+              to="/login"
+              aria-label={`Sign in to appreciate · ${post.likes}`}
+            >
+              <Icon name="heart" size={16} />
+              <span>{post.likes}</span>
+            </Link>,
+        }
+      }
       {
         match (state) {
           {status: "error", message: const message, ...} =>
@@ -110,7 +120,12 @@ export component PostCard(post: Post, signedIn: boolean) {
             <strong>{post.author.name}</strong>
             <span className="handle">@{post.author.handle}</span>
             <time dateTime={post.createdAt}>
-              {pending ? "Publishing…" : displayDate(post.createdAt)}
+              {
+                match (pending) {
+                  true  => "Publishing…",
+                  false => displayDate(post.createdAt),
+                }
+              }
             </time>
           </header>
           <p className="post-body">{post.body}</p>
@@ -119,11 +134,12 @@ export component PostCard(post: Post, signedIn: boolean) {
               <span className={`channel-dot ${post.topic}`} />
               {topicLabel(post.topic)}
             </Link>
-            {pending ? (
-              <span className="counter">Publishing…</span>
-            ) : (
-              <Appreciation post={post} signedIn={signedIn} />
-            )}
+            {
+              match (pending) {
+                true  => <span className="counter">Publishing…</span>,
+                false => <Appreciation post={post} signedIn={signedIn} />,
+              }
+            }
           </footer>
         </div>
       </article>
@@ -269,42 +285,65 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
 
   return (
     <>
-      {showComposer
-        ? match (session) {
-            {kind: "authenticated", user: const user} =>
-              <div id="compose" {...styled("compose-region", sharedStyles.composeRegion)}>
-                <Collapsible.Root
-                  open={composerOpen}
-                  onOpenChange={(open) => startTransition(() => setComposerOpen(open))}
-                >
-                  <Collapsible.Trigger className="compose-toggle">
-                    <Icon name="compose" size={16} />
-                    Write a note
-                    <Icon name={composerOpen ? "chevron-up" : "chevron-down"} size={15} />
-                  </Collapsible.Trigger>
-                  <ViewTransition name="note-composer" enter="composer-panel" exit="composer-panel">
-                    <Activity mode={composerOpen ? "visible" : "hidden"}>
-                      <Collapsible.Content>
-                        <PostComposer
-                          viewer={user}
-                          onOptimistic={addOptimistic}
-                          onPublished={published}
-                        />
-                      </Collapsible.Content>
-                    </Activity>
-                  </ViewTransition>
-                </Collapsible.Root>
-              </div>,
-            {kind: "guest"}                           =>
-              <section className="sign-in-composer">
-                <div>
-                  <h2>What are you working on?</h2>
-                  <p>Sign in to post an update or ask a question.</p>
-                </div>
-                <ActionLink to="/signup">Create account</ActionLink>
-              </section>,
-          }
-        : null}
+      {
+        match (showComposer) {
+          false => null,
+          true  =>
+            match (session) {
+              {kind: "authenticated", user: const user} =>
+                <div id="compose" {...styled("compose-region", sharedStyles.composeRegion)}>
+                  <Collapsible.Root
+                    open={composerOpen}
+                    onOpenChange={(open) => startTransition(() => setComposerOpen(open))}
+                  >
+                    <Collapsible.Trigger className="compose-toggle">
+                      <Icon name="compose" size={16} />
+                      Write a note
+                      <Icon
+                        name={
+                          match (composerOpen) {
+                            true  => "chevron-up",
+                            false => "chevron-down",
+                          }
+                        }
+                        size={15}
+                      />
+                    </Collapsible.Trigger>
+                    <ViewTransition
+                      name="note-composer"
+                      enter="composer-panel"
+                      exit="composer-panel"
+                    >
+                      <Activity
+                        mode={
+                          match (composerOpen) {
+                            true  => "visible",
+                            false => "hidden",
+                          }
+                        }
+                      >
+                        <Collapsible.Content>
+                          <PostComposer
+                            viewer={user}
+                            onOptimistic={addOptimistic}
+                            onPublished={published}
+                          />
+                        </Collapsible.Content>
+                      </Activity>
+                    </ViewTransition>
+                  </Collapsible.Root>
+                </div>,
+              {kind: "guest"}                           =>
+                <section className="sign-in-composer">
+                  <div>
+                    <h2>What are you working on?</h2>
+                    <p>Sign in to post an update or ask a question.</p>
+                  </div>
+                  <ActionLink to="/signup">Create account</ActionLink>
+                </section>,
+            },
+        }
+      }
       <AsyncRegion
         resource={resource}
         retry={retry}
@@ -336,36 +375,44 @@ component FeedEntries(data: FeedData, additions: $ReadOnlyArray<Post>, signedIn:
 
   return (
     <>
-      {posts.length === 0 ? (
-        <EmptyState
-          title="No notes found"
-          action={
-            <ActionLink to="/" primary={false}>
-              Back to all notes
-            </ActionLink>
-          }
-        >
-          Try a different channel or a shorter search.
-        </EmptyState>
-      ) : (
-        <PostList>
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} signedIn={signedIn} />
-          ))}
-        </PostList>
-      )}
+      {
+        match (posts.length === 0) {
+          true  =>
+            <EmptyState
+              title="No notes found"
+              action={
+                <ActionLink to="/" primary={false}>
+                  Back to all notes
+                </ActionLink>
+              }
+            >
+              Try a different channel or a shorter search.
+            </EmptyState>,
+          false =>
+            <PostList>
+              {posts.map((post) => (
+                <PostCard key={post.id} post={post} signedIn={signedIn} />
+              ))}
+            </PostList>,
+        }
+      }
       <nav className="pagination" aria-label="Feed pagination">
-        {feed.page > 1 ? (
-          <Link to={feedHref(feed.topic, feed.query, feed.page - 1)}>← Newer notes</Link>
-        ) : (
-          <span>Latest notes</span>
-        )}
-        {feed.hasNext ? (
-          <Link to={feedHref(feed.topic, feed.query, feed.page + 1)}>
-            Older notes
-            <Icon name="arrow" size={14} />
-          </Link>
-        ) : null}
+        {
+          match (feed.page > 1) {
+            true  => <Link to={feedHref(feed.topic, feed.query, feed.page - 1)}>← Newer notes</Link>,
+            false => <span>Latest notes</span>,
+          }
+        }
+        {
+          match (feed.hasNext) {
+            true  =>
+              <Link to={feedHref(feed.topic, feed.query, feed.page + 1)}>
+                Older notes
+                <Icon name="arrow" size={14} />
+              </Link>,
+            false => null,
+          }
+        }
       </nav>
     </>
   );

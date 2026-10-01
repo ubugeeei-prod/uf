@@ -40,7 +40,7 @@ component ThreadLink(thread: Thread) renders Link {
   );
 }
 
-component ThreadList(children: renders* ThreadLink) {
+component ThreadList(children: renders* ThreadLink) renders View {
   return (
     <View accessibilityLabel="Conversations" {...stylex.props(local.list)}>
       {children}
@@ -69,7 +69,7 @@ export component Page() {
         >
           {(threads) =>
             match (threads) {
-              {kind: "unauthenticated"} => <SignInPrompt title="Sign in to read your messages" />,
+              {kind: "unauthenticated"}           => <SignInPrompt title="Sign in to read your messages" />,
               {kind: "ready", value: const value} =>
                 <ThreadList>
                   {value.map((thread) => (
@@ -87,12 +87,12 @@ const local = stylex.create({
   list: { marginTop: 18 },
   thread: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingTop: 16,
+    alignItems   : "center",
+    gap          : 12,
+    paddingTop   : 16,
     paddingBottom: 16,
   },
-  name: { fontSize: 13, fontWeight: "600", color: "#242424" },
+  name   : { fontSize: 13, fontWeight: "600", color: "#242424" },
   preview: { fontSize: 12, lineHeight: 18, color: "#707070", marginTop: 2 },
   chevron: { fontSize: 14, color: "#868686" },
 });

@@ -20,7 +20,12 @@ export component Message(messageRef: SnsMessage_message$key) {
   const message = useFragment(messageFragment, messageRef);
 
   return (
-    <div className={`message ${message.author === "me" ? "mine" : ""}`}>
+    <div
+      className={`message ${match (message.author) {
+        "me" => "mine",
+        _    => "",
+      }}`}
+    >
       <p className="message-content">{message.body}</p>
       <time dateTime={message.sentAt}>{displayTime(message.sentAt)}</time>
     </div>

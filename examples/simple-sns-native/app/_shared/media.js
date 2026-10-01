@@ -20,10 +20,10 @@ const asset = (image: string): ImageSourcePropType => image as $FlowFixMe;
 export function portrait(id: string): ImageSourcePropType | null {
   return match (id) {
     "seed-mika" => asset(mika),
-    "seed-ren" => asset(ren),
+    "seed-ren"  => asset(ren),
     "seed-sora" => asset(sora),
     "seed-niko" => asset(niko),
-    _ => null,
+    _           => null,
   };
 }
 

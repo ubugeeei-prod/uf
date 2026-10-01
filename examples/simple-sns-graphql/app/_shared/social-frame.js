@@ -56,7 +56,12 @@ export component SocialFrame(
             <Link
               key={link.view}
               to={link.href}
-              aria-current={active === link.view ? "page" : undefined}
+              aria-current={
+                match (active === link.view) {
+                  true  => "page",
+                  false => undefined,
+                }
+              }
             >
               <Icon name={link.icon} size={18} />
               <span>{link.label}</span>
@@ -88,7 +93,17 @@ export component SocialFrame(
         </Suspense>
       </aside>
       <div
-        className={`workspace ${active === "timeline" ? "feed-workspace" : ""} ${aside ? "with-aside" : "wide"} ${active === "clips" ? "clips-workspace" : active === "login" || active === "signup" ? "account-workspace" : ""}`}
+        className={`workspace ${match (active) {
+          "timeline" => "feed-workspace",
+          _          => "",
+        }} ${match (aside) {
+          true  => "with-aside",
+          false => "wide",
+        }} ${match (active) {
+          "clips"            => "clips-workspace",
+          "login" | "signup" => "account-workspace",
+          _                  => "",
+        }}`}
       >
         <header className="topbar">
           <span className="breadcrumb">
@@ -127,54 +142,63 @@ export component SocialFrame(
         <main id="main-content" className="main-column" tabIndex={-1}>
           {children}
         </main>
-        {aside ? (
-          <aside className="discovery" aria-label="Community directory">
-            <section className="directory">
-              <div className="section-heading">
-                <h2>People in this space</h2>
-                <Icon name="users" size={15} />
-              </div>
-              {PEOPLE.map((person) => (
-                <Link
-                  className="directory-person"
-                  key={person.id}
-                  to={feedHref("all", person.handle)}
-                >
-                  <Avatar user={person} small />
-                  <span>
-                    <strong>{person.name}</strong>
-                    <small>{person.bio}</small>
-                  </span>
-                  <Icon name="arrow" size={14} />
-                </Link>
-              ))}
-            </section>
-            <section className="channel-directory">
-              <div className="section-heading">
-                <h2>Explore channels</h2>
-                <Icon name="hash" size={15} />
-              </div>
-              {TOPICS.map((topic) => (
-                <Link key={topic} to={feedHref(topic)}>
-                  <span className={`channel-dot ${topic}`} />
-                  <span>{topicLabel(topic)}</span>
-                  <Icon name="arrow" size={13} />
-                </Link>
-              ))}
-            </section>
-            <footer {...styled("discovery-footer", sharedStyles.discoveryFooter)}>
-              <span>Commonplace</span>
-              <span>Local workspace</span>
-            </footer>
-          </aside>
-        ) : null}
+        {
+          match (aside) {
+            false => null,
+            true  =>
+              <aside className="discovery" aria-label="Community directory">
+                <section className="directory">
+                  <div className="section-heading">
+                    <h2>People in this space</h2>
+                    <Icon name="users" size={15} />
+                  </div>
+                  {PEOPLE.map((person) => (
+                    <Link
+                      className="directory-person"
+                      key={person.id}
+                      to={feedHref("all", person.handle)}
+                    >
+                      <Avatar user={person} small />
+                      <span>
+                        <strong>{person.name}</strong>
+                        <small>{person.bio}</small>
+                      </span>
+                      <Icon name="arrow" size={14} />
+                    </Link>
+                  ))}
+                </section>
+                <section className="channel-directory">
+                  <div className="section-heading">
+                    <h2>Explore channels</h2>
+                    <Icon name="hash" size={15} />
+                  </div>
+                  {TOPICS.map((topic) => (
+                    <Link key={topic} to={feedHref(topic)}>
+                      <span className={`channel-dot ${topic}`} />
+                      <span>{topicLabel(topic)}</span>
+                      <Icon name="arrow" size={13} />
+                    </Link>
+                  ))}
+                </section>
+                <footer {...styled("discovery-footer", sharedStyles.discoveryFooter)}>
+                  <span>Commonplace</span>
+                  <span>Local workspace</span>
+                </footer>
+              </aside>,
+          }
+        }
       </div>
       <nav className="mobile-nav" aria-label="Mobile navigation">
         {links.map((link) => (
           <Link
             key={link.view}
             to={link.href}
-            aria-current={active === link.view ? "page" : undefined}
+            aria-current={
+              match (active === link.view) {
+                true  => "page",
+                false => undefined,
+              }
+            }
           >
             <Icon name={link.icon} size={20} />
             <span>{link.label}</span>

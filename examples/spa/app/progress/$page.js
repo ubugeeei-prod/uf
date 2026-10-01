@@ -17,9 +17,12 @@ export component Page() {
         <span> / {total}</span>
       </p>
       <p>
-        {total === 0
-          ? "A clear board. Start whenever you are ready."
-          : `${total - done} tasks left to make a little space.`}
+        {
+          match (total === 0) {
+            true  => "A clear board. Start whenever you are ready.",
+            false => `${total - done} tasks left to make a little space.`,
+          }
+        }
       </p>
       <progress value={done} max={Math.max(total, 1)} aria-label="Completed tasks" />
       <p>

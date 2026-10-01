@@ -1,11 +1,10 @@
 #!/bin/sh
 # `uf fmt --check` over every example, each from its own directory.
 #
-# Every `examples/*` is its own project, formatted by its own config. Most
-# take uf's defaults (`align` on), so they show what uf produces out of the
-# box; `simple-sns-native` keeps `align: false`, which `native:smoke` relies on
-# (#1667). The root's `fmt.ignore` keeps them out of the root run, which would
-# print them with the repository's `align: false` instead. They are still
+# Every `examples/*` is its own project, formatted by its own config, and each
+# one takes uf's defaults (`align` on), so the examples show what uf produces
+# out of the box. The root's `fmt.ignore` keeps them out of the root run, which
+# would print them with the repository's `align: false` instead. They are still
 # linted, checked and tested from the root. The native example's own
 # `native-example.sh` lane runs only in the release queue (#1683), so this is
 # what checks its formatting at PR time.

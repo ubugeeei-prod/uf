@@ -26,7 +26,7 @@ import {
 
 component Identity(session: Session) {
   return match (session) {
-    {kind: "guest"} => null,
+    {kind: "guest"}                           => null,
     {kind: "authenticated", user: const user} =>
       <View {...stylex.props(styles.rule, local.identity)}>
         <Avatar user={user} />
@@ -45,11 +45,11 @@ component Identity(session: Session) {
  */
 
 component SettingsForm(session: Session, settings: Settings) {
-  const { service, refresh } = useSocial();
+  const { service, refresh }          = useSocial();
   const [displayName, setDisplayName] = useState(settings.displayName);
-  const [bio, setBio] = useState(settings.bio);
-  const [email, setEmail] = useState(settings.email);
-  const [saved, save, saving] = useActionState<FormState<Settings>, Settings>(
+  const [bio,         setBio]         = useState(settings.bio);
+  const [email,       setEmail]       = useState(settings.email);
+  const [saved, save, saving]         = useActionState<FormState<Settings>, Settings>(
     async (_previous: FormState<Settings>, next: Settings): Promise<FormState<Settings>> => {
       const result = await service.updateSettings(next);
       if (result.status === "success") refresh();
@@ -58,7 +58,7 @@ component SettingsForm(session: Session, settings: Settings) {
     },
     IDLE,
   );
-  const [left, leave, leaving] = useActionState<FormState<null>, void>(async () => {
+  const [left, leave, leaving]        = useActionState<FormState<null>, void>(async () => {
     const result = await service.signOut();
     if (result.status === "success") refresh();
 
@@ -79,14 +79,24 @@ component SettingsForm(session: Session, settings: Settings) {
       <View {...stylex.props(styles.spread, local.footer)}>
         <Button
           primary={false}
-          pending={leaving ? "Signing out…" : null}
+          pending={
+            match (leaving) {
+              true  => "Signing out…",
+              false => null,
+            }
+          }
           label="Sign out"
           onPress={() => startTransition(() => leave())}
         >
           Sign out
         </Button>
         <Button
-          pending={saving ? "Saving…" : null}
+          pending={
+            match (saving) {
+              true  => "Saving…",
+              false => null,
+            }
+          }
           label="Save changes"
           onPress={() => startTransition(() => save({ displayName, bio, email }))}
         >
@@ -123,7 +133,7 @@ export component Page() {
         >
           {({ session, settings }) =>
             match (settings) {
-              {kind: "unauthenticated"} => <SignInPrompt />,
+              {kind: "unauthenticated"}           => <SignInPrompt />,
               // A different account is a different form, with that account's values.
               {kind: "ready", value: const value} =>
                 <SettingsForm
@@ -142,12 +152,12 @@ const local = stylex.create({
   form: { marginTop: 8 },
   identity: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingTop: 18,
+    alignItems   : "center",
+    gap          : 12,
+    paddingTop   : 18,
     paddingBottom: 18,
-    marginBottom: 22,
+    marginBottom : 22,
   },
-  name: { fontSize: 14, fontWeight: "600", color: "#242424" },
+  name  : { fontSize: 14, fontWeight: "600", color: "#242424" },
   footer: { borderTopWidth: 1, borderTopColor: "#dcdcdc", paddingTop: 20, marginTop: 4 },
 });

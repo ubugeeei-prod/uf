@@ -30,7 +30,7 @@ import {
   SignInPrompt,
 } from "../../_shared/ui.native.js";
 
-component MessageBubble(message: Message) {
+component MessageBubble(message: Message) renders View {
   const mine = message.author === "me";
   const sending = message.id.startsWith("pending-");
 
@@ -40,7 +40,12 @@ component MessageBubble(message: Message) {
         <Text {...stylex.props(local.text, mine && local.textMine)}>{message.body}</Text>
       </View>
       <Text {...stylex.props(local.time)}>
-        {sending ? "Sending…" : displayTime(message.sentAt)}
+        {
+          match (sending) {
+            true  => "Sending…",
+            false => displayTime(message.sentAt),
+          }
+        }
       </Text>
     </View>
   );
@@ -71,12 +76,16 @@ component Heading(participant: User | null) {
       >
         <Text {...stylex.props(local.back)}>←</Text>
       </Pressable>
-      {participant != null ? (
-        <>
-          <Avatar user={participant} small />
-          <Text {...stylex.props(styles.sectionTitle)}>{participant.name}</Text>
-        </>
-      ) : null}
+      {
+        match (participant) {
+          null         => null,
+          const person =>
+            <>
+              <Avatar user={person} small />
+              <Text {...stylex.props(styles.sectionTitle)}>{person.name}</Text>
+            </>,
+        }
+      }
     </View>
   );
 }
@@ -88,8 +97,8 @@ component Heading(participant: User | null) {
  */
 
 component Conversation(thread: Thread, messages: $ReadOnlyArray<Message>) {
-  const { service, refresh } = useSocial();
-  const [body, setBody] = useState("");
+  const { service, refresh }     = useSocial();
+  const [body,    setBody]       = useState("");
   const [entries, addOptimistic] = useOptimistic<$ReadOnlyArray<Message>, Message>(
     messages,
     (current, sending) => [...current, sending],
@@ -97,9 +106,9 @@ component Conversation(thread: Thread, messages: $ReadOnlyArray<Message>) {
   const [state, submit, pending] = useActionState<FormState<Message>, string>(
     async (_previous: FormState<Message>, text: string): Promise<FormState<Message>> => {
       addOptimistic({
-        id: "pending-message",
+        id    : "pending-message",
         author: "me",
-        body: text.trim(),
+        body  : text.trim(),
         sentAt: new Date().toISOString(),
       });
       const result = await service.send(thread.id, text);
@@ -108,7 +117,7 @@ component Conversation(thread: Thread, messages: $ReadOnlyArray<Message>) {
           startTransition(() => setBody(""));
           refresh();
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}   => {}
       }
 
       return result;
@@ -138,7 +147,12 @@ component Conversation(thread: Thread, messages: $ReadOnlyArray<Message>) {
         <Button
           label="Send message"
           disabled={body.trim() === ""}
-          pending={pending ? "Sending…" : null}
+          pending={
+            match (pending) {
+              true  => "Sending…",
+              false => null,
+            }
+          }
           onPress={() => startTransition(() => submit(body))}
         >
           Send
@@ -163,7 +177,12 @@ export component Page() {
   return (
     <Screen edges={["top", "bottom"]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={
+          match (Platform.OS) {
+            "ios" => "padding",
+            _     => undefined,
+          }
+        }
         {...stylex.props(local.fill)}
       >
         <AsyncRegion
@@ -174,12 +193,12 @@ export component Page() {
         >
           {(conversation) =>
             match (conversation) {
-              {kind: "unauthenticated"} =>
+              {kind: "unauthenticated"}                                       =>
                 <>
                   <Heading participant={null} />
                   <SignInPrompt title="Sign in to read your messages" />
                 </>,
-              {kind: "missing"} =>
+              {kind: "missing"}                                               =>
                 <>
                   <Heading participant={null} />
                   <EmptyState title="Conversation not found">
@@ -202,64 +221,64 @@ const local = stylex.create({
   fill: { flex: 1 },
   heading: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingLeft: 20,
-    paddingRight: 20,
-    paddingTop: 12,
+    alignItems   : "center",
+    gap          : 12,
+    paddingLeft  : 20,
+    paddingRight : 20,
+    paddingTop   : 12,
     paddingBottom: 12,
   },
-  back: { fontSize: 18, color: "#242424", paddingRight: 4 },
-  log: { paddingLeft: 20, paddingRight: 20, paddingTop: 18, paddingBottom: 18, gap: 14 },
+  back   : { fontSize: 18, color: "#242424", paddingRight: 4 },
+  log    : { paddingLeft: 20, paddingRight: 20, paddingTop: 18, paddingBottom: 18, gap: 14 },
   message: { alignItems: "flex-start", gap: 4 },
-  mine: { alignItems: "flex-end" },
+  mine   : { alignItems: "flex-end" },
   sending: { opacity: 0.6 },
   bubble: {
-    maxWidth: "82%",
-    paddingLeft: 13,
-    paddingRight: 13,
-    paddingTop: 9,
-    paddingBottom: 9,
-    borderRadius: 12,
+    maxWidth              : "82%",
+    paddingLeft           : 13,
+    paddingRight          : 13,
+    paddingTop            : 9,
+    paddingBottom         : 9,
+    borderRadius          : 12,
     borderBottomLeftRadius: 3,
-    borderWidth: 1,
-    borderColor: "#e2e2e2",
-    backgroundColor: "#ffffff",
+    borderWidth           : 1,
+    borderColor           : "#e2e2e2",
+    backgroundColor       : "#ffffff",
   },
   bubbleMine: {
-    borderBottomLeftRadius: 12,
+    borderBottomLeftRadius : 12,
     borderBottomRightRadius: 3,
-    borderColor: "#202020",
-    backgroundColor: "#202020",
+    borderColor            : "#202020",
+    backgroundColor        : "#202020",
   },
-  text: { fontSize: 13, lineHeight: 20, color: "#242424" },
+  text    : { fontSize: 13, lineHeight: 20, color: "#242424" },
   textMine: { color: "#ffffff" },
-  time: { fontSize: 10, color: "#868686" },
+  time    : { fontSize: 10, color: "#868686" },
   composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-    paddingLeft: 20,
-    paddingRight: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
+    flexDirection : "row",
+    alignItems    : "flex-end",
+    gap           : 10,
+    paddingLeft   : 20,
+    paddingRight  : 20,
+    paddingTop    : 10,
+    paddingBottom : 10,
     borderTopWidth: 1,
     borderTopColor: "#dcdcdc",
   },
   input: {
-    flex: 1,
-    minWidth: 0,
-    maxHeight: 120,
-    borderWidth: 1,
-    borderColor: "#d7d7d7",
-    borderRadius: 6,
-    paddingLeft: 12,
-    paddingRight: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#242424",
+    flex           : 1,
+    minWidth       : 0,
+    maxHeight      : 120,
+    borderWidth    : 1,
+    borderColor    : "#d7d7d7",
+    borderRadius   : 6,
+    paddingLeft    : 12,
+    paddingRight   : 12,
+    paddingTop     : 10,
+    paddingBottom  : 10,
+    fontSize       : 13,
+    lineHeight     : 19,
+    color          : "#242424",
     backgroundColor: "#ffffff",
   },
   status: { paddingLeft: 20, paddingRight: 20 },

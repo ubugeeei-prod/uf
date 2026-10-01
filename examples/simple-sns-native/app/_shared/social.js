@@ -9,36 +9,36 @@ export type Topic = "design" | "release" | "runtime" | "community";
 export type TopicFilter = Topic | "all";
 
 export type User = {|
-  readonly id: string,
-  readonly name: string,
+  readonly id    : string,
+  readonly name  : string,
   readonly handle: string,
   readonly avatar: string,
-  readonly bio: string,
+  readonly bio   : string,
 |};
 
 /** A published note with reaction state calculated for the current viewer. */
 
 export type Post = {|
-  readonly id: string,
-  readonly author: User,
-  readonly body: string,
-  readonly topic: Topic,
+  readonly id       : string,
+  readonly author   : User,
+  readonly body     : string,
+  readonly topic    : Topic,
   readonly createdAt: string,
-  readonly likes: number,
-  readonly liked: boolean,
+  readonly likes    : number,
+  readonly liked    : boolean,
 |};
 
 /** A conversation entry whose direction is relative to the reader. */
 
 export type Message = {|
-  readonly id: string,
+  readonly id    : string,
   readonly author: "me" | "them",
-  readonly body: string,
+  readonly body  : string,
   readonly sentAt: string,
 |};
 
 export type Thread = {|
-  readonly id: string,
+  readonly id         : string,
   readonly participant: User,
   readonly lastMessage: string,
 |};
@@ -47,14 +47,14 @@ export type Thread = {|
 
 export type Settings = {|
   readonly displayName: string,
-  readonly bio: string,
-  readonly email: string,
+  readonly bio        : string,
+  readonly email      : string,
 |};
 
 export type Account = {|
-  readonly name: string,
+  readonly name  : string,
   readonly handle: string,
-  readonly email: string,
+  readonly email : string,
 |};
 
 export type FeedFilter = {| readonly topic: TopicFilter, readonly search: string |};
@@ -77,8 +77,8 @@ export type ConversationData =
   | {| readonly kind: "unauthenticated" |}
   | {| readonly kind: "missing" |}
   | {|
-      readonly kind: "ready",
-      readonly thread: Thread,
+      readonly kind    : "ready",
+      readonly thread  : Thread,
       readonly messages: $ReadOnlyArray<Message>,
     |};
 
@@ -112,9 +112,9 @@ export const MAX_MESSAGE_LENGTH: number = 2000;
 
 export function topicLabel(topic: Topic): string {
   return match (topic) {
-    "design" => "Design",
-    "release" => "Shipping",
-    "runtime" => "Engineering",
+    "design"    => "Design",
+    "release"   => "Shipping",
+    "runtime"   => "Engineering",
     "community" => "Community",
   };
 }
@@ -123,10 +123,10 @@ export function topicLabel(topic: Topic): string {
 
 export function defaultTopic(filter: TopicFilter): Topic {
   return match (filter) {
-    "all" => "community",
-    "design" => "design",
-    "release" => "release",
-    "runtime" => "runtime",
+    "all"       => "community",
+    "design"    => "design",
+    "release"   => "release",
+    "runtime"   => "runtime",
     "community" => "community",
   };
 }
@@ -144,7 +144,7 @@ export function displayDate(value: string): string {
 
 export function displayTime(value: string): string {
   return new Intl.DateTimeFormat("en", {
-    hour: "2-digit",
+    hour  : "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(new Date(value));

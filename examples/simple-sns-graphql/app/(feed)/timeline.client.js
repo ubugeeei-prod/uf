@@ -46,26 +46,35 @@ export component Timeline(
 
   return (
     <>
-      {posts.length ? (
-        <section aria-label="Timeline posts">
-          {posts.map((post) => (
-            <PostCard key={post.id} postRef={post} signedIn={data.viewer != null} />
-          ))}
-        </section>
-      ) : (
-        <EmptyState title="No notes here yet">Try another channel or search.</EmptyState>
-      )}
+      {
+        match (posts.length > 0) {
+          true  =>
+            <section aria-label="Timeline posts">
+              {posts.map((post) => (
+                <PostCard key={post.id} postRef={post} signedIn={data.viewer != null} />
+              ))}
+            </section>,
+          false =>
+            <EmptyState title="No notes here yet">Try another channel or search.</EmptyState>,
+        }
+      }
       <nav className="pagination" aria-label="Feed pagination">
-        {filter.page > 1 ? (
-          <Link to={feedHref(filter.topic, filter.query, filter.page - 1)}>Newer notes</Link>
-        ) : (
-          <span>Latest notes</span>
-        )}
-        {data.feed.hasNext ? (
-          <Link to={feedHref(filter.topic, filter.query, filter.page + 1)}>
-            Older notes <Icon name="arrow" size={14} />
-          </Link>
-        ) : null}
+        {
+          match (filter.page > 1) {
+            true  =>
+              <Link to={feedHref(filter.topic, filter.query, filter.page - 1)}>Newer notes</Link>,
+            false => <span>Latest notes</span>,
+          }
+        }
+        {
+          match (data.feed.hasNext) {
+            true  =>
+              <Link to={feedHref(filter.topic, filter.query, filter.page + 1)}>
+                Older notes <Icon name="arrow" size={14} />
+              </Link>,
+            false => null,
+          }
+        }
       </nav>
     </>
   );

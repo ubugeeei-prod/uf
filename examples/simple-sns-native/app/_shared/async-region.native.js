@@ -11,13 +11,13 @@ import { Button, EmptyState, LoadingState } from "./ui.native.js";
 
 component SettledRegion<T>(
   resource: Promise<Settled<T>>,
-  label: string,
-  retry: () => void,
+  label   : string,
+  retry   : () => void,
   children: (T) => React.MixedElement,
 ) {
   return match (use(resource)) {
     {kind: "ready", value: const value} => children(value),
-    {kind: "failed"} =>
+    {kind: "failed"}                    =>
       <EmptyState
         title={`Could not load ${label}`}
         action={
@@ -38,9 +38,9 @@ component SettledRegion<T>(
 
 export component AsyncRegion<T>(
   resource: Promise<Settled<T>>,
-  label: string,
-  retry: () => void,
-  pending: renders LoadingState,
+  label   : string,
+  retry   : () => void,
+  pending : renders LoadingState,
   children: (T) => React.MixedElement,
 ) {
   return (

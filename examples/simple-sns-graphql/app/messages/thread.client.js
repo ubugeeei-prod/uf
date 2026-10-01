@@ -53,14 +53,19 @@ export component Threads(
   );
 }
 
-component Thread(threadRef: SnsThread_thread$key, selected: boolean) {
+component Thread(threadRef: SnsThread_thread$key, selected: boolean) renders Link {
   const thread = useFragment(threadFragment, threadRef);
 
   return (
     <Link
       className="thread"
       to={`/messages?thread=${encodeURIComponent(thread.id)}`}
-      aria-current={selected ? "page" : undefined}
+      aria-current={
+        match (selected) {
+          true  => "page",
+          false => undefined,
+        }
+      }
     >
       <UserAvatar userRef={thread.participant} small />
       <span>

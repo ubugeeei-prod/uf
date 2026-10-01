@@ -28,8 +28,8 @@ async function settle<T>(read: () => Promise<T>): Promise<Settled<T>> {
 type Reads = {|
   readonly read: <T>(
     revision: number,
-    key: string,
-    load: (Service) => Promise<T>,
+    key     : string,
+    load    : (Service) => Promise<T>,
   ) => Promise<Settled<T>>,
 |};
 
@@ -62,10 +62,10 @@ function createReads(service: Service): Reads {
 }
 
 type Social = {|
-  readonly service: Service,
-  readonly reads: Reads,
+  readonly service : Service,
+  readonly reads   : Reads,
   readonly revision: number,
-  readonly refresh: () => void,
+  readonly refresh : () => void,
 |};
 
 const Context: React.Context<Social | null> = createContext(null);
@@ -73,7 +73,7 @@ const Context: React.Context<Social | null> = createContext(null);
 /** Mounted once, above every boundary, so it never suspends and its reads outlive a retry. */
 
 export component SocialProvider(service: Service, children: React.Node) {
-  const [reads] = useState(() => createReads(service));
+  const [reads]                 = useState(() => createReads(service));
   const [revision, setRevision] = useState(0);
   const refresh = () => startTransition(() => setRevision((current) => current + 1));
 
@@ -103,7 +103,7 @@ export hook useSocial(): {| readonly service: Service, readonly refresh: () => v
  */
 
 export hook useResource<T>(
-  key: string,
+  key : string,
   load: (Service) => Promise<T>,
 ): {| readonly resource: Promise<Settled<T>>, readonly retry: () => void |} {
   const { reads, revision, refresh } = useContextValue();

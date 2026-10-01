@@ -42,11 +42,15 @@ export component SignOut() {
       <button type="submit" className="icon-button" aria-label="Sign out" disabled={pending}>
         <Icon name="logout" size={18} />
       </button>
-      {error ? (
-        <span role="alert" className="field-error">
-          {error}
-        </span>
-      ) : null}
+      {
+        match (error) {
+          ""            => null,
+          const message =>
+            <span role="alert" className="field-error">
+              {message}
+            </span>,
+        }
+      }
     </form>
   );
 }

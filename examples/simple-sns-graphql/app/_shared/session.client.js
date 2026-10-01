@@ -44,32 +44,43 @@ export component SessionControls(queryRef: SessionRef) {
 
   return (
     <>
-      <Link className="compose-link" to={viewer == null ? "/login" : "/#compose"}>
+      <Link
+        className="compose-link"
+        to={
+          match (viewer) {
+            null | undefined => "/login",
+            _                => "/#compose",
+          }
+        }
+      >
         <Icon name="compose" size={16} />
         Write a note
       </Link>
       <div className="account">
-        {viewer == null ? (
-          <>
-            <Link className="button primary" to="/login">
-              Sign in
-            </Link>
-            <Link className="button secondary" to="/signup">
-              Join
-            </Link>
-          </>
-        ) : (
-          <>
-            <Link to="/settings" className="account-person">
-              <UserAvatar userRef={viewer} small />
-              <span>
-                <strong>{viewer.name}</strong>
-                <small>@{viewer.handle}</small>
-              </span>
-            </Link>
-            <SignOut />
-          </>
-        )}
+        {
+          match (viewer) {
+            null | undefined =>
+              <>
+                <Link className="button primary" to="/login">
+                  Sign in
+                </Link>
+                <Link className="button secondary" to="/signup">
+                  Join
+                </Link>
+              </>,
+            const person     =>
+              <>
+                <Link to="/settings" className="account-person">
+                  <UserAvatar userRef={person} small />
+                  <span>
+                    <strong>{person.name}</strong>
+                    <small>@{person.handle}</small>
+                  </span>
+                </Link>
+                <SignOut />
+              </>,
+          }
+        }
       </div>
     </>
   );
@@ -81,9 +92,23 @@ export component MobileCompose(queryRef: SessionRef) {
   const { viewer } = useQueryFromServer(sessionQuery, queryRef);
 
   return (
-    <Link to={viewer == null ? "/login" : "/#compose"}>
+    <Link
+      to={
+        match (viewer) {
+          null | undefined => "/login",
+          _                => "/#compose",
+        }
+      }
+    >
       <Icon name="compose" size={20} />
-      <span>{viewer == null ? "Sign in" : "Write"}</span>
+      <span>
+        {
+          match (viewer) {
+            null | undefined => "Sign in",
+            _                => "Write",
+          }
+        }
+      </span>
     </Link>
   );
 }
@@ -122,7 +147,12 @@ component SignOut() {
       >
         <Icon name="logout" size={17} />
       </button>
-      {error ? <p role="alert">{error}</p> : null}
+      {
+        match (error) {
+          ""            => null,
+          const message => <p role="alert">{message}</p>,
+        }
+      }
     </div>
   );
 }

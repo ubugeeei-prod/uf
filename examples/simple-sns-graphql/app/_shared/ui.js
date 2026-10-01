@@ -68,15 +68,29 @@ export component Avatar(
 
   return (
     <UiAvatar.Root {...props(styles.avatar, small && styles.small)} aria-hidden="true">
-      {photo != null ? (
-        <UiAvatar.Image
-          src={photo}
-          {...styled("avatar-photo", sharedStyles.avatarPhoto)}
-          width={small ? 34 : 42}
-          height={small ? 34 : 42}
-          alt=""
-        />
-      ) : null}
+      {
+        match (photo) {
+          null      => null,
+          const src =>
+            <UiAvatar.Image
+              src={src}
+              {...styled("avatar-photo", sharedStyles.avatarPhoto)}
+              width={
+                match (small) {
+                  true  => 34,
+                  false => 42,
+                }
+              }
+              height={
+                match (small) {
+                  true  => 34,
+                  false => 42,
+                }
+              }
+              alt=""
+            />,
+        }
+      }
       <UiAvatar.Fallback {...styled("avatar-fallback", sharedStyles.avatarFallback)}>
         {user.avatar}
       </UiAvatar.Fallback>
@@ -105,9 +119,17 @@ export component EmptyState(
 
 /** Render navigation with the shared primary or text-link treatment. */
 
-export component ActionLink(to: string, children: string, primary: boolean = true) {
+export component ActionLink(to: string, children: string, primary: boolean = true) renders Link {
   return (
-    <Link className={primary ? "button primary" : "text-link"} to={to}>
+    <Link
+      className={
+        match (primary) {
+          true  => "button primary",
+          false => "text-link",
+        }
+      }
+      to={to}
+    >
       {children}
       <Icon name="arrow" size={15} />
     </Link>
@@ -144,7 +166,12 @@ component SkeletonField(multiline: boolean = false) {
           sharedStyles.skeletonFieldLabel,
         )}
       />
-      <Skeleton.Box className={`skeleton-control ${multiline ? "multiline" : ""}`} />
+      <Skeleton.Box
+        className={`skeleton-control ${match (multiline) {
+          true  => "multiline",
+          false => "",
+        }}`}
+      />
     </div>
   );
 }
@@ -273,7 +300,13 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
               </div>
               <div className="message-list" aria-hidden="true">
                 {[0, 1, 2].map((id) => (
-                  <div className={`message-bubble ${id === 1 ? "mine" : ""}`} key={id}>
+                  <div
+                    className={`message-bubble ${match (id === 1) {
+                      true  => "mine",
+                      false => "",
+                    }}`}
+                    key={id}
+                  >
                     <div className="skeleton-message-content">
                       <Skeleton.Box
                         {...styled("skeleton-ink skeleton-message", sharedStyles.skeletonInk)}

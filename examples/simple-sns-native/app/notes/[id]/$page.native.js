@@ -18,7 +18,7 @@ import { PostCard } from "../../(tabs)/post-card.native.js";
 export component Page() {
   const { id } = useParams();
   const wanted = typeof id === "string" ? id : "";
-  const router = useNativeRouter();
+  const router              = useNativeRouter();
   const { resource, retry } = useResource(`note:${wanted}`, (service) =>
     Promise.all([service.session(), service.post(wanted)]).then(([session, post]) => ({
       session,
@@ -44,11 +44,23 @@ export component Page() {
           pending={<LoadingState kind="feed" />}
         >
           {({ session, post }) =>
-            post == null ? (
-              <EmptyState title="This note is no longer here">It may have been removed.</EmptyState>
-            ) : (
-              <PostCard post={post} signedIn={session.kind === "authenticated"} linked={false} />
-            )}
+            match (post) {
+              null       =>
+                <EmptyState title="This note is no longer here">
+                  It may have been removed.
+                </EmptyState>,
+              const note =>
+                <PostCard
+                  post={note}
+                  signedIn={
+                    match (session) {
+                      {kind: "guest"}              => false,
+                      {kind: "authenticated", ...} => true,
+                    }
+                  }
+                  linked={false}
+                />,
+            }}
         </AsyncRegion>
       </ScrollView>
     </Screen>

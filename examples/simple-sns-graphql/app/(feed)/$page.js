@@ -43,7 +43,12 @@ export component Page(searchParams: SearchParams) {
         <nav className="feed-tabs" aria-label="Feed channels">
           <Link
             to={feedHref("all", filter.query)}
-            aria-current={filter.topic === "all" ? "page" : undefined}
+            aria-current={
+              match (filter.topic) {
+                "all" => "page",
+                _     => undefined,
+              }
+            }
           >
             All notes
           </Link>
@@ -51,7 +56,12 @@ export component Page(searchParams: SearchParams) {
             <Link
               key={topic}
               to={feedHref(topic, filter.query)}
-              aria-current={filter.topic === topic ? "page" : undefined}
+              aria-current={
+                match (filter.topic === topic) {
+                  true  => "page",
+                  false => undefined,
+                }
+              }
             >
               {topicLabel(topic)}
             </Link>
@@ -59,9 +69,13 @@ export component Page(searchParams: SearchParams) {
         </nav>
       </div>
       <SearchNotes filter={filter} key={filter.query} />
-      {filter.query ? (
-        <p {...styled("result-label", sharedStyles.resultLabel)}>Results for “{filter.query}”</p>
-      ) : null}
+      {
+        match (filter.query) {
+          ""          => null,
+          const query =>
+            <p {...styled("result-label", sharedStyles.resultLabel)}>Results for “{query}”</p>,
+        }
+      }
       <div className="feed-content">
         <Suspense fallback={<LoadingState kind="feed" />}>
           <ComposerSlot
