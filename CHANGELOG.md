@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.19.0
+
+- fix: copyfrom comments, value-named types, and breaking return wrappers (#1732) (62e10c3a)
+
 ## uf@0.18.0
 
 - fix: align continued hooks and match arrows (#1725) (a7fa8fa9)
