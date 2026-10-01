@@ -78,10 +78,10 @@ sqlc has two plugin transports, and both carry the same protobuf:
 
 `uf sqlc generate` runs `sqlc generate` with the running `uf` first on `PATH`,
 so the plugin sqlc starts is the same `uf` that was asked. `uf sqlc diff` runs
-`sqlc diff` and prints what sqlc printed. A non-zero exit whose stderr is
-empty, or whose stdout or stderr contains a unified diff (`--- a`), means the
-checked-in files are stale. Any other stderr is sqlc itself failing, and uf
-reports that instead of asking for a regenerate.
+`sqlc diff` and prints what sqlc printed. An exit of 1 whose stderr is empty,
+or whose stdout or stderr contains a unified diff (`--- a`), means the
+checked-in files are stale. Any other exit, including a signal, is sqlc itself
+failing, and uf reports that instead of asking for a regenerate.
 
 ### Generated code is formatted, and marked generated
 

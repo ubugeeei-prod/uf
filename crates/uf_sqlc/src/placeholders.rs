@@ -115,6 +115,16 @@ pub fn scan(text: &str, dialect: Dialect) -> Vec<Found> {
                 });
                 at += 1 + digits;
             }
+            // PostgreSQL identifiers continue through `$` (`t$x$`). Consuming
+            // the identifier here keeps that `$` from opening a dollar quote
+            // or a `$1` placeholder. A `$` that starts the token is still a
+            // placeholder or a dollar quote, handled above.
+            byte if byte.is_ascii_alphabetic() || byte == b'_' => {
+                at += 1;
+                while at < bytes.len() && is_identifier_byte(bytes[at], dialect) {
+                    at += 1;
+                }
+            }
             _ => at += 1,
         }
     }
@@ -354,10 +364,14 @@ fn find_keyword(text: &str, keyword: &str, dialect: Dialect) -> Option<usize> {
                     at += 1;
                 }
             }
-            byte if byte.is_ascii_alphabetic() => {
+            // `_values` is one identifier, and PostgreSQL continues an
+            // identifier through `$` (`t$x$`). Either one must stay a single
+            // word, or the letters `values` inside it match the keyword and a
+            // `$` starts a dollar quote that swallows the real `VALUES`.
+            byte if byte.is_ascii_alphabetic() || byte == b'_' => {
                 let start = at;
                 at += 1;
-                while at < bytes.len() && is_word(bytes[at]) {
+                while at < bytes.len() && is_identifier_byte(bytes[at], dialect) {
                     at += 1;
                 }
                 if text[start..at].eq_ignore_ascii_case(keyword) {
@@ -372,6 +386,12 @@ fn find_keyword(text: &str, keyword: &str, dialect: Dialect) -> Option<usize> {
 
 fn is_word(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+/// A byte that continues an identifier. PostgreSQL allows `$` after the first
+/// character; the other dialects do not, and a `$` there is not this keyword.
+fn is_identifier_byte(byte: u8, dialect: Dialect) -> bool {
+    is_word(byte) || (dialect == Dialect::Postgresql && byte == b'$')
 }
 
 fn matching_paren(text: &str, open: usize, dialect: Dialect) -> Option<usize> {
@@ -524,5 +544,23 @@ mod tests {
         .unwrap();
         assert_eq!(split.head, "INSERT INTO $$values$$ (a, b) VALUES ");
         assert_eq!(split.refs, [0, 1]);
+    }
+
+    #[test]
+    fn an_identifier_that_contains_values_is_not_the_keyword() {
+        let underscored = "INSERT INTO _values (a, b) VALUES ($1, $2)";
+        let split = copy_split(
+            underscored,
+            Dialect::Postgresql,
+            &[param(1, "a", false), param(2, "b", false)],
+        )
+        .unwrap();
+        assert_eq!(split.head, "INSERT INTO _values (a, b) VALUES ");
+        assert_eq!(split.refs, [0, 1]);
+
+        let dollars = "INSERT INTO t$x$ (a) VALUES ($1)";
+        let split = copy_split(dollars, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.head, "INSERT INTO t$x$ (a) VALUES ");
+        assert_eq!(split.refs, [0]);
     }
 }

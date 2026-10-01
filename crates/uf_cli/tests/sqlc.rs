@@ -234,6 +234,23 @@ fn diff_reports_a_sqlc_failure_that_is_not_a_diff() {
 
 #[cfg(unix)]
 #[test]
+fn diff_reports_an_exit_other_than_1_as_a_sqlc_failure() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let sqlc = fake_sqlc_output(dir.path(), 2, "", "");
+    let output = uf()
+        .args(["sqlc", "diff"])
+        .current_dir(dir.path())
+        .env("SQLC", &sqlc)
+        .output()
+        .expect("run uf");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("sqlc diff failed"), "{stderr}");
+    assert!(!stderr.contains("out of date"), "{stderr}");
+}
+
+#[cfg(unix)]
+#[test]
 fn diff_treats_a_unified_diff_as_stale_output() {
     let dir = tempfile::tempdir().expect("tempdir");
     let sqlc = fake_sqlc_output(

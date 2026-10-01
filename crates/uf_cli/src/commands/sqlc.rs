@@ -102,8 +102,9 @@ pub(crate) fn sqlc(cwd: &Utf8Path, ui: &mut Ui, command: SqlcCommand) -> Result<
         }
     };
     if verb == "diff" {
-        // sqlc exits 1 both for a stale tree and for a SQL error. An empty
-        // stderr, or a unified diff on either stream, is the stale tree.
+        // sqlc exits 1 both for a stale tree and for a SQL error. Only that
+        // exit, with an empty stderr or a unified diff on either stream, is
+        // the stale tree. A signal or any other code is sqlc failing.
         let output = run.output().map_err(failed_to_start)?;
         let _ = std::io::stdout().write_all(&output.stdout);
         let _ = std::io::stderr().write_all(&output.stderr);
@@ -111,12 +112,13 @@ pub(crate) fn sqlc(cwd: &Utf8Path, ui: &mut Ui, command: SqlcCommand) -> Result<
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let diff = stdout.contains("--- a") || stderr.contains("--- a");
-            if stderr.is_empty() || diff {
+            if output.status.code() == Some(1) && (stderr.is_empty() || diff) {
                 bail!(uf_infra::cstr!(
                     "the generated files are out of date; run `uf sqlc generate`"
                 ));
             }
-            bail!(uf_infra::cstr!("sqlc diff failed"));
+            let status = output.status;
+            bail!(uf_infra::cstr!("sqlc diff failed ({status})"));
         }
     } else {
         let status = run.status().map_err(failed_to_start)?;
