@@ -74,7 +74,7 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
                   className="reaction"
                   disabled={pending}
                   aria-pressed={post.liked}
-                  aria-label={`${match (post.liked) {
+                  aria-label={`${match (post.liked === true) {
                     true  => "Remove appreciation",
                     false => "Appreciate",
                   }} · ${post.likes}`}

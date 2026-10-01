@@ -358,7 +358,7 @@ component CarouselPrevious(
   children?: React.Node,
   label?: string = "Previous slide",
   ...rest: Rest
-) {
+) renders CarouselStep {
   return (
     <CarouselStep {...forwarded(rest)} label={label} step={-1}>
       {children}
@@ -367,7 +367,11 @@ component CarouselPrevious(
 }
 
 /** The button that goes forward one slide. */
-component CarouselNext(children?: React.Node, label?: string = "Next slide", ...rest: Rest) {
+component CarouselNext(
+  children?: React.Node,
+  label?: string = "Next slide",
+  ...rest: Rest
+) renders CarouselStep {
   return (
     <CarouselStep {...forwarded(rest)} label={label} step={1}>
       {children}

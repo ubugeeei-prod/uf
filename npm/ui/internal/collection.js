@@ -554,7 +554,12 @@ export component CollectionRoot(kind: Kind, options: CollectionProps) {
   });
   return (
     <>
-      {render != null ? render(props) : <div {...props} />}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
       {/* For a screen reader; a sighted reader sees the selection itself. */}
       <span role="status" aria-live="polite" style={visuallyHiddenStyle}>
         {drag.announcement || announcement}

@@ -157,7 +157,12 @@ component TabsRoot(
 
   return (
     <TabsContext.Provider value={state}>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </TabsContext.Provider>
   );
 }
@@ -242,10 +247,10 @@ component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Res
     role: "tablist",
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /** A tab, and the list that owns it, as the arrow keys and the indicator find them. */
@@ -356,10 +361,10 @@ component TabsTab(
     tabIndex: active ? 0 : -1,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -398,10 +403,10 @@ component TabsPanel(value: string, children: React.Node, render?: RenderProp, ..
     tabIndex: 0,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

@@ -49,7 +49,12 @@ component ColorPickerRoot(
   const props = withProps(rest, { children });
   return (
     <ColorContext.Provider value={state}>
-      {render != null ? render(props) : <div {...props} />}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </ColorContext.Provider>
   );
 }
@@ -63,7 +68,10 @@ component ColorPickerInput(render?: RenderProp, ...rest: Rest) {
       color.set(event.currentTarget.value + color.value.slice(7)),
     ),
   });
-  return render != null ? render(props) : <input {...props} />;
+  return match (render) {
+    undefined => <input {...props} />,
+    const custom => custom(props),
+  };
 }
 component ColorPickerField(render?: RenderProp, ...rest: Rest) {
   const color = useColor();
@@ -92,7 +100,10 @@ component ColorPickerField(render?: RenderProp, ...rest: Rest) {
       }
     }),
   });
-  return render != null ? render(props) : <input {...props} />;
+  return match (render) {
+    undefined => <input {...props} />,
+    const custom => custom(props),
+  };
 }
 component ColorPickerChannel(
   channel: "red" | "green" | "blue" | "alpha",
@@ -159,7 +170,10 @@ component ColorPickerChannel(
       );
     }),
   });
-  return render != null ? render(props) : <input {...props} />;
+  return match (render) {
+    undefined => <input {...props} />,
+    const custom => custom(props),
+  };
 }
 component ColorPickerSwatch(render?: RenderProp, ...rest: Rest) {
   const color = useColor();
@@ -168,7 +182,10 @@ component ColorPickerSwatch(render?: RenderProp, ...rest: Rest) {
     "data-color": color.value,
     style: { ...(rest.style as $FlowFixMe), backgroundColor: color.value },
   });
-  return render != null ? render(props) : <span {...props} />;
+  return match (render) {
+    undefined => <span {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

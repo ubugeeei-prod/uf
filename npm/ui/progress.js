@@ -84,8 +84,8 @@ export component Progress(
     role: "progressbar",
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }

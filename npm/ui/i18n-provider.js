@@ -30,7 +30,12 @@ export component I18nProvider(
   const props = withProps(rest, { children, lang: state.locale, dir: state.direction });
   return (
     <LocaleContext.Provider value={state}>
-      {render != null ? render(props) : <div {...props} />}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </LocaleContext.Provider>
   );
 }

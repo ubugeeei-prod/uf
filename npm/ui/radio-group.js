@@ -218,7 +218,12 @@ component RadioGroupRoot(
 
   return (
     <RadioGroupContext.Provider value={state}>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </RadioGroupContext.Provider>
   );
 }
@@ -276,7 +281,12 @@ component RadioGroupItem(
 
   return (
     <RadioItemContext.Provider value={item}>
-      {render == null ? <button {...props} type="button" /> : render(props)}
+      {
+        match (render) {
+          undefined => <button {...props} type="button" />,
+          const custom => custom(props),
+        }
+      }
     </RadioItemContext.Provider>
   );
 }
@@ -300,7 +310,10 @@ component RadioGroupIndicator(children?: React.Node, render?: RenderProp, ...res
     return null;
   }
   const props = withProps(rest, { "aria-hidden": "true", children });
-  return render == null ? <span {...props} /> : render(props);
+  return match (render) {
+    undefined => <span {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

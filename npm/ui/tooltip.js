@@ -306,10 +306,10 @@ component TooltipTrigger(children?: React.Node, render?: RenderProp, ...rest: Re
     ref: attach,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -401,10 +401,10 @@ component TooltipBody(
     // did not ask for and cannot leave the way they expect.
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

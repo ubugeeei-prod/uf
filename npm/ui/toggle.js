@@ -89,17 +89,15 @@ export component Toggle(
     }),
   };
 
-  if (render != null) {
-    return render(withProps(passed, { ...semantics, role: "button" }));
-  }
-
-  return (
-    <button
-      {...withProps(passed, semantics)}
-      // No `role`: this *is* a button, and `aria-pressed` is what makes it a
-      // toggle one. Adding `role="button"` to a `<button>` would be noise, and
-      // adding any other role would be a lie about what pressing it does.
-      type="button"
-    />
-  );
+  return match (render) {
+    undefined =>
+      <button
+        {...withProps(passed, semantics)}
+        // No `role`: this *is* a button, and `aria-pressed` is what makes it a
+        // toggle one. Adding `role="button"` to a `<button>` would be noise, and
+        // adding any other role would be a lie about what pressing it does.
+        type="button"
+      />,
+    const custom => custom(withProps(passed, { ...semantics, role: "button" })),
+  };
 }

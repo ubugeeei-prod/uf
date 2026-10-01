@@ -305,7 +305,7 @@ component DatePickerInput(...rest: Rest) {
 }
 
 /** The button that opens the calendar. */
-component DatePickerTrigger(children: React.Node, ...rest: Rest) {
+component DatePickerTrigger(children: React.Node, ...rest: Rest) renders PopoverTrigger {
   // `forwarded`, because this part renders another part rather than an
   // intrinsic; `internal/merge-props.js` says what that costs and why.
   return <PopoverTrigger {...forwarded(rest)}>{children}</PopoverTrigger>;
@@ -324,7 +324,7 @@ component DatePickerCalendar(
   side?: LogicalSide = "bottom",
   sideOffset?: number = 0,
   ...rest: Rest
-) {
+) renders PopoverBody {
   const picker = useDatePicker("DatePicker.Calendar");
   const settings = useContext(CalendarSettings);
   const dayRef = useRef<HTMLElement | null>(null);

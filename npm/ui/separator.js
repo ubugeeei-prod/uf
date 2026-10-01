@@ -90,8 +90,8 @@ export component Separator(
   const props = decorative
     ? withProps(rest, { "aria-hidden": "true" })
     : withProps(rest, { "aria-orientation": orientation, role: "separator" });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }

@@ -267,7 +267,12 @@ component FieldRoot(
 
   return (
     <FieldContext.Provider value={state}>
-      {render != null ? render(props) : <div {...props} />}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </FieldContext.Provider>
   );
 }
@@ -285,10 +290,16 @@ component FieldLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   // points at, and it would break it silently.
   if (field.group) {
     const props = withProps(rest, { children, id: field.labelId });
-    return render != null ? render(props) : <span {...props} />;
+    return match (render) {
+      undefined => <span {...props} />,
+      const custom => custom(props),
+    };
   }
   const props = withProps(rest, { children, htmlFor: field.controlId, id: field.labelId });
-  return render != null ? render(props) : <label {...props} />;
+  return match (render) {
+    undefined => <label {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -328,7 +339,10 @@ component FieldDescription(children: React.Node, render?: RenderProp, ...rest: R
   }, [register]);
 
   const props = withProps(rest, { children, id: field.descriptionId });
-  return render != null ? render(props) : <p {...props} />;
+  return match (render) {
+    undefined => <p {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -352,7 +366,10 @@ component FieldStatus(children?: React.Node, render?: RenderProp, ...rest: Rest)
     id: field.statusId,
     role: "status",
   });
-  return render != null ? render(props) : <p {...props} />;
+  return match (render) {
+    undefined => <p {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -383,7 +400,10 @@ component FieldError(children?: React.Node, render?: RenderProp, ...rest: Rest) 
     id: field.errorId,
     role: "alert",
   });
-  return render != null ? render(props) : <p {...props} />;
+  return match (render) {
+    undefined => <p {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

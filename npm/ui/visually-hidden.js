@@ -96,7 +96,10 @@ export component VisuallyHidden(
       setFocused(false);
     }),
   });
-  return render != null ? render(props) : <span {...props} />;
+  return match (render) {
+    undefined => <span {...props} />,
+    const custom => custom(props),
+  };
 }
 
 export type Politeness = "polite" | "assertive";

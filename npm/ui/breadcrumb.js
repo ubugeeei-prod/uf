@@ -63,10 +63,10 @@ component BreadcrumbRoot(
   ...rest: Rest
 ) {
   const props = withProps(rest, { "aria-label": label, children });
-  if (render != null) {
-    return render(withProps(props, { role: "navigation" }));
-  }
-  return <nav {...props} />;
+  return match (render) {
+    undefined => <nav {...props} />,
+    const custom => custom(withProps(props, { role: "navigation" })),
+  };
 }
 
 /**
@@ -82,28 +82,28 @@ component BreadcrumbList(
   ...rest: Rest
 ) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(withProps(props, { role: "list" }));
-  }
-  return <ol {...props} />;
+  return match (render) {
+    undefined => <ol {...props} />,
+    const custom => custom(withProps(props, { role: "list" })),
+  };
 }
 
 /** One level of the trail. Holds a `Breadcrumb.Link` or a `Breadcrumb.Page`. */
 component BreadcrumbItem(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(withProps(props, { role: "listitem" }));
-  }
-  return <li {...props} />;
+  return match (render) {
+    undefined => <li {...props} />,
+    const custom => custom(withProps(props, { role: "listitem" })),
+  };
 }
 
 /** A level you can go back to. */
 component BreadcrumbLink(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(withProps(props, { role: "link" }));
-  }
-  return <a {...props} />;
+  return match (render) {
+    undefined => <a {...props} />,
+    const custom => custom(withProps(props, { role: "link" })),
+  };
 }
 
 /**
@@ -116,10 +116,10 @@ component BreadcrumbLink(children: React.Node, render?: RenderProp, ...rest: Res
  */
 component BreadcrumbPage(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-current": "page", children });
-  if (render != null) {
-    return render(props);
-  }
-  return <span {...props} />;
+  return match (render) {
+    undefined => <span {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -131,10 +131,10 @@ component BreadcrumbPage(children: React.Node, render?: RenderProp, ...rest: Res
  */
 component BreadcrumbSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children, role: "presentation" });
-  if (render != null) {
-    return render(props);
-  }
-  return <li {...props} />;
+  return match (render) {
+    undefined => <li {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

@@ -211,7 +211,12 @@ component ToggleGroupRoot(
 
   return (
     <ToggleGroupContext.Provider value={state}>
-      {render != null ? render(rootProps) : <div {...rootProps} />}
+      {
+        match (render) {
+          undefined => <div {...rootProps} />,
+          const custom => custom(rootProps),
+        }
+      }
     </ToggleGroupContext.Provider>
   );
 }
@@ -276,11 +281,10 @@ component ToggleGroupItem(
     tabIndex: group.activeId === id || (group.activeId == null && group.firstId === id) ? 0 : -1,
   });
 
-  if (render != null) {
-    return render(withProps(itemProps, { role: "button" }));
-  }
-
-  return <button {...itemProps} type="button" />;
+  return match (render) {
+    undefined => <button {...itemProps} type="button" />,
+    const custom => custom(withProps(itemProps, { role: "button" })),
+  };
 }
 
 /**

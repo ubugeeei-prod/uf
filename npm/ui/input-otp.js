@@ -211,10 +211,10 @@ component InputOtpSlot(children?: React.Node, index: number, ...rest: Rest) {
 /** The dash between two groups. Decoration, and it says so. */
 component InputOtpSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
