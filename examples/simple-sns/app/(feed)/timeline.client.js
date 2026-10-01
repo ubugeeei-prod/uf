@@ -42,13 +42,13 @@ import {
 /** Optimistically set a reaction and restore the committed value if its action fails. */
 
 component Appreciation(post: Post, signedIn: boolean) {
-  const [current, setCurrent] = useState<Post>(post);
+  const [current,    setCurrent]       = useState<Post>(post);
   const [optimistic, changeOptimistic] = useOptimistic<Post, boolean>(current, (value, liked) => ({
     ...value,
     liked,
     likes: value.likes + (liked === value.liked ? 0 : liked ? 1 : -1),
   }));
-  const [state, submit, pending] = useActionState<FormState<Post>, boolean>(
+  const [state, submit, pending]       = useActionState<FormState<Post>, boolean>(
     async (_previous: FormState<Post>, liked: boolean): Promise<FormState<Post>> => {
       changeOptimistic(liked);
       const result = await callAction(() => likePost(post.id, liked), "Could not save. Try again.");
@@ -56,7 +56,7 @@ component Appreciation(post: Post, signedIn: boolean) {
         {status: "success", value: const value, ...} => {
           setCurrent(value);
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}                       => {}
       }
       return result;
     },
@@ -89,7 +89,7 @@ component Appreciation(post: Post, signedIn: boolean) {
             <p role="alert" {...styled("post-error", sharedStyles.postError)}>
               {message}
             </p>,
-          {status: "idle"} | {status: "success", ...} => null,
+          {status: "idle"} | {status: "success", ...}    => null,
         }
       }
     </div>
@@ -152,7 +152,7 @@ component PostComposer(
   const [body,      setBody]      = useState("");
   const [topic,     setTopic]     = useState("community");
   const [requestId, setRequestId] = useState("");
-  const [state, submit, pending] = useActionState<FormState<Post>, FormData>(
+  const [state, submit, pending]  = useActionState<FormState<Post>, FormData>(
     async (_previous: FormState<Post>, form: FormData): Promise<FormState<Post>> => {
       const text = String(form.get("body") ?? "").trim();
       const submissionId = requestId || crypto.randomUUID();
@@ -184,7 +184,7 @@ component PostComposer(
           setBody("");
           setRequestId("");
         }
-        {status: "error", ...} => {}
+        {status: "error", ...}                       => {}
       }
       return result;
     },
@@ -252,8 +252,8 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
     timelineData(filter.topic, filter.query, String(filter.page)),
   );
   const showComposer = filter.topic === "all" && filter.query === "" && filter.page === 1;
-  const [committed, setCommitted] = useState<Array<LocalPost>>([]);
-  const [posts, addOptimistic] = useOptimistic<Array<LocalPost>, LocalPost>(
+  const [committed,    setCommitted]    = useState<Array<LocalPost>>([]);
+  const [posts,        addOptimistic]   = useOptimistic<Array<LocalPost>, LocalPost>(
     committed,
     (current, draft) =>
       current.some((entry) => entry.requestId === draft.requestId) ? current : [draft, ...current],
@@ -295,7 +295,7 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
                   </ViewTransition>
                 </Collapsible.Root>
               </div>,
-            {kind: "guest"} =>
+            {kind: "guest"}                           =>
               <section className="sign-in-composer">
                 <div>
                   <h2>What are you working on?</h2>

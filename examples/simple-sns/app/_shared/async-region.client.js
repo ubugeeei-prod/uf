@@ -62,7 +62,7 @@ component SettledRegion<T>(
 ) {
   return match (use(resource)) {
     {kind: "ready", value: const value} => children(value),
-    {kind: "failed"} =>
+    {kind: "failed"}                    =>
       <EmptyState title={`Could not load ${label}`} action={<RetryButton onRetry={retry} />}>
         Please try again. Your other work is still available.
       </EmptyState>,

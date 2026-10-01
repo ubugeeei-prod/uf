@@ -40,8 +40,8 @@ const updateSettings = graphql`
 export component SettingsForm(
   queryRef: PreloadedQueryRef<SnsSettingsQuery$variables, SnsSettingsQuery$data>,
 ) {
-  const { settings } = useQueryFromServer(settingsQuery, queryRef);
-  const [commit, pending] = useMutation<
+  const { settings }            = useQueryFromServer(settingsQuery, queryRef);
+  const [commit,   pending]     = useMutation<
     SnsUpdateSettingsMutation["variables"],
     SnsUpdateSettingsMutation["response"],
   >(updateSettings);

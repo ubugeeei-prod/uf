@@ -52,7 +52,7 @@ export component ThreadList(children: renders* ThreadLink) {
 
 component Threads(data: InboxData, selectedId: string) {
   return match (data) {
-    {kind: "unauthenticated"} => <SignInPrompt />,
+    {kind: "unauthenticated"}             => <SignInPrompt />,
     {kind: "ready", value: const threads} =>
       <ThreadList>
         {threads.map((thread, index) => (
@@ -68,10 +68,10 @@ component Threads(data: InboxData, selectedId: string) {
 
 component Conversation(data: ConversationData) {
   return match (data) {
-    {kind: "unauthenticated"} => <SignInPrompt />,
-    {kind: "empty"} =>
+    {kind: "unauthenticated"}                                       => <SignInPrompt />,
+    {kind: "empty"}                                                 =>
       <EmptyState title="No conversations yet">Your conversations will appear here.</EmptyState>,
-    {kind: "missing"} =>
+    {kind: "missing"}                                               =>
       <EmptyState title="Conversation unavailable">
         Choose a conversation from your inbox.
       </EmptyState>,

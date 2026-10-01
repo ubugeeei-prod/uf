@@ -18,7 +18,7 @@ import { IDLE, failed, succeeded, fieldError, type FormState } from "../_shared/
  */
 
 export component AuthClient(mode: "login" | "signup") {
-  const [draft, setDraft] = useState({ name: "", email: "", handle: "", password: "" });
+  const [draft, setDraft]        = useState({ name: "", email: "", handle: "", password: "" });
   const [state, submit, pending] = useActionState<FormState<null>, FormData>(
     async (_previous: FormState<null>, form: FormData): Promise<FormState<null>> => {
       const body = new URLSearchParams({ mode });
@@ -63,7 +63,7 @@ export component AuthClient(mode: "login" | "signup") {
       </p>
       {
         match (mode) {
-          "login" => null,
+          "login"  => null,
           "signup" =>
             <>
               <FormField label="Name" error={fieldError(state, "name")}>
@@ -156,7 +156,7 @@ export component AuthClient(mode: "login" | "signup") {
               <>
                 Already have an account? <Link to="/login">Sign in</Link>
               </>,
-            "login" =>
+            "login"  =>
               <>
                 No account yet? <Link to="/signup">Create an account</Link>
               </>,
