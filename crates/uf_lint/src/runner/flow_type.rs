@@ -145,6 +145,13 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `const value = any`, `let ctor = Object`, and `ctor = Function`.
+    // `type Handler = Function` stays a type, and so does `type Box<T = any>`
+    // and a default continued onto the next line.
+    if assignment_is_a_value(code, at, outer) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -189,6 +196,43 @@ fn names_a_parameter(code: &str, at: usize, len: usize) -> bool {
         after = index + 1;
     }
     next_non_space(code, after).is_some_and(|(_, byte)| byte == b':')
+}
+
+/// Whether the word at `at` is the right-hand side of a value assignment.
+///
+/// `const value = any` and `ctor = Function` name a value. `type Handler =
+/// Function`, `type Box<T = any>`, and `opaque type Box: Super = any` name a
+/// type. A `<`, `,`, or `:` in front of the name on the left keeps it a type,
+/// including when that byte is the end of the previous line (`type Box<\n T =
+/// any`).
+fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
+    let Some((eq, b'=')) = prev_non_space(code, at) else {
+        return false;
+    };
+    if eq > 0 && matches!(code.as_bytes()[eq - 1], b'=' | b'!') {
+        return false;
+    }
+    let Some((name_at, _)) = previous_word(code, eq) else {
+        return false;
+    };
+    if matches!(
+        previous_word(code, name_at).map(|(_, word)| word),
+        Some("type" | "opaque")
+    ) {
+        return false;
+    }
+    if previous_word(code, name_at).is_some_and(|(_, word)| matches!(word, "const" | "let" | "var"))
+    {
+        return true;
+    }
+    // `ctor = Function`, where the name is the whole left-hand side.
+    match prev_non_space(code, name_at) {
+        // A continued type-parameter list. `T = any` has nothing in front of
+        // it on its own line; the `<` or `,` that introduces it closed the
+        // line above.
+        None => !matches!(outer.last_byte, Some(b'<' | b',')),
+        Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
+    }
 }
 
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
@@ -266,10 +310,16 @@ impl Enclosing {
     /// Strings and comments are already blanked out of `code` by the scan, so
     /// a bracket here is a bracket in the program.
     fn after(self, code: &str) -> Self {
-        let mut stack: Vec<Opener> = match self.kind {
-            Some(kind) => vec![kind],
-            None => Vec::new(),
-        };
+        // The stack lives for one line and only its top is kept. A `Vec` here
+        // allocated once per line, and `flow/deprecated-type` walks every line
+        // with it, which put the router runtime over the allocation budget.
+        const CAP: usize = 32;
+        let mut inline = [Opener::Other; CAP];
+        let mut depth = 0usize;
+        if let Some(kind) = self.kind {
+            inline[0] = kind;
+            depth = 1;
+        }
         let bytes = code.as_bytes();
         let mut last = self.last_byte;
         for (index, byte) in bytes.iter().enumerate() {
@@ -278,12 +328,18 @@ impl Enclosing {
                     let call = prev_non_space(code, index).is_some_and(|(_, previous)| {
                         is_word_byte(previous) || previous == b')' || previous == b']'
                     });
-                    stack.push(if call { Opener::Call } else { Opener::Other });
+                    if depth < CAP {
+                        inline[depth] = if call { Opener::Call } else { Opener::Other };
+                        depth += 1;
+                    }
                 }
-                b'[' | b'{' => stack.push(Opener::Other),
-                b')' | b']' | b'}' => {
-                    stack.pop();
+                b'[' | b'{' => {
+                    if depth < CAP {
+                        inline[depth] = Opener::Other;
+                        depth += 1;
+                    }
                 }
+                b')' | b']' | b'}' => depth = depth.saturating_sub(1),
                 _ => {}
             }
             if !byte.is_ascii_whitespace() {
@@ -291,9 +347,11 @@ impl Enclosing {
             }
         }
         Self {
-            // Only the innermost one is ever asked about, so only it is kept —
-            // a deeper stack would be state nothing reads.
-            kind: stack.last().copied(),
+            kind: if depth > 0 {
+                Some(inline[depth - 1])
+            } else {
+                None
+            },
             last_byte: last,
         }
     }
@@ -336,17 +394,13 @@ pub(crate) fn run_flow_deprecated_type(
         return;
     };
 
+    let mut enclosing = Enclosing::default();
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
+        let outer = enclosing;
+        enclosing = enclosing.after(code);
         for at in find_words(code, "bool") {
-            if line.in_string(at) {
-                continue;
-            }
-            if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
-                continue;
-            }
-            // `{ bool: true }` is a property name, not a type annotation.
-            if next_non_space(code, at + 4).is_some_and(|(_, byte)| byte == b':' || byte == b'(') {
+            if line.in_string(at) || names_a_value(code, at, 4, outer) {
                 continue;
             }
             push_in_code(
@@ -409,6 +463,10 @@ pub(crate) fn run_flow_internal_type(
             let len = identifier_len(code, at);
             if len == 0 {
                 at += 1;
+                continue;
+            }
+            if line.in_string(at) {
+                at += len;
                 continue;
             }
             if starts_word(code, at) && INTERNAL_TYPES.contains(&code[at..at + len]) {

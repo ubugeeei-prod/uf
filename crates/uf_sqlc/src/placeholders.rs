@@ -55,11 +55,10 @@ pub fn scan(text: &str, dialect: Dialect) -> Vec<Found> {
             b'[' if dialect == Dialect::Sqlite => {
                 at = text[at..].find(']').map_or(bytes.len(), |end| at + end + 1);
             }
-            b'-' if bytes.get(at + 1) == Some(&b'-') => {
-                at = text[at..]
-                    .find('\n')
-                    .map_or(bytes.len(), |end| at + end + 1);
-            }
+            b'-' => match line_comment_end(text, at, dialect) {
+                Some(end) => at = end,
+                None => at += 1,
+            },
             b'/' if bytes.get(at + 1) == Some(&b'*') => {
                 let end = text[at + 2..]
                     .find("*/")
@@ -293,9 +292,7 @@ pub fn copy_split(text: &str, dialect: Dialect, params: &[Parameter]) -> Result<
     };
     let values = find_keyword(text, "VALUES", dialect)
         .ok_or_else(|| ":copyfrom needs an INSERT … VALUES (…) statement".to_owned())?;
-    let open = text[values..]
-        .find('(')
-        .map(|offset| values + offset)
+    let open = find_code_byte(text, values, dialect, b'(')
         .ok_or_else(|| ":copyfrom needs a parenthesised VALUES tuple".to_owned())?;
     let close = matching_paren(text, open, dialect)
         .ok_or_else(|| ":copyfrom's VALUES tuple is not closed".to_owned())?;
@@ -341,11 +338,10 @@ fn find_keyword(text: &str, keyword: &str, dialect: Dialect) -> Option<usize> {
             b'[' if dialect == Dialect::Sqlite => {
                 at = text[at..].find(']').map_or(bytes.len(), |end| at + end + 1);
             }
-            b'-' if bytes.get(at + 1) == Some(&b'-') => {
-                at = text[at..]
-                    .find('\n')
-                    .map_or(bytes.len(), |end| at + end + 1);
-            }
+            b'-' => match line_comment_end(text, at, dialect) {
+                Some(end) => at = end,
+                None => at += 1,
+            },
             b'/' if bytes.get(at + 1) == Some(&b'*') => {
                 at = text[at + 2..]
                     .find("*/")
@@ -394,20 +390,100 @@ fn is_identifier_byte(byte: u8, dialect: Dialect) -> bool {
     is_word(byte) || (dialect == Dialect::Postgresql && byte == b'$')
 }
 
+/// The next `wanted` byte at or after `from`, outside quotes, comments, and
+/// dollar-quotes. A `(` inside `/* */` is not the VALUES tuple.
+fn find_code_byte(text: &str, from: usize, dialect: Dialect, wanted: u8) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut at = from;
+    while at < bytes.len() {
+        if let Some(next) = skip_trivia(text, at, dialect) {
+            at = next;
+            continue;
+        }
+        if bytes[at] == wanted {
+            return Some(at);
+        }
+        at += 1;
+    }
+    None
+}
+
+/// Past a quote, comment, dollar-quote, bracket identifier, or word starting
+/// at `at`. `None` when the byte is ordinary code. A PostgreSQL word is
+/// consumed whole so `f$x$` is not read as a dollar quote.
+fn skip_trivia(text: &str, at: usize, dialect: Dialect) -> Option<usize> {
+    let bytes = text.as_bytes();
+    match bytes.get(at)? {
+        b'\'' => Some(skip_quoted(bytes, at, b'\'', dialect == Dialect::Mysql)),
+        b'"' => Some(skip_quoted(bytes, at, b'"', dialect == Dialect::Mysql)),
+        b'`' if dialect != Dialect::Postgresql => Some(skip_quoted(bytes, at, b'`', false)),
+        b'[' if dialect == Dialect::Sqlite => {
+            Some(text[at..].find(']').map_or(bytes.len(), |end| at + end + 1))
+        }
+        b'-' => line_comment_end(text, at, dialect),
+        b'/' if bytes.get(at + 1) == Some(&b'*') => Some(
+            text[at + 2..]
+                .find("*/")
+                .map_or(bytes.len(), |end| at + 2 + end + 2),
+        ),
+        b'$' if dialect == Dialect::Postgresql => {
+            if count_digits(bytes, at + 1) > 0 {
+                None
+            } else if let Some(tag_end) = dollar_tag(bytes, at) {
+                let tag = &text[at..=tag_end];
+                Some(
+                    text[tag_end + 1..]
+                        .find(tag)
+                        .map_or(bytes.len(), |end| tag_end + 1 + end + tag.len()),
+                )
+            } else {
+                None
+            }
+        }
+        byte if byte.is_ascii_alphabetic() || *byte == b'_' => {
+            let mut end = at + 1;
+            while end < bytes.len() && is_identifier_byte(bytes[end], dialect) {
+                end += 1;
+            }
+            Some(end)
+        }
+        _ => None,
+    }
+}
+
+/// The index just past a `--` line comment starting at `at`.
+///
+/// MySQL only starts that comment when whitespace or a control character
+/// follows, so `?--1` is subtraction and the `)` after it still closes the
+/// tuple. The other dialects comment out the rest of the line either way.
+fn line_comment_end(text: &str, at: usize, dialect: Dialect) -> Option<usize> {
+    let bytes = text.as_bytes();
+    if bytes.get(at + 1) != Some(&b'-') {
+        return None;
+    }
+    if dialect == Dialect::Mysql {
+        let follows = bytes.get(at + 2)?;
+        if !follows.is_ascii_whitespace() && !follows.is_ascii_control() {
+            return None;
+        }
+    }
+    Some(
+        text[at..]
+            .find('\n')
+            .map_or(bytes.len(), |end| at + end + 1),
+    )
+}
+
 fn matching_paren(text: &str, open: usize, dialect: Dialect) -> Option<usize> {
     let bytes = text.as_bytes();
     let mut depth = 0usize;
     let mut at = open;
     while at < bytes.len() {
+        if let Some(next) = skip_trivia(text, at, dialect) {
+            at = next;
+            continue;
+        }
         match bytes[at] {
-            b'\'' => {
-                at = skip_quoted(bytes, at, b'\'', dialect == Dialect::Mysql);
-                continue;
-            }
-            b'"' => {
-                at = skip_quoted(bytes, at, b'"', dialect == Dialect::Mysql);
-                continue;
-            }
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;
@@ -544,6 +620,51 @@ mod tests {
         .unwrap();
         assert_eq!(split.head, "INSERT INTO $$values$$ (a, b) VALUES ");
         assert_eq!(split.refs, [0, 1]);
+    }
+
+    #[test]
+    fn a_comment_or_dollar_quote_does_not_close_the_values_tuple() {
+        // `)` inside the comment is not the end of the tuple, and `(` inside
+        // the comment is not its start.
+        let commented = "INSERT INTO t (a) VALUES (/*)*/ $1)";
+        let split = copy_split(commented, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.tuple, ["(/*)*/ ", ")"]);
+        assert_eq!(split.tail, "");
+
+        let commented_open = "INSERT INTO t (a) VALUES /*(*/ ($1)";
+        let split =
+            copy_split(commented_open, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.head, "INSERT INTO t (a) VALUES /*(*/ ");
+        assert_eq!(split.tuple, ["(", ")"]);
+        assert_eq!(split.tail, "");
+
+        let line = "INSERT INTO t (a) VALUES -- )\n($1)";
+        let split = copy_split(line, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.tail, "");
+
+        // `$$)$$` is a dollar-quoted string. The `)` inside it stays in the tuple.
+        let quoted = "INSERT INTO t (a) VALUES ($1 || $$)$$)";
+        let split = copy_split(quoted, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.tuple, ["(", " || $$)$$)"]);
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.tail, "");
+
+        // `f$x$` is one identifier. The `$` inside it does not open a dollar quote.
+        let function = "INSERT INTO t (a) VALUES (f$x$($1))";
+        let split = copy_split(function, Dialect::Postgresql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.tuple, ["(f$x$(", "))"]);
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.tail, "");
+
+        // MySQL: `--` comments only when whitespace follows, so `?--1` is subtraction.
+        let mysql = "INSERT INTO t (a) VALUES (?--1)";
+        let split = copy_split(mysql, Dialect::Mysql, &[param(1, "a", false)]).unwrap();
+        assert_eq!(split.tuple, ["(", "--1)"]);
+        assert_eq!(split.refs, [0]);
+        assert_eq!(split.tail, "");
     }
 
     #[test]

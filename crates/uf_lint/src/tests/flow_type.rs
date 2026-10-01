@@ -60,6 +60,49 @@ fn unclear_type_ignores_value_positions() {
 }
 
 #[test]
+fn unclear_type_still_reads_a_type_parameter_default_on_the_next_line() {
+    // `T` starts the line, which is also what `ctor = Function` looks like.
+    // The `<` that makes it a type closed the line above.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Box<\n  T = any\n> = T;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (3, 7));
+}
+
+#[test]
+fn unclear_type_ignores_a_value_on_the_right_of_an_assignment() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst value = any;\nlet ctor = Object;\nctor = Function;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_name_inside_a_string() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst label = \"React$Node\";\nconst other = 'React$Element';\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_value_named_bool() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfunction enabled(bool) { return bool; }\nconst flag = bool;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn unclear_type_ignores_a_parameter_name_and_a_returned_value() {
     let diagnostics = lint_js(
         "flow/unclear-type",
@@ -93,11 +136,18 @@ fn unclear_type_ignores_an_equality_operand() {
 
 #[test]
 fn unclear_type_still_reads_an_alias_after_a_single_equals() {
-    // The one `=` this rule exists for. `is_after_equality` must not swallow it.
-    let diagnostics = lint_js("flow/unclear-type", "// @flow\ntype Handler = Function;\n");
+    // The one `=` this rule exists for. A generic, a default type argument, and
+    // an opaque type's implementation are the same alias with a different left.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Handler = Function;\ntype Box<T> = any;\ntype BoxDefault<T = any> = string;\nopaque type Hidden: Super = any;\n",
+    );
 
-    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics.len(), 4, "{diagnostics:?}");
     assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 16));
+    assert_eq!((diagnostics[1].line, diagnostics[1].column), (3, 15));
+    assert_eq!((diagnostics[2].line, diagnostics[2].column), (4, 21));
+    assert_eq!((diagnostics[3].line, diagnostics[3].column), (5, 29));
 }
 
 #[test]

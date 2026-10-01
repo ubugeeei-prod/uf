@@ -79,8 +79,9 @@ fn same_type(a: &Type, b: &Type) -> bool {
 ///
 /// The walk goes through the constructs that hold a type without deciding
 /// anything about it: a generic's arguments, a union or intersection, a
-/// tuple's elements, and the wrappers. It stops at a function type, whose own
-/// parameters and return are a separate decision.
+/// tuple's elements, `keyof` and indexed access, a conditional, `renders`,
+/// and the wrappers. It stops at a function type, whose own parameters and
+/// return are a separate decision.
 pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
     match &**ty {
         types::TypeInner::Object { .. } => true,
@@ -109,6 +110,21 @@ pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
             returns_a_shape_that_breaks(annot)
         }),
         types::TypeInner::ReadOnly { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
+        types::TypeInner::Keyof { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
+        types::TypeInner::IndexedAccess { inner, .. } => {
+            returns_a_shape_that_breaks(&inner.object) || returns_a_shape_that_breaks(&inner.index)
+        }
+        types::TypeInner::OptionalIndexedAccess { inner, .. } => {
+            returns_a_shape_that_breaks(&inner.indexed_access.object)
+                || returns_a_shape_that_breaks(&inner.indexed_access.index)
+        }
+        types::TypeInner::Conditional { inner, .. } => {
+            returns_a_shape_that_breaks(&inner.check_type)
+                || returns_a_shape_that_breaks(&inner.extends_type)
+                || returns_a_shape_that_breaks(&inner.true_type)
+                || returns_a_shape_that_breaks(&inner.false_type)
+        }
+        types::TypeInner::Renders { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
         _ => false,
     }
 }
