@@ -262,6 +262,123 @@ component Search(
     );
 }
 
+fn arrow_columns(source: &str, markers: &[&str]) -> Vec<usize> {
+    let columns: Vec<_> = source
+        .lines()
+        .filter(|line| markers.iter().any(|marker| line.contains(marker)))
+        .map(|line| line.find("=>").expect(line))
+        .collect();
+    assert_eq!(columns.len(), markers.len(), "{source}");
+    columns
+}
+
+#[test]
+fn aligns_multiline_hooks_match_arrows_and_readonly_fields() {
+    let source = r#"function Form() {
+  const [draft, setDraft] = useState({ name: "", email: "", handle: "", password: "" });
+  const [state, submit, pending] = useActionState<FormState<null>, FormData>(
+    async (_previous: FormState<null>, form: FormData): Promise<FormState<null>> => {
+      return null;
+    },
+  );
+  const reset = useCallback(() => null);
+  return match (mode) {
+    "signup" =>
+      <>
+        Already have an account? <Link to="/login">Sign in</Link>
+      </>,
+    "login" =>
+      <>
+        No account yet? <Link to="/signup">Create an account</Link>
+      </>,
+  };
+}
+function onResult(result) {
+  match (result) {
+    {status: "success", value: const value, ...} => {
+      setCurrent(value);
+    }
+    {status: "error", ...} => {}
+  }
+  return match (data) {
+    {kind: "unauthenticated"} => <SignInPrompt title="Sign in to manage your account" />,
+    {kind: "ready", value: const settings} => <SettingsClient initial={settings} />,
+  };
+}
+type Clip = {|
+  readonly id: string,
+  readonly title: string,
+  readonly description: string,
+  readonly poster: ImageSourcePropType,
+  readonly credit: string,
+  readonly source: string,
+|};
+function Session(session) {
+  return match (session) {
+    {kind: "guest"} => null,
+    {kind: "authenticated", user: const user} =>
+      <View {...stylex.props(styles.rule, local.identity)}>
+        <Avatar user={user} />
+        <View {...stylex.props(styles.grow)}>
+          <Text {...stylex.props(local.name)}>{user.name}</Text>
+          <Text {...stylex.props(styles.hint)}>@{user.handle}</Text>
+        </View>
+      </View>,
+  };
+}
+"#;
+    let aligned = formatted(source, true);
+    let hooks: Vec<_> = aligned
+        .lines()
+        .filter(|line| line.contains(" = use"))
+        .collect();
+    assert_eq!(hooks.len(), 3, "{aligned}");
+    let equals: Vec<_> = hooks
+        .iter()
+        .map(|line| line.find(" = use").unwrap())
+        .collect();
+    assert!(
+        equals.iter().all(|column| *column == equals[0]),
+        "{aligned}"
+    );
+    for (name, markers) in [
+        ("mode", ["\"signup\"", "\"login\""].as_slice()),
+        (
+            "result",
+            ["{status: \"success\"", "{status: \"error\""].as_slice(),
+        ),
+        (
+            "data",
+            ["{kind: \"unauthenticated\"}", "{kind: \"ready\""].as_slice(),
+        ),
+        (
+            "session",
+            ["{kind: \"guest\"}", "{kind: \"authenticated\""].as_slice(),
+        ),
+    ] {
+        let columns = arrow_columns(&aligned, markers);
+        assert!(
+            columns.iter().all(|column| *column == columns[0]),
+            "{name} arrows differ\n{aligned}"
+        );
+    }
+    let prompt = aligned
+        .lines()
+        .find(|line| line.contains("SignInPrompt"))
+        .expect("sign-in arm");
+    assert!(prompt.len() > 100, "{prompt}");
+    let fields: Vec<_> = aligned
+        .lines()
+        .filter(|line| line.trim_start().starts_with("readonly "))
+        .map(|line| line.find(':').unwrap())
+        .collect();
+    assert_eq!(fields.len(), 6, "{aligned}");
+    assert!(
+        fields.iter().all(|column| *column == fields[0]),
+        "{aligned}"
+    );
+}
+
 #[test]
 fn trailing_comment_breaks_type_alias_alignment() {
     let source =
