@@ -197,7 +197,12 @@ component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp, ...re
 
   return (
     <MenubarContext.Provider value={state}>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </MenubarContext.Provider>
   );
 }
@@ -286,10 +291,10 @@ component MenubarTrigger(children: React.Node, render?: RenderProp, ...rest: Res
     tabIndex: stop ? 0 : -1,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**

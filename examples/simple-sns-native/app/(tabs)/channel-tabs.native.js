@@ -9,7 +9,7 @@ import { TOPICS, topicLabel } from "../_shared/social.js";
 
 component ChannelTab(channel: TopicFilter, selected: boolean, onPress: () => void) {
   const label = match (channel) {
-    "all" => "All notes",
+    "all"                                                         => "All notes",
     "design" | "release" | "runtime" | "community" as const topic => topicLabel(topic),
   };
 
@@ -28,7 +28,7 @@ component ChannelTab(channel: TopicFilter, selected: boolean, onPress: () => voi
 
 /** The strip takes tabs and nothing else, so what scrolls sideways is always a channel. */
 
-component TabStrip(children: renders* ChannelTab) {
+component TabStrip(children: renders* ChannelTab) renders View {
   return (
     <View {...stylex.props(local.bar)}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityRole="tablist">
@@ -60,13 +60,13 @@ export component ChannelTabs(topic: TopicFilter, onChange: (TopicFilter) => void
 const local = stylex.create({
   bar: { marginTop: 22, borderBottomWidth: 1, borderBottomColor: "#dcdcdc" },
   tab: {
-    marginRight: 24,
-    paddingTop: 14,
-    paddingBottom: 12,
+    marginRight      : 24,
+    paddingTop       : 14,
+    paddingBottom    : 12,
     borderBottomWidth: 2,
     borderBottomColor: "transparent",
   },
-  tabSelected: { borderBottomColor: "#202020" },
-  label: { fontSize: 12, color: "#707070" },
+  tabSelected  : { borderBottomColor: "#202020" },
+  label        : { fontSize: 12, color: "#707070" },
   labelSelected: { color: "#242424", fontWeight: "600" },
 });

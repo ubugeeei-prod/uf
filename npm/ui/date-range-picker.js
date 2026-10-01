@@ -58,7 +58,7 @@ component DateRangePickerRoot(
     </PickerContext.Provider>
   );
 }
-component DateRangePickerStartField(...rest: Rest) {
+component DateRangePickerStartField(...rest: Rest) renders DateField {
   const picker = usePicker();
   return (
     <DateField
@@ -76,7 +76,7 @@ component DateRangePickerStartField(...rest: Rest) {
     />
   );
 }
-component DateRangePickerEndField(...rest: Rest) {
+component DateRangePickerEndField(...rest: Rest) renders DateField {
   const picker = usePicker();
   return (
     <DateField
@@ -94,10 +94,13 @@ component DateRangePickerEndField(...rest: Rest) {
     />
   );
 }
-component DateRangePickerTrigger(children: React.Node, ...rest: Rest) {
+component DateRangePickerTrigger(children: React.Node, ...rest: Rest) renders PopoverTrigger {
   return <PopoverTrigger {...forwarded(rest)}>{children}</PopoverTrigger>;
 }
-component DateRangePickerCalendar(children?: React.Node = <CalendarMonth />, ...rest: Rest) {
+component DateRangePickerCalendar(
+  children?: React.Node = <CalendarMonth />,
+  ...rest: Rest
+) renders PopoverBody {
   const picker = usePicker();
   const dayRef = useRef<HTMLElement | null>(null);
   return (

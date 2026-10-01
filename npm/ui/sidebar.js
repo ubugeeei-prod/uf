@@ -151,13 +151,15 @@ component SidebarRoot(
 
   return (
     <SidebarContext.Provider value={state}>
-      {modal ? (
-        <SheetRoot onOpenChange={setOpen} open={isOpen} side={side}>
-          {children}
-        </SheetRoot>
-      ) : (
-        children
-      )}
+      {
+        match (modal) {
+          true =>
+            <SheetRoot onOpenChange={setOpen} open={isOpen} side={side}>
+              {children}
+            </SheetRoot>,
+          false => children,
+        }
+      }
     </SidebarContext.Provider>
   );
 }
@@ -180,24 +182,27 @@ component SidebarTrigger(children: React.Node, ...rest: Rest) {
   // The sheet's own trigger while it is one: `Dialog.Trigger` is what records
   // where focus came from, and focus going back to this button when the sheet
   // closes is the second half of the transition.
-  if (sidebar.modal) {
-    // `Dialog.Trigger` names the sheet's own body while it is open, which is a
-    // better `aria-controls` than the navigation inside it, so this part adds
-    // nothing to it.
-    return <SheetTrigger {...forwarded(rest)}>{children}</SheetTrigger>;
-  }
-
-  return (
-    <button
-      {...passed}
-      aria-controls={named}
-      aria-expanded={sidebar.open ? "true" : "false"}
-      onClick={composeHandlers(rest.onClick, () => sidebar.setOpen(!sidebar.open))}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  // `Dialog.Trigger` names the sheet's own body while it is open, which is a
+  // better `aria-controls` than the navigation inside it, so this part adds
+  // nothing to it.
+  return match (sidebar.modal) {
+    true => <SheetTrigger {...forwarded(rest)}>{children}</SheetTrigger>,
+    false =>
+      <button
+        {...passed}
+        aria-controls={named}
+        aria-expanded={
+          match (sidebar.open) {
+            true => "true",
+            false => "false",
+          }
+        }
+        onClick={composeHandlers(rest.onClick, () => sidebar.setOpen(!sidebar.open))}
+        type="button"
+      >
+        {children}
+      </button>,
+  };
 }
 
 /**
@@ -291,7 +296,10 @@ component SidebarItem(
     // because that tooltip trigger has none of its own. Applied last, a named
     // `undefined` would blank the entry.
     const props = withProps(withProps(passed, extra), mine);
-    return render == null ? <button {...props} type="button" /> : render(props);
+    return match (render) {
+      undefined => <button {...props} type="button" />,
+      const custom => custom(props),
+    };
   };
 
   if (!sidebar.collapsed) {

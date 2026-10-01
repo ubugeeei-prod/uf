@@ -24,10 +24,26 @@ export component Layout(children: React.Node) {
           uf <span>Taskboard</span>
         </Link>
         <nav aria-label="Pages">
-          <Link to="/" aria-current={pathname === "/" ? "page" : undefined}>
+          <Link
+            to="/"
+            aria-current={
+              match (pathname) {
+                "/" => "page",
+                _   => undefined,
+              }
+            }
+          >
             Board
           </Link>
-          <Link to="/progress" aria-current={pathname === "/progress" ? "page" : undefined}>
+          <Link
+            to="/progress"
+            aria-current={
+              match (pathname) {
+                "/progress" => "page",
+                _           => undefined,
+              }
+            }
+          >
             Progress
           </Link>
         </nav>

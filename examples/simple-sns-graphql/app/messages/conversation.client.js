@@ -59,11 +59,10 @@ export component ConversationPane(
 ) {
   const { conversation } = useQueryFromServer(conversationQuery, queryRef);
 
-  return conversation == null ? (
-    <p>Conversation not found.</p>
-  ) : (
-    <Conversation key={conversation.thread.id} conversationRef={conversation} />
-  );
+  return match (conversation) {
+    null | undefined => <p>Conversation not found.</p>,
+    const found      => <Conversation key={found.thread.id} conversationRef={found} />,
+  };
 }
 
 component Conversation(conversationRef: SnsConversation_conversation$key) {
@@ -125,9 +124,19 @@ component Conversation(conversationRef: SnsConversation_conversation$key) {
           }}
         />
         <button type="submit" className="button primary" disabled={pending}>
-          {pending ? "Sending…" : "Send message"}
+          {
+            match (pending) {
+              true  => "Sending…",
+              false => "Send message",
+            }
+          }
         </button>
-        {error ? <p role="alert">{error}</p> : null}
+        {
+          match (error) {
+            ""            => null,
+            const message => <p role="alert">{message}</p>,
+          }
+        }
       </form>
     </section>
   );

@@ -16,10 +16,10 @@ type Tab = {|
 
 function tabFor(path: string): Tab {
   return match (path) {
-    "/clips" => { title: "Clips", glyph: "clips", immersive: true },
+    "/clips"    => { title: "Clips", glyph: "clips", immersive: true },
     "/messages" => { title: "Inbox", glyph: "inbox", immersive: false },
     "/settings" => { title: "Settings", glyph: "settings", immersive: false },
-    _ => { title: "Feed", glyph: "feed", immersive: false },
+    _           => { title: "Feed", glyph: "feed", immersive: false },
   };
 }
 
@@ -37,15 +37,22 @@ export component Layout() {
 
         return {
           headerShown: false,
-          title: tab.title,
+          title      : tab.title,
           tabBarIcon: ({ color }: { color: string, ... }) => (
             <TabIcon glyph={tab.glyph} color={color} />
           ),
-          tabBarActiveTintColor: tab.immersive ? "#ffffff" : INK,
-          tabBarInactiveTintColor: tab.immersive ? "#8f8f8f" : FAINT,
-          tabBarStyle: tab.immersive
-            ? { backgroundColor: "#000000", borderTopColor: "#1f1f1f" }
-            : { backgroundColor: "#f8f8f8", borderTopColor: "#dcdcdc" },
+          tabBarActiveTintColor: match (tab.immersive) {
+            true  => "#ffffff",
+            false => INK,
+          },
+          tabBarInactiveTintColor: match (tab.immersive) {
+            true  => "#8f8f8f",
+            false => FAINT,
+          },
+          tabBarStyle: match (tab.immersive) {
+            true  => { backgroundColor: "#000000", borderTopColor: "#1f1f1f" },
+            false => { backgroundColor: "#f8f8f8", borderTopColor: "#dcdcdc" },
+          },
           tabBarLabelStyle: { fontSize: 10, fontWeight: "500" },
         };
       }}

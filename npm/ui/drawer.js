@@ -173,7 +173,11 @@ component DrawerRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-component DrawerTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerTrigger(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders SheetTrigger {
   return (
     <SheetTrigger {...forwarded(rest)} render={render}>
       {children}
@@ -182,7 +186,7 @@ component DrawerTrigger(children: React.Node, render?: RenderProp, ...rest: Rest
 }
 
 /** The backdrop. It carries the edge, the same as a sheet's. */
-component DrawerOverlay(render?: RenderProp, ...rest: Rest) {
+component DrawerOverlay(render?: RenderProp, ...rest: Rest) renders SheetOverlay {
   return <SheetOverlay {...forwarded(rest)} render={render} />;
 }
 
@@ -194,7 +198,7 @@ component DrawerOverlay(render?: RenderProp, ...rest: Rest) {
  * no drag to provide an alternative to — and a drawer with a handle and no
  * `Drawer.Close` has a gesture that is the only way out.
  */
-component DrawerBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerBody(children: React.Node, render?: RenderProp, ...rest: Rest) renders SheetBody {
   const drawer = useDrawer("Drawer.Body");
   const { bodyRef, snapIndex, snapPoints } = drawer;
   const reducedMotion = usePrefersReducedMotion();
@@ -260,7 +264,11 @@ component RequireCloseForTheDrag() {
 }
 
 /** The top of the drawer, where the handle usually goes. */
-component DrawerHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerHeader(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders SheetHeader {
   return (
     <SheetHeader {...forwarded(rest)} render={render}>
       {children}
@@ -269,7 +277,11 @@ component DrawerHeader(children: React.Node, render?: RenderProp, ...rest: Rest)
 }
 
 /** The bottom of the drawer, where the actions go. */
-component DrawerFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerFooter(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders SheetFooter {
   return (
     <SheetFooter {...forwarded(rest)} render={render}>
       {children}
@@ -278,7 +290,7 @@ component DrawerFooter(children: React.Node, render?: RenderProp, ...rest: Rest)
 }
 
 /** The drawer's accessible name. */
-component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) renders SheetTitle {
   return (
     <SheetTitle {...forwarded(rest)} render={render}>
       {children}
@@ -287,7 +299,11 @@ component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) 
 }
 
 /** What the drawer is for, announced after its name. */
-component DrawerDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerDescription(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders SheetDescription {
   return (
     <SheetDescription {...forwarded(rest)} render={render}>
       {children}
@@ -301,7 +317,7 @@ component DrawerDescription(children: React.Node, render?: RenderProp, ...rest: 
  *
  * It registers itself so `Drawer.Body` can tell whether the gesture has one.
  */
-component DrawerClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component DrawerClose(children: React.Node, render?: RenderProp, ...rest: Rest) renders SheetClose {
   const drawer = useDrawer("Drawer.Close");
   const closeCountRef = drawer.closeCountRef;
 
@@ -465,10 +481,10 @@ component DrawerHandle(label?: string = "Resize the drawer", render?: RenderProp
     tabIndex: 0,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

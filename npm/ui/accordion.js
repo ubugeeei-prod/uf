@@ -223,7 +223,12 @@ component AccordionRoot(
 
   return (
     <AccordionContext.Provider value={state}>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </AccordionContext.Provider>
   );
 }
@@ -267,7 +272,12 @@ component AccordionItem(
 
   return (
     <AccordionItemContext.Provider value={state}>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </AccordionItemContext.Provider>
   );
 }
@@ -318,10 +328,10 @@ component AccordionTrigger(children: React.Node, render?: RenderProp, ...rest: R
     }),
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -354,10 +364,10 @@ component AccordionContent(children: React.Node, render?: RenderProp, ...rest: R
     role: "region",
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

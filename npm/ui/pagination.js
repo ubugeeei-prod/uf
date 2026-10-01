@@ -71,7 +71,12 @@ component PaginationRoot(
 
   return (
     <>
-      {render == null ? <nav {...props} /> : render(withProps(props, { role: "navigation" }))}
+      {
+        match (render) {
+          undefined => <nav {...props} />,
+          const custom => custom(withProps(props, { role: "navigation" })),
+        }
+      }
       {/*
         Beside the navigation rather than inside it, so a reader walking the
         landmark hears the links and not a sentence about them — and mounted
@@ -97,10 +102,10 @@ component PaginationContent(
   ...rest: Rest
 ) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(withProps(props, { role: "list" }));
-  }
-  return <ul {...props} />;
+  return match (render) {
+    undefined => <ul {...props} />,
+    const custom => custom(withProps(props, { role: "list" })),
+  };
 }
 
 /**
@@ -115,7 +120,7 @@ component PaginationItem(
   disabled?: boolean = false,
   render?: RenderProp,
   ...rest: Rest
-) {
+) renders PageLink {
   return (
     <PageLink current={current} disabled={disabled} render={render} rest={rest}>
       {children}
@@ -137,7 +142,7 @@ component PaginationPrevious(
   disabled?: boolean = false,
   render?: RenderProp,
   ...rest: Rest
-) {
+) renders PageLink {
   return (
     <PageLink disabled={disabled} label={label} render={render} rest={rest}>
       {children}
@@ -152,7 +157,7 @@ component PaginationNext(
   disabled?: boolean = false,
   render?: RenderProp,
   ...rest: Rest
-) {
+) renders PageLink {
   return (
     <PageLink disabled={disabled} label={label} render={render} rest={rest}>
       {children}
@@ -192,15 +197,13 @@ component PageLink(
     role: disabled ? "link" : undefined,
   });
 
-  if (render != null) {
-    return <li>{render(withProps(props, { role: "link" }))}</li>;
-  }
-
-  return (
-    <li>
-      <a {...props} />
-    </li>
-  );
+  return match (render) {
+    undefined =>
+      <li>
+        <a {...props} />
+      </li>,
+    const custom => <li>{custom(withProps(props, { role: "link" }))}</li>,
+  };
 }
 
 /** The wording used when the caller supplies none. */

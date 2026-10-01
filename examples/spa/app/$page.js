@@ -45,14 +45,26 @@ export component Page() {
           <li key={task.id}>
             <label>
               <input type="checkbox" checked={task.done} onChange={() => toggle(task.id)} />
-              <span className={task.done ? "done" : undefined}>{task.title}</span>
+              <span
+                className={
+                  match (task.done) {
+                    true  => "done",
+                    false => undefined,
+                  }
+                }
+              >
+                {task.title}
+              </span>
             </label>
           </li>
         ))}
       </ul>
-      {items.length === 0 && (
-        <p className="quiet">Nothing waiting. Add something when you are ready.</p>
-      )}
+      {
+        match (items.length === 0) {
+          true  => <p className="quiet">Nothing waiting. Add something when you are ready.</p>,
+          false => null,
+        }
+      }
       <div className="summary">
         <p role="status">
           {done} of {items.length} complete

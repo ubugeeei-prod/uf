@@ -136,7 +136,12 @@ export component AuthClient(mode: "login" | "signup") {
               value={draft.password}
               onChange={(event) => setDraft({ ...draft, password: event.target.value })}
               type="password"
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              autoComplete={
+                match (mode) {
+                  "signup" => "new-password",
+                  "login"  => "current-password",
+                }
+              }
               required
               minLength={12}
               maxLength={128}
@@ -146,8 +151,20 @@ export component AuthClient(mode: "login" | "signup") {
         />
       </FormField>
       <FormStatus state={state} />
-      <SubmitButton pendingLabel={mode === "signup" ? "Creating account…" : "Signing in…"}>
-        {mode === "signup" ? "Create account" : "Sign in"}
+      <SubmitButton
+        pendingLabel={
+          match (mode) {
+            "signup" => "Creating account…",
+            "login"  => "Signing in…",
+          }
+        }
+      >
+        {
+          match (mode) {
+            "signup" => "Create account",
+            "login"  => "Sign in",
+          }
+        }
       </SubmitButton>
       <p className="auth-alternative">
         {

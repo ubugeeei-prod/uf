@@ -198,7 +198,12 @@ component TableRoot(
 
   return (
     <TableContext.Provider value={state}>
-      {render == null ? <table {...props} /> : render(withProps(props, { role: "table" }))}
+      {
+        match (render) {
+          undefined => <table {...props} />,
+          const custom => custom(withProps(props, { role: "table" })),
+        }
+      }
       {/*
         Beside the table rather than inside it, because a `<table>` may only
         contain a caption, column groups and row groups — and mounted from the
@@ -235,10 +240,10 @@ component TableCaption(children: React.Node, render?: RenderProp, ...rest: Rest)
   }, [register]);
 
   const props = withProps(rest, { children, id: table.captionId });
-  if (render != null) {
-    return render(withProps(props, { role: "caption" }));
-  }
-  return <caption {...props} />;
+  return match (render) {
+    undefined => <caption {...props} />,
+    const custom => custom(withProps(props, { role: "caption" })),
+  };
 }
 
 /**
@@ -260,7 +265,12 @@ component TableHeader(children: React.Node, render?: RenderProp, ...rest: Rest) 
 
   return (
     <HeaderContext.Provider value={true}>
-      {render == null ? <thead {...props} /> : render(withProps(props, { role: "rowgroup" }))}
+      {
+        match (render) {
+          undefined => <thead {...props} />,
+          const custom => custom(withProps(props, { role: "rowgroup" })),
+        }
+      }
     </HeaderContext.Provider>
   );
 }
@@ -270,7 +280,12 @@ component TableBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
   return (
     <HeaderContext.Provider value={false}>
-      {render == null ? <tbody {...props} /> : render(withProps(props, { role: "rowgroup" }))}
+      {
+        match (render) {
+          undefined => <tbody {...props} />,
+          const custom => custom(withProps(props, { role: "rowgroup" })),
+        }
+      }
     </HeaderContext.Provider>
   );
 }
@@ -313,10 +328,10 @@ component TableRow(
   }
 
   const props = withProps(rest, { "aria-rowindex": rowIndex, children });
-  if (render != null) {
-    return render(withProps(props, { role: "row" }));
-  }
-  return <tr {...props} />;
+  return match (render) {
+    undefined => <tr {...props} />,
+    const custom => custom(withProps(props, { role: "row" })),
+  };
 }
 
 /**
@@ -359,10 +374,10 @@ component TableHead(
 
   if (column == null) {
     const props = withProps(rest, { children, scope: "col" });
-    if (render != null) {
-      return render(withProps(props, { role: "columnheader" }));
-    }
-    return <th {...props} />;
+    return match (render) {
+      undefined => <th {...props} />,
+      const custom => custom(withProps(props, { role: "columnheader" })),
+    };
   }
 
   const button = (
@@ -388,19 +403,19 @@ component TableHead(
     scope: "col",
   });
 
-  if (render != null) {
-    return render(withProps(props, { role: "columnheader" }));
-  }
-  return <th {...props} />;
+  return match (render) {
+    undefined => <th {...props} />,
+    const custom => custom(withProps(props, { role: "columnheader" })),
+  };
 }
 
 /** One cell. */
 component TableCell(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(withProps(props, { role: "cell" }));
-  }
-  return <td {...props} />;
+  return match (render) {
+    undefined => <td {...props} />,
+    const custom => custom(withProps(props, { role: "cell" })),
+  };
 }
 
 /**
@@ -413,10 +428,10 @@ component TableCell(children: React.Node, render?: RenderProp, ...rest: Rest) {
  */
 component TableRowHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children, scope: "row" });
-  if (render != null) {
-    return render(withProps(props, { role: "rowheader" }));
-  }
-  return <th {...props} />;
+  return match (render) {
+    undefined => <th {...props} />,
+    const custom => custom(withProps(props, { role: "rowheader" })),
+  };
 }
 
 /**

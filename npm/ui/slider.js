@@ -229,7 +229,12 @@ component SliderRoot(
 
   return (
     <SliderContext.Provider value={state}>
-      {render == null ? <div {...rest}>{children}</div> : render(withProps(rest, { children }))}
+      {
+        match (render) {
+          undefined => <div {...rest}>{children}</div>,
+          const custom => custom(withProps(rest, { children })),
+        }
+      }
     </SliderContext.Provider>
   );
 }
@@ -310,7 +315,10 @@ component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) 
     }),
   });
 
-  return render == null ? <div {...props} /> : render(props);
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -339,7 +347,10 @@ component SliderRange(render?: RenderProp, ...rest: Rest) {
     },
   });
 
-  return render == null ? <div {...props} /> : render(props);
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -405,7 +416,10 @@ component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
     tabIndex: slider.disabled ? -1 : 0,
   });
 
-  return render == null ? <span {...props} /> : render(props);
+  return match (render) {
+    undefined => <span {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

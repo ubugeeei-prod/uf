@@ -66,47 +66,57 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
             <span className={`channel-dot ${topic}`} />
             {topicLabel(topic)}
           </Link>
-          {signedIn ? (
-            <button
-              type="button"
-              className="reaction"
-              disabled={pending}
-              aria-pressed={post.liked}
-              aria-label={`${post.liked ? "Remove appreciation" : "Appreciate"} · ${post.likes}`}
-              onClick={() => {
-                setError("");
-                commit({
-                  variables: { id: post.id, liked: !post.liked },
-                  optimisticResponse: {
-                    setAppreciation: {
-                      id   : post.id,
-                      liked: !post.liked,
-                      likes: post.likes + (post.liked ? -1 : 1),
-                    },
-                  },
-                  onError: () => setError("Could not save. Try again."),
-                });
-              }}
-            >
-              <Icon name="heart" size={16} />
-              <span>{post.likes}</span>
-            </button>
-          ) : (
-            <Link
-              className="reaction"
-              to="/login"
-              aria-label={`Sign in to appreciate · ${post.likes}`}
-            >
-              <Icon name="heart" size={16} />
-              <span>{post.likes}</span>
-            </Link>
-          )}
+          {
+            match (signedIn) {
+              true  =>
+                <button
+                  type="button"
+                  className="reaction"
+                  disabled={pending}
+                  aria-pressed={post.liked}
+                  aria-label={`${match (post.liked === true) {
+                    true  => "Remove appreciation",
+                    false => "Appreciate",
+                  }} · ${post.likes}`}
+                  onClick={() => {
+                    setError("");
+                    commit({
+                      variables: { id: post.id, liked: !post.liked },
+                      optimisticResponse: {
+                        setAppreciation: {
+                          id   : post.id,
+                          liked: !post.liked,
+                          likes: post.likes + (post.liked ? -1 : 1),
+                        },
+                      },
+                      onError: () => setError("Could not save. Try again."),
+                    });
+                  }}
+                >
+                  <Icon name="heart" size={16} />
+                  <span>{post.likes}</span>
+                </button>,
+              false =>
+                <Link
+                  className="reaction"
+                  to="/login"
+                  aria-label={`Sign in to appreciate · ${post.likes}`}
+                >
+                  <Icon name="heart" size={16} />
+                  <span>{post.likes}</span>
+                </Link>,
+            }
+          }
         </footer>
-        {error ? (
-          <p role="alert" {...styled("post-error", sharedStyles.postError)}>
-            {error}
-          </p>
-        ) : null}
+        {
+          match (error) {
+            ""            => null,
+            const message =>
+              <p role="alert" {...styled("post-error", sharedStyles.postError)}>
+                {message}
+              </p>,
+          }
+        }
       </div>
     </article>
   );

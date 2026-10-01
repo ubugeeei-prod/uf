@@ -118,7 +118,11 @@ component AlertDialogRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-component AlertDialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogTrigger(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogTrigger {
   return (
     <DialogTrigger {...forwarded(rest)} render={render}>
       {children}
@@ -127,7 +131,7 @@ component AlertDialogTrigger(children: React.Node, render?: RenderProp, ...rest:
 }
 
 /** The backdrop. See `Dialog.Overlay`: it is decoration and says so. */
-component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) {
+component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) renders DialogOverlay {
   return <DialogOverlay {...forwarded(rest)} render={render} />;
 }
 
@@ -140,7 +144,11 @@ component AlertDialogOverlay(render?: RenderProp, ...rest: Rest) {
  * who set two of them would have an alert dialog that is wrong in the third
  * without anything saying so.
  */
-component AlertDialogBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogBody(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogBody {
   const alert = useAlertDialog("AlertDialog.Body");
 
   return (
@@ -189,7 +197,11 @@ component RequireDescription() {
 }
 
 /** The top of the alert dialog. See `Dialog.Header` for why it is a `div`. */
-component AlertDialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogHeader(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogHeader {
   return (
     <DialogHeader {...forwarded(rest)} render={render}>
       {children}
@@ -198,7 +210,11 @@ component AlertDialogHeader(children: React.Node, render?: RenderProp, ...rest: 
 }
 
 /** The bottom, where `Action` and `Cancel` go. */
-component AlertDialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogFooter(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogFooter {
   return (
     <DialogFooter {...forwarded(rest)} render={render}>
       {children}
@@ -207,7 +223,11 @@ component AlertDialogFooter(children: React.Node, render?: RenderProp, ...rest: 
 }
 
 /** The question, which is the alert dialog's accessible name. */
-component AlertDialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogTitle(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogTitle {
   return (
     <DialogTitle {...forwarded(rest)} render={render}>
       {children}
@@ -222,7 +242,11 @@ component AlertDialogTitle(children: React.Node, render?: RenderProp, ...rest: R
  * exists to deliver, and the only moment the reader has to decide whether they
  * care is before they have pressed anything.
  */
-component AlertDialogDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogDescription(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogDescription {
   const alert = useAlertDialog("AlertDialog.Description");
   const describedBy = alert.describedBy;
 
@@ -250,7 +274,11 @@ component AlertDialogDescription(children: React.Node, render?: RenderProp, ...r
  * are made of, so the composition rule about a caller's `onClick` has one
  * implementation rather than a second copy here.
  */
-component AlertDialogAction(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogAction(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogClose {
   return (
     <DialogClose {...forwarded(rest)} render={render}>
       {children}
@@ -265,7 +293,11 @@ component AlertDialogAction(children: React.Node, render?: RenderProp, ...rest: 
  * without the caller wiring a ref: the least destructive action is a fact about
  * which part this is, not a decision to be repeated at every call.
  */
-component AlertDialogCancel(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component AlertDialogCancel(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogClose {
   const alert = useAlertDialog("AlertDialog.Cancel");
   const cancelRef = alert.cancelRef;
   const passed = withoutComposed(rest, ["ref"]);

@@ -13,12 +13,17 @@ import type { InboxData, ConversationData, MessageThread } from "../_shared/soci
 
 /** Navigate to one authorized conversation and expose the selected state accessibly. */
 
-export component ThreadLink(thread: MessageThread, selected: boolean) {
+export component ThreadLink(thread: MessageThread, selected: boolean) renders Link {
   return (
     <Link
       className="thread-link"
       to={`/messages?thread=${encodeURIComponent(thread.id)}`}
-      aria-current={selected ? "page" : undefined}
+      aria-current={
+        match (selected) {
+          true  => "page",
+          false => undefined,
+        }
+      }
     >
       <Avatar
         user={{
@@ -59,7 +64,12 @@ component Threads(data: InboxData, selectedId: string) {
           <ThreadLink
             key={thread.id}
             thread={thread}
-            selected={selectedId === "" ? index === 0 : thread.id === selectedId}
+            selected={
+              match (selectedId) {
+                ""       => index === 0,
+                const id => thread.id === id,
+              }
+            }
           />
         ))}
       </ThreadList>,

@@ -110,7 +110,11 @@ component SheetRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-component SheetTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetTrigger(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogTrigger {
   return (
     <DialogTrigger {...forwarded(rest)} render={render}>
       {children}
@@ -122,7 +126,7 @@ component SheetTrigger(children: React.Node, render?: RenderProp, ...rest: Rest)
  * The backdrop, which knows the edge so a stylesheet does not have to be told
  * twice.
  */
-component SheetOverlay(render?: RenderProp, ...rest: Rest) {
+component SheetOverlay(render?: RenderProp, ...rest: Rest) renders DialogOverlay {
   const sheet = useSheet("Sheet.Overlay");
   return <DialogOverlay {...forwarded(rest)} data-side={sheet.side} render={render} />;
 }
@@ -133,7 +137,7 @@ component SheetOverlay(render?: RenderProp, ...rest: Rest) {
  * Every modal promise `dialog.js` makes is made here, unchanged. This part adds
  * `data-side` and nothing else, which is the honest size of the difference.
  */
-component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) renders DialogBody {
   const sheet = useSheet("Sheet.Body");
 
   return (
@@ -144,7 +148,11 @@ component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
 }
 
 /** The top of the sheet. See `Dialog.Header` for why it is not a `<header>`. */
-component SheetHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetHeader(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogHeader {
   return (
     <DialogHeader {...forwarded(rest)} render={render}>
       {children}
@@ -153,7 +161,11 @@ component SheetHeader(children: React.Node, render?: RenderProp, ...rest: Rest) 
 }
 
 /** The bottom of the sheet, where the actions go. */
-component SheetFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetFooter(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogFooter {
   return (
     <DialogFooter {...forwarded(rest)} render={render}>
       {children}
@@ -162,7 +174,7 @@ component SheetFooter(children: React.Node, render?: RenderProp, ...rest: Rest) 
 }
 
 /** The sheet's accessible name. A modal without one is announced as "dialog". */
-component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) renders DialogTitle {
   return (
     <DialogTitle {...forwarded(rest)} render={render}>
       {children}
@@ -171,7 +183,11 @@ component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
 }
 
 /** What the sheet is for, announced after its name. */
-component SheetDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetDescription(
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) renders DialogDescription {
   return (
     <DialogDescription {...forwarded(rest)} render={render}>
       {children}
@@ -180,7 +196,7 @@ component SheetDescription(children: React.Node, render?: RenderProp, ...rest: R
 }
 
 /** A button that closes the sheet. */
-component SheetClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
+component SheetClose(children: React.Node, render?: RenderProp, ...rest: Rest) renders DialogClose {
   return (
     <DialogClose {...forwarded(rest)} render={render}>
       {children}

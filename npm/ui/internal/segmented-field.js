@@ -337,5 +337,8 @@ export component SegmentedField(time: boolean, options: DateFieldProps) {
       </>
     ),
   });
-  return render != null ? render(props) : <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }

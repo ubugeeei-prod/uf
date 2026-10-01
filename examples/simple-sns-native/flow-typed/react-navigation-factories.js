@@ -6,13 +6,13 @@
 declare module "@react-navigation/native-stack" {
   declare export function createNativeStackNavigator(): interface {
     readonly Navigator: React$ComponentType<{ ... }>,
-    readonly Screen: React$ComponentType<{ ... }>,
+    readonly Screen   : React$ComponentType<{ ... }>,
   };
 }
 
 declare module "@react-navigation/bottom-tabs" {
   declare export function createBottomTabNavigator(): interface {
     readonly Navigator: React$ComponentType<{ ... }>,
-    readonly Screen: React$ComponentType<{ ... }>,
+    readonly Screen   : React$ComponentType<{ ... }>,
   };
 }

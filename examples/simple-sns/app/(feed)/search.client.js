@@ -43,13 +43,22 @@ export component SearchNotes(filter: FeedFilter) {
         aria-label="Search notes"
         maxLength={100}
       />
-      {filter.topic !== "all" ? <input type="hidden" name="topic" value={filter.topic} /> : null}
+      {
+        match (filter.topic) {
+          "all"       => null,
+          const topic => <input type="hidden" name="topic" value={topic} />,
+        }
+      }
       <button type="submit">Search</button>
-      {filter.query ? (
-        <Link to={feedHref(filter.topic)} className="text-link">
-          Clear
-        </Link>
-      ) : null}
+      {
+        match (filter.query) {
+          "" => null,
+          _  =>
+            <Link to={feedHref(filter.topic)} className="text-link">
+              Clear
+            </Link>,
+        }
+      }
     </form>
   );
 }

@@ -22,10 +22,10 @@ import { Timeline } from "./timeline.native.js";
  */
 
 export component Page() {
-  const [filter, setFilter] = useState<FeedFilter>({ topic: "all", search: "" });
-  const [shown, show] = useOptimistic<FeedFilter, FeedFilter>(filter, (_, next) => next);
+  const [filter,    setFilter]   = useState<FeedFilter>({ topic: "all", search: "" });
+  const [shown,     show]        = useOptimistic<FeedFilter, FeedFilter>(filter, (_, next) => next);
   const [switching, startSwitch] = useTransition();
-  const { resource, retry } = useResource(`feed:${filter.topic}:${filter.search}`, (service) =>
+  const { resource, retry }      = useResource(`feed:${filter.topic}:${filter.search}`, (service) =>
     // The composer needs the viewer and the list needs the notes; both reads start together.
     Promise.all([service.session(), service.feed(filter)]).then(([session, posts]) => ({
       session,
@@ -52,9 +52,12 @@ export component Page() {
           search={filter.search}
           onSearch={(search) => change({ ...filter, search })}
         />
-        {filter.search !== "" ? (
-          <Text {...stylex.props(local.results)}>Results for “{filter.search}”</Text>
-        ) : null}
+        {
+          match (filter.search) {
+            ""          => null,
+            const query => <Text {...stylex.props(local.results)}>Results for “{query}”</Text>,
+          }
+        }
         <AsyncRegion
           resource={resource}
           label="notes"

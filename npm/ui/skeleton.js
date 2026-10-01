@@ -124,7 +124,12 @@ component SkeletonRoot(
 
   return (
     <>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
       {/*
         Beside the region rather than inside it, so a reader walking into the
         content does not find a sentence about it sitting among the rows — and
@@ -155,10 +160,10 @@ component SkeletonRoot(
  */
 component SkeletonBox(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-hidden": "true", children });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

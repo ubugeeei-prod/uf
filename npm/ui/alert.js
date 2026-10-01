@@ -95,10 +95,10 @@ component AlertRoot(
   ...rest: Rest
 ) {
   const props = withProps(rest, { children, role: live ? "alert" : undefined });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -121,19 +121,19 @@ component AlertTitle(children: React.Node, level?: number = 3, render?: RenderPr
   const Heading = `h${String(clamped)}`;
   const props = withProps(rest, { children });
 
-  if (render != null) {
-    return render(withProps(props, { "aria-level": clamped, role: "heading" }));
-  }
-  return <Heading {...props} />;
+  return match (render) {
+    undefined => <Heading {...props} />,
+    const custom => custom(withProps(props, { "aria-level": clamped, role: "heading" })),
+  };
 }
 
 /** What the callout says, under its heading. */
 component AlertDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(props);
-  }
-  return <p {...props} />;
+  return match (render) {
+    undefined => <p {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

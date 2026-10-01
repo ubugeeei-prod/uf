@@ -82,9 +82,19 @@ export component SettingsForm(
         <input type="email" name="email" defaultValue={settings.email} required />
       </label>
       <button type="submit" className="button primary" disabled={pending}>
-        {pending ? "Saving…" : "Save changes"}
+        {
+          match (pending) {
+            true  => "Saving…",
+            false => "Save changes",
+          }
+        }
       </button>
-      {feedback ? <p role="status">{feedback}</p> : null}
+      {
+        match (feedback) {
+          ""            => null,
+          const message => <p role="status">{message}</p>,
+        }
+      }
     </form>
   );
 }

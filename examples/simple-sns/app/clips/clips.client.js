@@ -72,9 +72,19 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
     <div className="clip-stage">
       <video
         ref={video}
-        src={active ? clip.src : undefined}
+        src={
+          match (active) {
+            true  => clip.src,
+            false => undefined,
+          }
+        }
         poster={clip.poster}
-        preload={active ? "auto" : "none"}
+        preload={
+          match (active) {
+            true  => "auto",
+            false => "none",
+          }
+        }
         muted={muted}
         playsInline
         loop
@@ -87,54 +97,84 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
         onWaiting={() => setPlayback({ kind: "loading" })}
         onError={() => setPlayback({ kind: "error" })}
       />
-      {active ? (
-        <>
-          <div className="clip-controls">
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label={playing ? "Pause video" : "Play video"}
-            >
-              <Icon name={playing ? "pause" : "play"} size={19} />
-            </button>
-            <button
-              type="button"
-              onClick={onMute}
-              aria-label={muted ? "Unmute video" : "Mute video"}
-              aria-pressed={!muted}
-            >
-              <Icon name={muted ? "muted" : "volume"} size={19} />
-            </button>
-          </div>
-          {
-            match (playback) {
-              {kind: "error"}                      =>
-                <div className="clip-notice" role="alert">
-                  Could not load this clip.{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      video.current?.load();
-                      toggle();
-                    }}
-                  >
-                    Try again
-                  </button>
-                </div>,
-              {kind: "blocked"}                    =>
-                <button type="button" className="clip-play" onClick={toggle}>
-                  <Icon name="play" size={26} />
-                  <span>Play video</span>
-                </button>,
-              {kind: "loading"}                    =>
-                <span className="clip-loading" role="status">
-                  Loading video…
-                </span>,
-              {kind: "paused"} | {kind: "playing"} => null,
-            }
-          }
-        </>
-      ) : null}
+      {
+        match (active) {
+          false => null,
+          true  =>
+            <>
+              <div className="clip-controls">
+                <button
+                  type="button"
+                  onClick={toggle}
+                  aria-label={
+                    match (playing) {
+                      true  => "Pause video",
+                      false => "Play video",
+                    }
+                  }
+                >
+                  <Icon
+                    name={
+                      match (playing) {
+                        true  => "pause",
+                        false => "play",
+                      }
+                    }
+                    size={19}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={onMute}
+                  aria-label={
+                    match (muted) {
+                      true  => "Unmute video",
+                      false => "Mute video",
+                    }
+                  }
+                  aria-pressed={!muted}
+                >
+                  <Icon
+                    name={
+                      match (muted) {
+                        true  => "muted",
+                        false => "volume",
+                      }
+                    }
+                    size={19}
+                  />
+                </button>
+              </div>
+              {
+                match (playback) {
+                  {kind: "error"}                      =>
+                    <div className="clip-notice" role="alert">
+                      Could not load this clip.{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          video.current?.load();
+                          toggle();
+                        }}
+                      >
+                        Try again
+                      </button>
+                    </div>,
+                  {kind: "blocked"}                    =>
+                    <button type="button" className="clip-play" onClick={toggle}>
+                      <Icon name="play" size={26} />
+                      <span>Play video</span>
+                    </button>,
+                  {kind: "loading"}                    =>
+                    <span className="clip-loading" role="status">
+                      Loading video…
+                    </span>,
+                  {kind: "paused"} | {kind: "playing"} => null,
+                }
+              }
+            </>,
+        }
+      }
       <div className="clip-caption">
         <h2>{clip.title}</h2>
         <p>{clip.description}</p>

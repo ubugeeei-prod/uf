@@ -213,7 +213,12 @@ component NumberFieldRoot(
   const props = withProps(rest, { children, "data-invalid": invalid ? "" : undefined });
   return (
     <NumberContext.Provider value={state}>
-      {render != null ? render(props) : <div {...props} />}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </NumberContext.Provider>
   );
 }
@@ -252,7 +257,10 @@ component NumberFieldInput(render?: RenderProp, ...rest: Rest) {
       }
     }),
   });
-  return render != null ? render(props) : <input {...props} />;
+  return match (render) {
+    undefined => <input {...props} />,
+    const custom => custom(props),
+  };
 }
 
 component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp, ...rest: Rest) {
@@ -267,7 +275,10 @@ component NumberFieldIncrement(children?: React.Node = "+", render?: RenderProp,
       (state.max != null && state.value != null && state.value >= state.max),
     onClick: composeHandlers(rest.onClick, () => state.stepBy(1)),
   });
-  return render != null ? render(props) : <button {...props} />;
+  return match (render) {
+    undefined => <button {...props} />,
+    const custom => custom(props),
+  };
 }
 component NumberFieldDecrement(children?: React.Node = "−", render?: RenderProp, ...rest: Rest) {
   const state = useNumber();
@@ -281,7 +292,10 @@ component NumberFieldDecrement(children?: React.Node = "−", render?: RenderPro
       (state.min != null && state.value != null && state.value <= state.min),
     onClick: composeHandlers(rest.onClick, () => state.stepBy(-1)),
   });
-  return render != null ? render(props) : <button {...props} />;
+  return match (render) {
+    undefined => <button {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

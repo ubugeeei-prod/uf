@@ -160,7 +160,12 @@ component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
 
   return (
     <AvatarContext.Provider value={state}>
-      {render != null ? render(props) : <span {...props} />}
+      {
+        match (render) {
+          undefined => <span {...props} />,
+          const custom => custom(props),
+        }
+      }
     </AvatarContext.Provider>
   );
 }
@@ -225,10 +230,10 @@ component AvatarImage(alt?: string = "", src?: string | null, render?: RenderPro
     }),
     src: source ?? undefined,
   });
-  if (render != null) {
-    return render(props);
-  }
-  return <img {...props} />;
+  return match (render) {
+    undefined => <img {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -268,10 +273,10 @@ component AvatarFallback(
     return null;
   }
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(props);
-  }
-  return <span {...props} />;
+  return match (render) {
+    undefined => <span {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

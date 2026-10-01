@@ -60,7 +60,12 @@ export component Page(data: Data) {
         <nav className="feed-tabs" aria-label="Feed channels">
           <Link
             to={feedHref("all", feed.query)}
-            aria-current={feed.topic === "all" ? "page" : undefined}
+            aria-current={
+              match (feed.topic) {
+                "all" => "page",
+                _     => undefined,
+              }
+            }
           >
             All notes
           </Link>
@@ -68,7 +73,12 @@ export component Page(data: Data) {
             <Link
               to={feedHref(topic, feed.query)}
               key={topic}
-              aria-current={feed.topic === topic ? "page" : undefined}
+              aria-current={
+                match (feed.topic === topic) {
+                  true  => "page",
+                  false => undefined,
+                }
+              }
             >
               {topicLabel(topic)}
             </Link>
@@ -76,9 +86,13 @@ export component Page(data: Data) {
         </nav>
       </div>
       <SearchNotes key={feed.query} filter={feed} />
-      {feed.query ? (
-        <p {...styled("result-label", sharedStyles.resultLabel)}>Results for “{feed.query}”</p>
-      ) : null}
+      {
+        match (feed.query) {
+          ""          => null,
+          const query =>
+            <p {...styled("result-label", sharedStyles.resultLabel)}>Results for “{query}”</p>,
+        }
+      }
       <div className="feed-content">
         <TimelineClient
           key={`${feed.topic}:${feed.query}:${feed.page}`}

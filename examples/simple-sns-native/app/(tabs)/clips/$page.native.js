@@ -21,12 +21,12 @@ import { UNDERLINED } from "../../_shared/commonplace.stylex.js";
 import { POSTERS } from "../../_shared/media.js";
 
 type Clip = {|
-  readonly id: string,
-  readonly title: string,
+  readonly id         : string,
+  readonly title      : string,
   readonly description: string,
-  readonly poster: ImageSourcePropType,
-  readonly credit: string,
-  readonly source: string,
+  readonly poster     : ImageSourcePropType,
+  readonly credit     : string,
+  readonly source     : string,
 |};
 
 /**
@@ -36,28 +36,28 @@ type Clip = {|
 
 const CLIPS: $ReadOnlyArray<Clip> = [
   {
-    id: "after-dark",
-    title: "After dark",
+    id         : "after-dark",
+    title      : "After dark",
     description: "A different rhythm above the city.",
-    poster: POSTERS.city,
-    credit: "Rubén Velasco",
-    source: "https://mixkit.co/free-stock-video/big-city-at-night-from-an-aerial-shot-49878/",
+    poster     : POSTERS.city,
+    credit     : "Rubén Velasco",
+    source     : "https://mixkit.co/free-stock-video/big-city-at-night-from-an-aerial-shot-49878/",
   },
   {
-    id: "last-train",
-    title: "The last light",
+    id         : "last-train",
+    title      : "The last light",
     description: "Watching the evening settle over the tracks.",
-    poster: POSTERS.rail,
-    credit: "Rubén Velasco",
-    source: "https://mixkit.co/free-stock-video/sunset-over-train-tracks-1594/",
+    poster     : POSTERS.rail,
+    credit     : "Rubén Velasco",
+    source     : "https://mixkit.co/free-stock-video/sunset-over-train-tracks-1594/",
   },
   {
-    id: "long-way",
-    title: "The long way home",
+    id         : "long-way",
+    title      : "The long way home",
     description: "Twelve seconds away from the desk.",
-    poster: POSTERS.park,
-    credit: "Edgar Fernandez",
-    source: "https://mixkit.co/free-stock-video/slowly-walking-down-a-path-in-a-park-40656/",
+    poster     : POSTERS.park,
+    credit     : "Edgar Fernandez",
+    source     : "https://mixkit.co/free-stock-video/slowly-walking-down-a-path-in-a-park-40656/",
   },
 ];
 
@@ -129,9 +129,9 @@ component Step(label: string, glyph: string, disabled: boolean, onPress: () => v
  */
 
 export component Page() {
-  const insets = useSafeAreaInsets();
-  const window = useWindowDimensions();
-  const pager = useRef<React.ElementRef<typeof ScrollView> | null>(null);
+  const insets                  = useSafeAreaInsets();
+  const window                  = useWindowDimensions();
+  const pager                   = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const [measured, setMeasured] = useState<number | null>(null);
   const [selected, setSelected] = useState(0);
   const height = measured ?? window.height;
@@ -210,62 +210,62 @@ export component Page() {
 
 const local = stylex.create({
   screen: { flex: 1, backgroundColor: "#000000" },
-  slide: { width: "100%", backgroundColor: "#0b0b0b", overflow: "hidden" },
+  slide : { width: "100%", backgroundColor: "#0b0b0b", overflow: "hidden" },
   poster: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%" },
   caption: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    gap: 5,
-    paddingLeft: 20,
-    paddingRight: 76,
-    paddingTop: 18,
-    paddingBottom: 24,
+    position       : "absolute",
+    left           : 0,
+    right          : 0,
+    bottom         : 0,
+    gap            : 5,
+    paddingLeft    : 20,
+    paddingRight   : 76,
+    paddingTop     : 18,
+    paddingBottom  : 24,
     backgroundColor: "#00000073",
   },
-  title: { fontSize: 22, fontWeight: "600", letterSpacing: -0.5, color: "#ffffff" },
+  title      : { fontSize: 22, fontWeight: "600", letterSpacing: -0.5, color: "#ffffff" },
   description: { fontSize: 14, lineHeight: 21, color: "#ffffffe0" },
-  credit: { fontSize: 11, color: "#ffffffb8", marginTop: 6 },
+  credit     : { fontSize: 11, color: "#ffffffb8", marginTop: 6 },
   // Dark behind the status bar as well: its text is light, and a poster can be a bright sky.
   bar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    paddingLeft: 20,
-    paddingRight: 20,
-    paddingBottom: 12,
+    position       : "absolute",
+    top            : 0,
+    left           : 0,
+    right          : 0,
+    flexDirection  : "row",
+    alignItems     : "baseline",
+    justifyContent : "space-between",
+    paddingLeft    : 20,
+    paddingRight   : 20,
+    paddingBottom  : 12,
     backgroundColor: "#00000059",
   },
-  heading: { fontSize: 24, fontWeight: "600", letterSpacing: -0.7, color: "#ffffff" },
-  counter: { fontSize: 13, fontWeight: "600", color: "#ffffff" },
+  heading     : { fontSize: 24, fontWeight: "600", letterSpacing: -0.7, color: "#ffffff" },
+  counter     : { fontSize: 13, fontWeight: "600", color: "#ffffff" },
   counterTotal: { fontWeight: "400", color: "#ffffffa6" },
   rail: {
-    position: "absolute",
-    right: 14,
-    top: 0,
-    bottom: 0,
-    alignItems: "center",
+    position      : "absolute",
+    right         : 14,
+    top           : 0,
+    bottom        : 0,
+    alignItems    : "center",
     justifyContent: "center",
-    gap: 14,
+    gap           : 14,
   },
   step: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: "center",
-    justifyContent: "center",
+    width          : 42,
+    height         : 42,
+    borderRadius   : 21,
+    alignItems     : "center",
+    justifyContent : "center",
     backgroundColor: "#00000066",
-    borderWidth: 1,
-    borderColor: "#ffffff33",
+    borderWidth    : 1,
+    borderColor    : "#ffffff33",
   },
   stepDisabled: { opacity: 0.35 },
-  stepGlyph: { fontSize: 17, color: "#ffffff" },
-  marks: { gap: 6, alignItems: "center" },
-  mark: { width: 3, height: 14, borderRadius: 2, backgroundColor: "#ffffff59" },
+  stepGlyph   : { fontSize: 17, color: "#ffffff" },
+  marks       : { gap: 6, alignItems: "center" },
+  mark        : { width: 3, height: 14, borderRadius: 2, backgroundColor: "#ffffff59" },
   markSelected: { height: 26, backgroundColor: "#ffffff" },
 });

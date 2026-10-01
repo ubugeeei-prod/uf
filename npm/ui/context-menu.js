@@ -206,10 +206,10 @@ component ContextMenuTrigger(children: React.Node, render?: RenderProp, ...rest:
     },
   );
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 export type { MenuSelect } from "./menu.js";

@@ -63,15 +63,19 @@ export component Avatar(user: User, small: boolean = false) renders AvatarFrame 
 
   return (
     <AvatarFrame small={small}>
-      {photo == null ? (
-        <Text {...stylex.props(styles.avatarInitials, small && styles.avatarInitialsSmall)}>
-          {user.avatar}
-        </Text>
-      ) : small ? (
-        <Image source={photo} {...stylex.props(local.photoSmall)} />
-      ) : (
-        <Image source={photo} {...stylex.props(local.photo)} />
-      )}
+      {
+        match (photo) {
+          null         =>
+            <Text {...stylex.props(styles.avatarInitials, small && styles.avatarInitialsSmall)}>
+              {user.avatar}
+            </Text>,
+          const source =>
+            match (small) {
+              true  => <Image source={source} {...stylex.props(local.photoSmall)} />,
+              false => <Image source={source} {...stylex.props(local.photo)} />,
+            },
+        }
+      }
     </AvatarFrame>
   );
 }
@@ -83,11 +87,11 @@ export component Avatar(user: User, small: boolean = false) renders AvatarFrame 
 
 export component Button(
   children: string,
-  onPress: () => void,
-  primary: boolean = true,
+  onPress : () => void,
+  primary : boolean = true,
   disabled: boolean = false,
-  pending: string | null = null,
-  label?: string,
+  pending : string | null = null,
+  label?  : string,
 ) {
   const busy = pending != null;
 
@@ -126,38 +130,56 @@ export component ActionLink(href: string, children: string, primary: boolean = t
 }
 
 export component Field(
-  label: string,
-  value: string,
+  label       : string,
+  value       : string,
   onChangeText: (string) => void,
-  multiline: boolean = false,
-  maxLength?: number,
-  email: boolean = false,
-  plain: boolean = false,
+  multiline   : boolean = false,
+  maxLength?  : number,
+  email       : boolean = false,
+  plain       : boolean = false,
 ) {
   return (
     <View {...stylex.props(styles.field)}>
       <Text {...stylex.props(styles.fieldLabel)}>{label}</Text>
-      {multiline ? (
-        <TextInput
-          accessibilityLabel={label}
-          value={value}
-          onChangeText={onChangeText}
-          multiline
-          maxLength={maxLength}
-          style={[stylex.props(local.textarea).style, TOP_ALIGNED]}
-        />
-      ) : (
-        <TextInput
-          accessibilityLabel={label}
-          value={value}
-          onChangeText={onChangeText}
-          maxLength={maxLength}
-          autoCapitalize={email || plain ? "none" : "sentences"}
-          autoCorrect={!email && !plain}
-          keyboardType={email ? "email-address" : "default"}
-          {...stylex.props(local.input)}
-        />
-      )}
+      {
+        match (multiline) {
+          true  =>
+            <TextInput
+              accessibilityLabel={label}
+              value={value}
+              onChangeText={onChangeText}
+              multiline
+              maxLength={maxLength}
+              style={[stylex.props(local.textarea).style, TOP_ALIGNED]}
+            />,
+          false =>
+            <TextInput
+              accessibilityLabel={label}
+              value={value}
+              onChangeText={onChangeText}
+              maxLength={maxLength}
+              autoCapitalize={
+                match (email || plain) {
+                  true  => "none",
+                  false => "sentences",
+                }
+              }
+              autoCorrect={
+                match (email || plain) {
+                  true  => false,
+                  false => true,
+                }
+              }
+              keyboardType={
+                match (email) {
+                  true  => "email-address",
+                  false => "default",
+                }
+              }
+              {...stylex.props(local.input)}
+            />,
+        }
+      }
     </View>
   );
 }
@@ -166,7 +188,7 @@ export component Field(
 
 component Feedback(tone: "alert" | "status", children: string) {
   return match (tone) {
-    "alert" =>
+    "alert"  =>
       <Text accessibilityRole="alert" {...stylex.props(styles.alert)}>
         {children}
       </Text>,
@@ -184,14 +206,17 @@ component Feedback(tone: "alert" | "status", children: string) {
 
 export component FormStatus(state: FormState<mixed>, quiet: boolean = false) renders? Feedback {
   return match (state) {
-    {status: "idle"} => null,
-    {status: "error", message: const message} => <Feedback tone="alert">{message}</Feedback>,
+    {status: "idle"}                                 => null,
+    {status: "error", message: const message}        => <Feedback tone="alert">{message}</Feedback>,
     {status: "success", message: const message, ...} =>
-      quiet || message === "" ? null : <Feedback tone="status">{message}</Feedback>,
+      match (quiet || message === "") {
+        true  => null,
+        false => <Feedback tone="status">{message}</Feedback>,
+      },
   };
 }
 
-export component ChannelBadge(topic: Topic) {
+export component ChannelBadge(topic: Topic) renders View {
   return (
     <View {...stylex.props(local.badge)}>
       <View {...stylex.props(styles.channelDot)} />
@@ -203,9 +228,9 @@ export component ChannelBadge(topic: Topic) {
 /** A regional explanation with an optional recovery: navigation, or a retry. */
 
 export component EmptyState(
-  title: string,
+  title   : string,
   children: string,
-  action: renders? (ActionLink | Button) = null,
+  action  : renders? (ActionLink | Button) = null,
 ) {
   return (
     <View {...stylex.props(styles.empty)}>
@@ -229,7 +254,7 @@ export component SignInPrompt(title: string = "Sign in to continue") renders Emp
   );
 }
 
-component Bone(width: number | "100%", height: number = 10, round: boolean = false) {
+component Bone(width: number | "100%", height: number = 10, round: boolean = false) renders View {
   return (
     <View style={[stylex.props(local.bone, round && local.boneRound).style, { width, height }]} />
   );
@@ -244,10 +269,10 @@ export type Loading = "feed" | "threads" | "conversation" | "profile";
 
 export component LoadingState(kind: Loading) {
   const label = match (kind) {
-    "feed" => "Loading notes",
-    "threads" => "Loading conversations",
+    "feed"         => "Loading notes",
+    "threads"      => "Loading conversations",
     "conversation" => "Loading messages",
-    "profile" => "Loading profile",
+    "profile"      => "Loading profile",
   };
 
   return (
@@ -259,7 +284,7 @@ export component LoadingState(kind: Loading) {
     >
       {
         match (kind) {
-          "feed" =>
+          "feed"         =>
             [0, 1, 2].map((row) => (
               <View key={row} {...stylex.props(styles.rule, local.skeletonPost)}>
                 <Bone width={42} height={42} round />
@@ -267,11 +292,18 @@ export component LoadingState(kind: Loading) {
                   <Bone width={120} />
                   <Bone width="100%" />
                   <Bone width="100%" />
-                  <Bone width={row === 1 ? 140 : 210} />
+                  <Bone
+                    width={
+                      match (row === 1) {
+                        true  => 140,
+                        false => 210,
+                      }
+                    }
+                  />
                 </View>
               </View>
             )),
-          "threads" =>
+          "threads"      =>
             [0, 1].map((row) => (
               <View key={row} {...stylex.props(styles.rule, local.skeletonThread)}>
                 <Bone width={34} height={34} round />
@@ -288,11 +320,19 @@ export component LoadingState(kind: Loading) {
                 <Bone width={180} height={42} />
               </View>
             </View>,
-          "profile" =>
+          "profile"      =>
             [0, 1, 2].map((row) => (
               <View key={row} {...stylex.props(local.skeletonField)}>
                 <Bone width={84} />
-                <Bone width="100%" height={row === 1 ? 76 : 40} />
+                <Bone
+                  width="100%"
+                  height={
+                    match (row === 1) {
+                      true  => 76,
+                      false => 40,
+                    }
+                  }
+                />
               </View>
             )),
         }
@@ -305,34 +345,34 @@ export component LoadingState(kind: Loading) {
 // imported from another, Flow's check of those two components runs out of
 // recursion before it reaches an answer.
 const local = stylex.create({
-  photo: { width: 42, height: 42, borderRadius: 21 },
+  photo     : { width: 42, height: 42, borderRadius: 21 },
   photoSmall: { width: 34, height: 34, borderRadius: 17 },
   input: {
-    borderWidth: 1,
-    borderColor: "#d7d7d7",
-    borderRadius: 6,
-    paddingLeft: 12,
-    paddingRight: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#242424",
+    borderWidth    : 1,
+    borderColor    : "#d7d7d7",
+    borderRadius   : 6,
+    paddingLeft    : 12,
+    paddingRight   : 12,
+    paddingTop     : 10,
+    paddingBottom  : 10,
+    fontSize       : 13,
+    lineHeight     : 19,
+    color          : "#242424",
     backgroundColor: "#ffffff",
   },
   textarea: {
-    borderWidth: 1,
-    borderColor: "#d7d7d7",
-    borderRadius: 6,
-    paddingLeft: 12,
-    paddingRight: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#242424",
+    borderWidth    : 1,
+    borderColor    : "#d7d7d7",
+    borderRadius   : 6,
+    paddingLeft    : 12,
+    paddingRight   : 12,
+    paddingTop     : 10,
+    paddingBottom  : 10,
+    fontSize       : 13,
+    lineHeight     : 19,
+    color          : "#242424",
     backgroundColor: "#ffffff",
-    minHeight: 76,
+    minHeight      : 76,
   },
   badge: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 4, paddingBottom: 4 },
   badgeLabel: { fontSize: 10, color: "#6b6b6b" },
@@ -342,13 +382,13 @@ const local = stylex.create({
   skeletonPost: { flexDirection: "row", gap: 14, paddingTop: 24, paddingBottom: 24 },
   skeletonThread: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingTop: 16,
+    alignItems   : "center",
+    gap          : 12,
+    paddingTop   : 16,
     paddingBottom: 16,
   },
   skeletonLines: { gap: 10, paddingTop: 4 },
-  skeletonLog: { gap: 14, paddingLeft: 20, paddingRight: 20, paddingTop: 18 },
-  skeletonMine: { alignItems: "flex-end" },
+  skeletonLog  : { gap: 14, paddingLeft: 20, paddingRight: 20, paddingTop: 18 },
+  skeletonMine : { alignItems: "flex-end" },
   skeletonField: { gap: 8, marginBottom: 19 },
 });

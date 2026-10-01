@@ -25,36 +25,36 @@ import { MAX_MESSAGE_LENGTH, MAX_POST_LENGTH, failed, initials, succeeded } from
 /** Everything a screen can ask for. A test may wrap one to delay or refuse a call. */
 
 export type Service = {|
-  readonly session: () => Promise<Session>,
-  readonly feed: (filter: FeedFilter) => Promise<$ReadOnlyArray<Post>>,
-  readonly post: (id: string) => Promise<Post | null>,
-  readonly threads: () => Promise<Protected<$ReadOnlyArray<Thread>>>,
-  readonly conversation: (thread: string) => Promise<ConversationData>,
-  readonly settings: () => Promise<Protected<Settings>>,
-  readonly join: (account: Account) => Promise<ActionResult<User>>,
-  readonly signOut: () => Promise<ActionResult<null>>,
-  readonly publish: (body: string, topic: Topic) => Promise<ActionResult<Post>>,
-  readonly appreciate: (id: string, liked: boolean) => Promise<ActionResult<Post>>,
-  readonly send: (thread: string, body: string) => Promise<ActionResult<Message>>,
+  readonly session       : () => Promise<Session>,
+  readonly feed          : (filter: FeedFilter) => Promise<$ReadOnlyArray<Post>>,
+  readonly post          : (id: string) => Promise<Post | null>,
+  readonly threads       : () => Promise<Protected<$ReadOnlyArray<Thread>>>,
+  readonly conversation  : (thread: string) => Promise<ConversationData>,
+  readonly settings      : () => Promise<Protected<Settings>>,
+  readonly join          : (account: Account) => Promise<ActionResult<User>>,
+  readonly signOut       : () => Promise<ActionResult<null>>,
+  readonly publish       : (body: string, topic: Topic) => Promise<ActionResult<Post>>,
+  readonly appreciate    : (id: string, liked: boolean) => Promise<ActionResult<Post>>,
+  readonly send          : (thread: string, body: string) => Promise<ActionResult<Message>>,
   readonly updateSettings: (settings: Settings) => Promise<ActionResult<Settings>>,
 |};
 
 type StoredPost = {|
-  readonly id: string,
-  readonly authorId: string,
-  readonly body: string,
-  readonly topic: Topic,
+  readonly id       : string,
+  readonly authorId : string,
+  readonly body     : string,
+  readonly topic    : Topic,
   readonly createdAt: string,
   readonly reactions: $ReadOnlyArray<string>,
 |};
 
 type Store = {|
   viewerId: string | null,
-  users: { [id: string]: User },
-  emails: { [id: string]: string },
-  posts: $ReadOnlyArray<StoredPost>,
+  users   : { [id: string]: User },
+  emails  : { [id: string]: string },
+  posts   : $ReadOnlyArray<StoredPost>,
   messages: { [key: string]: $ReadOnlyArray<Message> },
-  serial: number,
+  serial  : number,
 |};
 
 const PEOPLE: $ReadOnlyArray<User> = [
@@ -114,7 +114,7 @@ function seeded(): Store {
       reactions: [],
     })),
     messages: {},
-    serial: NOTES.length,
+    serial  : NOTES.length,
   };
 }
 
@@ -139,13 +139,13 @@ export function createService(latency: number = LATENCY): Service {
     const reader = viewer();
 
     return {
-      id: stored.id,
-      author: store.users[stored.authorId],
-      body: stored.body,
-      topic: stored.topic,
+      id       : stored.id,
+      author   : store.users[stored.authorId],
+      body     : stored.body,
+      topic    : stored.topic,
       createdAt: stored.createdAt,
-      likes: stored.reactions.length,
-      liked: reader != null && stored.reactions.includes(reader.id),
+      likes    : stored.reactions.length,
+      liked    : reader != null && stored.reactions.includes(reader.id),
     };
   };
 
@@ -224,8 +224,8 @@ export function createService(latency: number = LATENCY): Service {
               kind: "ready",
               value: {
                 displayName: reader.name,
-                bio: reader.bio,
-                email: store.emails[reader.id] ?? "",
+                bio        : reader.bio,
+                email      : store.emails[reader.id] ?? "",
               },
             };
       }),
@@ -272,9 +272,9 @@ export function createService(latency: number = LATENCY): Service {
           return failed(`Notes are limited to ${MAX_POST_LENGTH} characters.`);
 
         const stored = {
-          id: `note-${store.serial}`,
+          id      : `note-${store.serial}`,
           authorId: author.id,
-          body: text,
+          body    : text,
           topic,
           createdAt: new Date().toISOString(),
           reactions: [],
@@ -311,9 +311,9 @@ export function createService(latency: number = LATENCY): Service {
           return failed(`Messages are limited to ${MAX_MESSAGE_LENGTH} characters.`);
 
         const message: Message = {
-          id: `message-${store.serial}`,
+          id    : `message-${store.serial}`,
           author: "me",
-          body: text,
+          body  : text,
           sentAt: new Date().toISOString(),
         };
         const key = `${reader.id}:${thread}`;

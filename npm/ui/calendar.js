@@ -468,17 +468,23 @@ component CalendarMonth(
       <tbody>
         {weeks.map((week) => (
           <tr key={week.find((day) => day != null)?.toString() ?? ""}>
-            {week.map((day, column) =>
-              day == null ? (
-                // A blank rather than the neighbouring month's day; see
-                // `internal/date-grid.js`. No `gridcell` role, so it is a cell a
-                // reader is told is empty rather than a date they cannot reach.
-                <td key={`blank-${column}`} />
-              ) : (
-                <React.Fragment key={day.toString()}>
-                  {children == null ? <CalendarDay date={day} /> : children(day)}
-                </React.Fragment>
-              ),
+            {week.map(
+              (day, column) =>
+                match (day) {
+                  // A blank rather than the neighbouring month's day; see
+                  // `internal/date-grid.js`. No `gridcell` role, so it is a cell a
+                  // reader is told is empty rather than a date they cannot reach.
+                  null => <td key={`blank-${column}`} />,
+                  const date =>
+                    <React.Fragment key={date.toString()}>
+                      {
+                        match (children) {
+                          undefined => <CalendarDay date={date} />,
+                          const renderDay => renderDay(date),
+                        }
+                      }
+                    </React.Fragment>,
+                },
             )}
           </tr>
         ))}
@@ -564,7 +570,7 @@ component CalendarDay(date: PlainDate, children?: React.Node, ...rest: Rest) {
  * and not onto a sibling part, because `Rest` names `key` out of its indexer and
  * the receiving component's own indexer answers `mixed` for it.
  */
-component CalendarPrevious(children: React.Node, ...rest: Rest) {
+component CalendarPrevious(children: React.Node, ...rest: Rest) renders MonthStep {
   return (
     <MonthStep {...forwarded(rest)} by={-1}>
       {children}
@@ -573,7 +579,7 @@ component CalendarPrevious(children: React.Node, ...rest: Rest) {
 }
 
 /** The button that shows the month after this one. */
-component CalendarNext(children: React.Node, ...rest: Rest) {
+component CalendarNext(children: React.Node, ...rest: Rest) renders MonthStep {
   return (
     <MonthStep {...forwarded(rest)} by={1}>
       {children}

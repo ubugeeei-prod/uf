@@ -15,7 +15,7 @@ const navigation = createNativeNavigation({
   table,
   layouts,
   stack: createNativeStackNavigator(),
-  tabs: createBottomTabNavigator(),
+  tabs : createBottomTabNavigator(),
 });
 
 /**

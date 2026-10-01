@@ -257,8 +257,8 @@ export component Checkbox(
     role: "checkbox",
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }

@@ -256,10 +256,10 @@ component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) 
     }),
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -480,7 +480,12 @@ component MenuBody(
 
   return (
     <MenuListContext.Provider value={list}>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </MenuListContext.Provider>
   );
 }
@@ -575,10 +580,10 @@ component MenuItem(
     tabIndex: item.tabIndex,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -622,10 +627,10 @@ component MenuCheckboxItem(
     tabIndex: item.tabIndex,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -677,7 +682,12 @@ component MenuRadioGroup(
   return (
     <MenuGroupContext.Provider value={group}>
       <MenuRadioContext.Provider value={radio}>
-        {render == null ? <div {...props} /> : render(props)}
+        {
+          match (render) {
+            undefined => <div {...props} />,
+            const custom => custom(props),
+          }
+        }
       </MenuRadioContext.Provider>
     </MenuGroupContext.Provider>
   );
@@ -717,10 +727,10 @@ component MenuRadioItem(
     tabIndex: item.tabIndex,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -774,10 +784,10 @@ component MenuSubTrigger(children: React.Node, render?: RenderProp, ...rest: Res
     tabIndex: list?.activeId === id ? 0 : -1,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -789,10 +799,10 @@ component MenuSubTrigger(children: React.Node, render?: RenderProp, ...rest: Res
  */
 component MenuSeparator(render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { "aria-orientation": "horizontal", role: "separator" });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -816,7 +826,12 @@ component MenuGroup(children: React.Node, render?: RenderProp, ...rest: Rest) {
 
   return (
     <MenuGroupContext.Provider value={group}>
-      {render == null ? <div {...props} /> : render(props)}
+      {
+        match (render) {
+          undefined => <div {...props} />,
+          const custom => custom(props),
+        }
+      }
     </MenuGroupContext.Provider>
   );
 }
@@ -841,10 +856,10 @@ component MenuLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   }, [register]);
 
   const props = withProps(rest, { children, id: group?.labelId, role: "presentation" });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**

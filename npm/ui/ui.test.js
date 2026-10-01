@@ -9755,7 +9755,12 @@ describe("the escape hatch: which part hands its element to the caller", () => {
   it("gives every part it calls an escape hatch a real one", () => {
     const missing = RENDER.filter((part) => {
       const source = sourceOf(part);
-      return !/\brender\??: RenderProp[,)]/.test(source) || !source.includes("render(");
+      // `match (render)` is the same hatch: the part still chooses the caller's
+      // element, and the call is `custom(...)` inside that match.
+      return (
+        !/\brender\??: RenderProp[,)]/.test(source) ||
+        !(source.includes("render(") || source.includes("match (render)"))
+      );
     });
     // `render={render}` is how a part that delegates to another part passes it
     // on, and that spelling contains `render(` nowhere — so those are named by

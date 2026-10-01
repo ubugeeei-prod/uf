@@ -189,10 +189,10 @@ component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest
     }),
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -222,10 +222,10 @@ component DialogOverlay(render?: RenderProp, ...rest: Rest) {
       overlayRef.current = element;
     }),
   });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -388,10 +388,10 @@ component DialogBody(
     tabIndex: -1,
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -414,10 +414,10 @@ component DialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) 
   // name is depends on what is around it — ubugeeei-prod/uf#276 is the same
   // observation about an accordion — and `render` is how a caller says so
   // without losing the id `aria-labelledby` points at.
-  if (render != null) {
-    return render(props);
-  }
-  return <h2 {...props} />;
+  return match (render) {
+    undefined => <h2 {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -436,10 +436,10 @@ component DialogDescription(children: React.Node, render?: RenderProp, ...rest: 
   }, [register]);
 
   const props = withProps(rest, { children, id: `${dialog.base}-description` });
-  if (render != null) {
-    return render(props);
-  }
-  return <p {...props} />;
+  return match (render) {
+    undefined => <p {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /**
@@ -453,19 +453,19 @@ component DialogDescription(children: React.Node, render?: RenderProp, ...rest: 
  */
 component DialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /** The bottom of the dialog, where the actions go. See `Dialog.Header`. */
 component DialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const props = withProps(rest, { children });
-  if (render != null) {
-    return render(props);
-  }
-  return <div {...props} />;
+  return match (render) {
+    undefined => <div {...props} />,
+    const custom => custom(props),
+  };
 }
 
 /** A button that closes the dialog. */
@@ -476,10 +476,10 @@ component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) 
     onClick: composeHandlers(rest.onClick, () => dialog.setOpen(false)),
   });
 
-  if (render != null) {
-    return render(props);
-  }
-  return <button {...props} type="button" />;
+  return match (render) {
+    undefined => <button {...props} type="button" />,
+    const custom => custom(props),
+  };
 }
 
 /**
