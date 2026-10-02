@@ -589,6 +589,99 @@ describe("transactions", () => {
     expect(failure(() => leaked?.querySync("late", [], "exec"))).toEqual({ kind: "closed" });
   });
 
+  it("rolls back when COMMIT fails, and rethrows that error", async () => {
+    const log: Array<string> = [];
+    const connection: Connection = {
+      engine: "sqlite",
+      maxParams: 100,
+      run: async (text) => {
+        log.push(text);
+        if (text === "COMMIT") {
+          throw new Error("busy");
+        }
+        return { rows: [], rowsAffected: 0, lastInsertId: null };
+      },
+    };
+    const thrown = await transactionOn(connection, (tx) => tx.query("a", [], "exec")).catch(
+      (error) => error.message,
+    );
+    expect(thrown).toBe("busy");
+    expect(log).toEqual(["BEGIN", "a", "COMMIT", "ROLLBACK"]);
+  });
+
+  it("rolls a savepoint back when RELEASE fails", async () => {
+    const log: Array<string> = [];
+    const connection: Connection = {
+      engine: "sqlite",
+      maxParams: 100,
+      run: async (text) => {
+        log.push(text);
+        if (text.startsWith("RELEASE")) {
+          throw new Error("busy");
+        }
+        return { rows: [], rowsAffected: 0, lastInsertId: null };
+      },
+    };
+    const thrown = await transactionOn<void>(connection, async (tx) => {
+      const inner = tx.transaction;
+      if (inner === undefined) {
+        throw new Error("a transaction can open a savepoint");
+      }
+      await inner((sp) => sp.query("x", [], "exec"));
+    }).catch((error) => error.message);
+    expect(thrown).toBe("busy");
+    expect(log).toEqual([
+      "BEGIN",
+      "SAVEPOINT uf_sp_1",
+      "x",
+      "RELEASE SAVEPOINT uf_sp_1",
+      "ROLLBACK TO SAVEPOINT uf_sp_1",
+      "RELEASE SAVEPOINT uf_sp_1",
+      "ROLLBACK",
+    ]);
+  });
+
+  it("rolls back a synchronous transaction when COMMIT fails", () => {
+    const log: Array<string> = [];
+    const connection: Connection = {
+      engine: "sqlite",
+      maxParams: 100,
+      run: async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      runSync: (text) => {
+        log.push(text);
+        if (text === "COMMIT" || text.startsWith("RELEASE")) {
+          throw new Error("busy");
+        }
+        return { rows: [], rowsAffected: 0, lastInsertId: null };
+      },
+    };
+    expect(() => transactionOnSync(connection, (tx) => tx.querySync("a", [], "exec"))).toThrow(
+      "busy",
+    );
+    expect(() =>
+      transactionOnSync(connection, (tx) => {
+        const inner = tx.transactionSync;
+        if (inner === undefined) {
+          throw new Error("a synchronous transaction can open a savepoint");
+        }
+        inner((sp) => sp.querySync("x", [], "exec"));
+      }),
+    ).toThrow("busy");
+    expect(log).toEqual([
+      "BEGIN",
+      "a",
+      "COMMIT",
+      "ROLLBACK",
+      "BEGIN",
+      "SAVEPOINT uf_sp_1",
+      "x",
+      "RELEASE SAVEPOINT uf_sp_1",
+      "ROLLBACK TO SAVEPOINT uf_sp_1",
+      "RELEASE SAVEPOINT uf_sp_1",
+      "ROLLBACK",
+    ]);
+  });
+
   it("holds other statements back while a single connection is in a transaction", async () => {
     const { log, connection: conn } = connection();
     const db = singleConnection(conn);
