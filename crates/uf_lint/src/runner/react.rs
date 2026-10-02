@@ -29,7 +29,14 @@ pub(crate) fn run_react_component_syntax(
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
         let trimmed = code.trim_start();
-        let leading = line.code_offset() + (code.len() - trimmed.len());
+        let indent = code.len() - trimmed.len();
+        // A template line that reads `function Button()` is source this module
+        // builds, not a component it declares. The default-export rule skips
+        // the same text.
+        if line.in_string(indent) {
+            continue;
+        }
+        let leading = line.code_offset() + indent;
 
         if declared_component(strip_export(trimmed)).is_none() {
             continue;
@@ -175,7 +182,13 @@ pub(crate) fn run_react_hook_syntax(
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
         let trimmed = code.trim_start();
-        let leading = line.code_offset() + (code.len() - trimmed.len());
+        let indent = code.len() - trimmed.len();
+        // A template line that reads `function useThing()` is source this
+        // module builds, not a hook it declares.
+        if line.in_string(indent) {
+            continue;
+        }
+        let leading = line.code_offset() + indent;
         let Some(name) = hook_defined_as_function(trimmed) else {
             continue;
         };

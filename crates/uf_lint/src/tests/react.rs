@@ -200,6 +200,30 @@ fn hook_rule_reports_the_exported_and_arrow_forms() {
 /// hook made by a factory, which no `hook` declaration can express, and names
 /// that only look like hooks.
 #[test]
+fn component_rule_ignores_a_declaration_inside_a_string() {
+    let diagnostics = lint_one(
+        "react/component-syntax",
+        "src/app/page.jsx",
+        "// @flow\nconst source = `\nfunction Button(): React.Node { return null; }\n`;\nfunction Card(): React.Node { return null; }\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 5);
+}
+
+#[test]
+fn hook_rule_ignores_a_declaration_inside_a_string() {
+    let diagnostics = lint_one(
+        "react/hook-syntax",
+        "src/app/page.jsx",
+        "// @flow\nconst source = `\nfunction useThing(): number { return 1; }\n`;\nfunction useOther(): number { return 2; }\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 5);
+}
+
+#[test]
 fn hook_rule_leaves_factories_and_non_hooks_alone() {
     for source in [
         "// @flow\nexport hook useThing(): number { return 1; }\n",
