@@ -10,18 +10,24 @@
 // schemas against SQLite and PostgreSQL; this file is the layer beneath it.
 
 import { describe, expect, it } from "@uniflowed/test";
-import type { Connection, QueryResult, Queryable, SqlParam } from "@uniflowed/sql";
+import type { Connection, QueryResult, Queryable, SqlParam, SyncQueryable } from "@uniflowed/sql";
 import {
   SqlError,
   batch,
+  batchSync,
   copyFrom,
+  copyFromSync,
   execLastId,
+  execSync,
   expand,
   many,
   one,
+  oneSync,
   singleConnection,
+  singleConnectionSync,
   slice,
   transactionOn,
+  transactionOnSync,
 } from "@uniflowed/sql";
 import * as pg from "@uniflowed/sql/postgresql";
 import * as mysql from "@uniflowed/sql/mysql";
@@ -359,6 +365,33 @@ describe(":copyfrom", () => {
       { text: "INSERT INTO t (a, b) VALUES ($1, $2)", params: [null, "a"] },
     ]);
   });
+
+  it("chunks a synchronous copy inside one transaction", () => {
+    const statements: Array<number> = [];
+    let transactions = 0;
+    const db: SyncQueryable = {
+      engine: "sqlite",
+      maxParams: 5,
+      querySync: (_text, params) => {
+        statements.push(params.length);
+        return { rows: [], rowsAffected: params.length, lastInsertId: null };
+      },
+      transactionSync: (body) => {
+        transactions += 1;
+        return body(db);
+      },
+    };
+    const rows = [
+      [1, "a"],
+      [2, "b"],
+      [3, "c"],
+      [4, "d"],
+      [5, "e"],
+    ];
+    expect(copyFromSync(db, "Copy", plan, rows)).toBe(10);
+    expect(statements).toEqual([4, 4, 2]);
+    expect(transactions).toBe(1);
+  });
 });
 
 describe(":batch*", () => {
@@ -371,6 +404,30 @@ describe(":batch*", () => {
     expect(results).toEqual(["A", "B", "C"]);
     expect(statements.map((statement) => statement.text)).toEqual(["a", "b", "c"]);
     expect(transactions()).toBe(1);
+  });
+
+  it("runs a synchronous batch in order, in one transaction", () => {
+    const seen: Array<string> = [];
+    let transactions = 0;
+    const db: SyncQueryable = {
+      engine: "sqlite",
+      maxParams: 10,
+      querySync: (text) => {
+        seen.push(text);
+        return { rows: [], rowsAffected: 0, lastInsertId: null };
+      },
+      transactionSync: (body) => {
+        transactions += 1;
+        return body(db);
+      },
+    };
+    const results = batchSync(db, ["a", "b"], (q, item) => {
+      q.querySync(item, [], "exec");
+      return item.toUpperCase();
+    });
+    expect(results).toEqual(["A", "B"]);
+    expect(seen).toEqual(["a", "b"]);
+    expect(transactions).toBe(1);
   });
 });
 
@@ -473,6 +530,65 @@ describe("transactions", () => {
     expect(error).toBe("closed");
   });
 
+  it("commits and rolls back a synchronous transaction, nesting savepoints", () => {
+    const log: Array<string> = [];
+    const runSync = (text: string): QueryResult => {
+      log.push(text);
+      return { rows: [], rowsAffected: 0, lastInsertId: null };
+    };
+    const connection: Connection = {
+      engine: "sqlite",
+      maxParams: 100,
+      run: async (text) => runSync(text),
+      runSync,
+    };
+    transactionOnSync(connection, (tx) => {
+      tx.querySync("a", [], "exec");
+    });
+    expect(() =>
+      transactionOnSync(connection, (tx) => {
+        const inner = tx.transactionSync;
+        if (inner === undefined) {
+          throw new Error("a synchronous transaction can open a savepoint");
+        }
+        expect(() =>
+          inner((sp) => {
+            sp.querySync("x", [], "exec");
+            throw new Error("inner");
+          }),
+        ).toThrow("inner");
+        tx.querySync("y", [], "exec");
+        throw new Error("outer");
+      }),
+    ).toThrow("outer");
+    expect(log).toEqual([
+      "BEGIN",
+      "a",
+      "COMMIT",
+      "BEGIN",
+      "SAVEPOINT uf_sp_1",
+      "x",
+      "ROLLBACK TO SAVEPOINT uf_sp_1",
+      "RELEASE SAVEPOINT uf_sp_1",
+      "y",
+      "ROLLBACK",
+    ]);
+  });
+
+  it("refuses a synchronous statement on a transaction that has ended", () => {
+    const connection: Connection = {
+      engine: "sqlite",
+      maxParams: 100,
+      run: async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      runSync: () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+    };
+    let leaked: ?SyncQueryable = null;
+    transactionOnSync(connection, (tx) => {
+      leaked = tx;
+    });
+    expect(failure(() => leaked?.querySync("late", [], "exec"))).toEqual({ kind: "closed" });
+  });
+
   it("holds other statements back while a single connection is in a transaction", async () => {
     const { log, connection: conn } = connection();
     const db = singleConnection(conn);
@@ -495,10 +611,59 @@ describe("transactions", () => {
     await Promise.all([inside, outside]);
     expect(log).toEqual(["BEGIN", "in-1", "in-2", "COMMIT", "outside"]);
   });
+
+  it("refuses to mix a synchronous call into an open asynchronous transaction", async () => {
+    const runSync = (): QueryResult => ({ rows: [], rowsAffected: 0, lastInsertId: null });
+    const db = singleConnectionSync({
+      engine: "sqlite",
+      maxParams: 100,
+      run: async () => runSync(),
+      runSync,
+    });
+    const transaction = db.transaction;
+    if (transaction === undefined) {
+      throw new Error("a single connection has transactions");
+    }
+    let release: () => void = () => {};
+    let markEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => {
+      markEntered = () => resolve();
+    });
+    const inside = transaction(async (tx) => {
+      await tx.query("in", [], "exec");
+      markEntered();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    await entered;
+    expect(failure(() => db.querySync("outside", [], "exec"))).toEqual({ kind: "unsupported" });
+    release();
+    await inside;
+  });
+
+  it("refuses the outer handle while a synchronous transaction is open", () => {
+    const db = singleConnectionSync({
+      engine: "sqlite",
+      maxParams: 100,
+      run: async () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+      runSync: () => ({ rows: [], rowsAffected: 0, lastInsertId: null }),
+    });
+    const transactionSync = db.transactionSync;
+    if (transactionSync === undefined) {
+      throw new Error("a synchronous connection has transactions");
+    }
+    transactionSync((tx) => {
+      tx.querySync("in", [], "exec");
+      expect(failure(() => db.querySync("out", [], "exec"))).toEqual({ kind: "unsupported" });
+      expect(failure(() => db.transactionSync?.(() => 1))).toEqual({ kind: "unsupported" });
+    });
+    execSync(db, "After", "after", []);
+  });
 });
 
 describe("node:sqlite", () => {
-  async function open(): Promise<Queryable> {
+  async function open(): Promise<Queryable & SyncQueryable> {
     const { DatabaseSync } = await import("node:sqlite");
     const database = new DatabaseSync(":memory:");
     database.exec(
@@ -536,6 +701,26 @@ describe("node:sqlite", () => {
     }).catch(() => {});
     const { rows } = await db.query("SELECT name FROM t", [], "rows");
     expect(rows).toEqual([["kept"]]);
+  });
+
+  it("reads and rolls back through the synchronous API", async () => {
+    const db = await open();
+    const transactionSync = db.transactionSync;
+    if (transactionSync === undefined) {
+      throw new Error("node:sqlite has synchronous transactions");
+    }
+    transactionSync((tx) => {
+      tx.querySync("INSERT INTO t (name) VALUES (?)", ["kept"], "exec");
+    });
+    expect(() =>
+      transactionSync((tx) => {
+        tx.querySync("INSERT INTO t (name) VALUES (?)", ["dropped"], "exec");
+        throw new Error("no");
+      }),
+    ).toThrow("no");
+    expect(oneSync(db, "GetName", "SELECT name FROM t", [], 1, (row) => row[0])).toBe("kept");
+    const names = db.querySync("SELECT name FROM t", [], "rows").rows;
+    expect(names).toEqual([["kept"]]);
   });
 });
 

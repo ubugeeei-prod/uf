@@ -7,11 +7,14 @@
 //
 //   const db = fromBetterSqlite3(new Database("app.db"));
 //
+// The handle has `query` and `querySync`. `querySync` and `transactionSync`
+// run on this thread, which is what sqlc's `sync: true` output calls.
+//
 // Tested with its prebuilt native addon in `tests/sqlc/external-adapters.mjs`,
 // including exact integers, nulls, transactions and savepoints.
 
-import type { Queryable, SqlParam } from "../index.js";
-import { SqlError, singleConnection } from "../index.js";
+import type { Queryable, RunSync, SqlParam, SyncQueryable } from "../index.js";
+import { SqlError, singleConnectionSync } from "../index.js";
 import { DEFAULT_STATEMENT_CACHE, count, rowId, statementCache } from "../internal/statements.js";
 
 /** The part of better-sqlite3's `Statement` this uses. */
@@ -38,11 +41,11 @@ export type BetterSqlite3Options = {|
   readonly maxParams?: number,
 |};
 
-/** A [`Queryable`] over one better-sqlite3 `Database`. */
+/** A [`Queryable`] and a [`SyncQueryable`] over one better-sqlite3 `Database`. */
 export function fromBetterSqlite3(
   database: BetterSqlite3Database,
   options: BetterSqlite3Options = {},
-): Queryable {
+): Queryable & SyncQueryable {
   const statement = statementCache((text) => {
     const prepared = database.prepare(text);
     prepared.safeIntegers(true);
@@ -53,28 +56,30 @@ export function fromBetterSqlite3(
     }
     return prepared;
   }, options.statementCache ?? DEFAULT_STATEMENT_CACHE);
-  return singleConnection({
+  const runSync: RunSync = (text, params, mode) => {
+    const prepared = statement(text);
+    if (mode === "rows" && prepared.reader) {
+      const rows: Array<$ReadOnlyArray<mixed>> = [];
+      for (const row of prepared.all(...params)) {
+        if (!Array.isArray(row)) {
+          throw new SqlError({ kind: "unsupported", feature: "better-sqlite3 rows as objects" });
+        }
+        rows.push(row);
+      }
+      return { rows, rowsAffected: 0, lastInsertId: null };
+    }
+    const result = prepared.run(...params);
+    return {
+      rows: [],
+      rowsAffected: count(result.changes),
+      lastInsertId: rowId(result.lastInsertRowid),
+    };
+  };
+  return singleConnectionSync({
     engine: "sqlite",
     maxParams: options.maxParams ?? 32766,
     begin: options.begin,
-    run: async (text, params, mode) => {
-      const prepared = statement(text);
-      if (mode === "rows" && prepared.reader) {
-        const rows: Array<$ReadOnlyArray<mixed>> = [];
-        for (const row of prepared.all(...params)) {
-          if (!Array.isArray(row)) {
-            throw new SqlError({ kind: "unsupported", feature: "better-sqlite3 rows as objects" });
-          }
-          rows.push(row);
-        }
-        return { rows, rowsAffected: 0, lastInsertId: null };
-      }
-      const result = prepared.run(...params);
-      return {
-        rows: [],
-        rowsAffected: count(result.changes),
-        lastInsertId: rowId(result.lastInsertRowid),
-      };
-    },
+    run: async (text, params, mode) => runSync(text, params, mode),
+    runSync,
   });
 }

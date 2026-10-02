@@ -442,6 +442,7 @@ impl<'a> Module<'a> {
             "sql",
             alias,
             "Queryable",
+            "SyncQueryable",
             "JsonValue",
             "ExecResult",
             "CopyPlan",
@@ -931,8 +932,10 @@ impl<'a> Module<'a> {
             }
         }
 
+        let sync = shared.options.sync;
+        let db_type = if sync { "SyncQueryable" } else { "Queryable" };
         self.uses_sql = true;
-        self.runtime_types.insert("Queryable");
+        self.runtime_types.insert(db_type);
         let name = js_string(&query.name);
         let has_args = !arg_fields.is_empty();
         let (text_expr, params_expr, prelude) = if expands {
@@ -947,24 +950,27 @@ impl<'a> Module<'a> {
             (sql_name.clone(), values_list.clone(), String::new())
         };
         let call = |db: &str| -> String {
+            let method = match cmd {
+                ":one" | ":batchone" => "one",
+                ":many" | ":batchmany" => "many",
+                ":execrows" => "execRows",
+                ":execresult" => "execResult",
+                ":execlastid" => "execLastId",
+                _ => "exec",
+            };
+            let method = if sync {
+                uf_infra::into_string(uf_infra::cstr!("{method}Sync"))
+            } else {
+                method.to_owned()
+            };
             match cmd {
-                ":one" | ":batchone" => uf_infra::into_string(uf_infra::cstr!(
-                    "sql.one({db}, {name}, {text_expr}, {params_expr}, {width}, {decoder})"
-                )),
-                ":many" | ":batchmany" => uf_infra::into_string(uf_infra::cstr!(
-                    "sql.many({db}, {name}, {text_expr}, {params_expr}, {width}, {decoder})"
-                )),
-                ":execrows" => uf_infra::into_string(uf_infra::cstr!(
-                    "sql.execRows({db}, {name}, {text_expr}, {params_expr})"
-                )),
-                ":execresult" => uf_infra::into_string(uf_infra::cstr!(
-                    "sql.execResult({db}, {name}, {text_expr}, {params_expr})"
-                )),
-                ":execlastid" => uf_infra::into_string(uf_infra::cstr!(
-                    "sql.execLastId({db}, {name}, {text_expr}, {params_expr})"
-                )),
+                ":one" | ":batchone" | ":many" | ":batchmany" => {
+                    uf_infra::into_string(uf_infra::cstr!(
+                        "sql.{method}({db}, {name}, {text_expr}, {params_expr}, {width}, {decoder})"
+                    ))
+                }
                 _ => uf_infra::into_string(uf_infra::cstr!(
-                    "sql.exec({db}, {name}, {text_expr}, {params_expr})"
+                    "sql.{method}({db}, {name}, {text_expr}, {params_expr})"
                 )),
             }
         };
@@ -982,8 +988,9 @@ impl<'a> Module<'a> {
             _ => "void".to_owned(),
         };
         let body = if is_copy {
+            let method = if sync { "copyFromSync" } else { "copyFrom" };
             uf_infra::into_string(uf_infra::cstr!(
-                "  return sql.copyFrom(db, {name}, {sql_name}, rows.map((args) => {values_list}));\n"
+                "  return sql.{method}(db, {name}, {sql_name}, rows.map((args) => {values_list}));\n"
             ))
         } else if is_batch {
             let inner = if prelude.is_empty() {
@@ -994,13 +1001,21 @@ impl<'a> Module<'a> {
                     call("q")
                 ))
             };
-            let then = if cmd == ":batchexec" {
+            let method = if sync { "batchSync" } else { "batch" };
+            let then = if !sync && cmd == ":batchexec" {
                 ".then(() => {})"
             } else {
                 ""
             };
+            // `:batchexec` resolves to void. The async form awaits the batch
+            // and discards its array; the sync form runs it as a statement.
+            let keyword = if sync && cmd == ":batchexec" {
+                ""
+            } else {
+                "return "
+            };
             uf_infra::into_string(uf_infra::cstr!(
-                "  return sql.batch(db, items, (q, args) => {inner}){then};\n"
+                "  {keyword}sql.{method}(db, items, (q, args) => {inner}){then};\n"
             ))
         } else {
             let prelude = if prelude.is_empty() {
@@ -1013,7 +1028,7 @@ impl<'a> Module<'a> {
         let (signature, returns) = if is_copy {
             (
                 uf_infra::into_string(uf_infra::cstr!(
-                    "db: Queryable, rows: $ReadOnlyArray<{args_type}>"
+                    "db: {db_type}, rows: $ReadOnlyArray<{args_type}>"
                 )),
                 item_type,
             )
@@ -1025,23 +1040,31 @@ impl<'a> Module<'a> {
             };
             (
                 uf_infra::into_string(uf_infra::cstr!(
-                    "db: Queryable, items: $ReadOnlyArray<{args_type}>"
+                    "db: {db_type}, items: $ReadOnlyArray<{args_type}>"
                 )),
                 returns,
             )
         } else if has_args {
             (
-                uf_infra::into_string(uf_infra::cstr!("db: Queryable, args: {args_type}")),
+                uf_infra::into_string(uf_infra::cstr!("db: {db_type}, args: {args_type}")),
                 item_type,
             )
         } else {
-            ("db: Queryable".to_owned(), item_type)
+            (
+                uf_infra::into_string(uf_infra::cstr!("db: {db_type}")),
+                item_type,
+            )
+        };
+        let returns = if sync {
+            returns
+        } else {
+            uf_infra::into_string(uf_infra::cstr!("Promise<{returns}>"))
         };
         self.body.push_str(&text_const);
         self.body.push_str(&doc(&query.comments, ""));
         uf_infra::append!(
             self.body,
-            "export function {function}({signature}): Promise<{returns}> {{\n{body}}}\n\n"
+            "export function {function}({signature}): {returns} {{\n{body}}}\n\n"
         );
         Ok(())
     }

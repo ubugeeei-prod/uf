@@ -117,6 +117,11 @@ pub struct Options {
     /// Keep table names as they are rather than singularising them for row
     /// types (sqlc-gen-go's `emit_exact_table_names`).
     pub exact_table_names: bool,
+    /// Generate functions that return their value directly and take a
+    /// `SyncQueryable`. For drivers that run a statement on the calling
+    /// thread, so a transaction can stay inside `BEGIN` through `COMMIT`
+    /// without yielding. The default is the asynchronous `Queryable` API.
+    pub sync: bool,
     /// A name, as written in SQL, to the identifier it should get.
     pub rename: BTreeMap<String, String>,
     pub overrides: Vec<Override>,

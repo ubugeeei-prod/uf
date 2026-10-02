@@ -1,7 +1,32 @@
 // @flow
 
-import { database, transaction, type Row } from "./database.server.js";
+import type { SyncQueryable } from "@uniflowed/sql";
+
+import { database, transaction } from "./database.server.js";
 import { InputError, identifier } from "./validation.server.js";
+import {
+  deleteReaction,
+  entryByRequest,
+  getMember,
+  getPost,
+  handleOwner,
+  insertConversation,
+  insertEntry,
+  insertNote,
+  insertParticipant,
+  insertReaction,
+  listMessages as selectMessages,
+  listPosts as selectPosts,
+  listThreads as selectThreads,
+  memberSettings,
+  noteByRequest,
+  participant,
+  updateMember,
+  type GetPostRow,
+  type ListMessagesRow,
+  type ListPostsRow,
+} from "./db/query.sql.js";
+import type { Note } from "./db/models.js";
 import {
   PAGE_SIZE,
   avatarPhoto,
@@ -15,14 +40,22 @@ import {
   type MessageThread,
 } from "../_shared/social-model.js";
 
-/** Project a database row into the public profile DTO, excluding credentials and email. */
+type Profile = {
+  readonly id    : string,
+  readonly name  : string,
+  readonly handle: string,
+  readonly bio   : string,
+  ...
+};
 
-export function publicUser(row: Row): User {
+/** Project a member row into the public profile DTO, excluding credentials and email. */
+
+export function publicUser(row: Profile): User {
   const user = {
-    id    : String(row.id),
-    name  : String(row.name),
-    handle: String(row.handle),
-    bio   : String(row.bio),
+    id    : row.id,
+    name  : row.name,
+    handle: row.handle,
+    bio   : row.bio,
     avatar: "",
   };
 
@@ -31,26 +64,26 @@ export function publicUser(row: Row): User {
 
 /** Find the public profile for a stable account identifier. */
 
-export function member(id: string): User | null {
-  const row = database().prepare("SELECT id, name, handle, bio FROM members WHERE id = ?").get(id);
+export function member(id: string, db: SyncQueryable = database()): User | null {
+  const row = getMember(db, { id });
 
   return row == null ? null : publicUser(row);
 }
 
-const POST_SELECT = `SELECT e.id, e.body, e.topic, e.created_at, m.id AS author_id, m.name, m.handle, m.bio,
-  (SELECT count(*) FROM reactions r WHERE r.entry_id=e.id) AS likes,
-  EXISTS(SELECT 1 FROM reactions r WHERE r.entry_id=e.id AND r.member_id=?) AS liked
-  FROM entries e JOIN members m ON m.id=e.author_id`;
-
-function asPost(row: Row): Post {
+function asPost(row: ListPostsRow | GetPostRow): Post {
   return {
-    id       : String(row.id),
-    body     : String(row.body),
-    topic    : topicFrom(String(row.topic)) ?? "community",
-    createdAt: String(row.created_at),
-    likes    : Number(row.likes),
-    liked    : Number(row.liked) === 1,
-    author   : publicUser({ id: row.author_id, name: row.name, handle: row.handle, bio: row.bio }),
+    id       : row.id,
+    body     : row.body,
+    topic    : topicFrom(row.topic) ?? "community",
+    createdAt: row.createdAt,
+    likes    : row.likes,
+    liked    : row.liked,
+    author: publicUser({
+      id    : row.authorId,
+      name  : row.name,
+      handle: row.handle,
+      bio   : row.bio,
+    }),
   };
 }
 
@@ -66,19 +99,19 @@ export function listPosts(
   page    : number,
 ): Array<Post> {
   // instr is literal search; user input cannot become LIKE wildcards or SQL.
+  // An empty needle matches every row. "all" leaves the topic unconstrained.
 
-  return database()
-    .prepare(
-      `${POST_SELECT}
-    WHERE (? = 'all' OR e.topic = ?) AND (? = '' OR instr(lower(e.body || ' ' || m.name || ' ' || m.handle), ?) > 0)
-    ORDER BY e.created_at DESC, e.id DESC LIMIT ? OFFSET ?`,
-    )
-    .all(viewerId, topic, topic, query, query.toLowerCase(), PAGE_SIZE + 1, (page - 1) * PAGE_SIZE)
-    .map(asPost);
+  return selectPosts(database(), {
+    viewerId,
+    topic : topic === "all" ? null : topic,
+    needle: query.toLowerCase(),
+    limit : PAGE_SIZE + 1,
+    offset: (page - 1) * PAGE_SIZE,
+  }).map(asPost);
 }
 
-function post(id: string, viewerId: string): Post {
-  const row = database().prepare(`${POST_SELECT} WHERE e.id = ?`).get(viewerId, id);
+function post(id: string, viewerId: string, db: SyncQueryable): Post {
+  const row = getPost(db, { viewerId, id });
   if (row == null) {
     throw new InputError("This post is no longer available.");
   }
@@ -93,24 +126,25 @@ function post(id: string, viewerId: string): Post {
 
 export function insertPost(viewer: User, body: string, topic: Topic, requestId: string): Post {
   return transaction((db) => {
-    const previous = db
-      .prepare("SELECT id, body, topic FROM entries WHERE author_id=? AND request_id=?")
-      .get(viewer.id, requestId);
+    const previous = entryByRequest(db, { authorId: viewer.id, requestId });
     if (previous != null) {
-      if (previous.body !== body || previous.topic !== topic)
+      if (previous.body !== body || previous.topic !== topic) {
         throw new InputError("This submission was already used. Please try again.");
-      return post(String(previous.id), viewer.id);
+      }
+
+      return post(previous.id, viewer.id, db);
     }
     const id = crypto.randomUUID();
-    db.prepare("INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?)").run(
+    insertEntry(db, {
       id,
-      viewer.id,
+      authorId: viewer.id,
       body,
       topic,
-      new Date().toISOString(),
+      createdAt: new Date().toISOString(),
       requestId,
-    );
-    return post(id, viewer.id);
+    });
+
+    return post(id, viewer.id, db);
   });
 }
 
@@ -120,52 +154,46 @@ export function setReaction(viewer: User, id: string, liked: boolean): Post {
   identifier(id);
 
   return transaction((db) => {
-    post(id, viewer.id);
-    if (liked) db.prepare("INSERT OR IGNORE INTO reactions VALUES (?, ?)").run(id, viewer.id);
-    else db.prepare("DELETE FROM reactions WHERE entry_id=? AND member_id=?").run(id, viewer.id);
-    return post(id, viewer.id);
+    post(id, viewer.id, db);
+    if (liked) {
+      insertReaction(db, { entryId: id, memberId: viewer.id });
+    } else {
+      deleteReaction(db, { entryId: id, memberId: viewer.id });
+    }
+
+    return post(id, viewer.id, db);
   });
 }
 
 /** Return at most 50 previews for conversations the viewer participates in. */
 
 export function listThreads(viewer: User): Array<MessageThread> {
-  return database()
-    .prepare(
-      `SELECT c.id, m.id AS member_id, m.name, m.handle, m.bio,
-    coalesce((SELECT body FROM notes WHERE conversation_id=c.id ORDER BY created_at DESC, id DESC LIMIT 1), '') AS last_message
-    FROM conversations c JOIN participants mine ON mine.conversation_id=c.id AND mine.member_id=?
-    JOIN participants other ON other.conversation_id=c.id AND other.member_id<>?
-    JOIN members m ON m.id=other.member_id ORDER BY c.id LIMIT 50`,
-    )
-    .all(viewer.id, viewer.id)
-    .map((row) => ({
-      id         : String(row.id),
-      name       : String(row.name),
-      handle     : String(row.handle),
-      avatar     : profileInitials(publicUser(row)),
-      photo      : avatarPhoto(String(row.member_id)),
-      lastMessage: String(row.last_message),
-    }));
+  return selectThreads(database(), { viewerId: viewer.id }).map((row) => ({
+    id    : row.id,
+    name  : row.name,
+    handle: row.handle,
+    avatar: profileInitials(
+      publicUser({ id: row.memberId, name: row.name, handle: row.handle, bio: row.bio }),
+    ),
+    photo      : avatarPhoto(row.memberId),
+    lastMessage: row.lastMessage,
+  }));
 }
 
-function requireParticipant(viewer: User, threadId: string): void {
+function requireParticipant(viewer: User, threadId: string, db: SyncQueryable = database()): void {
   identifier(threadId);
-  if (
-    database()
-      .prepare("SELECT 1 FROM participants WHERE conversation_id=? AND member_id=?")
-      .get(threadId, viewer.id) == null
-  )
+  if (participant(db, { conversationId: threadId, memberId: viewer.id }) == null) {
     throw new InputError("This conversation is not available.");
+  }
 }
 
-function asMessage(row: Row, viewer: User): Message {
+function asMessage(row: ListMessagesRow | Note, viewer: User): Message {
   return {
-    id      : String(row.id),
-    threadId: String(row.conversation_id),
-    author  : row.author_id === viewer.id ? "me" : "them",
-    body    : String(row.body),
-    sentAt  : String(row.created_at),
+    id      : row.id,
+    threadId: row.conversationId,
+    author  : row.authorId === viewer.id ? "me" : "them",
+    body    : row.body,
+    sentAt  : row.createdAt,
   };
 }
 
@@ -174,12 +202,9 @@ function asMessage(row: Row, viewer: User): Message {
 export function listMessages(viewer: User, threadId: string): Array<Message> {
   requireParticipant(viewer, threadId);
 
-  return database()
-    .prepare(
-      "SELECT * FROM (SELECT * FROM notes WHERE conversation_id=? ORDER BY created_at DESC, id DESC LIMIT 50) ORDER BY created_at, id",
-    )
-    .all(threadId)
-    .map((row) => asMessage(row, viewer));
+  return selectMessages(database(), { conversationId: threadId }).map((row) =>
+    asMessage(row, viewer),
+  );
 }
 
 /**
@@ -194,44 +219,43 @@ export function insertMessage(
   requestId: string,
 ): Message {
   return transaction((db) => {
-    requireParticipant(viewer, threadId);
-    const previous = db
-      .prepare("SELECT * FROM notes WHERE author_id=? AND request_id=?")
-      .get(viewer.id, requestId);
+    requireParticipant(viewer, threadId, db);
+    const previous = noteByRequest(db, { authorId: viewer.id, requestId });
     if (previous != null) {
-      if (previous.conversation_id !== threadId || previous.body !== body)
+      if (previous.conversationId !== threadId || previous.body !== body) {
         throw new InputError("This submission was already used. Please try again.");
+      }
+
       return asMessage(previous, viewer);
     }
     const id = crypto.randomUUID();
     const sentAt = new Date().toISOString();
-    db.prepare("INSERT INTO notes VALUES (?, ?, ?, ?, ?, ?)").run(
+    insertNote(db, {
       id,
-      threadId,
-      viewer.id,
+      conversationId: threadId,
+      authorId      : viewer.id,
       body,
-      sentAt,
+      createdAt: sentAt,
       requestId,
-    );
+    });
+
     return { id, threadId, author: "me", body, sentAt };
   });
 }
 
 /** Read private profile fields for the already authenticated account. */
 
-export function settingsFor(viewer: User): Settings {
-  const row = database()
-    .prepare("SELECT name, handle, bio, email FROM members WHERE id=?")
-    .get(viewer.id);
+export function settingsFor(viewer: User, db: SyncQueryable = database()): Settings {
+  const row = memberSettings(db, { id: viewer.id });
   if (row == null) {
     throw new InputError("Please sign in again.");
   }
 
   return {
-    displayName: String(row.name),
-    handle     : String(row.handle),
-    bio        : String(row.bio),
-    email      : String(row.email),
+    displayName: row.name,
+    handle     : row.handle,
+    bio        : row.bio,
+    email      : row.email,
   };
 }
 
@@ -239,35 +263,34 @@ export function settingsFor(viewer: User): Settings {
 
 export function saveSettings(viewer: User, next: Settings): Settings {
   return transaction((db) => {
-    if (
-      db.prepare("SELECT id FROM members WHERE handle=? AND id<>?").get(next.handle, viewer.id) !=
-      null
-    )
+    if (handleOwner(db, { handle: next.handle, id: viewer.id }) != null) {
       throw new InputError("That handle is already taken.", { handle: "Choose another handle." });
-    db.prepare("UPDATE members SET name=?, handle=?, bio=?, email=? WHERE id=?").run(
-      next.displayName,
-      next.handle,
-      next.bio,
-      next.email,
-      viewer.id,
-    );
-    return settingsFor(viewer);
+    }
+    updateMember(db, {
+      name  : next.displayName,
+      handle: next.handle,
+      bio   : next.bio,
+      email : next.email,
+      id    : viewer.id,
+    });
+
+    return settingsFor(viewer, db);
   });
 }
 
 /** Create an account’s private fixture conversation inside the signup transaction. */
 
-export function welcomeConversation(memberId: string): void {
-  const db = database();
+export function welcomeConversation(db: SyncQueryable, memberId: string): void {
   const id = crypto.randomUUID();
-  db.prepare("INSERT INTO conversations VALUES (?)").run(id);
-  db.prepare("INSERT INTO participants VALUES (?, ?), (?, ?)").run(id, memberId, id, "seed-mika");
-  db.prepare("INSERT INTO notes VALUES (?, ?, ?, ?, ?, ?)").run(
-    crypto.randomUUID(),
-    id,
-    "seed-mika",
-    "This sample conversation belongs to your account. Try sending a message below; it will still be here when you reload.",
-    new Date().toISOString(),
-    `welcome-${memberId}`,
-  );
+  insertConversation(db, { id });
+  insertParticipant(db, { conversationId: id, memberId });
+  insertParticipant(db, { conversationId: id, memberId: "seed-mika" });
+  insertNote(db, {
+    id: crypto.randomUUID(),
+    conversationId: id,
+    authorId: "seed-mika",
+    body: "This sample conversation belongs to your account. Try sending a message below; it will still be here when you reload.",
+    createdAt: new Date().toISOString(),
+    requestId: `welcome-${memberId}`,
+  });
 }

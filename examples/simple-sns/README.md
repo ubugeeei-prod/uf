@@ -33,14 +33,14 @@ uf renders React Server Components through Flight and hydrates explicit client r
 
 The server layers are deliberately small:
 
-- `server/database.server.js` owns SQLite, schema, seeding, and transactions.
-- `server/repository.server.js` uses parameterized queries and returns public DTOs. Conversation membership scopes every read and write.
+- `server/database.server.js` owns SQLite, the schema file, seeding, and synchronous transactions.
+- `server/repository.server.js` calls sqlc-generated queries and returns public DTOs. Conversation membership scopes every read and write.
 - `server/session.server.js` owns asynchronous scrypt password verification, hashed expiring session tokens, rotation, and persistent login throttling.
 - `server/programs.server.js` expresses mutations with `@uniflowed/effect`, typed expected failures, and injected identity/store services. Validation runs before store access. Unexpected defects remain defects.
 - `server/input-effect.server.js` converts expected input exceptions from `trySync`/`tryPromise` into typed failures without treating database faults as validation.
 - `server/run-mutation.server.js` provides request-scoped dependencies and translates the exit into a safe public action result.
 
-Synchronous transactions use `trySync` and `ensuring` to retain the original error and roll back partial writes. The authentication stream also releases its reader through `ensuring`. Client transport, navigation, and media failures are evaluated through Effect exits; the example has no `try/catch` blocks.
+Synchronous transactions use `@uniflowed/sql`'s `transactionSync`, so a write stays on the calling thread from `BEGIN IMMEDIATE` through `COMMIT` and a throw rolls it back. Mutation programs still enter the store through `trySync`. The authentication stream releases its reader through `ensuring`. Client transport, navigation, and media failures are evaluated through Effect exits; the example has no `try/catch` blocks.
 
 Publication and message request IDs make retries idempotent. Reusing an ID for different content fails. Appreciation sets an intended state per member. Database transactions keep conflicting profile updates and partial writes atomic. Authentication issues only an HttpOnly, SameSite cookie; tokens never enter React state or browser storage. HTTPS requests receive Secure cookies.
 

@@ -18,6 +18,10 @@
 //   * **The parts of sqlc's semantics a driver does not have**: `sqlc.slice`
 //     expansion, `:copyfrom` as chunked multi-row inserts, `:batch*` in one
 //     transaction, and nested transactions as savepoints.
+//   * **A synchronous path** for drivers that run a statement on the calling
+//     thread (`node:sqlite`, `better-sqlite3`, `bun:sqlite`). Generated code
+//     with `sync: true` calls it, so a transaction can stay inside `BEGIN`
+//     through `COMMIT` without yielding.
 //
 // docs/sqlc.md is the design record.
 
@@ -67,6 +71,30 @@ export type Queryable = {
   readonly maxParams: number,
   query(text: string, params: $ReadOnlyArray<SqlParam>, mode: QueryMode): Promise<QueryResult>,
   readonly transaction?: <T>(body: (tx: Queryable) => Promise<T>) => Promise<T>,
+  ...
+};
+
+/**
+ * A connection whose statements run on the calling thread and return before
+ * the call does.
+ *
+ * This is the contract `sync: true` generated code needs. `node:sqlite`,
+ * `better-sqlite3` and `bun:sqlite` implement it on the same object as
+ * [`Queryable`]. Drivers that are asynchronous all the way down (D1, `pg`,
+ * `postgres`, `mysql2`) do not have it, and a synchronous function does not
+ * typecheck against them.
+ *
+ * `transactionSync` does not yield between `BEGIN` and `COMMIT`. Nested
+ * `transactionSync` opens a savepoint. Calling the outer handle while a
+ * transaction is open throws: an asynchronous transaction cannot be waited
+ * out on this thread, and reaching back to the outer handle from inside the
+ * body would deadlock the same way `await db.query` does inside `transaction`.
+ */
+export type SyncQueryable = {
+  readonly engine: Engine,
+  readonly maxParams: number,
+  querySync(text: string, params: $ReadOnlyArray<SqlParam>, mode: QueryMode): QueryResult,
+  readonly transactionSync?: <T>(body: (tx: SyncQueryable) => T) => T,
   ...
 };
 
@@ -169,6 +197,29 @@ function checkWidth(row: Row, width: number): void {
   }
 }
 
+function unsupported(feature: string): empty {
+  throw new SqlError({ kind: "unsupported", feature });
+}
+
+function firstRow<T>(rows: $ReadOnlyArray<Row>, width: number, decode: (row: Row) => T): T | null {
+  if (rows.length === 0) {
+    return null;
+  }
+  const row = rows[0];
+  checkWidth(row, width);
+  return decode(row);
+}
+
+function allRows<T>(rows: $ReadOnlyArray<Row>, width: number, decode: (row: Row) => T): Array<T> {
+  const out: Array<T> = new Array(rows.length);
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    checkWidth(row, width);
+    out[i] = decode(row);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Running a generated query.
 //
@@ -187,12 +238,24 @@ export async function one<T>(
 ): Promise<T | null> {
   try {
     const { rows } = await db.query(text, params, "rows");
-    if (rows.length === 0) {
-      return null;
-    }
-    const row = rows[0];
-    checkWidth(row, width);
-    return decode(row);
+    return firstRow(rows, width, decode);
+  } catch (error) {
+    throw attribute(error, name);
+  }
+}
+
+/** `:one` on a [`SyncQueryable`]. */
+export function oneSync<T>(
+  db: SyncQueryable,
+  name: string,
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+  width: number,
+  decode: (row: Row) => T,
+): T | null {
+  try {
+    const { rows } = db.querySync(text, params, "rows");
+    return firstRow(rows, width, decode);
   } catch (error) {
     throw attribute(error, name);
   }
@@ -209,13 +272,24 @@ export async function many<T>(
 ): Promise<Array<T>> {
   try {
     const { rows } = await db.query(text, params, "rows");
-    const out: Array<T> = new Array(rows.length);
-    for (let i = 0; i < rows.length; i += 1) {
-      const row = rows[i];
-      checkWidth(row, width);
-      out[i] = decode(row);
-    }
-    return out;
+    return allRows(rows, width, decode);
+  } catch (error) {
+    throw attribute(error, name);
+  }
+}
+
+/** `:many` on a [`SyncQueryable`]. */
+export function manySync<T>(
+  db: SyncQueryable,
+  name: string,
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+  width: number,
+  decode: (row: Row) => T,
+): Array<T> {
+  try {
+    const { rows } = db.querySync(text, params, "rows");
+    return allRows(rows, width, decode);
   } catch (error) {
     throw attribute(error, name);
   }
@@ -234,6 +308,19 @@ async function run(
   }
 }
 
+function executed(
+  db: SyncQueryable,
+  name: string,
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+): QueryResult {
+  try {
+    return db.querySync(text, params, "exec");
+  } catch (error) {
+    throw attribute(error, name);
+  }
+}
+
 /** `:exec`. */
 export async function exec(
   db: Queryable,
@@ -244,6 +331,16 @@ export async function exec(
   await run(db, name, text, params);
 }
 
+/** `:exec` on a [`SyncQueryable`]. */
+export function execSync(
+  db: SyncQueryable,
+  name: string,
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+): void {
+  executed(db, name, text, params);
+}
+
 /** `:execrows` — how many rows the statement changed. */
 export async function execRows(
   db: Queryable,
@@ -252,6 +349,16 @@ export async function execRows(
   params: $ReadOnlyArray<SqlParam>,
 ): Promise<number> {
   return (await run(db, name, text, params)).rowsAffected;
+}
+
+/** `:execrows` on a [`SyncQueryable`]. */
+export function execRowsSync(
+  db: SyncQueryable,
+  name: string,
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+): number {
+  return executed(db, name, text, params).rowsAffected;
 }
 
 /** What `:execresult` resolves to. */
@@ -271,6 +378,24 @@ export async function execResult(
   return { rowsAffected, lastInsertId };
 }
 
+/** `:execresult` on a [`SyncQueryable`]. */
+export function execResultSync(
+  db: SyncQueryable,
+  name: string,
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+): ExecResult {
+  const { rowsAffected, lastInsertId } = executed(db, name, text, params);
+  return { rowsAffected, lastInsertId };
+}
+
+function insertedId(result: QueryResult, name: string): bigint {
+  if (result.lastInsertId === null) {
+    throw new SqlError({ kind: "unsupported", feature: ":execlastid on PostgreSQL" }, name);
+  }
+  return result.lastInsertId;
+}
+
 /**
  * `:execlastid` — the id the statement inserted.
  *
@@ -283,11 +408,17 @@ export async function execLastId(
   text: string,
   params: $ReadOnlyArray<SqlParam>,
 ): Promise<bigint> {
-  const { lastInsertId } = await run(db, name, text, params);
-  if (lastInsertId === null) {
-    throw new SqlError({ kind: "unsupported", feature: ":execlastid on PostgreSQL" }, name);
-  }
-  return lastInsertId;
+  return insertedId(await run(db, name, text, params), name);
+}
+
+/** `:execlastid` on a [`SyncQueryable`]. */
+export function execLastIdSync(
+  db: SyncQueryable,
+  name: string,
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+): bigint {
+  return insertedId(executed(db, name, text, params), name);
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +494,39 @@ export type CopyPlan = {|
 /** The most rows one statement carries when a row has no parameters at all. */
 const COPY_ROWS_WITHOUT_PARAMS = 1000;
 
+function copyChunk(
+  engine: Engine,
+  plan: CopyPlan,
+  chunk: $ReadOnlyArray<$ReadOnlyArray<SqlParam>>,
+  name: string,
+): {| readonly text: string, readonly params: $ReadOnlyArray<SqlParam> |} {
+  const width = plan.refs.length;
+  const params: Array<SqlParam> = [];
+  const tuples: Array<string> = [];
+  for (const row of chunk) {
+    let tuple = plan.tuple[0];
+    for (let i = 0; i < width; i += 1) {
+      const index = plan.refs[i];
+      if (index >= row.length) {
+        throw new SqlError({ kind: "row", index, length: row.length }, name);
+      }
+      params.push(row[index]);
+      tuple += (engine === "postgresql" ? `$${params.length}` : "?") + plan.tuple[i + 1];
+    }
+    tuples.push(tuple);
+  }
+  return { text: plan.head + tuples.join(", ") + plan.tail, params };
+}
+
+function copyWidth(db: { readonly maxParams: number, ... }, plan: CopyPlan, name: string): number {
+  const width = plan.refs.length;
+  // One row is the smallest statement. Wider than `maxParams`, it cannot be sent.
+  if (width > db.maxParams) {
+    throw new SqlError({ kind: "params", width, max: db.maxParams }, name);
+  }
+  return width === 0 ? COPY_ROWS_WITHOUT_PARAMS : Math.max(1, Math.floor(db.maxParams / width));
+}
+
 /**
  * `:copyfrom` — insert every row, as few statements as `maxParams` allows.
  *
@@ -380,37 +544,42 @@ export async function copyFrom(
   if (rows.length === 0) {
     return 0;
   }
-  const width = plan.refs.length;
-  // One row is the smallest statement. Wider than `maxParams`, it cannot be sent.
-  if (width > db.maxParams) {
-    throw new SqlError({ kind: "params", width, max: db.maxParams }, name);
-  }
-  const perStatement =
-    width === 0 ? COPY_ROWS_WITHOUT_PARAMS : Math.max(1, Math.floor(db.maxParams / width));
+  const perStatement = copyWidth(db, plan, name);
   const insert = async (q: Queryable): Promise<number> => {
     let total = 0;
     for (let start = 0; start < rows.length; start += perStatement) {
-      const chunk = rows.slice(start, start + perStatement);
-      const params: Array<SqlParam> = [];
-      const tuples: Array<string> = [];
-      for (const row of chunk) {
-        let tuple = plan.tuple[0];
-        for (let i = 0; i < width; i += 1) {
-          const index = plan.refs[i];
-          if (index >= row.length) {
-            throw new SqlError({ kind: "row", index, length: row.length }, name);
-          }
-          params.push(row[index]);
-          tuple += (q.engine === "postgresql" ? `$${params.length}` : "?") + plan.tuple[i + 1];
-        }
-        tuples.push(tuple);
-      }
-      const text = plan.head + tuples.join(", ") + plan.tail;
-      total += (await run(q, name, text, params)).rowsAffected;
+      const statement = copyChunk(q.engine, plan, rows.slice(start, start + perStatement), name);
+      total += (await run(q, name, statement.text, statement.params)).rowsAffected;
     }
     return total;
   };
   const transaction = db.transaction;
+  if (transaction === undefined || rows.length <= perStatement) {
+    return insert(db);
+  }
+  return transaction(insert);
+}
+
+/** `:copyfrom` on a [`SyncQueryable`]. */
+export function copyFromSync(
+  db: SyncQueryable,
+  name: string,
+  plan: CopyPlan,
+  rows: $ReadOnlyArray<$ReadOnlyArray<SqlParam>>,
+): number {
+  if (rows.length === 0) {
+    return 0;
+  }
+  const perStatement = copyWidth(db, plan, name);
+  const insert = (q: SyncQueryable): number => {
+    let total = 0;
+    for (let start = 0; start < rows.length; start += perStatement) {
+      const statement = copyChunk(q.engine, plan, rows.slice(start, start + perStatement), name);
+      total += executed(q, name, statement.text, statement.params).rowsAffected;
+    }
+    return total;
+  };
+  const transaction = db.transactionSync;
   if (transaction === undefined || rows.length <= perStatement) {
     return insert(db);
   }
@@ -447,6 +616,31 @@ export async function batch<A, R>(
   return transaction(each);
 }
 
+/**
+ * [`batch`] on a [`SyncQueryable`].
+ *
+ * The body returns its value directly. Where `transactionSync` is absent the
+ * items still run in order, on this thread.
+ */
+export function batchSync<A, R>(
+  db: SyncQueryable,
+  items: $ReadOnlyArray<A>,
+  body: (q: SyncQueryable, item: A) => R,
+): Array<R> {
+  const each = (q: SyncQueryable): Array<R> => {
+    const out: Array<R> = [];
+    for (const item of items) {
+      out.push(body(q, item));
+    }
+    return out;
+  };
+  const transaction = db.transactionSync;
+  if (transaction === undefined || items.length <= 1) {
+    return each(db);
+  }
+  return transaction(each);
+}
+
 // ---------------------------------------------------------------------------
 // Transactions, for adapters.
 
@@ -457,11 +651,20 @@ export type Run = (
   mode: QueryMode,
 ) => Promise<QueryResult>;
 
+/** [`Run`] for a driver that finishes the statement before returning. */
+export type RunSync = (
+  text: string,
+  params: $ReadOnlyArray<SqlParam>,
+  mode: QueryMode,
+) => QueryResult;
+
 /** What [`transactionOn`] needs from an adapter. */
 export type Connection = {|
   readonly engine: Engine,
   readonly maxParams: number,
   readonly run: Run,
+  /** Present when the driver can also run a statement on the calling thread. */
+  readonly runSync?: RunSync,
   /** The statement that opens a transaction; `BEGIN` unless the adapter knows better. */
   readonly begin?: string,
 |};
@@ -538,26 +741,113 @@ async function scoped<T>(
 }
 
 /**
- * A [`Queryable`] over one connection that serves a whole application: a
- * SQLite database, or an embedded PostgreSQL.
+ * [`transactionOn`] for a driver with [`RunSync`].
  *
- * While a transaction is open every statement run on the returned value waits
- * for it to finish, so a request that is not in the transaction never lands
- * inside it. Statements run on the transaction's own [`Queryable`] do not wait.
+ * The body runs to completion before this returns. `ROLLBACK` runs when it
+ * throws, and the original error is rethrown; a failed rollback is swallowed
+ * so it cannot hide that error. The [`SyncQueryable`] the body receives
+ * refuses statements after this returns.
  */
-export function singleConnection(connection: Connection): Queryable {
+export function transactionOnSync<T>(connection: Connection, body: (tx: SyncQueryable) => T): T {
+  const runSync =
+    connection.runSync ?? unsupported("a synchronous transaction on an asynchronous connection");
+  runSync(connection.begin ?? "BEGIN", [], "exec");
+  return scopedSync(runSync, connection, 0, body, "COMMIT", "ROLLBACK");
+}
+
+function scopedSync<T>(
+  runSync: RunSync,
+  connection: Connection,
+  depth: number,
+  body: (tx: SyncQueryable) => T,
+  commit: string,
+  rollback: string,
+): T {
+  let open = true;
+  const guarded: RunSync = (text, params, mode) => {
+    if (!open) {
+      throw new SqlError({ kind: "closed" });
+    }
+    return runSync(text, params, mode);
+  };
+  const tx: SyncQueryable = {
+    engine: connection.engine,
+    maxParams: connection.maxParams,
+    querySync: guarded,
+    transactionSync: <U>(inner: (tx: SyncQueryable) => U): U => {
+      const savepoint = `uf_sp_${depth + 1}`;
+      guarded(`SAVEPOINT ${savepoint}`, [], "exec");
+      return scopedSync(
+        guarded,
+        connection,
+        depth + 1,
+        inner,
+        `RELEASE SAVEPOINT ${savepoint}`,
+        `ROLLBACK TO SAVEPOINT ${savepoint}`,
+      );
+    },
+  };
+  let value: T;
+  try {
+    value = body(tx);
+  } catch (error) {
+    open = false;
+    try {
+      runSync(rollback, [], "exec");
+      if (depth > 0) {
+        // `ROLLBACK TO` leaves the savepoint in place; release it so the
+        // enclosing transaction can go on as if the inner one never started.
+        runSync(commit, [], "exec");
+      }
+    } catch {
+      // The rollback failed too — usually because the connection is gone,
+      // which rolls back on its own. The error worth reporting is the first.
+    }
+    throw error;
+  }
+  open = false;
+  runSync(commit, [], "exec");
+  return value;
+}
+
+type Handle = Queryable & SyncQueryable;
+
+/**
+ * One connection serving a whole application: a SQLite database, or an
+ * embedded PostgreSQL.
+ *
+ * While an asynchronous transaction is open, every asynchronous statement on
+ * the returned value waits for it to finish, so a request that is not in the
+ * transaction never lands inside it. Statements on the transaction's own
+ * handle do not wait. A synchronous call during that wait throws, because
+ * this thread cannot block until the promise settles.
+ *
+ * A synchronous transaction does not yield, so nothing else runs until it
+ * returns. A call on this outer handle from inside that body throws: waiting
+ * for the body to finish is the body itself.
+ */
+function connect(connection: Connection): Handle {
   let gate: Promise<void> | null = null;
+  let syncOpen = false;
+  const runSync = connection.runSync;
+
   const query = async (
     text: string,
     params: $ReadOnlyArray<SqlParam>,
     mode: QueryMode,
   ): Promise<QueryResult> => {
+    if (syncOpen) {
+      unsupported("an asynchronous query while a synchronous transaction is open");
+    }
     while (gate !== null) {
       await gate;
     }
     return connection.run(text, params, mode);
   };
   const transaction = async <T>(body: (tx: Queryable) => Promise<T>): Promise<T> => {
+    if (syncOpen) {
+      unsupported("an asynchronous transaction while a synchronous transaction is open");
+    }
     while (gate !== null) {
       await gate;
     }
@@ -572,5 +862,72 @@ export function singleConnection(connection: Connection): Queryable {
       release();
     }
   };
-  return { engine: connection.engine, maxParams: connection.maxParams, query, transaction };
+  const querySync = (
+    text: string,
+    params: $ReadOnlyArray<SqlParam>,
+    mode: QueryMode,
+  ): QueryResult => {
+    const run =
+      connection.runSync ?? unsupported("a synchronous query on an asynchronous connection");
+    if (gate !== null) {
+      unsupported("a synchronous query while an asynchronous transaction is open");
+    }
+    if (syncOpen) {
+      unsupported(
+        "a synchronous query on the outer connection while a synchronous transaction is open",
+      );
+    }
+    return run(text, params, mode);
+  };
+  const transactionSync = <T>(body: (tx: SyncQueryable) => T): T => {
+    if (runSync == null) {
+      unsupported("a synchronous transaction on an asynchronous connection");
+    }
+    if (gate !== null) {
+      unsupported("a synchronous transaction while an asynchronous transaction is open");
+    }
+    if (syncOpen) {
+      unsupported(
+        "a synchronous transaction on the outer connection while a synchronous transaction is open",
+      );
+    }
+    syncOpen = true;
+    try {
+      return transactionOnSync(connection, body);
+    } finally {
+      syncOpen = false;
+    }
+  };
+  return {
+    engine: connection.engine,
+    maxParams: connection.maxParams,
+    query,
+    transaction,
+    querySync,
+    transactionSync,
+  };
+}
+
+/**
+ * A [`Queryable`] over one connection.
+ *
+ * The returned object also has `querySync` and `transactionSync` when
+ * `connection.runSync` is set. [`singleConnectionSync`] is that fact in the
+ * type, for the SQLite adapters.
+ */
+export function singleConnection(connection: Connection): Queryable {
+  return connect(connection);
+}
+
+/**
+ * [`singleConnection`] typed as both [`Queryable`] and [`SyncQueryable`].
+ *
+ * Requires `connection.runSync`. Without it this throws, rather than handing
+ * back a handle whose synchronous methods fail on first use.
+ */
+export function singleConnectionSync(connection: Connection): Queryable & SyncQueryable {
+  if (connection.runSync == null) {
+    unsupported("a synchronous connection");
+  }
+  return connect(connection);
 }
