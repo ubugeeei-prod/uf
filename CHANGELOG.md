@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.21.0
+
+- fix: breaking returns, import types, string declarations, client secrets, and failed commits (#1742) (f370e628)
+
 ## uf@0.20.0
 
 - feat(sqlc): generate synchronous queries and use them in simple-sns (#1735) (53db3d69)
