@@ -93,6 +93,48 @@ fn internal_type_ignores_a_name_inside_a_string() {
 }
 
 #[test]
+fn unclear_type_ignores_an_imported_value() {
+    // The names are the module's bindings. Rewriting `any` to `mixed` here
+    // would rename the import.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport { any, Object, Function } from \"./matchers.js\";\nimport {\n  any as value,\n} from \"./more.js\";\nexport { Function } from \"./matchers.js\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn unclear_type_still_reads_an_imported_type() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport type { any, Object } from \"./types.js\";\nimport { type Function } from \"./types.js\";\nexport type { any } from \"./types.js\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 4, "{diagnostics:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_an_imported_bool() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport { bool } from \"./postgresql.js\";\nimport {\n  bool as flag,\n} from \"./postgresql.js\";\nexport { bool } from \"./postgresql.js\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn deprecated_type_still_reads_an_imported_bool_type() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport type { bool } from \"./types.js\";\nimport { type bool as Flag } from \"./types.js\";\ntype Alias = bool;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 3, "{diagnostics:?}");
+}
+
+#[test]
 fn deprecated_type_ignores_a_value_named_bool() {
     let diagnostics = lint_js(
         "flow/deprecated-type",
