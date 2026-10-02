@@ -214,9 +214,9 @@ type SourceMapEntry = {|
   readonly originalColumn?: number,
   readonly originalSource?: string,
 |};
-type FindSourceMap = (
-  file: string,
-) => ?interface { findEntry(line: number, column: number): SourceMapEntry };
+type FindSourceMap = (file: string) => ?interface {
+  findEntry(line: number, column: number): SourceMapEntry,
+};
 
 /**
  * `node:module`'s `findSourceMap` when the host is Node with source maps on;
