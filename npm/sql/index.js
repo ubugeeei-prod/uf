@@ -735,8 +735,25 @@ async function scoped<T>(
     }
     throw error;
   }
+  // A failed COMMIT leaves the transaction open. Roll it back before the
+  // error leaves, or the next statement runs inside a transaction this
+  // handle has already forgotten. A nested RELEASE fails the same way;
+  // `ROLLBACK TO` then `RELEASE` is the body-error path.
   open = false;
-  await connection.run(commit, [], "exec");
+  try {
+    await connection.run(commit, [], "exec");
+  } catch (error) {
+    try {
+      await connection.run(rollback, [], "exec");
+      if (depth > 0) {
+        await connection.run(commit, [], "exec");
+      }
+    } catch {
+      // The rollback failed too — usually because the connection is gone.
+      // The error worth reporting is the commit's.
+    }
+    throw error;
+  }
   return value;
 }
 
@@ -805,8 +822,22 @@ function scopedSync<T>(
     }
     throw error;
   }
+  // Same as `scoped`: a failed COMMIT or RELEASE must not clear the
+  // transaction while the database still holds it.
   open = false;
-  runSync(commit, [], "exec");
+  try {
+    runSync(commit, [], "exec");
+  } catch (error) {
+    try {
+      runSync(rollback, [], "exec");
+      if (depth > 0) {
+        runSync(commit, [], "exec");
+      }
+    } catch {
+      // The rollback failed too. The error worth reporting is the commit's.
+    }
+    throw error;
+  }
   return value;
 }
 

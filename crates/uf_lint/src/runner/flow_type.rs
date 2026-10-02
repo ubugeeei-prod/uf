@@ -152,9 +152,74 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `import { bool }` and `import { any }` bind a value. `import type { bool }`
+    // and `import { type bool }` are types, and stay reported.
+    if names_an_imported_value(code, at, outer) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
+}
+
+/// Whether the word at `at` is a value imported or re-exported by name.
+///
+/// `import { bool } from "./postgresql.js"` names the codec, not the deprecated
+/// alias, and `import { any }` names a binding. The list may break after `{`,
+/// which is the shape the formatter writes. `import type { bool }` and
+/// `import { type bool }` are types, so they are not this.
+fn names_an_imported_value(code: &str, at: usize, outer: Enclosing) -> bool {
+    if !in_value_specifier(code, at, outer) {
+        return false;
+    }
+    if previous_word(code, at).is_some_and(|(_, word)| word == "type") {
+        return false;
+    }
+    // `import { type Flag as bool }` — the local name is a type too.
+    if let Some((as_at, "as")) = previous_word(code, at)
+        && let Some((imported_at, _)) = previous_word(code, as_at)
+        && previous_word(code, imported_at).is_some_and(|(_, word)| word == "type")
+    {
+        return false;
+    }
+    true
+}
+
+/// Whether `at` stands in a `{ … }` that imports or re-exports values.
+///
+/// The brace on this line decides it. A specifier continued from the line
+/// above asks [`Enclosing::value_specifiers`], which is that brace carried
+/// forward.
+fn in_value_specifier(code: &str, at: usize, outer: Enclosing) -> bool {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = at;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b'}' | b')' | b']' => depth += 1,
+            b'{' | b'(' | b'[' => {
+                if depth == 0 {
+                    return bytes[index] == b'{' && opens_value_specifiers(code, index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    outer.value_specifiers
+}
+
+/// Whether the `{` at `brace` opens `import { … }` or `export { … }`.
+///
+/// `import type { … }` and `export type { … }` have `type` in front of the
+/// brace, so they open a list of types and this is false.
+fn opens_value_specifiers(code: &str, brace: usize) -> bool {
+    matches!(
+        previous_word(code, brace).map(|(_, word)| word),
+        Some("import" | "export")
+    )
 }
 
 /// Whether the name at `at` is a property key in an object type.
@@ -291,6 +356,9 @@ struct Enclosing {
     /// The last byte of code before this line, which is what tells `(` from
     /// `,` for the first word on a continuation line.
     last_byte: Option<u8>,
+    /// Whether the innermost opener is the `{` of `import { … }` or
+    /// `export { … }`. A specifier continued onto the next line is a value.
+    value_specifiers: bool,
 }
 
 /// Which kind of bracket is open. Only `(` needs telling apart, and only into
@@ -315,9 +383,11 @@ impl Enclosing {
         // with it, which put the router runtime over the allocation budget.
         const CAP: usize = 32;
         let mut inline = [Opener::Other; CAP];
+        let mut specifiers = [false; CAP];
         let mut depth = 0usize;
         if let Some(kind) = self.kind {
             inline[0] = kind;
+            specifiers[0] = self.value_specifiers;
             depth = 1;
         }
         let bytes = code.as_bytes();
@@ -330,12 +400,21 @@ impl Enclosing {
                     });
                     if depth < CAP {
                         inline[depth] = if call { Opener::Call } else { Opener::Other };
+                        specifiers[depth] = false;
                         depth += 1;
                     }
                 }
-                b'[' | b'{' => {
+                b'[' => {
                     if depth < CAP {
                         inline[depth] = Opener::Other;
+                        specifiers[depth] = false;
+                        depth += 1;
+                    }
+                }
+                b'{' => {
+                    if depth < CAP {
+                        inline[depth] = Opener::Other;
+                        specifiers[depth] = opens_value_specifiers(code, index);
                         depth += 1;
                     }
                 }
@@ -353,6 +432,7 @@ impl Enclosing {
                 None
             },
             last_byte: last,
+            value_specifiers: depth > 0 && specifiers[depth - 1],
         }
     }
 }

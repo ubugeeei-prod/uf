@@ -80,8 +80,9 @@ fn same_type(a: &Type, b: &Type) -> bool {
 /// The walk goes through the constructs that hold a type without deciding
 /// anything about it: a generic's arguments, a union or intersection, a
 /// tuple's elements, `keyof` and indexed access, a conditional, `renders`,
-/// and the wrappers. It stops at a function type, whose own parameters and
-/// return are a separate decision.
+/// an `interface` type, the type arguments of `typeof`, the types inside a
+/// template literal, and the wrappers. It stops at a function type, whose
+/// own parameters and return are a separate decision.
 pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
     match &**ty {
         types::TypeInner::Object { .. } => true,
@@ -125,6 +126,16 @@ pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
                 || returns_a_shape_that_breaks(&inner.false_type)
         }
         types::TypeInner::Renders { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
+        // An `interface { … }` type prints its body as an object type, so it
+        // breaks for the same reason an object type does.
+        types::TypeInner::Interface { .. } => true,
+        types::TypeInner::Typeof { inner, .. } => inner
+            .targs
+            .as_ref()
+            .is_some_and(|targs| targs.arguments.iter().any(returns_a_shape_that_breaks)),
+        types::TypeInner::TemplateLiteral { inner, .. } => {
+            inner.types.iter().any(returns_a_shape_that_breaks)
+        }
         _ => false,
     }
 }

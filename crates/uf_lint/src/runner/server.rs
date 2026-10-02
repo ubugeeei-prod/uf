@@ -5,7 +5,7 @@
 
 use uf_config::UniflowedConfig;
 
-use crate::scan::{FileScan, next_non_space};
+use crate::scan::{FileScan, find_all, identifier_len, next_non_space, starts_word};
 use crate::{Diagnostic, push, push_in_code, severity};
 
 pub(crate) fn run_server_no_client_secret(
@@ -22,19 +22,64 @@ pub(crate) fn run_server_no_client_secret(
 
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
-        let Some(at) = code.find("SECRET").or_else(|| code.find("PRIVATE_")) else {
-            continue;
-        };
-        push_in_code(
-            diagnostics,
-            scan,
-            "server/no-client-secret",
-            severity,
-            position,
-            at,
-            "client modules must not read private server secrets",
-        );
+        for marker in ["import.meta.env", "process.env"] {
+            for at in find_all(code, marker) {
+                // `notprocess.env` is not the environment. The marker starts
+                // on a word boundary, and a string that mentions it is text.
+                if !starts_word(code, at) || line.in_string(at) {
+                    continue;
+                }
+                let Some((name_at, name)) = env_property(code, at + marker.len()) else {
+                    continue;
+                };
+                if !names_a_secret(name) {
+                    continue;
+                }
+                push_in_code(
+                    diagnostics,
+                    scan,
+                    "server/no-client-secret",
+                    severity,
+                    position,
+                    name_at,
+                    "client modules must not read private server secrets",
+                );
+            }
+        }
     }
+}
+
+/// The property read from `process.env` or `import.meta.env`.
+///
+/// `.NAME`, `?.NAME`, and `["NAME"]` / `['NAME']`. The offset is the name, so
+/// an existing finding on `PRIVATE_TOKEN` stays on that column.
+fn env_property(code: &str, after: usize) -> Option<(usize, &str)> {
+    let (at, byte) = next_non_space(code, after)?;
+    if byte == b'.' || (byte == b'?' && code.as_bytes().get(at + 1) == Some(&b'.')) {
+        let dot = if byte == b'?' { at + 2 } else { at + 1 };
+        let (name_at, _) = next_non_space(code, dot)?;
+        let len = identifier_len(code, name_at);
+        if len == 0 {
+            return None;
+        }
+        return Some((name_at, &code[name_at..name_at + len]));
+    }
+    if byte == b'[' {
+        let (quote_at, quote) = next_non_space(code, at + 1)?;
+        if !matches!(quote, b'\'' | b'"') {
+            return None;
+        }
+        let start = quote_at + 1;
+        let end = code[start..].find(quote as char)?;
+        return Some((start, &code[start..start + end]));
+    }
+    None
+}
+
+/// `API_SECRET` and `MY_SECRET_KEY` have a `SECRET` segment. `PRIVATE_TOKEN`
+/// contains `PRIVATE_`. `SECRETARY` is a different word.
+fn names_a_secret(name: &str) -> bool {
+    name.split('_').any(|part| part == "SECRET") || name.contains("PRIVATE_")
 }
 
 /// Module specifiers a `"use client"` module must never import.

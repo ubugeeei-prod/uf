@@ -84,6 +84,32 @@ fn server_rule_rejects_secret_reads_in_client_modules() {
     );
 
     assert!(fired(&diagnostics, "server/no-client-secret"));
+    assert_eq!(diagnostics[0].column, 27, "{diagnostics:?}");
+}
+
+#[test]
+fn server_rule_rejects_a_secret_segment_and_import_meta() {
+    for source in [
+        "// @flow\n'use client';\nconst token = process.env.API_SECRET;\n",
+        "// @flow\n'use client';\nconst token = process.env[\"SECRET\"];\n",
+        "// @flow\n'use client';\nconst token = process.env?.PRIVATE_KEY;\n",
+        "// @flow\n'use client';\nconst token = import.meta.env.PRIVATE_KEY;\n",
+    ] {
+        let diagnostics = lint_one("server/no-client-secret", "src/app/page.jsx", source);
+        assert!(fired(&diagnostics, "server/no-client-secret"), "{source}");
+    }
+}
+
+#[test]
+fn server_rule_ignores_a_word_that_only_contains_secret() {
+    for source in [
+        "// @flow\n'use client';\nconst role = process.env.SECRETARY;\n",
+        "// @flow\n'use client';\nconst label = \"Enter the SECRET code\";\n",
+        "// @flow\n'use client';\nconst page = <p>SECRET</p>;\n",
+    ] {
+        let diagnostics = lint_one("server/no-client-secret", "src/app/page.jsx", source);
+        assert!(diagnostics.is_empty(), "{source} -> {diagnostics:?}");
+    }
 }
 
 #[test]
