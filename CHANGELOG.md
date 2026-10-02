@@ -1,5 +1,10 @@
 # Changelog
 
+## uf@0.20.0
+
+- feat(sqlc): generate synchronous queries and use them in simple-sns (#1735) (53db3d69)
+- style: use the default format, match, and renders in the examples and ui (#1734) (90843bd4)
+
 ## uf@0.19.0
 
 - fix: copyfrom comments, value-named types, and breaking return wrappers (#1732) (62e10c3a)
