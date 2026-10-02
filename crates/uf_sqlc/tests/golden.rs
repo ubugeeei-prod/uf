@@ -163,3 +163,34 @@ fn unknown_options_are_refused() {
     let error = uf_sqlc::generate(&request, &format).expect_err("a misspelt option");
     assert!(error.contains("timestampz"), "{error}");
 }
+
+fn generated(case: &str, options: &str) -> String {
+    let mut request =
+        uf_sqlc::decode(&fs::read(cases().join(case).join("request.json")).expect("json"))
+            .expect("decode");
+    request.plugin_options = options.as_bytes().to_vec();
+    uf_sqlc::generate(&request, &format)
+        .expect("generate")
+        .into_iter()
+        .find(|file| file.name.ends_with("query.sql.js"))
+        .expect("query file")
+        .contents
+}
+
+#[test]
+fn sync_option_emits_synchronous_functions() {
+    let query = generated("authors-sqlite", r#"{"sync":true}"#);
+    assert!(query.contains("SyncQueryable"), "{query}");
+    assert!(query.contains(".oneSync("), "{query}");
+    assert!(query.contains(".execSync("), "{query}");
+    assert!(!query.contains("Promise<"), "{query}");
+    assert!(!query.contains(".one("), "{query}");
+    assert!(!query.contains(": Queryable"), "{query}");
+
+    let batch = generated("types-sqlite", r#"{"sync":true}"#);
+    assert!(batch.contains(".copyFromSync("), "{batch}");
+    assert!(batch.contains(".batchSync("), "{batch}");
+    assert!(batch.contains(".manySync("), "{batch}");
+    assert!(!batch.contains("Promise<"), "{batch}");
+    assert!(!batch.contains(".then("), "{batch}");
+}

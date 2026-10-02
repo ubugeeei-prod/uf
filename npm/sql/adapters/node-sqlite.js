@@ -7,12 +7,15 @@
 //
 //   const db = fromNodeSqlite(new DatabaseSync("app.db"));
 //
+// The handle has `query` and `querySync`. `querySync` and `transactionSync`
+// run on this thread, which is what sqlc's `sync: true` output calls.
+//
 // Needs `StatementSync#setReturnArrays`, which Node added in 24.0 and 22.16.
 // An older Node gets an error that says so, rather than rows keyed by column
 // name — which would silently merge two columns that share one.
 
-import type { Queryable, SqlParam } from "../index.js";
-import { SqlError, singleConnection } from "../index.js";
+import type { Queryable, RunSync, SqlParam, SyncQueryable } from "../index.js";
+import { SqlError, singleConnectionSync } from "../index.js";
 import { DEFAULT_STATEMENT_CACHE, count, rowId, statementCache } from "../internal/statements.js";
 
 /** The part of `node:sqlite`'s `StatementSync` this uses. */
@@ -56,38 +59,40 @@ function prepared(database: NodeSqliteDatabase, text: string): NodeSqliteStateme
   return statement;
 }
 
-/** A [`Queryable`] over one `DatabaseSync`. */
+/** A [`Queryable`] and a [`SyncQueryable`] over one `DatabaseSync`. */
 export function fromNodeSqlite(
   database: NodeSqliteDatabase,
   options: NodeSqliteOptions = {},
-): Queryable {
+): Queryable & SyncQueryable {
   const statement = statementCache(
     (text) => prepared(database, text),
     options.statementCache ?? DEFAULT_STATEMENT_CACHE,
   );
-  return singleConnection({
+  const runSync: RunSync = (text, params, mode) => {
+    const prepared = statement(text);
+    if (mode === "rows") {
+      const rows = prepared.all(...params);
+      const arrays: Array<$ReadOnlyArray<mixed>> = [];
+      for (const row of rows) {
+        if (!Array.isArray(row)) {
+          throw new SqlError({ kind: "unsupported", feature: "node:sqlite rows as objects" });
+        }
+        arrays.push(row);
+      }
+      return { rows: arrays, rowsAffected: 0, lastInsertId: null };
+    }
+    const result = prepared.run(...params);
+    return {
+      rows: [],
+      rowsAffected: count(result.changes),
+      lastInsertId: rowId(result.lastInsertRowid),
+    };
+  };
+  return singleConnectionSync({
     engine: "sqlite",
     maxParams: options.maxParams ?? 32766,
     begin: options.begin,
-    run: async (text, params, mode) => {
-      const prepared = statement(text);
-      if (mode === "rows") {
-        const rows = prepared.all(...params);
-        const arrays: Array<$ReadOnlyArray<mixed>> = [];
-        for (const row of rows) {
-          if (!Array.isArray(row)) {
-            throw new SqlError({ kind: "unsupported", feature: "node:sqlite rows as objects" });
-          }
-          arrays.push(row);
-        }
-        return { rows: arrays, rowsAffected: 0, lastInsertId: null };
-      }
-      const result = prepared.run(...params);
-      return {
-        rows: [],
-        rowsAffected: count(result.changes),
-        lastInsertId: rowId(result.lastInsertRowid),
-      };
-    },
+    run: async (text, params, mode) => runSync(text, params, mode),
+    runSync,
   });
 }

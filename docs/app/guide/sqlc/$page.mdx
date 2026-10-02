@@ -214,6 +214,48 @@ if (transaction !== undefined) {
 its own work. A transaction refuses queries once it has ended, so a leaked `tx`
 fails loudly instead of running outside the transaction.
 
+## Synchronous SQLite
+
+`node:sqlite`, `better-sqlite3` and `bun:sqlite` run a statement on the calling
+thread. A transaction there has to stay on that thread from `BEGIN` through
+`COMMIT`, so the generated functions have to return their value directly
+instead of a `Promise`. Set `sync: true` on the plugin:
+
+```yaml
+codegen:
+  - out: src/db
+    plugin: flow
+    options:
+      sync: true
+```
+
+`getAuthor` then takes a `SyncQueryable` and returns `Author | null`. The three
+SQLite adapters above return a handle that has both `query` and `querySync`,
+and both `transaction` and `transactionSync`:
+
+```js
+import { DatabaseSync } from "node:sqlite";
+import { fromNodeSqlite } from "@uniflowed/sql/node-sqlite";
+import { getAuthor } from "./db/query.sql.js";
+
+const db = fromNodeSqlite(new DatabaseSync("app.db"));
+const author = getAuthor(db, { id: 1 });
+
+const transaction = db.transactionSync;
+if (transaction !== undefined) {
+  transaction((tx) => {
+    getAuthor(tx, { id: 1 });
+  });
+}
+```
+
+`transactionSync` commits when the function returns and rolls back when it
+throws. Pass `tx` into the generated functions. Calling `db.querySync` on the
+outer handle while that transaction is open throws: the body would be waiting
+for itself. `:copyfrom` and `:batch*` are generated for this path too, and run
+on the same thread. D1, PostgreSQL and MySQL stay asynchronous; they have no
+`querySync`, and `sync: true` code does not typecheck against them.
+
 ## Options
 
 Plugin options go under the codegen entry:
@@ -228,6 +270,7 @@ codegen:
       numeric: string         # string | number
       timestamptz: Date       # Date | string
       naming: camelCase       # camelCase | preserve
+      sync: false             # true returns values directly, for synchronous SQLite
       rename:
         spotify_url: spotifyURL
       overrides:

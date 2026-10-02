@@ -2,140 +2,88 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { ensuring, runSync, sync, trySync } from "@uniflowed/effect";
+import { fromNodeSqlite } from "@uniflowed/sql/node-sqlite";
+import type { SyncQueryable } from "@uniflowed/sql";
 
-/** Scalar SQLite row values, converted to explicit DTOs by the repository. */
+import { seedEntry, seedMember, seedReaction } from "./db/query.sql.js";
 
-export type Row = { readonly [string]: string | number | null | void, ... };
+let raw: null | { close(): void, ... } = null;
+let handle: SyncQueryable | null = null;
 
-type Value = string | number | null;
+/**
+ * The schema sqlc reads. Beside this module when Node loads the source, and
+ * under the project directory when a bundle has replaced `import.meta.url`.
+ */
 
-type Statement = {|
-  all: (...values: Array<Value>) => Array<Row>,
-  get: (...values: Array<Value>) => Row | void,
-  run: (...values: Array<Value>) => mixed,
-|};
+function schemaSql(): string {
+  const beside = fileURLToPath(new URL("./db/schema.sql", import.meta.url));
+  if (fs.existsSync(beside)) {
+    return fs.readFileSync(beside, "utf8");
+  }
 
-type Database = {|
-  close  : () => void,
-  exec   : (sql: string) => void,
-  prepare: (sql: string) => Statement,
-|};
-
-const SQLite: Class<Database> = DatabaseSync;
-
-let instance: Database | null = null;
+  return fs.readFileSync(path.resolve("app/_server/db/schema.sql"), "utf8");
+}
 
 /**
  * Open the process-local SQLite connection lazily and initialize its schema and fixtures.
  * The database location belongs to the application cwd, not the bundled module path.
  */
 
-export function database(): Database {
-  if (instance != null) {
-    return instance;
+export function database(): SyncQueryable {
+  if (handle != null) {
+    return handle;
   }
   // Bundling changes import.meta.url. Persistence belongs to the application cwd.
   const file = process.env.UF_SIMPLE_SNS_DB ?? path.resolve(".uf", "commonplace.sqlite");
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const db = new SQLite(file);
+  const db = new DatabaseSync(file);
   db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS members (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, handle TEXT NOT NULL UNIQUE,
-      bio TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
-      password_hash TEXT
-    );
-    CREATE TABLE IF NOT EXISTS entries (
-      id TEXT PRIMARY KEY, author_id TEXT NOT NULL REFERENCES members(id),
-      body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 500),
-      topic TEXT NOT NULL CHECK(topic IN ('design','release','runtime','community')),
-      created_at TEXT NOT NULL, request_id TEXT NOT NULL, UNIQUE(author_id, request_id)
-    );
-    CREATE INDEX IF NOT EXISTS entries_newest ON entries(created_at DESC, id DESC);
-    CREATE TABLE IF NOT EXISTS reactions (
-      entry_id TEXT NOT NULL REFERENCES entries(id), member_id TEXT NOT NULL REFERENCES members(id),
-      PRIMARY KEY(entry_id, member_id)
-    );
-    CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY);
-    CREATE TABLE IF NOT EXISTS participants (
-      conversation_id TEXT NOT NULL REFERENCES conversations(id), member_id TEXT NOT NULL REFERENCES members(id),
-      PRIMARY KEY(conversation_id, member_id)
-    );
-    CREATE TABLE IF NOT EXISTS notes (
-      id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id),
-      author_id TEXT NOT NULL REFERENCES members(id), body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 2000),
-      created_at TEXT NOT NULL, request_id TEXT NOT NULL, UNIQUE(author_id, request_id)
-    );
-    CREATE INDEX IF NOT EXISTS notes_conversation ON notes(conversation_id, created_at, id);
-    CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id), expires_at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS auth_attempts (handle TEXT PRIMARY KEY, attempts INTEGER NOT NULL, resets_at INTEGER NOT NULL);
-  `);
-  seed(db);
-  instance = db;
+  db.exec(schemaSql());
+  const connection = fromNodeSqlite(db, { begin: "BEGIN IMMEDIATE" });
+  seed(connection);
+  raw = db;
+  handle = connection;
 
-  return db;
+  return connection;
 }
 
 /** Release the connection at an explicit application or test lifecycle boundary. */
 
 export function closeDatabase(): void {
-  instance?.close();
-  instance = null;
+  raw?.close();
+  raw = null;
+  handle = null;
 }
 
 /**
- * Keep a SQLite write synchronous from BEGIN through COMMIT. Effect guarantees
- * rollback on a failed body or commit; the original exception is rethrown so
- * the mutation adapter can still distinguish InputError from a database defect.
- * Callbacks must not return promises or open nested transactions.
+ * Keep a SQLite write on this thread from BEGIN IMMEDIATE through COMMIT.
+ * A throw rolls the transaction back and is rethrown, so the mutation adapter
+ * can still distinguish InputError from a database defect. The body receives
+ * the transaction and must not reach back to `database()`.
  */
 
-export function transaction<T>(body: (Database) => T): T {
-  const db = database();
-  let open = false;
+export function transaction<T>(body: (SyncQueryable) => T): T {
+  const run = database().transactionSync;
+  if (run == null) {
+    throw new Error("the SQLite connection cannot open a synchronous transaction");
+  }
 
-  return runSync(
-    ensuring(
-      trySync({
-        try: () => {
-          db.exec("BEGIN IMMEDIATE");
-          open = true;
-
-          const value = body(db);
-          db.exec("COMMIT");
-          open = false;
-
-          return value;
-        },
-        catch: (error) => error,
-      }),
-      () =>
-        sync(() => {
-          if (open) {
-            db.exec("ROLLBACK");
-          }
-        }),
-    ),
-  );
+  return run(body);
 }
 
-function seed(db: Database): void {
+function seed(db: SyncQueryable): void {
   // No password: fixture authors cannot be signed into.
   for (const [handle, name, bio] of [
     ["mika", "Mika Tan", "Product engineering"],
     ["ren", "Ren Ito", "Design systems"],
     ["sora", "Sora Lin", "Developer tools"],
     ["niko", "Niko Reyes", "Community"],
-  ])
-    db.prepare("INSERT OR IGNORE INTO members (id, name, handle, bio) VALUES (?, ?, ?, ?)").run(
-      `seed-${handle}`,
-      name,
-      handle,
-      bio,
-    );
-  for (const [id, author, body, topic, date] of [
+  ]) {
+    seedMember(db, { id: `seed-${handle}`, name, handle, bio });
+  }
+  for (const [id, author, body, topic, createdAt] of [
     [
       "field-notes",
       "mika",
@@ -178,20 +126,22 @@ function seed(db: Database): void {
       "community",
       "2026-09-10T09:00:00.000Z",
     ],
-  ])
-    db.prepare("INSERT OR IGNORE INTO entries VALUES (?, ?, ?, ?, ?, ?)").run(
+  ]) {
+    seedEntry(db, {
       id,
-      `seed-${author}`,
+      authorId: `seed-${author}`,
       body,
       topic,
-      date,
-      id,
-    );
-  for (const [post, member] of [
+      createdAt,
+      requestId: id,
+    });
+  }
+  for (const [entryId, member] of [
     ["field-notes", "ren"],
     ["field-notes", "sora"],
     ["quiet-release", "mika"],
     ["good-boundaries", "ren"],
-  ])
-    db.prepare("INSERT OR IGNORE INTO reactions VALUES (?, ?)").run(post, `seed-${member}`);
+  ]) {
+    seedReaction(db, { entryId, memberId: `seed-${member}` });
+  }
 }

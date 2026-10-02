@@ -28,6 +28,7 @@ sqlc installation remain Planned.
 | `uf sqlc generate` / `uf sqlc diff` | Implemented | `crates/uf_cli/tests/sqlc.rs` (a stand-in sqlc); `tools/ci/sqlc.sh` (the pinned real one) |
 | Generated code passes `uf check`, `uf lint` and `uf fmt --check` | Implemented | `tools/ci/sqlc.sh`, over every case |
 | Runtime `@uniflowed/sql`: codecs, slices, `:copyfrom`, `:batch*`, transactions and savepoints | Implemented | `npm/sql/sql.test.js`; `tests/sqlc/transactions.js` against every tested adapter |
+| Synchronous queries (`sync: true`, `querySync`, `transactionSync`, synchronous `:copyfrom` and `:batch*`) | Implemented | `npm/sql/sql.test.js`; `crates/uf_sqlc/tests/golden.rs` (`sync_option_emits_synchronous_functions`) |
 | Adapter: `node:sqlite` | Implemented | `npm/sql/sql.test.js`, `tests/sqlc/sqlite.test.js` |
 | Adapter: `bun:sqlite` | Implemented | `tests/sqlc/sqlite.test.js` under `uf test --host bun`, on Bun 1.3.14 in CI |
 | Adapters: PGlite, `pg` (`fromPgClient`, `fromPgPool`), `postgres` | Implemented | `tests/sqlc/postgresql.test.js`: every scenario under all four, against a real PostgreSQL (PGlite, reached by `pg` and `postgres` over the wire protocol) |
@@ -174,6 +175,39 @@ would also admit `undefined`, which nothing produces.
   rule than sqlc assumed; the generator resolves each placeholder to its
   parameter once and emits positional `?` in bind order.
 
+### Synchronous queries
+
+`node:sqlite`'s `DatabaseSync`, `better-sqlite3` and `bun:sqlite` run a
+statement on the calling thread and return before the call returns. A
+transaction on those drivers has to stay on that thread from `BEGIN` through
+`COMMIT`. A function that returns a `Promise` yields, and another turn can use
+the same connection in between.
+
+`sync: true` generates functions that return their value directly and take a
+`SyncQueryable`. They call `sql.oneSync`, `sql.manySync`, `sql.execSync`,
+`sql.execRowsSync`, `sql.execResultSync`, `sql.execLastIdSync`,
+`sql.copyFromSync` and `sql.batchSync`. `:copyfrom` and `:batch*` run on that
+same thread, in one `transactionSync` when the handle has one and the work
+does not fit in a single statement (one statement, or a single batch item,
+does not open a transaction it does not need).
+
+`fromNodeSqlite`, `fromBetterSqlite3` and `fromBunSqlite` return one handle
+with both `query` / `transaction` and `querySync` / `transactionSync`. The
+asynchronous methods are unchanged. `transactionSync` runs the body between
+`BEGIN` and `COMMIT` without yielding, rolls back when the body throws, and
+rethrows that error. Nested `transactionSync` is a savepoint. The handle the
+body receives refuses statements after the transaction has ended.
+
+A synchronous call on the outer handle while either kind of transaction is
+open throws `unsupported`. An asynchronous transaction cannot be waited out on
+the calling thread, and a synchronous body that reached back to the outer
+handle would deadlock the same way `await db.query` inside `transaction` does.
+Statements belong on the `tx` argument.
+
+The default is asynchronous, so existing generated files do not change. D1,
+`pg`, `postgres` and `mysql2` have no `querySync`; `sync: true` code does not
+typecheck against them.
+
 ### Options
 
 Plugin options live under the codegen entry in `sqlc.yaml`:
@@ -188,6 +222,7 @@ codegen:
       numeric: string         # string | number
       timestamptz: Date       # Date | string
       naming: camelCase       # camelCase | preserve
+      sync: false             # true: SyncQueryable, values returned directly
       rename:
         spotify_url: spotifyURL
       overrides:

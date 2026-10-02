@@ -26,6 +26,9 @@ cd "$root/tests/sqlc"
 npm ci --no-audit --no-fund
 node capture.mjs --check
 "$uf" sqlc diff -f sqlc.json
+# The SQLite example commits the Flow that `sync: true` generates. A SQL edit
+# that skips `uf sqlc generate` fails here, next to the other sqlc diffs.
+"$uf" --cwd "$root/examples/simple-sns" sqlc diff
 "$uf" check
 "$uf" lint
 "$uf" fmt --check

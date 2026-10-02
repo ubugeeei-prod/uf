@@ -1,0 +1,14 @@
+version: "2"
+plugins:
+  - name: flow
+    process:
+      cmd: uf
+sql:
+  - engine: sqlite
+    schema: app/_server/db/schema.sql
+    queries: app/_server/db/query.sql
+    codegen:
+      - out: app/_server/db
+        plugin: flow
+        options:
+          sync: true

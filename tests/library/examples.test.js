@@ -36,6 +36,9 @@ import {
   settingsData,
 } from "../../examples/simple-sns/app/_server/social-queries.js";
 import { InputError } from "../../examples/simple-sns/app/_server/validation.server.js";
+import { execSync, oneSync } from "@uniflowed/sql";
+import * as sqlite from "@uniflowed/sql/sqlite";
+import type { SyncQueryable } from "@uniflowed/sql";
 import { POST } from "../../examples/simple-sns/app/auth/session/$route.js";
 import {
   IDLE,
@@ -100,6 +103,11 @@ function as<T>(cookie: string, action: () => T): T {
 function token(cookie: string): string {
   return cookie.slice(cookie.indexOf("=") + 1);
 }
+function cell(db: SyncQueryable, sql: string, param: string): string | null {
+  return oneSync(db, "Observe", sql, [sqlite.string.encode(param)], 1, (row) =>
+    row[0] == null ? null : sqlite.string.decode(row[0]),
+  );
+}
 function request(values: { [string]: string }, headers: { [string]: string } = {}): Request {
   const requestHeaders = new Headers({
     origin: "http://localhost",
@@ -140,14 +148,14 @@ describe("Commonplace server contracts", () => {
 
   it("stores only password and session hashes, rotates tokens, and expires sessions", async () => {
     const alice = await account("alice");
-    const row = database()
-      .prepare("SELECT password_hash FROM members WHERE id=?")
-      .get(alice.user.id);
-    expect(String(row?.password_hash)).not.toContain("sample password");
-    const stored = database()
-      .prepare("SELECT token_hash FROM sessions WHERE member_id=?")
-      .get(alice.user.id);
-    expect(stored?.token_hash).not.toBe(token(alice.cookie));
+    const hash = cell(database(), "SELECT password_hash FROM members WHERE id = ?", alice.user.id);
+    expect(String(hash)).not.toContain("sample password");
+    const stored = cell(
+      database(),
+      "SELECT token_hash FROM sessions WHERE member_id = ?",
+      alice.user.id,
+    );
+    expect(stored).not.toBe(token(alice.cookie));
     expect(viewerFor(token(alice.cookie))?.id).toBe(alice.user.id);
     const rotated = issueSession(alice.user, token(alice.cookie), true);
     expect(rotated).toContain("HttpOnly; SameSite=Lax");
@@ -155,7 +163,7 @@ describe("Commonplace server contracts", () => {
     expect(viewerFor(token(alice.cookie))).toBe(null);
     const next = token(rotated.split(";")[0]);
     expect(viewerFor(next)?.id).toBe(alice.user.id);
-    database().prepare("UPDATE sessions SET expires_at=0").run();
+    execSync(database(), "ExpireSessions", "UPDATE sessions SET expires_at = 0", []);
     expect(viewerFor(next)).toBe(null);
     const latest = token(issueSession(alice.user, null, false).split(";")[0]);
     revokeSession(latest, false);
@@ -258,13 +266,13 @@ describe("Commonplace server contracts", () => {
   it("rolls back a partially executed transaction", () => {
     expect(() =>
       transaction((db) => {
-        db.prepare("INSERT INTO conversations VALUES (?)").run("rolled-back");
+        execSync(db, "InsertConversation", "INSERT INTO conversations (id) VALUES (?)", [
+          sqlite.string.encode("rolled-back"),
+        ]);
         throw new Error("abort");
       }),
     ).toThrow("abort");
-    expect(database().prepare("SELECT id FROM conversations WHERE id=?").get("rolled-back")).toBe(
-      undefined,
-    );
+    expect(cell(database(), "SELECT id FROM conversations WHERE id = ?", "rolled-back")).toBe(null);
   });
 
   it("preserves validation fields after rollback and permits the next transaction", () => {
@@ -273,7 +281,9 @@ describe("Commonplace server contracts", () => {
       trySync({
         try: () =>
           transaction((db) => {
-            db.prepare("INSERT INTO conversations VALUES (?)").run("rejected-input");
+            execSync(db, "InsertConversation", "INSERT INTO conversations (id) VALUES (?)", [
+              sqlite.string.encode("rejected-input"),
+            ]);
             throw error;
           }),
         catch: (thrown) => thrown,
@@ -281,13 +291,17 @@ describe("Commonplace server contracts", () => {
     );
 
     expect(result).toEqual({ kind: "failure", cause: { kind: "fail", error } });
-    expect(
-      database().prepare("SELECT id FROM conversations WHERE id=?").get("rejected-input"),
-    ).toBe(undefined);
-    transaction((db) => db.prepare("INSERT INTO conversations VALUES (?)").run("next-write"));
-    expect(
-      database().prepare("SELECT id FROM conversations WHERE id=?").get("next-write")?.id,
-    ).toBe("next-write");
+    expect(cell(database(), "SELECT id FROM conversations WHERE id = ?", "rejected-input")).toBe(
+      null,
+    );
+    transaction((db) =>
+      execSync(db, "InsertConversation", "INSERT INTO conversations (id) VALUES (?)", [
+        sqlite.string.encode("next-write"),
+      ]),
+    );
+    expect(cell(database(), "SELECT id FROM conversations WHERE id = ?", "next-write")).toBe(
+      "next-write",
+    );
   });
 
   it("returns typed authentication feedback without issuing a session cookie", async () => {

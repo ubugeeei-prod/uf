@@ -5,6 +5,18 @@ import { cookies } from "@uniflowed/server";
 
 import { database, transaction } from "./database.server.js";
 import { member, publicUser, welcomeConversation } from "./repository.server.js";
+import {
+  attemptCount,
+  deleteAttempts,
+  deleteExpiredAttempts,
+  deleteExpiredSessions,
+  deleteSession,
+  insertMember,
+  insertSession,
+  memberByHandle,
+  recordAttempt,
+  sessionMember,
+} from "./db/query.sql.js";
 import { InputError, field, handleField, emailField } from "./validation.server.js";
 
 import type { User } from "../_shared/social-model.js";
@@ -25,11 +37,12 @@ export function viewerFor(token: string | null): User | null {
   if (token == null || !/^[a-f0-9]{64}$/.test(token)) {
     return null;
   }
-  const row = database()
-    .prepare("SELECT member_id FROM sessions WHERE token_hash=? AND expires_at>?")
-    .get(digest(token), Date.now());
+  const memberId = sessionMember(database(), {
+    tokenHash: digest(token),
+    expiresAt: Date.now(),
+  });
 
-  return row == null ? null : member(String(row.member_id));
+  return memberId == null ? null : member(memberId);
 }
 
 /** Read identity from this request’s cookie context, never from process-global user state. */
@@ -75,49 +88,48 @@ export async function authenticate(form: FormData, mode: string): Promise<User> 
   const password = passwordField(form);
   const now = Date.now();
   const db = database();
-  db.prepare("DELETE FROM auth_attempts WHERE resets_at<?").run(now);
-  db.prepare(
-    "INSERT INTO auth_attempts VALUES (?, 1, ?) ON CONFLICT(handle) DO UPDATE SET attempts=attempts+1",
-  ).run(handle, now + 600_000);
-  const attempts = db.prepare("SELECT attempts FROM auth_attempts WHERE handle=?").get(handle);
-  if (Number(attempts?.attempts ?? 0) > 10)
+  deleteExpiredAttempts(db, { resetsAt: now });
+  recordAttempt(db, { handle, resetsAt: now + 600_000 });
+  const attempts = attemptCount(db, { handle });
+  if ((attempts ?? 0) > 10) {
     throw new InputError("Too many attempts. Please try again in 10 minutes.");
+  }
   if (mode === "signup") {
     const name = field(form, "name", 80, 1);
     const email = emailField(form);
     const salt = randomBytes(16).toString("hex");
     const hash = `${salt}:${(await derive(password, salt)).toString("hex")}`;
     return transaction((connection) => {
-      if (connection.prepare("SELECT 1 FROM members WHERE handle=?").get(handle) != null)
+      if (memberByHandle(connection, { handle }) != null) {
         throw new InputError("That handle is already taken.", { handle: "Choose another handle." });
+      }
       const id = crypto.randomUUID();
-      connection
-        .prepare("INSERT INTO members (id,name,handle,email,password_hash) VALUES (?,?,?,?,?)")
-        .run(id, name, handle, email, hash);
-      welcomeConversation(id);
-      const created = member(id);
+      insertMember(connection, { id, name, handle, email, passwordHash: hash });
+      welcomeConversation(connection, id);
+      const created = member(id, connection);
       if (created == null) {
         throw new Error("New member is missing");
       }
-      connection.prepare("DELETE FROM auth_attempts WHERE handle=?").run(handle);
+      deleteAttempts(connection, { handle });
       return created;
     });
   }
-  const row = db.prepare("SELECT * FROM members WHERE handle=?").get(handle);
+  const row = memberByHandle(db, { handle });
   // Do the same expensive derivation for an unknown account.
-  const [salt, hash] = String(row?.password_hash ?? `${"0".repeat(32)}:${"0".repeat(128)}`).split(
+  const [salt, hash] = String(row?.passwordHash ?? `${"0".repeat(32)}:${"0".repeat(128)}`).split(
     ":",
   );
   const actual = await derive(password, salt);
   const expected = Buffer.from(hash, "hex");
   if (
     row == null ||
-    row.password_hash == null ||
+    row.passwordHash == null ||
     actual.length !== expected.length ||
     !timingSafeEqual(actual, expected)
-  )
+  ) {
     throw new InputError("The handle or password is incorrect.");
-  db.prepare("DELETE FROM auth_attempts WHERE handle=?").run(handle);
+  }
+  deleteAttempts(db, { handle });
 
   return publicUser(row);
 }
@@ -130,14 +142,15 @@ export async function authenticate(form: FormData, mode: string): Promise<User> 
 export function issueSession(user: User, oldToken: string | null, secure: boolean): string {
   const token = randomBytes(32).toString("hex");
   transaction((db) => {
-    if (oldToken != null)
-      db.prepare("DELETE FROM sessions WHERE token_hash=?").run(digest(oldToken));
-    db.prepare("DELETE FROM sessions WHERE expires_at<=?").run(Date.now());
-    db.prepare("INSERT INTO sessions VALUES (?, ?, ?)").run(
-      digest(token),
-      user.id,
-      Date.now() + TTL * 1000,
-    );
+    if (oldToken != null) {
+      deleteSession(db, { tokenHash: digest(oldToken) });
+    }
+    deleteExpiredSessions(db, { expiresAt: Date.now() });
+    insertSession(db, {
+      tokenHash: digest(token),
+      memberId : user.id,
+      expiresAt: Date.now() + TTL * 1000,
+    });
   });
 
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${TTL}${secure ? "; Secure" : ""}`;
@@ -146,8 +159,9 @@ export function issueSession(user: User, oldToken: string | null, secure: boolea
 /** Delete the presented session and return an expired cookie for the HTTP response. */
 
 export function revokeSession(token: string | null, secure: boolean): string {
-  if (token != null)
-    database().prepare("DELETE FROM sessions WHERE token_hash=?").run(digest(token));
+  if (token != null) {
+    deleteSession(database(), { tokenHash: digest(token) });
+  }
 
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`;
 }
