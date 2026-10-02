@@ -32,6 +32,9 @@ struct Shared<'a> {
     request: &'a GenerateRequest,
     engine: Engine,
     options: &'a Options,
+    /// `sync: true` in the options map. Kept beside [`Options`] because that
+    /// struct cannot grow a field without a major version.
+    sync: bool,
     default_schema: String,
     enums: Vec<EnumInfo>,
     models: Vec<Model>,
@@ -100,7 +103,7 @@ pub fn generate(request: &GenerateRequest) -> Result<Vec<File>, String> {
     } else {
         request.plugin_options.as_slice()
     };
-    let options = crate::options::parse(option_bytes)?;
+    let (options, sync) = crate::options::parse_with_sync(option_bytes)?;
     let catalog = request.catalog.clone().unwrap_or_default();
     let default_schema = if catalog.default_schema.is_empty() {
         match engine {
@@ -192,6 +195,7 @@ pub fn generate(request: &GenerateRequest) -> Result<Vec<File>, String> {
         request,
         engine,
         options: &options,
+        sync,
         default_schema,
         enums,
         models,
@@ -932,7 +936,7 @@ impl<'a> Module<'a> {
             }
         }
 
-        let sync = shared.options.sync;
+        let sync = shared.sync;
         let db_type = if sync { "SyncQueryable" } else { "Queryable" };
         self.uses_sql = true;
         self.runtime_types.insert(db_type);

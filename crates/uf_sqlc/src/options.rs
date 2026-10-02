@@ -117,11 +117,6 @@ pub struct Options {
     /// Keep table names as they are rather than singularising them for row
     /// types (sqlc-gen-go's `emit_exact_table_names`).
     pub exact_table_names: bool,
-    /// Generate functions that return their value directly and take a
-    /// `SyncQueryable`. For drivers that run a statement on the calling
-    /// thread, so a transaction can stay inside `BEGIN` through `COMMIT`
-    /// without yielding. The default is the asynchronous `Queryable` API.
-    pub sync: bool,
     /// A name, as written in SQL, to the identifier it should get.
     pub rename: BTreeMap<String, String>,
     pub overrides: Vec<Override>,
@@ -135,18 +130,51 @@ impl Options {
     }
 }
 
+/// Read the options and the synchronous-generation flag.
+///
+/// `sync` stays out of [`Options`]. That struct is public and exhaustively
+/// constructible, so a new field is a major break. The key is still part of
+/// the options map: `true` generates `SyncQueryable` functions.
+///
+/// # Errors
+///
+/// When the options are not JSON, `sync` is not a boolean, or a key or value
+/// is one this plugin does not know.
+pub(crate) fn parse_with_sync(bytes: &[u8]) -> Result<(Options, bool), String> {
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok((Options::default(), false));
+    }
+    let mut value: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+        uf_infra::into_string(uf_infra::cstr!("invalid plugin options: {error}"))
+    })?;
+    let sync = match value
+        .as_object_mut()
+        .and_then(|object| object.remove("sync"))
+    {
+        None => false,
+        Some(serde_json::Value::Bool(sync)) => sync,
+        Some(_) => return Err("invalid plugin options: `sync` is a boolean".to_owned()),
+    };
+    let options: Options = serde_json::from_value(value).map_err(|error| {
+        uf_infra::into_string(uf_infra::cstr!("invalid plugin options: {error}"))
+    })?;
+    validate(&options)?;
+    Ok((options, sync))
+}
+
 /// Read the options; an empty or absent map is the defaults.
+///
+/// A `sync` key is accepted and not part of the returned struct. Generation
+/// reads that flag beside this struct.
 ///
 /// # Errors
 ///
 /// When the options are not JSON or name a key or value this plugin does not know.
 pub fn parse(bytes: &[u8]) -> Result<Options, String> {
-    if bytes.iter().all(u8::is_ascii_whitespace) {
-        return Ok(Options::default());
-    }
-    let options: Options = serde_json::from_slice(bytes).map_err(|error| {
-        uf_infra::into_string(uf_infra::cstr!("invalid plugin options: {error}"))
-    })?;
+    parse_with_sync(bytes).map(|(options, _sync)| options)
+}
+
+fn validate(options: &Options) -> Result<(), String> {
     for entry in &options.overrides {
         match (&entry.column, &entry.db_type) {
             (Some(_), Some(_)) | (None, None) => {
@@ -164,5 +192,5 @@ pub fn parse(bytes: &[u8]) -> Result<Options, String> {
             _ => {}
         }
     }
-    Ok(options)
+    Ok(())
 }
