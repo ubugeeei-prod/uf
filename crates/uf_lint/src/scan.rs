@@ -237,13 +237,39 @@ fn line_imports_esm(line: &Line<'_>) -> bool {
     if rest.starts_with("import ") || rest.starts_with("import{") {
         return true;
     }
-    find_all(code, "from").any(|from_at| {
-        starts_word(code, from_at)
-            && ends_word(code, from_at + "from".len())
-            && !line.in_string(from_at)
-            && next_non_space(code, from_at + "from".len())
-                .is_some_and(|(_, byte)| matches!(byte, b'\'' | b'"' | b'`'))
-    })
+    find_all(code, "from").any(|from_at| reexport_from(line, code, from_at))
+}
+
+/// Whether `from` at `from_at` is the clause of `export … from "…"`.
+///
+/// `}` and `*` are the tokens a re-export puts in front of `from`, including
+/// a continued `} from "…"`. An identifier is that clause only on a line that
+/// itself starts with `export`, as in `export * as ns from "…"`. JSX text
+/// such as `<p>from "package"</p>` has neither, so it is not an import.
+fn reexport_from(line: &Line<'_>, code: &str, from_at: usize) -> bool {
+    if !starts_word(code, from_at)
+        || !ends_word(code, from_at + "from".len())
+        || line.in_string(from_at)
+    {
+        return false;
+    }
+    if !next_non_space(code, from_at + "from".len())
+        .is_some_and(|(_, byte)| matches!(byte, b'\'' | b'"' | b'`'))
+    {
+        return false;
+    }
+    match prev_non_space(code, from_at) {
+        Some((_, b'}' | b'*')) => true,
+        Some((_, byte)) if is_word_byte(byte) => {
+            let Some((start, _)) = next_non_space(code, 0) else {
+                return false;
+            };
+            !line.in_string(start)
+                && code[start..].starts_with("export")
+                && ends_word(code, start + "export".len())
+        }
+        _ => false,
+    }
 }
 
 /// Split on `\n` with `str::lines` semantics but without dropping the final
