@@ -582,10 +582,14 @@ impl<'a> Module<'a> {
     /// Record what the Flow type of `mapped` needs imported, and return it.
     fn type_of(&mut self, mapped: &Mapped) -> String {
         self.note_types(&mapped.codec);
+        let mut flow = mapped.flow_type();
         if mapped.flow.contains("JsonValue") {
-            self.runtime_types.insert("JsonValue");
+            let local = self.runtime_local("JsonValue");
+            if local != "JsonValue" {
+                flow = flow.replace("JsonValue", &local);
+            }
         }
-        mapped.flow_type()
+        flow
     }
 
     fn note_types(&mut self, codec: &Codec) {
@@ -831,9 +835,9 @@ impl<'a> Module<'a> {
             let split = placeholders::copy_split(&query.text, dialect, &query.params)?;
             let tuple: Vec<String> = split.tuple.iter().map(|part| js_string(part)).collect();
             let refs: Vec<String> = split.refs.iter().map(ToString::to_string).collect();
-            self.runtime_types.insert("CopyPlan");
+            let copy_plan = self.runtime_local("CopyPlan");
             text_const = uf_infra::into_string(uf_infra::cstr!(
-                "const {sql_name}: CopyPlan = {{\n  head: {},\n  tuple: [{}],\n  refs: [{}],\n  tail: {},\n}};\n\n",
+                "const {sql_name}: {copy_plan} = {{\n  head: {},\n  tuple: [{}],\n  refs: [{}],\n  tail: {},\n}};\n\n",
                 js_string(&split.head),
                 tuple.join(", "),
                 refs.join(", "),
@@ -987,10 +991,7 @@ impl<'a> Module<'a> {
                 uf_infra::into_string(uf_infra::cstr!("Array<{result_type}>"))
             }
             ":execrows" | ":copyfrom" => "number".to_owned(),
-            ":execresult" => {
-                self.runtime_types.insert("ExecResult");
-                "ExecResult".to_owned()
-            }
+            ":execresult" => self.runtime_local("ExecResult"),
             ":execlastid" => "bigint".to_owned(),
             _ => "void".to_owned(),
         };
@@ -1087,6 +1088,15 @@ impl<'a> Module<'a> {
         } else {
             "Queryable"
         };
+        self.runtime_local(canonical)
+    }
+
+    /// The local name of a runtime type.
+    ///
+    /// A model or enum that already uses `canonical` keeps that name. The
+    /// runtime type is imported as `{canonical}Runtime` (or `Runtime2`, …)
+    /// and every use site in this module writes the alias.
+    fn runtime_local(&mut self, canonical: &'static str) -> String {
         if let Some((_, local)) = self
             .aliased_runtime
             .iter()
