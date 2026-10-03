@@ -5,7 +5,9 @@
 
 use uf_config::UniflowedConfig;
 
-use crate::scan::{FileScan, find_all, identifier_len, next_non_space, starts_word};
+use crate::scan::{
+    FileScan, find_all, identifier_len, next_non_space, prev_non_space, previous_word, starts_word,
+};
 use crate::{Diagnostic, push, push_in_code, severity};
 
 pub(crate) fn run_server_no_client_secret(
@@ -76,6 +78,30 @@ fn env_property(code: &str, after: usize) -> Option<(usize, &str)> {
     None
 }
 
+/// Whether the specifier at `at` is the module string of an import or require.
+///
+/// `from "…"`, `import "…"`, `require("…")`, and `import("…")`. The words
+/// inside an ordinary string are not in front of its opening quote.
+fn specifier_is_imported(code: &str, at: usize) -> bool {
+    let bytes = code.as_bytes();
+    let mut index = at;
+    while index > 0 && !matches!(bytes[index - 1], b'\'' | b'"' | b'`') {
+        index -= 1;
+    }
+    if index == 0 {
+        return false;
+    }
+    let quote_at = index - 1;
+    let before = match prev_non_space(code, quote_at) {
+        Some((paren, b'(')) => paren,
+        _ => quote_at,
+    };
+    matches!(
+        previous_word(code, before).map(|(_, word)| word),
+        Some("from" | "import" | "require")
+    )
+}
+
 /// `API_SECRET` and `MY_SECRET_KEY` have a `SECRET` segment. `PRIVATE_TOKEN`
 /// contains `PRIVATE_`. `SECRETARY` is a different word.
 fn names_a_secret(name: &str) -> bool {
@@ -105,10 +131,12 @@ pub(crate) fn run_server_no_server_only_import_in_client(
         if !(code.contains("import") || code.contains("require")) {
             continue;
         }
-        let Some(at) = SERVER_ONLY_SPECIFIERS
-            .into_iter()
-            .find_map(|specifier| code.find(specifier))
-        else {
+        // The specifier of a real import is a string too. What makes it an
+        // import is `from`, `import`, or `require` in front of that string.
+        // A sentence that contains both words is text.
+        let Some(at) = SERVER_ONLY_SPECIFIERS.into_iter().find_map(|specifier| {
+            find_all(code, specifier).find(|&at| specifier_is_imported(code, at))
+        }) else {
             continue;
         };
         push_in_code(

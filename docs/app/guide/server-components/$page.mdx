@@ -265,7 +265,7 @@ files, and why they are not a substitute for the analysis above.
 
 | Rule | What it matches |
 | --- | --- |
-| `server/no-server-only-import-in-client` | A `"use client"` module importing `@uniflowed/server` or a `*.server.js` file |
+| `server/no-server-only-import-in-client` | A `"use client"` module whose `import`, `export … from`, or `require` specifier is `@uniflowed/server` or a `*.server.js` file |
 | `server/no-client-secret` | A `"use client"` module reading `process.env` or `import.meta.env` when the name has a `SECRET` segment or contains `PRIVATE_` |
 | `server/use-client-directive-position` | A boundary directive that is not the module's first statement |
 | `server/use-server-actions` | A module under `server/` or named `*.server.js` that mentions `serverAction` and does not open with `"use server";` |

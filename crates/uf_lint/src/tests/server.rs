@@ -25,6 +25,27 @@ fn client_modules_may_not_import_dot_server_modules() {
 }
 
 #[test]
+fn a_mention_of_a_server_module_is_not_an_import() {
+    for source in [
+        "// @flow\n'use client';\nconst note = \"do not import @uniflowed/server from a client\";\n",
+        "// @flow\n'use client';\nconst file = \"do not import ./data.server.js\";\n",
+    ] {
+        let diagnostics = lint_js("server/no-server-only-import-in-client", source);
+        assert!(diagnostics.is_empty(), "{source} -> {diagnostics:?}");
+    }
+}
+
+#[test]
+fn a_client_module_may_not_require_a_server_module() {
+    let diagnostics = lint_js(
+        "server/no-server-only-import-in-client",
+        "// @flow\n'use client';\nconst db = require('@uniflowed/server');\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
+
+#[test]
 fn server_modules_may_import_server_only_modules() {
     let diagnostics = lint_js(
         "server/no-server-only-import-in-client",
