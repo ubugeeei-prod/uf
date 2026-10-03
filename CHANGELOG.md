@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.24.0
+
+- fix: comparisons, JSX internal names, Object.assign prefixes, split exports, and function returns (#1765) (57ed7cec)
+
 ## uf@0.23.0
 
 - fix: jsx text is not an export, and an enum named JsonValue stays a model type (#1758) (3e7b8bbe)
