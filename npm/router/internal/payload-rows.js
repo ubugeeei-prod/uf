@@ -249,9 +249,9 @@ export function createPayloadReader(
  * reads the document once, which is the right answer for a prerendered file
  * where every row is already in it.
  */
-export function domObserver(
-  document: DocumentLike,
-): ((callback: () => void) => (() => void) | null) | null {
+export function domObserver(document: DocumentLike):
+  | ((callback: () => void) => (() => void) | null)
+  | null {
   if (typeof MutationObserver === "undefined") {
     return null;
   }

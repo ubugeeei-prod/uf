@@ -204,9 +204,11 @@ function capture(stream: OutputStream, text: string): void {
 }
 
 /** A stand-in for `process.stdout.write` / `process.stderr.write`. */
-function writer(
-  stream: OutputStream,
-): (chunk: mixed, encoding?: string | WriteCallback, callback?: WriteCallback) => boolean {
+function writer(stream: OutputStream): (
+  chunk: mixed,
+  encoding?: string | WriteCallback,
+  callback?: WriteCallback,
+) => boolean {
   return (chunk, encoding, callback) => {
     capture(stream, textOf(chunk));
     // `write(chunk, callback)` and `write(chunk, encoding, callback)` are both

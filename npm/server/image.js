@@ -225,9 +225,9 @@ type Variant = {|
  * Throws when it is built from a list it cannot read, rather than answering
  * with an endpoint that admits nothing or more than it should.
  */
-export function createImageEndpoint(
-  options: ImageEndpointOptions,
-): (request: Request) => Promise<Response | null> {
+export function createImageEndpoint(options: ImageEndpointOptions): (
+  request: Request,
+) => Promise<Response | null> {
   const patterns = compileRemotePatterns(options.remotePatterns);
   if (patterns.length === 0) {
     throw new TypeError(

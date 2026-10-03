@@ -292,9 +292,9 @@ type CachedDocument = {|
  * the module header and in `./cache.js`. With no `cache` at all this function
  * is what it has always been, one `AsyncLocalStorage.run` aside.
  */
-export function createFetchHandler(
-  options: FetchHandlerOptions,
-): (request: Request) => Promise<Response> {
+export function createFetchHandler(options: FetchHandlerOptions): (
+  request: Request,
+) => Promise<Response> {
   const { app, cache, capabilities, document, images } = options;
 
   async function answer(arrived: Request): Promise<Response> {

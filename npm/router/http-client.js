@@ -29,9 +29,10 @@ type RequestOptions = {|
 |};
 
 /** Fetch transport shared by generated typed route clients and native actions. */
-export function createRouteClient(
-  options: RouteClientOptions,
-): (path: string, request?: RouteRequest) => Promise<Response> {
+export function createRouteClient(options: RouteClientOptions): (
+  path: string,
+  request?: RouteRequest,
+) => Promise<Response> {
   const origin = new URL(options.origin);
   if (
     origin.username ||

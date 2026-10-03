@@ -113,9 +113,10 @@ function readAll(): { [string]: string } {
  * has no defined moment to take effect — the headers may already be on the wire
  * — so a route handler or a server action is where that belongs.
  */
-export function useCookie(
-  name: string,
-): [string | null, (next: string, options?: CookieOptions) => void] {
+export function useCookie(name: string): [
+  string | null,
+  (next: string, options?: CookieOptions) => void,
+] {
   const [value, setValue] = React.useState<string | null>(() => {
     const all = readAll();
     return Object.hasOwn(all, name) ? all[name] : null;

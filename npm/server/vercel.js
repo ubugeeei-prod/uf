@@ -105,9 +105,10 @@ function platformWaitUntil(): ((promise: Promise<mixed>) => mixed) | null {
  * platform's `waitUntil` when there is one, so deferred work — `after()`, a
  * durable cache write — is not frozen with the invocation.
  */
-export function createVercelHandler(
-  options: VercelHandlerOptions,
-): (incoming: NodeRequest, outgoing: NodeResponse) => Promise<void> {
+export function createVercelHandler(options: VercelHandlerOptions): (
+  incoming: NodeRequest,
+  outgoing: NodeResponse,
+) => Promise<void> {
   const listener = nodeListener(
     createServeHandler({
       staticDir: options.staticDir,

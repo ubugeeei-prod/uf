@@ -60,9 +60,9 @@ function payloadWith(bound: $ReadOnlyArray<mixed> | null): ReadableStream<Uint8A
 }
 
 /** The `remove` a payload's root decodes to. */
-async function decodedRemove(
-  bound: $ReadOnlyArray<mixed> | null,
-): Promise<(...args: Array<mixed>) => Promise<mixed>> {
+async function decodedRemove(bound: $ReadOnlyArray<mixed> | null): Promise<
+  (...args: Array<mixed>) => Promise<mixed>,
+> {
   installServerCallback();
   const root: $FlowFixMe = await createFromReadableStream(payloadWith(bound));
   expect(typeof root.remove).toBe("function");
