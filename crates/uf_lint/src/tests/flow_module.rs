@@ -38,6 +38,27 @@ fn mixed_import_and_require_accepts_a_pure_esm_module() {
 }
 
 #[test]
+fn mixed_import_and_require_ignores_an_import_inside_a_template() {
+    let diagnostics = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nconst sample = `\nimport { read } from \"./a.js\";\n`;\nconst fs = require(\"node:fs\");\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn mixed_import_and_require_rejects_a_require_beside_a_reexport() {
+    let diagnostics = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nexport { read } from \"./a.js\";\nconst b = require(\"./b.js\");\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (3, 11));
+}
+
+#[test]
 fn mixed_import_and_require_ignores_a_require_inside_a_string() {
     // `uf.config.js` in this repository: a `node -e "…"` task whose command
     // happens to contain `require(...)`. Twice on one line, and neither of

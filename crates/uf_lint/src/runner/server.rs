@@ -6,7 +6,8 @@
 use uf_config::UniflowedConfig;
 
 use crate::scan::{
-    FileScan, find_all, identifier_len, next_non_space, prev_non_space, previous_word, starts_word,
+    FileScan, find_all, find_words, identifier_len, next_non_space, prev_non_space, previous_word,
+    starts_word,
 };
 use crate::{Diagnostic, push, push_in_code, severity};
 
@@ -217,9 +218,17 @@ pub(crate) fn run_server_use_server_actions(
         return;
     };
 
-    if !(scan.file.path.starts_with("server/") || scan.file.path.ends_with(".server.js"))
-        || !scan.file.source.contains("serverAction")
-    {
+    if !(scan.file.path.starts_with("server/") || scan.file.path.ends_with(".server.js")) {
+        return;
+    }
+    // The letters inside a longer name, a comment, or a string are not the
+    // `serverAction` helper. A module that only mentions it has nothing for
+    // the bundler to turn into a reference.
+    let defines_an_action = scan.lines.iter().any(|line| {
+        let code = line.code();
+        find_words(code, "serverAction").any(|at| !line.in_string(at))
+    });
+    if !defines_an_action {
         return;
     }
 

@@ -268,7 +268,7 @@ files, and why they are not a substitute for the analysis above.
 | `server/no-server-only-import-in-client` | A `"use client"` module whose `import`, `export … from`, or `require` specifier is `@uniflowed/server` or a `*.server.js` file |
 | `server/no-client-secret` | A `"use client"` module reading `process.env` or `import.meta.env` when the name has a `SECRET` segment or contains `PRIVATE_` |
 | `server/use-client-directive-position` | A `"use client"` or `"use server"` statement that is not the module's first statement |
-| `server/use-server-actions` | A module under `server/` or named `*.server.js` that mentions `serverAction` and does not open with `"use server";` |
+| `server/use-server-actions` | A module under `server/` or named `*.server.js` that names the `serverAction` helper and does not open with `"use server";` |
 
 All four are errors by default. The first and third answer a narrower version of
 an `rsc/` question sooner — one file, no imports resolved, no graph. The second

@@ -353,6 +353,34 @@ fn a_lone_parameter_before_an_interface_typeof_or_template_object_is_one_fixed_p
 }
 
 #[test]
+fn a_lone_parameter_before_a_component_type_is_one_fixed_point() {
+    let mut config = FmtConfig::default();
+    config.line_width = 40;
+    for source in [
+        concat!(
+            "// @flow\n",
+            "function f(x: X): component(shared: boolean, variable: ?string) renders boolean {\n",
+            "  return x;\n",
+            "}\n",
+        ),
+        concat!(
+            "// @flow\n",
+            "function f(x: X): renders component(shared: boolean, variable: ?string) renders boolean {\n",
+            "  return x;\n",
+            "}\n",
+        ),
+    ] {
+        let once = format_source(source, &config).expect("formats").output;
+        let twice = format_source(&once, &config).expect("reformats").output;
+        similar_asserts::assert_eq!(once, twice, "{source}");
+        assert!(
+            once.contains("function f(x: X):"),
+            "the lone parameter stays on its line:\n{once}"
+        );
+    }
+}
+
+#[test]
 fn a_lone_parameter_before_a_tuple_holding_an_object_is_one_fixed_point() {
     // `Promise<[{ … }]>` holds its object in a tuple. The tuple was not
     // walked, so the parameter list broke on the first narrow run and stayed

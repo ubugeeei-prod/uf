@@ -180,11 +180,12 @@ impl<'a> FileScan<'a> {
         // string by construction, and a name is only a mention where it could
         // be read.
         //
-        // A `component ` inside a string is not a declaration, and a
-        // `"use client"` inside a string is not a directive, so those two ask
-        // `in_string` as well. The other two do not: a package name in an
-        // import specifier is exactly how `react-native` and `React` reach a
-        // file, and both of those are strings.
+        // A `component ` inside a string is not a declaration, a
+        // `"use client"` inside a string is not a directive, and an `import`
+        // inside a string is not a module, so those ask `in_string`. An
+        // `export … from` is an import too. The other two do not: a package
+        // name in an import specifier is exactly how `react-native` and
+        // `React` reach a file, and both of those are strings.
         facts.declares_component = lines.iter().any(|line| {
             let code = line.code();
             code.match_indices("component ")
@@ -208,10 +209,7 @@ impl<'a> FileScan<'a> {
         facts.mentions_react_native = lines
             .iter()
             .any(|line| line.code().contains("react-native"));
-        facts.has_esm_import = lines.iter().any(|line| {
-            let code = line.code().trim_start();
-            code.starts_with("import ") || code.starts_with("import{")
-        });
+        facts.has_esm_import = lines.iter().any(line_imports_esm);
 
         Self {
             file,
@@ -220,6 +218,32 @@ impl<'a> FileScan<'a> {
             facts,
         }
     }
+}
+
+/// Whether `line` is an ES module import or re-export.
+///
+/// A template line that reads `import { … }` is source this module quotes,
+/// not a module system it joins. `export { A } from "…"` and a continued
+/// `} from "…"` are imports: the binding arrives through the module graph.
+fn line_imports_esm(line: &Line<'_>) -> bool {
+    let code = line.code();
+    let Some((at, _)) = next_non_space(code, 0) else {
+        return false;
+    };
+    if line.in_string(at) {
+        return false;
+    }
+    let rest = &code[at..];
+    if rest.starts_with("import ") || rest.starts_with("import{") {
+        return true;
+    }
+    find_all(code, "from").any(|from_at| {
+        starts_word(code, from_at)
+            && ends_word(code, from_at + "from".len())
+            && !line.in_string(from_at)
+            && next_non_space(code, from_at + "from".len())
+                .is_some_and(|(_, byte)| matches!(byte, b'\'' | b'"' | b'`'))
+    })
 }
 
 /// Split on `\n` with `str::lines` semantics but without dropping the final

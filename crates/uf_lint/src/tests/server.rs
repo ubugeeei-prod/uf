@@ -155,6 +155,27 @@ fn server_rule_ignores_a_word_that_only_contains_secret() {
 }
 
 #[test]
+fn server_action_rule_ignores_a_mention() {
+    for (path, source) in [
+        (
+            "server/notes.js",
+            "// @flow\nconst note = \"call serverAction(save) from the client\";\nexport const value = 1;\n",
+        ),
+        (
+            "server/list.js",
+            "// @flow\nexport const serverActions = [];\n",
+        ),
+        (
+            "server/comment.js",
+            "// @flow\n// serverAction is not defined in this module\nexport const value = 1;\n",
+        ),
+    ] {
+        let diagnostics = lint_one("server/use-server-actions", path, source);
+        assert!(diagnostics.is_empty(), "{source} -> {diagnostics:?}");
+    }
+}
+
+#[test]
 fn server_actions_require_use_server_directive() {
     let diagnostics = lint_one(
         "server/use-server-actions",

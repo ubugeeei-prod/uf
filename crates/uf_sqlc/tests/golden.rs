@@ -164,6 +164,27 @@ fn unknown_options_are_refused() {
     assert!(error.contains("timestampz"), "{error}");
 }
 
+fn generated_files(case: &str, options: &str) -> Vec<(String, String)> {
+    let mut request =
+        uf_sqlc::decode(&fs::read(cases().join(case).join("request.json")).expect("json"))
+            .expect("decode");
+    request.plugin_options = options.as_bytes().to_vec();
+    uf_sqlc::generate(&request, &format)
+        .expect("generate")
+        .into_iter()
+        .map(|file| (file.name, file.contents))
+        .collect()
+}
+
+fn file<'a>(files: &'a [(String, String)], suffix: &str) -> &'a str {
+    files
+        .iter()
+        .find(|(name, _)| name.ends_with(suffix))
+        .unwrap_or_else(|| panic!("missing {suffix}"))
+        .1
+        .as_str()
+}
+
 fn generated(case: &str, options: &str) -> String {
     let mut request =
         uf_sqlc::decode(&fs::read(cases().join(case).join("request.json")).expect("json"))
@@ -212,6 +233,55 @@ fn a_model_named_queryable_keeps_one_binding() {
         1,
         "{sync}"
     );
+}
+
+#[test]
+fn a_model_named_like_a_runtime_type_keeps_one_binding() {
+    let exec = generated("authors-sqlite", r#"{"rename":{"authors":"ExecResult"}}"#);
+    assert_one_runtime_alias(&exec, "ExecResult");
+    assert!(exec.contains("Promise<ExecResultRuntime>"), "{exec}");
+
+    let json_files = generated_files("types-postgresql", r#"{"rename":{"people":"JsonValue"}}"#);
+    let json = file(&json_files, "query.sql.js");
+    let json_models = file(&json_files, "models.js");
+    assert_no_bare_runtime(json, "JsonValue");
+    assert!(
+        json_models.contains("export type JsonValue ="),
+        "{json_models}"
+    );
+    assert!(
+        json_models.contains("JsonValue as JsonValueRuntime"),
+        "{json_models}"
+    );
+    assert!(
+        json_models.contains("readonly data: JsonValueRuntime"),
+        "{json_models}"
+    );
+
+    let copy = generated("types-postgresql", r#"{"rename":{"pets":"CopyPlan"}}"#);
+    assert_one_runtime_alias(&copy, "CopyPlan");
+    assert!(copy.contains(": CopyPlanRuntime ="), "{copy}");
+}
+
+/// `name` is the model. The runtime type of the same spelling is aliased,
+/// and the bare name is imported from `./models.js` on one line.
+fn assert_one_runtime_alias(query: &str, name: &str) {
+    let alias = format!("{name} as {name}Runtime");
+    assert!(query.contains(&alias), "{query}");
+    let model_lines = query
+        .lines()
+        .filter(|line| line.contains("from \"./models.js\"") && line.contains(name))
+        .count();
+    assert_eq!(model_lines, 1, "{query}");
+    assert_no_bare_runtime(query, name);
+}
+
+fn assert_no_bare_runtime(query: &str, name: &str) {
+    let alias = format!("{name} as {name}Runtime");
+    let bare_runtime = query.lines().any(|line| {
+        line.contains("from \"@uniflowed/sql\"") && line.contains(name) && !line.contains(&alias)
+    });
+    assert!(!bare_runtime, "{query}");
 }
 
 #[test]
