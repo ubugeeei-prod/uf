@@ -5,7 +5,7 @@
 use uf_config::UniflowedConfig;
 
 use crate::flow_builtin::FlowBuiltinLint;
-use crate::scan::{FileScan, find_all, identifier_len, next_non_space, starts_word};
+use crate::scan::{FileScan, ends_word, find_all, identifier_len, next_non_space, starts_word};
 use crate::{Diagnostic, push_in_code, severity};
 
 pub(crate) fn run_flow_unsafe_getters_setters(
@@ -73,9 +73,11 @@ pub(crate) fn run_flow_unsafe_object_assign(
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
         // Not inside a string: `"Object.assign(a, b)"` is text.
-        for at in find_all(code, "Object.assign")
-            .filter(|&at| starts_word(code, at) && !line.in_string(at))
-        {
+        for at in find_all(code, "Object.assign").filter(|&at| {
+            starts_word(code, at)
+                && ends_word(code, at + "Object.assign".len())
+                && !line.in_string(at)
+        }) {
             push_in_code(
                 diagnostics,
                 scan,
