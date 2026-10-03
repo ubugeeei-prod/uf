@@ -101,30 +101,54 @@ pub(crate) fn run_flow_non_const_var_export(
         if identifier_len(code, at) != "export".len() || &code[at..at + 6] != "export" {
             continue;
         }
-        let Some((keyword_at, _)) = next_non_space(code, at + 6) else {
-            continue;
-        };
-        let len = identifier_len(code, keyword_at);
-        if len == 0 || !matches!(&code[keyword_at..keyword_at + len], "var" | "let") {
-            continue;
-        }
         // A line of a template literal that happens to read `export let x = 1`
         // is a string this module builds, not a binding it exports — uf's own
         // code generators emit Flow source that way. Its sibling rules in this
         // runner guard the same search with the same test.
-        if line.in_string(keyword_at) {
+        if line.in_string(at) {
             continue;
         }
+        let Some((keyword_line, keyword_at)) = exported_mutable(scan, position, code, at) else {
+            continue;
+        };
         push_in_code(
             diagnostics,
             scan,
             rule,
             severity,
-            position,
+            keyword_line,
             keyword_at,
             "exported bindings must be `const`; a mutable export is a live binding",
         );
     }
+}
+
+/// The `let` or `var` of `export let` / `export var`, which may be the next
+/// token on this line or the first token of the next one.
+///
+/// `export { value }` followed by a later `let` is not this: the brace is
+/// still on the `export` line. A keyword inside a template is text.
+fn exported_mutable(
+    scan: &FileScan<'_>,
+    position: usize,
+    code: &str,
+    export_at: usize,
+) -> Option<(usize, usize)> {
+    let same_line = next_non_space(code, export_at + "export".len());
+    let (line, code, at) = match same_line {
+        Some((at, _)) => (position, code, at),
+        None => {
+            let next = scan.lines.get(position + 1)?;
+            let next_code = next.code();
+            let (at, _) = next_non_space(next_code, 0)?;
+            if next.in_string(at) {
+                return None;
+            }
+            (position + 1, next_code, at)
+        }
+    };
+    let len = identifier_len(code, at);
+    (len > 0 && matches!(&code[at..at + len], "var" | "let")).then_some((line, at))
 }
 
 pub(crate) fn run_flow_export_renamed_default(
