@@ -95,6 +95,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     let before = prev_non_space(code, at);
     let after = next_non_space(code, at + len);
 
+    // `any < limit`, `count > any`, `foo(any + 1)`, and the letters inside
+    // `<p>any</p>` are expressions. A type annotation is none of those.
+    if beside_a_value_operator(code, before, after) {
+        return true;
+    }
+
     // `x.any` reads a property; `Object.keys(x)` and `new Function(src)` reach
     // for the global. A type is never on either side of a `.`, and never called.
     if before.is_some_and(|(_, byte)| byte == b'.') {
@@ -298,6 +304,38 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
         None => !matches!(outer.last_byte, Some(b'<' | b',')),
         Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
     }
+}
+
+/// Whether the word sits next to an operator a type annotation cannot have.
+///
+/// `<` after the name is a comparison (`any < limit`). `>` *before* it is a
+/// comparison (`count > any`) or the end of a JSX tag. `>=` and `<=` are the
+/// same comparisons. `+`, `-`, `*`, `/` and `%` are arithmetic, on either
+/// side (`foo(any + 1)`, `foo(1 + any)`).
+///
+/// `>` *after* the name is not one of these: it closes `Array<any>`. `|` and
+/// `&` stay types too, because they build a union and an intersection.
+fn beside_a_value_operator(
+    code: &str,
+    before: Option<(usize, u8)>,
+    after: Option<(usize, u8)>,
+) -> bool {
+    if let Some((index, byte)) = after {
+        match byte {
+            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' => return true,
+            // `>=` compares. A lone `>` closes a generic.
+            b'>' if code.as_bytes().get(index + 1) == Some(&b'=') => return true,
+            _ => {}
+        }
+    }
+    if let Some((index, byte)) = before {
+        match byte {
+            b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' => return true,
+            b'=' if index > 0 && matches!(code.as_bytes()[index - 1], b'>' | b'<') => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.

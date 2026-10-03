@@ -268,6 +268,32 @@ fn unclear_type_ignores_comments() {
 }
 
 #[test]
+fn unclear_type_ignores_a_comparison_an_arithmetic_use_and_jsx_text() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nif (any < limit) {}\nif (count > any) {}\nif (count >= any) {}\nfoo(any + 1);\nfoo(1 + any);\nconst view = <p>any</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Box = any;\ntype Items = Array<any>;\ntype Either = any | number;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_comparison() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nif (bool < limit) {}\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+
+
+#[test]
 fn deprecated_type_rejects_the_bool_alias() {
     let diagnostics = lint_js("flow/deprecated-type", "// @flow\ntype A = bool;\n");
 
