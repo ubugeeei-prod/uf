@@ -674,9 +674,10 @@ function doNothing(): void {}
  * [`atomWithStorage`] gets this for nothing, because the value it returns *is*
  * the `T`.
  */
-function sameLoadable<T>(
-  equals: void | ((previous: T, next: T) => boolean),
-): (previous: Loadable<T>, next: Loadable<T>) => boolean {
+function sameLoadable<T>(equals: void | ((previous: T, next: T) => boolean)): (
+  previous: Loadable<T>,
+  next: Loadable<T>,
+) => boolean {
   const sameValue = equals ?? Object.is;
   return (previous, next) => {
     if (previous.state !== next.state) {

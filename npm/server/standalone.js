@@ -348,9 +348,10 @@ function index(assets: EmbeddedAssets): Map<
  * A page never answers a `POST`: letting one try turns a missing handler into
  * a rendered page with a 200 where the caller expected a 405.
  */
-export function createHandler(
-  options: HandlerOptions,
-): (NodeRequest, NodeResponse) => Promise<void> {
+export function createHandler(options: HandlerOptions): (
+  NodeRequest,
+  NodeResponse,
+) => Promise<void> {
   const { app, document } = options;
   const files = index(options.assets);
 

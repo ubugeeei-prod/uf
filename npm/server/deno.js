@@ -33,9 +33,9 @@ export function denoCapabilities(options?: CapabilityOptions): ServerCapabilitie
 /**
  * The static half: a file under `root`, or `null` for the caller to carry on.
  */
-export function createStaticHandler(options: {|
-  readonly root: string,
-|}): (request: Request) => Promise<Response | null> {
+export function createStaticHandler(options: {| readonly root: string |}): (
+  request: Request,
+) => Promise<Response | null> {
   const state = staticRoot(options.root);
 
   return async function serveStatic(request: Request): Promise<Response | null> {

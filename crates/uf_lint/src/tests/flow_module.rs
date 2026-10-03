@@ -102,6 +102,42 @@ fn non_const_var_export_rejects_mutable_exports() {
     assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 8));
 }
 
+#[test]
+fn non_const_var_export_rejects_a_keyword_on_the_next_line() {
+    let diagnostics = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\nexport\nlet value = 1;\nexport\nvar total = 0;\n",
+    );
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (3, 1));
+    assert_eq!((diagnostics[1].line, diagnostics[1].column), (5, 1));
+
+    let later = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\nexport { value };\nlet other = 1;\n",
+    );
+    assert!(later.is_empty(), "{later:?}");
+
+    let template = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\nexport const source = `\nexport\nlet generated = 0;\n`;\n",
+    );
+    assert!(template.is_empty(), "{template:?}");
+
+    let jsx = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\nconst view = (\n<pre>\nexport\nlet count = 0;\n</pre>\n);\nconst same = (\n<pre>\nexport let count = 0;\n</pre>\n);\n",
+    );
+    assert!(jsx.is_empty(), "{jsx:?}");
+
+    let generic = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\ntype Items = Array<number>\nexport\nlet value = 1;\n",
+    );
+    assert_eq!(generic.len(), 1, "{generic:?}");
+    assert_eq!((generic[0].line, generic[0].column), (4, 1));
+}
+
 /// Code a module *prints* is not code it runs. uf's own generators build Flow
 /// source in template literals, and a line of one that reads `export let` is a
 /// string rather than a mutable export of the module holding it.

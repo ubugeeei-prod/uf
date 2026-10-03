@@ -346,9 +346,9 @@ function writable(outgoing: NodeResponse): Promise<void> {
  * [`locateStatic`](./internal/static.js) — shared with every other host,
  * because none of it is about Node. What is Node's is the last line: the body.
  */
-export function createStaticHandler(options: {|
-  readonly root: string,
-|}): (request: Request) => Promise<Response | null> {
+export function createStaticHandler(options: {| readonly root: string |}): (
+  request: Request,
+) => Promise<Response | null> {
   const state = staticRoot(options.root);
 
   return async function serveStatic(request: Request): Promise<Response | null> {

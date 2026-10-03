@@ -133,9 +133,9 @@ export const HANDLER_METHODS: $ReadOnlyArray<string> = Object.freeze([
  * on — a request for `/about` is a page, and the dispatcher declining is how
  * it says so.
  */
-export function createDispatcher(options: {|
-  readonly handlers: $ReadOnlyArray<HandlerRecord>,
-|}): (request: Request) => Promise<Response | null> {
+export function createDispatcher(options: {| readonly handlers: $ReadOnlyArray<HandlerRecord> |}): (
+  request: Request,
+) => Promise<Response | null> {
   const table = [...options.handlers];
 
   return async function dispatch(request: Request): Promise<Response | null> {

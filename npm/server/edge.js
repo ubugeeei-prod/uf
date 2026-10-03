@@ -356,9 +356,11 @@ function uncompressedStream(response: Response): Response {
  * else is a chunk, a stylesheet or an image, and those are the same bytes in
  * draft mode as out of it.
  */
-export function createWorkerFetch(
-  options: WorkerHandlerOptions,
-): (request: Request, env: EdgeEnvironment, ctx?: ExecutionContext) => Promise<Response> {
+export function createWorkerFetch(options: WorkerHandlerOptions): (
+  request: Request,
+  env: EdgeEnvironment,
+  ctx?: ExecutionContext,
+) => Promise<Response> {
   const { handle, beginRequest, routing } = options;
 
   return async function fetchFromWorker(

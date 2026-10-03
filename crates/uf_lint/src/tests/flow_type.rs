@@ -268,6 +268,49 @@ fn unclear_type_ignores_comments() {
 }
 
 #[test]
+fn unclear_type_ignores_a_comparison_an_arithmetic_use_and_jsx_text() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nif (any < limit) {}\nif (count > any) {}\nif (count >= any) {}\nif (any > limit) {}\nif (any > (limit)) {}\nif (any >= limit) {}\nif (any === limit) {}\nif (any !== limit) {}\nfoo(any + 1);\nfoo(1 + any);\nfoo(any >> 1);\nconst view = <p>any</p>;\nconst sentence = <p>hello any there</p>;\nconst named = <p>hello Object there</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Box = any;\ntype Items = Array<any>;\ntype Nested = Array<Array<any>>;\ntype Either = any | number;\nconst label = \">\"; type Quoted = any; const view = <p>x</p>;\n",
+    );
+    assert_eq!(still.len(), 5, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_comparison() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nif (bool < limit) {}\nif (bool > limit) {}\nif (bool === ready) {}\nconst view = <p>hello bool there</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_name_in_jsx_text() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst view = <p>React$Node</p>;\nconst sentence = <p>hello React$Node there</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20));
+}
+
+#[test]
 fn deprecated_type_rejects_the_bool_alias() {
     let diagnostics = lint_js("flow/deprecated-type", "// @flow\ntype A = bool;\n");
 

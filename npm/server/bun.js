@@ -70,9 +70,9 @@ export function bunCapabilities(options?: CapabilityOptions): ServerCapabilities
  * [`locateStatic`](./internal/static.js) — the same function `./node.js`
  * asks. What is Bun's is the last line.
  */
-export function createStaticHandler(options: {|
-  readonly root: string,
-|}): (request: Request) => Promise<Response | null> {
+export function createStaticHandler(options: {| readonly root: string |}): (
+  request: Request,
+) => Promise<Response | null> {
   const state = staticRoot(options.root);
 
   return async function serveStatic(request: Request): Promise<Response | null> {

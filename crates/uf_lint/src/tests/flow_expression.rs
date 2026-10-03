@@ -48,6 +48,15 @@ fn unsafe_object_assign_rejects_object_assign() {
 }
 
 #[test]
+fn unsafe_object_assign_ignores_a_longer_name() {
+    let diagnostics = lint_js(
+        "flow/unsafe-object-assign",
+        "// @flow\nconst x = Object.assignment;\nconst y = Object.assigned;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn unsafe_object_assign_accepts_object_spread() {
     let diagnostics = lint_js(
         "flow/unsafe-object-assign",

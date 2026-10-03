@@ -25,9 +25,9 @@ function notify(body: () => mixed): void {
 }
 
 /** Installed by the client entry before hydration, with disposal during HMR. */
-export async function installClientInstrumentation(
-  hooks: ClientInstrumentation,
-): Promise<() => void> {
+export async function installClientInstrumentation(hooks: ClientInstrumentation): Promise<
+  () => void,
+> {
   const error = (event: ErrorEvent) =>
     notify(() => hooks.onError?.(event.error ?? event.message, { source: "error" }));
   const rejection = (event: PromiseRejectionEvent) =>

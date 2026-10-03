@@ -7,8 +7,8 @@ use uf_profiler::profile_span;
 
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
-    FileScan, find_words, identifier_len, is_word_byte, next_non_space, prev_non_space,
-    previous_word, starts_word,
+    FileScan, find_words, identifier_len, in_jsx_text, is_word_byte, next_non_space,
+    prev_non_space, previous_word, starts_word,
 };
 use crate::{Diagnostic, Severity, push_at, push_in_code, severity};
 
@@ -45,7 +45,9 @@ pub(crate) fn run_flow_unclear_type(
             for at in find_words(code, needle) {
                 // A sentence is not an annotation: `it("treats Object as any
                 // non-null object", …)` names no type.
-                if line.in_string(at) {
+                if line.in_string(at)
+                    || in_jsx_text(code, at, needle.len(), line.opens_in_template())
+                {
                     continue;
                 }
                 if names_a_value(code, at, needle.len(), outer) {
@@ -94,6 +96,12 @@ pub(crate) fn run_flow_unclear_type(
 fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     let before = prev_non_space(code, at);
     let after = next_non_space(code, at + len);
+
+    // `any < limit`, `count > any`, `foo(any + 1)`, and the letters inside
+    // `<p>any</p>` are expressions. A type annotation is none of those.
+    if beside_a_value_operator(code, before, after) {
+        return true;
+    }
 
     // `x.any` reads a property; `Object.keys(x)` and `new Function(src)` reach
     // for the global. A type is never on either side of a `.`, and never called.
@@ -300,6 +308,70 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
     }
 }
 
+/// Whether the word sits next to an operator a type annotation cannot have.
+///
+/// `<` after the name is a comparison (`any < limit`). `>` *before* it is a
+/// comparison (`count > any`) or the end of a JSX tag. `>=` and `<=` are the
+/// same comparisons. `>` *after* the name compares when an expression follows
+/// (`any > limit`, `any >> 1`); `Array<any>` and `Array<any>>` have no
+/// expression there, so they stay generics. `+`, `-`, `*`, `/` and `%` are
+/// arithmetic, on either side (`foo(any + 1)`, `foo(1 + any)`). `=` and `!`
+/// after the name are `==`, `===`, `!=` and `!==`.
+///
+/// `|` and `&` stay types, because they build a union and an intersection.
+/// The `=` *before* `type Box = any` is not one of these.
+fn beside_a_value_operator(
+    code: &str,
+    before: Option<(usize, u8)>,
+    after: Option<(usize, u8)>,
+) -> bool {
+    if let Some((index, byte)) = after {
+        match byte {
+            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'=' | b'!' => return true,
+            b'>' if angle_starts_a_comparison(code, index) => return true,
+            _ => {}
+        }
+    }
+    if let Some((index, byte)) = before {
+        match byte {
+            b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' => return true,
+            b'=' if index > 0 && matches!(code.as_bytes()[index - 1], b'>' | b'<') => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether the `>` at `gt` starts a comparison rather than closing a generic.
+///
+/// `any > limit`, `any >= limit`, `any >> 1` and `any >>> 0` are followed by
+/// an expression. `Array<any>`, `Array<any>>` and `Foo<any> | Bar` are
+/// followed by the end of the type, or by `|`, `&`, `,` or another closer.
+/// `Map<string, any>()` is a call, so a `(` with nothing between it and the
+/// `>` stays a generic; `any > (limit)` has a space, and that one compares.
+fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
+    let bytes = code.as_bytes();
+    if bytes.get(gt + 1) == Some(&b'=') {
+        return true;
+    }
+    let mut index = gt;
+    while bytes.get(index) == Some(&b'>') {
+        index += 1;
+    }
+    let Some((next, byte)) = next_non_space(code, index) else {
+        return false;
+    };
+    if byte == b'(' && next == index {
+        return false;
+    }
+    is_word_byte(byte)
+        || byte.is_ascii_digit()
+        || matches!(
+            byte,
+            b'(' | b'!' | b'~' | b'+' | b'-' | b'\'' | b'"' | b'`' | b'[' | b'{'
+        )
+}
+
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
 fn follows_an_equality_operator(code: &str, at: usize) -> bool {
     let Some((end, b'=')) = prev_non_space(code, at) else {
@@ -480,7 +552,10 @@ pub(crate) fn run_flow_deprecated_type(
         let outer = enclosing;
         enclosing = enclosing.after(code);
         for at in find_words(code, "bool") {
-            if line.in_string(at) || names_a_value(code, at, 4, outer) {
+            if line.in_string(at)
+                || in_jsx_text(code, at, 4, line.opens_in_template())
+                || names_a_value(code, at, 4, outer)
+            {
                 continue;
             }
             push_in_code(
@@ -546,6 +621,18 @@ pub(crate) fn run_flow_internal_type(
                 continue;
             }
             if line.in_string(at) {
+                at += len;
+                continue;
+            }
+            // `<p>React$Node</p>` and `<p>hello React$Node there</p>` are text.
+            // The same operators that make `any` a value make an internal name
+            // one too.
+            if beside_a_value_operator(
+                code,
+                prev_non_space(code, at),
+                next_non_space(code, at + len),
+            ) || in_jsx_text(code, at, len, line.opens_in_template())
+            {
                 at += len;
                 continue;
             }

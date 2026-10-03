@@ -251,9 +251,9 @@ export async function toResult(response: Response): Promise<LambdaHttpResult> {
  * an invocation that returned before its `after()` callbacks ran would have
  * them killed with the sandbox, so `settle` is awaited rather than deferred.
  */
-export function createLambdaHandler(
-  options: LambdaHandlerOptions,
-): (event: LambdaHttpEvent) => Promise<LambdaHttpResult> {
+export function createLambdaHandler(options: LambdaHandlerOptions): (
+  event: LambdaHttpEvent,
+) => Promise<LambdaHttpResult> {
   const { handle, beginRequest, staticDir, routing } = options;
   const serveStatic = staticDir == null ? null : createStaticHandler({ root: staticDir });
 
