@@ -101,6 +101,17 @@ fn server_rule_rejects_a_secret_segment_and_import_meta() {
 }
 
 #[test]
+fn a_mention_of_the_directive_does_not_make_a_client_module() {
+    let diagnostics = lint_one(
+        "server/no-client-secret",
+        "src/app/page.jsx",
+        "// @flow\nconst note = \"add \\\"use client\\\" at the top\";\nconst token = process.env.PRIVATE_TOKEN;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn server_rule_ignores_a_word_that_only_contains_secret() {
     for source in [
         "// @flow\n'use client';\nconst role = process.env.SECRETARY;\n",
