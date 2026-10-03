@@ -583,13 +583,26 @@ impl<'a> Module<'a> {
     fn type_of(&mut self, mapped: &Mapped) -> String {
         self.note_types(&mapped.codec);
         let mut flow = mapped.flow_type();
-        if mapped.flow.contains("JsonValue") {
+        // The json codec's Flow name is `JsonValue`. An enum that was given
+        // the same name is a model type, and replacing it would drop the
+        // enum import and type the column as the runtime value.
+        if mapped.flow.contains("JsonValue") && Self::codec_is_runtime_json(&mapped.codec) {
             let local = self.runtime_local("JsonValue");
             if local != "JsonValue" {
                 flow = flow.replace("JsonValue", &local);
             }
         }
         flow
+    }
+
+    /// Whether `codec` is the runtime JSON codec, or an array or override of it.
+    fn codec_is_runtime_json(codec: &Codec) -> bool {
+        match codec {
+            Codec::Export(name) => *name == "json",
+            Codec::Array(inner) => Self::codec_is_runtime_json(inner),
+            Codec::Mapped { base, .. } => Self::codec_is_runtime_json(base),
+            Codec::Factory(_, _) | Codec::Enum { .. } => false,
+        }
     }
 
     fn note_types(&mut self, codec: &Codec) {
