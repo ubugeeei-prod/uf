@@ -1,15 +1,14 @@
 "use client";
 // @flow
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
-
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { useActionState, useState } from "@uniflowed/react";
+import { props, stylex } from "@uniflowed/stylex";
 import { Field } from "@uniflowed/ui";
 
 import { callAction } from "../_shared/action-result.client.js";
-import { FormField, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
+import { FormField, FormStatus, SubmitButton, styles as controlStyles } from "../_shared/form-ui.client.js";
 import { IDLE, failed, succeeded, fieldError, type FormState } from "../_shared/social-model.js";
 
 /**
@@ -44,8 +43,8 @@ export component AuthClient(mode: "login" | "signup") {
   );
 
   return (
-    <form action={submit} className="auth-card">
-      <h1>
+    <form {...props(styles.authCard)} action={submit}>
+      <h1 {...props(styles.authTitle)}>
         {
           match (mode) {
             "signup" => "Create an account",
@@ -53,7 +52,7 @@ export component AuthClient(mode: "login" | "signup") {
           }
         }
       </h1>
-      <p {...styled("auth-intro", sharedStyles.authIntro)}>
+      <p {...props(styles.authIntro)}>
         {
           match (mode) {
             "signup" => "Create a profile to publish notes and send messages.",
@@ -68,9 +67,10 @@ export component AuthClient(mode: "login" | "signup") {
             <>
               <FormField label="Name" error={fieldError(state, "name")}>
                 <Field.Control
-                  render={(props) => (
+                  render={(control) => (
                     <input
-                      {...props}
+                      {...control}
+                      {...props(controlStyles.fieldControl)}
                       name="name"
                       value={draft.name}
                       onChange={(event) => setDraft({ ...draft, name: event.target.value })}
@@ -84,9 +84,10 @@ export component AuthClient(mode: "login" | "signup") {
               </FormField>
               <FormField label="Email address" error={fieldError(state, "email")}>
                 <Field.Control
-                  render={(props) => (
+                  render={(control) => (
                     <input
-                      {...props}
+                      {...control}
+                      {...props(controlStyles.fieldControl)}
                       name="email"
                       value={draft.email}
                       onChange={(event) => setDraft({ ...draft, email: event.target.value })}
@@ -104,9 +105,10 @@ export component AuthClient(mode: "login" | "signup") {
       }
       <FormField label="Handle" error={fieldError(state, "handle")}>
         <Field.Control
-          render={(props) => (
+          render={(control) => (
             <input
-              {...props}
+              {...control}
+              {...props(controlStyles.fieldControl)}
               name="handle"
               value={draft.handle}
               onChange={(event) => setDraft({ ...draft, handle: event.target.value })}
@@ -129,9 +131,10 @@ export component AuthClient(mode: "login" | "signup") {
         hint="At least 12 characters. Use a password just for this example."
       >
         <Field.Control
-          render={(props) => (
+          render={(control) => (
             <input
-              {...props}
+              {...control}
+              {...props(controlStyles.fieldControl)}
               name="password"
               value={draft.password}
               onChange={(event) => setDraft({ ...draft, password: event.target.value })}
@@ -158,6 +161,7 @@ export component AuthClient(mode: "login" | "signup") {
             "login"  => "Signing in…",
           }
         }
+        xstyle={styles.authSubmit}
       >
         {
           match (mode) {
@@ -166,23 +170,73 @@ export component AuthClient(mode: "login" | "signup") {
           }
         }
       </SubmitButton>
-      <p className="auth-alternative">
+      <p {...props(styles.authAlternative)}>
         {
           match (mode) {
             "signup" =>
               <>
-                Already have an account? <Link to="/login">Sign in</Link>
+                Already have an account? <Link {...props(styles.authLink)} to="/login">Sign in</Link>
               </>,
             "login"  =>
               <>
-                No account yet? <Link to="/signup">Create an account</Link>
+                No account yet? <Link {...props(styles.authLink)} to="/signup">Create an account</Link>
               </>,
           }
         }
       </p>
-      <p {...styled("auth-note", sharedStyles.authNote)}>
+      <p {...props(styles.authNote)}>
         Local example. Use sample details; email is not verified or sent.
       </p>
     </form>
   );
 }
+
+const styles = stylex.create({
+  authCard: {
+    width         : { default: "420px", "@media (max-width: 760px)": "100%" },
+    background    : "transparent",
+    border        : "0",
+    borderRadius  : "0",
+    backdropFilter: "none",
+    paddingTop    : { default: "34px", "@media (max-width: 760px)": "25px" },
+    paddingRight  : { default: "34px", "@media (max-width: 760px)": "22px" },
+    paddingBottom : { default: "34px", "@media (max-width: 760px)": "25px" },
+    paddingLeft   : { default: "34px", "@media (max-width: 760px)": "22px" },
+    maxWidth      : { "@media (max-width: 760px)": "400px" },
+  },
+  authTitle: {
+    fontSize     : "30px",
+    fontWeight   : "500",
+    letterSpacing: "-1.2px",
+    marginBottom : "8px",
+  },
+  authIntro: {
+    fontSize    : "12px",
+    color       : "var(--muted)",
+    lineHeight  : "1.7",
+    marginBottom: "26px",
+  },
+  authSubmit: {
+    width: "100%",
+  },
+  authAlternative: {
+    textAlign : "center",
+    fontSize  : "12px",
+    color     : "var(--muted)",
+    lineHeight: "1.8",
+    paddingTop: "22px",
+  },
+  authLink: {
+    color              : "var(--ink)",
+    fontWeight         : "550",
+    textDecoration     : "underline",
+    textUnderlineOffset: "3px",
+  },
+  authNote: {
+    fontSize  : "10px",
+    lineHeight: "1.8",
+    color     : "var(--muted)",
+    marginTop : "19px",
+    textAlign : "center",
+  },
+});

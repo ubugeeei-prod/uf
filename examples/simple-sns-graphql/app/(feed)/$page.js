@@ -3,13 +3,13 @@
 import * as React from "@uniflowed/react";
 import { Suspense } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+import { props, stylex } from "@uniflowed/stylex";
 
 import type { SearchParams } from "@uniflowed/router";
 
 import { relay } from "../_server/relay.server.js";
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
 import { SocialFrame } from "../_shared/social-frame.js";
-import { ActionLink, LoadingState } from "../_shared/ui.js";
+import { ActionLink, LoadingState, styles as uiStyles } from "../_shared/ui.js";
 import { TOPICS, feedFilter, feedHref, topicLabel } from "../_shared/social-model.js";
 import composerQuery from "./__generated__/SnsComposerQuery.graphql.js";
 import timelineQuery from "./__generated__/SnsTimelineQuery.graphql.js";
@@ -33,15 +33,16 @@ export component Page(searchParams: SearchParams) {
 
   return (
     <SocialFrame active="timeline">
-      <header className="page-heading">
+      <header {...props(uiStyles.pageHeading, uiStyles.feedPageHeading)}>
         <div>
-          <h1>Feed</h1>
-          <p>Notes from the people in your community.</p>
+          <h1 {...props(uiStyles.pageTitle)}>Feed</h1>
+          <p {...props(uiStyles.pageSummary)}>Notes from the people in your community.</p>
         </div>
       </header>
-      <div {...styled("feed-toolbar", sharedStyles.feedToolbar)}>
-        <nav className="feed-tabs" aria-label="Feed channels">
+      <div {...props(styles.feedToolbar)}>
+        <nav {...props(styles.feedTabs)} aria-label="Feed channels">
           <Link
+            {...props(styles.feedTab)}
             to={feedHref("all", filter.query)}
             aria-current={
               match (filter.topic) {
@@ -54,6 +55,7 @@ export component Page(searchParams: SearchParams) {
           </Link>
           {TOPICS.map((topic) => (
             <Link
+              {...props(styles.feedTab)}
               key={topic}
               to={feedHref(topic, filter.query)}
               aria-current={
@@ -73,21 +75,23 @@ export component Page(searchParams: SearchParams) {
         match (filter.query) {
           ""          => null,
           const query =>
-            <p {...styled("result-label", sharedStyles.resultLabel)}>Results for “{query}”</p>,
+            <p {...props(styles.resultLabel)}>Results for “{query}”</p>,
         }
       }
-      <div className="feed-content">
+      <div {...props(styles.feedContent)}>
         <Suspense fallback={<LoadingState kind="feed" />}>
           <ComposerSlot
             queryRef={relay.serverPreloadQuery(composerQuery, {})}
             filter={filter}
             guest={
-              <div className="sign-in-composer">
+              <div {...props(styles.signInComposer)}>
                 <div>
-                  <h2>What are you working on?</h2>
-                  <p>Sign in to post an update or ask a question.</p>
+                  <h2 {...props(styles.signInTitle)}>What are you working on?</h2>
+                  <p {...props(styles.signInCopy)}>Sign in to post an update or ask a question.</p>
                 </div>
-                <ActionLink to="/signup">Create account</ActionLink>
+                <ActionLink to="/signup" xstyle={styles.signInButton} iconStyle={styles.signInIcon}>
+                  Create account
+                </ActionLink>
               </div>
             }
           />
@@ -104,3 +108,77 @@ export component Page(searchParams: SearchParams) {
     </SocialFrame>
   );
 }
+
+const styles = stylex.create({
+  feedToolbar: {
+    borderBottom: "1px solid var(--line)",
+  },
+  feedTabs: {
+    display      : "flex",
+    gap          : { default: "24px", "@media (max-width: 760px)": "20px" },
+    minWidth     : "0",
+    overflow     : "auto",
+    scrollbarWidth: { "@media (max-width: 760px)": "none" },
+  },
+  feedTab: {
+    fontSize     : "12px",
+    whiteSpace   : "nowrap",
+    color        : "var(--muted)",
+    borderBottom : "2px solid transparent",
+    paddingTop   : "14px",
+    paddingRight : "0",
+    paddingBottom: { default: "13px", "@media (max-width: 760px)": "12px" },
+    paddingLeft  : "0",
+    minHeight    : { "@media (max-width: 760px)": "44px" },
+    ":is([aria-current=page])": {
+      color     : "var(--ink)",
+      borderColor: "var(--accent)",
+      fontWeight: "600",
+    },
+  },
+  resultLabel: {
+    fontSize : "12px",
+    color    : "var(--muted)",
+    marginTop: "18px",
+  },
+  feedContent: {
+    paddingTop: { default: "20px", "@media (max-width: 760px)": "0" },
+  },
+  signInComposer: {
+    display        : { default: "flex", "@media (max-width: 760px)": "none" },
+    alignItems     : "center",
+    justifyContent : "space-between",
+    gap            : { default: "18px", "@media (max-width: 760px)": "12px" },
+    background     : "transparent",
+    border         : "0",
+    borderBottom   : "1px solid var(--line)",
+    borderRadius   : "0",
+    paddingTop     : { default: "12px", "@media (max-width: 760px)": "14px" },
+    paddingRight   : { default: "0", "@media (max-width: 760px)": "12px" },
+    paddingBottom  : { default: "24px", "@media (max-width: 760px)": "14px" },
+    paddingLeft    : { default: "0", "@media (max-width: 760px)": "12px" },
+    marginBottom   : "5px",
+  },
+  signInTitle: {
+    fontSize     : { default: "14px", "@media (max-width: 760px)": "12px" },
+    fontWeight   : "600",
+    letterSpacing: "-0.1px",
+  },
+  signInCopy: {
+    fontSize  : { default: "11px", "@media (max-width: 760px)": "10px" },
+    color     : "var(--muted)",
+    lineHeight: "1.6",
+    marginTop : "6px",
+  },
+  signInButton: {
+    fontSize     : { default: "11px", "@media (max-width: 760px)": "10px" },
+    minHeight    : "34px",
+    paddingTop   : { default: "9px", "@media (max-width: 760px)": "8px" },
+    paddingRight : { default: "15px", "@media (max-width: 760px)": "8px" },
+    paddingBottom: { default: "9px", "@media (max-width: 760px)": "8px" },
+    paddingLeft  : { default: "15px", "@media (max-width: 760px)": "8px" },
+  },
+  signInIcon: {
+    display: { "@media (max-width: 760px)": "none" },
+  },
+});

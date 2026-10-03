@@ -5,6 +5,9 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { graphql, useMutation } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+import { props } from "@uniflowed/stylex";
+
+import { styles as uiStyles } from "../_shared/ui.js";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
@@ -51,7 +54,6 @@ export component SettingsForm(
 
   return (
     <form
-      className="settings-form"
       onSubmit={(event) => {
         event.preventDefault();
         setFeedback("");
@@ -69,19 +71,31 @@ export component SettingsForm(
         });
       }}
     >
-      <label className="field">
-        <span>Display name</span>
-        <input name="displayName" defaultValue={settings.displayName} required maxLength={80} />
+      <label {...props(uiStyles.field)}>
+        <span {...props(uiStyles.fieldLabel)}>Display name</span>
+        <input
+          {...props(uiStyles.fieldControl)}
+          name="displayName"
+          defaultValue={settings.displayName}
+          required
+          maxLength={80}
+        />
       </label>
-      <label className="field">
-        <span>Bio</span>
-        <textarea name="bio" defaultValue={settings.bio} maxLength={240} />
+      <label {...props(uiStyles.field)}>
+        <span {...props(uiStyles.fieldLabel)}>Bio</span>
+        <textarea {...props(uiStyles.fieldControl)} name="bio" defaultValue={settings.bio} maxLength={240} />
       </label>
-      <label className="field">
-        <span>Email</span>
-        <input type="email" name="email" defaultValue={settings.email} required />
+      <label {...props(uiStyles.field)}>
+        <span {...props(uiStyles.fieldLabel)}>Email</span>
+        <input
+          {...props(uiStyles.fieldControl)}
+          type="email"
+          name="email"
+          defaultValue={settings.email}
+          required
+        />
       </label>
-      <button type="submit" className="button primary" disabled={pending}>
+      <button type="submit" {...props(uiStyles.button, uiStyles.primary)} disabled={pending}>
         {
           match (pending) {
             true  => "Saving…",

@@ -5,9 +5,11 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { graphql, useFragment, useMutation } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+import { props, stylex } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
+import { styles as uiStyles } from "../_shared/ui.js";
 import { Message } from "./message.client.js";
 
 import type {
@@ -76,17 +78,17 @@ component Conversation(conversationRef: SnsConversation_conversation$key) {
   const [error,     setError]     = useState("");
 
   return (
-    <section className="conversation">
-      <header className="conversation-heading">
+    <section {...props(styles.conversation)}>
+      <header>
         <strong>{conversation.thread.participant.name}</strong>
       </header>
-      <div className="message-log" role="log" aria-label="Messages">
+      <div role="log" aria-label="Messages">
         {conversation.messages.map((message) => (
           <Message key={message.id} messageRef={message} />
         ))}
       </div>
       <form
-        className="message-composer"
+        {...props(uiStyles.messageComposer)}
         onSubmit={(event) => {
           event.preventDefault();
           const id = requestId || crypto.randomUUID();
@@ -114,6 +116,7 @@ component Conversation(conversationRef: SnsConversation_conversation$key) {
         }}
       >
         <textarea
+          {...props(styles.messageField)}
           aria-label="Message"
           value={body}
           maxLength={2000}
@@ -123,7 +126,7 @@ component Conversation(conversationRef: SnsConversation_conversation$key) {
             setRequestId("");
           }}
         />
-        <button type="submit" className="button primary" disabled={pending}>
+        <button type="submit" {...props(uiStyles.button, uiStyles.primary)} disabled={pending}>
           {
             match (pending) {
               true  => "Sending…",
@@ -141,3 +144,24 @@ component Conversation(conversationRef: SnsConversation_conversation$key) {
     </section>
   );
 }
+
+const styles = stylex.create({
+  conversation: {
+    minWidth     : "0",
+    display      : "flex",
+    flexDirection: "column",
+  },
+  messageField: {
+    width        : "100%",
+    border       : "0",
+    background   : "transparent",
+    fontSize     : { default: "13px", "@media (max-width: 760px)": "16px" },
+    lineHeight   : "1.7",
+    minHeight    : "52px",
+    maxHeight    : "180px",
+    paddingTop   : "6px",
+    paddingRight : "0",
+    paddingBottom: "6px",
+    paddingLeft  : "0",
+  },
+});

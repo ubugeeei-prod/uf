@@ -6,6 +6,9 @@ import { startTransition } from "@uniflowed/react";
 import { Link, useRouter } from "@uniflowed/router";
 import { promise, runPromiseExit } from "@uniflowed/effect";
 
+import { props, stylex } from "@uniflowed/stylex";
+
+import { styles as controlStyles } from "../_shared/form-ui.client.js";
 import { Icon } from "../_shared/ui.js";
 import { feedHref, type FeedFilter } from "../_shared/social-model.js";
 
@@ -18,7 +21,7 @@ export component SearchNotes(filter: FeedFilter) {
 
   return (
     <form
-      className="feed-search"
+      {...props(styles.feedSearch)}
       role="search"
       method="get"
       action="/"
@@ -37,6 +40,7 @@ export component SearchNotes(filter: FeedFilter) {
     >
       <Icon name="search" size={15} />
       <input
+        {...props(styles.feedSearchInput)}
         name="q"
         defaultValue={filter.query}
         placeholder="Search notes and people"
@@ -49,12 +53,14 @@ export component SearchNotes(filter: FeedFilter) {
           const topic => <input type="hidden" name="topic" value={topic} />,
         }
       }
-      <button type="submit">Search</button>
+      <button type="submit" {...props(styles.feedSearchButton)}>
+        Search
+      </button>
       {
         match (filter.query) {
           "" => null,
           _  =>
-            <Link to={feedHref(filter.topic)} className="text-link">
+            <Link to={feedHref(filter.topic)} {...props(controlStyles.textLink)}>
               Clear
             </Link>,
         }
@@ -62,3 +68,47 @@ export component SearchNotes(filter: FeedFilter) {
     </form>
   );
 }
+
+const styles = stylex.create({
+  feedSearch: {
+    display      : "flex",
+    alignItems   : "center",
+    gap          : "6px",
+    borderBottom : "1px solid var(--line)",
+    color        : "#8a8a8a",
+    paddingTop   : { default: "8px", "@media (max-width: 760px)": "0" },
+    paddingRight : "0",
+    paddingBottom: { default: "8px", "@media (max-width: 760px)": "0" },
+    paddingLeft  : "0",
+    minHeight    : { "@media (max-width: 760px)": "44px" },
+  },
+  feedSearchInput: {
+    fontSize     : { default: "12px", "@media (max-width: 760px)": "16px" },
+    flex         : "1",
+    border       : "0",
+    background   : "transparent",
+    outlineOffset: "0",
+    color        : "var(--ink)",
+    paddingTop   : { default: "8px", "@media (max-width: 760px)": "10px" },
+    paddingRight : "8px",
+    paddingBottom: { default: "8px", "@media (max-width: 760px)": "10px" },
+    paddingLeft  : "8px",
+    "::placeholder": {
+      fontSize: "12px",
+    },
+  },
+  feedSearchButton: {
+    border       : "0",
+    background   : "transparent",
+    fontSize     : "11px",
+    color        : "var(--muted)",
+    paddingTop   : "8px",
+    paddingRight : "8px",
+    paddingBottom: "8px",
+    paddingLeft  : "8px",
+    minHeight    : { "@media (max-width: 760px)": "44px" },
+    ":hover"     : {
+      color: "var(--ink)",
+    },
+  },
+});

@@ -5,10 +5,12 @@ import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useFragment } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+import { props } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
 import { UserAvatar } from "../_shared/avatar.client.js";
+import { styles as uiStyles } from "../_shared/ui.js";
 
 import type {
   SnsThreadsQuery$variables,
@@ -45,7 +47,7 @@ export component Threads(
   const { threads } = useQueryFromServer(threadsQuery, queryRef);
 
   return (
-    <nav className="thread-list" aria-label="Conversations">
+    <nav {...props(uiStyles.threadList)} aria-label="Conversations">
       {threads.map((thread) => (
         <Thread key={thread.id} threadRef={thread} selected={thread.id === selected} />
       ))}
@@ -58,7 +60,6 @@ component Thread(threadRef: SnsThread_thread$key, selected: boolean) renders Lin
 
   return (
     <Link
-      className="thread"
       to={`/messages?thread=${encodeURIComponent(thread.id)}`}
       aria-current={
         match (selected) {

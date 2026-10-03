@@ -5,6 +5,7 @@ import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+import { props, stylex } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
@@ -58,18 +59,20 @@ export component Timeline(
             <EmptyState title="No notes here yet">Try another channel or search.</EmptyState>,
         }
       }
-      <nav className="pagination" aria-label="Feed pagination">
+      <nav {...props(styles.pagination)} aria-label="Feed pagination">
         {
           match (filter.page > 1) {
             true  =>
-              <Link to={feedHref(filter.topic, filter.query, filter.page - 1)}>Newer notes</Link>,
+              <Link {...props(styles.paginationLink)} to={feedHref(filter.topic, filter.query, filter.page - 1)}>
+                Newer notes
+              </Link>,
             false => <span>Latest notes</span>,
           }
         }
         {
           match (data.feed.hasNext) {
             true  =>
-              <Link to={feedHref(filter.topic, filter.query, filter.page + 1)}>
+              <Link {...props(styles.paginationLink)} to={feedHref(filter.topic, filter.query, filter.page + 1)}>
                 Older notes <Icon name="arrow" size={14} />
               </Link>,
             false => null,
@@ -79,3 +82,20 @@ export component Timeline(
     </>
   );
 }
+
+const styles = stylex.create({
+  pagination: {
+    display       : "flex",
+    justifyContent: "space-between",
+    alignItems    : "center",
+    gap           : "20px",
+    fontSize      : "12px",
+    color         : "var(--muted)",
+    marginTop     : "24px",
+  },
+  paginationLink: {
+    display   : "flex",
+    alignItems: "center",
+    gap       : "8px",
+  },
+});

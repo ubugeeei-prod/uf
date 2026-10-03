@@ -3,7 +3,9 @@
 import * as React from "@uniflowed/react";
 
 import { sessionData, settingsData } from "../_server/social-queries.js";
-import { SocialFrame } from "../_shared/social-frame.js";
+import { props } from "@uniflowed/stylex";
+
+import { SocialFrame, styles as frameStyles } from "../_shared/social-frame.js";
 
 import { SettingsRegion } from "./settings-region.client.js";
 
@@ -29,10 +31,10 @@ export async function loader(): Promise<Data> {
 export component Page(data: Data) {
   return (
     <SocialFrame active="settings" session={data.session} aside={false}>
-      <header className="page-heading">
+      <header {...props(frameStyles.pageHeading)}>
         <div>
-          <h1>Settings</h1>
-          <p>Manage your profile and account.</p>
+          <h1 {...props(frameStyles.pageTitle)}>Settings</h1>
+          <p {...props(frameStyles.pageLede)}>Manage your profile and account.</p>
         </div>
       </header>
       <SettingsRegion initial={data.profile} />

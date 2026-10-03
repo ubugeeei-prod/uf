@@ -6,11 +6,12 @@ import * as React from "@uniflowed/react";
 import { callAction } from "../_shared/action-result.client.js";
 
 import { useActionState, useState } from "@uniflowed/react";
+import { props, stylex } from "@uniflowed/stylex";
 import { Field } from "@uniflowed/ui";
 
 import { updateSettings } from "../_server/social-actions.js";
-import { FormField, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
-import { Avatar } from "../_shared/ui.js";
+import { FormField, FormStatus, SubmitButton, styles as controlStyles } from "../_shared/form-ui.client.js";
+import { Avatar, styles as uiStyles } from "../_shared/ui.js";
 import {
   IDLE,
   fieldError,
@@ -44,8 +45,8 @@ export component SettingsClient(initial: Settings) {
   );
 
   return (
-    <form action={submit} className="settings-panel" aria-label="Profile settings">
-      <div className="settings-profile">
+    <form {...props(uiStyles.settingsPanel)} action={submit} aria-label="Profile settings">
+      <div {...props(uiStyles.settingsProfile)}>
         <Avatar
           user={{
             id    : "profile",
@@ -56,19 +57,20 @@ export component SettingsClient(initial: Settings) {
           }}
         />
         <div>
-          <h2>{draft.displayName}</h2>
-          <p>@{draft.handle}</p>
+          <h2 {...props(styles.profileName)}>{draft.displayName}</h2>
+          <p {...props(styles.profileHandle)}>@{draft.handle}</p>
         </div>
       </div>
-      <section className="form-section">
-        <h3>Your profile</h3>
-        <p>Your name and bio are visible to the community.</p>
-        <div className="form-grid">
+      <section {...props(uiStyles.formSection)}>
+        <h3 {...props(styles.sectionTitle)}>Your profile</h3>
+        <p {...props(styles.sectionCopy)}>Your name and bio are visible to the community.</p>
+        <div {...props(uiStyles.formGrid)}>
           <FormField label="Display name" error={fieldError(state, "displayName")}>
             <Field.Control
-              render={(props) => (
+              render={(control) => (
                 <input
-                  {...props}
+                  {...control}
+                  {...props(controlStyles.fieldControl)}
                   name="displayName"
                   value={draft.displayName}
                   onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
@@ -82,9 +84,10 @@ export component SettingsClient(initial: Settings) {
           </FormField>
           <FormField label="Handle" error={fieldError(state, "handle")}>
             <Field.Control
-              render={(props) => (
+              render={(control) => (
                 <input
-                  {...props}
+                  {...control}
+                  {...props(controlStyles.fieldControl)}
                   name="handle"
                   value={draft.handle}
                   onChange={(event) => setDraft({ ...draft, handle: event.target.value })}
@@ -103,9 +106,10 @@ export component SettingsClient(initial: Settings) {
         </div>
         <FormField label="Bio" error={fieldError(state, "bio")} hint="Up to 160 characters.">
           <Field.Control
-            render={(props) => (
+            render={(control) => (
               <textarea
-                {...props}
+                {...control}
+                {...props(controlStyles.fieldControl)}
                 name="bio"
                 value={draft.bio}
                 onChange={(event) => setDraft({ ...draft, bio: event.target.value })}
@@ -117,14 +121,15 @@ export component SettingsClient(initial: Settings) {
           />
         </FormField>
       </section>
-      <section className="form-section">
-        <h3>Account details</h3>
-        <p>Your email is private.</p>
+      <section {...props(uiStyles.formSection)}>
+        <h3 {...props(styles.sectionTitle)}>Account details</h3>
+        <p {...props(styles.sectionCopy)}>Your email is private.</p>
         <FormField label="Email address" error={fieldError(state, "email")}>
           <Field.Control
-            render={(props) => (
+            render={(control) => (
               <input
-                {...props}
+                {...control}
+                {...props(controlStyles.fieldControl)}
                 name="email"
                 type="email"
                 value={draft.email}
@@ -138,10 +143,37 @@ export component SettingsClient(initial: Settings) {
           />
         </FormField>
       </section>
-      <footer className="settings-footer">
+      <footer {...props(uiStyles.settingsFooter)}>
         <FormStatus state={state} />
-        <SubmitButton pendingLabel="Saving…">Save changes</SubmitButton>
+        <SubmitButton pendingLabel="Saving…" xstyle={styles.settingsSubmit}>Save changes</SubmitButton>
       </footer>
     </form>
   );
 }
+
+const styles = stylex.create({
+  profileName: {
+    fontSize     : "17px",
+    fontWeight   : "600",
+    letterSpacing: "-0.3px",
+  },
+  profileHandle: {
+    fontSize : "12px",
+    color    : "var(--muted)",
+    marginTop: "5px",
+  },
+  sectionTitle: {
+    fontSize    : "14px",
+    fontWeight  : "600",
+    marginBottom: "7px",
+  },
+  sectionCopy: {
+    fontSize    : "12px",
+    color       : "var(--muted)",
+    lineHeight  : "1.7",
+    marginBottom: "23px",
+  },
+  settingsSubmit: {
+    alignSelf: { "@media (max-width: 760px)": "flex-end" },
+  },
+});

@@ -1,11 +1,10 @@
 "use client";
 // @flow
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
-
 import * as React from "@uniflowed/react";
 import { useEffect, useRef, useState } from "@uniflowed/react";
 import { promise, runPromiseExit } from "@uniflowed/effect";
+import { props, stylex } from "@uniflowed/stylex";
 
 import { Icon } from "../_shared/ui.js";
 
@@ -69,8 +68,9 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
   const playing = playback.kind === "playing";
 
   return (
-    <div className="clip-stage">
+    <div {...props(styles.clipStage)}>
       <video
+        {...props(styles.clipVideo)}
         ref={video}
         src={
           match (active) {
@@ -102,8 +102,9 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
           false => null,
           true  =>
             <>
-              <div className="clip-controls">
+              <div {...props(styles.clipControls)}>
                 <button
+                  {...props(styles.clipControl)}
                   type="button"
                   onClick={toggle}
                   aria-label={
@@ -124,6 +125,7 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
                   />
                 </button>
                 <button
+                  {...props(styles.clipControl)}
                   type="button"
                   onClick={onMute}
                   aria-label={
@@ -148,9 +150,10 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
               {
                 match (playback) {
                   {kind: "error"}                      =>
-                    <div className="clip-notice" role="alert">
+                    <div {...props(styles.clipNotice)} role="alert">
                       Could not load this clip.{" "}
                       <button
+                        {...props(styles.clipNoticeButton)}
                         type="button"
                         onClick={() => {
                           video.current?.load();
@@ -161,12 +164,12 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
                       </button>
                     </div>,
                   {kind: "blocked"}                    =>
-                    <button type="button" className="clip-play" onClick={toggle}>
+                    <button type="button" {...props(styles.clipPlay)} onClick={toggle}>
                       <Icon name="play" size={26} />
                       <span>Play video</span>
                     </button>,
                   {kind: "loading"}                    =>
-                    <span className="clip-loading" role="status">
+                    <span {...props(styles.clipLoading)} role="status">
                       Loading video…
                     </span>,
                   {kind: "paused"} | {kind: "playing"} => null,
@@ -175,11 +178,11 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
             </>,
         }
       }
-      <div className="clip-caption">
-        <h2>{clip.title}</h2>
-        <p>{clip.description}</p>
-        <a href={clip.source} target="_blank" rel="noreferrer">
-          Film by {clip.credit} <span>↗</span>
+      <div {...props(styles.clipCaption)}>
+        <h2 {...props(styles.clipTitle)}>{clip.title}</h2>
+        <p {...props(styles.clipDescription)}>{clip.description}</p>
+        <a {...props(styles.clipCredit)} href={clip.source} target="_blank" rel="noreferrer">
+          Film by {clip.credit} <span {...props(styles.clipCreditMark)}>↗</span>
         </a>
       </div>
     </div>
@@ -224,18 +227,18 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
   }
 
   return (
-    <div className="clips-layout">
-      <div {...styled("clips-player", sharedStyles.clipsPlayer)}>
-        <header className="clips-bar">
-          <h1>Clips</h1>
-          <span aria-live="polite">
+    <div {...props(styles.clipsLayout)}>
+      <div {...props(styles.clipsPlayer)}>
+        <header {...props(styles.clipsBar)}>
+          <h1 {...props(styles.clipsTitle)}>Clips</h1>
+          <span {...props(styles.clipsCount)} aria-live="polite">
             {String(selected + 1).padStart(2, "0")}
-            <span> / {String(clips.length).padStart(2, "0")}</span>
+            <span {...props(styles.clipsCountTotal)}> / {String(clips.length).padStart(2, "0")}</span>
           </span>
         </header>
         <div
           ref={viewport}
-          className="clips-viewport"
+          {...props(styles.clipsViewport)}
           tabIndex={0}
           role="region"
           aria-label="Clips. Scroll or use up and down arrows to change video."
@@ -249,7 +252,7 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
         >
           {clips.map((clip, index) => (
             <section
-              {...styled("clip-slide", sharedStyles.clipSlide)}
+              {...props(styles.clipSlide)}
               key={clip.id}
               data-index={index}
               aria-label={`${index + 1} of ${clips.length}: ${clip.title}`}
@@ -264,8 +267,9 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
           ))}
         </div>
       </div>
-      <nav className="clips-navigation" aria-label="Video navigation">
+      <nav {...props(styles.clipsNavigation)} aria-label="Video navigation">
         <button
+          {...props(styles.clipsNavButton)}
           type="button"
           onClick={() => move(selected - 1)}
           disabled={selected === 0}
@@ -274,6 +278,7 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
           <Icon name="chevron-up" />
         </button>
         <button
+          {...props(styles.clipsNavButton)}
           type="button"
           onClick={() => move(selected + 1)}
           disabled={selected === clips.length - 1}
@@ -285,3 +290,208 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
     </div>
   );
 }
+
+const styles = stylex.create({
+  clipStage: {
+    height  : "100%",
+    width   : "100%",
+    position: "relative",
+    overflow: "hidden",
+    color   : "white",
+  },
+  clipVideo: {
+    width    : "100%",
+    height   : "100%",
+    objectFit: "cover",
+    display  : "block",
+  },
+  clipControls: {
+    position       : "absolute",
+    inset          : "18px 18px auto",
+    display        : "flex",
+    justifyContent : "flex-end",
+    gap            : "8px",
+  },
+  clipControl: {
+    color          : "#fff",
+    background     : "#17171780",
+    border         : "1px solid #ffffff40",
+    backdropFilter : "blur(16px)",
+    display        : "grid",
+    placeItems     : "center",
+    width          : "42px",
+    height         : "42px",
+    borderRadius   : "50%",
+  },
+  clipNotice: {
+    color          : "#fff",
+    background     : "#17171780",
+    border         : "1px solid #ffffff40",
+    backdropFilter : "blur(16px)",
+    position       : "absolute",
+    inset          : "35% 20px auto",
+    fontSize       : "13px",
+    paddingTop     : "20px",
+    paddingRight   : "20px",
+    paddingBottom  : "20px",
+    paddingLeft    : "20px",
+  },
+  clipNoticeButton: {
+    display        : "block",
+    color          : "white",
+    background     : "transparent",
+    border         : "0",
+    textDecoration : "underline",
+    marginTop      : "12px",
+  },
+  clipPlay: {
+    color          : "#fff",
+    background     : "#17171780",
+    border         : "1px solid #ffffff40",
+    backdropFilter : "blur(16px)",
+    position       : "absolute",
+    top            : "42%",
+    left           : "50%",
+    transform      : "translate(-50%, -50%)",
+    display        : "grid",
+    placeItems     : "center",
+    gap            : "12px",
+    fontSize       : "12px",
+    paddingTop     : "17px",
+    paddingRight   : "17px",
+    paddingBottom  : "17px",
+    paddingLeft    : "17px",
+  },
+  clipLoading: {
+    color          : "#fff",
+    background     : "#17171780",
+    border         : "1px solid #ffffff40",
+    backdropFilter : "blur(16px)",
+    position       : "absolute",
+    top            : "75px",
+    left           : "18px",
+    fontSize       : "11px",
+    paddingTop     : "7px",
+    paddingRight   : "10px",
+    paddingBottom  : "7px",
+    paddingLeft    : "10px",
+  },
+  clipCaption: {
+    position       : "absolute",
+    bottom         : { default: "20px", "@media (max-width: 760px)": "16px" },
+    left           : "18px",
+    right          : "18px",
+    background     : "#15151566",
+    borderTop      : "1px solid #ffffff4d",
+    backdropFilter : "blur(18px)",
+    paddingTop     : "15px",
+    paddingRight   : "17px",
+    paddingBottom  : "15px",
+    paddingLeft    : "17px",
+  },
+  clipTitle: {
+    fontSize      : "23px",
+    fontWeight    : "500",
+    letterSpacing : "-0.6px",
+  },
+  clipDescription: {
+    fontSize  : "12px",
+    lineHeight: "1.7",
+    color     : "#ffffffe0",
+    marginTop : "6px",
+  },
+  clipCredit: {
+    display   : "inline-block",
+    fontSize  : "10px",
+    color     : "#ffffffbd",
+    marginTop : "14px",
+    ":hover"  : {
+      color: "white",
+    },
+  },
+  clipCreditMark: {
+    marginLeft: "5px",
+  },
+  clipsLayout: {
+    position       : "relative",
+    display        : { default: "flex", "@media (max-width: 760px)": "block" },
+    justifyContent : "center",
+    gap            : "28px",
+  },
+  clipsPlayer: {
+    position: "relative",
+    minWidth: "0",
+  },
+  clipsBar: {
+    position       : "absolute",
+    top            : "18px",
+    left           : "18px",
+    zIndex         : "2",
+    display        : "flex",
+    alignItems     : "center",
+    gap            : "14px",
+    height         : "42px",
+    color          : "#fff",
+    background     : "#17171770",
+    backdropFilter : "blur(16px)",
+    pointerEvents  : "none",
+    paddingTop     : "0",
+    paddingRight   : "13px",
+    paddingBottom  : "0",
+    paddingLeft    : "13px",
+  },
+  clipsTitle: {
+    fontSize      : "14px",
+    fontWeight    : "500",
+    letterSpacing : "-0.2px",
+  },
+  clipsCount: {
+    fontSize          : "10px",
+    fontVariantNumeric: "tabular-nums",
+  },
+  clipsCountTotal: {
+    color: "#ffffff99",
+  },
+  clipsViewport: {
+    height               : { default: "calc(100svh - 48px)", "@media (max-width: 760px)": "calc(100svh - 58px - env(safe-area-inset-bottom))" },
+    minHeight            : { default: "380px", "@media (max-width: 760px)": "280px" },
+    maxHeight            : { default: "900px", "@media (max-width: 760px)": "none" },
+    aspectRatio          : { default: "9 / 16", "@media (max-width: 760px)": "auto" },
+    overflowY            : "auto",
+    scrollbarWidth       : "none",
+    scrollSnapType       : "y mandatory",
+    overscrollBehaviorY  : "contain",
+    background           : "#171717",
+    width                : { "@media (max-width: 760px)": "100%" },
+    "::-webkit-scrollbar": {
+      display: "none",
+    },
+  },
+  clipSlide: {
+    height         : "100%",
+    width          : "100%",
+    scrollSnapAlign: "start",
+    scrollSnapStop : "always",
+  },
+  clipsNavigation: {
+    display       : { default: "flex", "@media (max-width: 760px)": "none" },
+    flexDirection : "column",
+    alignSelf     : "center",
+    alignItems    : "center",
+    gap           : "12px",
+    width         : "60px",
+  },
+  clipsNavButton: {
+    display      : "grid",
+    placeItems   : "center",
+    width        : "44px",
+    height       : "44px",
+    background   : "#ffffff70",
+    border       : "1px solid #ffffff",
+    borderRadius : "50%",
+    ":disabled"  : {
+      opacity: "0.3",
+      cursor : "default",
+    },
+  },
+});

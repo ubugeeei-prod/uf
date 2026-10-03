@@ -3,10 +3,11 @@
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+import { props, stylex } from "@uniflowed/stylex";
 
 import { AsyncRegion, useRetryableResource } from "../_shared/async-region.client.js";
 import { threadsData, messagesData } from "../_server/social-queries.js";
-import { Avatar, EmptyState, LoadingState, SignInPrompt } from "../_shared/ui.js";
+import { Avatar, EmptyState, LoadingState, SignInPrompt, styles as uiStyles } from "../_shared/ui.js";
 import { DirectMessagesClient } from "./direct-messages.client.js";
 
 import type { InboxData, ConversationData, MessageThread } from "../_shared/social-model.js";
@@ -16,7 +17,7 @@ import type { InboxData, ConversationData, MessageThread } from "../_shared/soci
 export component ThreadLink(thread: MessageThread, selected: boolean) renders Link {
   return (
     <Link
-      className="thread-link"
+      {...props(uiStyles.threadLink)}
       to={`/messages?thread=${encodeURIComponent(thread.id)}`}
       aria-current={
         match (selected) {
@@ -36,9 +37,9 @@ export component ThreadLink(thread: MessageThread, selected: boolean) renders Li
         }}
         small
       />
-      <div className="thread-text">
-        <strong>{thread.name}</strong>
-        <p>{thread.lastMessage || "Start a conversation"}</p>
+      <div {...props(styles.threadText)}>
+        <strong {...props(styles.threadName)}>{thread.name}</strong>
+        <p {...props(styles.threadPreview)}>{thread.lastMessage || "Start a conversation"}</p>
       </div>
     </Link>
   );
@@ -48,8 +49,8 @@ export component ThreadLink(thread: MessageThread, selected: boolean) renders Li
 
 export component ThreadList(children: renders* ThreadLink) {
   return (
-    <nav className="thread-list" aria-label="Conversations">
-      <h2>YOUR CONVERSATIONS</h2>
+    <nav {...props(uiStyles.threadList)} aria-label="Conversations">
+      <h2 {...props(uiStyles.threadTitle)}>YOUR CONVERSATIONS</h2>
       {children}
     </nav>
   );
@@ -101,7 +102,7 @@ export component InboxRegions(
   const detail = useRetryableResource(conversation, () => messagesData(threadId));
 
   return (
-    <div className="conversation-layout">
+    <div {...props(styles.conversationLayout)}>
       <AsyncRegion
         resource={list.resource}
         retry={list.retry}
@@ -121,3 +122,36 @@ export component InboxRegions(
     </div>
   );
 }
+
+const styles = stylex.create({
+  conversationLayout: {
+    display            : "grid",
+    gridTemplateColumns: { default: "250px minmax(0, 1fr)", "@media (max-width: 1000px) and (min-width: 761px)": "190px minmax(0, 1fr)", "@media (max-width: 760px)": "1fr" },
+    overflow           : "hidden",
+    minHeight          : { default: "580px", "@media (max-width: 760px)": "0" },
+    background         : "#ffffff61",
+    border             : "0",
+    borderTop          : "1px solid var(--line)",
+    borderBottom       : "1px solid var(--line)",
+    borderRadius       : "0",
+    borderColor        : "#e0e0e0",
+  },
+  threadText: {
+    minWidth: "0",
+  },
+  threadName: {
+    fontSize  : "13px",
+    fontWeight: "600",
+    display   : "block",
+  },
+  threadPreview: {
+    fontSize        : "12px",
+    color           : "var(--muted)",
+    lineHeight      : "1.6",
+    display         : "-webkit-box",
+    WebkitLineClamp : { default: "2", "@media (max-width: 760px)": "1" },
+    WebkitBoxOrient : "vertical",
+    overflow        : "hidden",
+    marginTop       : "6px",
+  },
+});

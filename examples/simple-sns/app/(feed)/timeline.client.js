@@ -1,13 +1,12 @@
 "use client";
 // @flow
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
-
 import * as React from "@uniflowed/react";
 
 import { callAction } from "../_shared/action-result.client.js";
 
 import { Link } from "@uniflowed/router";
+import { props, stylex } from "@uniflowed/stylex";
 import {
   Activity,
   ViewTransition,
@@ -21,7 +20,8 @@ import { Collapsible } from "@uniflowed/ui";
 import { AsyncRegion, useRetryableResource } from "../_shared/async-region.client.js";
 import { timelineData } from "../_server/social-queries.js";
 import { createPost, likePost } from "../_server/social-actions.js";
-import { Avatar, ActionLink, EmptyState, Icon, LoadingState } from "../_shared/ui.js";
+import { channelDot } from "../_shared/social-frame.js";
+import { Avatar, ActionLink, EmptyState, Icon, LoadingState, styles as uiStyles } from "../_shared/ui.js";
 import { FieldError, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
 import {
   MAX_POST_LENGTH,
@@ -70,7 +70,7 @@ component Appreciation(post: Post, signedIn: boolean) {
           true  =>
             <button
               type="button"
-              className="reaction"
+              {...props(styles.reaction)}
               aria-label={`${match (optimistic.liked) {
                 true  => "Remove appreciation",
                 false => "Appreciate",
@@ -79,12 +79,12 @@ component Appreciation(post: Post, signedIn: boolean) {
               disabled={pending}
               onClick={() => startTransition(() => submit(!optimistic.liked))}
             >
-              <Icon name="heart" size={16} />
+              <Icon name="heart" size={16} {...props(optimistic.liked && styles.reactionIcon)} />
               <span>{optimistic.likes}</span>
             </button>,
           false =>
             <Link
-              className="reaction"
+              {...props(styles.reaction)}
               to="/login"
               aria-label={`Sign in to appreciate · ${post.likes}`}
             >
@@ -96,7 +96,7 @@ component Appreciation(post: Post, signedIn: boolean) {
       {
         match (state) {
           {status: "error", message: const message, ...} =>
-            <p role="alert" {...styled("post-error", sharedStyles.postError)}>
+            <p role="alert" {...props(styles.postError)}>
               {message}
             </p>,
           {status: "idle"} | {status: "success", ...}    => null,
@@ -113,13 +113,13 @@ export component PostCard(post: Post, signedIn: boolean) {
 
   return (
     <ViewTransition name={`note-${post.id}`} enter="feed-item" exit="feed-item">
-      <article className={`post ${pending ? "optimistic" : ""}`} aria-busy={pending}>
+      <article {...props(uiStyles.post, pending && styles.optimistic)} aria-busy={pending}>
         <Avatar user={post.author} />
-        <div {...styled("post-content", sharedStyles.postContent)}>
-          <header className="post-header">
-            <strong>{post.author.name}</strong>
-            <span className="handle">@{post.author.handle}</span>
-            <time dateTime={post.createdAt}>
+        <div {...props(uiStyles.postContent)}>
+          <header {...props(uiStyles.postHeader)}>
+            <strong {...props(styles.postName)}>{post.author.name}</strong>
+            <span {...props(styles.handle)}>@{post.author.handle}</span>
+            <time {...props(styles.postTime)} dateTime={post.createdAt}>
               {
                 match (pending) {
                   true  => "Publishing…",
@@ -128,15 +128,15 @@ export component PostCard(post: Post, signedIn: boolean) {
               }
             </time>
           </header>
-          <p className="post-body">{post.body}</p>
-          <footer {...styled("post-footer", sharedStyles.postFooter)}>
-            <Link className="channel-badge" to={`/?topic=${post.topic}`}>
-              <span className={`channel-dot ${post.topic}`} />
+          <p {...props(uiStyles.postBody)}>{post.body}</p>
+          <footer {...props(uiStyles.postFooter)}>
+            <Link {...props(styles.channelBadge)} to={`/?topic=${post.topic}`}>
+              <span {...props(channelDot, styles.badgeDot)} />
               {topicLabel(post.topic)}
             </Link>
             {
               match (pending) {
-                true  => <span className="counter">Publishing…</span>,
+                true  => <span {...props(styles.counter)}>Publishing…</span>,
                 false => <Appreciation post={post} signedIn={signedIn} />,
               }
             }
@@ -208,10 +208,11 @@ component PostComposer(
   );
 
   return (
-    <form className="composer" action={submit} aria-label="Publish a note">
-      <div className="composer-body">
+    <form {...props(styles.composer)} action={submit} aria-label="Publish a note">
+      <div {...props(styles.composerBody)}>
         <Avatar user={viewer} />
         <textarea
+          {...props(styles.composerText)}
           name="body"
           aria-label="Post body"
           aria-describedby="body-error"
@@ -228,8 +229,9 @@ component PostComposer(
           rows={3}
         />
       </div>
-      <div className="composer-footer">
+      <div {...props(styles.composerFooter)}>
         <select
+          {...props(styles.composerTopic)}
           name="topic"
           aria-label="Post channel"
           onChange={(event) => {
@@ -245,15 +247,19 @@ component PostComposer(
             </option>
           ))}
         </select>
-        <span className="counter">
+        <span {...props(styles.counter, styles.composerCounter)}>
           {body.length} / {MAX_POST_LENGTH}
         </span>
-        <SubmitButton pendingLabel="Publishing…" disabled={body.trim().length === 0}>
+        <SubmitButton
+          pendingLabel="Publishing…"
+          disabled={body.trim().length === 0}
+          xstyle={styles.composerSubmit}
+        >
           Publish note
         </SubmitButton>
       </div>
-      <FieldError state={state} name="body" />
-      <FormStatus state={state} />
+      <FieldError state={state} name="body" xstyle={styles.composerPad} />
+      <FormStatus state={state} xstyle={styles.composerPad} />
     </form>
   );
 }
@@ -291,15 +297,16 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
           true  =>
             match (session) {
               {kind: "authenticated", user: const user} =>
-                <div id="compose" {...styled("compose-region", sharedStyles.composeRegion)}>
+                <div id="compose" {...props(styles.composeRegion)}>
                   <Collapsible.Root
                     open={composerOpen}
                     onOpenChange={(open) => startTransition(() => setComposerOpen(open))}
                   >
-                    <Collapsible.Trigger className="compose-toggle">
+                    <Collapsible.Trigger {...props(styles.composeToggle)}>
                       <Icon name="compose" size={16} />
                       Write a note
                       <Icon
+                        {...props(styles.composeChevron)}
                         name={
                           match (composerOpen) {
                             true  => "chevron-up",
@@ -334,12 +341,18 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
                   </Collapsible.Root>
                 </div>,
               {kind: "guest"}                           =>
-                <section className="sign-in-composer">
+                <section {...props(styles.signInComposer)}>
                   <div>
-                    <h2>What are you working on?</h2>
-                    <p>Sign in to post an update or ask a question.</p>
+                    <h2 {...props(styles.signInTitle)}>What are you working on?</h2>
+                    <p {...props(styles.signInCopy)}>Sign in to post an update or ask a question.</p>
                   </div>
-                  <ActionLink to="/signup">Create account</ActionLink>
+                  <ActionLink
+                    to="/signup"
+                    xstyle={styles.signInButton}
+                    iconStyle={styles.signInIcon}
+                  >
+                    Create account
+                  </ActionLink>
                 </section>,
             },
         }
@@ -396,17 +409,20 @@ component FeedEntries(data: FeedData, additions: $ReadOnlyArray<Post>, signedIn:
             </PostList>,
         }
       }
-      <nav className="pagination" aria-label="Feed pagination">
+      <nav {...props(styles.pagination)} aria-label="Feed pagination">
         {
           match (feed.page > 1) {
-            true  => <Link to={feedHref(feed.topic, feed.query, feed.page - 1)}>← Newer notes</Link>,
+            true  =>
+              <Link {...props(styles.paginationLink)} to={feedHref(feed.topic, feed.query, feed.page - 1)}>
+                ← Newer notes
+              </Link>,
             false => <span>Latest notes</span>,
           }
         }
         {
           match (feed.hasNext) {
             true  =>
-              <Link to={feedHref(feed.topic, feed.query, feed.page + 1)}>
+              <Link {...props(styles.paginationLink)} to={feedHref(feed.topic, feed.query, feed.page + 1)}>
                 Older notes
                 <Icon name="arrow" size={14} />
               </Link>,
@@ -417,3 +433,220 @@ component FeedEntries(data: FeedData, additions: $ReadOnlyArray<Post>, signedIn:
     </>
   );
 }
+
+const styles = stylex.create({
+  reaction: {
+    display      : "inline-flex",
+    alignItems   : "center",
+    gap          : "7px",
+    background   : "transparent",
+    border       : "0",
+    color        : "#818181",
+    fontSize     : "11px",
+    minHeight    : "32px",
+    paddingTop   : "7px",
+    paddingRight : "7px",
+    paddingBottom: "7px",
+    paddingLeft  : "7px",
+    ":hover"     : {
+      color: "#252525",
+    },
+    ":is([aria-pressed=true])": {
+      color: "#252525",
+    },
+  },
+  reactionIcon: {
+    fill: "currentColor",
+  },
+  postError: {
+    fontSize : "11px",
+    color    : "#b13749",
+    marginTop: "8px",
+  },
+  optimistic: {
+    opacity: "0.6",
+  },
+  postName: {
+    fontSize  : { default: "13px", "@media (max-width: 760px)": "12px" },
+    fontWeight: "600",
+  },
+  handle: {
+    fontSize: { default: "11px", "@media (max-width: 760px)": "10px" },
+    color   : "var(--muted)",
+  },
+  postTime: {
+    fontSize  : { default: "11px", "@media (max-width: 760px)": "10px" },
+    color     : "var(--muted)",
+    marginLeft: "auto",
+  },
+  channelBadge: {
+    display      : "inline-flex",
+    gap          : "6px",
+    alignItems   : "center",
+    borderRadius : "4px",
+    fontSize     : "10px",
+    color        : "#6b6b6b",
+    background   : "transparent",
+    border       : "0",
+    paddingTop   : "4px",
+    paddingRight : "0",
+    paddingBottom: "4px",
+    paddingLeft  : "0",
+  },
+  badgeDot: {
+    width : "4px",
+    height: "4px",
+  },
+  counter: {
+    fontVariantNumeric: "tabular-nums",
+    fontSize          : "11px",
+    color             : "var(--muted)",
+  },
+  composerCounter: {
+    display: { "@media (max-width: 760px)": "none" },
+  },
+  composer: {
+    overflow      : "hidden",
+    scrollMarginTop: "20px",
+    background    : "transparent",
+    border        : "0",
+    borderBottom  : "1px solid var(--line)",
+    borderRadius  : "0",
+    marginBottom  : "9px",
+  },
+  composerBody: {
+    display      : "flex",
+    gap          : { default: "14px", "@media (max-width: 760px)": "11px" },
+    paddingTop   : { default: "16px", "@media (max-width: 760px)": "17px" },
+    paddingRight : { default: "0", "@media (max-width: 760px)": "14px" },
+    paddingBottom: { default: "10px", "@media (max-width: 760px)": "9px" },
+    paddingLeft  : { default: "0", "@media (max-width: 760px)": "14px" },
+  },
+  composerText: {
+    background   : "transparent",
+    border       : "0",
+    flex         : "1",
+    minHeight    : { default: "65px", "@media (max-width: 760px)": "70px" },
+    fontSize     : { default: "14px", "@media (max-width: 760px)": "16px" },
+    lineHeight   : "1.65",
+    outlineOffset: "2px",
+    paddingTop   : "8px",
+    paddingRight : "0",
+    paddingBottom: "8px",
+    paddingLeft  : "0",
+    "::placeholder": {
+      color: "#8d8d8d",
+    },
+  },
+  composerTopic: {
+    border       : "1px solid var(--line)",
+    background   : "var(--subtle)",
+    color        : "#606060",
+    borderRadius : "5px",
+    fontSize     : "11px",
+    maxWidth     : "155px",
+    paddingTop   : "7px",
+    paddingRight : "9px",
+    paddingBottom: "7px",
+    paddingLeft  : "9px",
+  },
+  composerFooter: {
+    display      : "flex",
+    alignItems   : "center",
+    gap          : "12px",
+    borderTop    : "0",
+    paddingTop   : "12px",
+    paddingRight : "0",
+    paddingBottom: "12px",
+    paddingLeft  : "0",
+    marginTop    : "0",
+    marginRight  : { default: "0", "@media (max-width: 760px)": "14px" },
+    marginBottom : "0",
+    marginLeft   : { default: "0", "@media (max-width: 760px)": "14px" },
+  },
+  composerSubmit: {
+    minHeight    : "33px",
+    fontSize     : "11px",
+    paddingTop   : "7px",
+    paddingRight : "12px",
+    paddingBottom: "7px",
+    paddingLeft  : "12px",
+    marginLeft   : "auto",
+  },
+  composerPad: {
+    paddingRight: "18px",
+    paddingLeft : "18px",
+  },
+  composeRegion: {
+    scrollMarginTop: "85px",
+  },
+  composeToggle: {
+    display      : "flex",
+    alignItems   : "center",
+    gap          : "8px",
+    width        : "100%",
+    border       : "0",
+    background   : "transparent",
+    fontSize     : "12px",
+    fontWeight   : "550",
+    color        : "#686868",
+    paddingTop   : "3px",
+    paddingRight : "0",
+    paddingBottom: "13px",
+    paddingLeft  : "0",
+  },
+  composeChevron: {
+    marginLeft: "auto",
+  },
+  signInComposer: {
+    display        : { default: "flex", "@media (max-width: 760px)": "none" },
+    alignItems     : "center",
+    justifyContent : "space-between",
+    gap            : { default: "18px", "@media (max-width: 760px)": "12px" },
+    background     : "transparent",
+    border         : "0",
+    borderBottom   : "1px solid var(--line)",
+    borderRadius   : "0",
+    paddingTop     : { default: "12px", "@media (max-width: 760px)": "14px" },
+    paddingRight   : { default: "0", "@media (max-width: 760px)": "12px" },
+    paddingBottom  : { default: "24px", "@media (max-width: 760px)": "14px" },
+    paddingLeft    : { default: "0", "@media (max-width: 760px)": "12px" },
+    marginBottom   : "5px",
+  },
+  signInTitle: {
+    fontSize     : { default: "14px", "@media (max-width: 760px)": "12px" },
+    fontWeight   : "600",
+    letterSpacing: "-0.1px",
+  },
+  signInCopy: {
+    fontSize  : { default: "11px", "@media (max-width: 760px)": "10px" },
+    color     : "var(--muted)",
+    lineHeight: "1.6",
+    marginTop : "6px",
+  },
+  signInButton: {
+    fontSize     : { default: "11px", "@media (max-width: 760px)": "10px" },
+    minHeight    : "34px",
+    paddingTop   : { default: "9px", "@media (max-width: 760px)": "8px" },
+    paddingRight : { default: "15px", "@media (max-width: 760px)": "8px" },
+    paddingBottom: { default: "9px", "@media (max-width: 760px)": "8px" },
+    paddingLeft  : { default: "15px", "@media (max-width: 760px)": "8px" },
+  },
+  signInIcon: {
+    display: { "@media (max-width: 760px)": "none" },
+  },
+  pagination: {
+    display       : "flex",
+    justifyContent: "space-between",
+    alignItems    : "center",
+    gap           : "20px",
+    fontSize      : "12px",
+    color         : "var(--muted)",
+    marginTop     : "24px",
+  },
+  paginationLink: {
+    display   : "flex",
+    alignItems: "center",
+    gap       : "8px",
+  },
+});

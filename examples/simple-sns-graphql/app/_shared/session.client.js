@@ -6,6 +6,7 @@ import { useState } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useMutation } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+import { props, stylex } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
@@ -15,7 +16,7 @@ import type {
 } from "./__generated__/SnsSessionQuery.graphql.js";
 
 import { UserAvatar } from "./avatar.client.js";
-import { Icon } from "./ui.js";
+import { Icon, styles as uiStyles } from "./ui.js";
 
 const sessionQuery = graphql`
   query SnsSessionQuery {
@@ -45,7 +46,7 @@ export component SessionControls(queryRef: SessionRef) {
   return (
     <>
       <Link
-        className="compose-link"
+        {...props(uiStyles.composeLink)}
         to={
           match (viewer) {
             null | undefined => "/login",
@@ -56,25 +57,25 @@ export component SessionControls(queryRef: SessionRef) {
         <Icon name="compose" size={16} />
         Write a note
       </Link>
-      <div className="account">
+      <div {...props(uiStyles.account)}>
         {
           match (viewer) {
             null | undefined =>
               <>
-                <Link className="button primary" to="/login">
+                <Link {...props(uiStyles.button, uiStyles.primary, styles.accountButton)} to="/login">
                   Sign in
                 </Link>
-                <Link className="button secondary" to="/signup">
+                <Link {...props(uiStyles.button, uiStyles.secondary, styles.accountButton)} to="/signup">
                   Join
                 </Link>
               </>,
             const person     =>
               <>
-                <Link to="/settings" className="account-person">
+                <Link to="/settings" {...props(styles.accountPerson)}>
                   <UserAvatar userRef={person} small />
                   <span>
-                    <strong>{person.name}</strong>
-                    <small>@{person.handle}</small>
+                    <strong {...props(styles.accountName)}>{person.name}</strong>
+                    <small {...props(styles.accountHandle)}>@{person.handle}</small>
                   </span>
                 </Link>
                 <SignOut />
@@ -93,6 +94,7 @@ export component MobileCompose(queryRef: SessionRef) {
 
   return (
     <Link
+      {...props(uiStyles.mobileNavItem)}
       to={
         match (viewer) {
           null | undefined => "/login",
@@ -134,7 +136,7 @@ component SignOut() {
     <div>
       <button
         type="button"
-        className="icon-button"
+        {...props(styles.iconButton)}
         aria-label="Sign out"
         disabled={pending}
         onClick={() =>
@@ -156,3 +158,57 @@ component SignOut() {
     </div>
   );
 }
+
+const styles = stylex.create({
+  accountButton: {
+    flex         : "1",
+    fontSize     : "12px",
+    paddingTop   : "9px",
+    paddingRight : "9px",
+    paddingBottom: "9px",
+    paddingLeft  : "9px",
+  },
+  accountPerson: {
+    display   : "flex",
+    gap       : "9px",
+    alignItems: "center",
+    minWidth  : "0",
+    flex      : "1",
+  },
+  accountName: {
+    display     : "block",
+    maxWidth    : "106px",
+    overflow    : "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace  : "nowrap",
+    fontSize    : "12px",
+    fontWeight  : "600",
+  },
+  accountHandle: {
+    display     : "block",
+    maxWidth    : "106px",
+    overflow    : "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace  : "nowrap",
+    fontSize    : "11px",
+    color       : "var(--muted)",
+    marginTop   : "3px",
+  },
+  iconButton: {
+    display       : "inline-flex",
+    alignItems    : "center",
+    justifyContent: "center",
+    background    : "transparent",
+    border        : "0",
+    color         : "#7f7f7f",
+    borderRadius  : "5px",
+    paddingTop    : "8px",
+    paddingRight  : "8px",
+    paddingBottom : "8px",
+    paddingLeft   : "8px",
+    ":hover"      : {
+      background: "#efefef",
+      color     : "var(--ink)",
+    },
+  },
+});
