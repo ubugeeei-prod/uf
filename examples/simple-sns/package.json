@@ -4,16 +4,16 @@
   "type": "module",
   "description": "Commonplace: an SSR community app with request-scoped sessions, authorized actions, and optimistic React interfaces.",
   "dependencies": {
-    "@uniflowed/config": "0.21.0",
-    "@uniflowed/react": "0.21.0",
-    "@uniflowed/router": "0.21.0",
-    "@uniflowed/stylex": "0.21.0",
-    "@uniflowed/vite": "0.21.0",
+    "@uniflowed/config": "0.22.0",
+    "@uniflowed/react": "0.22.0",
+    "@uniflowed/router": "0.22.0",
+    "@uniflowed/stylex": "0.22.0",
+    "@uniflowed/vite": "0.22.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "@uniflowed/server": "0.21.0",
-    "@uniflowed/sql": "0.21.0",
-    "@uniflowed/effect": "0.21.0",
-    "@uniflowed/ui": "0.21.0"
+    "@uniflowed/server": "0.22.0",
+    "@uniflowed/sql": "0.22.0",
+    "@uniflowed/effect": "0.22.0",
+    "@uniflowed/ui": "0.22.0"
   }
 }
