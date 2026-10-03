@@ -81,8 +81,8 @@ fn same_type(a: &Type, b: &Type) -> bool {
 /// anything about it: a generic's arguments, a union or intersection, a
 /// tuple's elements, `keyof` and indexed access, a conditional, `renders`,
 /// an `interface` type, the type arguments of `typeof`, the types inside a
-/// template literal, and the wrappers. It stops at a function type, whose
-/// own parameters and return are a separate decision.
+/// template literal, a component type, and the wrappers. It stops at a
+/// function type, whose own parameters and return are a separate decision.
 pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
     match &**ty {
         types::TypeInner::Object { .. } => true,
@@ -136,6 +136,9 @@ pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
         types::TypeInner::TemplateLiteral { inner, .. } => {
             inner.types.iter().any(returns_a_shape_that_breaks)
         }
+        // A component type prints its parameters the way an object type
+        // prints its fields, so a lone parameter stays with the name.
+        types::TypeInner::Component { .. } => true,
         _ => false,
     }
 }
