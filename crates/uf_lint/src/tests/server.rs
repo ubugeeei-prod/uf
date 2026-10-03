@@ -176,6 +176,23 @@ fn server_action_rule_ignores_a_mention() {
 }
 
 #[test]
+fn server_action_rule_ignores_jsx_text() {
+    let diagnostics = lint_one(
+        "server/use-server-actions",
+        "server/actions.server.js",
+        "// @flow\nconst view = <p>serverAction(save)</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_one(
+        "server/use-server-actions",
+        "server/actions.server.js",
+        "// @flow\nconst view = <p>{serverAction(save)}</p>;\n",
+    );
+    assert!(fired(&still, "server/use-server-actions"), "{still:?}");
+}
+
+#[test]
 fn server_actions_require_use_server_directive() {
     let diagnostics = lint_one(
         "server/use-server-actions",
