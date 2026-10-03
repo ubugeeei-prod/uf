@@ -187,6 +187,12 @@ pub(crate) fn run_server_use_client_directive_position(
         {
             continue;
         }
+        // A template line that reads `"use client";` is source this module
+        // quotes, not a directive. The opening quote of a real directive is
+        // not inside a string.
+        if line.in_string(at) {
+            continue;
+        }
         if position == first_code_line.get() {
             continue;
         }

@@ -87,6 +87,16 @@ fn a_leading_boundary_directive_is_accepted() {
 }
 
 #[test]
+fn a_directive_inside_a_template_is_not_a_statement() {
+    let diagnostics = lint_js(
+        "server/use-client-directive-position",
+        "// @flow\nconst sample = `\n\"use client\";\n`;\nexport const value = 1;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn an_inline_use_server_directive_is_not_a_module_directive() {
     let diagnostics = lint_js(
         "server/use-client-directive-position",
