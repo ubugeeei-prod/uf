@@ -8,7 +8,7 @@
 use uf_config::UniflowedConfig;
 
 use crate::flow_builtin::FlowBuiltinLint;
-use crate::scan::{FileScan, identifier_len, is_hook_name, is_word_byte};
+use crate::scan::{FileScan, identifier_len, is_hook_name, is_word_byte, word_in_jsx_text};
 use crate::{Diagnostic, Severity, push_in_code, severity};
 
 /// What kind of `{ ... }` a frame on the scope stack represents.
@@ -117,6 +117,14 @@ pub(crate) fn run_structure_rules(
                         continue;
                     }
                     let word = &code[at..at + len];
+                    // `<pre>` then `component Child() { … }` is the element's
+                    // text. `{(() => { component Child() { … } })()}` is a
+                    // declaration: the `{` closed the text.
+                    if word_in_jsx_text(scan, position, at, len) {
+                        previous = None;
+                        at += len;
+                        continue;
+                    }
                     handle_structure_word(
                         StructureWord {
                             scan,
