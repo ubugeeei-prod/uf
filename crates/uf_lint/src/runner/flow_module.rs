@@ -7,8 +7,8 @@ use uf_config::UniflowedConfig;
 
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
-    FileScan, ends_word, find_all, find_words, identifier_len, next_non_space, prev_non_space,
-    previous_word, starts_word,
+    FileScan, ends_word, find_all, find_words, identifier_len, next_non_space, opens_jsx_text,
+    prev_non_space, previous_word, starts_word,
 };
 use crate::{Diagnostic, push_in_code, severity};
 
@@ -106,6 +106,12 @@ pub(crate) fn run_flow_non_const_var_export(
         // code generators emit Flow source that way. Its sibling rules in this
         // runner guard the same search with the same test.
         if line.in_string(at) {
+            continue;
+        }
+        // `<pre>` then `export` then `let` is the element's text. `in_string`
+        // only covers quotes and templates. A generic that ends the previous
+        // line (`Array<number>`) is still an export.
+        if position > 0 && opens_jsx_text(scan.lines[position - 1].code()) {
             continue;
         }
         let Some((keyword_line, keyword_at)) = exported_mutable(scan, position, code, at) else {

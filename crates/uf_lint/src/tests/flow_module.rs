@@ -123,6 +123,19 @@ fn non_const_var_export_rejects_a_keyword_on_the_next_line() {
         "// @flow\nexport const source = `\nexport\nlet generated = 0;\n`;\n",
     );
     assert!(template.is_empty(), "{template:?}");
+
+    let jsx = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\nconst view = (\n<pre>\nexport\nlet count = 0;\n</pre>\n);\nconst same = (\n<pre>\nexport let count = 0;\n</pre>\n);\n",
+    );
+    assert!(jsx.is_empty(), "{jsx:?}");
+
+    let generic = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\ntype Items = Array<number>\nexport\nlet value = 1;\n",
+    );
+    assert_eq!(generic.len(), 1, "{generic:?}");
+    assert_eq!((generic[0].line, generic[0].column), (4, 1));
 }
 
 /// Code a module *prints* is not code it runs. uf's own generators build Flow

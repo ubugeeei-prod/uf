@@ -218,6 +218,59 @@ pub(crate) fn in_jsx_text(haystack: &str, at: usize, len: usize, opens_in_templa
     false
 }
 
+/// Whether `code` ends by opening a JSX element, so the next lines are text.
+///
+/// `<pre>` and `return <pre>` do. `Array<number>` does not: the `<` belongs
+/// to the name in front of it. A self-closing `<pre />` has no children, and
+/// `>=`, `>>` and a `>` inside a string are not tags.
+pub(crate) fn opens_jsx_text(haystack: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let mut quote: Option<u8> = None;
+    let mut tag: Option<usize> = None;
+    let mut opens = false;
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if let Some(open) = quote {
+            if bytes[index] == b'\\' {
+                index += 2;
+                continue;
+            }
+            if bytes[index] == open {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        let byte = bytes[index];
+        if matches!(byte, b'"' | b'\'' | b'`') {
+            quote = Some(byte);
+            index += 1;
+            continue;
+        }
+        if byte == b'/' && starts_a_regex(bytes, index) {
+            index = regex_end(bytes, index);
+            continue;
+        }
+        if byte == b'<' {
+            tag = Some(index);
+            opens = false;
+        } else if byte == b'>' {
+            if let Some(open) = tag.take()
+                && (index == 0 || !matches!(bytes[index - 1], b'=' | b'/' | b'>'))
+                && (open == 0 || !is_word_byte(bytes[open - 1]))
+            {
+                opens = true;
+            } else {
+                opens = false;
+            }
+        } else if !byte.is_ascii_whitespace() && tag.is_none() {
+            opens = false;
+        }
+        index += 1;
+    }
+    opens
+}
+
 /// Whether the `/` at `index` opens a regular expression rather than divides.
 ///
 /// The classic ambiguity, answered the way every line-at-a-time scanner

@@ -23,7 +23,7 @@ pub(crate) use mask::mask_inline_comments;
 
 pub(crate) use search::{
     ends_word, find_all, find_words, heads_a_command, identifier_len, in_jsx_text, is_hook_name,
-    is_word_byte, next_non_space, prev_non_space, previous_word, starts_word,
+    is_word_byte, next_non_space, opens_jsx_text, prev_non_space, previous_word, starts_word,
 };
 
 /// A single physical line, plus the derived facts rules need about it.
