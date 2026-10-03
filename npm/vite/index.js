@@ -62,12 +62,14 @@ import {
 import { assetPlugin } from "./internal/assets.js";
 import { projectConfig } from "./internal/config.js";
 import { barrelImportsPlugin } from "./internal/barrel-imports.js";
+import { insertAfterDirectivePrologue, shiftSourceMap } from "./internal/directive-prologue.js";
 import { refuseServerErrorBoundaries } from "./internal/error-boundaries.js";
 import { inDevCacheScope } from "./internal/dev-cache.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import { moduleId } from "./internal/module-graph.js";
+import { styleModuleSource } from "./internal/style-module.js";
 import remarkOxContent from "./internal/markdown.js";
 import remarkGfm from "remark-gfm";
 
@@ -792,7 +794,7 @@ function flowPlugin({
           return "export const actions = [];\nexport default actions;\n";
         return actionsModuleSource(actionTables().table);
       }
-      if (id.startsWith(STYLE_PREFIX)) return styles.get(id) ?? "";
+      if (id.startsWith(STYLE_PREFIX)) return styleModuleSource(styles, id);
 
       // A `"use server"` module, in the browser's graph only: what the client
       // gets is one `createServerReference` per callable export, and never the
@@ -896,7 +898,14 @@ function flowPlugin({
       if (styled) {
         const styleId = `${STYLE_PREFIX}${moduleId(root, cleanId(id))}.css`;
         styles.set(styleId, out.css);
-        output = `import ${JSON.stringify(styleId)};\n${output}`;
+        // After the prologue. Ahead of `"use client"` the string is no longer
+        // a directive, and the RSC graph renders the client module on the server.
+        const inserted = insertAfterDirectivePrologue(
+          output,
+          `import ${JSON.stringify(styleId)};\n`,
+        );
+        output = inserted.code;
+        map = shiftSourceMap(map, inserted.line, inserted.addedLines);
       }
       // A module that compiled a stylesheet has a side effect, whatever its
       // package says. `@uniflowed/stylex` declares `sideEffects: false` and is

@@ -2,7 +2,7 @@
 
 A community application built with uf, Flow, React, and `@uniflowed/ui`. Public notes and short videos sit alongside account profiles and private conversations. The responsive interface uses neutral surfaces, real photography, translucent navigation, and fine separators, with no decorative shadows or gradients.
 
-The separate [GraphQL and Relay version](../simple-sns-graphql) demonstrates the preferred backend boundary: an independent backend service with a small Flow BFF. This older example keeps its local SQLite store to exercise existing server actions. Shared component styles now live in `app/commonplace.stylex.js`; the original desktop and mobile design is preserved.
+The separate [GraphQL and Relay version](../simple-sns-graphql) demonstrates the preferred backend boundary: an independent backend service with a small Flow BFF. This older example keeps its local SQLite store to exercise existing server actions. Component styles are colocated with the components that render them; the original desktop and mobile design is preserved.
 
 ## Run
 

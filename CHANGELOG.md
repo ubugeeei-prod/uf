@@ -2,6 +2,7 @@
 
 ## uf@0.24.0
 
+- style(examples): colocate styles with the components that use them (#1767) (ecd3ed8e)
 - fix: comparisons, JSX internal names, Object.assign prefixes, split exports, and function returns (#1765) (57ed7cec)
 
 ## uf@0.23.0

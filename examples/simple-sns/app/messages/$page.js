@@ -6,7 +6,9 @@ import { InboxRegions } from "./inbox.client.js";
 
 import type { LoaderArgs } from "@uniflowed/router";
 
-import { SocialFrame } from "../_shared/social-frame.js";
+import { props } from "@uniflowed/stylex";
+
+import { SocialFrame, styles as frameStyles } from "../_shared/social-frame.js";
 import { sessionData, threadsData, messagesData } from "../_server/social-queries.js";
 import { SignInPrompt } from "../_shared/ui.js";
 
@@ -43,10 +45,10 @@ export async function loader({ searchParams }: LoaderArgs): Promise<Data> {
 export component Page(data: Data) {
   return (
     <SocialFrame active="messages" session={data.session} aside={false}>
-      <header className="page-heading">
+      <header {...props(frameStyles.pageHeading)}>
         <div>
-          <h1>Inbox</h1>
-          <p>Your private conversations.</p>
+          <h1 {...props(frameStyles.pageTitle)}>Inbox</h1>
+          <p {...props(frameStyles.pageLede)}>Your private conversations.</p>
         </div>
       </header>
       {

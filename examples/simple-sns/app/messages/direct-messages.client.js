@@ -1,17 +1,16 @@
 "use client";
 // @flow
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
-
 import * as React from "@uniflowed/react";
 
 import { callAction } from "../_shared/action-result.client.js";
 
 import { useActionState, useOptimistic, useState, useEffect, useRef } from "@uniflowed/react";
+import { props, stylex } from "@uniflowed/stylex";
 
 import { sendMessage } from "../_server/social-actions.js";
 import { FieldError, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
-import { Avatar, Icon } from "../_shared/ui.js";
+import { Avatar, Icon, styles as uiStyles } from "../_shared/ui.js";
 import {
   IDLE,
   fieldError,
@@ -85,8 +84,8 @@ export component DirectMessagesClient(
   );
 
   return (
-    <section className="conversation" aria-label={`Conversation with ${thread.name}`}>
-      <header className="conversation-header">
+    <section {...props(uiStyles.conversation)} aria-label={`Conversation with ${thread.name}`}>
+      <header {...props(uiStyles.conversationHeader)}>
         <Avatar
           user={{
             id    : thread.id,
@@ -99,13 +98,10 @@ export component DirectMessagesClient(
           small
         />
         <div>
-          <h2>{thread.name}</h2>
-          <p>@{thread.handle}</p>
+          <h2 {...props(styles.conversationTitle)}>{thread.name}</h2>
+          <p {...props(styles.conversationMeta)}>@{thread.handle}</p>
         </div>
-        <span
-          {...styled("conversation-private", sharedStyles.conversationPrivate)}
-          title="Private conversation"
-        >
+        <span {...props(styles.conversationPrivate)} title="Private conversation">
           <Icon name="lock" size={16} />
         </span>
       </header>
@@ -114,9 +110,10 @@ export component DirectMessagesClient(
           <MessageBubble key={message.id} message={message} />
         ))}
       </MessageLog>
-      <form action={submit} className="message-composer" aria-label="Send a message">
+      <form action={submit} {...props(uiStyles.messageComposer)} aria-label="Send a message">
         <input type="hidden" name="threadId" value={thread.id} />
         <textarea
+          {...props(styles.messageTextarea)}
           name="body"
           aria-label="Message body"
           aria-describedby="body-error"
@@ -133,9 +130,15 @@ export component DirectMessagesClient(
           rows={2}
         />
         <FieldError state={state} name="body" />
-        <div className="message-composer-footer">
-          <small>Only the people in this conversation can read it.</small>
-          <SubmitButton pendingLabel="Sending…" disabled={body.trim().length === 0}>
+        <div {...props(uiStyles.messageComposerFooter)}>
+          <small {...props(styles.messageNote)}>
+            Only the people in this conversation can read it.
+          </small>
+          <SubmitButton
+            pendingLabel="Sending…"
+            disabled={body.trim().length === 0}
+            xstyle={styles.messageSubmit}
+          >
             Send
           </SubmitButton>
         </div>
@@ -152,16 +155,36 @@ export component MessageBubble(message: Message) {
 
   return (
     <article
-      className={`message-bubble ${match (message.author) {
-        "me" => "mine",
-        _    => "",
-      }} ${match (pending) {
-        true  => "optimistic",
-        false => "",
-      }}`}
+      {...props(
+        uiStyles.messageBubble,
+        match (message.author) {
+          "me" => uiStyles.messageMine,
+          _    => null,
+        },
+        pending && styles.optimistic,
+      )}
     >
-      <p>{message.body}</p>
-      <time dateTime={message.sentAt}>
+      <p
+        {...props(
+          styles.messageText,
+          match (message.author) {
+            "me" => styles.messageTextMine,
+            _    => null,
+          },
+        )}
+      >
+        {message.body}
+      </p>
+      <time
+        {...props(
+          styles.messageTime,
+          match (message.author) {
+            "me" => styles.messageTimeMine,
+            _    => null,
+          },
+        )}
+        dateTime={message.sentAt}
+      >
         {
           match (pending) {
             true  => "Sending…",
@@ -192,7 +215,7 @@ export component MessageLog(lastId: string, children: renders* MessageBubble) {
         const node = event.currentTarget;
         following.current = node.scrollHeight - node.clientHeight - node.scrollTop < 48;
       }}
-      className="message-list"
+      {...props(uiStyles.messageList)}
       role="log"
       aria-label="Messages"
       aria-live="polite"
@@ -202,3 +225,70 @@ export component MessageLog(lastId: string, children: renders* MessageBubble) {
     </div>
   );
 }
+
+const styles = stylex.create({
+  conversationTitle: {
+    fontSize  : "14px",
+    fontWeight: "600",
+  },
+  conversationMeta: {
+    fontSize : "11px",
+    color    : "var(--muted)",
+    marginTop: "4px",
+  },
+  conversationPrivate: {
+    marginLeft: "auto",
+    color     : "#989898",
+  },
+  optimistic: {
+    opacity: "0.6",
+  },
+  messageText: {
+    borderRadius : "0 10px 10px 10px",
+    fontSize     : "13px",
+    lineHeight   : "1.7",
+    whiteSpace   : "pre-wrap",
+    overflowWrap : "anywhere",
+    color        : "#4e4e4e",
+    background   : "#ebebeba6",
+    paddingTop   : "13px",
+    paddingRight : "16px",
+    paddingBottom: "13px",
+    paddingLeft  : "16px",
+  },
+  messageTextMine: {
+    borderRadius: "10px 0 10px 10px",
+    background  : "#e7e7e7a6",
+  },
+  messageTime: {
+    fontSize : "10px",
+    color    : "var(--muted)",
+    display  : "block",
+    marginTop: "7px",
+  },
+  messageTimeMine: {
+    textAlign: "right",
+  },
+  messageTextarea: {
+    width        : "100%",
+    border       : "0",
+    background   : "transparent",
+    fontSize     : { default: "13px", "@media (max-width: 760px)": "16px" },
+    lineHeight   : "1.7",
+    minHeight    : "52px",
+    maxHeight    : "180px",
+    paddingTop   : "6px",
+    paddingRight : "0",
+    paddingBottom: "6px",
+    paddingLeft  : "0",
+  },
+  messageNote: {
+    fontSize  : "10px",
+    color     : "var(--muted)",
+    lineHeight: "1.5",
+  },
+  messageSubmit: {
+    fontSize : "12px",
+    minHeight: "33px",
+  },
+});

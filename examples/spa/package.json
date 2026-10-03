@@ -8,6 +8,7 @@
     "@uniflowed/react": "0.24.0",
     "@uniflowed/router": "0.24.0",
     "@uniflowed/state": "0.24.0",
+    "@uniflowed/stylex": "0.24.0",
     "@uniflowed/vite": "0.24.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

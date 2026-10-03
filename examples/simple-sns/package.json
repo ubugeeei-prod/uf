@@ -11,6 +11,7 @@
     "@uniflowed/vite": "0.24.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-server-dom-parcel": "19.3.0",
     "@uniflowed/server": "0.24.0",
     "@uniflowed/sql": "0.24.0",
     "@uniflowed/effect": "0.24.0",

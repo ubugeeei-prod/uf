@@ -5,8 +5,9 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useMutation } from "@uniflowed/relay";
+import { props } from "@uniflowed/stylex";
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
+import { styles as uiStyles } from "../_shared/ui.js";
 
 import type { SnsRegisterMutation } from "./__generated__/SnsRegisterMutation.graphql.js";
 import type { SnsLoginMutation } from "./__generated__/SnsLoginMutation.graphql.js";
@@ -43,7 +44,6 @@ export component AccountForm(register: boolean) {
 
   return (
     <form
-      className="auth-form"
       onSubmit={(event) => {
         event.preventDefault();
         setError("");
@@ -72,30 +72,49 @@ export component AccountForm(register: boolean) {
       {
         match (register) {
           true  =>
-            <label className="field">
-              <span>Display name</span>
-              <input name="name" autoComplete="name" required maxLength={80} />
+            <label {...props(uiStyles.field)}>
+              <span {...props(uiStyles.fieldLabel)}>Display name</span>
+              <input
+                {...props(uiStyles.fieldControl)}
+                name="name"
+                autoComplete="name"
+                required
+                maxLength={80}
+              />
             </label>,
           false => null,
         }
       }
-      <label className="field">
-        <span>Handle</span>
-        <input name="handle" autoComplete="username" required pattern="[a-z][a-z0-9_]{2,23}" />
+      <label {...props(uiStyles.field)}>
+        <span {...props(uiStyles.fieldLabel)}>Handle</span>
+        <input
+          {...props(uiStyles.fieldControl)}
+          name="handle"
+          autoComplete="username"
+          required
+          pattern="[a-z][a-z0-9_]{2,23}"
+        />
       </label>
       {
         match (register) {
           true  =>
-            <label className="field">
-              <span>Email</span>
-              <input type="email" name="email" autoComplete="email" required />
+            <label {...props(uiStyles.field)}>
+              <span {...props(uiStyles.fieldLabel)}>Email</span>
+              <input
+                {...props(uiStyles.fieldControl)}
+                type="email"
+                name="email"
+                autoComplete="email"
+                required
+              />
             </label>,
           false => null,
         }
       }
-      <label className="field">
-        <span>Password</span>
+      <label {...props(uiStyles.field)}>
+        <span {...props(uiStyles.fieldLabel)}>Password</span>
         <input
+          {...props(uiStyles.fieldControl)}
           type="password"
           name="password"
           autoComplete={
@@ -118,12 +137,12 @@ export component AccountForm(register: boolean) {
         match (error) {
           ""            => null,
           const message =>
-            <p role="alert" {...styled("post-error", sharedStyles.postError)}>
+            <p role="alert" {...props(uiStyles.postError)}>
               {message}
             </p>,
         }
       }
-      <button type="submit" className="button primary" disabled={pending}>
+      <button type="submit" {...props(uiStyles.button, uiStyles.primary)} disabled={pending}>
         {
           match (pending) {
             true  => "Please wait…",
@@ -135,7 +154,7 @@ export component AccountForm(register: boolean) {
           }
         }
       </button>
-      <p className="auth-switch">
+      <p>
         <Link
           to={
             match (register) {
