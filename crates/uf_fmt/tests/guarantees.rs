@@ -353,6 +353,40 @@ fn a_lone_parameter_before_an_interface_typeof_or_template_object_is_one_fixed_p
 }
 
 #[test]
+fn a_lone_parameter_before_a_function_hook_or_constructor_type_is_one_fixed_point() {
+    let mut config = FmtConfig::default();
+    config.line_width = 40;
+    for source in [
+        concat!(
+            "// @flow\n",
+            "function f(x: X): hook (shared: boolean, variable: ?string) => void {\n",
+            "  return x;\n",
+            "}\n",
+        ),
+        concat!(
+            "// @flow\n",
+            "function f(x: X): new (shared: boolean, variable: ?string) => void {\n",
+            "  return x;\n",
+            "}\n",
+        ),
+        concat!(
+            "// @flow\n",
+            "function f(x: X): (shared: boolean, variable: ?string) => void {\n",
+            "  return x;\n",
+            "}\n",
+        ),
+    ] {
+        let once = format_source(source, &config).expect("formats").output;
+        let twice = format_source(&once, &config).expect("reformats").output;
+        similar_asserts::assert_eq!(once, twice, "{source}");
+        assert!(
+            once.contains("function f(x: X):"),
+            "the lone parameter stays on its line:\n{once}"
+        );
+    }
+}
+
+#[test]
 fn a_lone_parameter_before_a_component_type_is_one_fixed_point() {
     let mut config = FmtConfig::default();
     config.line_width = 40;

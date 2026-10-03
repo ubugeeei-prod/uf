@@ -81,8 +81,9 @@ fn same_type(a: &Type, b: &Type) -> bool {
 /// anything about it: a generic's arguments, a union or intersection, a
 /// tuple's elements, `keyof` and indexed access, a conditional, `renders`,
 /// an `interface` type, the type arguments of `typeof`, the types inside a
-/// template literal, a component type, and the wrappers. It stops at a
-/// function type, whose own parameters and return are a separate decision.
+/// template literal, a component type, a function type, a constructor type,
+/// and the wrappers. It stops inside a function type, whose own return is a
+/// separate decision.
 pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
     match &**ty {
         types::TypeInner::Object { .. } => true,
@@ -139,6 +140,11 @@ pub(super) fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
         // A component type prints its parameters the way an object type
         // prints its fields, so a lone parameter stays with the name.
         types::TypeInner::Component { .. } => true,
+        // A function or constructor type prints its parameters between soft
+        // lines, the way a component type does. A hook type is a function
+        // type. The walk stops here rather than entering that function's
+        // own return.
+        types::TypeInner::Function { .. } | types::TypeInner::ConstructorType { .. } => true,
         _ => false,
     }
 }
