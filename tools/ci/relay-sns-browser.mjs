@@ -249,7 +249,7 @@ export async function checkBrowser(origin, label, output) {
     await fill("input[name=handle]", `smoke_${label}`);
     await fill("input[name=email]", `${label}@example.test`);
     await fill("input[name=password]", "local-smoke-passphrase");
-    await click(".auth-form button");
+    await click('form:has(input[name="password"]) button[type="submit"]');
     await waitFor("document.querySelector('#compose textarea') != null");
     await settle();
     const note = `Relay ${label} note`;
@@ -272,7 +272,7 @@ export async function checkBrowser(origin, label, output) {
     await click('nav[aria-label="Primary navigation"] a[href="/messages"]');
     await waitFor("document.querySelector('textarea[aria-label=Message]') != null");
     await fill('textarea[aria-label="Message"]', `private ${label} message`);
-    await click(".message-composer button");
+    await click('form:has(textarea[aria-label="Message"]) button[type="submit"]');
     await waitFor(
       `document.querySelector('[role=log]')?.textContent.includes('private ${label} message')`,
     );
