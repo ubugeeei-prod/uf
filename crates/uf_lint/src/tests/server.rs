@@ -25,6 +25,27 @@ fn client_modules_may_not_import_dot_server_modules() {
 }
 
 #[test]
+fn a_mention_of_a_server_module_is_not_an_import() {
+    for source in [
+        "// @flow\n'use client';\nconst note = \"do not import @uniflowed/server from a client\";\n",
+        "// @flow\n'use client';\nconst file = \"do not import ./data.server.js\";\n",
+    ] {
+        let diagnostics = lint_js("server/no-server-only-import-in-client", source);
+        assert!(diagnostics.is_empty(), "{source} -> {diagnostics:?}");
+    }
+}
+
+#[test]
+fn a_client_module_may_not_require_a_server_module() {
+    let diagnostics = lint_js(
+        "server/no-server-only-import-in-client",
+        "// @flow\n'use client';\nconst db = require('@uniflowed/server');\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
+
+#[test]
 fn server_modules_may_import_server_only_modules() {
     let diagnostics = lint_js(
         "server/no-server-only-import-in-client",
@@ -66,6 +87,16 @@ fn a_leading_boundary_directive_is_accepted() {
 }
 
 #[test]
+fn a_directive_inside_a_template_is_not_a_statement() {
+    let diagnostics = lint_js(
+        "server/use-client-directive-position",
+        "// @flow\nconst sample = `\n\"use client\";\n`;\nexport const value = 1;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn an_inline_use_server_directive_is_not_a_module_directive() {
     let diagnostics = lint_js(
         "server/use-client-directive-position",
@@ -98,6 +129,17 @@ fn server_rule_rejects_a_secret_segment_and_import_meta() {
         let diagnostics = lint_one("server/no-client-secret", "src/app/page.jsx", source);
         assert!(fired(&diagnostics, "server/no-client-secret"), "{source}");
     }
+}
+
+#[test]
+fn a_mention_of_the_directive_does_not_make_a_client_module() {
+    let diagnostics = lint_one(
+        "server/no-client-secret",
+        "src/app/page.jsx",
+        "// @flow\nconst note = \"add \\\"use client\\\" at the top\";\nconst token = process.env.PRIVATE_TOKEN;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
 }
 
 #[test]

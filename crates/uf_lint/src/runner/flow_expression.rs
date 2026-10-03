@@ -33,6 +33,11 @@ pub(crate) fn run_flow_unsafe_getters_setters(
         if len == 0 || !matches!(&code[at..at + len], "get" | "set") {
             continue;
         }
+        // A template line that reads `get value()` is source this module
+        // quotes, not an accessor.
+        if line.in_string(at) {
+            continue;
+        }
         let Some((name_at, _)) = next_non_space(code, at + len) else {
             continue;
         };

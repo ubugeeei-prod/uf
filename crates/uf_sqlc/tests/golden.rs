@@ -178,6 +178,43 @@ fn generated(case: &str, options: &str) -> String {
 }
 
 #[test]
+fn a_model_named_queryable_keeps_one_binding() {
+    let query = generated("authors-sqlite", r#"{"rename":{"authors":"Queryable"}}"#);
+    assert!(
+        query.contains("import type { Queryable } from \"./models.js\";"),
+        "{query}"
+    );
+    assert!(query.contains("Queryable as QueryableRuntime"), "{query}");
+    assert!(query.contains("db: QueryableRuntime"), "{query}");
+    assert!(
+        !query.contains("import type { Queryable } from \"@uniflowed/sql\";")
+            && !query.contains("import type { ExecResult, Queryable }"),
+        "{query}"
+    );
+    let bare = query.matches("import type { Queryable }").count();
+    assert_eq!(bare, 1, "{query}");
+
+    let sync = generated(
+        "authors-sqlite",
+        r#"{"sync":true,"rename":{"authors":"SyncQueryable"}}"#,
+    );
+    assert!(
+        sync.contains("import type { SyncQueryable } from \"./models.js\";"),
+        "{sync}"
+    );
+    assert!(
+        sync.contains("SyncQueryable as SyncQueryableRuntime"),
+        "{sync}"
+    );
+    assert!(sync.contains("db: SyncQueryableRuntime"), "{sync}");
+    assert_eq!(
+        sync.matches("import type { SyncQueryable }").count(),
+        1,
+        "{sync}"
+    );
+}
+
+#[test]
 fn sync_option_emits_synchronous_functions() {
     let query = generated("authors-sqlite", r#"{"sync":true}"#);
     assert!(query.contains("SyncQueryable"), "{query}");

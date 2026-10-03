@@ -15,6 +15,18 @@ fn unsafe_getters_setters_rejects_accessors() {
 }
 
 #[test]
+fn unsafe_getters_setters_ignores_an_accessor_inside_a_string() {
+    let diagnostics = lint_js(
+        "flow/unsafe-getters-setters",
+        "// @flow\nconst source = `\nget value() { return 1; }\n`;\nclass Box {\n  get value(): number { return 1; }\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 6);
+    assert_eq!(diagnostics[0].column, 3);
+}
+
+#[test]
 fn unsafe_getters_setters_accepts_plain_methods() {
     let diagnostics = lint_js(
         "flow/unsafe-getters-setters",

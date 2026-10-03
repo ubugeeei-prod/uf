@@ -103,7 +103,10 @@ impl<'a> Line<'a> {
 pub(crate) struct FileFacts {
     /// The file uses Flow `component` declaration syntax.
     pub declares_component: bool,
-    /// The file carries a `use client` directive somewhere.
+    /// The file has a `"use client"` directive statement.
+    ///
+    /// A mention of the words inside another string is not a directive, so it
+    /// does not make the file a client module.
     pub has_use_client: bool,
     /// The file mentions React at all.
     pub mentions_react: bool,
@@ -177,17 +180,29 @@ impl<'a> FileScan<'a> {
         // string by construction, and a name is only a mention where it could
         // be read.
         //
-        // A `component ` inside a string is not a declaration either, so that
-        // one asks `in_string` as well. The other three do not: a package name
-        // in an import specifier is exactly how `react-native` and `React`
-        // reach a file, and both of those are strings.
+        // A `component ` inside a string is not a declaration, and a
+        // `"use client"` inside a string is not a directive, so those two ask
+        // `in_string` as well. The other two do not: a package name in an
+        // import specifier is exactly how `react-native` and `React` reach a
+        // file, and both of those are strings.
         facts.declares_component = lines.iter().any(|line| {
             let code = line.code();
             code.match_indices("component ")
                 .any(|(at, _)| !line.in_string(at))
         });
+        // A directive is a statement. The opening quote of `"use client"` is
+        // not inside a string; the same characters inside a template, or in
+        // the middle of another string, are text.
         facts.has_use_client = lines.iter().any(|line| {
-            line.code().contains("\"use client\"") || line.code().contains("'use client'")
+            let code = line.code();
+            let Some((at, _)) = next_non_space(code, 0) else {
+                return false;
+            };
+            if line.in_string(at) {
+                return false;
+            }
+            let rest = &code[at..];
+            rest.starts_with("\"use client\"") || rest.starts_with("'use client'")
         });
         facts.mentions_react = lines.iter().any(|line| line.code().contains("React"));
         facts.mentions_react_native = lines
