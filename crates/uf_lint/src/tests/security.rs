@@ -36,6 +36,17 @@ fn dangerously_set_inner_html_allows_the_value_on_the_next_line() {
 }
 
 #[test]
+fn naming_the_sink_in_jsx_text_is_not_reaching_for_it() {
+    let diagnostics = lint_js(
+        "security/no-dangerously-set-inner-html",
+        "// @flow\nconst view = <p>dangerouslySetInnerHTML</p>;\ncomponent Body(html: string) {\n  return <div dangerouslySetInnerHTML={{ __html: html }} />;\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 4);
+}
+
+#[test]
 fn naming_the_sink_in_a_string_is_not_reaching_for_it() {
     // Every page that documents the rule, and the rule's own message, contain
     // the word.

@@ -36,7 +36,9 @@ pub(crate) fn run_security_no_dangerously_set_inner_html(
         for at in find_words(code, "dangerouslySetInnerHTML") {
             // Naming the sink is not reaching for it. The rule's own message
             // names it, and so does every page that documents it.
-            if line.in_string(at) {
+            if line.in_string(at)
+                || word_in_jsx_text(scan, position, at, "dangerouslySetInnerHTML".len())
+            {
                 continue;
             }
             // The `__html` value may wrap onto the next line, so both are checked.
