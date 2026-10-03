@@ -59,6 +59,16 @@ fn mixed_import_and_require_rejects_a_require_beside_a_reexport() {
 }
 
 #[test]
+fn mixed_import_and_require_ignores_jsx_text() {
+    let diagnostics = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nconst view = <p>from \"package\"</p>;\nconst b = require(\"./b.js\");\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn mixed_import_and_require_ignores_a_require_inside_a_string() {
     // `uf.config.js` in this repository: a `node -e "…"` task whose command
     // happens to contain `require(...)`. Twice on one line, and neither of

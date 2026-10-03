@@ -258,6 +258,30 @@ fn a_model_named_like_a_runtime_type_keeps_one_binding() {
         "{json_models}"
     );
 
+    let enum_files = generated_files("types-postgresql", r#"{"rename":{"mood":"JsonValue"}}"#);
+    let enum_models = file(&enum_files, "models.js");
+    let enum_query = file(&enum_files, "query.sql.js");
+    assert!(
+        enum_models.contains("readonly feeling: JsonValue,"),
+        "{enum_models}"
+    );
+    assert!(
+        enum_models.contains("readonly data: JsonValueRuntime,"),
+        "{enum_models}"
+    );
+    assert!(
+        !enum_models.contains("feeling: JsonValueRuntime"),
+        "{enum_models}"
+    );
+    assert!(
+        enum_query.contains("readonly feeling: JsonValue,"),
+        "{enum_query}"
+    );
+    assert!(
+        !enum_query.contains("feeling: JsonValueRuntime"),
+        "{enum_query}"
+    );
+
     let copy = generated("types-postgresql", r#"{"rename":{"pets":"CopyPlan"}}"#);
     assert_one_runtime_alias(&copy, "CopyPlan");
     assert!(copy.contains(": CopyPlanRuntime ="), "{copy}");
