@@ -1,5 +1,10 @@
 # Changelog
 
+## uf@0.23.0
+
+- fix: jsx text is not an export, and an enum named JsonValue stays a model type (#1758) (3e7b8bbe)
+- fix: template imports, export from, serverAction mentions, component returns, and runtime type names (#1757) (a8fa3ee0)
+
 ## uf@0.22.0
 
 - fix: string directives, server-only mentions, template directives, string accessors, and Queryable imports (#1750) (5950b455)
