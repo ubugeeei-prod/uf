@@ -62,10 +62,7 @@ import {
 import { assetPlugin } from "./internal/assets.js";
 import { projectConfig } from "./internal/config.js";
 import { barrelImportsPlugin } from "./internal/barrel-imports.js";
-import {
-  insertAfterDirectivePrologue,
-  shiftSourceMap,
-} from "./internal/directive-prologue.js";
+import { insertAfterDirectivePrologue, shiftSourceMap } from "./internal/directive-prologue.js";
 import { refuseServerErrorBoundaries } from "./internal/error-boundaries.js";
 import { inDevCacheScope } from "./internal/dev-cache.js";
 import { emit, reportRenderError, errorEvent } from "./internal/events.js";

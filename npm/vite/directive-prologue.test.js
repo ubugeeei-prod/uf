@@ -6,10 +6,7 @@
 import { describe, expect, it } from "@uniflowed/test";
 import { parseAst } from "vite";
 
-import {
-  insertAfterDirectivePrologue,
-  shiftSourceMap,
-} from "./internal/directive-prologue.js";
+import { insertAfterDirectivePrologue, shiftSourceMap } from "./internal/directive-prologue.js";
 import { styleModuleSource } from "./internal/style-module.js";
 import { opensWithUseClient } from "./internal/flight.js";
 
@@ -27,14 +24,18 @@ describe("a stylesheet import after the directive prologue", () => {
   });
 
   it("keeps use strict ahead of use client", () => {
-    const code = inserted('"use strict";\n"use client";\nexport function Note() { return null; }\n');
+    const code = inserted(
+      '"use strict";\n"use client";\nexport function Note() { return null; }\n',
+    );
     expect(opensWithUseClient(parseAst(code))).toBe(true);
     expect(code.indexOf('"use strict"')).toBeLessThan(code.indexOf('"use client"'));
     expect(code.indexOf('"use client"')).toBeLessThan(code.indexOf("import "));
   });
 
   it("follows a hashbang, a flow header, and a server directive", () => {
-    const code = inserted('#!/usr/bin/env node\n// @flow\n"use server";\nexport function save() {}\n');
+    const code = inserted(
+      '#!/usr/bin/env node\n// @flow\n"use server";\nexport function save() {}\n',
+    );
     expect(code.startsWith("#!/usr/bin/env node\n")).toBe(true);
     expect(code.indexOf('"use server"')).toBeLessThan(code.indexOf("import "));
     expect(code.indexOf("import ")).toBeLessThan(code.indexOf("export function save"));
