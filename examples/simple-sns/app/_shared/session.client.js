@@ -42,12 +42,7 @@ export component SignOut() {
 
   return (
     <form action={submit}>
-      <button
-        type="submit"
-        {...props(styles.iconButton)}
-        aria-label="Sign out"
-        disabled={pending}
-      >
+      <button type="submit" {...props(styles.iconButton)} aria-label="Sign out" disabled={pending}>
         <Icon name="logout" size={18} />
       </button>
       {
@@ -76,7 +71,7 @@ const styles = stylex.create({
     paddingRight  : "8px",
     paddingBottom : "8px",
     paddingLeft   : "8px",
-    ":hover"      : {
+    ":hover": {
       background: "#efefef",
       color     : "var(--ink)",
     },

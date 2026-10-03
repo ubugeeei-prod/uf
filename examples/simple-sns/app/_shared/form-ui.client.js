@@ -18,7 +18,7 @@ export component SubmitButton(
   children    : string,
   pendingLabel: string = "Saving…",
   disabled    : boolean = false,
-  xstyle?: StyleArgument,
+  xstyle?     : StyleArgument,
 ) {
   const { pending } = useFormStatus();
 
@@ -84,12 +84,12 @@ export component FormField(
     <Field.Root {...props(styles.field)} invalid={error != null}>
       <Field.Label {...props(styles.fieldLabel)}>{label}</Field.Label>
       {children}
-      {hint == null ? null : <Field.Description {...props(styles.fieldCopy)}>{hint}</Field.Description>}
-      {
-        error == null
-          ? null
-          : <Field.Error {...props(styles.fieldCopy, styles.fieldAlert)}>{error}</Field.Error>
-      }
+      {hint == null ? null : (
+        <Field.Description {...props(styles.fieldCopy)}>{hint}</Field.Description>
+      )}
+      {error == null ? null : (
+        <Field.Error {...props(styles.fieldCopy, styles.fieldAlert)}>{error}</Field.Error>
+      )}
     </Field.Root>
   );
 }

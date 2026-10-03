@@ -7,36 +7,38 @@ import { stylex } from "@uniflowed/stylex";
  * can read the compiled class names. `form-ui.client.js` re-exports them.
  */
 
+// Flow cannot serialize this generic factory call into the module signature.
+// $FlowFixMe[signature-verification-failure]
 export const styles = stylex.create({
   button: {
-    display        : "inline-flex",
-    alignItems     : "center",
-    justifyContent : "center",
-    gap            : "10px",
-    border         : "1px solid #e3e3e3",
-    borderRadius   : "6px",
-    fontSize       : "12px",
-    fontWeight     : "550",
-    minHeight      : "38px",
-    background     : "#fff",
-    whiteSpace     : "nowrap",
-    paddingTop     : "9px",
-    paddingRight   : "15px",
-    paddingBottom  : "9px",
-    paddingLeft    : "15px",
+    display       : "inline-flex",
+    alignItems    : "center",
+    justifyContent: "center",
+    gap           : "10px",
+    border        : "1px solid #e3e3e3",
+    borderRadius  : "6px",
+    fontSize      : "12px",
+    fontWeight    : "550",
+    minHeight     : "38px",
+    background    : "#fff",
+    whiteSpace    : "nowrap",
+    paddingTop    : "9px",
+    paddingRight  : "15px",
+    paddingBottom : "9px",
+    paddingLeft   : "15px",
   },
   primary: {
-    background  : "var(--accent)",
-    borderColor : "var(--accent)",
-    color       : "#fff",
-    ":hover"    : {
+    background : "var(--accent)",
+    borderColor: "var(--accent)",
+    color      : "#fff",
+    ":hover": {
       background : "#131313",
       borderColor: "#131313",
     },
   },
   secondary: {
     background: "#fff",
-    ":hover"  : {
+    ":hover": {
       background: "var(--subtle)",
     },
   },
@@ -47,11 +49,11 @@ export const styles = stylex.create({
     textUnderlineOffset: "3px",
   },
   field: {
-    display      : "grid",
-    gap          : "8px",
-    fontSize     : "12px",
-    color        : "#5f5f5f",
-    marginBottom : "19px",
+    display     : "grid",
+    gap         : "8px",
+    fontSize    : "12px",
+    color       : "#5f5f5f",
+    marginBottom: "19px",
   },
   fieldLabel: {
     fontWeight: "550",
@@ -105,7 +107,7 @@ export const styles = stylex.create({
     display   : "block",
     fontSize  : "11px",
     lineHeight: "1.6",
-    ":empty"  : {
+    ":empty": {
       display: "none",
     },
   },

@@ -63,11 +63,11 @@ export component Page(searchParams: SearchParams) {
 
 const styles = stylex.create({
   conversationLayout: {
-    display            : "grid",
+    display: "grid",
     gridTemplateColumns: {
-      default: "250px minmax(0, 1fr)",
+      default                                            : "250px minmax(0, 1fr)",
       "@media (max-width: 1000px) and (min-width: 761px)": "190px minmax(0, 1fr)",
-      "@media (max-width: 760px)": "1fr",
+      "@media (max-width: 760px)"                        : "1fr",
     },
     overflow    : "hidden",
     minHeight   : { default: "580px", "@media (max-width: 760px)": "0" },

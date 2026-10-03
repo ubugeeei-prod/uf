@@ -63,7 +63,10 @@ export component Timeline(
         {
           match (filter.page > 1) {
             true  =>
-              <Link {...props(styles.paginationLink)} to={feedHref(filter.topic, filter.query, filter.page - 1)}>
+              <Link
+                {...props(styles.paginationLink)}
+                to={feedHref(filter.topic, filter.query, filter.page - 1)}
+              >
                 Newer notes
               </Link>,
             false => <span>Latest notes</span>,
@@ -72,7 +75,10 @@ export component Timeline(
         {
           match (data.feed.hasNext) {
             true  =>
-              <Link {...props(styles.paginationLink)} to={feedHref(filter.topic, filter.query, filter.page + 1)}>
+              <Link
+                {...props(styles.paginationLink)}
+                to={feedHref(filter.topic, filter.query, filter.page + 1)}
+              >
                 Older notes <Icon name="arrow" size={14} />
               </Link>,
             false => null,

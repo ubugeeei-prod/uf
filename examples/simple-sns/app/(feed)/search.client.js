@@ -107,7 +107,7 @@ const styles = stylex.create({
     paddingBottom: "8px",
     paddingLeft  : "8px",
     minHeight    : { "@media (max-width: 760px)": "44px" },
-    ":hover"     : {
+    ":hover": {
       color: "var(--ink)",
     },
   },

@@ -131,7 +131,9 @@ export component DirectMessagesClient(
         />
         <FieldError state={state} name="body" />
         <div {...props(uiStyles.messageComposerFooter)}>
-          <small {...props(styles.messageNote)}>Only the people in this conversation can read it.</small>
+          <small {...props(styles.messageNote)}>
+            Only the people in this conversation can read it.
+          </small>
           <SubmitButton
             pendingLabel="Sending…"
             disabled={body.trim().length === 0}

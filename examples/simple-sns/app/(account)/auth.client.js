@@ -8,7 +8,12 @@ import { props, stylex } from "@uniflowed/stylex";
 import { Field } from "@uniflowed/ui";
 
 import { callAction } from "../_shared/action-result.client.js";
-import { FormField, FormStatus, SubmitButton, styles as controlStyles } from "../_shared/form-ui.client.js";
+import {
+  FormField,
+  FormStatus,
+  SubmitButton,
+  styles as controlStyles,
+} from "../_shared/form-ui.client.js";
 import { IDLE, failed, succeeded, fieldError, type FormState } from "../_shared/social-model.js";
 
 /**
@@ -70,7 +75,7 @@ export component AuthClient(mode: "login" | "signup") {
                   render={(control) => (
                     <input
                       {...control}
-                      {...props(controlStyles.fieldControl)}
+                      className={props(controlStyles.fieldControl).className}
                       name="name"
                       value={draft.name}
                       onChange={(event) => setDraft({ ...draft, name: event.target.value })}
@@ -87,7 +92,7 @@ export component AuthClient(mode: "login" | "signup") {
                   render={(control) => (
                     <input
                       {...control}
-                      {...props(controlStyles.fieldControl)}
+                      className={props(controlStyles.fieldControl).className}
                       name="email"
                       value={draft.email}
                       onChange={(event) => setDraft({ ...draft, email: event.target.value })}
@@ -108,7 +113,7 @@ export component AuthClient(mode: "login" | "signup") {
           render={(control) => (
             <input
               {...control}
-              {...props(controlStyles.fieldControl)}
+              className={props(controlStyles.fieldControl).className}
               name="handle"
               value={draft.handle}
               onChange={(event) => setDraft({ ...draft, handle: event.target.value })}
@@ -134,7 +139,7 @@ export component AuthClient(mode: "login" | "signup") {
           render={(control) => (
             <input
               {...control}
-              {...props(controlStyles.fieldControl)}
+              className={props(controlStyles.fieldControl).className}
               name="password"
               value={draft.password}
               onChange={(event) => setDraft({ ...draft, password: event.target.value })}
@@ -175,11 +180,17 @@ export component AuthClient(mode: "login" | "signup") {
           match (mode) {
             "signup" =>
               <>
-                Already have an account? <Link {...props(styles.authLink)} to="/login">Sign in</Link>
+                Already have an account?{" "}
+                <Link {...props(styles.authLink)} to="/login">
+                  Sign in
+                </Link>
               </>,
             "login"  =>
               <>
-                No account yet? <Link {...props(styles.authLink)} to="/signup">Create an account</Link>
+                No account yet?{" "}
+                <Link {...props(styles.authLink)} to="/signup">
+                  Create an account
+                </Link>
               </>,
           }
         }

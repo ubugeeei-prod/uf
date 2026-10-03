@@ -83,7 +83,12 @@ export component SettingsForm(
       </label>
       <label {...props(uiStyles.field)}>
         <span {...props(uiStyles.fieldLabel)}>Bio</span>
-        <textarea {...props(uiStyles.fieldControl)} name="bio" defaultValue={settings.bio} maxLength={240} />
+        <textarea
+          {...props(uiStyles.fieldControl)}
+          name="bio"
+          defaultValue={settings.bio}
+          maxLength={240}
+        />
       </label>
       <label {...props(uiStyles.field)}>
         <span {...props(uiStyles.fieldLabel)}>Email</span>

@@ -58,7 +58,9 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
         <header {...props(uiStyles.postHeader)}>
           <strong {...props(styles.postName)}>{post.author.name}</strong>
           <span {...props(styles.postHandle)}>@{post.author.handle}</span>
-          <time {...props(styles.postTime)} dateTime={post.createdAt}>{displayDate(post.createdAt)}</time>
+          <time {...props(styles.postTime)} dateTime={post.createdAt}>
+            {displayDate(post.createdAt)}
+          </time>
         </header>
         <p {...props(uiStyles.postBody)}>{post.body}</p>
         <footer {...props(uiStyles.postFooter)}>
@@ -93,7 +95,11 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
                     });
                   }}
                 >
-                  <Icon name="heart" size={16} {...props(post.liked === true && styles.reactionIcon)} />
+                  <Icon
+                    name="heart"
+                    size={16}
+                    {...props(post.liked === true && styles.reactionIcon)}
+                  />
                   <span>{post.likes}</span>
                 </button>,
               false =>
@@ -167,7 +173,7 @@ const styles = stylex.create({
     paddingRight : "7px",
     paddingBottom: "7px",
     paddingLeft  : "7px",
-    ":hover"     : {
+    ":hover": {
       color: "#252525",
     },
     ":is([aria-pressed=true])": {

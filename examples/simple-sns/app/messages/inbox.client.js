@@ -7,7 +7,13 @@ import { props, stylex } from "@uniflowed/stylex";
 
 import { AsyncRegion, useRetryableResource } from "../_shared/async-region.client.js";
 import { threadsData, messagesData } from "../_server/social-queries.js";
-import { Avatar, EmptyState, LoadingState, SignInPrompt, styles as uiStyles } from "../_shared/ui.js";
+import {
+  Avatar,
+  EmptyState,
+  LoadingState,
+  SignInPrompt,
+  styles as uiStyles,
+} from "../_shared/ui.js";
 import { DirectMessagesClient } from "./direct-messages.client.js";
 
 import type { InboxData, ConversationData, MessageThread } from "../_shared/social-model.js";
@@ -125,16 +131,20 @@ export component InboxRegions(
 
 const styles = stylex.create({
   conversationLayout: {
-    display            : "grid",
-    gridTemplateColumns: { default: "250px minmax(0, 1fr)", "@media (max-width: 1000px) and (min-width: 761px)": "190px minmax(0, 1fr)", "@media (max-width: 760px)": "1fr" },
-    overflow           : "hidden",
-    minHeight          : { default: "580px", "@media (max-width: 760px)": "0" },
-    background         : "#ffffff61",
-    border             : "0",
-    borderTop          : "1px solid var(--line)",
-    borderBottom       : "1px solid var(--line)",
-    borderRadius       : "0",
-    borderColor        : "#e0e0e0",
+    display: "grid",
+    gridTemplateColumns: {
+      default                                            : "250px minmax(0, 1fr)",
+      "@media (max-width: 1000px) and (min-width: 761px)": "190px minmax(0, 1fr)",
+      "@media (max-width: 760px)"                        : "1fr",
+    },
+    overflow    : "hidden",
+    minHeight   : { default: "580px", "@media (max-width: 760px)": "0" },
+    background  : "#ffffff61",
+    border      : "0",
+    borderTop   : "1px solid var(--line)",
+    borderBottom: "1px solid var(--line)",
+    borderRadius: "0",
+    borderColor : "#e0e0e0",
   },
   threadText: {
     minWidth: "0",
@@ -145,13 +155,13 @@ const styles = stylex.create({
     display   : "block",
   },
   threadPreview: {
-    fontSize        : "12px",
-    color           : "var(--muted)",
-    lineHeight      : "1.6",
-    display         : "-webkit-box",
-    WebkitLineClamp : { default: "2", "@media (max-width: 760px)": "1" },
-    WebkitBoxOrient : "vertical",
-    overflow        : "hidden",
-    marginTop       : "6px",
+    fontSize       : "12px",
+    color          : "var(--muted)",
+    lineHeight     : "1.6",
+    display        : "-webkit-box",
+    WebkitLineClamp: { default: "2", "@media (max-width: 760px)": "1" },
+    WebkitBoxOrient: "vertical",
+    overflow       : "hidden",
+    marginTop      : "6px",
   },
 });

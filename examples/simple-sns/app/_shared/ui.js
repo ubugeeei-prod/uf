@@ -11,7 +11,12 @@ import { avatarPhoto, type User } from "./social-model.js";
  * Render decorative line icons on a shared grid; the owning control supplies its accessible name.
  */
 
-export component Icon(name: string, size: number = 20, className?: string) {
+export component Icon(
+  name      : string,
+  size      : number = 20,
+  className?: string,
+  style?    : { readonly [string]: string | number },
+) {
   const paths: { [string]: string } = {
     video: "M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 5 5 4-5 4Z",
     play: "m8 4 12 8-12 8Z",
@@ -42,6 +47,7 @@ export component Icon(name: string, size: number = 20, className?: string) {
   return (
     <svg
       className={className}
+      style={style}
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -87,9 +93,7 @@ export component Avatar(user: User, small: boolean = false) renders UiAvatar.Roo
             />,
         }
       }
-      <UiAvatar.Fallback {...props(styles.avatarFallback)}>
-        {user.avatar}
-      </UiAvatar.Fallback>
+      <UiAvatar.Fallback {...props(styles.avatarFallback)}>{user.avatar}</UiAvatar.Fallback>
     </UiAvatar.Root>
   );
 }
@@ -121,10 +125,10 @@ export component EmptyState(
 /** Render navigation with the shared primary or text-link treatment. */
 
 export component ActionLink(
-  to: string,
-  children: string,
-  primary: boolean = true,
-  xstyle?: StyleArgument,
+  to        : string,
+  children  : string,
+  primary   : boolean = true,
+  xstyle?   : StyleArgument,
   iconStyle?: StyleArgument,
 ) renders Link {
   return match (primary) {
@@ -145,11 +149,7 @@ export component ActionLink(
 
 export component RetryButton(onRetry: () => void) {
   return (
-    <button
-      type="button"
-      {...props(controlStyles.button, controlStyles.primary)}
-      onClick={onRetry}
-    >
+    <button type="button" {...props(controlStyles.button, controlStyles.primary)} onClick={onRetry}>
       Try again
     </button>
   );
@@ -308,6 +308,8 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
   );
 }
 
+// Flow cannot serialize this generic factory call into the module signature.
+// $FlowFixMe[signature-verification-failure]
 export const styles = stylex.create({
   avatar: {
     position       : "relative",
@@ -360,17 +362,17 @@ export const styles = stylex.create({
     placeItems  : "center",
   },
   emptyState: {
-    textAlign     : "center",
-    display       : "grid",
-    justifyItems  : "center",
-    gap           : "14px",
-    borderRadius  : "8px",
-    background    : "transparent",
-    border        : "0",
-    paddingTop    : "48px",
-    paddingRight  : "22px",
-    paddingBottom : "48px",
-    paddingLeft   : "22px",
+    textAlign    : "center",
+    display      : "grid",
+    justifyItems : "center",
+    gap          : "14px",
+    borderRadius : "8px",
+    background   : "transparent",
+    border       : "0",
+    paddingTop   : "48px",
+    paddingRight : "22px",
+    paddingBottom: "48px",
+    paddingLeft  : "22px",
   },
   emptyTitle: {
     fontSize  : "18px",
@@ -455,7 +457,7 @@ export const styles = stylex.create({
     paddingLeft  : "10px",
     minWidth     : { "@media (max-width: 760px)": "205px" },
     maxWidth     : { "@media (max-width: 760px)": "245px" },
-    ":hover"     : {
+    ":hover": {
       background: "#f3f3f3",
     },
     ":is([aria-current=page])": {
@@ -505,21 +507,21 @@ export const styles = stylex.create({
     paddingLeft  : { default: "21px", "@media (max-width: 760px)": "17px" },
   },
   messageComposerFooter: {
-    display        : "flex",
-    alignItems     : "center",
-    justifyContent : "space-between",
-    gap            : "12px",
+    display       : "flex",
+    alignItems    : "center",
+    justifyContent: "space-between",
+    gap           : "12px",
   },
   settingsPanel: {
-    maxWidth      : "740px",
-    background    : "#ffffff61",
-    border        : "0",
-    borderRadius  : "0",
-    borderColor   : "#e0e0e0",
-    paddingTop    : "0",
-    paddingRight  : "0",
-    paddingBottom : "0",
-    paddingLeft   : "0",
+    maxWidth     : "740px",
+    background   : "#ffffff61",
+    border       : "0",
+    borderRadius : "0",
+    borderColor  : "#e0e0e0",
+    paddingTop   : "0",
+    paddingRight : "0",
+    paddingBottom: "0",
+    paddingLeft  : "0",
   },
   settingsProfile: {
     display      : "flex",

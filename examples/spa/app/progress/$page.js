@@ -44,10 +44,10 @@ export component Page() {
 
 const styles = stylex.create({
   eyebrow: {
-    color         : tokens.muted,
-    fontSize      : "12px",
-    letterSpacing : "0.06em",
-    textTransform : "uppercase",
+    color        : tokens.muted,
+    fontSize     : "12px",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
   },
   title: {
     maxWidth     : "15ch",
@@ -57,19 +57,19 @@ const styles = stylex.create({
     letterSpacing: "-0.04em",
   },
   count: {
-    margin        : "0",
-    fontSize      : "64px",
-    letterSpacing : "-0.04em",
+    margin       : "0",
+    fontSize     : "64px",
+    letterSpacing: "-0.04em",
   },
   countRest: {
     fontSize: "32px",
     color   : tokens.muted,
   },
   meter: {
-    display   : "block",
-    width     : "100%",
-    height    : "10px",
-    margin    : "2rem 0",
+    display    : "block",
+    width      : "100%",
+    height     : "10px",
+    margin     : "2rem 0",
     accentColor: tokens.accent,
   },
   back: {

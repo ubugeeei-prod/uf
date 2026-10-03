@@ -74,8 +74,7 @@ export component Page(searchParams: SearchParams) {
       {
         match (filter.query) {
           ""          => null,
-          const query =>
-            <p {...props(styles.resultLabel)}>Results for “{query}”</p>,
+          const query => <p {...props(styles.resultLabel)}>Results for “{query}”</p>,
         }
       }
       <div {...props(styles.feedContent)}>
@@ -114,10 +113,10 @@ const styles = stylex.create({
     borderBottom: "1px solid var(--line)",
   },
   feedTabs: {
-    display      : "flex",
-    gap          : { default: "24px", "@media (max-width: 760px)": "20px" },
-    minWidth     : "0",
-    overflow     : "auto",
+    display       : "flex",
+    gap           : { default: "24px", "@media (max-width: 760px)": "20px" },
+    minWidth      : "0",
+    overflow      : "auto",
     scrollbarWidth: { "@media (max-width: 760px)": "none" },
   },
   feedTab: {
@@ -131,9 +130,9 @@ const styles = stylex.create({
     paddingLeft  : "0",
     minHeight    : { "@media (max-width: 760px)": "44px" },
     ":is([aria-current=page])": {
-      color     : "var(--ink)",
+      color      : "var(--ink)",
       borderColor: "var(--accent)",
-      fontWeight: "600",
+      fontWeight : "600",
     },
   },
   resultLabel: {
@@ -145,19 +144,19 @@ const styles = stylex.create({
     paddingTop: { default: "20px", "@media (max-width: 760px)": "0" },
   },
   signInComposer: {
-    display        : { default: "flex", "@media (max-width: 760px)": "none" },
-    alignItems     : "center",
-    justifyContent : "space-between",
-    gap            : { default: "18px", "@media (max-width: 760px)": "12px" },
-    background     : "transparent",
-    border         : "0",
-    borderBottom   : "1px solid var(--line)",
-    borderRadius   : "0",
-    paddingTop     : { default: "12px", "@media (max-width: 760px)": "14px" },
-    paddingRight   : { default: "0", "@media (max-width: 760px)": "12px" },
-    paddingBottom  : { default: "24px", "@media (max-width: 760px)": "14px" },
-    paddingLeft    : { default: "0", "@media (max-width: 760px)": "12px" },
-    marginBottom   : "5px",
+    display       : { default: "flex", "@media (max-width: 760px)": "none" },
+    alignItems    : "center",
+    justifyContent: "space-between",
+    gap           : { default: "18px", "@media (max-width: 760px)": "12px" },
+    background    : "transparent",
+    border        : "0",
+    borderBottom  : "1px solid var(--line)",
+    borderRadius  : "0",
+    paddingTop    : { default: "12px", "@media (max-width: 760px)": "14px" },
+    paddingRight  : { default: "0", "@media (max-width: 760px)": "12px" },
+    paddingBottom : { default: "24px", "@media (max-width: 760px)": "14px" },
+    paddingLeft   : { default: "0", "@media (max-width: 760px)": "12px" },
+    marginBottom  : "5px",
   },
   signInTitle: {
     fontSize     : { default: "14px", "@media (max-width: 760px)": "12px" },

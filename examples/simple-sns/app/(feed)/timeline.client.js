@@ -21,7 +21,14 @@ import { AsyncRegion, useRetryableResource } from "../_shared/async-region.clien
 import { timelineData } from "../_server/social-queries.js";
 import { createPost, likePost } from "../_server/social-actions.js";
 import { channelDot } from "../_shared/social-frame.js";
-import { Avatar, ActionLink, EmptyState, Icon, LoadingState, styles as uiStyles } from "../_shared/ui.js";
+import {
+  Avatar,
+  ActionLink,
+  EmptyState,
+  Icon,
+  LoadingState,
+  styles as uiStyles,
+} from "../_shared/ui.js";
 import { FieldError, FormStatus, SubmitButton } from "../_shared/form-ui.client.js";
 import {
   MAX_POST_LENGTH,
@@ -344,7 +351,9 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
                 <section {...props(styles.signInComposer)}>
                   <div>
                     <h2 {...props(styles.signInTitle)}>What are you working on?</h2>
-                    <p {...props(styles.signInCopy)}>Sign in to post an update or ask a question.</p>
+                    <p {...props(styles.signInCopy)}>
+                      Sign in to post an update or ask a question.
+                    </p>
                   </div>
                   <ActionLink
                     to="/signup"
@@ -413,7 +422,10 @@ component FeedEntries(data: FeedData, additions: $ReadOnlyArray<Post>, signedIn:
         {
           match (feed.page > 1) {
             true  =>
-              <Link {...props(styles.paginationLink)} to={feedHref(feed.topic, feed.query, feed.page - 1)}>
+              <Link
+                {...props(styles.paginationLink)}
+                to={feedHref(feed.topic, feed.query, feed.page - 1)}
+              >
                 ← Newer notes
               </Link>,
             false => <span>Latest notes</span>,
@@ -422,7 +434,10 @@ component FeedEntries(data: FeedData, additions: $ReadOnlyArray<Post>, signedIn:
         {
           match (feed.hasNext) {
             true  =>
-              <Link {...props(styles.paginationLink)} to={feedHref(feed.topic, feed.query, feed.page + 1)}>
+              <Link
+                {...props(styles.paginationLink)}
+                to={feedHref(feed.topic, feed.query, feed.page + 1)}
+              >
                 Older notes
                 <Icon name="arrow" size={14} />
               </Link>,
@@ -448,7 +463,7 @@ const styles = stylex.create({
     paddingRight : "7px",
     paddingBottom: "7px",
     paddingLeft  : "7px",
-    ":hover"     : {
+    ":hover": {
       color: "#252525",
     },
     ":is([aria-pressed=true])": {
@@ -506,13 +521,13 @@ const styles = stylex.create({
     display: { "@media (max-width: 760px)": "none" },
   },
   composer: {
-    overflow      : "hidden",
+    overflow       : "hidden",
     scrollMarginTop: "20px",
-    background    : "transparent",
-    border        : "0",
-    borderBottom  : "1px solid var(--line)",
-    borderRadius  : "0",
-    marginBottom  : "9px",
+    background     : "transparent",
+    border         : "0",
+    borderBottom   : "1px solid var(--line)",
+    borderRadius   : "0",
+    marginBottom   : "9px",
   },
   composerBody: {
     display      : "flex",
@@ -599,19 +614,19 @@ const styles = stylex.create({
     marginLeft: "auto",
   },
   signInComposer: {
-    display        : { default: "flex", "@media (max-width: 760px)": "none" },
-    alignItems     : "center",
-    justifyContent : "space-between",
-    gap            : { default: "18px", "@media (max-width: 760px)": "12px" },
-    background     : "transparent",
-    border         : "0",
-    borderBottom   : "1px solid var(--line)",
-    borderRadius   : "0",
-    paddingTop     : { default: "12px", "@media (max-width: 760px)": "14px" },
-    paddingRight   : { default: "0", "@media (max-width: 760px)": "12px" },
-    paddingBottom  : { default: "24px", "@media (max-width: 760px)": "14px" },
-    paddingLeft    : { default: "0", "@media (max-width: 760px)": "12px" },
-    marginBottom   : "5px",
+    display       : { default: "flex", "@media (max-width: 760px)": "none" },
+    alignItems    : "center",
+    justifyContent: "space-between",
+    gap           : { default: "18px", "@media (max-width: 760px)": "12px" },
+    background    : "transparent",
+    border        : "0",
+    borderBottom  : "1px solid var(--line)",
+    borderRadius  : "0",
+    paddingTop    : { default: "12px", "@media (max-width: 760px)": "14px" },
+    paddingRight  : { default: "0", "@media (max-width: 760px)": "12px" },
+    paddingBottom : { default: "24px", "@media (max-width: 760px)": "14px" },
+    paddingLeft   : { default: "0", "@media (max-width: 760px)": "12px" },
+    marginBottom  : "5px",
   },
   signInTitle: {
     fontSize     : { default: "14px", "@media (max-width: 760px)": "12px" },

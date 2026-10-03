@@ -233,7 +233,10 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
           <h1 {...props(styles.clipsTitle)}>Clips</h1>
           <span {...props(styles.clipsCount)} aria-live="polite">
             {String(selected + 1).padStart(2, "0")}
-            <span {...props(styles.clipsCountTotal)}> / {String(clips.length).padStart(2, "0")}</span>
+            <span {...props(styles.clipsCountTotal)}>
+              {" "}
+              / {String(clips.length).padStart(2, "0")}
+            </span>
           </span>
         </header>
         <div
@@ -293,10 +296,10 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
 
 const styles = stylex.create({
   clipsLayout: {
-    position       : "relative",
-    display        : { default: "flex", "@media (max-width: 760px)": "block" },
-    justifyContent : "center",
-    gap            : "28px",
+    position      : "relative",
+    display       : { default: "flex", "@media (max-width: 760px)": "block" },
+    justifyContent: "center",
+    gap           : "28px",
   },
   clipsPlayer: {
     position: "relative",
@@ -333,7 +336,10 @@ const styles = stylex.create({
     color: "#ffffff99",
   },
   clipsViewport: {
-    height             : { default: "calc(100svh - 48px)", "@media (max-width: 760px)": "calc(100svh - 58px - env(safe-area-inset-bottom))" },
+    height: {
+      default                    : "calc(100svh - 48px)",
+      "@media (max-width: 760px)": "calc(100svh - 58px - env(safe-area-inset-bottom))",
+    },
     minHeight          : { default: "380px", "@media (max-width: 760px)": "280px" },
     maxHeight          : { default: "900px", "@media (max-width: 760px)": "none" },
     aspectRatio        : { default: "9 / 16", "@media (max-width: 760px)": "auto" },
@@ -367,11 +373,11 @@ const styles = stylex.create({
     display  : "block",
   },
   clipControls: {
-    position       : "absolute",
-    inset          : "18px 18px auto",
-    display        : "flex",
-    justifyContent : "flex-end",
-    gap            : "8px",
+    position      : "absolute",
+    inset         : "18px 18px auto",
+    display       : "flex",
+    justifyContent: "flex-end",
+    gap           : "8px",
   },
   clipControlButton: {
     color         : "#fff",
@@ -416,12 +422,12 @@ const styles = stylex.create({
     paddingLeft   : "20px",
   },
   clipNoticeButton: {
-    display        : "block",
-    color          : "white",
-    background     : "transparent",
-    border         : "0",
-    textDecoration : "underline",
-    marginTop      : "12px",
+    display       : "block",
+    color         : "white",
+    background    : "transparent",
+    border        : "0",
+    textDecoration: "underline",
+    marginTop     : "12px",
   },
   clipLoading: {
     color         : "#fff",
@@ -466,7 +472,7 @@ const styles = stylex.create({
     fontSize : "10px",
     color    : "#ffffffbd",
     marginTop: "14px",
-    ":hover" : {
+    ":hover": {
       color: "white",
     },
   },
@@ -474,12 +480,12 @@ const styles = stylex.create({
     marginLeft: "5px",
   },
   clipsNavigation: {
-    display       : { default: "flex", "@media (max-width: 760px)": "none" },
-    flexDirection : "column",
-    alignSelf     : "center",
-    alignItems    : "center",
-    gap           : "12px",
-    width         : "60px",
+    display      : { default: "flex", "@media (max-width: 760px)": "none" },
+    flexDirection: "column",
+    alignSelf    : "center",
+    alignItems   : "center",
+    gap          : "12px",
+    width        : "60px",
   },
   clipsNavButton: {
     display     : "grid",
@@ -489,7 +495,7 @@ const styles = stylex.create({
     background  : "#ffffff70",
     border      : "1px solid #ffffff",
     borderRadius: "50%",
-    ":disabled" : {
+    ":disabled": {
       opacity: "0.3",
       cursor : "default",
     },

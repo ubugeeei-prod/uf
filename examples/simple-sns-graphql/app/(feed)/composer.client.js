@@ -143,7 +143,11 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
           ))}
         </select>
         <span {...props(styles.counter, styles.footerCounter)}>{body.length}/500</span>
-        <button type="submit" {...props(uiStyles.button, uiStyles.primary, styles.composerSubmit)} disabled={pending}>
+        <button
+          type="submit"
+          {...props(uiStyles.button, uiStyles.primary, styles.composerSubmit)}
+          disabled={pending}
+        >
           {
             match (pending) {
               true  => "Publishing…",
@@ -167,13 +171,13 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
 
 const styles = stylex.create({
   composer: {
-    overflow      : "hidden",
+    overflow       : "hidden",
     scrollMarginTop: "20px",
-    background    : "transparent",
-    border        : "0",
-    borderBottom  : "1px solid var(--line)",
-    borderRadius  : "0",
-    marginBottom  : "9px",
+    background     : "transparent",
+    border         : "0",
+    borderBottom   : "1px solid var(--line)",
+    borderRadius   : "0",
+    marginBottom   : "9px",
   },
   composerBody: {
     display      : "flex",

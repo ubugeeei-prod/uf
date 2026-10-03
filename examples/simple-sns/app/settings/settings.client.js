@@ -10,7 +10,12 @@ import { props, stylex } from "@uniflowed/stylex";
 import { Field } from "@uniflowed/ui";
 
 import { updateSettings } from "../_server/social-actions.js";
-import { FormField, FormStatus, SubmitButton, styles as controlStyles } from "../_shared/form-ui.client.js";
+import {
+  FormField,
+  FormStatus,
+  SubmitButton,
+  styles as controlStyles,
+} from "../_shared/form-ui.client.js";
 import { Avatar, styles as uiStyles } from "../_shared/ui.js";
 import {
   IDLE,
@@ -70,7 +75,7 @@ export component SettingsClient(initial: Settings) {
               render={(control) => (
                 <input
                   {...control}
-                  {...props(controlStyles.fieldControl)}
+                  className={props(controlStyles.fieldControl).className}
                   name="displayName"
                   value={draft.displayName}
                   onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
@@ -87,7 +92,7 @@ export component SettingsClient(initial: Settings) {
               render={(control) => (
                 <input
                   {...control}
-                  {...props(controlStyles.fieldControl)}
+                  className={props(controlStyles.fieldControl).className}
                   name="handle"
                   value={draft.handle}
                   onChange={(event) => setDraft({ ...draft, handle: event.target.value })}
@@ -109,7 +114,7 @@ export component SettingsClient(initial: Settings) {
             render={(control) => (
               <textarea
                 {...control}
-                {...props(controlStyles.fieldControl)}
+                className={props(controlStyles.fieldControl).className}
                 name="bio"
                 value={draft.bio}
                 onChange={(event) => setDraft({ ...draft, bio: event.target.value })}
@@ -129,7 +134,7 @@ export component SettingsClient(initial: Settings) {
             render={(control) => (
               <input
                 {...control}
-                {...props(controlStyles.fieldControl)}
+                className={props(controlStyles.fieldControl).className}
                 name="email"
                 type="email"
                 value={draft.email}
@@ -145,7 +150,9 @@ export component SettingsClient(initial: Settings) {
       </section>
       <footer {...props(uiStyles.settingsFooter)}>
         <FormStatus state={state} />
-        <SubmitButton pendingLabel="Saving…" xstyle={styles.settingsSubmit}>Save changes</SubmitButton>
+        <SubmitButton pendingLabel="Saving…" xstyle={styles.settingsSubmit}>
+          Save changes
+        </SubmitButton>
       </footer>
     </form>
   );

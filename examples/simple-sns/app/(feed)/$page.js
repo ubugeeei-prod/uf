@@ -90,8 +90,7 @@ export component Page(data: Data) {
       {
         match (feed.query) {
           ""          => null,
-          const query =>
-            <p {...props(styles.resultLabel)}>Results for “{query}”</p>,
+          const query => <p {...props(styles.resultLabel)}>Results for “{query}”</p>,
         }
       }
       <div {...props(styles.feedContent)}>
@@ -127,10 +126,10 @@ const styles = stylex.create({
     borderBottom: "1px solid var(--line)",
   },
   feedTabs: {
-    display      : "flex",
-    gap          : { default: "24px", "@media (max-width: 760px)": "20px" },
-    minWidth     : "0",
-    overflow     : "auto",
+    display       : "flex",
+    gap           : { default: "24px", "@media (max-width: 760px)": "20px" },
+    minWidth      : "0",
+    overflow      : "auto",
     scrollbarWidth: { "@media (max-width: 760px)": "none" },
   },
   feedTab: {
@@ -144,9 +143,9 @@ const styles = stylex.create({
     paddingLeft  : "0",
     minHeight    : { "@media (max-width: 760px)": "44px" },
     ":is([aria-current=page])": {
-      color     : "var(--ink)",
+      color      : "var(--ink)",
       borderColor: "var(--accent)",
-      fontWeight: "600",
+      fontWeight : "600",
     },
   },
   resultLabel: {

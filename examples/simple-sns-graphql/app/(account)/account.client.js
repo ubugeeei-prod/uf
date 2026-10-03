@@ -74,7 +74,13 @@ export component AccountForm(register: boolean) {
           true  =>
             <label {...props(uiStyles.field)}>
               <span {...props(uiStyles.fieldLabel)}>Display name</span>
-              <input {...props(uiStyles.fieldControl)} name="name" autoComplete="name" required maxLength={80} />
+              <input
+                {...props(uiStyles.fieldControl)}
+                name="name"
+                autoComplete="name"
+                required
+                maxLength={80}
+              />
             </label>,
           false => null,
         }
@@ -94,7 +100,13 @@ export component AccountForm(register: boolean) {
           true  =>
             <label {...props(uiStyles.field)}>
               <span {...props(uiStyles.fieldLabel)}>Email</span>
-              <input {...props(uiStyles.fieldControl)} type="email" name="email" autoComplete="email" required />
+              <input
+                {...props(uiStyles.fieldControl)}
+                type="email"
+                name="email"
+                autoComplete="email"
+                required
+              />
             </label>,
           false => null,
         }

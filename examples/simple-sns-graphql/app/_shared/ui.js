@@ -11,7 +11,12 @@ import { avatarPhoto } from "./social-model.js";
  * Render decorative line icons on a shared grid; the owning control supplies its accessible name.
  */
 
-export component Icon(name: string, size: number = 20, className: string = "") {
+export component Icon(
+  name     : string,
+  size     : number = 20,
+  className: string = "",
+  style?   : { readonly [string]: string | number },
+) {
   const paths: { [string]: string } = {
     video: "M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 5 5 4-5 4Z",
     play: "m8 4 12 8-12 8Z",
@@ -42,6 +47,7 @@ export component Icon(name: string, size: number = 20, className: string = "") {
   return (
     <svg
       className={className}
+      style={style}
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -90,9 +96,7 @@ export component Avatar(
             />,
         }
       }
-      <UiAvatar.Fallback {...props(styles.avatarFallback)}>
-        {user.avatar}
-      </UiAvatar.Fallback>
+      <UiAvatar.Fallback {...props(styles.avatarFallback)}>{user.avatar}</UiAvatar.Fallback>
     </UiAvatar.Root>
   );
 }
@@ -143,7 +147,11 @@ export component ActionLink(
 
 export component RetryButton(onRetry: () => void) {
   return (
-    <button type="button" {...props(styles.button, styles.primary, styles.emptyAction)} onClick={onRetry}>
+    <button
+      type="button"
+      {...props(styles.button, styles.primary, styles.emptyAction)}
+      onClick={onRetry}
+    >
       Try again
     </button>
   );
@@ -153,7 +161,14 @@ export component RetryButton(onRetry: () => void) {
 
 export component SignInPrompt(title: string = "Sign in to continue") renders EmptyState {
   return (
-    <EmptyState title={title} action={<ActionLink to="/login" xstyle={styles.emptyAction}>Sign in</ActionLink>}>
+    <EmptyState
+      title={title}
+      action={
+        <ActionLink to="/login" xstyle={styles.emptyAction}>
+          Sign in
+        </ActionLink>
+      }
+    >
       Use your account to access your messages and profile.
     </EmptyState>
   );
@@ -302,6 +317,8 @@ export component LoadingState(kind: "feed" | "threads" | "conversation" | "profi
   );
 }
 
+// Flow cannot serialize this generic factory call into the module signature.
+// $FlowFixMe[signature-verification-failure]
 export const styles = stylex.create({
   avatar: {
     position       : "relative",
@@ -320,8 +337,8 @@ export const styles = stylex.create({
     border         : "1px solid var(--line)",
     letterSpacing  : "-0.02em",
   },
-  small         : { width: 34, height: 34, fontSize: 11 },
-  avatarPhoto   : {
+  small: { width: 34, height: 34, fontSize: 11 },
+  avatarPhoto: {
     position    : "absolute",
     inset       : "0",
     width       : "100%",
@@ -356,32 +373,32 @@ export const styles = stylex.create({
     background : "var(--accent)",
     borderColor: "var(--accent)",
     color      : "#fff",
-    ":hover"   : {
+    ":hover": {
       background : "#131313",
       borderColor: "#131313",
     },
   },
   secondary: {
     background: "#fff",
-    ":hover"  : {
+    ":hover": {
       background: "var(--subtle)",
     },
   },
   textLink: {
-    fontSize            : "12px",
-    fontWeight          : "550",
-    textDecoration      : "underline",
-    textUnderlineOffset : "3px",
+    fontSize           : "12px",
+    fontWeight         : "550",
+    textDecoration     : "underline",
+    textUnderlineOffset: "3px",
   },
   emptyAction: {
     marginTop: "5px",
   },
   field: {
-    display      : "grid",
-    gap          : "8px",
-    fontSize     : "12px",
-    color        : "#5f5f5f",
-    marginBottom : "19px",
+    display     : "grid",
+    gap         : "8px",
+    fontSize    : "12px",
+    color       : "#5f5f5f",
+    marginBottom: "19px",
   },
   fieldLabel: {
     fontWeight: "550",
@@ -536,17 +553,17 @@ export const styles = stylex.create({
     paddingBottom: "10px",
     paddingLeft  : "12px",
     marginTop    : "25px",
-    ":hover"     : {
+    ":hover": {
       borderColor: "#bfbfbf",
     },
   },
   account: {
-    display    : "flex",
-    alignItems : "center",
-    gap        : "8px",
-    borderTop  : "1px solid var(--line)",
-    paddingTop : "20px",
-    marginTop  : "auto",
+    display   : "flex",
+    alignItems: "center",
+    gap       : "8px",
+    borderTop : "1px solid var(--line)",
+    paddingTop: "20px",
+    marginTop : "auto",
   },
   mobileNavItem: {
     display   : { "@media (max-width: 760px)": "grid" },
@@ -593,7 +610,7 @@ export const styles = stylex.create({
     paddingLeft  : "10px",
     minWidth     : { "@media (max-width: 760px)": "205px" },
     maxWidth     : { "@media (max-width: 760px)": "245px" },
-    ":hover"     : {
+    ":hover": {
       background: "#f3f3f3",
     },
     ":is([aria-current=page])": {
@@ -638,10 +655,10 @@ export const styles = stylex.create({
     paddingLeft  : { default: "21px", "@media (max-width: 760px)": "17px" },
   },
   messageComposerFooter: {
-    display        : "flex",
-    alignItems     : "center",
-    justifyContent : "space-between",
-    gap            : "12px",
+    display       : "flex",
+    alignItems    : "center",
+    justifyContent: "space-between",
+    gap           : "12px",
   },
   settingsPanel: {
     maxWidth     : "740px",
@@ -674,13 +691,13 @@ export const styles = stylex.create({
     gap                : { default: "18px", "@media (max-width: 760px)": "0" },
   },
   settingsFooter: {
-    display      : "flex",
+    display       : "flex",
     justifyContent: "space-between",
-    alignItems   : { default: "center", "@media (max-width: 760px)": "flex-start" },
-    gap          : "15px",
-    borderTop    : "1px solid var(--line)",
-    paddingTop   : "20px",
-    flexDirection: { "@media (max-width: 760px)": "column" },
+    alignItems    : { default: "center", "@media (max-width: 760px)": "flex-start" },
+    gap           : "15px",
+    borderTop     : "1px solid var(--line)",
+    paddingTop    : "20px",
+    flexDirection : { "@media (max-width: 760px)": "column" },
   },
   loadingFooter: {
     justifyContent: "flex-end",

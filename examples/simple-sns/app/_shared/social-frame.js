@@ -109,10 +109,16 @@ export component SocialFrame(
                 </>,
               {kind: "guest"}                           =>
                 <>
-                  <Link {...props(controlStyles.button, controlStyles.primary, styles.accountButton)} to="/login">
+                  <Link
+                    {...props(controlStyles.button, controlStyles.primary, styles.accountButton)}
+                    to="/login"
+                  >
                     Sign in
                   </Link>
-                  <Link {...props(controlStyles.button, controlStyles.secondary, styles.accountButton)} to="/signup">
+                  <Link
+                    {...props(controlStyles.button, controlStyles.secondary, styles.accountButton)}
+                    to="/signup"
+                  >
                     Join
                   </Link>
                 </>,
@@ -260,6 +266,8 @@ export component SocialFrame(
   );
 }
 
+// Flow cannot serialize this generic factory call into the module signature.
+// $FlowFixMe[signature-verification-failure]
 const styles = stylex.create({
   appShell: {
     maxWidth: "1600px",
@@ -298,7 +306,7 @@ const styles = stylex.create({
     paddingRight : "12px",
     paddingBottom: "12px",
     paddingLeft  : "12px",
-    ":focus"     : {
+    ":focus": {
       top: "12px",
     },
   },
@@ -324,14 +332,14 @@ const styles = stylex.create({
     fontWeight   : "500",
     letterSpacing: "-1px",
     gap          : "0",
-    "::after"    : {
-      content      : "''",
-      width        : "18px",
-      height       : "1px",
-      background   : "currentColor",
-      alignSelf    : "flex-end",
-      marginBottom : "5px",
-      marginLeft   : "8px",
+    "::after": {
+      content     : "''",
+      width       : "18px",
+      height      : "1px",
+      background  : "currentColor",
+      alignSelf   : "flex-end",
+      marginBottom: "5px",
+      marginLeft  : "8px",
     },
   },
   mainNav: {
@@ -349,7 +357,7 @@ const styles = stylex.create({
     paddingRight : "12px",
     paddingBottom: "10px",
     paddingLeft  : "12px",
-    ":hover"     : {
+    ":hover": {
       background: "#ffffffa6",
     },
     ":is([aria-current=page])": {
@@ -382,7 +390,7 @@ const styles = stylex.create({
     paddingRight : "0",
     paddingBottom: "10px",
     paddingLeft  : "0",
-    ":hover"     : {
+    ":hover": {
       color: "var(--ink)",
     },
   },
@@ -411,17 +419,17 @@ const styles = stylex.create({
     paddingBottom: "10px",
     paddingLeft  : "12px",
     marginTop    : "25px",
-    ":hover"     : {
+    ":hover": {
       borderColor: "#bfbfbf",
     },
   },
   account: {
-    display      : "flex",
-    alignItems   : "center",
-    gap          : "8px",
-    borderTop    : "1px solid var(--line)",
-    paddingTop   : "20px",
-    marginTop    : "auto",
+    display   : "flex",
+    alignItems: "center",
+    gap       : "8px",
+    borderTop : "1px solid var(--line)",
+    paddingTop: "20px",
+    marginTop : "auto",
   },
   accountPerson: {
     display   : "flex",
@@ -431,114 +439,114 @@ const styles = stylex.create({
     flex      : "1",
   },
   accountName: {
-    display      : "block",
-    maxWidth     : "106px",
-    overflow     : "hidden",
-    textOverflow : "ellipsis",
-    whiteSpace   : "nowrap",
-    fontSize     : "12px",
-    fontWeight   : "600",
+    display     : "block",
+    maxWidth    : "106px",
+    overflow    : "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace  : "nowrap",
+    fontSize    : "12px",
+    fontWeight  : "600",
   },
   accountHandle: {
-    display      : "block",
-    maxWidth     : "106px",
-    overflow     : "hidden",
-    textOverflow : "ellipsis",
-    whiteSpace   : "nowrap",
-    fontSize     : "11px",
-    color        : "var(--muted)",
-    marginTop    : "3px",
+    display     : "block",
+    maxWidth    : "106px",
+    overflow    : "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace  : "nowrap",
+    fontSize    : "11px",
+    color       : "var(--muted)",
+    marginTop   : "3px",
   },
   accountButton: {
-    flex          : "1",
-    fontSize      : "12px",
-    paddingTop    : "9px",
-    paddingRight  : "9px",
-    paddingBottom : "9px",
-    paddingLeft   : "9px",
+    flex         : "1",
+    fontSize     : "12px",
+    paddingTop   : "9px",
+    paddingRight : "9px",
+    paddingBottom: "9px",
+    paddingLeft  : "9px",
   },
   workspace: {
-    display            : { default: "grid", "@media (max-width: 760px)": "block" },
+    display: { default: "grid", "@media (max-width: 760px)": "block" },
     gridTemplateColumns: {
-      default: "minmax(0, 720px) 260px",
+      default                                             : "minmax(0, 720px) 260px",
       "@media (max-width: 1199px) and (min-width: 1001px)": "minmax(0, 1fr) 220px",
-      "@media (max-width: 1000px)": "minmax(0, 1fr)",
+      "@media (max-width: 1000px)"                        : "minmax(0, 1fr)",
     },
     justifyContent: "center",
     columnGap     : { default: "26px", "@media (max-width: 1199px)": "22px" },
     paddingTop    : "0",
-    paddingRight  : {
-      default: "32px",
+    paddingRight: {
+      default                                             : "32px",
       "@media (max-width: 1199px) and (min-width: 1001px)": "24px",
-      "@media (max-width: 1000px) and (min-width: 761px)": "30px",
-      "@media (max-width: 760px)": "12px",
+      "@media (max-width: 1000px) and (min-width: 761px)" : "30px",
+      "@media (max-width: 760px)"                         : "12px",
     },
     paddingBottom: "0",
-    paddingLeft  : {
-      default: "32px",
+    paddingLeft: {
+      default                                             : "32px",
       "@media (max-width: 1199px) and (min-width: 1001px)": "24px",
-      "@media (max-width: 1000px) and (min-width: 761px)": "30px",
-      "@media (max-width: 760px)": "12px",
+      "@media (max-width: 1000px) and (min-width: 761px)" : "30px",
+      "@media (max-width: 760px)"                         : "12px",
     },
     marginLeft: {
-      default: "232px",
+      default                                            : "232px",
       "@media (max-width: 1199px) and (min-width: 761px)": "210px",
-      "@media (max-width: 760px)": "0",
+      "@media (max-width: 760px)"                        : "0",
     },
   },
   wide: {
     gridTemplateColumns: "minmax(0, 1020px)",
     display            : { default: "grid", "@media (max-width: 760px)": "block" },
     paddingTop         : "0",
-    paddingRight       : {
-      default: "32px",
+    paddingRight: {
+      default                                             : "32px",
       "@media (max-width: 1199px) and (min-width: 1001px)": "24px",
-      "@media (max-width: 1000px) and (min-width: 761px)": "30px",
-      "@media (max-width: 760px)": "12px",
+      "@media (max-width: 1000px) and (min-width: 761px)" : "30px",
+      "@media (max-width: 760px)"                         : "12px",
     },
     paddingBottom: "0",
-    paddingLeft  : {
-      default: "32px",
+    paddingLeft: {
+      default                                             : "32px",
       "@media (max-width: 1199px) and (min-width: 1001px)": "24px",
-      "@media (max-width: 1000px) and (min-width: 761px)": "30px",
-      "@media (max-width: 760px)": "12px",
+      "@media (max-width: 1000px) and (min-width: 761px)" : "30px",
+      "@media (max-width: 760px)"                         : "12px",
     },
     marginLeft: {
-      default: "232px",
+      default                                            : "232px",
       "@media (max-width: 1199px) and (min-width: 761px)": "210px",
-      "@media (max-width: 760px)": "0",
+      "@media (max-width: 760px)"                        : "0",
     },
   },
   clipsWorkspace: {
     paddingRight: {
-      default: "32px",
+      default                                             : "32px",
       "@media (max-width: 1199px) and (min-width: 1001px)": "24px",
-      "@media (max-width: 1000px) and (min-width: 761px)": "30px",
-      "@media (max-width: 760px)": "0",
+      "@media (max-width: 1000px) and (min-width: 761px)" : "30px",
+      "@media (max-width: 760px)"                         : "0",
     },
     paddingLeft: {
-      default: "32px",
+      default                                             : "32px",
       "@media (max-width: 1199px) and (min-width: 1001px)": "24px",
-      "@media (max-width: 1000px) and (min-width: 761px)": "30px",
-      "@media (max-width: 760px)": "0",
+      "@media (max-width: 1000px) and (min-width: 761px)" : "30px",
+      "@media (max-width: 760px)"                         : "0",
     },
   },
   topbar: {
-    gridColumn        : "1 / -1",
-    display           : "flex",
-    alignItems        : "center",
-    justifyContent    : "space-between",
-    gap               : "20px",
-    height            : { default: "65px", "@media (max-width: 760px)": "48px" },
-    borderBottom      : "1px solid var(--line)",
-    position          : "sticky",
-    top               : "0",
-    zIndex            : "10",
-    borderBottomColor : "#dddddd",
-    backdropFilter    : "blur(20px)",
-    background        : "#edededcc",
-    paddingRight      : { "@media (max-width: 760px)": "6px" },
-    paddingLeft       : { "@media (max-width: 760px)": "6px" },
+    gridColumn       : "1 / -1",
+    display          : "flex",
+    alignItems       : "center",
+    justifyContent   : "space-between",
+    gap              : "20px",
+    height           : { default: "65px", "@media (max-width: 760px)": "48px" },
+    borderBottom     : "1px solid var(--line)",
+    position         : "sticky",
+    top              : "0",
+    zIndex           : "10",
+    borderBottomColor: "#dddddd",
+    backdropFilter   : "blur(20px)",
+    background       : "#edededcc",
+    paddingRight     : { "@media (max-width: 760px)": "6px" },
+    paddingLeft      : { "@media (max-width: 760px)": "6px" },
   },
   clipsTopbar: {
     display    : "none",
@@ -562,7 +570,7 @@ const styles = stylex.create({
     gap       : "7px",
     fontSize  : "12px",
     color     : "var(--muted)",
-    ":hover"  : {
+    ":hover": {
       color: "var(--ink)",
     },
   },
@@ -578,40 +586,40 @@ const styles = stylex.create({
     border        : "0",
     borderRadius  : "0",
     backdropFilter: "none",
-    paddingTop    : {
-      default: "26px",
+    paddingTop: {
+      default                                            : "26px",
       "@media (max-width: 1199px) and (min-width: 761px)": "21px",
-      "@media (max-width: 760px)": "18px",
+      "@media (max-width: 760px)"                        : "18px",
     },
-    paddingRight : { default: "0", "@media (max-width: 1199px)": "6px" },
+    paddingRight: { default: "0", "@media (max-width: 1199px)": "6px" },
     paddingBottom: {
-      default: "40px",
+      default                                            : "40px",
       "@media (max-width: 1199px) and (min-width: 761px)": "30px",
-      "@media (max-width: 760px)": "24px",
+      "@media (max-width: 760px)"                        : "24px",
     },
-    paddingLeft: { default: "0", "@media (max-width: 1199px)": "6px" },
+    paddingLeft : { default: "0", "@media (max-width: 1199px)": "6px" },
     marginTop   : { default: "26px", "@media (max-width: 760px)": "0" },
     marginBottom: { default: "32px", "@media (max-width: 760px)": "76px" },
   },
   feedMainColumn: {
     paddingTop: {
-      default: "26px",
+      default                                            : "26px",
       "@media (max-width: 1199px) and (min-width: 761px)": "21px",
-      "@media (max-width: 760px)": "0",
+      "@media (max-width: 760px)"                        : "0",
     },
   },
   clipsMainColumn: {
     paddingTop: { default: "24px", "@media (max-width: 760px)": "0" },
     paddingRight: {
-      default: "0",
+      default                                            : "0",
       "@media (max-width: 1199px) and (min-width: 761px)": "6px",
-      "@media (max-width: 760px)": "0",
+      "@media (max-width: 760px)"                        : "0",
     },
     paddingBottom: { default: "24px", "@media (max-width: 760px)": "0" },
-    paddingLeft  : {
-      default: "0",
+    paddingLeft: {
+      default                                            : "0",
       "@media (max-width: 1199px) and (min-width: 761px)": "6px",
-      "@media (max-width: 760px)": "0",
+      "@media (max-width: 760px)"                        : "0",
     },
     marginTop   : "0",
     marginBottom: "0",
@@ -670,11 +678,11 @@ const styles = stylex.create({
     marginBottom  : "32px",
   },
   sectionHeading: {
-    display        : "flex",
-    alignItems     : "center",
-    justifyContent : "space-between",
-    color          : "#929292",
-    marginBottom   : "12px",
+    display       : "flex",
+    alignItems    : "center",
+    justifyContent: "space-between",
+    color         : "#929292",
+    marginBottom  : "12px",
   },
   sectionTitle: {
     fontSize  : "12px",
@@ -698,7 +706,7 @@ const styles = stylex.create({
     fontSize  : "12px",
     fontWeight: "550",
     display   : "block",
-    ":hover"  : {
+    ":hover": {
       textDecoration     : "underline",
       textUnderlineOffset: "3px",
     },
@@ -722,7 +730,7 @@ const styles = stylex.create({
     paddingRight : "0",
     paddingBottom: "11px",
     paddingLeft  : "0",
-    ":hover"     : {
+    ":hover": {
       color: "var(--ink)",
     },
   },

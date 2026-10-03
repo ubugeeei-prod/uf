@@ -62,10 +62,16 @@ export component SessionControls(queryRef: SessionRef) {
           match (viewer) {
             null | undefined =>
               <>
-                <Link {...props(uiStyles.button, uiStyles.primary, styles.accountButton)} to="/login">
+                <Link
+                  {...props(uiStyles.button, uiStyles.primary, styles.accountButton)}
+                  to="/login"
+                >
                   Sign in
                 </Link>
-                <Link {...props(uiStyles.button, uiStyles.secondary, styles.accountButton)} to="/signup">
+                <Link
+                  {...props(uiStyles.button, uiStyles.secondary, styles.accountButton)}
+                  to="/signup"
+                >
                   Join
                 </Link>
               </>,
@@ -206,7 +212,7 @@ const styles = stylex.create({
     paddingRight  : "8px",
     paddingBottom : "8px",
     paddingLeft   : "8px",
-    ":hover"      : {
+    ":hover": {
       background: "#efefef",
       color     : "var(--ink)",
     },

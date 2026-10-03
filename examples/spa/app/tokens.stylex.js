@@ -3,11 +3,11 @@
 import { stylex, type CompiledStyle } from "@uniflowed/stylex";
 
 export const tokens: {|
-  +paper : string,
-  +ink   : string,
-  +muted : string,
-  +rule  : string,
-  +accent: string,
+  readonly paper : string,
+  readonly ink   : string,
+  readonly muted : string,
+  readonly rule  : string,
+  readonly accent: string,
 |} = stylex.defineVars({
   paper : "#fbfaf8",
   ink   : "#16171a",
@@ -26,7 +26,7 @@ export const dark: CompiledStyle = stylex.createTheme(tokens, {
   accent: { "@media (prefers-color-scheme: dark)": "#7fb0ff" },
 });
 
-export const focus: {| +ring: CompiledStyle |} = stylex.create({
+export const focus: {| readonly ring: CompiledStyle |} = stylex.create({
   ring: {
     ":focus-visible": {
       outlineWidth : "2px",
