@@ -208,9 +208,18 @@ impl<'a> FileScan<'a> {
         facts.mentions_react_native = lines
             .iter()
             .any(|line| line.code().contains("react-native"));
+        // An `import` inside a template is source this module quotes, not a
+        // module system it joins.
         facts.has_esm_import = lines.iter().any(|line| {
-            let code = line.code().trim_start();
-            code.starts_with("import ") || code.starts_with("import{")
+            let code = line.code();
+            let Some((at, _)) = next_non_space(code, 0) else {
+                return false;
+            };
+            if line.in_string(at) {
+                return false;
+            }
+            let rest = &code[at..];
+            rest.starts_with("import ") || rest.starts_with("import{")
         });
 
         Self {
