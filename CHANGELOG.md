@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.22.0
+
+- fix: string directives, server-only mentions, template directives, string accessors, and Queryable imports (#1750) (5950b455)
+
 ## uf@0.21.0
 
 - fix: breaking returns, import types, string declarations, client secrets, and failed commits (#1742) (f370e628)
