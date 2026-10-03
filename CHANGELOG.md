@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.25.0
+
+- fix: less-than comparisons and JSX text are not lint findings (#1775) (acbc8bbe)
+
 ## uf@0.24.0
 
 - style(examples): colocate styles with the components that use them (#1767) (ecd3ed8e)

@@ -4,12 +4,12 @@
   "type": "module",
   "description": "A Flow task board rendered in the browser, with client routing and shared reactive state.",
   "dependencies": {
-    "@uniflowed/config": "0.24.0",
-    "@uniflowed/react": "0.24.0",
-    "@uniflowed/router": "0.24.0",
-    "@uniflowed/state": "0.24.0",
-    "@uniflowed/stylex": "0.24.0",
-    "@uniflowed/vite": "0.24.0",
+    "@uniflowed/config": "0.25.0",
+    "@uniflowed/react": "0.25.0",
+    "@uniflowed/router": "0.25.0",
+    "@uniflowed/state": "0.25.0",
+    "@uniflowed/stylex": "0.25.0",
+    "@uniflowed/vite": "0.25.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   }
