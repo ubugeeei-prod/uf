@@ -87,6 +87,19 @@ fn eval_and_friends_are_rejected() {
 }
 
 #[test]
+fn the_eval_family_in_jsx_text_is_accepted() {
+    let diagnostics = lint_js(
+        "security/no-eval",
+        "// @flow\nconst view = <p>eval(code)</p>;\nconst built = <p>new Function(src)</p>;\nconst timer = <p>setTimeout(\"x\")</p>;\nconst later = <p>setInterval(\"x\")</p>;\nconst real = eval(input);\nconst expr = <p>{eval(input)}</p>;\nconst compared = count > eval(input);\n",
+    );
+
+    assert_eq!(diagnostics.len(), 3, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 6);
+    assert_eq!(diagnostics[1].line, 7);
+    assert_eq!(diagnostics[2].line, 8);
+}
+
+#[test]
 fn the_eval_family_named_inside_strings_is_accepted() {
     // A message about the rule, a task that shells out, documentation prose:
     // all three contain the words and none of them executes anything.
