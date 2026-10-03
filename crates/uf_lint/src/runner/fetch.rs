@@ -14,7 +14,9 @@
 
 use uf_config::UniflowedConfig;
 
-use crate::scan::{FileScan, find_all, next_non_space, prev_non_space, starts_word};
+use crate::scan::{
+    FileScan, find_all, next_non_space, prev_non_space, starts_word, word_in_jsx_text,
+};
 use crate::{Diagnostic, push_in_code, severity};
 
 pub(crate) fn run_fetch_no_global_override(
@@ -39,7 +41,10 @@ pub(crate) fn run_fetch_no_global_override(
                 // Not in a string: a sentence that names `globalThis.fetch`
                 // overrides nothing, and this package's own tests are full of
                 // such sentences.
-                if line.in_string(at) || !names_the_global(code, at) {
+                if line.in_string(at)
+                    || word_in_jsx_text(scan, position, at, needle.len())
+                    || !names_the_global(code, at)
+                {
                     continue;
                 }
                 if !assigns_to(code, at + needle.len(), next) {
