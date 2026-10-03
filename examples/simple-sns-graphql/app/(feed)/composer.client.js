@@ -11,11 +11,12 @@ import {
   fetchQuery,
 } from "@uniflowed/relay";
 import { useQueryFromServer } from "@uniflowed/relay/rsc-client_EXPERIMENTAL";
+import { props, stylex } from "@uniflowed/stylex";
 
 import type { PreloadedQueryRef } from "@uniflowed/relay/rsc_EXPERIMENTAL";
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
 import { UserAvatar } from "../_shared/avatar.client.js";
+import { styles as uiStyles } from "../_shared/ui.js";
 import timelineQuery from "./__generated__/SnsTimelineQuery.graphql.js";
 import { TOPICS, topicLabel, type FeedFilter } from "../_shared/social-model.js";
 
@@ -81,7 +82,7 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
 
   return (
     <form
-      className="composer"
+      {...props(styles.composer)}
       id="compose"
       aria-label="Publish a note"
       onSubmit={(event) => {
@@ -109,9 +110,10 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
         });
       }}
     >
-      <div className="composer-body">
+      <div {...props(styles.composerBody)}>
         <UserAvatar userRef={viewer} />
         <textarea
+          {...props(styles.composerField)}
           name="body"
           aria-label="Post body"
           placeholder={`What are you working on, ${viewer.name.split(" ")[0]}?`}
@@ -124,8 +126,9 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
           }}
         />
       </div>
-      <footer className="composer-footer">
+      <footer {...props(styles.composerFooter)}>
         <select
+          {...props(styles.composerSelect)}
           aria-label="Post channel"
           value={topic}
           onChange={(event) => {
@@ -139,8 +142,12 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
             </option>
           ))}
         </select>
-        <span className="counter">{body.length}/500</span>
-        <button type="submit" className="button primary" disabled={pending}>
+        <span {...props(styles.counter, styles.footerCounter)}>{body.length}/500</span>
+        <button
+          type="submit"
+          {...props(uiStyles.button, uiStyles.primary, styles.composerSubmit)}
+          disabled={pending}
+        >
           {
             match (pending) {
               true  => "Publishing…",
@@ -153,7 +160,7 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
         match (error) {
           ""            => null,
           const message =>
-            <p role="alert" {...styled("post-error", sharedStyles.postError)}>
+            <p role="alert" {...props(uiStyles.postError)}>
               {message}
             </p>,
         }
@@ -161,3 +168,82 @@ component Composer(viewerRef: SnsComposer_viewer$key, filter: FeedFilter) {
     </form>
   );
 }
+
+const styles = stylex.create({
+  composer: {
+    overflow       : "hidden",
+    scrollMarginTop: "20px",
+    background     : "transparent",
+    border         : "0",
+    borderBottom   : "1px solid var(--line)",
+    borderRadius   : "0",
+    marginBottom   : "9px",
+  },
+  composerBody: {
+    display      : "flex",
+    gap          : { default: "14px", "@media (max-width: 760px)": "11px" },
+    paddingTop   : { default: "16px", "@media (max-width: 760px)": "17px" },
+    paddingRight : { default: "0", "@media (max-width: 760px)": "14px" },
+    paddingBottom: { default: "10px", "@media (max-width: 760px)": "9px" },
+    paddingLeft  : { default: "0", "@media (max-width: 760px)": "14px" },
+  },
+  composerField: {
+    background   : "transparent",
+    border       : "0",
+    flex         : "1",
+    minHeight    : { default: "65px", "@media (max-width: 760px)": "70px" },
+    fontSize     : { default: "14px", "@media (max-width: 760px)": "16px" },
+    lineHeight   : "1.65",
+    outlineOffset: "2px",
+    paddingTop   : "8px",
+    paddingRight : "0",
+    paddingBottom: "8px",
+    paddingLeft  : "0",
+    "::placeholder": {
+      color: "#8d8d8d",
+    },
+  },
+  composerFooter: {
+    display      : "flex",
+    alignItems   : "center",
+    gap          : "12px",
+    borderTop    : "0",
+    paddingTop   : "12px",
+    paddingRight : "0",
+    paddingBottom: "12px",
+    paddingLeft  : "0",
+    marginTop    : "0",
+    marginRight  : { default: "0", "@media (max-width: 760px)": "14px" },
+    marginBottom : "0",
+    marginLeft   : { default: "0", "@media (max-width: 760px)": "14px" },
+  },
+  composerSelect: {
+    border       : "1px solid var(--line)",
+    background   : "var(--subtle)",
+    color        : "#606060",
+    borderRadius : "5px",
+    fontSize     : "11px",
+    maxWidth     : "155px",
+    paddingTop   : "7px",
+    paddingRight : "9px",
+    paddingBottom: "7px",
+    paddingLeft  : "9px",
+  },
+  counter: {
+    fontVariantNumeric: "tabular-nums",
+    fontSize          : "11px",
+    color             : "var(--muted)",
+  },
+  footerCounter: {
+    display: { "@media (max-width: 760px)": "none" },
+  },
+  composerSubmit: {
+    minHeight    : "33px",
+    fontSize     : "11px",
+    paddingTop   : "7px",
+    paddingRight : "12px",
+    paddingBottom: "7px",
+    paddingLeft  : "12px",
+    marginLeft   : "auto",
+  },
+});

@@ -5,10 +5,10 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { graphql, useFragment, useMutation } from "@uniflowed/relay";
+import { props, stylex } from "@uniflowed/stylex";
 
-import { styled, styles as sharedStyles } from "../_shared/commonplace.stylex.js";
 import { UserAvatar } from "../_shared/avatar.client.js";
-import { Icon } from "../_shared/ui.js";
+import { Icon, styles as uiStyles } from "../_shared/ui.js";
 import { displayDate, topicFrom, topicLabel, feedHref } from "../_shared/social-model.js";
 
 import type { SnsPost_post$key } from "./__generated__/SnsPost_post.graphql.js";
@@ -52,18 +52,20 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
   const topic = topicFrom(post.topic) ?? "community";
 
   return (
-    <article className="post" aria-busy={pending}>
+    <article {...props(uiStyles.post)} aria-busy={pending}>
       <UserAvatar userRef={post.author} />
-      <div {...styled("post-content", sharedStyles.postContent)}>
-        <header className="post-header">
-          <strong>{post.author.name}</strong>
-          <span className="handle">@{post.author.handle}</span>
-          <time dateTime={post.createdAt}>{displayDate(post.createdAt)}</time>
+      <div {...props(uiStyles.postContent)}>
+        <header {...props(uiStyles.postHeader)}>
+          <strong {...props(styles.postName)}>{post.author.name}</strong>
+          <span {...props(styles.postHandle)}>@{post.author.handle}</span>
+          <time {...props(styles.postTime)} dateTime={post.createdAt}>
+            {displayDate(post.createdAt)}
+          </time>
         </header>
-        <p className="post-body">{post.body}</p>
-        <footer {...styled("post-footer", sharedStyles.postFooter)}>
-          <Link className="channel-badge" to={feedHref(topic)}>
-            <span className={`channel-dot ${topic}`} />
+        <p {...props(uiStyles.postBody)}>{post.body}</p>
+        <footer {...props(uiStyles.postFooter)}>
+          <Link {...props(styles.channelBadge)} to={feedHref(topic)}>
+            <span {...props(uiStyles.channelDot, styles.channelDotSmall)} />
             {topicLabel(topic)}
           </Link>
           {
@@ -71,7 +73,7 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
               true  =>
                 <button
                   type="button"
-                  className="reaction"
+                  {...props(styles.reaction)}
                   disabled={pending}
                   aria-pressed={post.liked}
                   aria-label={`${match (post.liked === true) {
@@ -93,12 +95,16 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
                     });
                   }}
                 >
-                  <Icon name="heart" size={16} />
+                  <Icon
+                    name="heart"
+                    size={16}
+                    {...props(post.liked === true && styles.reactionIcon)}
+                  />
                   <span>{post.likes}</span>
                 </button>,
               false =>
                 <Link
-                  className="reaction"
+                  {...props(styles.reaction)}
                   to="/login"
                   aria-label={`Sign in to appreciate · ${post.likes}`}
                 >
@@ -112,7 +118,7 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
           match (error) {
             ""            => null,
             const message =>
-              <p role="alert" {...styled("post-error", sharedStyles.postError)}>
+              <p role="alert" {...props(uiStyles.postError)}>
                 {message}
               </p>,
           }
@@ -121,3 +127,60 @@ export component PostCard(postRef: SnsPost_post$key, signedIn: boolean) {
     </article>
   );
 }
+
+const styles = stylex.create({
+  postName: {
+    fontSize  : { default: "13px", "@media (max-width: 760px)": "12px" },
+    fontWeight: "600",
+  },
+  postHandle: {
+    fontSize: { default: "11px", "@media (max-width: 760px)": "10px" },
+    color   : "var(--muted)",
+  },
+  postTime: {
+    fontSize  : { default: "11px", "@media (max-width: 760px)": "10px" },
+    color     : "var(--muted)",
+    marginLeft: "auto",
+  },
+  channelBadge: {
+    display      : "inline-flex",
+    gap          : "6px",
+    alignItems   : "center",
+    borderRadius : "4px",
+    fontSize     : "10px",
+    color        : "#6b6b6b",
+    background   : "transparent",
+    border       : "0",
+    paddingTop   : "4px",
+    paddingRight : "0",
+    paddingBottom: "4px",
+    paddingLeft  : "0",
+  },
+  channelDotSmall: {
+    width : "4px",
+    height: "4px",
+  },
+  reaction: {
+    display      : "inline-flex",
+    alignItems   : "center",
+    gap          : "7px",
+    background   : "transparent",
+    border       : "0",
+    color        : "#818181",
+    fontSize     : "11px",
+    minHeight    : "32px",
+    paddingTop   : "7px",
+    paddingRight : "7px",
+    paddingBottom: "7px",
+    paddingLeft  : "7px",
+    ":hover": {
+      color: "#252525",
+    },
+    ":is([aria-pressed=true])": {
+      color: "#252525",
+    },
+  },
+  reactionIcon: {
+    fill: "currentColor",
+  },
+});

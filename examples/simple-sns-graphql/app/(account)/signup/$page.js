@@ -4,7 +4,10 @@ import * as React from "@uniflowed/react";
 
 import type { SearchParams } from "@uniflowed/router";
 
+import { props } from "@uniflowed/stylex";
+
 import { SocialFrame } from "../../_shared/social-frame.js";
+import { styles as uiStyles } from "../../_shared/ui.js";
 import { AccountForm } from "../account.client.js";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +17,11 @@ export const dynamic = "force-dynamic";
 export component Page(searchParams: SearchParams) {
   return (
     <SocialFrame active="signup" aside={false}>
-      <section className="auth-panel">
-        <header className="page-heading">
+      <section>
+        <header {...props(uiStyles.pageHeading)}>
           <div>
-            <h1>Join Commonplace</h1>
-            <p>A place to share what you are working on.</p>
+            <h1 {...props(uiStyles.pageTitle)}>Join Commonplace</h1>
+            <p {...props(uiStyles.pageSummary)}>A place to share what you are working on.</p>
           </div>
         </header>
         <AccountForm register={true} />
