@@ -431,6 +431,9 @@ struct Module<'a> {
     uses_sql: bool,
     uses_codecs: bool,
     runtime_types: BTreeSet<&'static str>,
+    /// Runtime types imported under another local name, because a model or
+    /// enum already uses the runtime name. `(imported, local)`.
+    aliased_runtime: Vec<(&'static str, String)>,
     model_types: BTreeSet<String>,
     model_values: BTreeSet<String>,
     foreign: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
@@ -461,6 +464,7 @@ impl<'a> Module<'a> {
             uses_sql: false,
             uses_codecs: false,
             runtime_types: BTreeSet::new(),
+            aliased_runtime: Vec::new(),
             model_types: BTreeSet::new(),
             model_values: BTreeSet::new(),
             foreign: BTreeMap::new(),
@@ -937,9 +941,8 @@ impl<'a> Module<'a> {
         }
 
         let sync = shared.sync;
-        let db_type = if sync { "SyncQueryable" } else { "Queryable" };
+        let db_type = self.db_type();
         self.uses_sql = true;
-        self.runtime_types.insert(db_type);
         let name = js_string(&query.name);
         let has_args = !arg_fields.is_empty();
         let (text_expr, params_expr, prelude) = if expands {
@@ -1073,6 +1076,54 @@ impl<'a> Module<'a> {
         Ok(())
     }
 
+    /// The runtime type of the `db` parameter.
+    ///
+    /// A model or enum named `Queryable` or `SyncQueryable` keeps that name.
+    /// The parameter is then `QueryableRuntime` or `SyncQueryableRuntime`,
+    /// imported as an alias, so the module does not bind one name twice.
+    fn db_type(&mut self) -> String {
+        let canonical = if self.shared.sync {
+            "SyncQueryable"
+        } else {
+            "Queryable"
+        };
+        if let Some((_, local)) = self
+            .aliased_runtime
+            .iter()
+            .find(|(name, _)| *name == canonical)
+        {
+            return local.clone();
+        }
+        if self.binds_a_model(canonical) {
+            let local = self.fresh_runtime_alias(canonical);
+            self.aliased_runtime.push((canonical, local.clone()));
+            local
+        } else {
+            self.runtime_types.insert(canonical);
+            canonical.to_owned()
+        }
+    }
+
+    /// Whether a model or enum type is already called `name`.
+    fn binds_a_model(&self, name: &str) -> bool {
+        self.shared
+            .models
+            .iter()
+            .any(|model| model.type_name == name)
+            || self.shared.enums.iter().any(|info| info.type_name == name)
+    }
+
+    /// A local name for `canonical` that no model or enum type uses.
+    fn fresh_runtime_alias(&self, canonical: &str) -> String {
+        let mut local = uf_infra::into_string(uf_infra::cstr!("{canonical}Runtime"));
+        let mut number = 2u32;
+        while self.binds_a_model(&local) {
+            local = uf_infra::into_string(uf_infra::cstr!("{canonical}Runtime{number}"));
+            number += 1;
+        }
+        local
+    }
+
     /// Imports, hoisted codecs, the body and the header, unsigned.
     ///
     /// An import is written only if its name appears in what follows it: a
@@ -1098,12 +1149,25 @@ impl<'a> Module<'a> {
         let runtime = shared.options.runtime();
         let mut out = header(shared, what);
         out.push('\n');
-        if !self.runtime_types.is_empty() {
-            let names: Vec<&str> = self.runtime_types.iter().copied().collect();
+        let mut runtime_names: Vec<String> = self
+            .runtime_types
+            .iter()
+            .copied()
+            .map(str::to_owned)
+            .collect();
+        for (imported, local) in &self.aliased_runtime {
+            if used.contains(local) {
+                runtime_names.push(uf_infra::into_string(uf_infra::cstr!(
+                    "{imported} as {local}"
+                )));
+            }
+        }
+        runtime_names.sort();
+        if !runtime_names.is_empty() {
             uf_infra::append!(
                 out,
                 "import type {{ {} }} from {};\n",
-                names.join(", "),
+                runtime_names.join(", "),
                 js_string(runtime)
             );
         }
