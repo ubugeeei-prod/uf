@@ -291,7 +291,21 @@ fn deprecated_type_ignores_a_comparison() {
     assert_eq!(still.len(), 1, "{still:?}");
 }
 
+#[test]
+fn internal_type_ignores_a_name_in_jsx_text() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst view = <p>React$Node</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20));
+}
 
 #[test]
 fn deprecated_type_rejects_the_bool_alias() {

@@ -587,6 +587,16 @@ pub(crate) fn run_flow_internal_type(
                 at += len;
                 continue;
             }
+            // `<p>React$Node</p>` is text. The same operators that make `any`
+            // a value make an internal name one too.
+            if beside_a_value_operator(
+                code,
+                prev_non_space(code, at),
+                next_non_space(code, at + len),
+            ) {
+                at += len;
+                continue;
+            }
             if starts_word(code, at) && INTERNAL_TYPES.contains(&code[at..at + len]) {
                 push_in_code(
                     diagnostics,
