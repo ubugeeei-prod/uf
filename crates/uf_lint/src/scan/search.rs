@@ -271,6 +271,75 @@ pub(crate) fn opens_jsx_text(haystack: &str) -> bool {
     opens
 }
 
+/// Whether JSX text is open at `at`, looking only at the bytes before it.
+///
+/// [`in_jsx_text`] also reads what follows the word, and it answers "not text"
+/// when `=` or `{` arrives before a closing `<`. An assignment and a
+/// declaration body written inside an element have those bytes
+/// (`<p>globalThis.fetch = mine</p>`, `component Child() { … }` on the line
+/// after `<pre>`). `continued` is that previous line, so text starts open.
+pub(super) fn jsx_text_is_open(
+    haystack: &str,
+    at: usize,
+    opens_in_template: bool,
+    continued: bool,
+) -> bool {
+    let bytes = haystack.as_bytes();
+    if at > bytes.len() {
+        return false;
+    }
+    let mut quote: Option<u8> = if opens_in_template { Some(b'`') } else { None };
+    let mut text = continued;
+    let mut index = 0usize;
+    while index < at {
+        if let Some(open) = quote {
+            if bytes[index] == b'\\' {
+                index += 2;
+                continue;
+            }
+            if bytes[index] == open {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        let byte = bytes[index];
+        if matches!(byte, b'"' | b'\'' | b'`') {
+            quote = Some(byte);
+            index += 1;
+            continue;
+        }
+        if byte == b'/' && starts_a_regex(bytes, index) {
+            index = regex_end(bytes, index);
+            continue;
+        }
+        match byte {
+            b'{' | b'}' | b'<' | b';' | b'=' => text = false,
+            b'>' if index == 0 || !matches!(bytes[index - 1], b'=' | b'>') => text = true,
+            _ => {}
+        }
+        index += 1;
+    }
+    text && quote.is_none()
+}
+
+/// Whether the nearest `>` before `at` closed a JSX tag.
+///
+/// `return <pre>` did. `count >` did not: a comparison has no `<` that stands
+/// apart from a name, which is how [`opens_jsx_text`] tells `Array<number>`
+/// from `<pre>`.
+pub(super) fn tag_opened_before(haystack: &str, at: usize) -> bool {
+    let bytes = haystack.as_bytes();
+    let mut index = at.min(bytes.len());
+    while index > 0 {
+        index -= 1;
+        if bytes[index] == b'>' && (index == 0 || !matches!(bytes[index - 1], b'=' | b'>')) {
+            return opens_jsx_text(&haystack[..=index]);
+        }
+    }
+    false
+}
+
 /// Whether the `/` at `index` opens a regular expression rather than divides.
 ///
 /// The classic ambiguity, answered the way every line-at-a-time scanner

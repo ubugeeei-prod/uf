@@ -5,7 +5,9 @@
 use uf_config::UniflowedConfig;
 
 use crate::flow_builtin::FlowBuiltinLint;
-use crate::scan::{FileScan, ends_word, find_all, identifier_len, next_non_space, starts_word};
+use crate::scan::{
+    FileScan, ends_word, find_all, identifier_len, next_non_space, starts_word, word_in_jsx_text,
+};
 use crate::{Diagnostic, push_in_code, severity};
 
 pub(crate) fn run_flow_unsafe_getters_setters(
@@ -77,6 +79,9 @@ pub(crate) fn run_flow_unsafe_object_assign(
             starts_word(code, at)
                 && ends_word(code, at + "Object.assign".len())
                 && !line.in_string(at)
+                // `<p>Object.assign(a, b)</p>` is text. `{Object.assign(a, b)}`
+                // is the call, and so is one written on its own line.
+                && !word_in_jsx_text(scan, position, at, "Object.assign".len())
         }) {
             push_in_code(
                 diagnostics,

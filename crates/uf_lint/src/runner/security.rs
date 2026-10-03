@@ -4,7 +4,9 @@
 
 use uf_config::UniflowedConfig;
 
-use crate::scan::{FileScan, Line, find_words, identifier_len, next_non_space, previous_word};
+use crate::scan::{
+    FileScan, Line, find_words, identifier_len, next_non_space, previous_word, word_in_jsx_text,
+};
 use crate::{Diagnostic, push_in_code, severity};
 
 /// The sanitizing package whose helpers may feed `dangerouslySetInnerHTML`.
@@ -34,7 +36,9 @@ pub(crate) fn run_security_no_dangerously_set_inner_html(
         for at in find_words(code, "dangerouslySetInnerHTML") {
             // Naming the sink is not reaching for it. The rule's own message
             // names it, and so does every page that documents it.
-            if line.in_string(at) {
+            if line.in_string(at)
+                || word_in_jsx_text(scan, position, at, "dangerouslySetInnerHTML".len())
+            {
                 continue;
             }
             // The `__html` value may wrap onto the next line, so both are checked.
@@ -120,7 +124,7 @@ pub(crate) fn run_security_no_eval(
         let code = line.code();
 
         for at in find_words(code, "eval") {
-            if line.in_string(at) {
+            if line.in_string(at) || word_in_jsx_text(scan, position, at, "eval".len()) {
                 continue;
             }
             if !next_non_space(code, at + "eval".len()).is_some_and(|(_, byte)| byte == b'(') {
@@ -138,7 +142,7 @@ pub(crate) fn run_security_no_eval(
         }
 
         for at in find_words(code, "Function") {
-            if line.in_string(at) {
+            if line.in_string(at) || word_in_jsx_text(scan, position, at, "Function".len()) {
                 continue;
             }
             if !next_non_space(code, at + "Function".len()).is_some_and(|(_, byte)| byte == b'(') {
@@ -160,7 +164,7 @@ pub(crate) fn run_security_no_eval(
 
         for timer in TIMER_FUNCTIONS {
             for at in find_words(code, timer) {
-                if line.in_string(at) {
+                if line.in_string(at) || word_in_jsx_text(scan, position, at, timer.len()) {
                     continue;
                 }
                 let Some((paren_at, b'(')) = next_non_space(code, at + timer.len()) else {

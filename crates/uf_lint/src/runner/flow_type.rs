@@ -311,15 +311,20 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
 /// Whether the word sits next to an operator a type annotation cannot have.
 ///
 /// `<` after the name is a comparison (`any < limit`). `>` *before* it is a
-/// comparison (`count > any`) or the end of a JSX tag. `>=` and `<=` are the
-/// same comparisons. `>` *after* the name compares when an expression follows
-/// (`any > limit`, `any >> 1`); `Array<any>` and `Array<any>>` have no
-/// expression there, so they stay generics. `+`, `-`, `*`, `/` and `%` are
-/// arithmetic, on either side (`foo(any + 1)`, `foo(1 + any)`). `=` and `!`
-/// after the name are `==`, `===`, `!=` and `!==`.
+/// comparison (`count > any`) or the end of a JSX tag. `<` *before* it is a
+/// comparison too (`count < any`, `count < any && ready`) unless the rest of
+/// the line is a type: `Array<any>`, `Foo<any, T>`, `Foo<any | T>`,
+/// `Foo<any & T>` and `Foo<any = T>`. `>=` and `<=` are the same comparisons.
+/// `>` *after* the name compares when an expression follows (`any > limit`,
+/// `any >> 1`); `Array<any>` and `Array<any>>` have no expression there, so
+/// they stay generics. `+`, `-`, `*`, `/` and `%` are arithmetic, on either
+/// side (`foo(any + 1)`, `foo(1 + any)`). `!` after the name is `!=` and
+/// `!==`. `=` after the name is `==` and `===`, or an assignment (`any = 1`);
+/// a single `=` with `<` in front is the default in `Foo<any = T>`.
 ///
-/// `|` and `&` stay types, because they build a union and an intersection.
-/// The `=` *before* `type Box = any` is not one of these.
+/// `|` and a single `&` stay types, because they build a union and an
+/// intersection. `&&` is a value. The `=` *before* `type Box = any` is not
+/// one of these.
 fn beside_a_value_operator(
     code: &str,
     before: Option<(usize, u8)>,
@@ -327,7 +332,15 @@ fn beside_a_value_operator(
 ) -> bool {
     if let Some((index, byte)) = after {
         match byte {
-            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'=' | b'!' => return true,
+            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'!' => return true,
+            b'=' => {
+                let compared = code.as_bytes().get(index + 1) == Some(&b'=');
+                // `Foo<any = T>` is a default type argument, not `any = 1`.
+                let type_default = !compared && before.is_some_and(|(_, byte)| byte == b'<');
+                if !type_default {
+                    return true;
+                }
+            }
             b'>' if angle_starts_a_comparison(code, index) => return true,
             _ => {}
         }
@@ -335,11 +348,30 @@ fn beside_a_value_operator(
     if let Some((index, byte)) = before {
         match byte {
             b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' => return true,
+            b'<' if less_than_starts_a_comparison(code, after) => return true,
             b'=' if index > 0 && matches!(code.as_bytes()[index - 1], b'>' | b'<') => return true,
             _ => {}
         }
     }
     false
+}
+
+/// Whether a `<` immediately before a name is a comparison.
+///
+/// `count < any` and `count < any && ready` are. `Array<any>`, `Foo<any, T>`,
+/// `Foo<any | T>`, `Foo<any & T>` and `Foo<any = T>` are the rest of a generic,
+/// so `>`, `,`, `|`, `:`, a single `&` and a single `=` keep the name a type.
+/// `==` after the name is still a comparison (`count < any == limit`).
+fn less_than_starts_a_comparison(code: &str, after: Option<(usize, u8)>) -> bool {
+    let Some((index, byte)) = after else {
+        return true;
+    };
+    match byte {
+        b'>' | b',' | b'|' | b':' => false,
+        b'=' => code.as_bytes().get(index + 1) == Some(&b'='),
+        b'&' => code.as_bytes().get(index + 1) == Some(&b'&'),
+        _ => true,
+    }
 }
 
 /// Whether the `>` at `gt` starts a comparison rather than closing a generic.

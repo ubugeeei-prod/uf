@@ -63,6 +63,37 @@ fn an_inline_comment_does_not_swallow_the_brace_after_it() {
 }
 
 #[test]
+fn jsx_text_is_not_a_nested_component() {
+    let diagnostics = lint_js(
+        "flow/nested-component",
+        "// @flow\ncomponent Page() {\n  return <pre>\ncomponent Child() { return null; }\n</pre>;\n}\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn a_component_inside_a_jsx_expression_is_still_nested() {
+    let diagnostics = lint_js(
+        "flow/nested-component",
+        "// @flow\ncomponent Page() {\n  return <div>\n    {(() => {\n      component Child() { return null; }\n      return <Child />;\n    })()}\n  </div>;\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 5);
+}
+
+#[test]
+fn jsx_text_is_not_a_nested_hook() {
+    let diagnostics = lint_js(
+        "flow/nested-hook",
+        "// @flow\ncomponent Page() {\n  return <pre>\nhook useChild(): number { return 1; }\n</pre>;\n}\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
 fn nested_hook_declarations_are_rejected() {
     let diagnostics = lint_js(
         "flow/nested-hook",

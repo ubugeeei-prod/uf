@@ -88,6 +88,18 @@ fn unnecessary_optional_chain_accepts_chains_on_nullable_bases() {
 }
 
 #[test]
+fn unsafe_object_assign_ignores_jsx_text() {
+    let diagnostics = lint_js(
+        "flow/unsafe-object-assign",
+        "// @flow\nconst view = <p>Object.assign(a, b)</p>;\nconst continued = <p>\nObject.assign(a, b)\n</p>;\nconst real = Object.assign({}, a);\nconst expr = <p>{Object.assign({}, a)}</p>;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 6);
+    assert_eq!(diagnostics[1].line, 7);
+}
+
+#[test]
 fn unsafe_object_assign_ignores_a_string_that_contains_one() {
     let diagnostics = lint_js(
         "flow/unsafe-object-assign",

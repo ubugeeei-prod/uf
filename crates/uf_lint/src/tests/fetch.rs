@@ -28,6 +28,20 @@ fn a_sentence_naming_global_fetch_is_accepted() {
 }
 
 #[test]
+fn an_override_written_as_jsx_text_is_accepted() {
+    let diagnostics = lint_one(
+        "fetch/no-global-override",
+        "src/app/page.jsx",
+        "// @flow\nconst view = <p>globalThis.fetch = mine</p>;\nconst real = globalThis.fetch = polyfill;\nconst expr = <p>{globalThis.fetch = mine}</p>;\nconst compared = count > globalThis.fetch = mine;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 3, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 3);
+    assert_eq!(diagnostics[1].line, 4);
+    assert_eq!(diagnostics[2].line, 5);
+}
+
+#[test]
 fn an_override_after_a_string_on_the_same_line_is_still_rejected() {
     let diagnostics = lint_one(
         "fetch/no-global-override",

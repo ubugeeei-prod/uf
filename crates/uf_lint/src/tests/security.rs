@@ -36,6 +36,17 @@ fn dangerously_set_inner_html_allows_the_value_on_the_next_line() {
 }
 
 #[test]
+fn naming_the_sink_in_jsx_text_is_not_reaching_for_it() {
+    let diagnostics = lint_js(
+        "security/no-dangerously-set-inner-html",
+        "// @flow\nconst view = <p>dangerouslySetInnerHTML</p>;\ncomponent Body(html: string) {\n  return <div dangerouslySetInnerHTML={{ __html: html }} />;\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 4);
+}
+
+#[test]
 fn naming_the_sink_in_a_string_is_not_reaching_for_it() {
     // Every page that documents the rule, and the rule's own message, contain
     // the word.
@@ -84,6 +95,19 @@ fn eval_and_friends_are_rejected() {
     assert_eq!((diagnostics[1].line, diagnostics[1].column), (3, 11));
     assert_eq!(diagnostics[2].line, 4);
     assert_eq!(diagnostics[3].line, 5);
+}
+
+#[test]
+fn the_eval_family_in_jsx_text_is_accepted() {
+    let diagnostics = lint_js(
+        "security/no-eval",
+        "// @flow\nconst view = <p>eval(code)</p>;\nconst built = <p>new Function(src)</p>;\nconst timer = <p>setTimeout(\"x\")</p>;\nconst later = <p>setInterval(\"x\")</p>;\nconst real = eval(input);\nconst expr = <p>{eval(input)}</p>;\nconst compared = count > eval(input);\n",
+    );
+
+    assert_eq!(diagnostics.len(), 3, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 6);
+    assert_eq!(diagnostics[1].line, 7);
+    assert_eq!(diagnostics[2].line, 8);
 }
 
 #[test]

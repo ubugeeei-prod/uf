@@ -272,6 +272,32 @@ fn reexport_from(line: &Line<'_>, code: &str, from_at: usize) -> bool {
     }
 }
 
+/// Whether the word at `at` on line `position` is JSX text.
+///
+/// [`in_jsx_text`] covers `<p>any</p>`. Two shapes it refuses are still text:
+/// an assignment or a `{` body after a tag on this line (`<p>globalThis.fetch
+/// = mine</p>`, `<pre>component Child() { … }`), and a word on the line after
+/// one that opened an element. A comparison (`count > eval(x)`) has a `>` that
+/// is not a tag, and `{eval(x)}` has already closed the text.
+pub(crate) fn word_in_jsx_text(
+    scan: &FileScan<'_>,
+    position: usize,
+    at: usize,
+    len: usize,
+) -> bool {
+    let line = &scan.lines[position];
+    let code = line.code();
+    let template = line.opens_in_template();
+    if in_jsx_text(code, at, len, template) {
+        return true;
+    }
+    let continued = position > 0 && opens_jsx_text(scan.lines[position - 1].code());
+    if continued && search::jsx_text_is_open(code, at, template, true) {
+        return true;
+    }
+    search::jsx_text_is_open(code, at, template, false) && search::tag_opened_before(code, at)
+}
+
 /// Split on `\n` with `str::lines` semantics but without dropping the final
 /// empty line's offset bookkeeping.
 fn split_lines(source: &str) -> impl Iterator<Item = &str> {

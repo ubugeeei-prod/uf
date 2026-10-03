@@ -283,6 +283,21 @@ fn unclear_type_ignores_a_comparison_an_arithmetic_use_and_jsx_text() {
 }
 
 #[test]
+fn unclear_type_ignores_a_less_than_comparison() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nif (count < any) {}\nif (count <= any) {}\nif (count < Object) {}\nif (count < Function) {}\nif (count < any && ready) {}\nif (count < any ? 1 : 0) {}\nfoo(count << any);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Items = Array<any>;\ntype Pair = Foo<any, number>;\ntype Union = Foo<any | number>;\ntype Both = Foo<any & number>;\ntype Default = Foo<any = number>;\ntype Box<T = any> = T;\nconst made = new Map<string, any>();\n",
+    );
+    assert_eq!(still.len(), 7, "{still:?}");
+}
+
+#[test]
 fn deprecated_type_ignores_a_comparison() {
     let diagnostics = lint_js(
         "flow/deprecated-type",
@@ -292,6 +307,21 @@ fn deprecated_type_ignores_a_comparison() {
 
     let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
     assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_less_than_comparison() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nif (count < bool) {}\nif (count <= bool) {}\nif (count < bool && ready) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Items = Array<bool>;\ntype Default = Foo<bool = number>;\ntype Flag = bool;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
 }
 
 #[test]
@@ -308,6 +338,21 @@ fn internal_type_ignores_a_name_in_jsx_text() {
     );
     assert_eq!(still.len(), 1, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 20));
+}
+
+#[test]
+fn internal_type_ignores_a_less_than_comparison() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nif (count < React$Node) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = Array<React$Node>;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
 }
 
 #[test]
