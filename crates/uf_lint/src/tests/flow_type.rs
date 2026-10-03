@@ -271,20 +271,23 @@ fn unclear_type_ignores_comments() {
 fn unclear_type_ignores_a_comparison_an_arithmetic_use_and_jsx_text() {
     let diagnostics = lint_js(
         "flow/unclear-type",
-        "// @flow\nif (any < limit) {}\nif (count > any) {}\nif (count >= any) {}\nfoo(any + 1);\nfoo(1 + any);\nconst view = <p>any</p>;\n",
+        "// @flow\nif (any < limit) {}\nif (count > any) {}\nif (count >= any) {}\nif (any > limit) {}\nif (any > (limit)) {}\nif (any >= limit) {}\nif (any === limit) {}\nif (any !== limit) {}\nfoo(any + 1);\nfoo(1 + any);\nfoo(any >> 1);\nconst view = <p>any</p>;\nconst sentence = <p>hello any there</p>;\nconst named = <p>hello Object there</p>;\n",
     );
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
     let still = lint_js(
         "flow/unclear-type",
-        "// @flow\ntype Box = any;\ntype Items = Array<any>;\ntype Either = any | number;\n",
+        "// @flow\ntype Box = any;\ntype Items = Array<any>;\ntype Nested = Array<Array<any>>;\ntype Either = any | number;\nconst label = \">\"; type Quoted = any; const view = <p>x</p>;\n",
     );
-    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!(still.len(), 5, "{still:?}");
 }
 
 #[test]
 fn deprecated_type_ignores_a_comparison() {
-    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nif (bool < limit) {}\n");
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nif (bool < limit) {}\nif (bool > limit) {}\nif (bool === ready) {}\nconst view = <p>hello bool there</p>;\n",
+    );
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
     let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
@@ -295,7 +298,7 @@ fn deprecated_type_ignores_a_comparison() {
 fn internal_type_ignores_a_name_in_jsx_text() {
     let diagnostics = lint_js(
         "flow/internal-type",
-        "// @flow\nconst view = <p>React$Node</p>;\n",
+        "// @flow\nconst view = <p>React$Node</p>;\nconst sentence = <p>hello React$Node there</p>;\n",
     );
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 

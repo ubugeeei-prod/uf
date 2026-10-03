@@ -154,6 +154,70 @@ pub(crate) fn in_string_from(haystack: &str, at: usize, open: bool) -> bool {
     quote.is_some()
 }
 
+/// Whether the word at `at` is JSX text on this line.
+///
+/// Text is what a tag's `>` opens and the next `<` closes: `<p>hello any
+/// there</p>` and `<p>React$Node</p>`. `{any}` is an expression and
+/// `Array<any>` is a generic, so `{`, `}`, `<`, `;` or `=` before the word
+/// means it is not text. `=>`, `>=` and `>>` are not the end of a tag. After
+/// the word, a `<` has to arrive before `{`, `}`, `>` or `=`, which is why
+/// `count > any` is not text either.
+pub(crate) fn in_jsx_text(haystack: &str, at: usize, len: usize, opens_in_template: bool) -> bool {
+    let bytes = haystack.as_bytes();
+    if len == 0 || at.saturating_add(len) > bytes.len() {
+        return false;
+    }
+    let mut quote: Option<u8> = if opens_in_template { Some(b'`') } else { None };
+    let mut text = false;
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if let Some(open) = quote {
+            if bytes[index] == b'\\' {
+                index += 2;
+                continue;
+            }
+            if bytes[index] == open {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if index == at {
+            if !text {
+                return false;
+            }
+            index = at + len;
+            continue;
+        }
+        let byte = bytes[index];
+        if matches!(byte, b'"' | b'\'' | b'`') {
+            quote = Some(byte);
+            index += 1;
+            continue;
+        }
+        if byte == b'/' && starts_a_regex(bytes, index) {
+            index = regex_end(bytes, index);
+            continue;
+        }
+        if index > at {
+            match byte {
+                b'<' => return true,
+                b'{' | b'}' | b'>' | b';' | b'=' => return false,
+                _ => {}
+            }
+            index += 1;
+            continue;
+        }
+        match byte {
+            b'{' | b'}' | b'<' | b';' | b'=' => text = false,
+            b'>' if index == 0 || !matches!(bytes[index - 1], b'=' | b'>') => text = true,
+            _ => {}
+        }
+        index += 1;
+    }
+    false
+}
+
 /// Whether the `/` at `index` opens a regular expression rather than divides.
 ///
 /// The classic ambiguity, answered the way every line-at-a-time scanner
