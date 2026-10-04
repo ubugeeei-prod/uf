@@ -209,15 +209,35 @@ impl<'a> FileScan<'a> {
         facts.mentions_react_native = lines
             .iter()
             .any(|line| line.code().contains("react-native"));
-        facts.has_esm_import = lines.iter().any(line_imports_esm);
 
-        Self {
+        let mut built = Self {
             file,
             index,
             lines,
             facts,
-        }
+        };
+        // An `import` drawn as the text of an element is not a module. The
+        // predicate has to run after `built` exists: telling JSX text from a
+        // statement looks at the previous line as well as this one.
+        built.facts.has_esm_import = built.lines.iter().enumerate().any(|(position, line)| {
+            line_imports_esm(line) && !line_starts_in_jsx_text(&built, position)
+        });
+        built
     }
+}
+
+/// Whether the first token of `position` is JSX text.
+///
+/// `"use client"` and `import { a } from "./a.js"` on the line after `<pre>`
+/// are the element's contents. A quote is not an identifier, so the span
+/// checked is one byte when the token has no name.
+fn line_starts_in_jsx_text(scan: &FileScan<'_>, position: usize) -> bool {
+    let line = &scan.lines[position];
+    let code = line.code();
+    let Some((at, _)) = next_non_space(code, 0) else {
+        return false;
+    };
+    word_in_jsx_text(scan, position, at, identifier_len(code, at).max(1))
 }
 
 /// Whether `line` is an ES module import or re-export.

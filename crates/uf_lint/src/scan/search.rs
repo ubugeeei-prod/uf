@@ -274,10 +274,11 @@ pub(crate) fn opens_jsx_text(haystack: &str) -> bool {
 /// Whether JSX text is open at `at`, looking only at the bytes before it.
 ///
 /// [`in_jsx_text`] also reads what follows the word, and it answers "not text"
-/// when `=` or `{` arrives before a closing `<`. An assignment and a
-/// declaration body written inside an element have those bytes
-/// (`<p>globalThis.fetch = mine</p>`, `component Child() { … }` on the line
-/// after `<pre>`). `continued` is that previous line, so text starts open.
+/// when `{` arrives before a closing `<`. A declaration body written inside
+/// an element has that byte (`component Child() { … }` on the line after
+/// `<pre>`). An `=` does not: `<p>const value = require("./b.js")</p>` is
+/// still the element's text. `continued` is the previous line, so text starts
+/// open.
 pub(super) fn jsx_text_is_open(
     haystack: &str,
     at: usize,
@@ -314,7 +315,7 @@ pub(super) fn jsx_text_is_open(
             continue;
         }
         match byte {
-            b'{' | b'}' | b'<' | b';' | b'=' => text = false,
+            b'{' | b'}' | b'<' | b';' => text = false,
             b'>' if index == 0 || !matches!(bytes[index - 1], b'=' | b'>') => text = true,
             _ => {}
         }

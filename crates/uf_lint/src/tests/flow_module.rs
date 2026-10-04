@@ -59,6 +59,41 @@ fn mixed_import_and_require_rejects_a_require_beside_a_reexport() {
 }
 
 #[test]
+fn mixed_import_and_require_ignores_a_require_in_jsx_text() {
+    let diagnostics = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nimport { a } from \"./a.js\";\nconst view = <p>const value = require(\"./b.js\");</p>;\nconst next = (\n  <pre>\n    const value = require(\"./c.js\");\n  </pre>\n);\nconst real = require(\"./d.js\");\nconst expr = <p>{require(\"./e.js\")}</p>;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![9, 10]
+    );
+}
+
+#[test]
+fn mixed_import_and_require_ignores_an_import_written_as_jsx_text() {
+    let imported = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nconst sample = (\n  <pre>\n    import { a } from \"./a.js\";\n  </pre>\n);\nconst value = require(\"./b.js\");\n",
+    );
+    // A `const require = …` drawn in the element binds nothing, so the real
+    // call below is still the CommonJS free variable.
+    let bound = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nimport { a } from \"./a.js\";\nconst sample = (\n  <pre>\n    const require = createRequire(import.meta.url);\n  </pre>\n);\nconst value = require(\"./b.js\");\n",
+    );
+
+    assert!(imported.is_empty(), "{imported:?}");
+    assert_eq!(bound.len(), 1, "{bound:?}");
+    assert_eq!(bound[0].line, 8);
+}
+
+#[test]
 fn mixed_import_and_require_ignores_jsx_text() {
     let diagnostics = lint_js(
         "flow/mixed-import-and-require",
