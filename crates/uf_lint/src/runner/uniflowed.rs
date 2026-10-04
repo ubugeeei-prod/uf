@@ -4,7 +4,7 @@
 use uf_config::UniflowedConfig;
 use uf_infra::memchr_iter;
 
-use crate::scan::{FileScan, find_all, find_words, heads_a_command, starts_word};
+use crate::scan::{FileScan, find_all, find_words, heads_a_command, starts_word, word_in_jsx_text};
 use crate::{Diagnostic, push, push_at, push_in_code, severity};
 
 pub(crate) fn run_no_tabs(
@@ -107,6 +107,7 @@ pub(crate) fn run_no_npm_script_invocation(
         for at in find_all(code, "npm run")
             .filter(|&at| starts_word(code, at))
             .filter(|&at| heads_a_command(code, at, "npm".len()))
+            .filter(|&at| !word_in_jsx_text(scan, position, at, "npm".len()))
         {
             push_in_code(
                 diagnostics,
@@ -121,7 +122,10 @@ pub(crate) fn run_no_npm_script_invocation(
         for word in PACKAGE_MANAGER_WORDS {
             // The name has to head a command, not merely appear. See
             // `scan::heads_a_command` for what that costs and what it bought.
-            for at in find_words(code, word).filter(|&at| heads_a_command(code, at, word.len())) {
+            for at in find_words(code, word)
+                .filter(|&at| heads_a_command(code, at, word.len()))
+                .filter(|&at| !word_in_jsx_text(scan, position, at, word.len()))
+            {
                 push_in_code(
                     diagnostics,
                     scan,

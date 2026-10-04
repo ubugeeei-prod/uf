@@ -58,6 +58,17 @@ fn a_managers_name_that_heads_a_command_is_still_an_invocation() {
 }
 
 #[test]
+fn a_command_written_as_jsx_text_is_not_an_invocation() {
+    let diagnostics = lint_js(
+        "uniflowed/no-npm-script-invocation",
+        "// @flow\nconst view = <p>npm run build</p>;\nconst yarn = (\n  <pre>\n    yarn install\n  </pre>\n);\nconst pnpm = <p>pnpm install</p>;\nconst npx = (\n  <pre>\n    npx tsc\n  </pre>\n);\nconst bunx = <p>bunx tsc</p>;\nspawn(\"npm run build\");\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 15);
+}
+
+#[test]
 fn uf_task_invocations_are_accepted() {
     let diagnostics = lint_js(
         "uniflowed/no-npm-script-invocation",
