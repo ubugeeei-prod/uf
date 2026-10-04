@@ -305,6 +305,21 @@ fn unclear_type_ignores_a_name_on_the_line_after_a_tag() {
 }
 
 #[test]
+fn unclear_type_ignores_a_prefix_keyword_operand() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfoo(typeof any);\nfoo(void Object);\nfoo(await Function);\nfoo(yield any);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype U = void | any;\ntype Handler = Function;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+}
+
+#[test]
 fn unclear_type_ignores_an_in_or_instanceof_operand() {
     let diagnostics = lint_js(
         "flow/unclear-type",
@@ -370,6 +385,18 @@ fn deprecated_type_ignores_a_comparison() {
     let diagnostics = lint_js(
         "flow/deprecated-type",
         "// @flow\nif (bool < limit) {}\nif (bool > limit) {}\nif (bool === ready) {}\nconst view = <p>hello bool there</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_prefix_keyword_operand() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfoo(typeof bool);\nfoo(void bool);\nfoo(await bool);\nfoo(yield bool);\n",
     );
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
@@ -464,6 +491,21 @@ fn internal_type_ignores_a_name_on_the_line_after_a_tag() {
             .collect::<Vec<_>>(),
         vec![2, 3, 4]
     );
+}
+
+#[test]
+fn internal_type_ignores_a_prefix_keyword_operand() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfoo(typeof React$Node);\nfoo(void React$Node);\nfoo(await React$Node);\nfoo(yield React$Node);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
 }
 
 #[test]
