@@ -105,8 +105,8 @@ pub(crate) struct FileFacts {
     pub declares_component: bool,
     /// The file has a `"use client"` directive statement.
     ///
-    /// A mention of the words inside another string is not a directive, so it
-    /// does not make the file a client module.
+    /// A mention of the words inside another string, or as the text of an
+    /// element, is not a directive, so it does not make the file a client module.
     pub has_use_client: bool,
     /// The file mentions React at all.
     pub mentions_react: bool,
@@ -191,20 +191,6 @@ impl<'a> FileScan<'a> {
             code.match_indices("component ")
                 .any(|(at, _)| !line.in_string(at))
         });
-        // A directive is a statement. The opening quote of `"use client"` is
-        // not inside a string; the same characters inside a template, or in
-        // the middle of another string, are text.
-        facts.has_use_client = lines.iter().any(|line| {
-            let code = line.code();
-            let Some((at, _)) = next_non_space(code, 0) else {
-                return false;
-            };
-            if line.in_string(at) {
-                return false;
-            }
-            let rest = &code[at..];
-            rest.starts_with("\"use client\"") || rest.starts_with("'use client'")
-        });
         facts.mentions_react = lines.iter().any(|line| line.code().contains("React"));
         facts.mentions_react_native = lines
             .iter()
@@ -221,6 +207,20 @@ impl<'a> FileScan<'a> {
         // statement looks at the previous line as well as this one.
         built.facts.has_esm_import = built.lines.iter().enumerate().any(|(position, line)| {
             line_imports_esm(line) && !line_starts_in_jsx_text(&built, position)
+        });
+        // A directive is a statement. The opening quote of `"use client"` is
+        // not inside a string; the same characters inside a template, in the
+        // middle of another string, or on the line after `<pre>`, are text.
+        built.facts.has_use_client = built.lines.iter().enumerate().any(|(position, line)| {
+            let code = line.code();
+            let Some((at, _)) = next_non_space(code, 0) else {
+                return false;
+            };
+            if line.in_string(at) || line_starts_in_jsx_text(&built, position) {
+                return false;
+            }
+            let rest = &code[at..];
+            rest.starts_with("\"use client\"") || rest.starts_with("'use client'")
         });
         built
     }

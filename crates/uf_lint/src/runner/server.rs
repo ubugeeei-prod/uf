@@ -190,8 +190,9 @@ pub(crate) fn run_server_use_client_directive_position(
         }
         // A template line that reads `"use client";` is source this module
         // quotes, not a directive. The opening quote of a real directive is
-        // not inside a string.
-        if line.in_string(at) {
+        // not inside a string, and the same line drawn inside `<pre>` is not
+        // a statement either.
+        if line.in_string(at) || word_in_jsx_text(scan, position, at, 1) {
             continue;
         }
         if position == first_code_line.get() {

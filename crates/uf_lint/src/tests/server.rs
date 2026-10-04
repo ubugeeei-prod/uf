@@ -87,6 +87,23 @@ fn a_leading_boundary_directive_is_accepted() {
 }
 
 #[test]
+fn a_directive_inside_jsx_text_is_not_a_statement() {
+    let directive = lint_js(
+        "server/use-client-directive-position",
+        "// @flow\nimport { a } from \"./a.js\";\nconst sample = (\n  <pre>\n    \"use client\";\n  </pre>\n);\nexport const ready = a;\n",
+    );
+    // The text does not make the file a client module, so a secret read
+    // beside it is not a client reading a server secret.
+    let secret = lint_js(
+        "server/no-client-secret",
+        "// @flow\nconst sample = (\n  <pre>\n    \"use client\";\n  </pre>\n);\nconst token = process.env.API_SECRET;\n",
+    );
+
+    assert!(directive.is_empty(), "{directive:?}");
+    assert!(secret.is_empty(), "{secret:?}");
+}
+
+#[test]
 fn a_directive_inside_a_template_is_not_a_statement() {
     let diagnostics = lint_js(
         "server/use-client-directive-position",
