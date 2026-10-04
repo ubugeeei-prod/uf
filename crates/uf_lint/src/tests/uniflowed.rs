@@ -137,6 +137,18 @@ fn trailing_whitespace_on_a_line_of_code_is_still_reported() {
 }
 
 #[test]
+fn a_tab_inside_jsx_text_is_accepted() {
+    // Part of the element's text, kept by the formatter, same as a string.
+    let diagnostics = lint_js(
+        "uniflowed/no-tabs",
+        "// @flow\nconst view = <pre>\tcode</pre>;\nconst next = (\n  <pre>\n\tcode\n  </pre>\n);\nconst a\t= 1;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 8);
+}
+
+#[test]
 fn a_tab_inside_a_string_is_accepted() {
     // Part of the string, kept by the formatter, and so not something the
     // formatter can be asked to remove.

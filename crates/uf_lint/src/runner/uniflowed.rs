@@ -25,7 +25,8 @@ pub(crate) fn run_no_tabs(
         // remove.
         if let Some(line) = scan.lines.get(position.line.saturating_sub(1))
             && let Some(at) = (offset + 1).checked_sub(line.offset + line.code_offset() + 1)
-            && line.in_string(at)
+            && (line.in_string(at)
+                || word_in_jsx_text(scan, position.line.saturating_sub(1), at, 1))
         {
             continue;
         }
