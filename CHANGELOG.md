@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.27.0
+
+- fix: a type name on the line after a JSX tag is not an annotation (#1789) (54dae287)
+
 ## uf@0.26.0
 
 - fix: JSX text is not an import, a directive, a command, or whitespace (#1784) (41be6c6a)
