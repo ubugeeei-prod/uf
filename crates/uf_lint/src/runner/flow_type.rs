@@ -7,8 +7,8 @@ use uf_profiler::profile_span;
 
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
-    FileScan, find_words, identifier_len, in_jsx_text, is_word_byte, next_non_space,
-    prev_non_space, previous_word, starts_word,
+    FileScan, find_words, identifier_len, is_word_byte, next_non_space, prev_non_space,
+    previous_word, starts_word, word_in_jsx_text,
 };
 use crate::{Diagnostic, Severity, push_at, push_in_code, severity};
 
@@ -45,9 +45,7 @@ pub(crate) fn run_flow_unclear_type(
             for at in find_words(code, needle) {
                 // A sentence is not an annotation: `it("treats Object as any
                 // non-null object", …)` names no type.
-                if line.in_string(at)
-                    || in_jsx_text(code, at, needle.len(), line.opens_in_template())
-                {
+                if line.in_string(at) || word_in_jsx_text(scan, position, at, needle.len()) {
                     continue;
                 }
                 if names_a_value(code, at, needle.len(), outer) {
@@ -585,7 +583,7 @@ pub(crate) fn run_flow_deprecated_type(
         enclosing = enclosing.after(code);
         for at in find_words(code, "bool") {
             if line.in_string(at)
-                || in_jsx_text(code, at, 4, line.opens_in_template())
+                || word_in_jsx_text(scan, position, at, 4)
                 || names_a_value(code, at, 4, outer)
             {
                 continue;
@@ -663,7 +661,7 @@ pub(crate) fn run_flow_internal_type(
                 code,
                 prev_non_space(code, at),
                 next_non_space(code, at + len),
-            ) || in_jsx_text(code, at, len, line.opens_in_template())
+            ) || word_in_jsx_text(scan, position, at, len)
             {
                 at += len;
                 continue;
