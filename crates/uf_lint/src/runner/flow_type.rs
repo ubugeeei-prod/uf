@@ -97,7 +97,7 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
 
     // `any < limit`, `count > any`, `foo(any + 1)`, and the letters inside
     // `<p>any</p>` are expressions. A type annotation is none of those.
-    if beside_a_value_operator(code, before, after) {
+    if beside_a_value_operator(code, before, after) || value_keyword_operand(code, at, len) {
         return true;
     }
 
@@ -412,6 +412,26 @@ fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
         )
 }
 
+/// Whether `in` or `instanceof` stands immediately beside the word.
+///
+/// Both are value operators, on either side. A `|` between a keyword and the
+/// name keeps the name a type: `type U = void | any` is not `void any`.
+fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
+    if prev_non_space(code, at).is_some_and(|(_, byte)| is_word_byte(byte))
+        && previous_word(code, at).is_some_and(|(_, word)| matches!(word, "in" | "instanceof"))
+    {
+        return true;
+    }
+    let Some((next_at, _)) = next_non_space(code, at + len) else {
+        return false;
+    };
+    if !is_word_byte(code.as_bytes()[next_at]) {
+        return false;
+    }
+    let next_len = identifier_len(code, next_at);
+    matches!(&code[next_at..next_at + next_len], "in" | "instanceof")
+}
+
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
 fn follows_an_equality_operator(code: &str, at: usize) -> bool {
     let Some((end, b'=')) = prev_non_space(code, at) else {
@@ -672,6 +692,7 @@ pub(crate) fn run_flow_internal_type(
                 prev_non_space(code, at),
                 next_non_space(code, at + len),
             ) || word_in_jsx_text(scan, position, at, len)
+                || value_keyword_operand(code, at, len)
             {
                 at += len;
                 continue;
