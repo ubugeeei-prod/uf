@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.26.0
+
+- fix: JSX text is not an import, a directive, a command, or whitespace (#1784) (41be6c6a)
+
 ## uf@0.25.0
 
 - fix: less-than comparisons and JSX text are not lint findings (#1775) (acbc8bbe)
