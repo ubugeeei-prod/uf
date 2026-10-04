@@ -305,6 +305,22 @@ fn unclear_type_ignores_a_name_on_the_line_after_a_tag() {
 }
 
 #[test]
+fn unclear_type_ignores_nullish_and_optional_operands() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfoo(any ?? ready);\nfoo(ready ?? any);\nfoo(any?.prop);\nfoo(Object?.());\nfoo(Function?.name);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype C = T extends any ? number : empty;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!(still[0].line, 2);
+}
+
+#[test]
 fn unclear_type_ignores_a_logical_operand() {
     let diagnostics = lint_js(
         "flow/unclear-type",
@@ -339,6 +355,18 @@ fn deprecated_type_ignores_a_comparison() {
     let diagnostics = lint_js(
         "flow/deprecated-type",
         "// @flow\nif (bool < limit) {}\nif (bool > limit) {}\nif (bool === ready) {}\nconst view = <p>hello bool there</p>;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_nullish_and_optional_operands() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfoo(bool ?? ready);\nfoo(ready ?? bool);\nfoo(bool?.value);\n",
     );
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
@@ -409,6 +437,21 @@ fn internal_type_ignores_a_name_on_the_line_after_a_tag() {
             .collect::<Vec<_>>(),
         vec![2, 3, 4]
     );
+}
+
+#[test]
+fn internal_type_ignores_nullish_and_optional_operands() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfoo(React$Node ?? ready);\nfoo(ready ?? React$Node);\nfoo(React$Node?.type);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
 }
 
 #[test]

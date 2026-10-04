@@ -321,7 +321,8 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
 /// a single `=` with `<` in front is the default in `Foo<any = T>`.
 ///
 /// `|` and a single `&` stay types, because they build a union and an
-/// intersection. `&&` and `||` are values, on either side. The `=` *before*
+/// intersection. `&&`, `||`, `??` and `?.` are values, on either side. A
+/// conditional's `?` is not one of them. The `=` *before*
 /// `type Box = any` is not one of these.
 fn beside_a_value_operator(
     code: &str,
@@ -333,6 +334,11 @@ fn beside_a_value_operator(
             b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'!' => return true,
             // `&&` and `||` are values. A single `&` or `|` is still a type.
             b'&' | b'|' if code.as_bytes().get(index + 1) == Some(&byte) => return true,
+            // `??`, `?.` and `?.()` are values. `T extends any ? U : V` is not:
+            // a conditional's `?` is followed by a type, not by `?`, `.` or `(`.
+            b'?' if matches!(code.as_bytes().get(index + 1), Some(b'?' | b'.' | b'(')) => {
+                return true;
+            }
             b'=' => {
                 let compared = code.as_bytes().get(index + 1) == Some(&b'=');
                 // `Foo<any = T>` is a default type argument, not `any = 1`.
@@ -349,6 +355,7 @@ fn beside_a_value_operator(
         match byte {
             b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' => return true,
             b'&' | b'|' if index > 0 && code.as_bytes()[index - 1] == byte => return true,
+            b'?' if index > 0 && code.as_bytes()[index - 1] == b'?' => return true,
             b'<' if less_than_starts_a_comparison(code, after) => return true,
             b'=' if index > 0 && matches!(code.as_bytes()[index - 1], b'>' | b'<') => return true,
             _ => {}
