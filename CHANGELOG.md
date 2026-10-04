@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.28.0
+
+- fix(lint): operands of value operators are not type annotations (#1796) (366d6d9b)
+
 ## uf@0.27.0
 
 - fix: a type name on the line after a JSX tag is not an annotation (#1789) (54dae287)
