@@ -378,6 +378,28 @@ fn internal_type_ignores_a_less_than_comparison() {
 }
 
 #[test]
+fn deprecated_type_ignores_bool_on_the_line_after_a_tag() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nconst view = (\n  <pre>\n    bool\n  </pre>\n);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nconst expr = <p>{bool}</p>;\ntype Flag = bool;\ntype Items = Array<bool>;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!(
+        still
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![2, 3, 4]
+    );
+}
+
+#[test]
 fn deprecated_type_rejects_the_bool_alias() {
     let diagnostics = lint_js("flow/deprecated-type", "// @flow\ntype A = bool;\n");
 

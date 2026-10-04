@@ -583,7 +583,7 @@ pub(crate) fn run_flow_deprecated_type(
         enclosing = enclosing.after(code);
         for at in find_words(code, "bool") {
             if line.in_string(at)
-                || in_jsx_text(code, at, 4, line.opens_in_template())
+                || word_in_jsx_text(scan, position, at, 4)
                 || names_a_value(code, at, 4, outer)
             {
                 continue;
