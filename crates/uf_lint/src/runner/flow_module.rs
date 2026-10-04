@@ -8,7 +8,7 @@ use uf_config::UniflowedConfig;
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
     FileScan, ends_word, find_all, find_words, identifier_len, next_non_space, opens_jsx_text,
-    prev_non_space, previous_word, starts_word,
+    prev_non_space, previous_word, starts_word, word_in_jsx_text,
 };
 use crate::{Diagnostic, push_in_code, severity};
 
@@ -40,7 +40,7 @@ pub(crate) fn run_flow_mixed_import_and_require(
             // `node -e "… require('node:fs') …"` is a shell command this module
             // hands to a task runner, not a module system it mixes in. That is
             // `uf.config.js` in this repository, twice on one line.
-            if line.in_string(at) {
+            if line.in_string(at) || word_in_jsx_text(scan, position, at, "require".len()) {
                 continue;
             }
             if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
@@ -71,12 +71,14 @@ pub(crate) fn run_flow_mixed_import_and_require(
 /// making the same statement, and the name is what decides whether the free
 /// variable is reachable at all.
 fn binds_require(scan: &FileScan<'_>) -> bool {
-    scan.lines.iter().any(|line| {
+    scan.lines.iter().enumerate().any(|(position, line)| {
         let code = line.code();
         find_words(code, "require").any(|at| {
             // `= …` after it, so a call is not read as a declaration, and a
             // keyword before it, so a property named `require` is not either.
-            next_non_space(code, at + "require".len()).is_some_and(|(_, byte)| byte == b'=')
+            // The same shape inside an element binds nothing in this module.
+            !word_in_jsx_text(scan, position, at, "require".len())
+                && next_non_space(code, at + "require".len()).is_some_and(|(_, byte)| byte == b'=')
                 && previous_word(code, at)
                     .is_some_and(|(_, word)| matches!(word, "const" | "let" | "var"))
         })

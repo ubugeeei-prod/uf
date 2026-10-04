@@ -58,6 +58,17 @@ fn a_managers_name_that_heads_a_command_is_still_an_invocation() {
 }
 
 #[test]
+fn a_command_written_as_jsx_text_is_not_an_invocation() {
+    let diagnostics = lint_js(
+        "uniflowed/no-npm-script-invocation",
+        "// @flow\nconst view = <p>npm run build</p>;\nconst yarn = (\n  <pre>\n    yarn install\n  </pre>\n);\nconst pnpm = <p>pnpm install</p>;\nconst npx = (\n  <pre>\n    npx tsc\n  </pre>\n);\nconst bunx = <p>bunx tsc</p>;\nspawn(\"npm run build\");\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 15);
+}
+
+#[test]
 fn uf_task_invocations_are_accepted() {
     let diagnostics = lint_js(
         "uniflowed/no-npm-script-invocation",
@@ -103,6 +114,17 @@ fn reports_tabs_and_trailing_whitespace() {
 }
 
 #[test]
+fn trailing_whitespace_inside_jsx_text_is_accepted() {
+    let diagnostics = lint_js(
+        "uniflowed/no-trailing-whitespace",
+        "// @flow\nconst next = (\n  <pre>\nhello \n  </pre>\n);\nconst a = 1;   \n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 7);
+}
+
+#[test]
 fn trailing_whitespace_inside_a_template_literal_is_accepted() {
     // Those spaces are part of the string. `uf fmt` reprints from the syntax
     // tree and keeps them, so reporting them here left the formatter unable to
@@ -123,6 +145,18 @@ fn trailing_whitespace_on_a_line_of_code_is_still_reported() {
     );
 
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
+
+#[test]
+fn a_tab_inside_jsx_text_is_accepted() {
+    // Part of the element's text, kept by the formatter, same as a string.
+    let diagnostics = lint_js(
+        "uniflowed/no-tabs",
+        "// @flow\nconst view = <pre>\tcode</pre>;\nconst next = (\n  <pre>\n\tcode\n  </pre>\n);\nconst a\t= 1;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 8);
 }
 
 #[test]

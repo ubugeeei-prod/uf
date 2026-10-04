@@ -105,8 +105,8 @@ pub(crate) struct FileFacts {
     pub declares_component: bool,
     /// The file has a `"use client"` directive statement.
     ///
-    /// A mention of the words inside another string is not a directive, so it
-    /// does not make the file a client module.
+    /// A mention of the words inside another string, or as the text of an
+    /// element, is not a directive, so it does not make the file a client module.
     pub has_use_client: bool,
     /// The file mentions React at all.
     pub mentions_react: bool,
@@ -191,33 +191,53 @@ impl<'a> FileScan<'a> {
             code.match_indices("component ")
                 .any(|(at, _)| !line.in_string(at))
         });
+        facts.mentions_react = lines.iter().any(|line| line.code().contains("React"));
+        facts.mentions_react_native = lines
+            .iter()
+            .any(|line| line.code().contains("react-native"));
+
+        let mut built = Self {
+            file,
+            index,
+            lines,
+            facts,
+        };
+        // An `import` drawn as the text of an element is not a module. The
+        // predicate has to run after `built` exists: telling JSX text from a
+        // statement looks at the previous line as well as this one.
+        built.facts.has_esm_import = built.lines.iter().enumerate().any(|(position, line)| {
+            line_imports_esm(line) && !line_starts_in_jsx_text(&built, position)
+        });
         // A directive is a statement. The opening quote of `"use client"` is
-        // not inside a string; the same characters inside a template, or in
-        // the middle of another string, are text.
-        facts.has_use_client = lines.iter().any(|line| {
+        // not inside a string; the same characters inside a template, in the
+        // middle of another string, or on the line after `<pre>`, are text.
+        built.facts.has_use_client = built.lines.iter().enumerate().any(|(position, line)| {
             let code = line.code();
             let Some((at, _)) = next_non_space(code, 0) else {
                 return false;
             };
-            if line.in_string(at) {
+            if line.in_string(at) || line_starts_in_jsx_text(&built, position) {
                 return false;
             }
             let rest = &code[at..];
             rest.starts_with("\"use client\"") || rest.starts_with("'use client'")
         });
-        facts.mentions_react = lines.iter().any(|line| line.code().contains("React"));
-        facts.mentions_react_native = lines
-            .iter()
-            .any(|line| line.code().contains("react-native"));
-        facts.has_esm_import = lines.iter().any(line_imports_esm);
-
-        Self {
-            file,
-            index,
-            lines,
-            facts,
-        }
+        built
     }
+}
+
+/// Whether the first token of `position` is JSX text.
+///
+/// `"use client"` and `import { a } from "./a.js"` on the line after `<pre>`
+/// are the element's contents. A quote is not an identifier, so the span
+/// checked is one byte when the token has no name.
+fn line_starts_in_jsx_text(scan: &FileScan<'_>, position: usize) -> bool {
+    let line = &scan.lines[position];
+    let code = line.code();
+    let Some((at, _)) = next_non_space(code, 0) else {
+        return false;
+    };
+    word_in_jsx_text(scan, position, at, identifier_len(code, at).max(1))
 }
 
 /// Whether `line` is an ES module import or re-export.

@@ -25,6 +25,23 @@ fn client_modules_may_not_import_dot_server_modules() {
 }
 
 #[test]
+fn an_import_written_as_jsx_text_is_not_a_server_import() {
+    let diagnostics = lint_js(
+        "server/no-server-only-import-in-client",
+        "// @flow\n\"use client\";\nconst sample = (\n  <pre>\n    import { db } from \"@uniflowed/server\";\n  </pre>\n);\nimport { db } from \"@uniflowed/server\";\nconst expr = <p>{require(\"@uniflowed/server\")}</p>;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![8, 9]
+    );
+}
+
+#[test]
 fn a_mention_of_a_server_module_is_not_an_import() {
     for source in [
         "// @flow\n'use client';\nconst note = \"do not import @uniflowed/server from a client\";\n",
@@ -87,6 +104,23 @@ fn a_leading_boundary_directive_is_accepted() {
 }
 
 #[test]
+fn a_directive_inside_jsx_text_is_not_a_statement() {
+    let directive = lint_js(
+        "server/use-client-directive-position",
+        "// @flow\nimport { a } from \"./a.js\";\nconst sample = (\n  <pre>\n    \"use client\";\n  </pre>\n);\nexport const ready = a;\n",
+    );
+    // The text does not make the file a client module, so a secret read
+    // beside it is not a client reading a server secret.
+    let secret = lint_js(
+        "server/no-client-secret",
+        "// @flow\nconst sample = (\n  <pre>\n    \"use client\";\n  </pre>\n);\nconst token = process.env.API_SECRET;\n",
+    );
+
+    assert!(directive.is_empty(), "{directive:?}");
+    assert!(secret.is_empty(), "{secret:?}");
+}
+
+#[test]
 fn a_directive_inside_a_template_is_not_a_statement() {
     let diagnostics = lint_js(
         "server/use-client-directive-position",
@@ -140,6 +174,23 @@ fn a_mention_of_the_directive_does_not_make_a_client_module() {
     );
 
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn server_rule_ignores_a_secret_read_in_jsx_text() {
+    let diagnostics = lint_js(
+        "server/no-client-secret",
+        "// @flow\n\"use client\";\nconst view = <p>process.env.API_SECRET</p>;\nconst next = (\n  <pre>\n    process.env.API_SECRET\n  </pre>\n);\nconst real = process.env.API_SECRET;\nconst expr = <p>{process.env.API_SECRET}</p>;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![9, 10]
+    );
 }
 
 #[test]

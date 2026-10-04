@@ -29,7 +29,10 @@ pub(crate) fn run_server_no_client_secret(
             for at in find_all(code, marker) {
                 // `notprocess.env` is not the environment. The marker starts
                 // on a word boundary, and a string that mentions it is text.
-                if !starts_word(code, at) || line.in_string(at) {
+                if !starts_word(code, at)
+                    || line.in_string(at)
+                    || word_in_jsx_text(scan, position, at, marker.len())
+                {
                     continue;
                 }
                 let Some((name_at, name)) = env_property(code, at + marker.len()) else {
@@ -136,7 +139,21 @@ pub(crate) fn run_server_no_server_only_import_in_client(
         // import is `from`, `import`, or `require` in front of that string.
         // A sentence that contains both words is text.
         let Some(at) = SERVER_ONLY_SPECIFIERS.into_iter().find_map(|specifier| {
-            find_all(code, specifier).find(|&at| specifier_is_imported(code, at))
+            find_all(code, specifier).find(|&at| {
+                // `import { db } from "…"` puts a `{` before the specifier.
+                // That brace closes JSX text for the specifier itself, so the
+                // question is whether the `import` or `require` in front of it
+                // is already the element's text.
+                let drawn = find_words(code, "import")
+                    .chain(find_words(code, "require"))
+                    .any(|word| {
+                        word < at
+                            && word_in_jsx_text(scan, position, word, identifier_len(code, word))
+                    });
+                specifier_is_imported(code, at)
+                    && !drawn
+                    && !word_in_jsx_text(scan, position, at, specifier.len())
+            })
         }) else {
             continue;
         };
@@ -190,8 +207,9 @@ pub(crate) fn run_server_use_client_directive_position(
         }
         // A template line that reads `"use client";` is source this module
         // quotes, not a directive. The opening quote of a real directive is
-        // not inside a string.
-        if line.in_string(at) {
+        // not inside a string, and the same line drawn inside `<pre>` is not
+        // a statement either.
+        if line.in_string(at) || word_in_jsx_text(scan, position, at, 1) {
             continue;
         }
         if position == first_code_line.get() {
