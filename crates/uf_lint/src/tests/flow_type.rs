@@ -283,6 +283,28 @@ fn unclear_type_ignores_a_comparison_an_arithmetic_use_and_jsx_text() {
 }
 
 #[test]
+fn unclear_type_ignores_a_name_on_the_line_after_a_tag() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst view = (\n  <pre>\n    any\n  </pre>\n);\nconst objectName = (\n  <pre>\n    Object\n  </pre>\n);\nconst functionName = (\n  <pre>\n    Function\n  </pre>\n);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst expr = <p>{any}</p>;\ntype Box = any;\ntype Items = Array<Object>;\ntype Handler = Function;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!(
+        still
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![2, 3, 4, 5]
+    );
+}
+
+#[test]
 fn unclear_type_ignores_a_less_than_comparison() {
     let diagnostics = lint_js(
         "flow/unclear-type",
