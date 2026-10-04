@@ -139,7 +139,21 @@ pub(crate) fn run_server_no_server_only_import_in_client(
         // import is `from`, `import`, or `require` in front of that string.
         // A sentence that contains both words is text.
         let Some(at) = SERVER_ONLY_SPECIFIERS.into_iter().find_map(|specifier| {
-            find_all(code, specifier).find(|&at| specifier_is_imported(code, at))
+            find_all(code, specifier).find(|&at| {
+                // `import { db } from "…"` puts a `{` before the specifier.
+                // That brace closes JSX text for the specifier itself, so the
+                // question is whether the `import` or `require` in front of it
+                // is already the element's text.
+                let drawn = find_words(code, "import")
+                    .chain(find_words(code, "require"))
+                    .any(|word| {
+                        word < at
+                            && word_in_jsx_text(scan, position, word, identifier_len(code, word))
+                    });
+                specifier_is_imported(code, at)
+                    && !drawn
+                    && !word_in_jsx_text(scan, position, at, specifier.len())
+            })
         }) else {
             continue;
         };

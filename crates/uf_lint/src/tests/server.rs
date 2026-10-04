@@ -25,6 +25,23 @@ fn client_modules_may_not_import_dot_server_modules() {
 }
 
 #[test]
+fn an_import_written_as_jsx_text_is_not_a_server_import() {
+    let diagnostics = lint_js(
+        "server/no-server-only-import-in-client",
+        "// @flow\n\"use client\";\nconst sample = (\n  <pre>\n    import { db } from \"@uniflowed/server\";\n  </pre>\n);\nimport { db } from \"@uniflowed/server\";\nconst expr = <p>{require(\"@uniflowed/server\")}</p>;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![8, 9]
+    );
+}
+
+#[test]
 fn a_mention_of_a_server_module_is_not_an_import() {
     for source in [
         "// @flow\n'use client';\nconst note = \"do not import @uniflowed/server from a client\";\n",
