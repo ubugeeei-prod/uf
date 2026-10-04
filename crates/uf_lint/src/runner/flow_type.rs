@@ -315,8 +315,8 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
 /// `Foo<any & T>` and `Foo<any = T>`. `>=` and `<=` are the same comparisons.
 /// `>` *after* the name compares when an expression follows (`any > limit`,
 /// `any >> 1`); `Array<any>` and `Array<any>>` have no expression there, so
-/// they stay generics. `+`, `-`, `*`, `/` and `%` are arithmetic, on either
-/// side (`foo(any + 1)`, `foo(1 + any)`). `!` after the name is `!=` and
+/// they stay generics. `+`, `-`, `*`, `/`, `%` and `^` are arithmetic, on either
+/// side (`foo(any + 1)`, `foo(1 + any)`, `foo(any ^ mask)`). `!` after the name is `!=` and
 /// `!==`. `=` after the name is `==` and `===`, or an assignment (`any = 1`);
 /// a single `=` with `<` in front is the default in `Foo<any = T>`.
 ///
@@ -331,7 +331,7 @@ fn beside_a_value_operator(
 ) -> bool {
     if let Some((index, byte)) = after {
         match byte {
-            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'!' => return true,
+            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'!' | b'^' => return true,
             // `&&` and `||` are values. A single `&` or `|` is still a type.
             b'&' | b'|' if code.as_bytes().get(index + 1) == Some(&byte) => return true,
             // `??`, `?.` and `?.()` are values. `T extends any ? U : V` is not:
@@ -353,7 +353,7 @@ fn beside_a_value_operator(
     }
     if let Some((index, byte)) = before {
         match byte {
-            b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' => return true,
+            b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' | b'^' => return true,
             b'&' | b'|' if index > 0 && code.as_bytes()[index - 1] == byte => return true,
             b'?' if index > 0 && code.as_bytes()[index - 1] == b'?' => return true,
             b'<' if less_than_starts_a_comparison(code, after) => return true,
