@@ -29,7 +29,10 @@ pub(crate) fn run_server_no_client_secret(
             for at in find_all(code, marker) {
                 // `notprocess.env` is not the environment. The marker starts
                 // on a word boundary, and a string that mentions it is text.
-                if !starts_word(code, at) || line.in_string(at) {
+                if !starts_word(code, at)
+                    || line.in_string(at)
+                    || word_in_jsx_text(scan, position, at, marker.len())
+                {
                     continue;
                 }
                 let Some((name_at, name)) = env_property(code, at + marker.len()) else {

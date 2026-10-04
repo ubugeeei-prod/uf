@@ -160,6 +160,23 @@ fn a_mention_of_the_directive_does_not_make_a_client_module() {
 }
 
 #[test]
+fn server_rule_ignores_a_secret_read_in_jsx_text() {
+    let diagnostics = lint_js(
+        "server/no-client-secret",
+        "// @flow\n\"use client\";\nconst view = <p>process.env.API_SECRET</p>;\nconst next = (\n  <pre>\n    process.env.API_SECRET\n  </pre>\n);\nconst real = process.env.API_SECRET;\nconst expr = <p>{process.env.API_SECRET}</p>;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![9, 10]
+    );
+}
+
+#[test]
 fn server_rule_ignores_a_word_that_only_contains_secret() {
     for source in [
         "// @flow\n'use client';\nconst role = process.env.SECRETARY;\n",
