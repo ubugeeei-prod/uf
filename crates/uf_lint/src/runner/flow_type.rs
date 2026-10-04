@@ -97,7 +97,7 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
 
     // `any < limit`, `count > any`, `foo(any + 1)`, and the letters inside
     // `<p>any</p>` are expressions. A type annotation is none of those.
-    if beside_a_value_operator(code, before, after) {
+    if beside_a_value_operator(code, before, after) || value_keyword_operand(code, at, len) {
         return true;
     }
 
@@ -315,14 +315,15 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
 /// `Foo<any & T>` and `Foo<any = T>`. `>=` and `<=` are the same comparisons.
 /// `>` *after* the name compares when an expression follows (`any > limit`,
 /// `any >> 1`); `Array<any>` and `Array<any>>` have no expression there, so
-/// they stay generics. `+`, `-`, `*`, `/` and `%` are arithmetic, on either
-/// side (`foo(any + 1)`, `foo(1 + any)`). `!` after the name is `!=` and
+/// they stay generics. `+`, `-`, `*`, `/`, `%` and `^` are arithmetic, on either
+/// side (`foo(any + 1)`, `foo(1 + any)`, `foo(any ^ mask)`). `!` after the name is `!=` and
 /// `!==`. `=` after the name is `==` and `===`, or an assignment (`any = 1`);
 /// a single `=` with `<` in front is the default in `Foo<any = T>`.
 ///
 /// `|` and a single `&` stay types, because they build a union and an
-/// intersection. `&&` is a value. The `=` *before* `type Box = any` is not
-/// one of these.
+/// intersection. `&&`, `||`, `??` and `?.` are values, on either side. A
+/// conditional's `?` is not one of them. The `=` *before*
+/// `type Box = any` is not one of these.
 fn beside_a_value_operator(
     code: &str,
     before: Option<(usize, u8)>,
@@ -330,7 +331,14 @@ fn beside_a_value_operator(
 ) -> bool {
     if let Some((index, byte)) = after {
         match byte {
-            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'!' => return true,
+            b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'!' | b'^' => return true,
+            // `&&` and `||` are values. A single `&` or `|` is still a type.
+            b'&' | b'|' if code.as_bytes().get(index + 1) == Some(&byte) => return true,
+            // `??`, `?.` and `?.()` are values. `T extends any ? U : V` is not:
+            // a conditional's `?` is followed by a type, not by `?`, `.` or `(`.
+            b'?' if matches!(code.as_bytes().get(index + 1), Some(b'?' | b'.' | b'(')) => {
+                return true;
+            }
             b'=' => {
                 let compared = code.as_bytes().get(index + 1) == Some(&b'=');
                 // `Foo<any = T>` is a default type argument, not `any = 1`.
@@ -345,7 +353,9 @@ fn beside_a_value_operator(
     }
     if let Some((index, byte)) = before {
         match byte {
-            b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' => return true,
+            b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' | b'^' => return true,
+            b'&' | b'|' if index > 0 && code.as_bytes()[index - 1] == byte => return true,
+            b'?' if index > 0 && code.as_bytes()[index - 1] == b'?' => return true,
             b'<' if less_than_starts_a_comparison(code, after) => return true,
             b'=' if index > 0 && matches!(code.as_bytes()[index - 1], b'>' | b'<') => return true,
             _ => {}
@@ -400,6 +410,33 @@ fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
             byte,
             b'(' | b'!' | b'~' | b'+' | b'-' | b'\'' | b'"' | b'`' | b'[' | b'{'
         )
+}
+
+/// Whether a value keyword stands immediately beside the word.
+///
+/// `in` and `instanceof` are operators on either side. `typeof`, `void`,
+/// `await` and `yield` make the name that follows them a value. A `|` between
+/// a keyword and the name keeps the name a type: `type U = void | any` is
+/// not `void any`.
+fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
+    if prev_non_space(code, at).is_some_and(|(_, byte)| is_word_byte(byte))
+        && previous_word(code, at).is_some_and(|(_, word)| {
+            matches!(
+                word,
+                "in" | "instanceof" | "typeof" | "void" | "await" | "yield"
+            )
+        })
+    {
+        return true;
+    }
+    let Some((next_at, _)) = next_non_space(code, at + len) else {
+        return false;
+    };
+    if !is_word_byte(code.as_bytes()[next_at]) {
+        return false;
+    }
+    let next_len = identifier_len(code, next_at);
+    matches!(&code[next_at..next_at + next_len], "in" | "instanceof")
 }
 
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
@@ -662,6 +699,7 @@ pub(crate) fn run_flow_internal_type(
                 prev_non_space(code, at),
                 next_non_space(code, at + len),
             ) || word_in_jsx_text(scan, position, at, len)
+                || value_keyword_operand(code, at, len)
             {
                 at += len;
                 continue;
