@@ -363,6 +363,28 @@ fn internal_type_ignores_a_name_in_jsx_text() {
 }
 
 #[test]
+fn internal_type_ignores_a_name_on_the_line_after_a_tag() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst view = (\n  <pre>\n    React$Node\n  </pre>\n);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst expr = <p>{React$Node}</p>;\nexport type Slot = React$Node;\ntype Items = Array<React$Node>;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!(
+        still
+            .iter()
+            .map(|diagnostic| diagnostic.line)
+            .collect::<Vec<_>>(),
+        vec![2, 3, 4]
+    );
+}
+
+#[test]
 fn internal_type_ignores_a_less_than_comparison() {
     let diagnostics = lint_js(
         "flow/internal-type",

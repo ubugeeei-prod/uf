@@ -7,8 +7,8 @@ use uf_profiler::profile_span;
 
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
-    FileScan, find_words, identifier_len, in_jsx_text, is_word_byte, next_non_space,
-    prev_non_space, previous_word, starts_word, word_in_jsx_text,
+    FileScan, find_words, identifier_len, is_word_byte, next_non_space, prev_non_space,
+    previous_word, starts_word, word_in_jsx_text,
 };
 use crate::{Diagnostic, Severity, push_at, push_in_code, severity};
 
@@ -661,7 +661,7 @@ pub(crate) fn run_flow_internal_type(
                 code,
                 prev_non_space(code, at),
                 next_non_space(code, at + len),
-            ) || in_jsx_text(code, at, len, line.opens_in_template())
+            ) || word_in_jsx_text(scan, position, at, len)
             {
                 at += len;
                 continue;
