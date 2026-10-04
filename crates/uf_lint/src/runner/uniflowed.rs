@@ -65,6 +65,18 @@ pub(crate) fn run_no_trailing_whitespace(
             continue;
         }
         let trimmed = line.text.trim_end_matches([' ', '\t']);
+        // Spaces at the end of an element's text are content. The formatter
+        // reprints them, so reporting them left nothing that could clear the
+        // diagnostic. A space after `</p>` is still the line's own trailing
+        // space: the closing tag does not leave text open.
+        let at = trimmed.len().saturating_sub(line.code_offset());
+        let trailing_in_jsx = trimmed.len() != line.text.len()
+            && trimmed.len() >= line.code_offset()
+            && at < line.code().len()
+            && word_in_jsx_text(scan, position, at, 1);
+        if trailing_in_jsx {
+            continue;
+        }
         if trimmed.len() != line.text.len() {
             push_at(
                 diagnostics,

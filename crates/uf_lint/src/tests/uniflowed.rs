@@ -114,6 +114,17 @@ fn reports_tabs_and_trailing_whitespace() {
 }
 
 #[test]
+fn trailing_whitespace_inside_jsx_text_is_accepted() {
+    let diagnostics = lint_js(
+        "uniflowed/no-trailing-whitespace",
+        "// @flow\nconst next = (\n  <pre>\nhello \n  </pre>\n);\nconst a = 1;   \n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 7);
+}
+
+#[test]
 fn trailing_whitespace_inside_a_template_literal_is_accepted() {
     // Those spaces are part of the string. `uf fmt` reprints from the syntax
     // tree and keeps them, so reporting them here left the formatter unable to
