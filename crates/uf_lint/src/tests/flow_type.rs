@@ -1293,3 +1293,51 @@ fn internal_type_reads_a_binding_arrow_annotation() {
     );
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_reads_a_function_return_arrow() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction make(): () => any { return () => null; }\nclass Box { make(): () => Object { return () => ({}); } }\nexport default function(): () => Function { return () => null; }\n",
+    );
+    assert_eq!(diagnostics.len(), 3, "{diagnostics:?}");
+
+    let quiet = lint_js(
+        "flow/unclear-type",
+        "// @flow\ncond ? (1) : () => any;\nconst body = () => any;\n",
+    );
+    assert!(quiet.is_empty(), "{quiet:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\ntype Handler = () => any;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_reads_a_function_return_arrow() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfunction make(): () => bool { return () => true; }\n",
+    );
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Flag = () => bool;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_reads_a_function_return_arrow() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfunction make(): () => React$Node { return () => null; }\nclass Box { make(): () => React$Node { return () => null; } }\n",
+    );
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = () => React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}

@@ -522,7 +522,7 @@ fn arrow_return_is_a_type(code: &str, gt: usize) -> bool {
         return false;
     };
     if byte == b':' {
-        return colon_annotates_a_binding(code, mark);
+        return colon_annotates_a_binding(code, mark) || colon_is_a_function_return(code, mark);
     }
     if byte != b'=' {
         return false;
@@ -547,6 +547,18 @@ fn colon_annotates_a_binding(code: &str, colon: usize) -> bool {
         prev_non_space(code, name_at).map(|(_, byte)| byte),
         Some(b'(' | b',')
     )
+}
+
+/// `function make(): () => any` and `make(): () => any` declare a return type.
+/// `cond ? (1) : () => any` has no name in front of the `(`.
+fn colon_is_a_function_return(code: &str, colon: usize) -> bool {
+    let Some((close, b')')) = prev_non_space(code, colon) else {
+        return false;
+    };
+    let Some(open) = matching_open_paren(code, close) else {
+        return false;
+    };
+    prev_non_space(code, open).is_some_and(|(_, byte)| is_word_byte(byte))
 }
 
 /// The start of the parameter list in front of the `=` of `=>`.
