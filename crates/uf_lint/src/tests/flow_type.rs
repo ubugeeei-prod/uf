@@ -1192,3 +1192,50 @@ fn internal_type_reads_an_annotation_before_an_initializer() {
     let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_default_import() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport any from \"./mod\";\nimport Object from \"./mod\";\nimport * as Function from \"./mod\";\nimport any, { extra } from \"./mod\";\nexport * as any from \"./mod\";\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nimport type any from \"./mod\";\nimport type { any } from \"./mod\";\nimport { any } from \"./mod\";\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 13));
+    assert_eq!((still[1].line, still[1].column), (3, 15));
+}
+
+#[test]
+fn deprecated_type_ignores_a_default_import() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport bool from \"./postgresql.js\";\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nimport type bool from \"./types.js\";\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_default_import() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport React$Node from \"./mod\";\nimport * as React$Node from \"./mod\";\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport type { React$Node } from \"./mod\";\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}

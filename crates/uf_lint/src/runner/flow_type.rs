@@ -164,13 +164,34 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
 
     // `import { bool }` and `import { any }` bind a value. `import type { bool }`
     // and `import { type bool }` are types, and stay reported.
-    if names_an_imported_value(code, at, outer) {
+    if names_an_imported_value(code, at, outer) || names_a_default_import(code, at) {
         return true;
     }
 
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
+}
+
+/// Whether the word is a default or namespace import binding.
+///
+/// `import any from`, `import any, { extra } from`, `import * as any`, and
+/// `export * as any` bind a value. `import type any from` is a type: `type`
+/// sits between `import` and the name.
+fn names_a_default_import(code: &str, at: usize) -> bool {
+    if previous_word(code, at).is_some_and(|(_, word)| word == "import") {
+        return true;
+    }
+    let Some((as_at, "as")) = previous_word(code, at) else {
+        return false;
+    };
+    let Some((star_at, b'*')) = prev_non_space(code, as_at) else {
+        return false;
+    };
+    matches!(
+        previous_word(code, star_at).map(|(_, word)| word),
+        Some("import" | "export")
+    )
 }
 
 /// Whether the word at `at` is a value imported or re-exported by name.
@@ -1022,6 +1043,7 @@ pub(crate) fn run_flow_internal_type(
             ) || word_in_jsx_text(scan, position, at, len)
                 || value_keyword_operand(code, at, len)
                 || names_an_export_default(code, at)
+                || names_a_default_import(code, at)
                 || extends_a_class(code, at)
             {
                 at += len;
