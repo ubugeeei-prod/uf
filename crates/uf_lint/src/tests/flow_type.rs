@@ -1746,3 +1746,57 @@ fn internal_type_ignores_a_bare_name_statement() {
     );
     assert_eq!(still.len(), 4, "{still:?}");
 }
+
+#[test]
+fn unclear_type_still_reads_a_continued_alias() {
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T =\n  any;\ntype Items =\n  Object;\ntype Handler =\n  Function;\nexport type Extra =\n\n  any;\ntype Box<T> =\n  any;\n",
+    );
+    assert_eq!(
+        still.iter().map(|item| item.line).collect::<Vec<_>>(),
+        vec![3, 5, 7, 10, 12],
+        "{still:?}"
+    );
+
+    let quiet = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst value =\n  any;\nlet ctor =\n  Object;\nctor =\n  Function;\nclass C {\n  x =\n    any;\n}\n",
+    );
+    assert!(quiet.is_empty(), "{quiet:?}");
+}
+
+#[test]
+fn deprecated_type_still_reads_a_continued_alias() {
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Flag =\n  bool;\nopaque type Hidden: Super =\n  bool;\n",
+    );
+    assert_eq!(
+        still.iter().map(|item| item.line).collect::<Vec<_>>(),
+        vec![3, 5],
+        "{still:?}"
+    );
+
+    let quiet = lint_js("flow/deprecated-type", "// @flow\nconst flag =\n  bool;\n");
+    assert!(quiet.is_empty(), "{quiet:?}");
+}
+
+#[test]
+fn internal_type_still_reads_a_continued_alias() {
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot =\n  React$Node;\ntype Box<T> =\n  React$Node;\nopaque type Hidden: Super =\n  React$Node;\n",
+    );
+    assert_eq!(
+        still.iter().map(|item| item.line).collect::<Vec<_>>(),
+        vec![3, 5, 7],
+        "{still:?}"
+    );
+
+    let quiet = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst slot =\n  React$Node;\n",
+    );
+    assert!(quiet.is_empty(), "{quiet:?}");
+}
