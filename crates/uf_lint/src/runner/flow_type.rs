@@ -101,6 +101,7 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         || value_keyword_operand(code, at, len)
         || names_an_export_default(code, at)
         || extends_a_class(code, at)
+        || names_a_declaration(code, at)
     {
         return true;
     }
@@ -111,6 +112,10 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
     if after.is_some_and(|(_, byte)| byte == b'.' || byte == b'(') {
+        return true;
+    }
+    // `any`x`` tags a template. A type is never a tag.
+    if after.is_some_and(|(_, byte)| byte == b'`') {
         return true;
     }
 
@@ -151,6 +156,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
 
     // `return any`, and `const any` / `let any` / `var any`.
     if introduced_as_a_value(code, at) {
+        return true;
+    }
+
+    // `any;` and `class C { any; }` name a value. `type Slot = any` does not.
+    if names_a_bare_statement(code, at, len) {
         return true;
     }
 
@@ -764,8 +774,9 @@ fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
 /// Whether a value keyword stands immediately beside the word.
 ///
 /// `in` and `instanceof` are operators on either side. `typeof`, `void`,
-/// `await`, `yield`, `new`, `throw` and `delete` make the name that follows
-/// them a value. `new Object` is a constructor call even without parentheses.
+/// `await`, `yield`, `new`, `throw`, `delete`, `break` and `continue` make the
+/// name that follows them a value. `break any` is a label. `new Object` is a
+/// constructor call even without parentheses.
 /// A `|` between a keyword and the name keeps the name a type: `type U = void |
 /// any` is not `void any`, and `new (x: any) => void` is not `new any`.
 fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
@@ -781,6 +792,8 @@ fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
                     | "new"
                     | "throw"
                     | "delete"
+                    | "break"
+                    | "continue"
             )
         })
     {
@@ -808,6 +821,37 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
         return false;
     };
     previous_word(code, default_at).is_some_and(|(_, word)| word == "export")
+}
+
+/// Whether the word is a statement or an unannotated class field.
+///
+/// `any;`, `function f() { React$Node; }`, `class C { React$Node; }` and
+/// `class C { React$Node }` are values. A `:` or `=` in front keeps a type:
+/// `class C { x: React$Node; }`, `type Slot = React$Node`, and
+/// `declare function f(): React$Node;`. A `}` closes a class field only when
+/// the `{` opens the class, so `export type { React$Node }` stays a type.
+fn names_a_bare_statement(code: &str, at: usize, len: usize) -> bool {
+    let prev = prev_non_space(code, at);
+    let at_edge = matches!(prev, None | Some((_, b'{' | b'}' | b';')));
+    if !at_edge {
+        return false;
+    }
+    match next_non_space(code, at + len) {
+        Some((_, b';')) => true,
+        Some((_, b'}')) => {
+            prev.is_some_and(|(open, byte)| byte == b'{' && brace_opens_a_class(code, open))
+        }
+        _ => false,
+    }
+}
+
+/// Whether `class`, `enum`, or `interface` declares this word.
+///
+/// `class any {}` names a class. `class C implements React$Node` and
+/// `interface I extends React$Node` name a type, and the keyword in front of
+/// that type is `implements` or `extends`, not the declaration itself.
+fn names_a_declaration(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| matches!(word, "class" | "enum" | "interface"))
 }
 
 /// Whether `class … extends` stands immediately in front of the word.
@@ -910,12 +954,25 @@ fn is_a_bare_argument(code: &str, at: usize, len: usize, outer: Enclosing) -> bo
         return false;
     }
     match enclosing_open_paren(code, at) {
-        Some(open) => prev_non_space(code, open)
-            .is_some_and(|(_, byte)| is_word_byte(byte) || byte == b')' || byte == b']'),
+        Some(open) => paren_opens_a_call(code, open),
         // The list was opened on an earlier line, so the question "is this a
         // call or a function type" was answered there and carried here.
         None => outer.kind == Some(Opener::Call),
     }
+}
+
+/// Whether the `(` at `open` starts a call rather than a group or a type.
+///
+/// A name, a `)` or a `]` in front is a call. `foo?.(any)` is one too: the
+/// `(` follows `?.`. `type F = (any) => void` follows `=`, so it stays a type.
+fn paren_opens_a_call(code: &str, open: usize) -> bool {
+    let Some((at, byte)) = prev_non_space(code, open) else {
+        return false;
+    };
+    if is_word_byte(byte) || byte == b')' || byte == b']' {
+        return true;
+    }
+    byte == b'.' && at > 0 && code.as_bytes()[at - 1] == b'?'
 }
 
 /// What an argument list looked like when the line above ended.
@@ -972,9 +1029,7 @@ impl Enclosing {
         for (index, byte) in bytes.iter().enumerate() {
             match byte {
                 b'(' => {
-                    let call = prev_non_space(code, index).is_some_and(|(_, previous)| {
-                        is_word_byte(previous) || previous == b')' || previous == b']'
-                    });
+                    let call = paren_opens_a_call(code, index);
                     if depth < CAP {
                         inline[depth] = if call { Opener::Call } else { Opener::Other };
                         specifiers[depth] = false;
@@ -1148,6 +1203,15 @@ pub(crate) fn run_flow_internal_type(
                 || assignment_is_a_value(code, at, outer)
                 || is_a_bare_argument(code, at, len, outer)
                 || names_a_parameter(code, at, len)
+                || prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.')
+                || next_non_space(code, at + len)
+                    .is_some_and(|(_, byte)| matches!(byte, b'.' | b'(' | b'`'))
+                || previous_word(code, at).is_some_and(|(_, word)| word == "case")
+                || names_a_property_key(code, at, len, prev_non_space(code, at))
+                || follows_an_equality_operator(code, at)
+                || names_an_imported_value(code, at, outer)
+                || names_a_declaration(code, at)
+                || names_a_bare_statement(code, at, len)
                 || extends_a_class(code, at)
             {
                 at += len;
