@@ -178,6 +178,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `const { any } = obj` and `const x = { any }` name a value. `export type
+    // { React$Node }` stays a type.
+    if names_a_shorthand_binding(code, at, len) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -259,6 +265,36 @@ fn in_value_specifier(code: &str, at: usize, outer: Enclosing) -> bool {
 fn opens_value_specifiers(code: &str, brace: usize) -> bool {
     matches!(
         previous_word(code, brace).map(|(_, word)| word),
+        Some("import" | "export")
+    )
+}
+
+/// Whether the word is a shorthand property or a shorthand binding.
+///
+/// `const { any } = obj`, `function f({ any })`, `catch ({ any })`,
+/// `({ any } = obj)`, and `const x = { any }` name a value. `export type
+/// { React$Node }` names a type, because `type` stands in front of the brace.
+fn names_a_shorthand_binding(code: &str, at: usize, len: usize) -> bool {
+    if !next_non_space(code, at + len).is_some_and(|(_, byte)| matches!(byte, b'}' | b',')) {
+        return false;
+    }
+    let Some(brace) = (match prev_non_space(code, at) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    !opens_a_type_specifier(code, brace)
+}
+
+/// Whether `{` opens `import type { … }` or `export type { … }`.
+fn opens_a_type_specifier(code: &str, brace: usize) -> bool {
+    let Some((type_at, "type")) = previous_word(code, brace) else {
+        return false;
+    };
+    matches!(
+        previous_word(code, type_at).map(|(_, word)| word),
         Some("import" | "export")
     )
 }
@@ -1278,6 +1314,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_property_key(code, at, len, prev_non_space(code, at))
                 || follows_an_equality_operator(code, at)
                 || names_an_imported_value(code, at, outer)
+                || names_a_shorthand_binding(code, at, len)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

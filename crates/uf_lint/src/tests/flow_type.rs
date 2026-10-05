@@ -1800,3 +1800,45 @@ fn internal_type_still_reads_a_continued_alias() {
     );
     assert!(quiet.is_empty(), "{quiet:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_shorthand_binding() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst { any } = obj;\nconst x = { any };\nfunction f({ any }) {}\ntry {} catch ({ any }) {}\n({ any } = obj);\nconst { any, Object } = obj;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nexport type { any };\ntype T = { x: any };\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_shorthand_binding() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nconst { bool } = obj;\nfunction f({ bool }) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\nexport type { bool };\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_shorthand_binding() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst { React$Node } = obj;\nconst x = { React$Node };\nfunction f({ React$Node }) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type { React$Node };\nimport type { React$Node };\ntype T = { x: React$Node };\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
