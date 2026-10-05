@@ -184,6 +184,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `const { a: any } = obj` renames a binding. `type T = { a: any }` does not.
+    if names_a_renamed_binding(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -286,6 +291,98 @@ fn names_a_shorthand_binding(code: &str, at: usize, len: usize) -> bool {
         return false;
     };
     !opens_a_type_specifier(code, brace)
+}
+
+/// Whether the name after `:` is a destructuring binding.
+///
+/// `const { a: any } = obj`, `function f({ a: any })`, and `({ a: any } = obj)`
+/// bind a value. `type T = { a: any }`, `function f(): { a: any }`, and
+/// `class C { x: any }` name a type. `const x = { a: any }` is a property
+/// value, which is a different shape: its brace follows `=`.
+fn names_a_renamed_binding(code: &str, at: usize) -> bool {
+    let Some((colon, b':')) = prev_non_space(code, at) else {
+        return false;
+    };
+    let Some((key, _)) = previous_word(code, colon) else {
+        return false;
+    };
+    let Some(brace) = brace_of_key(code, key) else {
+        return false;
+    };
+    brace_is_a_binding_pattern(code, brace)
+}
+
+/// The `{` that holds a property key, which may sit after `{` or `,`.
+fn brace_of_key(code: &str, key: usize) -> Option<usize> {
+    match prev_non_space(code, key) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => None,
+    }
+}
+
+/// Whether `{` opens a value pattern rather than a type.
+///
+/// `const { … }`, `let { … }`, `var { … }`, `function f({ … })`,
+/// `catch ({ … })`, and `({ … } = obj)` do. A `{` after `:` nests inside one
+/// of those.
+fn brace_is_a_binding_pattern(code: &str, brace: usize) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, brace) else {
+        return false;
+    };
+    if is_word_byte(byte) {
+        return matches!(
+            previous_word(code, brace).map(|(_, word)| word),
+            Some("const" | "let" | "var")
+        );
+    }
+    if byte == b'(' {
+        return paren_opens_a_binding(code, prev, brace);
+    }
+    if byte == b':' {
+        let Some((key, _)) = previous_word(code, prev) else {
+            return false;
+        };
+        return brace_of_key(code, key)
+            .is_some_and(|outer| brace_is_a_binding_pattern(code, outer));
+    }
+    false
+}
+
+/// Whether `(` introduces the pattern at `brace`.
+///
+/// `function f({ … })` and `catch ({ … })` do. `({ a: any } = obj)` does,
+/// because `=` follows the pattern. `type T = ({ a: any })` does not.
+fn paren_opens_a_binding(code: &str, open: usize, brace: usize) -> bool {
+    if previous_word(code, open).is_some_and(|(_, word)| word == "catch") {
+        return true;
+    }
+    if let Some((name, _)) = previous_word(code, open)
+        && previous_word(code, name).is_some_and(|(_, word)| word == "function")
+    {
+        return true;
+    }
+    let Some(close) = matching_close_brace(code, brace) else {
+        return false;
+    };
+    next_non_space(code, close + 1).is_some_and(|(_, byte)| byte == b'=')
+}
+
+/// The `}` that closes the `{` at `open`, within this line.
+fn matching_close_brace(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0i32;
+    let mut index = open + 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'{' => depth += 1,
+            b'}' if depth == 0 => return Some(index),
+            b'}' => depth -= 1,
+            _ => {}
+        }
+        index += 1;
+    }
+    None
 }
 
 /// Whether `{` opens `import type { … }` or `export type { … }`.
@@ -1315,6 +1412,7 @@ pub(crate) fn run_flow_internal_type(
                 || follows_an_equality_operator(code, at)
                 || names_an_imported_value(code, at, outer)
                 || names_a_shorthand_binding(code, at, len)
+                || names_a_renamed_binding(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
