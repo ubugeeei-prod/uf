@@ -178,6 +178,55 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `const { any } = obj` and `const x = { any }` name a value. `export type
+    // { React$Node }` stays a type.
+    if names_a_shorthand_binding(code, at, len) {
+        return true;
+    }
+
+    // `const { a: any } = obj` renames a binding. `type T = { a: any }` does not.
+    if names_a_renamed_binding(code, at) {
+        return true;
+    }
+
+    // `const x = { a: any }` passes a value. `type T = { a: any }` does not.
+    if names_an_object_value(code, at, outer) {
+        return true;
+    }
+
+    // `const [any] = xs` and `function f([any])` bind a value.
+    // `type T = [React$Node]` stays a type.
+    if names_an_array_binding(code, at) {
+        return true;
+    }
+
+    // `enum E { any }` names a member. `enum E of React$Node` names a type.
+    if names_an_enum_member(code, at) {
+        return true;
+    }
+
+    // `for (any of items)` binds a value. The name after `of` stays a type.
+    if names_a_for_of_binding(code, at, len) {
+        return true;
+    }
+
+    // `function f(value = Object)` passes a value. `type Box<T = any>` does not.
+    if names_a_parameter_default(code, at, outer) {
+        return true;
+    }
+
+    // `type Box<any>` and `function f<any>()` name a type parameter.
+    // `Box<any>` and `f<any>(1)` still name a type.
+    if names_a_type_parameter(code, at) {
+        return true;
+    }
+
+    // `class C { #any; }` names a private field. `#` is not part of the word.
+    // `class C { #x: any; }` still names a type.
+    if names_a_private_name(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -259,6 +308,132 @@ fn in_value_specifier(code: &str, at: usize, outer: Enclosing) -> bool {
 fn opens_value_specifiers(code: &str, brace: usize) -> bool {
     matches!(
         previous_word(code, brace).map(|(_, word)| word),
+        Some("import" | "export")
+    )
+}
+
+/// Whether the word is a shorthand property or a shorthand binding.
+///
+/// `const { any } = obj`, `function f({ any })`, `catch ({ any })`,
+/// `({ any } = obj)`, and `const x = { any }` name a value. `export type
+/// { React$Node }` names a type, because `type` stands in front of the brace.
+/// `<p>{any}</p>` is a JSX expression: the tag's `>` is glued to `{`.
+fn names_a_shorthand_binding(code: &str, at: usize, len: usize) -> bool {
+    if !next_non_space(code, at + len).is_some_and(|(_, byte)| matches!(byte, b'}' | b',')) {
+        return false;
+    }
+    let Some(brace) = (match prev_non_space(code, at) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    if brace > 0 && code.as_bytes()[brace - 1] == b'>' {
+        return false;
+    }
+    !opens_a_type_specifier(code, brace)
+}
+
+/// Whether the name after `:` is a destructuring binding.
+///
+/// `const { a: any } = obj`, `function f({ a: any })`, and `({ a: any } = obj)`
+/// bind a value. `type T = { a: any }`, `function f(): { a: any }`, and
+/// `class C { x: any }` name a type. `const x = { a: any }` is a property
+/// value, which is a different shape: its brace follows `=`.
+fn names_a_renamed_binding(code: &str, at: usize) -> bool {
+    let Some((colon, b':')) = prev_non_space(code, at) else {
+        return false;
+    };
+    let Some((key, _)) = previous_word(code, colon) else {
+        return false;
+    };
+    let Some(brace) = brace_of_key(code, key) else {
+        return false;
+    };
+    brace_is_a_binding_pattern(code, brace)
+}
+
+/// The `{` that holds a property key, which may sit after `{` or `,`.
+fn brace_of_key(code: &str, key: usize) -> Option<usize> {
+    match prev_non_space(code, key) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => None,
+    }
+}
+
+/// Whether `{` opens a value pattern rather than a type.
+///
+/// `const { … }`, `let { … }`, `var { … }`, `function f({ … })`,
+/// `catch ({ … })`, and `({ … } = obj)` do. A `{` after `:` nests inside one
+/// of those.
+fn brace_is_a_binding_pattern(code: &str, brace: usize) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, brace) else {
+        return false;
+    };
+    if is_word_byte(byte) {
+        return matches!(
+            previous_word(code, brace).map(|(_, word)| word),
+            Some("const" | "let" | "var")
+        );
+    }
+    if byte == b'(' {
+        return paren_opens_a_binding(code, prev, brace);
+    }
+    if byte == b':' {
+        let Some((key, _)) = previous_word(code, prev) else {
+            return false;
+        };
+        return brace_of_key(code, key)
+            .is_some_and(|outer| brace_is_a_binding_pattern(code, outer));
+    }
+    false
+}
+
+/// Whether `(` introduces the pattern at `brace`.
+///
+/// `function f({ … })` and `catch ({ … })` do. `({ a: any } = obj)` does,
+/// because `=` follows the pattern. `type T = ({ a: any })` does not.
+fn paren_opens_a_binding(code: &str, open: usize, brace: usize) -> bool {
+    if previous_word(code, open).is_some_and(|(_, word)| word == "catch") {
+        return true;
+    }
+    if let Some((name, _)) = previous_word(code, open)
+        && previous_word(code, name).is_some_and(|(_, word)| word == "function")
+    {
+        return true;
+    }
+    let Some(close) = matching_close_brace(code, brace) else {
+        return false;
+    };
+    next_non_space(code, close + 1).is_some_and(|(_, byte)| byte == b'=')
+}
+
+/// The `}` that closes the `{` at `open`, within this line.
+fn matching_close_brace(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0i32;
+    let mut index = open + 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'{' => depth += 1,
+            b'}' if depth == 0 => return Some(index),
+            b'}' => depth -= 1,
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Whether `{` opens `import type { … }` or `export type { … }`.
+fn opens_a_type_specifier(code: &str, brace: usize) -> bool {
+    let Some((type_at, "type")) = previous_word(code, brace) else {
+        return false;
+    };
+    matches!(
+        previous_word(code, type_at).map(|(_, word)| word),
         Some("import" | "export")
     )
 }
@@ -346,6 +521,13 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
     if eq > 0 && matches!(code.as_bytes()[eq - 1], b'=' | b'!') {
         return false;
     }
+    equals_assigns_a_value(code, eq, outer)
+}
+
+/// Whether the `=` at `eq` assigns a value.
+///
+/// `const value =` and `ctor =` do. `type Handler =` and `type Box<T =` do not.
+fn equals_assigns_a_value(code: &str, eq: usize, outer: Enclosing) -> bool {
     let Some((name_at, _)) = previous_word(code, eq) else {
         return false;
     };
@@ -367,6 +549,378 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
         None => !matches!(outer.last_byte, Some(b'<' | b',')),
         Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
     }
+}
+
+/// Whether `for` or `for await` binds this name before `of`.
+///
+/// `for (any of items)` and `for await (any of items)` bind a value.
+/// `for (const item of React$Node)` still names a type after `of`.
+fn names_a_for_of_binding(code: &str, at: usize, len: usize) -> bool {
+    let Some((next, _)) = next_non_space(code, at + len) else {
+        return false;
+    };
+    if !is_word_byte(code.as_bytes()[next]) {
+        return false;
+    }
+    let next_len = identifier_len(code, next);
+    if &code[next..next + next_len] != "of" {
+        return false;
+    }
+    let Some((paren, b'(')) = prev_non_space(code, at) else {
+        return false;
+    };
+    if previous_word(code, paren).is_some_and(|(_, word)| word == "for") {
+        return true;
+    }
+    let Some((await_at, "await")) = previous_word(code, paren) else {
+        return false;
+    };
+    previous_word(code, await_at).is_some_and(|(_, word)| word == "for")
+}
+
+/// Whether the name is a function or arrow parameter's default.
+///
+/// `function f(value = Object)` and `function f(value: string = React$Node)`
+/// pass a value. `type Box<T = React$Node>` and `function f<T = any>()` are
+/// type-parameter defaults, and stay types. `type F = (value = any)` follows a
+/// type alias, so that default stays a type too.
+fn names_a_parameter_default(code: &str, at: usize, outer: Enclosing) -> bool {
+    let Some((eq, b'=')) = prev_non_space(code, at) else {
+        return false;
+    };
+    if eq > 0
+        && matches!(
+            code.as_bytes()[eq - 1],
+            b'=' | b'!' | b'<' | b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^'
+        )
+    {
+        return false;
+    }
+    parameter_list_is_a_value(code, eq, outer)
+}
+
+/// Whether the `=` at `eq` sits in a value parameter list.
+///
+/// A `<` before any `(` introduces a type parameter. A `(` belongs to
+/// `function` or to an arrow, and an annotation (`value: Box<string>`) is
+/// skipped on the way there, including its own generics.
+fn parameter_list_is_a_value(code: &str, eq: usize, outer: Enclosing) -> bool {
+    let bytes = code.as_bytes();
+    let mut angle = 0usize;
+    let mut paren = 0usize;
+    let mut bracket = 0usize;
+    let mut brace = 0usize;
+    let mut index = eq;
+    while let Some((prev, byte)) = prev_non_space(code, index) {
+        let at_root = angle == 0 && paren == 0 && bracket == 0 && brace == 0;
+        match byte {
+            b'>' if prev > 0 && bytes[prev - 1] == b'=' => {}
+            b'>' if paren == 0 && bracket == 0 && brace == 0 => angle += 1,
+            b'<' if angle > 0 && paren == 0 && bracket == 0 && brace == 0 => angle -= 1,
+            b'<' if at_root => return false,
+            b')' => paren += 1,
+            b'(' if paren > 0 => paren -= 1,
+            b'(' if at_root => return paren_opens_a_value_parameter(code, prev, outer),
+            b']' => bracket += 1,
+            b'[' if bracket > 0 => bracket -= 1,
+            b'}' => brace += 1,
+            b'{' if brace > 0 => brace -= 1,
+            _ => {}
+        }
+        index = prev;
+    }
+    false
+}
+
+/// Whether `(` opens the parameter list of a function or arrow.
+///
+/// `function f(` and `const f = (` do. `type F = (` is a type alias, and so is
+/// a `(` continued from `type F =` on the line above.
+fn paren_opens_a_value_parameter(code: &str, paren: usize, outer: Enclosing) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, paren) else {
+        return !outer.continues_a_type;
+    };
+    if byte == b'=' {
+        if prev > 0 && matches!(code.as_bytes()[prev - 1], b'=' | b'!') {
+            return false;
+        }
+        return equals_assigns_a_value(code, prev, outer);
+    }
+    if byte == b'>' {
+        let Some(open) = matching_open_angle(code, prev) else {
+            return false;
+        };
+        return angle_opens_a_value_parameter(code, open, outer);
+    }
+    if matches!(byte, b':' | b'|' | b'&') {
+        return false;
+    }
+    if is_word_byte(byte) {
+        let Some((word_at, word)) = previous_word(code, paren) else {
+            return false;
+        };
+        if word == "function"
+            || previous_word(code, word_at).is_some_and(|(_, earlier)| earlier == "function")
+        {
+            return true;
+        }
+        if word == "async"
+            && let Some((eq, b'=')) = prev_non_space(code, word_at)
+            && (eq == 0 || !matches!(code.as_bytes()[eq - 1], b'=' | b'!'))
+        {
+            return equals_assigns_a_value(code, eq, outer);
+        }
+    }
+    false
+}
+
+/// Whether `<` opens the type parameters of a value function or arrow.
+fn angle_opens_a_value_parameter(code: &str, open: usize, outer: Enclosing) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, open) else {
+        return !outer.continues_a_type;
+    };
+    if byte == b'=' {
+        if prev > 0 && matches!(code.as_bytes()[prev - 1], b'=' | b'!') {
+            return false;
+        }
+        return equals_assigns_a_value(code, prev, outer);
+    }
+    if !is_word_byte(byte) {
+        return false;
+    }
+    let Some((word_at, word)) = previous_word(code, open) else {
+        return false;
+    };
+    word == "function"
+        || previous_word(code, word_at).is_some_and(|(_, earlier)| earlier == "function")
+}
+
+/// Whether the name is a declared type parameter.
+///
+/// `type Box<any>`, `function f<any>()`, and `type F = <any>(x: string) => void`
+/// name a parameter. `Box<any>`, `f<any>(1)`, `type Box<T = any>`, and
+/// `function f<T: any>()` still name a type.
+fn names_a_type_parameter(code: &str, at: usize) -> bool {
+    let Some(open) = (match prev_non_space(code, at) {
+        Some((index, b'<')) => Some(index),
+        Some((index, b',')) => matching_open_angle(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    declares_type_parameters(code, open)
+}
+
+/// Whether `<` introduces type parameters rather than type arguments.
+///
+/// The word in front of `<` belongs to `type`, `function`, `class`,
+/// `interface`, or `opaque`. `opaque type Box<` reads `type`. A `<` with no
+/// word in front is a generic function type when its `>` is glued to `(`.
+fn declares_type_parameters(code: &str, open: usize) -> bool {
+    match prev_non_space(code, open) {
+        Some((_, byte)) if is_word_byte(byte) => {
+            let Some((name, _)) = previous_word(code, open) else {
+                return false;
+            };
+            matches!(
+                previous_word(code, name).map(|(_, word)| word),
+                Some("type" | "function" | "class" | "interface" | "opaque")
+            )
+        }
+        _ => generic_function_type(code, open),
+    }
+}
+
+/// Whether `<` at `open` is `<T>(` — a generic function type, not a call.
+fn generic_function_type(code: &str, open: usize) -> bool {
+    let Some(close) = matching_close_angle(code, open) else {
+        return false;
+    };
+    code.as_bytes().get(close + 1) == Some(&b'(')
+}
+
+/// The `>` that matches the `<` at `open`, within this line.
+///
+/// A `>` glued to `=` is an arrow, so it does not change the depth.
+fn matching_close_angle(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = open + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'>' && index > 0 && bytes[index - 1] == b'=' {
+            index += 1;
+            continue;
+        }
+        match bytes[index] {
+            b'<' => depth += 1,
+            b'>' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Whether `#` is glued to the front of the word.
+///
+/// `class C { #any; }` and `class C { #React$Node: string; }` name a private
+/// field. Flow has no private types, so the name is a value. `class C { #x:
+/// any; }` still reports the annotation.
+fn names_a_private_name(code: &str, at: usize) -> bool {
+    at > 0 && code.as_bytes()[at - 1] == b'#'
+}
+
+/// Whether the name is an enum member.
+///
+/// `enum E { any }` and `enum E of string { React$Node }` name a member.
+/// `enum E of React$Node` names the representation, and stays a type.
+fn names_an_enum_member(code: &str, at: usize) -> bool {
+    if previous_word(code, at).is_some_and(|(_, word)| word == "of") {
+        return false;
+    }
+    let Some(brace) = (match prev_non_space(code, at) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    word_before(code, brace, "enum")
+}
+
+/// Whether `word` occurs before `from`, skipping other identifiers.
+fn word_before(code: &str, from: usize, word: &str) -> bool {
+    let mut at = from;
+    for _ in 0..8 {
+        let Some((word_at, found)) = previous_word(code, at) else {
+            return false;
+        };
+        if found == word {
+            return true;
+        }
+        at = word_at;
+    }
+    false
+}
+
+/// Whether the name is an element of an array pattern.
+///
+/// `const [any] = xs`, `function f([any])`, and `([any] = xs)` bind a value.
+/// `type T = [React$Node]` and `function f(): [React$Node]` name a type.
+fn names_an_array_binding(code: &str, at: usize) -> bool {
+    let Some(bracket) = (match prev_non_space(code, at) {
+        Some((index, b'[')) => Some(index),
+        Some((index, b',')) => enclosing_bracket(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    bracket_is_a_binding(code, bracket)
+}
+
+/// The `[` that contains `before`, within this line.
+fn enclosing_bracket(code: &str, before: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = before;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b']' => depth += 1,
+            b'[' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Whether `[` opens a binding pattern.
+fn bracket_is_a_binding(code: &str, bracket: usize) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, bracket) else {
+        return false;
+    };
+    if is_word_byte(byte) {
+        return matches!(
+            previous_word(code, bracket).map(|(_, word)| word),
+            Some("const" | "let" | "var")
+        );
+    }
+    if byte == b'(' {
+        if previous_word(code, prev).is_some_and(|(_, word)| word == "catch") {
+            return true;
+        }
+        if let Some((name, _)) = previous_word(code, prev)
+            && previous_word(code, name).is_some_and(|(_, word)| word == "function")
+        {
+            return true;
+        }
+        let Some(close) = matching_close_bracket(code, bracket) else {
+            return false;
+        };
+        return next_non_space(code, close + 1).is_some_and(|(_, byte)| byte == b'=');
+    }
+    if byte == b',' {
+        return enclosing_bracket(code, prev)
+            .is_some_and(|outer| bracket_is_a_binding(code, outer));
+    }
+    false
+}
+
+/// The `]` that closes the `[` at `open`, within this line.
+fn matching_close_bracket(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0i32;
+    let mut index = open + 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'[' => depth += 1,
+            b']' if depth == 0 => return Some(index),
+            b']' => depth -= 1,
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Whether the name is a property value in an object literal.
+///
+/// `const x = { a: any }` and `const x = { a: { b: any } }` pass a value.
+/// `type T = { a: any }`, `function f(): { a: any }`, and `class C { x: any }`
+/// name a type.
+fn names_an_object_value(code: &str, at: usize, outer: Enclosing) -> bool {
+    let Some((colon, b':')) = prev_non_space(code, at) else {
+        return false;
+    };
+    let Some(brace) = enclosing_brace(code, colon) else {
+        return false;
+    };
+    brace_holds_a_value(code, brace, outer)
+}
+
+/// Whether `{` opens an object literal rather than a type.
+fn brace_holds_a_value(code: &str, brace: usize, outer: Enclosing) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, brace) else {
+        return false;
+    };
+    if byte == b'=' && (prev == 0 || !matches!(code.as_bytes()[prev - 1], b'=' | b'!')) {
+        return equals_assigns_a_value(code, prev, outer);
+    }
+    if byte == b':' {
+        return enclosing_brace(code, prev)
+            .is_some_and(|outer_brace| brace_holds_a_value(code, outer_brace, outer));
+    }
+    false
 }
 
 /// Whether the word sits next to an operator a type annotation cannot have.
@@ -826,13 +1380,14 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
 
 /// Whether the word is a statement or an unannotated class field.
 ///
-/// `any;`, `function f() { React$Node; }`, `class C { React$Node; }` and
-/// `class C { React$Node }` are values. A `:` or `=` in front keeps a type:
-/// `class C { x: React$Node; }`, `type Slot = React$Node`, and
-/// `declare function f(): React$Node;`. A line break does not change the alias:
-/// `type Slot =\n  React$Node;` is still a type, because the `=` closed the
-/// line above. A `}` closes a class field only when the `{` opens the class,
-/// so `export type { React$Node }` stays a type.
+/// `any;`, `function f() { React$Node; }`, `class C { React$Node; }`,
+/// `class C { React$Node }` and `class C { x: string; React$Node }` are values.
+/// A `:` or `=` in front keeps a type: `class C { x: React$Node; }`,
+/// `type Slot = React$Node`, and `declare function f(): React$Node;`. A line
+/// break does not change the alias: `type Slot =\n  React$Node;` is still a
+/// type, because the `=` closed the line above. A `}` closes a class field
+/// only when the `{` opens the class, including after another member, so
+/// `export type { React$Node }` stays a type.
 fn names_a_bare_statement(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     let prev = prev_non_space(code, at);
     let at_edge = matches!(prev, None | Some((_, b'{' | b'}' | b';')));
@@ -841,9 +1396,13 @@ fn names_a_bare_statement(code: &str, at: usize, len: usize, outer: Enclosing) -
     }
     match next_non_space(code, at + len) {
         Some((_, b';')) => !(prev.is_none() && outer.continues_a_type),
-        Some((_, b'}')) => {
-            prev.is_some_and(|(open, byte)| byte == b'{' && brace_opens_a_class(code, open))
-        }
+        Some((_, b'}')) => match prev {
+            Some((open, b'{')) => brace_opens_a_class(code, open),
+            Some((semi, b';')) => {
+                enclosing_brace(code, semi).is_some_and(|brace| brace_opens_a_class(code, brace))
+            }
+            _ => false,
+        },
         _ => false,
     }
 }
@@ -1278,6 +1837,15 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_property_key(code, at, len, prev_non_space(code, at))
                 || follows_an_equality_operator(code, at)
                 || names_an_imported_value(code, at, outer)
+                || names_a_shorthand_binding(code, at, len)
+                || names_a_renamed_binding(code, at)
+                || names_an_object_value(code, at, outer)
+                || names_an_array_binding(code, at)
+                || names_an_enum_member(code, at)
+                || names_a_for_of_binding(code, at, len)
+                || names_a_parameter_default(code, at, outer)
+                || names_a_type_parameter(code, at)
+                || names_a_private_name(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
