@@ -407,8 +407,9 @@ fn beside_a_value_operator(
 ///
 /// `const value: any = 1`, `function take(value: any = 1)`, and
 /// `class Box { value: any = 1 }` name a type. `label: any = 1` assigns, and
-/// so does a label inside a function or a method. `Foo<any = T>` is a type
-/// default, which the caller tells apart by the `<`.
+/// so does a label inside a function or a method. A comma inside
+/// `{ a, b: any = 1 }` renames a property, so that name stays a value.
+/// `Foo<any = T>` is a type default, which the caller tells apart by the `<`.
 fn annotation_before_initializer(code: &str, before: Option<(usize, u8)>) -> bool {
     let Some((colon_at, b':')) = before else {
         return false;
@@ -422,13 +423,34 @@ fn annotation_before_initializer(code: &str, before: Option<(usize, u8)>) -> boo
         return true;
     }
     match prev_non_space(code, bound_at) {
-        Some((_, b'(' | b',')) => true,
+        Some((_, b'(')) => true,
+        Some((_, b',')) => comma_separates_a_parameter(code, bound_at),
         Some((at, b'{')) => brace_opens_a_class(code, at),
         Some((at, b';')) => {
             enclosing_brace(code, at).is_some_and(|brace| brace_opens_a_class(code, brace))
         }
         _ => false,
     }
+}
+
+/// Whether the comma before a binding separates parameters.
+///
+/// `function take(first, value: any = 1)` is enclosed by `(`. `const { a, b: any = 1 }`
+/// and `function f({ a, b: any = 1 })` hit `{` first, and the colon renames `b`.
+fn comma_separates_a_parameter(code: &str, bound_at: usize) -> bool {
+    let bytes = code.as_bytes();
+    let mut depth = 0i32;
+    let mut index = bound_at;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b')' | b'}' | b']' => depth += 1,
+            b'(' | b'{' | b'[' if depth == 0 => return bytes[index] == b'(',
+            b'(' | b'{' | b'[' => depth -= 1,
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Whether the `{` at `brace` opens a class body.
