@@ -1341,3 +1341,33 @@ fn internal_type_reads_a_function_return_arrow() {
     );
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_deleted_value() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ndelete any;\ndelete Object;\ndelete Function;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\ntype T = any;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_deleted_value() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\ndelete bool;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_deleted_value() {
+    let diagnostics = lint_js("flow/internal-type", "// @flow\ndelete React$Node;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
