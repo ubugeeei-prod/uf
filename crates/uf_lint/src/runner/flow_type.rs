@@ -317,6 +317,7 @@ fn opens_value_specifiers(code: &str, brace: usize) -> bool {
 /// `const { any } = obj`, `function f({ any })`, `catch ({ any })`,
 /// `({ any } = obj)`, and `const x = { any }` name a value. `export type
 /// { React$Node }` names a type, because `type` stands in front of the brace.
+/// `<p>{any}</p>` is a JSX expression: the tag's `>` is glued to `{`.
 fn names_a_shorthand_binding(code: &str, at: usize, len: usize) -> bool {
     if !next_non_space(code, at + len).is_some_and(|(_, byte)| matches!(byte, b'}' | b',')) {
         return false;
@@ -328,6 +329,9 @@ fn names_a_shorthand_binding(code: &str, at: usize, len: usize) -> bool {
     }) else {
         return false;
     };
+    if brace > 0 && code.as_bytes()[brace - 1] == b'>' {
+        return false;
+    }
     !opens_a_type_specifier(code, brace)
 }
 

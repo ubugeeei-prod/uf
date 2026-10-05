@@ -1811,9 +1811,9 @@ fn unclear_type_ignores_a_shorthand_binding() {
 
     let still = lint_js(
         "flow/unclear-type",
-        "// @flow\nexport type { any };\ntype T = { x: any };\n",
+        "// @flow\nexport type { any };\ntype T = { x: any };\nconst expr = <p>{any}</p>;\n",
     );
-    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!(still.len(), 3, "{still:?}");
 }
 
 #[test]
@@ -1824,8 +1824,11 @@ fn deprecated_type_ignores_a_shorthand_binding() {
     );
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
-    let still = lint_js("flow/deprecated-type", "// @flow\nexport type { bool };\n");
-    assert_eq!(still.len(), 1, "{still:?}");
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nexport type { bool };\nconst expr = <p>{bool}</p>;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
 }
 
 #[test]
@@ -1838,9 +1841,9 @@ fn internal_type_ignores_a_shorthand_binding() {
 
     let still = lint_js(
         "flow/internal-type",
-        "// @flow\nexport type { React$Node };\nimport type { React$Node };\ntype T = { x: React$Node };\n",
+        "// @flow\nexport type { React$Node };\nimport type { React$Node };\ntype T = { x: React$Node };\nconst expr = <p>{React$Node}</p>;\n",
     );
-    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!(still.len(), 4, "{still:?}");
 }
 
 #[test]
