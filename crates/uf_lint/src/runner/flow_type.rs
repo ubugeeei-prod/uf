@@ -1376,13 +1376,14 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
 
 /// Whether the word is a statement or an unannotated class field.
 ///
-/// `any;`, `function f() { React$Node; }`, `class C { React$Node; }` and
-/// `class C { React$Node }` are values. A `:` or `=` in front keeps a type:
-/// `class C { x: React$Node; }`, `type Slot = React$Node`, and
-/// `declare function f(): React$Node;`. A line break does not change the alias:
-/// `type Slot =\n  React$Node;` is still a type, because the `=` closed the
-/// line above. A `}` closes a class field only when the `{` opens the class,
-/// so `export type { React$Node }` stays a type.
+/// `any;`, `function f() { React$Node; }`, `class C { React$Node; }`,
+/// `class C { React$Node }` and `class C { x: string; React$Node }` are values.
+/// A `:` or `=` in front keeps a type: `class C { x: React$Node; }`,
+/// `type Slot = React$Node`, and `declare function f(): React$Node;`. A line
+/// break does not change the alias: `type Slot =\n  React$Node;` is still a
+/// type, because the `=` closed the line above. A `}` closes a class field
+/// only when the `{` opens the class, including after another member, so
+/// `export type { React$Node }` stays a type.
 fn names_a_bare_statement(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     let prev = prev_non_space(code, at);
     let at_edge = matches!(prev, None | Some((_, b'{' | b'}' | b';')));
@@ -1391,9 +1392,13 @@ fn names_a_bare_statement(code: &str, at: usize, len: usize, outer: Enclosing) -
     }
     match next_non_space(code, at + len) {
         Some((_, b';')) => !(prev.is_none() && outer.continues_a_type),
-        Some((_, b'}')) => {
-            prev.is_some_and(|(open, byte)| byte == b'{' && brace_opens_a_class(code, open))
-        }
+        Some((_, b'}')) => match prev {
+            Some((open, b'{')) => brace_opens_a_class(code, open),
+            Some((semi, b';')) => {
+                enclosing_brace(code, semi).is_some_and(|brace| brace_opens_a_class(code, brace))
+            }
+            _ => false,
+        },
         _ => false,
     }
 }
