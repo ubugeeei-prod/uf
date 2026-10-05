@@ -1148,6 +1148,9 @@ pub(crate) fn run_flow_internal_type(
                 || assignment_is_a_value(code, at, outer)
                 || is_a_bare_argument(code, at, len, outer)
                 || names_a_parameter(code, at, len)
+                || prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.')
+                || next_non_space(code, at + len)
+                    .is_some_and(|(_, byte)| matches!(byte, b'.' | b'('))
                 || extends_a_class(code, at)
             {
                 at += len;
