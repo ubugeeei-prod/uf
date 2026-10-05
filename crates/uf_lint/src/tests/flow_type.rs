@@ -2078,3 +2078,58 @@ fn internal_type_ignores_a_parameter_default() {
     assert_eq!((still[0].line, still[0].column), (2, 14), "{still:?}");
     assert_eq!((still[1].line, still[1].column), (3, 16), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_type_parameter() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Box<any> = number;\nfunction f<any>(value: string) {}\ntype F = <any>(value: string) => void;\ntype Pair<any, Object> = number;\nclass C<any> {}\ninterface I<any> {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = Box<any>;\nconst x = f<any>(1);\nfunction g<T: any>() {}\ntype Box<T = any> = T;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 14), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 13), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 15), "{still:?}");
+    assert_eq!((still[3].line, still[3].column), (5, 14), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_type_parameter() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Box<bool> = number;\nfunction f<bool>(value: string) {}\ntype F = <bool>(value: string) => void;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype T = Box<bool>;\nfunction f<T: bool>() {}\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 14), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_type_parameter() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Box<React$Node> = number;\nfunction f<React$Node>(value: string) {}\nopaque type Hidden<React$Node> = number;\ndeclare function g<React$Node>(): void;\ntype F = <React$Node>(value: string) => void;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype T = Box<React$Node>;\nconst x = f<React$Node>(1);\nconst y = new Foo<React$Node>();\ntype Box<T = React$Node> = T;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 14), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 13), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 19), "{still:?}");
+    assert_eq!((still[3].line, still[3].column), (5, 14), "{still:?}");
+}

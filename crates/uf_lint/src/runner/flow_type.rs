@@ -215,6 +215,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `type Box<any>` and `function f<any>()` name a type parameter.
+    // `Box<any>` and `f<any>(1)` still name a type.
+    if names_a_type_parameter(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -677,6 +683,77 @@ fn angle_opens_a_value_parameter(code: &str, open: usize, outer: Enclosing) -> b
     };
     word == "function"
         || previous_word(code, word_at).is_some_and(|(_, earlier)| earlier == "function")
+}
+
+/// Whether the name is a declared type parameter.
+///
+/// `type Box<any>`, `function f<any>()`, and `type F = <any>(x: string) => void`
+/// name a parameter. `Box<any>`, `f<any>(1)`, `type Box<T = any>`, and
+/// `function f<T: any>()` still name a type.
+fn names_a_type_parameter(code: &str, at: usize) -> bool {
+    let Some(open) = (match prev_non_space(code, at) {
+        Some((index, b'<')) => Some(index),
+        Some((index, b',')) => matching_open_angle(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    declares_type_parameters(code, open)
+}
+
+/// Whether `<` introduces type parameters rather than type arguments.
+///
+/// The word in front of `<` belongs to `type`, `function`, `class`,
+/// `interface`, or `opaque`. `opaque type Box<` reads `type`. A `<` with no
+/// word in front is a generic function type when its `>` is glued to `(`.
+fn declares_type_parameters(code: &str, open: usize) -> bool {
+    match prev_non_space(code, open) {
+        Some((_, byte)) if is_word_byte(byte) => {
+            let Some((name, _)) = previous_word(code, open) else {
+                return false;
+            };
+            matches!(
+                previous_word(code, name).map(|(_, word)| word),
+                Some("type" | "function" | "class" | "interface" | "opaque")
+            )
+        }
+        _ => generic_function_type(code, open),
+    }
+}
+
+/// Whether `<` at `open` is `<T>(` — a generic function type, not a call.
+fn generic_function_type(code: &str, open: usize) -> bool {
+    let Some(close) = matching_close_angle(code, open) else {
+        return false;
+    };
+    code.as_bytes().get(close + 1) == Some(&b'(')
+}
+
+/// The `>` that matches the `<` at `open`, within this line.
+///
+/// A `>` glued to `=` is an arrow, so it does not change the depth.
+fn matching_close_angle(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = open + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'>' && index > 0 && bytes[index - 1] == b'=' {
+            index += 1;
+            continue;
+        }
+        match bytes[index] {
+            b'<' => depth += 1,
+            b'>' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
 }
 
 /// Whether the name is an enum member.
@@ -1743,6 +1820,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_an_enum_member(code, at)
                 || names_a_for_of_binding(code, at, len)
                 || names_a_parameter_default(code, at, outer)
+                || names_a_type_parameter(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
