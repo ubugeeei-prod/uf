@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.30.0
+
+- fix(lint): annotations and imports stay in their positions (#1813) (c4a3dbd8)
+
 ## uf@0.29.0
 
 - fix(lint): typed arrows and arrow defaults stay in place (#1806) (14ce02db)
