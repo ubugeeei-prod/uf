@@ -1453,3 +1453,21 @@ fn internal_type_ignores_an_assigned_value() {
     assert_eq!((still[0].line, still[0].column), (2, 13));
     assert_eq!((still[1].line, still[1].column), (3, 14));
 }
+
+#[test]
+fn internal_type_ignores_a_call_argument() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfoo(React$Node);\nfoo(a, React$Node);\nfunction h(React$Node) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype F = (React$Node) => void;\ntype G = (x: React$Node) => void;\ntype A = Array<React$Node>;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11));
+    assert_eq!((still[1].line, still[1].column), (3, 14));
+    assert_eq!((still[2].line, still[2].column), (4, 16));
+}

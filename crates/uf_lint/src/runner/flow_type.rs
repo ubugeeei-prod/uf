@@ -1146,6 +1146,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_an_optional_parameter(code, at, len)
                 || introduced_as_a_value(code, at)
                 || assignment_is_a_value(code, at, outer)
+                || is_a_bare_argument(code, at, len, outer)
                 || extends_a_class(code, at)
             {
                 at += len;
