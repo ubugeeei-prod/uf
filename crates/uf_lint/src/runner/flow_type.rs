@@ -1116,8 +1116,11 @@ pub(crate) fn run_flow_internal_type(
         return;
     };
 
+    let mut enclosing = Enclosing::default();
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
+        let outer = enclosing;
+        enclosing = enclosing.after(code);
         let mut at = 0usize;
         while at < code.len() {
             let len = identifier_len(code, at);
@@ -1142,6 +1145,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_default_import(code, at)
                 || names_an_optional_parameter(code, at, len)
                 || introduced_as_a_value(code, at)
+                || assignment_is_a_value(code, at, outer)
                 || extends_a_class(code, at)
             {
                 at += len;

@@ -1436,3 +1436,20 @@ fn internal_type_ignores_an_introduced_value() {
     assert_eq!((still[0].line, still[0].column), (2, 13));
     assert_eq!((still[1].line, still[1].column), (3, 15));
 }
+
+#[test]
+fn internal_type_ignores_an_assigned_value() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst made = React$Node;\nmade = React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = React$Node;\ntype Box<T = React$Node> = T;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 13));
+    assert_eq!((still[1].line, still[1].column), (3, 14));
+}
