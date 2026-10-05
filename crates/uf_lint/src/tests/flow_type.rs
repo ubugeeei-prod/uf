@@ -860,6 +860,42 @@ fn deprecated_type_ignores_a_new_operand() {
 }
 
 #[test]
+fn unclear_type_ignores_a_thrown_value() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nthrow any;\nthrow Object;\nthrow Function;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Box = any;\ntype Items = Array<Object>;\ntype Handler = Function;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_thrown_value() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nthrow bool;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_thrown_value() {
+    let diagnostics = lint_js("flow/internal-type", "// @flow\nthrow React$Node;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
 fn internal_type_ignores_a_new_operand() {
     let diagnostics = lint_js("flow/internal-type", "// @flow\nfoo(new React$Node);\n");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
