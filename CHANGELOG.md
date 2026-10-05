@@ -1,5 +1,10 @@
 # Changelog
 
+## uf@0.29.0
+
+- fix(lint): typed arrows and arrow defaults stay in place (#1806) (14ce02db)
+- fix(lint): value positions are not type annotations (#1803) (622983ac)
+
 ## uf@0.28.0
 
 - fix(lint): operands of value operators are not type annotations (#1796) (366d6d9b)
