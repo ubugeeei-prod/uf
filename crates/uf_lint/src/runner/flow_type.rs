@@ -205,6 +205,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `for (any of items)` binds a value. The name after `of` stays a type.
+    if names_a_for_of_binding(code, at, len) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -523,6 +528,33 @@ fn equals_assigns_a_value(code: &str, eq: usize, outer: Enclosing) -> bool {
         None => !matches!(outer.last_byte, Some(b'<' | b',')),
         Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
     }
+}
+
+/// Whether `for` or `for await` binds this name before `of`.
+///
+/// `for (any of items)` and `for await (any of items)` bind a value.
+/// `for (const item of React$Node)` still names a type after `of`.
+fn names_a_for_of_binding(code: &str, at: usize, len: usize) -> bool {
+    let Some((next, _)) = next_non_space(code, at + len) else {
+        return false;
+    };
+    if !is_word_byte(code.as_bytes()[next]) {
+        return false;
+    }
+    let next_len = identifier_len(code, next);
+    if &code[next..next + next_len] != "of" {
+        return false;
+    }
+    let Some((paren, b'(')) = prev_non_space(code, at) else {
+        return false;
+    };
+    if previous_word(code, paren).is_some_and(|(_, word)| word == "for") {
+        return true;
+    }
+    let Some((await_at, "await")) = previous_word(code, paren) else {
+        return false;
+    };
+    previous_word(code, await_at).is_some_and(|(_, word)| word == "for")
 }
 
 /// Whether the name is an enum member.
@@ -1587,6 +1619,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_an_object_value(code, at, outer)
                 || names_an_array_binding(code, at)
                 || names_an_enum_member(code, at)
+                || names_a_for_of_binding(code, at, len)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

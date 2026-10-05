@@ -1996,3 +1996,34 @@ fn internal_type_ignores_an_enum_member() {
     assert_eq!(still.len(), 1, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 11), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_for_of_binding() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (any of items) {}\nasync function f() { for await (any of items) {} }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_for_of_binding() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nfor (bool of items) {}\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_for_of_binding() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (React$Node of items) {}\nasync function f() { for await (React$Node of items) {} }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (const item of React$Node) {}\nfor await (const item of React$Node) {}\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
