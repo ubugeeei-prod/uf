@@ -221,6 +221,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `class C { #any; }` names a private field. `#` is not part of the word.
+    // `class C { #x: any; }` still names a type.
+    if names_a_private_name(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -754,6 +760,15 @@ fn matching_close_angle(code: &str, open: usize) -> Option<usize> {
         index += 1;
     }
     None
+}
+
+/// Whether `#` is glued to the front of the word.
+///
+/// `class C { #any; }` and `class C { #React$Node: string; }` name a private
+/// field. Flow has no private types, so the name is a value. `class C { #x:
+/// any; }` still reports the annotation.
+fn names_a_private_name(code: &str, at: usize) -> bool {
+    at > 0 && code.as_bytes()[at - 1] == b'#'
 }
 
 /// Whether the name is an enum member.
@@ -1821,6 +1836,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_for_of_binding(code, at, len)
                 || names_a_parameter_default(code, at, outer)
                 || names_a_type_parameter(code, at)
+                || names_a_private_name(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
