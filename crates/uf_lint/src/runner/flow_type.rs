@@ -159,6 +159,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `any;` and `class C { any; }` name a value. `type Slot = any` does not.
+    if names_a_bare_statement(code, at, len) {
+        return true;
+    }
+
     // `const value = any`, `let ctor = Object`, and `ctor = Function`.
     // `type Handler = Function` stays a type, and so does `type Box<T = any>`
     // and a default continued onto the next line.
@@ -818,6 +823,28 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
     previous_word(code, default_at).is_some_and(|(_, word)| word == "export")
 }
 
+/// Whether the word is a statement or an unannotated class field.
+///
+/// `any;`, `function f() { React$Node; }`, `class C { React$Node; }` and
+/// `class C { React$Node }` are values. A `:` or `=` in front keeps a type:
+/// `class C { x: React$Node; }`, `type Slot = React$Node`, and
+/// `declare function f(): React$Node;`. A `}` closes a class field only when
+/// the `{` opens the class, so `export type { React$Node }` stays a type.
+fn names_a_bare_statement(code: &str, at: usize, len: usize) -> bool {
+    let prev = prev_non_space(code, at);
+    let at_edge = matches!(prev, None | Some((_, b'{' | b'}' | b';')));
+    if !at_edge {
+        return false;
+    }
+    match next_non_space(code, at + len) {
+        Some((_, b';')) => true,
+        Some((_, b'}')) => {
+            prev.is_some_and(|(open, byte)| byte == b'{' && brace_opens_a_class(code, open))
+        }
+        _ => false,
+    }
+}
+
 /// Whether `class`, `enum`, or `interface` declares this word.
 ///
 /// `class any {}` names a class. `class C implements React$Node` and
@@ -1184,6 +1211,7 @@ pub(crate) fn run_flow_internal_type(
                 || follows_an_equality_operator(code, at)
                 || names_an_imported_value(code, at, outer)
                 || names_a_declaration(code, at)
+                || names_a_bare_statement(code, at, len)
                 || extends_a_class(code, at)
             {
                 at += len;

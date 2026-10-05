@@ -1704,3 +1704,45 @@ fn internal_type_ignores_a_template_tag() {
     let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_bare_name_statement() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nany;\nObject;\nFunction;\nfunction f() { any; }\nclass C { any; }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = any;\nclass C { x: any; }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_bare_name_statement() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nbool;\nfunction f() { bool; }\nclass C { bool; }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_bare_name_statement() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nReact$Node;\nfunction f() { React$Node; }\nclass C { React$Node; }\nclass D { React$Node }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = React$Node;\nclass C { x: React$Node; }\ndeclare function f(): React$Node;\nexport type { React$Node };\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+}
