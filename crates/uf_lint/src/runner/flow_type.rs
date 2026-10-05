@@ -100,6 +100,7 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     if beside_a_value_operator(code, before, after)
         || value_keyword_operand(code, at, len)
         || names_an_export_default(code, at)
+        || extends_a_class(code, at)
     {
         return true;
     }
@@ -457,6 +458,64 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
     previous_word(code, default_at).is_some_and(|(_, word)| word == "export")
 }
 
+/// Whether `class … extends` stands immediately in front of the word.
+///
+/// A class extends a value (`class Box extends Object`, and `class Box<T>
+/// extends Object`). An interface extends a type, so `interface Box extends
+/// Object` stays an annotation. The type-parameter list between the name and
+/// `extends` is skipped; a `>` that does not close one keeps the name a type.
+fn extends_a_class(code: &str, at: usize) -> bool {
+    if !prev_non_space(code, at).is_some_and(|(_, byte)| is_word_byte(byte)) {
+        return false;
+    }
+    let Some((extends_at, "extends")) = previous_word(code, at) else {
+        return false;
+    };
+    declaration_before(code, extends_at) == Some("class")
+}
+
+/// The declaration keyword before `from`, skipping one generic list.
+///
+/// `class Box<T>` puts `>` in front of `extends`. `class Box` puts the name
+/// there, and `class extends` puts the keyword itself there.
+fn declaration_before(code: &str, from: usize) -> Option<&str> {
+    let (at, byte) = prev_non_space(code, from)?;
+    let name_at = if byte == b'>' {
+        let open = matching_open_angle(code, at)?;
+        previous_word(code, open)?.0
+    } else if is_word_byte(byte) {
+        let (word_at, word) = previous_word(code, from)?;
+        if matches!(word, "class" | "interface" | "type" | "opaque" | "enum") {
+            return Some(word);
+        }
+        word_at
+    } else {
+        return None;
+    };
+    previous_word(code, name_at).map(|(_, word)| word)
+}
+
+/// The `<` that matches the `>` at `close`, within this line.
+fn matching_open_angle(code: &str, close: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = close;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b'>' => depth += 1,
+            b'<' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
 fn follows_an_equality_operator(code: &str, at: usize) -> bool {
     let Some((end, b'=')) = prev_non_space(code, at) else {
@@ -719,6 +778,7 @@ pub(crate) fn run_flow_internal_type(
             ) || word_in_jsx_text(scan, position, at, len)
                 || value_keyword_operand(code, at, len)
                 || names_an_export_default(code, at)
+                || extends_a_class(code, at)
             {
                 at += len;
                 continue;
