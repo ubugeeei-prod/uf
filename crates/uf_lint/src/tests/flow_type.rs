@@ -834,3 +834,39 @@ fn an_annotation_is_still_unclear_beside_a_key_that_is_not() {
         assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:?}");
     }
 }
+
+#[test]
+fn unclear_type_ignores_a_new_operand() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfoo(new any);\nfoo(new Object);\nfoo(new Function);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype C = new (x: any) => void;\ntype Items = Array<Object>;\ntype Handler = Function;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_new_operand() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nfoo(new bool);\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_new_operand() {
+    let diagnostics = lint_js("flow/internal-type", "// @flow\nfoo(new React$Node);\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
