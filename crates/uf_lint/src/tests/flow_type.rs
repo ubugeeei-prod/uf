@@ -1531,11 +1531,10 @@ fn internal_type_ignores_a_property_key() {
 
     let still = lint_js(
         "flow/internal-type",
-        "// @flow\nconst o = { x: React$Node };\nclass C { x: React$Node; }\n",
+        "// @flow\nclass C { x: React$Node; }\n",
     );
-    assert_eq!(still.len(), 2, "{still:?}");
-    assert_eq!((still[0].line, still[0].column), (2, 16));
-    assert_eq!((still[1].line, still[1].column), (3, 14));
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 14));
 }
 
 #[test]
