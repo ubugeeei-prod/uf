@@ -906,3 +906,42 @@ fn internal_type_ignores_a_new_operand() {
     );
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_an_export_default() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nexport default any;\nexport default Object;\nexport default Function;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nexport type Box = any;\ntype Items = Array<Object>;\ntype Handler = Function;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_an_export_default() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nexport default bool;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_export_default() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport default React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nexport type Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}

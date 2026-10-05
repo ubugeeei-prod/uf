@@ -97,7 +97,10 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
 
     // `any < limit`, `count > any`, `foo(any + 1)`, and the letters inside
     // `<p>any</p>` are expressions. A type annotation is none of those.
-    if beside_a_value_operator(code, before, after) || value_keyword_operand(code, at, len) {
+    if beside_a_value_operator(code, before, after)
+        || value_keyword_operand(code, at, len)
+        || names_an_export_default(code, at)
+    {
         return true;
     }
 
@@ -440,6 +443,20 @@ fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
     matches!(&code[next_at..next_at + next_len], "in" | "instanceof")
 }
 
+/// Whether `export default` stands immediately in front of the word.
+///
+/// The default export is a value. `export type Box = any` is not one: `type`
+/// sits between `export` and the name, so the name stays an annotation.
+fn names_an_export_default(code: &str, at: usize) -> bool {
+    if !prev_non_space(code, at).is_some_and(|(_, byte)| is_word_byte(byte)) {
+        return false;
+    }
+    let Some((default_at, "default")) = previous_word(code, at) else {
+        return false;
+    };
+    previous_word(code, default_at).is_some_and(|(_, word)| word == "export")
+}
+
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
 fn follows_an_equality_operator(code: &str, at: usize) -> bool {
     let Some((end, b'=')) = prev_non_space(code, at) else {
@@ -701,6 +718,7 @@ pub(crate) fn run_flow_internal_type(
                 next_non_space(code, at + len),
             ) || word_in_jsx_text(scan, position, at, len)
                 || value_keyword_operand(code, at, len)
+                || names_an_export_default(code, at)
             {
                 at += len;
                 continue;
