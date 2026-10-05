@@ -1,5 +1,10 @@
 # Changelog
 
+## uf@0.32.0
+
+- fix(lint): a continued type alias stays a type (#1834) (919afe89)
+- fix(lint): value positions are not reported as types (#1832) (f7e0f8a3)
+
 ## uf@0.31.0
 
 - fix(lint): optional parameters and internal names stay values (#1820) (a4fb0a27)
