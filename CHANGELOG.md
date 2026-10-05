@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.33.0
+
+- fix(lint): more value positions are not reported as types (#1846) (920b570d)
+
 ## uf@0.32.0
 
 - fix(lint): a continued type alias stays a type (#1834) (919afe89)
