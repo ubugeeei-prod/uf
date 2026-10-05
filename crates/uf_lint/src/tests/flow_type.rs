@@ -1537,3 +1537,16 @@ fn internal_type_ignores_a_property_key() {
     assert_eq!((still[0].line, still[0].column), (2, 16));
     assert_eq!((still[1].line, still[1].column), (3, 14));
 }
+
+#[test]
+fn internal_type_ignores_an_equality_operand() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nx == React$Node;\nx === React$Node;\nx != React$Node;\nx !== React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 13));
+}
