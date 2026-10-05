@@ -1022,6 +1022,51 @@ fn internal_type_reads_a_type_arrow_return() {
 }
 
 #[test]
+fn unclear_type_ignores_a_typed_value_arrow() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst callback: Handler = () => any;\nlet ctor: Handler = () => Object;\nvar make: Handler = () => Function;\nexport const exported: Handler = () => any;\nfunction take(callback: Handler = () => any) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nopaque type Box: Super = () => any;\nopaque type Wrapped<T>: Super = () => Object;\ntype Bound<T: Super = () => Function> = T;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_typed_value_arrow() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nconst flag: Handler = () => bool;\nlet other: Handler = () => bool;\nvar make: Handler = () => bool;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Flag = () => bool;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_typed_value_arrow() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst node: Handler = () => React$Node;\nlet other: Handler = () => React$Node;\nvar make: Handler = () => React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = () => React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
 fn internal_type_ignores_a_class_superclass() {
     let diagnostics = lint_js(
         "flow/internal-type",
@@ -1034,4 +1079,59 @@ fn internal_type_ignores_a_class_superclass() {
         "// @flow\ninterface Box extends React$Node {}\n",
     );
     assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn unclear_type_ignores_a_class_superclass_after_an_arrow_default() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass Box<T = () => any> extends Object {}\nclass Fun<T = () => Function> extends Object {}\nclass Nested<T = Foo<any>> extends Object {}\nclass Deep<T = () => Array<any>> extends Object {}\n",
+    );
+    assert_eq!(diagnostics.len(), 4, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 21));
+    assert_eq!((diagnostics[1].line, diagnostics[1].column), (3, 21));
+    assert_eq!((diagnostics[2].line, diagnostics[2].column), (4, 22));
+    assert_eq!((diagnostics[3].line, diagnostics[3].column), (5, 28));
+
+    let nested = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass Box<Foo<T>> extends Object {}\n",
+    );
+    assert!(nested.is_empty(), "{nested:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ninterface Box<T = () => any> extends Object {}\nopaque type Box<T = () => any>: Super = () => Object;\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 25));
+    assert_eq!((still[1].line, still[1].column), (2, 38));
+    assert_eq!((still[2].line, still[2].column), (3, 27));
+    assert_eq!((still[3].line, still[3].column), (3, 47));
+}
+
+#[test]
+fn deprecated_type_ignores_a_class_superclass_after_an_arrow_default() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass Slot<T = () => bool> extends bool {}\n",
+    );
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 22));
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ninterface Slot<T = () => bool> extends bool {}\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_class_superclass_after_an_arrow_default() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass Slot<T = () => React$Node> extends React$Node {}\n",
+    );
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 22));
 }

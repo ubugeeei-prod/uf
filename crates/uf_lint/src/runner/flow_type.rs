@@ -452,6 +452,8 @@ fn matching_open_paren(code: &str, close: usize) -> Option<usize> {
 /// Whether the `=` at `eq` introduces a type rather than a value.
 ///
 /// `type T =` and `type Box<T =` do. `const f =` and `ctor =` do not.
+/// `const callback: Handler =` initializes a value. `opaque type Box: Super =`
+/// and `type Box<T: Super =` still introduce a type.
 fn equals_introduces_a_type(code: &str, eq: usize) -> bool {
     let Some((name_at, _)) = previous_word(code, eq) else {
         return false;
@@ -466,10 +468,45 @@ fn equals_introduces_a_type(code: &str, eq: usize) -> bool {
     {
         return false;
     }
+    match prev_non_space(code, name_at).map(|(_, byte)| byte) {
+        Some(b'<' | b',') => true,
+        Some(b':') => colon_before_is_a_type_bound(code, name_at),
+        _ => false,
+    }
+}
+
+/// Whether the `:` before the name left of `=` binds a type.
+///
+/// `opaque type Box: Super =` and `opaque type Box<T>: Super =` do, and so
+/// does a type-parameter bound `type Box<T: Super =`. `const callback: Handler
+/// =` and `function take(callback: Handler =` initialize a value.
+fn colon_before_is_a_type_bound(code: &str, name_at: usize) -> bool {
+    let Some((colon_at, b':')) = prev_non_space(code, name_at) else {
+        return false;
+    };
+    let Some(bound_at) = name_before_colon(code, colon_at) else {
+        return false;
+    };
+    if matches!(
+        previous_word(code, bound_at).map(|(_, word)| word),
+        Some("type" | "opaque")
+    ) {
+        return true;
+    }
     matches!(
-        prev_non_space(code, name_at).map(|(_, byte)| byte),
-        Some(b'<' | b',' | b':')
+        prev_non_space(code, bound_at).map(|(_, byte)| byte),
+        Some(b'<' | b',')
     )
+}
+
+/// The declared name in front of a `:`, skipping one generic list.
+fn name_before_colon(code: &str, colon_at: usize) -> Option<usize> {
+    let (at, byte) = prev_non_space(code, colon_at)?;
+    if byte == b'>' {
+        let open = matching_open_angle(code, at)?;
+        return previous_word(code, open).map(|(word_at, _)| word_at);
+    }
+    previous_word(code, colon_at).map(|(start, _)| start)
 }
 
 fn less_than_starts_a_comparison(code: &str, after: Option<(usize, u8)>) -> bool {
@@ -491,6 +528,7 @@ fn less_than_starts_a_comparison(code: &str, after: Option<(usize, u8)>) -> bool
 /// followed by the end of the type, or by `|`, `&`, `,` or another closer.
 /// `Map<string, any>()` is a call, so a `(` with nothing between it and the
 /// `>` stays a generic; `any > (limit)` has a space, and that one compares.
+/// `Foo<any> extends Bar` is a clause, not `any > extends`.
 fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
     let bytes = code.as_bytes();
     if bytes.get(gt + 1) == Some(&b'=') {
@@ -505,6 +543,14 @@ fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
     };
     if byte == b'(' && next == index {
         return false;
+    }
+    // `class Box<T = () => any> extends Object` — `extends` follows the
+    // generic, so the `>` is its closer. `any > limit` is still a comparison.
+    if is_word_byte(byte) {
+        let len = identifier_len(code, next);
+        if &code[next..next + len] == "extends" {
+            return false;
+        }
     }
     is_word_byte(byte)
         || byte.is_ascii_digit()
@@ -561,7 +607,9 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
 /// A class extends a value (`class Box extends Object`, and `class Box<T>
 /// extends Object`). An interface extends a type, so `interface Box extends
 /// Object` stays an annotation. The type-parameter list between the name and
-/// `extends` is skipped; a `>` that does not close one keeps the name a type.
+/// `extends` is skipped, including when a default contains an arrow
+/// (`class Box<T = () => any> extends Object`). A `>` that does not close one
+/// keeps the name a type.
 fn extends_a_class(code: &str, at: usize) -> bool {
     if !prev_non_space(code, at).is_some_and(|(_, byte)| is_word_byte(byte)) {
         return false;
@@ -594,12 +642,19 @@ fn declaration_before(code: &str, from: usize) -> Option<&str> {
 }
 
 /// The `<` that matches the `>` at `close`, within this line.
+///
+/// A `>` glued to `=` is an arrow (`() =>`), not a generic closer, so it does
+/// not change the depth. `class Box<T = () => any>` still matches `Box<`, and
+/// a nested `class Box<Foo<T>>` still matches the outer `<`.
 fn matching_open_angle(code: &str, close: usize) -> Option<usize> {
     let bytes = code.as_bytes();
     let mut depth = 0usize;
     let mut index = close;
     while index > 0 {
         index -= 1;
+        if bytes[index] == b'>' && index > 0 && bytes[index - 1] == b'=' {
+            continue;
+        }
         match bytes[index] {
             b'>' => depth += 1,
             b'<' => {
