@@ -1372,3 +1372,119 @@ fn internal_type_ignores_a_deleted_value() {
     let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_an_optional_parameter() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction take(any?) {}\nfunction take2(any?, other) {}\nfunction take3(first, any?) {}\nfunction take4(Object?) {}\nfunction take5(Function?) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let annotated = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction take(any?: string) {}\n",
+    );
+    assert!(annotated.is_empty(), "{annotated:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = any ? U : V;\ntype Wrapped = (any ? U : V);\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 10));
+    assert_eq!((still[1].line, still[1].column), (3, 17));
+}
+
+#[test]
+fn deprecated_type_ignores_an_optional_parameter() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfunction take(bool?) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_optional_parameter() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfunction take(React$Node?) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_introduced_value() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfunction give() { return React$Node; }\nlet React$Node;\nvar React$Node;\nconst React$Node;\nexport let React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = React$Node;\nfunction f(): React$Node { return null; }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 13));
+    assert_eq!((still[1].line, still[1].column), (3, 15));
+}
+
+#[test]
+fn internal_type_ignores_an_assigned_value() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst made = React$Node;\nmade = React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = React$Node;\ntype Box<T = React$Node> = T;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 13));
+    assert_eq!((still[1].line, still[1].column), (3, 14));
+}
+
+#[test]
+fn internal_type_ignores_a_call_argument() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfoo(React$Node);\nfoo(a, React$Node);\nfunction h(React$Node) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype F = (React$Node) => void;\ntype G = (x: React$Node) => void;\ntype A = Array<React$Node>;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11));
+    assert_eq!((still[1].line, still[1].column), (3, 14));
+    assert_eq!((still[2].line, still[2].column), (4, 16));
+}
+
+#[test]
+fn internal_type_ignores_a_parameter_name() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfunction h(React$Node: string) {}\nfunction i(React$Node?: string) {}\nfunction j(first: string, React$Node: number) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype F = (x: React$Node) => void;\ntype Slot = React$Node;\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 14));
+    assert_eq!((still[1].line, still[1].column), (3, 13));
+}

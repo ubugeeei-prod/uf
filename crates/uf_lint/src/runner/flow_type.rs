@@ -144,14 +144,13 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
 
     // `function test(any: string)` and `function test(any?: string)` — the name
     // before the colon is a binding. `(node: any)` still has the type after it.
-    if names_a_parameter(code, at, len) {
+    // `function test(any?)` is the same binding with no annotation after it.
+    if names_a_parameter(code, at, len) || names_an_optional_parameter(code, at, len) {
         return true;
     }
 
     // `return any`, and `const any` / `let any` / `var any`.
-    if previous_word(code, at)
-        .is_some_and(|(_, word)| matches!(word, "return" | "const" | "let" | "var"))
-    {
+    if introduced_as_a_value(code, at) {
         return true;
     }
 
@@ -275,6 +274,34 @@ fn names_a_property_key(code: &str, at: usize, len: usize, before: Option<(usize
     }
     // `readonly any: …`, which is the third spelling of it.
     previous_word(code, at).is_some_and(|(_, word)| word == "readonly")
+}
+
+/// Whether the name at `at` is an optional parameter with no annotation.
+///
+/// `function take(any?)` and `function take(first, any?)` bind a value. The
+/// `?` is followed by `)` or `,`. `type T = any ? U : V` and
+/// `type T = (any ? U : V)` follow the `?` with a type, so they stay types.
+/// Whether `return`, `const`, `let`, or `var` introduces the name as a value.
+///
+/// `return React$Node` and `let React$Node` are expressions and bindings.
+/// `type Slot = React$Node` and `function f(): React$Node` are not.
+fn introduced_as_a_value(code: &str, at: usize) -> bool {
+    previous_word(code, at)
+        .is_some_and(|(_, word)| matches!(word, "return" | "const" | "let" | "var"))
+}
+
+fn names_an_optional_parameter(code: &str, at: usize, len: usize) -> bool {
+    if !prev_non_space(code, at).is_some_and(|(_, byte)| matches!(byte, b'(' | b',')) {
+        return false;
+    }
+    let Some((mark, b'?')) = next_non_space(code, at + len) else {
+        return false;
+    };
+    // `??`, `?.` and `?.()` are values, and already classified as such.
+    if matches!(code.as_bytes().get(mark + 1), Some(b'?' | b'.' | b'(')) {
+        return false;
+    }
+    next_non_space(code, mark + 1).is_none_or(|(_, byte)| matches!(byte, b')' | b','))
 }
 
 /// Whether the name at `at` is a function parameter (`(any: string)`, `any?`).
@@ -1089,8 +1116,11 @@ pub(crate) fn run_flow_internal_type(
         return;
     };
 
+    let mut enclosing = Enclosing::default();
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
+        let outer = enclosing;
+        enclosing = enclosing.after(code);
         let mut at = 0usize;
         while at < code.len() {
             let len = identifier_len(code, at);
@@ -1113,6 +1143,11 @@ pub(crate) fn run_flow_internal_type(
                 || value_keyword_operand(code, at, len)
                 || names_an_export_default(code, at)
                 || names_a_default_import(code, at)
+                || names_an_optional_parameter(code, at, len)
+                || introduced_as_a_value(code, at)
+                || assignment_is_a_value(code, at, outer)
+                || is_a_bare_argument(code, at, len, outer)
+                || names_a_parameter(code, at, len)
                 || extends_a_class(code, at)
             {
                 at += len;
