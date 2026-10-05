@@ -159,8 +159,9 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
-    // `any;` and `class C { any; }` name a value. `type Slot = any` does not.
-    if names_a_bare_statement(code, at, len) {
+    // `any;` and `class C { any; }` name a value. `type Slot = any` does not,
+    // and neither does that alias when `=` is the last token of the line above.
+    if names_a_bare_statement(code, at, len, outer) {
         return true;
     }
 
@@ -828,21 +829,75 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
 /// `any;`, `function f() { React$Node; }`, `class C { React$Node; }` and
 /// `class C { React$Node }` are values. A `:` or `=` in front keeps a type:
 /// `class C { x: React$Node; }`, `type Slot = React$Node`, and
-/// `declare function f(): React$Node;`. A `}` closes a class field only when
-/// the `{` opens the class, so `export type { React$Node }` stays a type.
-fn names_a_bare_statement(code: &str, at: usize, len: usize) -> bool {
+/// `declare function f(): React$Node;`. A line break does not change the alias:
+/// `type Slot =\n  React$Node;` is still a type, because the `=` closed the
+/// line above. A `}` closes a class field only when the `{` opens the class,
+/// so `export type { React$Node }` stays a type.
+fn names_a_bare_statement(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     let prev = prev_non_space(code, at);
     let at_edge = matches!(prev, None | Some((_, b'{' | b'}' | b';')));
     if !at_edge {
         return false;
     }
     match next_non_space(code, at + len) {
-        Some((_, b';')) => true,
+        Some((_, b';')) => !(prev.is_none() && outer.continues_a_type),
         Some((_, b'}')) => {
             prev.is_some_and(|(open, byte)| byte == b'{' && brace_opens_a_class(code, open))
         }
         _ => false,
     }
+}
+
+/// Whether this line's trailing `=` finishes a type alias.
+///
+/// `type Slot =`, `type Box<T> =`, and `opaque type Hidden: Super =` do.
+/// `const value =`, `count +=`, and `x ==` do not. The scan reads one line at
+/// a time, so the alias's right-hand side asks the next line about this one.
+fn line_ends_as_a_type(code: &str) -> bool {
+    let Some((eq, b'=')) = prev_non_space(code, code.len()) else {
+        return false;
+    };
+    if eq > 0
+        && matches!(
+            code.as_bytes()[eq - 1],
+            b'=' | b'!' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'<' | b'>'
+        )
+    {
+        return false;
+    }
+    type_alias_before(code, eq)
+}
+
+/// Whether `type` or `opaque` declares the alias whose `=` is at `eq`.
+fn type_alias_before(code: &str, eq: usize) -> bool {
+    let Some(at) = name_before(code, eq) else {
+        return false;
+    };
+    if previous_word(code, at).is_some_and(|(_, word)| matches!(word, "type" | "opaque")) {
+        return true;
+    }
+    // `opaque type Hidden: Super =` — the `=` follows the super type, and the
+    // keyword stands in front of the alias, before the `:`.
+    let Some((colon, b':')) = prev_non_space(code, at) else {
+        return false;
+    };
+    let Some(alias) = name_before(code, colon) else {
+        return false;
+    };
+    previous_word(code, alias).is_some_and(|(_, word)| matches!(word, "type" | "opaque"))
+}
+
+/// The name that ends just before `from`, skipping one `<…>` generic list.
+fn name_before(code: &str, from: usize) -> Option<usize> {
+    let (at, byte) = prev_non_space(code, from)?;
+    if byte == b'>' {
+        let open = matching_open_angle(code, at)?;
+        return previous_word(code, open).map(|(name, _)| name);
+    }
+    if is_word_byte(byte) {
+        return previous_word(code, from).map(|(name, _)| name);
+    }
+    None
 }
 
 /// Whether `class`, `enum`, or `interface` declares this word.
@@ -993,6 +1048,9 @@ struct Enclosing {
     /// Whether the innermost opener is the `{` of `import { … }` or
     /// `export { … }`. A specifier continued onto the next line is a value.
     value_specifiers: bool,
+    /// The previous line ended a type alias (`type Slot =`). A name at the
+    /// start of this line is still that alias. A blank line keeps the flag.
+    continues_a_type: bool,
 }
 
 /// Which kind of bracket is open. Only `(` needs telling apart, and only into
@@ -1012,6 +1070,15 @@ impl Enclosing {
     /// Strings and comments are already blanked out of `code` by the scan, so
     /// a bracket here is a bracket in the program.
     fn after(self, code: &str) -> Self {
+        let continues_a_type = if code
+            .as_bytes()
+            .iter()
+            .any(|byte| !byte.is_ascii_whitespace())
+        {
+            line_ends_as_a_type(code)
+        } else {
+            self.continues_a_type
+        };
         // The stack lives for one line and only its top is kept. A `Vec` here
         // allocated once per line, and `flow/deprecated-type` walks every line
         // with it, which put the router runtime over the allocation budget.
@@ -1065,6 +1132,7 @@ impl Enclosing {
             },
             last_byte: last,
             value_specifiers: depth > 0 && specifiers[depth - 1],
+            continues_a_type,
         }
     }
 }
@@ -1211,7 +1279,7 @@ pub(crate) fn run_flow_internal_type(
                 || follows_an_equality_operator(code, at)
                 || names_an_imported_value(code, at, outer)
                 || names_a_declaration(code, at)
-                || names_a_bare_statement(code, at, len)
+                || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
             {
                 at += len;
