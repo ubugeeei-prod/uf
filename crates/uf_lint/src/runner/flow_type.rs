@@ -528,6 +528,7 @@ fn less_than_starts_a_comparison(code: &str, after: Option<(usize, u8)>) -> bool
 /// followed by the end of the type, or by `|`, `&`, `,` or another closer.
 /// `Map<string, any>()` is a call, so a `(` with nothing between it and the
 /// `>` stays a generic; `any > (limit)` has a space, and that one compares.
+/// `Foo<any> extends Bar` is a clause, not `any > extends`.
 fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
     let bytes = code.as_bytes();
     if bytes.get(gt + 1) == Some(&b'=') {
@@ -542,6 +543,14 @@ fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
     };
     if byte == b'(' && next == index {
         return false;
+    }
+    // `class Box<T = () => any> extends Object` — `extends` follows the
+    // generic, so the `>` is its closer. `any > limit` is still a comparison.
+    if is_word_byte(byte) {
+        let len = identifier_len(code, next);
+        if &code[next..next + len] == "extends" {
+            return false;
+        }
     }
     is_word_byte(byte)
         || byte.is_ascii_digit()
@@ -598,7 +607,9 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
 /// A class extends a value (`class Box extends Object`, and `class Box<T>
 /// extends Object`). An interface extends a type, so `interface Box extends
 /// Object` stays an annotation. The type-parameter list between the name and
-/// `extends` is skipped; a `>` that does not close one keeps the name a type.
+/// `extends` is skipped, including when a default contains an arrow
+/// (`class Box<T = () => any> extends Object`). A `>` that does not close one
+/// keeps the name a type.
 fn extends_a_class(code: &str, at: usize) -> bool {
     if !prev_non_space(code, at).is_some_and(|(_, byte)| is_word_byte(byte)) {
         return false;
@@ -631,12 +642,19 @@ fn declaration_before(code: &str, from: usize) -> Option<&str> {
 }
 
 /// The `<` that matches the `>` at `close`, within this line.
+///
+/// A `>` glued to `=` is an arrow (`() =>`), not a generic closer, so it does
+/// not change the depth. `class Box<T = () => any>` still matches `Box<`, and
+/// a nested `class Box<Foo<T>>` still matches the outer `<`.
 fn matching_open_angle(code: &str, close: usize) -> Option<usize> {
     let bytes = code.as_bytes();
     let mut depth = 0usize;
     let mut index = close;
     while index > 0 {
         index -= 1;
+        if bytes[index] == b'>' && index > 0 && bytes[index - 1] == b'=' {
+            continue;
+        }
         match bytes[index] {
             b'>' => depth += 1,
             b'<' => {
