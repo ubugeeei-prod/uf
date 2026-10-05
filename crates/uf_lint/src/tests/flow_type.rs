@@ -1550,3 +1550,21 @@ fn internal_type_ignores_an_equality_operand() {
     assert_eq!(still.len(), 1, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 13));
 }
+
+#[test]
+fn internal_type_ignores_a_named_import_or_export() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport { React$Node } from \"./m\";\nimport { foo as React$Node } from \"./m\";\nexport { React$Node };\nexport { local as React$Node };\nexport { React$Node } from \"./m\";\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nimport type { React$Node } from \"./m\";\nimport { type React$Node } from \"./m\";\nexport type { React$Node };\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15));
+    assert_eq!((still[1].line, still[1].column), (3, 15));
+    assert_eq!((still[2].line, still[2].column), (4, 15));
+}

@@ -1154,6 +1154,7 @@ pub(crate) fn run_flow_internal_type(
                 || previous_word(code, at).is_some_and(|(_, word)| word == "case")
                 || names_a_property_key(code, at, len, prev_non_space(code, at))
                 || follows_an_equality_operator(code, at)
+                || names_an_imported_value(code, at, outer)
                 || extends_a_class(code, at)
             {
                 at += len;
