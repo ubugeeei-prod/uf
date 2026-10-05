@@ -348,8 +348,11 @@ fn beside_a_value_operator(
             b'=' => {
                 let compared = code.as_bytes().get(index + 1) == Some(&b'=');
                 // `Foo<any = T>` is a default type argument, not `any = 1`.
+                // `const value: any = 1` is an annotation in front of an
+                // initializer, not an assignment to `any`.
                 let type_default = !compared && before.is_some_and(|(_, byte)| byte == b'<');
-                if !type_default {
+                let annotation = !compared && annotation_before_initializer(code, before);
+                if !type_default && !annotation {
                     return true;
                 }
             }
@@ -371,6 +374,94 @@ fn beside_a_value_operator(
         }
     }
     false
+}
+
+/// Whether a `:` in front of the name makes the following `=` an initializer.
+///
+/// `const value: any = 1`, `function take(value: any = 1)`, and
+/// `class Box { value: any = 1 }` name a type. `label: any = 1` assigns, and
+/// so does a label inside a function or a method. `Foo<any = T>` is a type
+/// default, which the caller tells apart by the `<`.
+fn annotation_before_initializer(code: &str, before: Option<(usize, u8)>) -> bool {
+    let Some((colon_at, b':')) = before else {
+        return false;
+    };
+    let Some((bound_at, _)) = previous_word(code, colon_at) else {
+        return false;
+    };
+    if previous_word(code, bound_at)
+        .is_some_and(|(_, word)| matches!(word, "const" | "let" | "var" | "static"))
+    {
+        return true;
+    }
+    match prev_non_space(code, bound_at) {
+        Some((_, b'(' | b',')) => true,
+        Some((at, b'{')) => brace_opens_a_class(code, at),
+        Some((at, b';')) => {
+            enclosing_brace(code, at).is_some_and(|brace| brace_opens_a_class(code, brace))
+        }
+        _ => false,
+    }
+}
+
+/// Whether the `{` at `brace` opens a class body.
+///
+/// `class Box {`, `export default class {`, and `class Box<T> extends Super {`
+/// do. `function f() {` does not.
+fn brace_opens_a_class(code: &str, brace: usize) -> bool {
+    match declaration_before(code, brace) {
+        Some("class") => true,
+        Some("extends") => extends_follows_a_class(code, brace),
+        _ => false,
+    }
+}
+
+/// `class Box extends Super {` — `extends` is only a class when `class` is
+/// what it belongs to.
+fn extends_follows_a_class(code: &str, brace: usize) -> bool {
+    let (at, byte) = match prev_non_space(code, brace) {
+        Some(found) => found,
+        None => return false,
+    };
+    let super_at = if byte == b'>' {
+        let Some(open) = matching_open_angle(code, at) else {
+            return false;
+        };
+        let Some((word_at, _)) = previous_word(code, open) else {
+            return false;
+        };
+        word_at
+    } else {
+        let Some((word_at, _)) = previous_word(code, brace) else {
+            return false;
+        };
+        word_at
+    };
+    let Some((extends_at, "extends")) = previous_word(code, super_at) else {
+        return false;
+    };
+    declaration_before(code, extends_at) == Some("class")
+}
+
+/// The `{` that contains `before`, within this line.
+fn enclosing_brace(code: &str, before: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = before;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b'}' => depth += 1,
+            b'{' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Whether a `<` immediately before a name is a comparison.
