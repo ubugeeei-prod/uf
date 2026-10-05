@@ -189,6 +189,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `const x = { a: any }` passes a value. `type T = { a: any }` does not.
+    if names_an_object_value(code, at, outer) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -479,6 +484,13 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
     if eq > 0 && matches!(code.as_bytes()[eq - 1], b'=' | b'!') {
         return false;
     }
+    equals_assigns_a_value(code, eq, outer)
+}
+
+/// Whether the `=` at `eq` assigns a value.
+///
+/// `const value =` and `ctor =` do. `type Handler =` and `type Box<T =` do not.
+fn equals_assigns_a_value(code: &str, eq: usize, outer: Enclosing) -> bool {
     let Some((name_at, _)) = previous_word(code, eq) else {
         return false;
     };
@@ -500,6 +512,36 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
         None => !matches!(outer.last_byte, Some(b'<' | b',')),
         Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
     }
+}
+
+/// Whether the name is a property value in an object literal.
+///
+/// `const x = { a: any }` and `const x = { a: { b: any } }` pass a value.
+/// `type T = { a: any }`, `function f(): { a: any }`, and `class C { x: any }`
+/// name a type.
+fn names_an_object_value(code: &str, at: usize, outer: Enclosing) -> bool {
+    let Some((colon, b':')) = prev_non_space(code, at) else {
+        return false;
+    };
+    let Some(brace) = enclosing_brace(code, colon) else {
+        return false;
+    };
+    brace_holds_a_value(code, brace, outer)
+}
+
+/// Whether `{` opens an object literal rather than a type.
+fn brace_holds_a_value(code: &str, brace: usize, outer: Enclosing) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, brace) else {
+        return false;
+    };
+    if byte == b'=' && (prev == 0 || !matches!(code.as_bytes()[prev - 1], b'=' | b'!')) {
+        return equals_assigns_a_value(code, prev, outer);
+    }
+    if byte == b':' {
+        return enclosing_brace(code, prev)
+            .is_some_and(|outer_brace| brace_holds_a_value(code, outer_brace, outer));
+    }
+    false
 }
 
 /// Whether the word sits next to an operator a type annotation cannot have.
@@ -1413,6 +1455,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_an_imported_value(code, at, outer)
                 || names_a_shorthand_binding(code, at, len)
                 || names_a_renamed_binding(code, at)
+                || names_an_object_value(code, at, outer)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

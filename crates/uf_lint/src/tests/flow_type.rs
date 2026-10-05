@@ -1884,3 +1884,42 @@ fn internal_type_ignores_a_renamed_binding() {
     );
     assert_eq!(still.len(), 3, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_an_object_value() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst x = { a: any };\nlet y = { a: { b: Object } };\nvar z = { a: Function };\nx = { a: any };\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = { a: any };\nfunction f(): { a: any } { return { a: 1 }; }\nfunction g(props: { a: any }) {}\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_an_object_value() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nconst x = { a: bool };\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype T = { a: bool };\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_object_value() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst x = { a: React$Node };\nconst y = { a: { b: React$Node } };\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype T = { a: React$Node };\nfunction f(): { a: React$Node } { return { a: 1 }; }\nfunction g(props: { a: React$Node }) {}\nclass C { x: React$Node; }\n",
+    );
+    assert_eq!(still.len(), 4, "{still:?}");
+}
