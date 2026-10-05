@@ -1639,3 +1639,38 @@ fn internal_type_ignores_a_declared_name() {
     assert_eq!((still[0].line, still[0].column), (2, 20));
     assert_eq!((still[1].line, still[1].column), (3, 21));
 }
+
+#[test]
+fn unclear_type_ignores_an_optional_call_argument() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfoo?.(any);\nfoo?.(Object);\nfoo?.(Function);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\ntype F = (any) => void;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11));
+}
+
+#[test]
+fn deprecated_type_ignores_an_optional_call_argument() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nfoo?.(bool);\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_optional_call_argument() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfoo?.(React$Node);\nfoo?.(\n  React$Node,\n);\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype F = (React$Node) => void;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11));
+}

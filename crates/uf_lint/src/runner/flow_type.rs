@@ -923,12 +923,25 @@ fn is_a_bare_argument(code: &str, at: usize, len: usize, outer: Enclosing) -> bo
         return false;
     }
     match enclosing_open_paren(code, at) {
-        Some(open) => prev_non_space(code, open)
-            .is_some_and(|(_, byte)| is_word_byte(byte) || byte == b')' || byte == b']'),
+        Some(open) => paren_opens_a_call(code, open),
         // The list was opened on an earlier line, so the question "is this a
         // call or a function type" was answered there and carried here.
         None => outer.kind == Some(Opener::Call),
     }
+}
+
+/// Whether the `(` at `open` starts a call rather than a group or a type.
+///
+/// A name, a `)` or a `]` in front is a call. `foo?.(any)` is one too: the
+/// `(` follows `?.`. `type F = (any) => void` follows `=`, so it stays a type.
+fn paren_opens_a_call(code: &str, open: usize) -> bool {
+    let Some((at, byte)) = prev_non_space(code, open) else {
+        return false;
+    };
+    if is_word_byte(byte) || byte == b')' || byte == b']' {
+        return true;
+    }
+    byte == b'.' && at > 0 && code.as_bytes()[at - 1] == b'?'
 }
 
 /// What an argument list looked like when the line above ended.
@@ -985,9 +998,7 @@ impl Enclosing {
         for (index, byte) in bytes.iter().enumerate() {
             match byte {
                 b'(' => {
-                    let call = prev_non_space(code, index).is_some_and(|(_, previous)| {
-                        is_word_byte(previous) || previous == b')' || previous == b']'
-                    });
+                    let call = paren_opens_a_call(code, index);
                     if depth < CAP {
                         inline[depth] = if call { Opener::Call } else { Opener::Other };
                         specifiers[depth] = false;
