@@ -977,6 +977,51 @@ fn deprecated_type_ignores_a_class_superclass() {
 }
 
 #[test]
+fn unclear_type_reads_a_type_arrow_return() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Handler = () => any;\ntype Items = () => Object;\ntype Ctor = new () => Function;\ntype Param = (value: string) => Object;\ntype Box<T = () => any> = T;\n",
+    );
+    assert_eq!(diagnostics.len(), 5, "{diagnostics:?}");
+
+    let quiet = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst body = () => any;\nconst typed = (value: string) => Object;\nconst generic = <A>(value: A) => Function;\nif (count > any) {}\n",
+    );
+    assert!(quiet.is_empty(), "{quiet:?}");
+}
+
+#[test]
+fn deprecated_type_reads_a_type_arrow_return() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Flag = () => bool;\ntype Ctor = new () => bool;\n",
+    );
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+
+    let quiet = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nconst body = () => bool;\n",
+    );
+    assert!(quiet.is_empty(), "{quiet:?}");
+}
+
+#[test]
+fn internal_type_reads_a_type_arrow_return() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = () => React$Node;\ntype Ctor = new () => React$Node;\n",
+    );
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+
+    let quiet = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst body = () => React$Node;\n",
+    );
+    assert!(quiet.is_empty(), "{quiet:?}");
+}
+
+#[test]
 fn internal_type_ignores_a_class_superclass() {
     let diagnostics = lint_js(
         "flow/internal-type",

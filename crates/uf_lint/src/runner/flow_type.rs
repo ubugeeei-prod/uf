@@ -313,7 +313,9 @@ fn assignment_is_a_value(code: &str, at: usize, outer: Enclosing) -> bool {
 /// Whether the word sits next to an operator a type annotation cannot have.
 ///
 /// `<` after the name is a comparison (`any < limit`). `>` *before* it is a
-/// comparison (`count > any`) or the end of a JSX tag. `<` *before* it is a
+/// comparison (`count > any`) or the end of a JSX tag. The `>` of `=>` is not
+/// one of those when it returns a type (`type T = () => any`, `type T = new ()
+/// => Object`); `const f = () => any` is still a value. `<` *before* it is a
 /// comparison too (`count < any`, `count < any && ready`) unless the rest of
 /// the line is a type: `Array<any>`, `Foo<any, T>`, `Foo<any | T>`,
 /// `Foo<any & T>` and `Foo<any = T>`. `>=` and `<=` are the same comparisons.
@@ -357,7 +359,10 @@ fn beside_a_value_operator(
     }
     if let Some((index, byte)) = before {
         match byte {
-            b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' | b'^' => return true,
+            b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'~' | b'^' => return true,
+            // `count > any` is a comparison. `type T = () => any` is a return
+            // type, so that `>` is not one. `const f = () => any` is a value.
+            b'>' if !arrow_return_is_a_type(code, index) => return true,
             b'&' | b'|' if index > 0 && code.as_bytes()[index - 1] == byte => return true,
             b'?' if index > 0 && code.as_bytes()[index - 1] == b'?' => return true,
             b'<' if less_than_starts_a_comparison(code, after) => return true,
@@ -374,6 +379,99 @@ fn beside_a_value_operator(
 /// `Foo<any | T>`, `Foo<any & T>` and `Foo<any = T>` are the rest of a generic,
 /// so `>`, `,`, `|`, `:`, a single `&` and a single `=` keep the name a type.
 /// `==` after the name is still a comparison (`count < any == limit`).
+/// Whether the `>` at `gt` closes a type arrow, so the following name is a
+/// return type.
+///
+/// `type T = () => any`, `type T = (value: string) => any`, `type T = new () =>
+/// Object` and `type Box<T = () => any>` are return types. `const f = () =>
+/// any` and `count > any` are values; a comparison has no `=` glued to the
+/// `>`.
+fn arrow_return_is_a_type(code: &str, gt: usize) -> bool {
+    if gt == 0 || code.as_bytes().get(gt - 1) != Some(&b'=') {
+        return false;
+    }
+    let head = arrow_head(code, gt - 1);
+    let mut introducer = head;
+    if let Some((angle_close, b'>')) = prev_non_space(code, head)
+        && let Some(open) = matching_open_angle(code, angle_close)
+    {
+        introducer = open;
+    }
+    if previous_word(code, introducer).is_some_and(|(_, word)| word == "new") {
+        return true;
+    }
+    let Some((eq, b'=')) = prev_non_space(code, introducer) else {
+        return false;
+    };
+    if eq > 0 && matches!(code.as_bytes()[eq - 1], b'=' | b'!') {
+        return false;
+    }
+    equals_introduces_a_type(code, eq)
+}
+
+/// The start of the parameter list in front of the `=` of `=>`.
+fn arrow_head(code: &str, eq_of_arrow: usize) -> usize {
+    let Some((before_at, before)) = prev_non_space(code, eq_of_arrow) else {
+        return eq_of_arrow;
+    };
+    if before == b')' {
+        return matching_open_paren(code, before_at).unwrap_or(before_at);
+    }
+    if is_word_byte(before) {
+        let bytes = code.as_bytes();
+        let mut start = before_at;
+        while start > 0 && is_word_byte(bytes[start - 1]) {
+            start -= 1;
+        }
+        return start;
+    }
+    before_at
+}
+
+/// The `(` that matches the `)` at `close`, within this line.
+fn matching_open_paren(code: &str, close: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = close;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b')' => depth += 1,
+            b'(' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Whether the `=` at `eq` introduces a type rather than a value.
+///
+/// `type T =` and `type Box<T =` do. `const f =` and `ctor =` do not.
+fn equals_introduces_a_type(code: &str, eq: usize) -> bool {
+    let Some((name_at, _)) = previous_word(code, eq) else {
+        return false;
+    };
+    if matches!(
+        previous_word(code, name_at).map(|(_, word)| word),
+        Some("type" | "opaque")
+    ) {
+        return true;
+    }
+    if previous_word(code, name_at).is_some_and(|(_, word)| matches!(word, "const" | "let" | "var"))
+    {
+        return false;
+    }
+    matches!(
+        prev_non_space(code, name_at).map(|(_, byte)| byte),
+        Some(b'<' | b',' | b':')
+    )
+}
+
 fn less_than_starts_a_comparison(code: &str, after: Option<(usize, u8)>) -> bool {
     let Some((index, byte)) = after else {
         return true;
