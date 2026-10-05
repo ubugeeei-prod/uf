@@ -452,6 +452,8 @@ fn matching_open_paren(code: &str, close: usize) -> Option<usize> {
 /// Whether the `=` at `eq` introduces a type rather than a value.
 ///
 /// `type T =` and `type Box<T =` do. `const f =` and `ctor =` do not.
+/// `const callback: Handler =` initializes a value. `opaque type Box: Super =`
+/// and `type Box<T: Super =` still introduce a type.
 fn equals_introduces_a_type(code: &str, eq: usize) -> bool {
     let Some((name_at, _)) = previous_word(code, eq) else {
         return false;
@@ -466,10 +468,45 @@ fn equals_introduces_a_type(code: &str, eq: usize) -> bool {
     {
         return false;
     }
+    match prev_non_space(code, name_at).map(|(_, byte)| byte) {
+        Some(b'<' | b',') => true,
+        Some(b':') => colon_before_is_a_type_bound(code, name_at),
+        _ => false,
+    }
+}
+
+/// Whether the `:` before the name left of `=` binds a type.
+///
+/// `opaque type Box: Super =` and `opaque type Box<T>: Super =` do, and so
+/// does a type-parameter bound `type Box<T: Super =`. `const callback: Handler
+/// =` and `function take(callback: Handler =` initialize a value.
+fn colon_before_is_a_type_bound(code: &str, name_at: usize) -> bool {
+    let Some((colon_at, b':')) = prev_non_space(code, name_at) else {
+        return false;
+    };
+    let Some(bound_at) = name_before_colon(code, colon_at) else {
+        return false;
+    };
+    if matches!(
+        previous_word(code, bound_at).map(|(_, word)| word),
+        Some("type" | "opaque")
+    ) {
+        return true;
+    }
     matches!(
-        prev_non_space(code, name_at).map(|(_, byte)| byte),
-        Some(b'<' | b',' | b':')
+        prev_non_space(code, bound_at).map(|(_, byte)| byte),
+        Some(b'<' | b',')
     )
+}
+
+/// The declared name in front of a `:`, skipping one generic list.
+fn name_before_colon(code: &str, colon_at: usize) -> Option<usize> {
+    let (at, byte) = prev_non_space(code, colon_at)?;
+    if byte == b'>' {
+        let open = matching_open_angle(code, at)?;
+        return previous_word(code, open).map(|(word_at, _)| word_at);
+    }
+    previous_word(code, colon_at).map(|(start, _)| start)
 }
 
 fn less_than_starts_a_comparison(code: &str, after: Option<(usize, u8)>) -> bool {

@@ -1022,6 +1022,51 @@ fn internal_type_reads_a_type_arrow_return() {
 }
 
 #[test]
+fn unclear_type_ignores_a_typed_value_arrow() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst callback: Handler = () => any;\nlet ctor: Handler = () => Object;\nvar make: Handler = () => Function;\nexport const exported: Handler = () => any;\nfunction take(callback: Handler = () => any) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nopaque type Box: Super = () => any;\nopaque type Wrapped<T>: Super = () => Object;\ntype Bound<T: Super = () => Function> = T;\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_typed_value_arrow() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nconst flag: Handler = () => bool;\nlet other: Handler = () => bool;\nvar make: Handler = () => bool;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Flag = () => bool;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_typed_value_arrow() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nconst node: Handler = () => React$Node;\nlet other: Handler = () => React$Node;\nvar make: Handler = () => React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = () => React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
 fn internal_type_ignores_a_class_superclass() {
     let diagnostics = lint_js(
         "flow/internal-type",
