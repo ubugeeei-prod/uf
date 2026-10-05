@@ -1674,3 +1674,33 @@ fn internal_type_ignores_an_optional_call_argument() {
     assert_eq!(still.len(), 1, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 11));
 }
+
+#[test]
+fn unclear_type_ignores_a_template_tag() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nany`x`;\nObject`x`;\nFunction`x`;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\ntype T = any;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_template_tag() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nbool`x`;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_template_tag() {
+    let diagnostics = lint_js("flow/internal-type", "// @flow\nReact$Node`x`;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}

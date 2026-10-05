@@ -114,6 +114,10 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     if after.is_some_and(|(_, byte)| byte == b'.' || byte == b'(') {
         return true;
     }
+    // `any`x`` tags a template. A type is never a tag.
+    if after.is_some_and(|(_, byte)| byte == b'`') {
+        return true;
+    }
 
     // `case Object:` — Flow has no syntax that puts a type after `case`.
     if previous_word(code, at).is_some_and(|(_, word)| word == "case") {
@@ -1174,7 +1178,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_parameter(code, at, len)
                 || prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.')
                 || next_non_space(code, at + len)
-                    .is_some_and(|(_, byte)| matches!(byte, b'.' | b'('))
+                    .is_some_and(|(_, byte)| matches!(byte, b'.' | b'(' | b'`'))
                 || previous_word(code, at).is_some_and(|(_, word)| word == "case")
                 || names_a_property_key(code, at, len, prev_non_space(code, at))
                 || follows_an_equality_operator(code, at)
