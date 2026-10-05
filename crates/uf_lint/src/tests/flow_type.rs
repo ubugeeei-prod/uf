@@ -1372,3 +1372,50 @@ fn internal_type_ignores_a_deleted_value() {
     let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_an_optional_parameter() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction take(any?) {}\nfunction take2(any?, other) {}\nfunction take3(first, any?) {}\nfunction take4(Object?) {}\nfunction take5(Function?) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let annotated = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction take(any?: string) {}\n",
+    );
+    assert!(annotated.is_empty(), "{annotated:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype T = any ? U : V;\ntype Wrapped = (any ? U : V);\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 10));
+    assert_eq!((still[1].line, still[1].column), (3, 17));
+}
+
+#[test]
+fn deprecated_type_ignores_an_optional_parameter() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfunction take(bool?) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_optional_parameter() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfunction take(React$Node?) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
