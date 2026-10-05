@@ -164,13 +164,34 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
 
     // `import { bool }` and `import { any }` bind a value. `import type { bool }`
     // and `import { type bool }` are types, and stay reported.
-    if names_an_imported_value(code, at, outer) {
+    if names_an_imported_value(code, at, outer) || names_a_default_import(code, at) {
         return true;
     }
 
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
+}
+
+/// Whether the word is a default or namespace import binding.
+///
+/// `import any from`, `import any, { extra } from`, `import * as any`, and
+/// `export * as any` bind a value. `import type any from` is a type: `type`
+/// sits between `import` and the name.
+fn names_a_default_import(code: &str, at: usize) -> bool {
+    if previous_word(code, at).is_some_and(|(_, word)| word == "import") {
+        return true;
+    }
+    let Some((as_at, "as")) = previous_word(code, at) else {
+        return false;
+    };
+    let Some((star_at, b'*')) = prev_non_space(code, as_at) else {
+        return false;
+    };
+    matches!(
+        previous_word(code, star_at).map(|(_, word)| word),
+        Some("import" | "export")
+    )
 }
 
 /// Whether the word at `at` is a value imported or re-exported by name.
@@ -348,8 +369,17 @@ fn beside_a_value_operator(
             b'=' => {
                 let compared = code.as_bytes().get(index + 1) == Some(&b'=');
                 // `Foo<any = T>` is a default type argument, not `any = 1`.
+                // `const value: any = 1` is an annotation in front of an
+                // initializer, not an assignment to `any`.
                 let type_default = !compared && before.is_some_and(|(_, byte)| byte == b'<');
-                if !type_default {
+                let annotation = !compared && annotation_before_initializer(code, before);
+                // `const made: () => Object = fn` — the `=` initializes the
+                // binding, and `Object` is the arrow's return type.
+                let arrow_return = !compared
+                    && before.is_some_and(|(index, byte)| {
+                        byte == b'>' && arrow_return_is_a_type(code, index)
+                    });
+                if !type_default && !annotation && !arrow_return {
                     return true;
                 }
             }
@@ -371,6 +401,116 @@ fn beside_a_value_operator(
         }
     }
     false
+}
+
+/// Whether a `:` in front of the name makes the following `=` an initializer.
+///
+/// `const value: any = 1`, `function take(value: any = 1)`, and
+/// `class Box { value: any = 1 }` name a type. `label: any = 1` assigns, and
+/// so does a label inside a function or a method. A comma inside
+/// `{ a, b: any = 1 }` renames a property, so that name stays a value.
+/// `Foo<any = T>` is a type default, which the caller tells apart by the `<`.
+fn annotation_before_initializer(code: &str, before: Option<(usize, u8)>) -> bool {
+    let Some((colon_at, b':')) = before else {
+        return false;
+    };
+    let Some((bound_at, _)) = previous_word(code, colon_at) else {
+        return false;
+    };
+    if previous_word(code, bound_at)
+        .is_some_and(|(_, word)| matches!(word, "const" | "let" | "var" | "static"))
+    {
+        return true;
+    }
+    match prev_non_space(code, bound_at) {
+        Some((_, b'(')) => true,
+        Some((_, b',')) => comma_separates_a_parameter(code, bound_at),
+        Some((at, b'{')) => brace_opens_a_class(code, at),
+        Some((at, b';')) => {
+            enclosing_brace(code, at).is_some_and(|brace| brace_opens_a_class(code, brace))
+        }
+        _ => false,
+    }
+}
+
+/// Whether the comma before a binding separates parameters.
+///
+/// `function take(first, value: any = 1)` is enclosed by `(`. `const { a, b: any = 1 }`
+/// and `function f({ a, b: any = 1 })` hit `{` first, and the colon renames `b`.
+fn comma_separates_a_parameter(code: &str, bound_at: usize) -> bool {
+    let bytes = code.as_bytes();
+    let mut depth = 0i32;
+    let mut index = bound_at;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b')' | b'}' | b']' => depth += 1,
+            b'(' | b'{' | b'[' if depth == 0 => return bytes[index] == b'(',
+            b'(' | b'{' | b'[' => depth -= 1,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether the `{` at `brace` opens a class body.
+///
+/// `class Box {`, `export default class {`, and `class Box<T> extends Super {`
+/// do. `function f() {` does not.
+fn brace_opens_a_class(code: &str, brace: usize) -> bool {
+    match declaration_before(code, brace) {
+        Some("class") => true,
+        Some("extends") => extends_follows_a_class(code, brace),
+        _ => false,
+    }
+}
+
+/// `class Box extends Super {` — `extends` is only a class when `class` is
+/// what it belongs to.
+fn extends_follows_a_class(code: &str, brace: usize) -> bool {
+    let (at, byte) = match prev_non_space(code, brace) {
+        Some(found) => found,
+        None => return false,
+    };
+    let super_at = if byte == b'>' {
+        let Some(open) = matching_open_angle(code, at) else {
+            return false;
+        };
+        let Some((word_at, _)) = previous_word(code, open) else {
+            return false;
+        };
+        word_at
+    } else {
+        let Some((word_at, _)) = previous_word(code, brace) else {
+            return false;
+        };
+        word_at
+    };
+    let Some((extends_at, "extends")) = previous_word(code, super_at) else {
+        return false;
+    };
+    declaration_before(code, extends_at) == Some("class")
+}
+
+/// The `{` that contains `before`, within this line.
+fn enclosing_brace(code: &str, before: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = before;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b'}' => depth += 1,
+            b'{' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Whether a `<` immediately before a name is a comparison.
@@ -400,13 +540,47 @@ fn arrow_return_is_a_type(code: &str, gt: usize) -> bool {
     if previous_word(code, introducer).is_some_and(|(_, word)| word == "new") {
         return true;
     }
-    let Some((eq, b'=')) = prev_non_space(code, introducer) else {
+    let Some((mark, byte)) = prev_non_space(code, introducer) else {
         return false;
     };
-    if eq > 0 && matches!(code.as_bytes()[eq - 1], b'=' | b'!') {
+    if byte == b':' {
+        return colon_annotates_a_binding(code, mark) || colon_is_a_function_return(code, mark);
+    }
+    if byte != b'=' {
         return false;
     }
-    equals_introduces_a_type(code, eq)
+    if mark > 0 && matches!(code.as_bytes()[mark - 1], b'=' | b'!') {
+        return false;
+    }
+    equals_introduces_a_type(code, mark)
+}
+
+/// `let callback: () => any` and `function take(callback: () => any)` annotate
+/// a binding. `{ callback: () => any }` and `cond ? 1 : () => any` are values.
+fn colon_annotates_a_binding(code: &str, colon: usize) -> bool {
+    let Some((name_at, _)) = previous_word(code, colon) else {
+        return false;
+    };
+    if previous_word(code, name_at).is_some_and(|(_, word)| matches!(word, "const" | "let" | "var"))
+    {
+        return true;
+    }
+    matches!(
+        prev_non_space(code, name_at).map(|(_, byte)| byte),
+        Some(b'(' | b',')
+    )
+}
+
+/// `function make(): () => any` and `make(): () => any` declare a return type.
+/// `cond ? (1) : () => any` has no name in front of the `(`.
+fn colon_is_a_function_return(code: &str, colon: usize) -> bool {
+    let Some((close, b')')) = prev_non_space(code, colon) else {
+        return false;
+    };
+    let Some(open) = matching_open_paren(code, close) else {
+        return false;
+    };
+    prev_non_space(code, open).is_some_and(|(_, byte)| is_word_byte(byte))
 }
 
 /// The start of the parameter list in front of the `=` of `=>`.
@@ -563,16 +737,23 @@ fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
 /// Whether a value keyword stands immediately beside the word.
 ///
 /// `in` and `instanceof` are operators on either side. `typeof`, `void`,
-/// `await`, `yield`, `new` and `throw` make the name that follows them a value.
-/// `new Object` is a constructor call even without parentheses. A `|` between
-/// a keyword and the name keeps the name a type: `type U = void | any` is
-/// not `void any`, and `new (x: any) => void` is not `new any`.
+/// `await`, `yield`, `new`, `throw` and `delete` make the name that follows
+/// them a value. `new Object` is a constructor call even without parentheses.
+/// A `|` between a keyword and the name keeps the name a type: `type U = void |
+/// any` is not `void any`, and `new (x: any) => void` is not `new any`.
 fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
     if prev_non_space(code, at).is_some_and(|(_, byte)| is_word_byte(byte))
         && previous_word(code, at).is_some_and(|(_, word)| {
             matches!(
                 word,
-                "in" | "instanceof" | "typeof" | "void" | "await" | "yield" | "new" | "throw"
+                "in" | "instanceof"
+                    | "typeof"
+                    | "void"
+                    | "await"
+                    | "yield"
+                    | "new"
+                    | "throw"
+                    | "delete"
             )
         })
     {
@@ -931,6 +1112,7 @@ pub(crate) fn run_flow_internal_type(
             ) || word_in_jsx_text(scan, position, at, len)
                 || value_keyword_operand(code, at, len)
                 || names_an_export_default(code, at)
+                || names_a_default_import(code, at)
                 || extends_a_class(code, at)
             {
                 at += len;
