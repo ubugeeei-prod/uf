@@ -101,6 +101,7 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         || value_keyword_operand(code, at, len)
         || names_an_export_default(code, at)
         || extends_a_class(code, at)
+        || names_a_declaration(code, at)
     {
         return true;
     }
@@ -813,6 +814,15 @@ fn names_an_export_default(code: &str, at: usize) -> bool {
     previous_word(code, default_at).is_some_and(|(_, word)| word == "export")
 }
 
+/// Whether `class`, `enum`, or `interface` declares this word.
+///
+/// `class any {}` names a class. `class C implements React$Node` and
+/// `interface I extends React$Node` name a type, and the keyword in front of
+/// that type is `implements` or `extends`, not the declaration itself.
+fn names_a_declaration(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| matches!(word, "class" | "enum" | "interface"))
+}
+
 /// Whether `class … extends` stands immediately in front of the word.
 ///
 /// A class extends a value (`class Box extends Object`, and `class Box<T>
@@ -1158,6 +1168,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_property_key(code, at, len, prev_non_space(code, at))
                 || follows_an_equality_operator(code, at)
                 || names_an_imported_value(code, at, outer)
+                || names_a_declaration(code, at)
                 || extends_a_class(code, at)
             {
                 at += len;
