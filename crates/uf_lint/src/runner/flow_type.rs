@@ -373,7 +373,13 @@ fn beside_a_value_operator(
                 // initializer, not an assignment to `any`.
                 let type_default = !compared && before.is_some_and(|(_, byte)| byte == b'<');
                 let annotation = !compared && annotation_before_initializer(code, before);
-                if !type_default && !annotation {
+                // `const made: () => Object = fn` — the `=` initializes the
+                // binding, and `Object` is the arrow's return type.
+                let arrow_return = !compared
+                    && before.is_some_and(|(index, byte)| {
+                        byte == b'>' && arrow_return_is_a_type(code, index)
+                    });
+                if !type_default && !annotation && !arrow_return {
                     return true;
                 }
             }
@@ -512,13 +518,35 @@ fn arrow_return_is_a_type(code: &str, gt: usize) -> bool {
     if previous_word(code, introducer).is_some_and(|(_, word)| word == "new") {
         return true;
     }
-    let Some((eq, b'=')) = prev_non_space(code, introducer) else {
+    let Some((mark, byte)) = prev_non_space(code, introducer) else {
         return false;
     };
-    if eq > 0 && matches!(code.as_bytes()[eq - 1], b'=' | b'!') {
+    if byte == b':' {
+        return colon_annotates_a_binding(code, mark);
+    }
+    if byte != b'=' {
         return false;
     }
-    equals_introduces_a_type(code, eq)
+    if mark > 0 && matches!(code.as_bytes()[mark - 1], b'=' | b'!') {
+        return false;
+    }
+    equals_introduces_a_type(code, mark)
+}
+
+/// `let callback: () => any` and `function take(callback: () => any)` annotate
+/// a binding. `{ callback: () => any }` and `cond ? 1 : () => any` are values.
+fn colon_annotates_a_binding(code: &str, colon: usize) -> bool {
+    let Some((name_at, _)) = previous_word(code, colon) else {
+        return false;
+    };
+    if previous_word(code, name_at).is_some_and(|(_, word)| matches!(word, "const" | "let" | "var"))
+    {
+        return true;
+    }
+    matches!(
+        prev_non_space(code, name_at).map(|(_, byte)| byte),
+        Some(b'(' | b',')
+    )
 }
 
 /// The start of the parameter list in front of the `=` of `=>`.

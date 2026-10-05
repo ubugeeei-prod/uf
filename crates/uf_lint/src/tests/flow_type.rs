@@ -1239,3 +1239,57 @@ fn internal_type_ignores_a_default_import() {
     );
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn unclear_type_reads_a_binding_arrow_annotation() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nlet callback: () => any;\nconst made: () => Object = () => ({});\nvar ctor: () => Function;\nexport const exported: () => any = () => null;\nfunction take(callback: () => any) {}\nfunction take2(first: string, callback: () => Object) {}\n",
+    );
+    assert_eq!(diagnostics.len(), 6, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 21));
+    assert_eq!((diagnostics[1].line, diagnostics[1].column), (3, 19));
+    assert_eq!((diagnostics[2].line, diagnostics[2].column), (4, 17));
+    assert_eq!((diagnostics[3].line, diagnostics[3].column), (5, 30));
+    assert_eq!((diagnostics[4].line, diagnostics[4].column), (6, 31));
+    assert_eq!((diagnostics[5].line, diagnostics[5].column), (7, 47));
+
+    let quiet = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst body = () => any;\ncond ? 1 : () => any;\ncond ? (1) : () => any;\nconst obj = { callback: () => any };\n",
+    );
+    assert!(quiet.is_empty(), "{quiet:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\ntype Handler = () => any;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_reads_a_binding_arrow_annotation() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nlet flag: () => bool;\nfunction take(flag: () => bool) {}\n",
+    );
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ntype Flag = () => bool;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_reads_a_binding_arrow_annotation() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nlet node: () => React$Node;\nconst made: () => React$Node = () => null;\n",
+    );
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = () => React$Node;\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+}
