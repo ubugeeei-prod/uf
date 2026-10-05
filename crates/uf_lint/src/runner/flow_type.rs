@@ -210,6 +210,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `function f(value = Object)` passes a value. `type Box<T = any>` does not.
+    if names_a_parameter_default(code, at, outer) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -555,6 +560,123 @@ fn names_a_for_of_binding(code: &str, at: usize, len: usize) -> bool {
         return false;
     };
     previous_word(code, await_at).is_some_and(|(_, word)| word == "for")
+}
+
+/// Whether the name is a function or arrow parameter's default.
+///
+/// `function f(value = Object)` and `function f(value: string = React$Node)`
+/// pass a value. `type Box<T = React$Node>` and `function f<T = any>()` are
+/// type-parameter defaults, and stay types. `type F = (value = any)` follows a
+/// type alias, so that default stays a type too.
+fn names_a_parameter_default(code: &str, at: usize, outer: Enclosing) -> bool {
+    let Some((eq, b'=')) = prev_non_space(code, at) else {
+        return false;
+    };
+    if eq > 0
+        && matches!(
+            code.as_bytes()[eq - 1],
+            b'=' | b'!' | b'<' | b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^'
+        )
+    {
+        return false;
+    }
+    parameter_list_is_a_value(code, eq, outer)
+}
+
+/// Whether the `=` at `eq` sits in a value parameter list.
+///
+/// A `<` before any `(` introduces a type parameter. A `(` belongs to
+/// `function` or to an arrow, and an annotation (`value: Box<string>`) is
+/// skipped on the way there, including its own generics.
+fn parameter_list_is_a_value(code: &str, eq: usize, outer: Enclosing) -> bool {
+    let bytes = code.as_bytes();
+    let mut angle = 0usize;
+    let mut paren = 0usize;
+    let mut bracket = 0usize;
+    let mut brace = 0usize;
+    let mut index = eq;
+    while let Some((prev, byte)) = prev_non_space(code, index) {
+        let at_root = angle == 0 && paren == 0 && bracket == 0 && brace == 0;
+        match byte {
+            b'>' if prev > 0 && bytes[prev - 1] == b'=' => {}
+            b'>' if paren == 0 && bracket == 0 && brace == 0 => angle += 1,
+            b'<' if angle > 0 && paren == 0 && bracket == 0 && brace == 0 => angle -= 1,
+            b'<' if at_root => return false,
+            b')' => paren += 1,
+            b'(' if paren > 0 => paren -= 1,
+            b'(' if at_root => return paren_opens_a_value_parameter(code, prev, outer),
+            b']' => bracket += 1,
+            b'[' if bracket > 0 => bracket -= 1,
+            b'}' => brace += 1,
+            b'{' if brace > 0 => brace -= 1,
+            _ => {}
+        }
+        index = prev;
+    }
+    false
+}
+
+/// Whether `(` opens the parameter list of a function or arrow.
+///
+/// `function f(` and `const f = (` do. `type F = (` is a type alias, and so is
+/// a `(` continued from `type F =` on the line above.
+fn paren_opens_a_value_parameter(code: &str, paren: usize, outer: Enclosing) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, paren) else {
+        return !outer.continues_a_type;
+    };
+    if byte == b'=' {
+        if prev > 0 && matches!(code.as_bytes()[prev - 1], b'=' | b'!') {
+            return false;
+        }
+        return equals_assigns_a_value(code, prev, outer);
+    }
+    if byte == b'>' {
+        let Some(open) = matching_open_angle(code, prev) else {
+            return false;
+        };
+        return angle_opens_a_value_parameter(code, open, outer);
+    }
+    if matches!(byte, b':' | b'|' | b'&') {
+        return false;
+    }
+    if is_word_byte(byte) {
+        let Some((word_at, word)) = previous_word(code, paren) else {
+            return false;
+        };
+        if word == "function"
+            || previous_word(code, word_at).is_some_and(|(_, earlier)| earlier == "function")
+        {
+            return true;
+        }
+        if word == "async"
+            && let Some((eq, b'=')) = prev_non_space(code, word_at)
+            && (eq == 0 || !matches!(code.as_bytes()[eq - 1], b'=' | b'!'))
+        {
+            return equals_assigns_a_value(code, eq, outer);
+        }
+    }
+    false
+}
+
+/// Whether `<` opens the type parameters of a value function or arrow.
+fn angle_opens_a_value_parameter(code: &str, open: usize, outer: Enclosing) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, open) else {
+        return !outer.continues_a_type;
+    };
+    if byte == b'=' {
+        if prev > 0 && matches!(code.as_bytes()[prev - 1], b'=' | b'!') {
+            return false;
+        }
+        return equals_assigns_a_value(code, prev, outer);
+    }
+    if !is_word_byte(byte) {
+        return false;
+    }
+    let Some((word_at, word)) = previous_word(code, open) else {
+        return false;
+    };
+    word == "function"
+        || previous_word(code, word_at).is_some_and(|(_, earlier)| earlier == "function")
 }
 
 /// Whether the name is an enum member.
@@ -1620,6 +1742,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_an_array_binding(code, at)
                 || names_an_enum_member(code, at)
                 || names_a_for_of_binding(code, at, len)
+                || names_a_parameter_default(code, at, outer)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

@@ -2027,3 +2027,54 @@ fn internal_type_ignores_a_for_of_binding() {
     assert_eq!(still.len(), 2, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_parameter_default() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction f(any = Object) {}\nconst g = (any = Object) => any;\nfunction h(value = Object) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction f<T = any>() {}\nfunction g<T: any>() {}\nfunction h<T = any>(value = Object) {}\n",
+    );
+    assert_eq!(still.len(), 3, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 16), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 15), "{still:?}");
+    assert_eq!((still[2].line, still[2].column), (4, 16), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_parameter_default() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfunction f(value = bool) {}\nconst g = (value = bool) => value;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfunction f<T: bool>() {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_parameter_default() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfunction f(value = React$Node) {}\nfunction g(value: string = React$Node) {}\nconst h = (value = React$Node) => value;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Box<T = React$Node> = T;\nfunction f<T = React$Node>() {}\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 14), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 16), "{still:?}");
+}
