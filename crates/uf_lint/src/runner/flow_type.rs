@@ -194,6 +194,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `const [any] = xs` and `function f([any])` bind a value.
+    // `type T = [React$Node]` stays a type.
+    if names_an_array_binding(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -512,6 +518,91 @@ fn equals_assigns_a_value(code: &str, eq: usize, outer: Enclosing) -> bool {
         None => !matches!(outer.last_byte, Some(b'<' | b',')),
         Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
     }
+}
+
+/// Whether the name is an element of an array pattern.
+///
+/// `const [any] = xs`, `function f([any])`, and `([any] = xs)` bind a value.
+/// `type T = [React$Node]` and `function f(): [React$Node]` name a type.
+fn names_an_array_binding(code: &str, at: usize) -> bool {
+    let Some(bracket) = (match prev_non_space(code, at) {
+        Some((index, b'[')) => Some(index),
+        Some((index, b',')) => enclosing_bracket(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    bracket_is_a_binding(code, bracket)
+}
+
+/// The `[` that contains `before`, within this line.
+fn enclosing_bracket(code: &str, before: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = before;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b']' => depth += 1,
+            b'[' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Whether `[` opens a binding pattern.
+fn bracket_is_a_binding(code: &str, bracket: usize) -> bool {
+    let Some((prev, byte)) = prev_non_space(code, bracket) else {
+        return false;
+    };
+    if is_word_byte(byte) {
+        return matches!(
+            previous_word(code, bracket).map(|(_, word)| word),
+            Some("const" | "let" | "var")
+        );
+    }
+    if byte == b'(' {
+        if previous_word(code, prev).is_some_and(|(_, word)| word == "catch") {
+            return true;
+        }
+        if let Some((name, _)) = previous_word(code, prev)
+            && previous_word(code, name).is_some_and(|(_, word)| word == "function")
+        {
+            return true;
+        }
+        let Some(close) = matching_close_bracket(code, bracket) else {
+            return false;
+        };
+        return next_non_space(code, close + 1).is_some_and(|(_, byte)| byte == b'=');
+    }
+    if byte == b',' {
+        return enclosing_bracket(code, prev)
+            .is_some_and(|outer| bracket_is_a_binding(code, outer));
+    }
+    false
+}
+
+/// The `]` that closes the `[` at `open`, within this line.
+fn matching_close_bracket(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0i32;
+    let mut index = open + 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'[' => depth += 1,
+            b']' if depth == 0 => return Some(index),
+            b']' => depth -= 1,
+            _ => {}
+        }
+        index += 1;
+    }
+    None
 }
 
 /// Whether the name is a property value in an object literal.
@@ -1456,6 +1547,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_shorthand_binding(code, at, len)
                 || names_a_renamed_binding(code, at)
                 || names_an_object_value(code, at, outer)
+                || names_an_array_binding(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
