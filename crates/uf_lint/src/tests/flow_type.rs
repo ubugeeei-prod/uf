@@ -1419,3 +1419,20 @@ fn internal_type_ignores_an_optional_parameter() {
     let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
     assert_eq!(still.len(), 1, "{still:?}");
 }
+
+#[test]
+fn internal_type_ignores_an_introduced_value() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfunction give() { return React$Node; }\nlet React$Node;\nvar React$Node;\nconst React$Node;\nexport let React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ntype Slot = React$Node;\nfunction f(): React$Node { return null; }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 13));
+    assert_eq!((still[1].line, still[1].column), (3, 15));
+}
