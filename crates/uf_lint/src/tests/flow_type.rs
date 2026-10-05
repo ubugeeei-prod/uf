@@ -1568,3 +1568,36 @@ fn internal_type_ignores_a_named_import_or_export() {
     assert_eq!((still[1].line, still[1].column), (3, 15));
     assert_eq!((still[2].line, still[2].column), (4, 15));
 }
+
+#[test]
+fn unclear_type_ignores_a_break_or_continue_label() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nbreak any;\ncontinue Object;\ncontinue Function;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/unclear-type", "// @flow\ntype T = any;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_break_or_continue_label() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\ncontinue bool;\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/deprecated-type", "// @flow\ntype Flag = bool;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_break_or_continue_label() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nbreak React$Node;\ncontinue React$Node;\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+}

@@ -764,8 +764,9 @@ fn angle_starts_a_comparison(code: &str, gt: usize) -> bool {
 /// Whether a value keyword stands immediately beside the word.
 ///
 /// `in` and `instanceof` are operators on either side. `typeof`, `void`,
-/// `await`, `yield`, `new`, `throw` and `delete` make the name that follows
-/// them a value. `new Object` is a constructor call even without parentheses.
+/// `await`, `yield`, `new`, `throw`, `delete`, `break` and `continue` make the
+/// name that follows them a value. `break any` is a label. `new Object` is a
+/// constructor call even without parentheses.
 /// A `|` between a keyword and the name keeps the name a type: `type U = void |
 /// any` is not `void any`, and `new (x: any) => void` is not `new any`.
 fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
@@ -781,6 +782,8 @@ fn value_keyword_operand(code: &str, at: usize, len: usize) -> bool {
                     | "new"
                     | "throw"
                     | "delete"
+                    | "break"
+                    | "continue"
             )
         })
     {
