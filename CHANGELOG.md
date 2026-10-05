@@ -1,5 +1,9 @@
 # Changelog
 
+## uf@0.31.0
+
+- fix(lint): optional parameters and internal names stay values (#1820) (a4fb0a27)
+
 ## uf@0.30.0
 
 - fix(lint): annotations and imports stay in their positions (#1813) (c4a3dbd8)
