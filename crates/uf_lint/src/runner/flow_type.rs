@@ -1151,6 +1151,7 @@ pub(crate) fn run_flow_internal_type(
                 || prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.')
                 || next_non_space(code, at + len)
                     .is_some_and(|(_, byte)| matches!(byte, b'.' | b'('))
+                || previous_word(code, at).is_some_and(|(_, word)| word == "case")
                 || extends_a_class(code, at)
             {
                 at += len;

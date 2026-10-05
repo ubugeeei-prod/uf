@@ -1507,3 +1507,16 @@ fn internal_type_ignores_a_call_or_a_member() {
     assert_eq!((still[2].line, still[2].column), (4, 16));
     assert_eq!((still[3].line, still[3].column), (5, 14));
 }
+
+#[test]
+fn internal_type_ignores_a_case_label() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nswitch (x) {\n  case React$Node:\n    break;\n}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js("flow/internal-type", "// @flow\ntype Slot = React$Node;\n");
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 13));
+}
