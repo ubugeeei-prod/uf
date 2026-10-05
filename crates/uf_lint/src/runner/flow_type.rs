@@ -200,6 +200,11 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `enum E { any }` names a member. `enum E of React$Node` names a type.
+    if names_an_enum_member(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -518,6 +523,39 @@ fn equals_assigns_a_value(code: &str, eq: usize, outer: Enclosing) -> bool {
         None => !matches!(outer.last_byte, Some(b'<' | b',')),
         Some((_, byte)) => matches!(byte, b';' | b'}' | b'{'),
     }
+}
+
+/// Whether the name is an enum member.
+///
+/// `enum E { any }` and `enum E of string { React$Node }` name a member.
+/// `enum E of React$Node` names the representation, and stays a type.
+fn names_an_enum_member(code: &str, at: usize) -> bool {
+    if previous_word(code, at).is_some_and(|(_, word)| word == "of") {
+        return false;
+    }
+    let Some(brace) = (match prev_non_space(code, at) {
+        Some((index, b'{')) => Some(index),
+        Some((index, b',')) => enclosing_brace(code, index),
+        _ => None,
+    }) else {
+        return false;
+    };
+    word_before(code, brace, "enum")
+}
+
+/// Whether `word` occurs before `from`, skipping other identifiers.
+fn word_before(code: &str, from: usize, word: &str) -> bool {
+    let mut at = from;
+    for _ in 0..8 {
+        let Some((word_at, found)) = previous_word(code, at) else {
+            return false;
+        };
+        if found == word {
+            return true;
+        }
+        at = word_at;
+    }
+    false
 }
 
 /// Whether the name is an element of an array pattern.
@@ -1548,6 +1586,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_renamed_binding(code, at)
                 || names_an_object_value(code, at, outer)
                 || names_an_array_binding(code, at)
+                || names_an_enum_member(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

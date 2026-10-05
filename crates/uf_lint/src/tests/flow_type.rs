@@ -1965,3 +1965,34 @@ fn internal_type_ignores_an_array_binding() {
     );
     assert_eq!(still.len(), 3, "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_an_enum_member() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nenum E { any }\nenum F { any, Object }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_an_enum_member() {
+    let diagnostics = lint_js("flow/deprecated-type", "// @flow\nenum E { bool, }\n");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn internal_type_ignores_an_enum_member() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nenum E { React$Node }\nenum F of string { React$Node }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nenum E of React$Node { A }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 11), "{still:?}");
+}
