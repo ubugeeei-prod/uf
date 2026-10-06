@@ -70,8 +70,8 @@ export default defineConfig({
   tasks: {
     "verify:format": { command: "uf fmt --check" },
     "verify:source": { command: "uf check" },
-    verify: { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
-    bundle: { command: "uf build", dependsOn: ["verify"] },
+    verify         : { command: "uf test", dependsOn: ["verify:format", "verify:source"] },
+    bundle         : { command: "uf build", dependsOn: ["verify"] },
   },
 });
 ```

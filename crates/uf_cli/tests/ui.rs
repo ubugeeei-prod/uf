@@ -168,9 +168,10 @@ fn an_edited_component_is_refused_by_name_and_nothing_is_written() {
     let dir = app();
     assert_eq!(run(dir.path(), &["ui", "add", "select"]).0, 0);
     let path = component(dir.path(), "select");
-    let edited = fs::read_to_string(&path)
-        .expect("select.js")
-        .replace("minWidth: \"12rem\"", "minWidth: \"16rem\"");
+    let edited = fs::read_to_string(&path).expect("select.js").replace(
+        "minWidth                  : \"12rem\"",
+        "minWidth                  : \"16rem\"",
+    );
     fs::write(&path, &edited).expect("an edit");
 
     let (code, stdout, stderr) = run(dir.path(), &["ui", "add", "tabs", "select"]);
@@ -239,7 +240,10 @@ fn diff_says_an_edit_is_the_projects_own_and_shows_it() {
     let text = fs::read_to_string(&path).expect("tabs.js");
     fs::write(
         &path,
-        text.replace("gap: ufTokens.space4,", "gap: ufTokens.space6,"),
+        text.replace(
+            "gap          : ufTokens.space4,",
+            "gap          : ufTokens.space6,",
+        ),
     )
     .expect("an edit");
 
@@ -249,8 +253,14 @@ fn diff_says_an_edit_is_the_projects_own_and_shows_it() {
         stdout.contains("every line below is this project's"),
         "{stdout}"
     );
-    assert!(stdout.contains("-    gap: ufTokens.space4,"), "{stdout}");
-    assert!(stdout.contains("+    gap: ufTokens.space6,"), "{stdout}");
+    assert!(
+        stdout.contains("-    gap          : ufTokens.space4,"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("+    gap          : ufTokens.space6,"),
+        "{stdout}"
+    );
 
     let (code, stdout, stderr) = run(dir.path(), &["ui", "diff", "tabs", "--json"]);
     assert_eq!(code, 0, "{stderr}");
@@ -263,7 +273,7 @@ fn diff_says_an_edit_is_the_projects_own_and_shows_it() {
     assert!(
         tabs["diff"]
             .as_str()
-            .is_some_and(|diff| diff.contains("+    gap: ufTokens.space6,")),
+            .is_some_and(|diff| diff.contains("+    gap          : ufTokens.space6,")),
         "{stdout}"
     );
 }
@@ -431,8 +441,8 @@ fn committed_then_edited(edit: impl Fn(&str) -> String) -> tempfile::TempDir {
 /// The project's edit: a button that is primary unless it says otherwise.
 fn primary_by_default(text: &str) -> String {
     let edited = text.replacen(
-        "tone?: ButtonTone = \"neutral\"",
-        "tone?: ButtonTone = \"primary\"",
+        "tone?     : ButtonTone = \"neutral\"",
+        "tone?     : ButtonTone = \"primary\"",
         1,
     );
     assert_ne!(edited, text, "the default tone moved; pick another edit");

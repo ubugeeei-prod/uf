@@ -695,7 +695,11 @@ fn a_scaffolded_project_gets_a_verification_task_that_runs_tests() {
             .unwrap_or_else(|| panic!("the {kind} template writes a uf.config.js"));
 
         assert!(
-            config.contains(r#"verify: { command: "uf test", dependsOn:"#),
+            config.lines().any(|line| {
+                let trimmed = line.trim_start();
+                (trimmed.starts_with("verify ") || trimmed.starts_with("verify:"))
+                    && trimmed.contains(r#"command: "uf test""#)
+            }),
             "the {kind} template's verification task must run the tests:\n{config}"
         );
         assert!(
