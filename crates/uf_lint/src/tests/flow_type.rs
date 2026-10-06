@@ -2363,3 +2363,51 @@ fn internal_type_ignores_a_for_update() {
     assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
     assert_eq!((still[1].line, still[1].column), (3, 11), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_namespace() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ndeclare namespace any {}\ndeclare namespace Object {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\ndeclare namespace N { declare var x: any }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 38), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_namespace() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ndeclare namespace bool {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\ndeclare namespace N { declare var x: bool }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 38), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_namespace() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\ndeclare namespace React$Node {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\ndeclare namespace N { declare var x: React$Node }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 38), "{still:?}");
+}

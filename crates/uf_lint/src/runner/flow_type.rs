@@ -244,6 +244,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `declare namespace any {}` names the namespace. A type inside the body
+    // stays a type.
+    if names_a_namespace(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -635,6 +641,14 @@ fn names_a_for_update(code: &str, at: usize, len: usize) -> bool {
         index = prev;
     }
     false
+}
+
+/// Whether `namespace` introduces this name.
+///
+/// `declare namespace any {}` names a value. `declare namespace N { declare var
+/// x: any }` still names a type.
+fn names_a_namespace(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| word == "namespace")
 }
 
 /// Whether the name is a function or arrow parameter's default.
@@ -1917,6 +1931,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_decorator(code, at)
                 || names_a_for_initializer(code, at, len)
                 || names_a_for_update(code, at, len)
+                || names_a_namespace(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)
