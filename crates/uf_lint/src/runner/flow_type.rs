@@ -278,6 +278,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `class C { static any }` names a field. `class C { static x: any }` stays
+    // a type.
+    if names_a_static_field(code, at) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -822,6 +828,15 @@ fn names_a_private_initializer(code: &str, at: usize) -> bool {
         return false;
     };
     field > 0 && code.as_bytes()[field - 1] == b'#'
+}
+
+/// Whether `static` introduces this name as an unannotated field.
+///
+/// `class C { static any }` and `class C { static any; }` name a field.
+/// `class C { static x: any }` still names a type: `:` sits between `static`
+/// and the annotation.
+fn names_a_static_field(code: &str, at: usize) -> bool {
+    previous_word(code, at).is_some_and(|(_, word)| word == "static")
 }
 
 /// Whether the name is a function or arrow parameter's default.
@@ -2110,6 +2125,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_an_array_default(code, at)
                 || names_a_renamed_default(code, at)
                 || names_a_private_initializer(code, at)
+                || names_a_static_field(code, at)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

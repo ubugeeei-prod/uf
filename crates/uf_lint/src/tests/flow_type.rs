@@ -2656,3 +2656,53 @@ fn internal_type_ignores_a_private_initializer() {
     assert_eq!(still.len(), 1, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 15), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_static_field() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass C { static any }\nclass D { static any; }\nclass E { static Object }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nclass L { static x: any }\nclass M { static x: any = 1 }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 21), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_static_field() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass C { static bool }\nclass D { static bool; }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nclass L { static x: bool }\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_static_field() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass C { static React$Node }\nclass D { static React$Node; }\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nclass L { static x: React$Node }\nclass M { static x: React$Node = 1 }\n",
+    );
+    assert_eq!(still.len(), 2, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 21), "{still:?}");
+    assert_eq!((still[1].line, still[1].column), (3, 21), "{still:?}");
+}
