@@ -97,12 +97,14 @@ pub fn merge(base: &str, ours: &str, theirs: &str, from: &str) -> Merge {
     Merge { text, conflicts }
 }
 
-/// Drop a conflict whose two sides differ only by column alignment.
+/// Drop a conflict the project did not really edit.
 ///
-/// The registry aligns `name? : Type` while a codemodded copy still has
-/// `name?: Type`. Those are the same edit, and keeping the registry's side
-/// leaves the aligned spelling. Spaces inside a string still count, and a
-/// conflict that changes a token stays, markers and all.
+/// Two shapes of that. The registry aligns `name? : Type` while a codemodded
+/// copy still has `name?: Type`: the tokens match, and keeping the registry's
+/// side leaves the aligned spelling. Or the copy's only change in the region
+/// is the codemod taking `export` off `export component`, while the registry
+/// also reflowed the signature and added `renders`. Spaces inside a string
+/// still count, and a conflict that changes a token stays, markers and all.
 fn resolve_alignment_conflicts(merged: &str) -> (String, usize) {
     let mut out = String::with_capacity(merged.len());
     let mut conflicts = 0usize;
@@ -140,7 +142,9 @@ fn resolve_alignment_conflicts(merged: &str) -> (String, usize) {
                 ours.push(next);
             }
         }
-        if end.is_some() && same_aside_from_alignment(&ours, &theirs) {
+        if end.is_some()
+            && (same_aside_from_alignment(&ours, &theirs) || project_did_not_edit(&base, &ours))
+        {
             for line in &theirs {
                 push_line(&mut out, line);
             }
@@ -184,6 +188,38 @@ fn same_aside_from_alignment(ours: &[&str], theirs: &[&str]) -> bool {
             .iter()
             .zip(theirs)
             .all(|(left, right)| tokens(left) == tokens(right))
+}
+
+/// Whether `ours` is `base`, or `base` with one `export` removed.
+///
+/// That is the codemod and nothing the project typed. A `renders` clause or a
+/// signature the registry broke onto several lines is then the registry's
+/// text, not a conflict. A token the project added or changed does not match,
+/// so that conflict stays.
+fn project_did_not_edit(base: &[&str], ours: &[&str]) -> bool {
+    let base_tokens = token_stream(base);
+    let ours_tokens = token_stream(ours);
+    ours_tokens == drop_one_export(&base_tokens)
+}
+
+fn token_stream(lines: &[&str]) -> Vec<String> {
+    lines
+        .iter()
+        .flat_map(|line| tokens(line).into_iter().map(str::to_owned))
+        .collect()
+}
+
+fn drop_one_export(tokens: &[String]) -> Vec<String> {
+    let mut dropped = false;
+    let mut out = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        if !dropped && token == "export" {
+            dropped = true;
+            continue;
+        }
+        out.push(token.clone());
+    }
+    out
 }
 
 /// Words, strings, and punctuation. Spaces are not tokens, and `?` is not part
@@ -509,6 +545,16 @@ mod tests {
         let base = "export component CalendarPrevious(\n  label?: string = \"Previous month\",\n  xstyle?: StyleArgument,\n) {}\n";
         let ours = "component CalendarPrevious(\n  label?: string = \"Previous month\",\n  xstyle?: StyleArgument,\n) {}\n";
         let theirs = "component CalendarPrevious(\n  label?    : string = \"Previous month\",\n  xstyle?   : StyleArgument,\n) {}\n";
+        let merged = merge(base, ours, theirs, "0.2.0");
+        assert_eq!(merged.conflicts, 0, "{}", merged.text);
+        assert_eq!(merged.text, theirs);
+    }
+
+    #[test]
+    fn a_renders_clause_on_a_reflowed_signature_is_not_a_conflict() {
+        let base = "export component CalendarMonth(xstyle?: StyleArgument, className?: string, ...rest: Rest) {\n";
+        let ours = "component CalendarMonth(xstyle?: StyleArgument, className?: string, ...rest: Rest) {\n";
+        let theirs = "component CalendarMonth(\n  xstyle?   : StyleArgument,\n  className?: string,\n  ...rest: Rest\n) renders Calendar.Month {\n";
         let merged = merge(base, ours, theirs, "0.2.0");
         assert_eq!(merged.conflicts, 0, "{}", merged.text);
         assert_eq!(merged.text, theirs);
