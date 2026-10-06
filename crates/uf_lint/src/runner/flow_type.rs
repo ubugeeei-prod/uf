@@ -233,6 +233,12 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
         return true;
     }
 
+    // `for (any; i < n; i++)` names the initializer. The name after `of` stays
+    // a type.
+    if names_a_for_initializer(code, at, len) {
+        return true;
+    }
+
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
@@ -582,6 +588,20 @@ fn names_a_for_of_binding(code: &str, at: usize, len: usize) -> bool {
         return false;
     };
     previous_word(code, await_at).is_some_and(|(_, word)| word == "for")
+}
+
+/// Whether `for (` introduces this name as the loop initializer.
+///
+/// `for (any; i < n; i++)` binds a value. `for (const item of React$Node)`
+/// still names a type after `of`, and `for (any of items)` is a for-of binding.
+fn names_a_for_initializer(code: &str, at: usize, len: usize) -> bool {
+    if !next_non_space(code, at + len).is_some_and(|(_, byte)| byte == b';') {
+        return false;
+    }
+    let Some((paren, b'(')) = prev_non_space(code, at) else {
+        return false;
+    };
+    previous_word(code, paren).is_some_and(|(_, word)| word == "for")
 }
 
 /// Whether the name is a function or arrow parameter's default.
@@ -1862,6 +1882,7 @@ pub(crate) fn run_flow_internal_type(
                 || names_a_type_parameter(code, at)
                 || names_a_private_name(code, at)
                 || names_a_decorator(code, at)
+                || names_a_for_initializer(code, at, len)
                 || names_a_declaration(code, at)
                 || names_a_bare_statement(code, at, len, outer)
                 || extends_a_class(code, at)

@@ -2268,3 +2268,51 @@ fn internal_type_ignores_a_decorator() {
     assert_eq!(still.len(), 1, "{still:?}");
     assert_eq!((still[0].line, still[0].column), (2, 19), "{still:?}");
 }
+
+#[test]
+fn unclear_type_ignores_a_for_initializer() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (any; i < n; i++) {}\nfor (Object; i < n; i++) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfor (const item of any) {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
+
+#[test]
+fn deprecated_type_ignores_a_for_initializer() {
+    let diagnostics = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfor (bool; i < n; i++) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/deprecated-type",
+        "// @flow\nfor (const item of bool) {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
+
+#[test]
+fn internal_type_ignores_a_for_initializer() {
+    let diagnostics = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (React$Node; i < n; i++) {}\n",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let still = lint_js(
+        "flow/internal-type",
+        "// @flow\nfor (const item of React$Node) {}\n",
+    );
+    assert_eq!(still.len(), 1, "{still:?}");
+    assert_eq!((still[0].line, still[0].column), (2, 20), "{still:?}");
+}
