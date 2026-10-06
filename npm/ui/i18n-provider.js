@@ -15,7 +15,7 @@ export component I18nProvider(
   locale?   : string,
   direction?: "ltr" | "rtl",
   render?   : RenderProp,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const parent = useLocale();
   const resolved = new Intl.Locale(locale ?? parent.locale);

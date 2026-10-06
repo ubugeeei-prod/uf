@@ -61,7 +61,7 @@ export component GridList(
   children? : (item: CollectionItem, state: CollectionItemState) => React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HeadlessGridList {
   return (
     <HeadlessGridList

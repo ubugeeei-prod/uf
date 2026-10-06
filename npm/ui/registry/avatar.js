@@ -88,7 +88,7 @@ component AvatarRoot(
   size?     : AvatarSize = "md",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Avatar.Root {
   const styled = props(
     styles.root,
@@ -112,7 +112,7 @@ component AvatarImage(
   alt?      : string = "",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Avatar.Image {
   return (
     <Avatar.Image
@@ -130,7 +130,7 @@ component AvatarFallback(
   delay?    : number = 300,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Avatar.Fallback {
   return (
     <Avatar.Fallback

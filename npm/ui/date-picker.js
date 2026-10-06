@@ -311,7 +311,7 @@ component DatePickerCalendar(
   align?     : Align = "start",
   side?      : LogicalSide = "bottom",
   sideOffset?: number = 0,
-  ...rest: Rest
+  ...rest    : Rest
 ) renders PopoverBody {
   const picker   = useDatePicker("DatePicker.Calendar");
   const settings = useContext(CalendarSettings);

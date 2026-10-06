@@ -113,7 +113,7 @@ component FieldRoot(
   group?    : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Field.Root {
   return (
     <Field.Root
@@ -135,7 +135,7 @@ component FieldLabel(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Field.Label {
   return (
     <Field.Label
@@ -152,7 +152,7 @@ component FieldInput(
   type?     : string = "text",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Field.Control {
   return (
     <Field.Control
@@ -172,7 +172,7 @@ component FieldInput(
 component FieldTextarea(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Field.Control {
   return (
     <Field.Control
@@ -195,7 +195,7 @@ component FieldDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Field.Description {
   return (
     <Field.Description
@@ -212,7 +212,7 @@ component FieldStatus(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Field.Status {
   return (
     <Field.Status
@@ -229,7 +229,7 @@ component FieldError(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Field.Error {
   return (
     <Field.Error

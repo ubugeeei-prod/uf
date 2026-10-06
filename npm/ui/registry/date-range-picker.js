@@ -117,7 +117,7 @@ component DateRangePickerRoot(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders DateRangePicker.Root {
   return (
     <DateRangePicker.Root {...forwarded(rest)}>
@@ -128,7 +128,7 @@ component DateRangePickerRoot(
 component DateRangePickerStartField(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders DateRangePicker.StartField {
   return (
     <DateRangePicker.StartField
@@ -140,7 +140,7 @@ component DateRangePickerStartField(
 component DateRangePickerEndField(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders DateRangePicker.EndField {
   return (
     <DateRangePicker.EndField
@@ -153,7 +153,7 @@ component DateRangePickerTrigger(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders DateRangePicker.Trigger {
   return (
     <DateRangePicker.Trigger
@@ -168,7 +168,7 @@ component DateRangePickerCalendar(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders DateRangePicker.Calendar {
   return (
     <DateRangePicker.Calendar

@@ -242,7 +242,7 @@ component TabsRoot(
   orientation?   : TabsOrientation = "horizontal",
   xstyle?        : StyleArgument,
   className?     : string,
-  ...rest: Rest
+  ...rest        : Rest
 ) {
   const styled = props(styles.root, orientation === "vertical" && styles.rootVertical, xstyle);
   return (
@@ -267,7 +267,7 @@ component TabsList(
   children  : renders* TabsTab,
   xstyle?   : StyleArgument,
   className?: string,
-  ...given: Rest
+  ...given  : Rest
 ) renders Tabs.List {
   const orientation = useContext(OrientationContext);
   const vertical = orientation === "vertical";
@@ -317,7 +317,7 @@ component TabsTab(
   disabled? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Tabs.Tab {
   const orientation = useContext(OrientationContext);
   const sliding     = useContext(SlidingContext);
@@ -349,7 +349,7 @@ component TabsPanel(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Tabs.Panel {
   return (
     <Tabs.Panel

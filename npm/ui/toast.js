@@ -431,7 +431,7 @@ component ToastRegion(
   children: (notification: Notification) => renders ToastRoot,
   label?  : string = "Notifications",
   limit?  : number = 3,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const queued    = useSyncExternalStore(subscribeToQueue, readQueue, readQueue);
   const regionRef = useElementRef<HTMLElement>();

@@ -95,7 +95,7 @@ export component Kbd(
   keys?     : $ReadOnlyArray<string>,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   if (keys == null) {
     return (

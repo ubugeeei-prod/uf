@@ -104,7 +104,7 @@ component EmptyRoot(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.root, xstyle).className, className)}>
@@ -118,7 +118,7 @@ component EmptyMedia(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div
@@ -137,7 +137,7 @@ component EmptyTitle(
   level?    : EmptyTitleLevel = 2,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const shared = {
     ...rest,
@@ -158,7 +158,7 @@ component EmptyDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <p {...rest} className={classNames(props(styles.description, xstyle).className, className)}>
@@ -172,7 +172,7 @@ component EmptyContent(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.content, xstyle).className, className)}>

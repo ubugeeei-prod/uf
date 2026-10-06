@@ -74,7 +74,7 @@ export component Progress(
   style?    : { readonly [string]: mixed },
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ProgressPart {
   const fraction =
     value == null || max <= min ? null : Math.min(1, Math.max(0, (value - min) / (max - min)));

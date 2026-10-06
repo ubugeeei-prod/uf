@@ -152,7 +152,7 @@ component RadioGroupRoot(
   orientation?  : Orientation = "vertical",
   name?         : string,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   // `onValueChange` promises a `string` while the group's *state* is
   // `string | null`, and the two meet here rather than being flattened into one
@@ -242,7 +242,7 @@ component RadioGroupItem(
   children?: React.Node,
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const group = useRadioGroup("RadioGroup.Item");
   const id    = useId();

@@ -216,7 +216,7 @@ component HoverCardBody(
   render?          : RenderProp,
   side?            : LogicalSide = "bottom",
   sideOffset?      : number = 0,
-  ...rest: Rest
+  ...rest          : Rest
 ) {
   const card = useHoverCard("HoverCard.Body");
   const { closeDelay, dismissedRef, intent, open, triggerRef } = card;

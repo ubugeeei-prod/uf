@@ -274,7 +274,7 @@ component SidebarItem(
   label        : string,
   render?      : RenderProp,
   tooltipProps?: Rest,
-  ...rest: Rest
+  ...rest      : Rest
 ) {
   const sidebar = useSidebar("Sidebar.Item");
   const passed = withoutComposed(rest, ["ref"]);

@@ -215,7 +215,7 @@ component ComboboxRoot(
   defaultOpen?       : boolean = false,
   onOpenChange?      : (open: boolean) => void,
   name?              : string,
-  ...rest: Rest
+  ...rest            : Rest
 ) {
   const base                    = useId();
   const [chosen,   setChosen]   = useControlled(value, defaultValue, onValueChange);
@@ -440,7 +440,7 @@ component ComboboxList(
   collisionPadding?: number = 0,
   side?            : LogicalSide = "bottom",
   sideOffset?      : number = 0,
-  ...rest: Rest
+  ...rest          : Rest
 ) {
   const combobox = useCombobox("Combobox.List");
   const { activeId, count, listRef, inputRef, pendingActiveRef, setActiveId, setCount } = combobox;
@@ -552,7 +552,7 @@ component ComboboxOption(
   children : React.Node,
   label?   : string,
   disabled?: boolean = false,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const combobox = useCombobox("Combobox.Option");
   const id       = useId();

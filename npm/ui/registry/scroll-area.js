@@ -104,7 +104,7 @@ export component ScrollArea(
   orientation?: "vertical" | "horizontal" | "both" = "vertical",
   xstyle?     : StyleArgument,
   className?  : string,
-  ...rest: Rest
+  ...rest     : Rest
 ) renders HeadlessScrollArea.Root {
   const down = orientation !== "horizontal";
   const across = orientation !== "vertical";

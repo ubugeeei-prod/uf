@@ -60,7 +60,7 @@ component BreadcrumbRoot(
   children: React.Node,
   label?  : string = "Breadcrumb",
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const props = withProps(rest, { "aria-label": label, children });
   return match (render) {
@@ -79,7 +79,7 @@ component BreadcrumbRoot(
 component BreadcrumbList(
   children: renders* (BreadcrumbItem | BreadcrumbSeparator),
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const props = withProps(rest, { children });
   return match (render) {

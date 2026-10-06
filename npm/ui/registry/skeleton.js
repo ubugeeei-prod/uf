@@ -73,7 +73,7 @@ component SkeletonRoot(
   doneLabel?: string = "Loaded",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Skeleton.Root {
   return (
     <Skeleton.Root
@@ -94,7 +94,7 @@ component SkeletonBox(
   shape?    : SkeletonShape = "line",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Skeleton.Box {
   const styled = props(
     styles.box,

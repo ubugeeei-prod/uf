@@ -136,7 +136,7 @@ component TableRoot(
   rowOffset?   : number = 0,
   announceSort?: (column: string, direction: "ascending" | "descending") => string,
   render?      : RenderProp,
-  ...rest: Rest
+  ...rest      : Rest
 ) {
   const base                        = useId();
   const [current,    setCurrent]    = useControlled(sort, defaultSort, onSortChange);
@@ -296,7 +296,7 @@ component TableRow(
   children: React.Node,
   index?  : number | null = null,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const table  = useTable("Table.Row");
   const header = useContext(HeaderContext);
@@ -337,7 +337,7 @@ component TableHead(
   children: React.Node,
   column? : string | null = null,
   render? : RenderProp,
-  ...rest: Rest
+  ...rest : Rest
 ) {
   const table = useTable("Table.Head");
   const passed = withoutComposed(rest, column == null ? [] : ["onClick", "ref"]);

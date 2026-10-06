@@ -85,7 +85,7 @@ export component Separator(
   decorative? : boolean = false,
   orientation?: Orientation = "horizontal",
   render?     : RenderProp,
-  ...rest: Rest
+  ...rest     : Rest
 ) {
   const props = decorative
     ? withProps(rest, { "aria-hidden": "true" })

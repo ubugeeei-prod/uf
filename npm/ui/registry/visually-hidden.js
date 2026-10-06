@@ -42,7 +42,7 @@ export component VisuallyHidden(
   focusable?: boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HeadlessVisuallyHidden {
   return (
     <HeadlessVisuallyHidden

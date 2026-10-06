@@ -88,7 +88,7 @@ export component Input(
   type?     : string = "text",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <input

@@ -129,7 +129,7 @@ component CarouselRoot(
   loop?         : boolean = true,
   onIndexChange?: (index: number) => void,
   orientation?  : Orientation = "horizontal",
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const base                  = useId();
   const [current, setIndex]   = useControlled(index, defaultIndex, onIndexChange);
@@ -312,7 +312,7 @@ component CarouselPause(
   children?  : React.Node,
   pauseLabel?: string = "Stop the carousel",
   playLabel? : string = "Start the carousel",
-  ...rest: Rest
+  ...rest    : Rest
 ) {
   const carousel = useCarousel("Carousel.Pause");
   const register = carousel.registerPause;
@@ -345,7 +345,7 @@ component CarouselPause(
 component CarouselPrevious(
   children?: React.Node,
   label?   : string = "Previous slide",
-  ...rest: Rest
+  ...rest  : Rest
 ) renders CarouselStep {
   return (
     <CarouselStep {...forwarded(rest)} label={label} step={-1}>
@@ -358,7 +358,7 @@ component CarouselPrevious(
 component CarouselNext(
   children?: React.Node,
   label?   : string = "Next slide",
-  ...rest: Rest
+  ...rest  : Rest
 ) renders CarouselStep {
   return (
     <CarouselStep {...forwarded(rest)} label={label} step={1}>

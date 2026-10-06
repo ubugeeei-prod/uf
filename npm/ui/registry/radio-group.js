@@ -126,7 +126,7 @@ component RadioGroupRoot(
   name?         : string,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders RadioGroup.Root {
   return (
     <RadioGroup.Root
@@ -150,7 +150,7 @@ component RadioGroupItem(
   disabled? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders RadioGroup.Item {
   return (
     <RadioGroup.Item

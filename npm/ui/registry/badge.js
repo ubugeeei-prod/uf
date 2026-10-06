@@ -105,7 +105,7 @@ export component Badge(
   tone?     : BadgeTone = "neutral",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const styled = props(
     styles.base,

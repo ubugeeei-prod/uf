@@ -123,7 +123,7 @@ component InputOtpRoot(
   onComplete?   : (code: string) => void,
   onValueChange?: (value: string) => void,
   value?        : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const [code,    setCode]    = useControlled(value, defaultValue, onValueChange);
   const [focused, setFocused] = useState(false);

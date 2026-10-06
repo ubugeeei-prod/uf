@@ -131,7 +131,7 @@ component ResizablePanelGroup(
   disabled?     : boolean = false,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const vertical = orientation === "vertical";
   return (
@@ -163,7 +163,7 @@ component ResizablePanel(
   primary?  : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Resizable.Panel {
   return (
     <Resizable.Panel
@@ -181,7 +181,7 @@ component ResizableHandle(
   label?    : string = "Resize",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Resizable.Handle {
   const vertical = useContext(OrientationContext) === "vertical";
   return (

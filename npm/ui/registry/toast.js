@@ -162,7 +162,7 @@ component Toaster(
   limit?    : number = 3,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Toast.Region {
   return (
     <Toast.Region
@@ -186,7 +186,7 @@ component ToastRoot(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Toast.Root {
   return (
     <Toast.Root
@@ -203,7 +203,7 @@ component ToastTitle(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Toast.Title {
   return (
     <Toast.Title
@@ -220,7 +220,7 @@ component ToastDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Toast.Description {
   return (
     <Toast.Description
@@ -237,7 +237,7 @@ component ToastAction(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Toast.Action {
   return (
     <Toast.Action
@@ -255,7 +255,7 @@ component ToastClose(
   label?    : string = "Dismiss",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Toast.Close {
   return (
     <Toast.Close

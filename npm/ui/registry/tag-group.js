@@ -61,7 +61,7 @@ export component TagGroup(
   children? : (item: CollectionItem, state: CollectionItemState) => React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HeadlessTagGroup {
   return (
     <HeadlessTagGroup

@@ -23,7 +23,7 @@ component RangeCalendarRoot(
   today?         : string,
   locale?        : string,
   focusedDayRef? : { current: HTMLElement | null },
-  ...rest: Rest
+  ...rest        : Rest
 ) {
   const [range,        setRange]  = useControlled(value, defaultValue, onValueChange);
   const [anchor,       setAnchor] = useState<string | null>(null);

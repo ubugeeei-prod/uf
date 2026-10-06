@@ -59,7 +59,7 @@ export component Separator(
   orientation?: SeparatorOrientation = "horizontal",
   xstyle?     : StyleArgument,
   className?  : string,
-  ...rest: Rest
+  ...rest     : Rest
 ) renders SeparatorPart {
   const styled = props(
     styles.base,

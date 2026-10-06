@@ -39,7 +39,7 @@ const styles = stylex.create({
 export component DateField(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HeadlessDateField {
   return (
     <HeadlessDateField

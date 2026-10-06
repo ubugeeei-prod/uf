@@ -90,7 +90,7 @@ component MenubarRoot(
   children  : renders* MenubarMenu,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Menubar.Root {
   return (
     <Menubar.Root
@@ -112,7 +112,7 @@ component MenubarTrigger(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Menubar.Trigger {
   return (
     <Menubar.Trigger

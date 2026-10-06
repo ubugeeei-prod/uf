@@ -84,7 +84,7 @@ component BreadcrumbRoot(
   label?    : string = "Breadcrumb",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Breadcrumb.Root {
   return (
     <Breadcrumb.Root
@@ -102,7 +102,7 @@ component BreadcrumbList(
   children  : renders* (BreadcrumbItem | BreadcrumbSeparator),
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Breadcrumb.List {
   return (
     <Breadcrumb.List
@@ -119,7 +119,7 @@ component BreadcrumbItem(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Breadcrumb.Item {
   return (
     <Breadcrumb.Item
@@ -137,7 +137,7 @@ component BreadcrumbLink(
   render?   : RenderProp,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Breadcrumb.Link {
   return (
     <Breadcrumb.Link
@@ -155,7 +155,7 @@ component BreadcrumbPage(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Breadcrumb.Page {
   return (
     <Breadcrumb.Page
@@ -172,7 +172,7 @@ component BreadcrumbSeparator(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Breadcrumb.Separator {
   return (
     <Breadcrumb.Separator

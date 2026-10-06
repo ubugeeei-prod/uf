@@ -171,7 +171,7 @@ component NavigationMenuRoot(
   onValueChange?: (value: string | null) => void,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders NavigationMenu.Root {
   return (
     <NavigationMenu.Root
@@ -191,7 +191,7 @@ component NavigationMenuList(
   children  : renders* NavigationMenuItem,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders NavigationMenu.List {
   return (
     <NavigationMenu.List
@@ -212,7 +212,7 @@ component NavigationMenuItem(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders NavigationMenu.Item {
   return (
     <NavigationMenu.Item
@@ -230,7 +230,7 @@ component NavigationMenuTrigger(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders NavigationMenu.Trigger {
   return (
     <NavigationMenu.Trigger
@@ -262,7 +262,7 @@ component NavigationMenuContent(
   children  : renders* NavigationMenuLink,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders NavigationMenu.Body {
   return (
     <NavigationMenu.Body
@@ -279,7 +279,7 @@ component NavigationMenuLink(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders NavigationMenu.Link {
   return (
     <NavigationMenu.Link
@@ -296,7 +296,7 @@ component NavigationMenuTopLink(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <a {...rest} className={classNames(props(styles.trigger, xstyle).className, className)}>

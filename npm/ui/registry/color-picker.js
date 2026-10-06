@@ -66,7 +66,7 @@ component ColorPickerRoot(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ColorPicker.Root {
   return (
     <ColorPicker.Root
@@ -80,7 +80,7 @@ component ColorPickerRoot(
 component ColorPickerInput(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ColorPicker.Input {
   return (
     <ColorPicker.Input
@@ -92,7 +92,7 @@ component ColorPickerInput(
 component ColorPickerField(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ColorPicker.Field {
   return (
     <ColorPicker.Field
@@ -104,7 +104,7 @@ component ColorPickerField(
 component ColorPickerChannel(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ColorPicker.Channel {
   return (
     <ColorPicker.Channel
@@ -116,7 +116,7 @@ component ColorPickerChannel(
 component ColorPickerSwatch(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders ColorPicker.Swatch {
   return (
     <ColorPicker.Swatch

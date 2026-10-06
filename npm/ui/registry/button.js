@@ -203,7 +203,7 @@ export component Button(
   type?     : "button" | "submit" | "reset" = "button",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const styled = props(
     styles.base,

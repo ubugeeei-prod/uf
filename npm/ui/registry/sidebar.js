@@ -232,7 +232,7 @@ component SidebarContent(
   panelClassName?: string,
   xstyle?        : StyleArgument,
   className?     : string,
-  ...rest: Rest
+  ...rest        : Rest
 ) renders Sidebar.Body {
   return (
     <Sidebar.Body
@@ -253,7 +253,7 @@ component SidebarHeader(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sidebar.Header {
   return (
     <Sidebar.Header
@@ -270,7 +270,7 @@ component SidebarFooter(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sidebar.Footer {
   return (
     <Sidebar.Footer
@@ -296,7 +296,7 @@ component SidebarItem(
   tooltipClassName?: string,
   xstyle?          : StyleArgument,
   className?       : string,
-  ...rest: Rest
+  ...rest          : Rest
 ) renders Sidebar.Item {
   return (
     <Sidebar.Item
@@ -327,7 +327,7 @@ component SidebarTrigger(
   label?    : string = "Toggle sidebar",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Sidebar.Trigger {
   return (
     <Sidebar.Trigger

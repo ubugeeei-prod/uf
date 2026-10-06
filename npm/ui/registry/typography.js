@@ -116,7 +116,7 @@ component TypographyH1(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <h1
@@ -133,7 +133,7 @@ component TypographyH2(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <h2
@@ -150,7 +150,7 @@ component TypographyH3(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <h3
@@ -167,7 +167,7 @@ component TypographyH4(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <h4
@@ -184,7 +184,7 @@ component TypographyP(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <p {...rest} className={classNames(props(styles.prose, xstyle).className, className)}>
@@ -198,7 +198,7 @@ component TypographyLead(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <p
@@ -215,7 +215,7 @@ component TypographyMuted(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <p
@@ -232,7 +232,7 @@ component TypographyBlockquote(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <blockquote
@@ -250,7 +250,7 @@ component TypographyList(
   ordered?  : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const shared = {
     ...rest,
@@ -267,7 +267,7 @@ component TypographyInlineCode(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <code {...rest} className={classNames(props(styles.code, xstyle).className, className)}>

@@ -64,7 +64,7 @@ export component Label(
   htmlFor?  : string,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   return (
     <label

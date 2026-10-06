@@ -389,7 +389,7 @@ export component ScrollBox(
   scrollTop?     : number = 0,
   scrollbar?     : boolean = true,
   scrollbarColor?: ColorValue,
-  ...props: BoxProps
+  ...props       : BoxProps
 ) {
   // The bar is drawn in the column the box reserves for it, so wrapped content
   // never reaches it. Reserving it here rather than in the painter is what
@@ -548,7 +548,7 @@ export component Input(
   fg?              : ColorValue,
   bg?              : ColorValue,
   placeholderColor?: ColorValue = "gray",
-  ...layout: BoxLayoutProps
+  ...layout        : BoxLayoutProps
 ) {
   const [internal, setInternal] = useState<string>(defaultValue);
   const text = value ?? internal;

@@ -113,7 +113,7 @@ export component Toggle(
   size?           : ToggleSize = "md",
   xstyle?         : StyleArgument,
   className?      : string,
-  ...rest: Rest
+  ...rest         : Rest
 ) renders TogglePart {
   const styled = props(
     styles.base,

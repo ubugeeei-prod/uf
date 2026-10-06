@@ -85,7 +85,7 @@ component AlertRoot(
   live?     : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Alert.Root {
   const styled = props(
     styles.root,
@@ -113,7 +113,7 @@ component AlertTitle(
   level?    : number = 3,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Alert.Title {
   return (
     <Alert.Title
@@ -131,7 +131,7 @@ component AlertDescription(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Alert.Description {
   return (
     <Alert.Description

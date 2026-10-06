@@ -154,7 +154,7 @@ component AccordionRoot(
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders Accordion.Root {
   return (
     <Accordion.Root
@@ -179,7 +179,7 @@ component AccordionItem(
   disabled? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Accordion.Item {
   return (
     <Accordion.Item
@@ -199,7 +199,7 @@ component AccordionTrigger(
   level?    : number = 3,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Accordion.Header {
   return (
     <Accordion.Header className={props(styles.heading).className} level={level}>
@@ -233,7 +233,7 @@ component AccordionContent(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Accordion.Content {
   return (
     <Accordion.Content

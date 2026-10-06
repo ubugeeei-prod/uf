@@ -249,7 +249,7 @@ export component Image(
   unoptimized?: boolean = false,
   className?  : string,
   style?      : { readonly [string]: string | number },
-  ...rest: ReactTypes.ElementConfig<"img">
+  ...rest     : ReactTypes.ElementConfig<"img">
 ) {
   // Refined rather than cast: `src` is a union and `typeof` narrows it, so
   // neither branch needs `any`. A cast here would be the one place in this
@@ -605,7 +605,7 @@ export component Icon(
   width?    : number,
   height?   : number,
   className?: string,
-  ...rest: ReactTypes.ElementConfig<"svg">
+  ...rest   : ReactTypes.ElementConfig<"svg">
 ) {
   return (
     <svg

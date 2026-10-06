@@ -160,7 +160,7 @@ export component Slider(
   valueText?    : (value: number, index: number) => string,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) renders HeadlessSlider.Root {
   const vertical = orientation === "vertical";
   return (

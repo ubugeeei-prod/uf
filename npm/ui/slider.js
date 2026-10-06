@@ -138,7 +138,7 @@ component SliderRoot(
   disabled?     : boolean = false,
   valueText?    : (value: number, index: number) => string,
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const [values, setValues] = useControlled(value, defaultValue, onValueChange);
   const trackRef            = useRef<HTMLElement | null>(null);

@@ -136,7 +136,7 @@ component ToggleGroupRoot(
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
   orientation?  : Orientation = "horizontal",
   render?       : RenderProp,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   const [pressed,  setPressed]  = useControlled<$ReadOnlyArray<string>>(
     value,
@@ -234,7 +234,7 @@ component ToggleGroupItem(
   children?: React.Node,
   disabled?: boolean = false,
   render?  : RenderProp,
-  ...rest: Rest
+  ...rest  : Rest
 ) {
   const group = useToggleGroup("ToggleGroup.Item");
   // Before the branch, because it is a hook: which mode the set is in is not

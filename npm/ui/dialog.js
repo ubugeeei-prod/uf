@@ -230,7 +230,7 @@ component DialogBody(
   initialFocus?         : { current: HTMLElement | null },
   role?                 : DialogRole = "dialog",
   render?               : RenderProp,
-  ...rest: Rest
+  ...rest               : Rest
 ) {
   const dialog  = useDialog("Dialog.Body");
   const bodyRef = useRef<HTMLElement | null>(null);

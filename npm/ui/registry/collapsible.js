@@ -126,7 +126,7 @@ component CollapsibleRoot(
   onOpenChange?: (open: boolean) => void,
   xstyle?      : StyleArgument,
   className?   : string,
-  ...rest: Rest
+  ...rest      : Rest
 ) {
   return (
     <div {...rest} className={classNames(props(styles.root, xstyle).className, className)}>
@@ -143,7 +143,7 @@ component CollapsibleTrigger(
   disabled? : boolean = false,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Collapsible.Trigger {
   return (
     <Collapsible.Trigger
@@ -176,7 +176,7 @@ component CollapsibleContent(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders Collapsible.Content {
   return (
     <Collapsible.Content

@@ -142,7 +142,7 @@ export component Checkbox(
   disabled?       : boolean = false,
   xstyle?         : StyleArgument,
   className?      : string,
-  ...rest: Rest
+  ...rest         : Rest
 ) renders CheckboxPart {
   return (
     <CheckboxPart

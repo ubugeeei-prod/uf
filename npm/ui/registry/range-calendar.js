@@ -34,7 +34,7 @@ export component RangeCalendar(
   children? : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders HeadlessRangeCalendar.Root {
   return (
     <HeadlessRangeCalendar.Root

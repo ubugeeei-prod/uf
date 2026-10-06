@@ -126,7 +126,7 @@ component InputOtpRoot(
   name?         : string,
   xstyle?       : StyleArgument,
   className?    : string,
-  ...rest: Rest
+  ...rest       : Rest
 ) {
   return (
     <DisabledContext.Provider value={disabled}>
@@ -156,7 +156,7 @@ component InputOtpGroup(
   children  : React.Node,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders InputOtp.Group {
   return (
     <InputOtp.Group
@@ -173,7 +173,7 @@ component InputOtpSlot(
   index     : number,
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders InputOtp.Slot {
   const disabled = useContext(DisabledContext);
   const styled = props(styles.slot, disabled && styles.slotDisabled, xstyle);
@@ -190,7 +190,7 @@ component InputOtpSlot(
 component InputOtpSeparator(
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) renders InputOtp.Separator {
   return (
     <InputOtp.Separator

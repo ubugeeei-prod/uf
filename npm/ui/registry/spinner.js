@@ -108,7 +108,7 @@ export component Spinner(
   tone?     : "accent" | "inherit" = "accent",
   xstyle?   : StyleArgument,
   className?: string,
-  ...rest: Rest
+  ...rest   : Rest
 ) {
   const styled = classNames(
     props(
